@@ -50,6 +50,51 @@ export default [
     component: './Welcome',
   },
   {
+    path: '/team',
+    name: 'team',
+    icon: 'team',
+    routes: [
+      {
+        path: '/team',
+        redirect: '/team/my',
+      },
+      {
+        path: '/team/my',
+        name: 'my',
+        icon: 'profile',
+        component: './team/my',
+      },
+      {
+        path: '/team/select',
+        name: 'select',
+        icon: 'select',
+        component: './team/select',
+      },
+      {
+        path: '/team/members',
+        name: 'members',
+        icon: 'usergroupAdd',
+        component: './team/members',
+      },
+      {
+        path: '/team/invitations',
+        name: 'invitations',
+        icon: 'mail',
+        component: './team/invitations',
+      },
+      {
+        path: '/team/invitations/:token',
+        component: './team/invitations/detail',
+      },
+      {
+        path: '/team/settings',
+        name: 'settings',
+        icon: 'setting',
+        component: './team/settings',
+      },
+    ],
+  },
+  {
     path: '/admin',
     name: 'admin',
     icon: 'crown',
@@ -288,7 +333,7 @@ export default [
   },
   {
     path: '/',
-    redirect: '/dashboard/analysis',
+    redirect: '/team/my',
   },
   {
     component: './exception/404',

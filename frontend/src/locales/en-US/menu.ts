@@ -50,4 +50,10 @@ export default {
   'menu.editor.mind': 'Mind Editor',
   'menu.editor.koni': 'Koni Editor',
   'menu.chatbot': 'AI Assistant',
+  'menu.team': 'Creative Team',
+  'menu.team.my': 'My Teams',
+  'menu.team.select': 'Select Team',
+  'menu.team.members': 'Members',
+  'menu.team.invitations': 'Invitations',
+  'menu.team.settings': 'Team Settings',
 };

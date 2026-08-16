@@ -91,6 +91,14 @@ public class TenantInvitationService {
             .toList();
     }
 
+    public List<TenantInvitationResponse> tenantInvitations(Long tenantId) {
+        tenantContextResolver.requireOwner(tenantId);
+        return tenantInvitationMapper.selectByTenantId(tenantId)
+            .stream()
+            .map(this::toResponse)
+            .toList();
+    }
+
     public TenantInvitationResponse detail(String token) {
         return toResponse(requireByToken(token));
     }

@@ -50,4 +50,10 @@ export default {
   'menu.editor.mind': '脑图编辑器',
   'menu.editor.koni': '拓扑编辑器',
   'menu.chatbot': 'AI 助手',
+  'menu.team': '创作团队',
+  'menu.team.my': '我的团队',
+  'menu.team.select': '选择团队',
+  'menu.team.members': '成员管理',
+  'menu.team.invitations': '团队邀请',
+  'menu.team.settings': '团队设置',
 };

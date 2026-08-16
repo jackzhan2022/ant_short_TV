@@ -24,4 +24,10 @@ public interface TenantInvitationMapper extends BaseMapper<TenantInvitationEntit
         return selectList(new LambdaQueryWrapper<TenantInvitationEntity>()
             .eq(TenantInvitationEntity::getInviteMobile, mobile));
     }
+
+    default List<TenantInvitationEntity> selectByTenantId(Long tenantId) {
+        return selectList(new LambdaQueryWrapper<TenantInvitationEntity>()
+            .eq(TenantInvitationEntity::getTenantId, tenantId)
+            .orderByDesc(TenantInvitationEntity::getCreatedAt));
+    }
 }

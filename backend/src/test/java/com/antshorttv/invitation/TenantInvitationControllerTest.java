@@ -126,6 +126,25 @@ class TenantInvitationControllerTest {
     }
 
     @Test
+    void ownerListsTenantInvitationsAndMemberCannotListThem() throws Exception {
+        String ownerToken = registerUser("13800000313", "Owner");
+        Long tenantId = createTenant(ownerToken, "邀请测试团队F");
+        String memberToken = registerUser("13800000314", "Member");
+        addMember(tenantId, "13800000314");
+        invite(ownerToken, tenantId, "13800000315");
+
+        mockMvc.perform(get("/api/tenants/%d/invitations".formatted(tenantId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].inviteMobile", is("13800000315")))
+            .andExpect(jsonPath("$.data[0].status", is("PENDING")));
+
+        mockMvc.perform(get("/api/tenants/%d/invitations".formatted(tenantId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken)))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
     void expiredInvitationCannotBeAccepted() throws Exception {
         String ownerToken = registerUser("13800000311", "Owner");
         Long tenantId = createTenant(ownerToken, "邀请测试团队E");

@@ -35,6 +35,11 @@ public class TenantInvitationController {
         return ApiResponse.success(tenantInvitationService.myInvitations());
     }
 
+    @GetMapping("/tenants/{tenantId}/invitations")
+    public ApiResponse<List<TenantInvitationResponse>> tenantInvitations(@PathVariable Long tenantId) {
+        return ApiResponse.success(tenantInvitationService.tenantInvitations(tenantId));
+    }
+
     @GetMapping("/invitations/{token}")
     public ApiResponse<TenantInvitationResponse> detail(@PathVariable String token) {
         return ApiResponse.success(tenantInvitationService.detail(token));

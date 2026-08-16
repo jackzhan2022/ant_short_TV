@@ -19,12 +19,24 @@ import {
   OfflineBanner,
   VersionDropdown,
 } from '@/components';
-import { currentUser as queryCurrentUser } from '@/services/ant-design-pro/api';
+import { currentUser as queryCurrentUser } from '@/services/account-team/auth';
+import type { UserProfile } from '@/services/account-team/types';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
+
+const toLayoutCurrentUser = (user: UserProfile): API.CurrentUser => ({
+  name: user.nickname,
+  avatar: user.avatar || undefined,
+  userid: String(user.id),
+  email: user.email || undefined,
+  phone: user.mobile,
+  title: user.status === 'ACTIVE' ? '创作团队成员' : '账号已停用',
+  group: 'Ant Short TV',
+  access: 'admin',
+});
 
 /**
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
@@ -41,7 +53,7 @@ export async function getInitialState(): Promise<{
       const msg = await queryCurrentUser({
         skipErrorHandler: true,
       });
-      return msg.data;
+      return toLayoutCurrentUser(msg.data);
     } catch (_error) {
       const { pathname, search, hash } = history.location;
       history.replace(
@@ -190,7 +202,7 @@ export const layout: RunTimeLayoutConfig = ({
  * @doc https://umijs.org/docs/max/request#配置
  */
 export const request: RequestConfig = {
-  baseURL: isDev ? '' : 'https://pro-api.ant-design-demo.workers.dev',
+  baseURL: process.env.API_BASE_URL || '',
   ...errorConfig,
 };
 

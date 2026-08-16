@@ -26,6 +26,7 @@ describe('requestErrorConfig', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   describe('errorThrower', () => {
@@ -242,19 +243,28 @@ describe('requestErrorConfig', () => {
     const interceptor = errorConfig.requestInterceptors?.[0] as (config: {
       url?: string;
       method?: string;
-    }) => { url?: string };
+      headers?: Record<string, string>;
+    }) => { url?: string; headers?: Record<string, string> };
 
-    it('should pass through config without modification', () => {
+    it('should attach auth and tenant headers from local storage', () => {
+      localStorage.setItem('accessToken', 'test-token');
+      localStorage.setItem('currentTenantId', '10');
       const config = {
         url: 'https://api.example.com/users',
         method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
       };
 
       const result = interceptor(config);
 
-      // Token attachment is intentionally commented out in the source;
-      // interceptor currently returns config as-is
       expect(result.url).toBe('https://api.example.com/users');
+      expect(result.headers).toEqual({
+        Accept: 'application/json',
+        Authorization: 'Bearer test-token',
+        'X-Tenant-Id': '10',
+      });
     });
 
     it('should handle URL without config', () => {
