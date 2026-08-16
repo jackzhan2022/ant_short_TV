@@ -6,6 +6,10 @@ import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
 import com.antshorttv.security.AccessTokenService;
 import com.antshorttv.security.CurrentUserHolder;
+import com.antshorttv.member.TenantMemberEntity;
+import com.antshorttv.member.TenantMemberMapper;
+import com.antshorttv.tenant.TenantEntity;
+import com.antshorttv.tenant.TenantMapper;
 import com.antshorttv.tenant.TenantSummaryResponse;
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
@@ -22,6 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private final UserMapper userMapper;
+    private final TenantMapper tenantMapper;
+    private final TenantMemberMapper tenantMemberMapper;
     private final PasswordEncoder passwordEncoder;
     private final VerificationCodeService verificationCodeService;
     private final AccessTokenService accessTokenService;
@@ -29,12 +35,16 @@ public class AuthService {
 
     public AuthService(
         UserMapper userMapper,
+        TenantMapper tenantMapper,
+        TenantMemberMapper tenantMemberMapper,
         PasswordEncoder passwordEncoder,
         VerificationCodeService verificationCodeService,
         AccessTokenService accessTokenService,
         OperationLogService operationLogService
     ) {
         this.userMapper = userMapper;
+        this.tenantMapper = tenantMapper;
+        this.tenantMemberMapper = tenantMemberMapper;
         this.passwordEncoder = passwordEncoder;
         this.verificationCodeService = verificationCodeService;
         this.accessTokenService = accessTokenService;
@@ -94,11 +104,30 @@ public class AuthService {
     }
 
     private AuthSessionResponse sessionFor(UserEntity user, String nextAction) {
+        List<TenantSummaryResponse> tenants = tenantMemberMapper.selectActiveByUserId(user.getId())
+            .stream()
+            .map(this::tenantSummary)
+            .toList();
         return new AuthSessionResponse(
             accessTokenService.issue(user),
             UserProfileResponse.from(user),
-            List.<TenantSummaryResponse>of(),
-            nextAction
+            tenants,
+            nextActionFor(tenants, nextAction)
         );
+    }
+
+    private TenantSummaryResponse tenantSummary(TenantMemberEntity member) {
+        TenantEntity tenant = tenantMapper.selectById(member.getTenantId());
+        return TenantSummaryResponse.from(tenant, member.getMemberType(), member.getId());
+    }
+
+    private String nextActionFor(List<TenantSummaryResponse> tenants, String fallback) {
+        if (tenants.isEmpty()) {
+            return fallback;
+        }
+        if (tenants.size() == 1) {
+            return "ENTER_WORKSPACE";
+        }
+        return "SELECT_TENANT";
     }
 }

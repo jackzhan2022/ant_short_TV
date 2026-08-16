@@ -71,6 +71,27 @@ class AuthControllerTest {
     }
 
     @Test
+    void loginReturnsJoinedTenantsAndNextAction() throws Exception {
+        String token = registerUser("13800000005", "Password123", "钱七");
+        mockMvc.perform(post("/api/tenants")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"登录后团队","type":"STUDIO","description":"登录后团队判断"}
+                    """))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"mobile":"13800000005","password":"Password123"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.tenants[0].name", is("登录后团队")))
+            .andExpect(jsonPath("$.data.nextAction", is("ENTER_WORKSPACE")));
+    }
+
+    @Test
     void currentUserRequiresValidAccessToken() throws Exception {
         String token = registerUser("13800000004", "Password123", "赵六");
 
