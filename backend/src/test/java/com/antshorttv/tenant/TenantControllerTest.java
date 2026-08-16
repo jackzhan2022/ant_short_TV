@@ -9,7 +9,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.antshorttv.invitation.TenantInvitationMapper;
+import com.antshorttv.invitation.TenantInvitationEntity;
 import com.antshorttv.member.MemberStatus;
 import com.antshorttv.member.MemberType;
 import com.antshorttv.member.TenantMemberEntity;
@@ -48,7 +50,8 @@ class TenantControllerTest {
         assertThat(member.getTenantId()).isEqualTo(tenantId);
         assertThat(member.getMemberType()).isEqualTo(MemberType.OWNER.name());
         assertThat(member.getStatus()).isEqualTo(MemberStatus.ACTIVE.name());
-        assertThat(tenantInvitationMapper.selectCount(null)).isZero();
+        assertThat(tenantInvitationMapper.selectCount(
+            new LambdaQueryWrapper<TenantInvitationEntity>().eq(TenantInvitationEntity::getTenantId, tenantId))).isZero();
     }
 
     @Test

@@ -18,10 +18,10 @@ class OperationLogServiceTest {
 
     @Test
     void recordsOperationLog() {
-        operationLogService.record(1L, 2L, "LOGIN", 1L, OperationResult.SUCCESS, null);
+        operationLogService.record(1L, 2L, "UNIT_TEST_LOGIN", 1L, OperationResult.SUCCESS, null);
 
         OperationLogEntity log = operationLogMapper.selectOne(
-            new LambdaQueryWrapper<OperationLogEntity>().eq(OperationLogEntity::getOperation, "LOGIN"));
+            new LambdaQueryWrapper<OperationLogEntity>().eq(OperationLogEntity::getOperation, "UNIT_TEST_LOGIN"));
 
         assertThat(log.getUserId()).isEqualTo(1L);
         assertThat(log.getTenantId()).isEqualTo(2L);
