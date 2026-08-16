@@ -54,6 +54,10 @@ export default {
   'menu.team.my': 'My Teams',
   'menu.team.select': 'Select Team',
   'menu.team.members': 'Members',
+  'menu.team.roles': 'Roles & Permissions',
+  'menu.team.organizations': 'Organizations',
   'menu.team.invitations': 'Invitations',
   'menu.team.settings': 'Team Settings',
+  'menu.projects': 'Project Center',
+  'menu.projects.list': 'Project List',
 };

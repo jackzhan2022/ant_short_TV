@@ -99,7 +99,7 @@ public class TenantService {
 
     @Transactional
     public TenantSummaryResponse update(Long tenantId, UpdateTenantRequest request, HttpServletRequest servletRequest) {
-        TenantContext context = tenantContextResolver.requireOwner(tenantId);
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         TenantEntity tenant = tenantMapper.selectById(tenantId);
         tenant.setName(validateTenantName(request.name()));
         tenant.setType(validateTenantType(request.type()).name());
@@ -113,7 +113,7 @@ public class TenantService {
 
     @Transactional
     public TenantSummaryResponse updateStatus(Long tenantId, UpdateTenantStatusRequest request, HttpServletRequest servletRequest) {
-        TenantContext context = tenantContextResolver.requireOwner(tenantId);
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         TenantStatus status = validateTenantStatus(request.status());
         TenantEntity tenant = tenantMapper.selectById(tenantId);
         tenant.setStatus(status.name());

@@ -54,7 +54,7 @@ public class TenantInvitationService {
 
     @Transactional
     public TenantInvitationResponse create(Long tenantId, CreateInvitationRequest request, HttpServletRequest servletRequest) {
-        TenantContext context = tenantContextResolver.requireOwner(tenantId);
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         UserEntity invitedUser = userMapper.selectByMobile(request.mobile());
         if (invitedUser != null) {
             TenantMemberEntity existingMember = tenantMemberMapper.selectByTenantIdAndUserId(tenantId, invitedUser.getId());
@@ -92,7 +92,7 @@ public class TenantInvitationService {
     }
 
     public List<TenantInvitationResponse> tenantInvitations(Long tenantId) {
-        tenantContextResolver.requireOwner(tenantId);
+        tenantContextResolver.requireActiveMember(tenantId);
         return tenantInvitationMapper.selectByTenantId(tenantId)
             .stream()
             .map(this::toResponse)

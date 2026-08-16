@@ -54,6 +54,10 @@ export default {
   'menu.team.my': '我的团队',
   'menu.team.select': '选择团队',
   'menu.team.members': '成员管理',
+  'menu.team.roles': '权限与角色',
+  'menu.team.organizations': '组织管理',
   'menu.team.invitations': '团队邀请',
   'menu.team.settings': '团队设置',
+  'menu.projects': '项目中心',
+  'menu.projects.list': '项目列表',
 };

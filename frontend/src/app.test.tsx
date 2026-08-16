@@ -12,6 +12,8 @@ const mockHistory = {
 };
 
 const mockQueryCurrentUser = vi.fn();
+const mockGetCurrentTenantId = vi.fn();
+const mockQueryCurrentPermissions = vi.fn();
 
 vi.mock('@umijs/max', () => ({
   history: mockHistory,
@@ -20,6 +22,11 @@ vi.mock('@umijs/max', () => ({
 
 vi.mock('@/services/account-team/auth', () => ({
   currentUser: mockQueryCurrentUser,
+  getCurrentTenantId: mockGetCurrentTenantId,
+}));
+
+vi.mock('@/services/account-team/rbac', () => ({
+  queryCurrentPermissions: mockQueryCurrentPermissions,
 }));
 
 vi.mock('@/components', () => ({
@@ -56,6 +63,10 @@ describe('app getInitialState', () => {
       search: '',
       hash: '',
     };
+    mockGetCurrentTenantId.mockReturnValue(undefined);
+    mockQueryCurrentPermissions.mockResolvedValue({
+      data: { menus: [], permissions: [] },
+    });
   });
 
   it('should fetch currentUser when not on login page', async () => {
@@ -84,6 +95,29 @@ describe('app getInitialState', () => {
     });
     expect(state.settingDrawerOpen).toBe(false);
     expect(state.fetchUserInfo).toBeDefined();
+  });
+
+  it('should fetch current permissions when a current tenant is selected', async () => {
+    const { getInitialState } = await import('./app');
+    mockGetCurrentTenantId.mockReturnValue(10);
+    mockQueryCurrentUser.mockResolvedValue({
+      data: {
+        id: 1,
+        mobile: '13800000000',
+        nickname: 'Test User',
+        status: 'ACTIVE',
+      },
+    });
+    mockQueryCurrentPermissions.mockResolvedValue({
+      data: { menus: ['ROLE'], permissions: ['ROLE:VIEW'] },
+    });
+
+    const state = await getInitialState();
+
+    expect(mockQueryCurrentPermissions).toHaveBeenCalledWith({
+      skipErrorHandler: true,
+    });
+    expect(state.permissions).toEqual(['ROLE:VIEW']);
   });
 
   it('should redirect to login when currentUser fetch fails (401)', async () => {

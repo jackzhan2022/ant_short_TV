@@ -18,6 +18,9 @@ export type TenantType = 'COMPANY' | 'STUDIO' | 'PERSONAL' | 'OTHER';
 export type TenantStatus = 'ACTIVE' | 'DISABLED';
 export type MemberType = 'OWNER' | 'MEMBER';
 export type MemberStatus = 'ACTIVE' | 'REMOVED';
+export type RoleType = 'SYSTEM' | 'CUSTOM';
+export type RoleStatus = 'ACTIVE' | 'DISABLED';
+export type PermissionType = 'MENU' | 'PAGE' | 'BUTTON' | 'API';
 export type InvitationStatus =
   | 'PENDING'
   | 'ACCEPTED'
@@ -75,4 +78,117 @@ export type CurrentTenant = {
   tenantId: number;
   memberId: number;
   memberType: MemberType;
+};
+
+export type Role = {
+  id: number;
+  tenantId: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  roleType: RoleType;
+  status: RoleStatus;
+  isDefault: boolean;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Permission = {
+  id: number;
+  code: string;
+  name: string;
+  type: PermissionType;
+  resource: string;
+  action: string;
+};
+
+export type PermissionTreeNode = {
+  key: string;
+  title: string;
+  resource: string;
+  permissionCode?: string | null;
+  children?: PermissionTreeNode[];
+};
+
+export type AuthPermissions = {
+  menus: string[];
+  permissions: string[];
+};
+
+export type OrganizationStatus = 'ACTIVE' | 'DISABLED';
+
+export type Organization = {
+  id: number;
+  tenantId: number;
+  parentId?: number | null;
+  name: string;
+  code: string;
+  level: number;
+  leaderId?: number | null;
+  sort: number;
+  status: OrganizationStatus;
+  createdAt: string;
+  updatedAt: string;
+  children?: Organization[];
+};
+
+export type ProjectStatus =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'PAUSED'
+  | 'COMPLETED'
+  | 'ARCHIVED';
+
+export type ProjectDataScope = 'ALL' | 'ORGANIZATION' | 'PROJECT';
+export type ProjectMemberStatus = 'ACTIVE' | 'REMOVED';
+export type ProjectRoleStatus = 'ACTIVE' | 'DISABLED';
+
+export type Project = {
+  id: number;
+  tenantId: number;
+  organizationId?: number | null;
+  organizationName?: string | null;
+  name: string;
+  code: string;
+  description?: string | null;
+  coverUrl?: string | null;
+  ownerId: number;
+  ownerName?: string | null;
+  status: ProjectStatus;
+  startDate?: string | null;
+  endDate?: string | null;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectMember = {
+  id: number;
+  tenantId: number;
+  projectId: number;
+  userId: number;
+  nickname?: string | null;
+  mobile?: string | null;
+  organizationId?: number | null;
+  organizationName?: string | null;
+  roleId: number;
+  roleName?: string | null;
+  roleCode?: string | null;
+  status: ProjectMemberStatus;
+  joinedAt: string;
+};
+
+export type ProjectRole = {
+  id: number;
+  tenantId: number;
+  projectId: number;
+  name: string;
+  code: string;
+  description?: string | null;
+  isSystem: boolean;
+  status: ProjectRoleStatus;
+  dataScope: ProjectDataScope;
+  createdAt: string;
+  updatedAt: string;
 };

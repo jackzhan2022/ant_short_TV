@@ -17,6 +17,39 @@ describe('access', () => {
     expect(result.canAdmin).toBe(true);
   });
 
+  it('should allow role management when ROLE:VIEW is present', () => {
+    const initialState = {
+      currentUser: {
+        userid: '1',
+        name: 'Owner User',
+        avatar: 'https://example.com/avatar.png',
+        access: 'user',
+      },
+      permissions: ['ROLE:VIEW'],
+    };
+
+    const result = access(initialState);
+
+    expect(result.canManageRoles).toBe(true);
+  });
+
+  it('should allow authenticated users to enter project center routes', () => {
+    const initialState = {
+      currentUser: {
+        userid: '1',
+        name: 'Project Member',
+        avatar: 'https://example.com/avatar.png',
+        access: 'user',
+      },
+      permissions: [],
+    };
+
+    const result = access(initialState);
+
+    expect(result.canUseProjectCenter).toBe(true);
+    expect(result.canViewProjects).toBe(false);
+  });
+
   it('should return canAdmin false when user has non-admin access', () => {
     const initialState = {
       currentUser: {

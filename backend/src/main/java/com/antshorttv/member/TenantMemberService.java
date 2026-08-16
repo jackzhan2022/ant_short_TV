@@ -5,6 +5,7 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
+import com.antshorttv.rbac.RbacService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.tenant.TenantEntity;
@@ -25,23 +26,26 @@ public class TenantMemberService {
     private final UserMapper userMapper;
     private final TenantContextResolver tenantContextResolver;
     private final OperationLogService operationLogService;
+    private final RbacService rbacService;
 
     public TenantMemberService(
         TenantMemberMapper tenantMemberMapper,
         TenantMapper tenantMapper,
         UserMapper userMapper,
         TenantContextResolver tenantContextResolver,
-        OperationLogService operationLogService
+        OperationLogService operationLogService,
+        RbacService rbacService
     ) {
         this.tenantMemberMapper = tenantMemberMapper;
         this.tenantMapper = tenantMapper;
         this.userMapper = userMapper;
         this.tenantContextResolver = tenantContextResolver;
         this.operationLogService = operationLogService;
+        this.rbacService = rbacService;
     }
 
     public List<TenantMemberResponse> list(Long tenantId) {
-        tenantContextResolver.requireOwner(tenantId);
+        tenantContextResolver.requireActiveMember(tenantId);
         return tenantMemberMapper.selectActiveByTenantId(tenantId)
             .stream()
             .map(member -> TenantMemberResponse.from(member, userMapper.selectById(member.getUserId())))
@@ -50,7 +54,7 @@ public class TenantMemberService {
 
     @Transactional
     public ApiResponse<Void> remove(Long tenantId, Long memberId, HttpServletRequest request) {
-        TenantContext context = tenantContextResolver.requireOwner(tenantId);
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         TenantMemberEntity target = requireMemberInTenant(tenantId, memberId);
         if (MemberType.OWNER.name().equals(target.getMemberType())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "不能直接移除团队所有者。");
@@ -58,6 +62,7 @@ public class TenantMemberService {
         target.setStatus(MemberStatus.REMOVED.name());
         target.setUpdatedAt(LocalDateTime.now());
         tenantMemberMapper.updateById(target);
+        rbacService.removeMemberRoles(memberId);
         operationLogService.record(context.userId(), tenantId, "REMOVE_MEMBER", memberId, OperationResult.SUCCESS, request);
         return ApiResponse.ok();
     }
@@ -72,6 +77,7 @@ public class TenantMemberService {
         member.setStatus(MemberStatus.REMOVED.name());
         member.setUpdatedAt(LocalDateTime.now());
         tenantMemberMapper.updateById(member);
+        rbacService.removeMemberRoles(member.getId());
         operationLogService.record(context.userId(), tenantId, "LEAVE_TENANT", member.getId(), OperationResult.SUCCESS, request);
         return ApiResponse.ok();
     }
@@ -100,6 +106,7 @@ public class TenantMemberService {
         tenant.setOwnerMemberId(target.getId());
         tenant.setUpdatedAt(LocalDateTime.now());
         tenantMapper.updateById(tenant);
+        rbacService.syncOwnerTransfer(tenantId, currentOwner.getId(), target.getId());
 
         operationLogService.record(context.userId(), tenantId, "TRANSFER_OWNER", target.getId(), OperationResult.SUCCESS, servletRequest);
         return TenantSummaryResponse.from(tenant, currentOwner.getMemberType(), currentOwner.getId());

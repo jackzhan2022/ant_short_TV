@@ -77,6 +77,20 @@ export default [
         component: './team/members',
       },
       {
+        path: '/team/roles',
+        name: 'roles',
+        icon: 'safetyCertificate',
+        access: 'canManageRoles',
+        component: './team/roles',
+      },
+      {
+        path: '/team/organizations',
+        name: 'organizations',
+        icon: 'apartment',
+        access: 'canManageOrganizations',
+        component: './team/organizations',
+      },
+      {
         path: '/team/invitations',
         name: 'invitations',
         icon: 'mail',
@@ -334,6 +348,29 @@ export default [
   {
     path: '/',
     redirect: '/team/my',
+  },
+  {
+    path: '/projects',
+    name: 'projects',
+    icon: 'project',
+    access: 'canUseProjectCenter',
+    routes: [
+      {
+        path: '/projects',
+        redirect: '/projects/list',
+      },
+      {
+        path: '/projects/list',
+        name: 'list',
+        icon: 'profile',
+        access: 'canViewProjects',
+        component: './projects/list',
+      },
+      {
+        path: '/projects/:id',
+        component: './projects/detail',
+      },
+    ],
   },
   {
     component: './exception/404',

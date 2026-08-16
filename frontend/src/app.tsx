@@ -19,7 +19,11 @@ import {
   OfflineBanner,
   VersionDropdown,
 } from '@/components';
-import { currentUser as queryCurrentUser } from '@/services/account-team/auth';
+import {
+  currentUser as queryCurrentUser,
+  getCurrentTenantId,
+} from '@/services/account-team/auth';
+import { queryCurrentPermissions } from '@/services/account-team/rbac';
 import type { UserProfile } from '@/services/account-team/types';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
@@ -44,6 +48,7 @@ const toLayoutCurrentUser = (user: UserProfile): API.CurrentUser => ({
 export async function getInitialState(): Promise<{
   settings?: Partial<LayoutSettings>;
   currentUser?: API.CurrentUser;
+  permissions?: string[];
   loading?: boolean;
   fetchUserInfo?: () => Promise<API.CurrentUser | undefined>;
   settingDrawerOpen?: boolean;
@@ -70,9 +75,21 @@ export async function getInitialState(): Promise<{
     )
   ) {
     const currentUser = await fetchUserInfo();
+    let permissions: string[] = [];
+    if (currentUser && getCurrentTenantId()) {
+      try {
+        const permissionResponse = await queryCurrentPermissions({
+          skipErrorHandler: true,
+        });
+        permissions = permissionResponse.data.permissions;
+      } catch (_error) {
+        permissions = [];
+      }
+    }
     return {
       fetchUserInfo,
       currentUser,
+      permissions,
       settings: defaultSettings as Partial<LayoutSettings>,
       settingDrawerOpen: false,
     };

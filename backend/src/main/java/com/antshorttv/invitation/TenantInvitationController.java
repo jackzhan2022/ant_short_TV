@@ -1,6 +1,7 @@
 package com.antshorttv.invitation;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.rbac.RequirePermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -22,6 +23,7 @@ public class TenantInvitationController {
     }
 
     @PostMapping("/tenants/{tenantId}/invitations")
+    @RequirePermission("MEMBER:INVITE")
     public ApiResponse<TenantInvitationResponse> create(
         @PathVariable Long tenantId,
         @Valid @RequestBody CreateInvitationRequest request,
@@ -36,6 +38,7 @@ public class TenantInvitationController {
     }
 
     @GetMapping("/tenants/{tenantId}/invitations")
+    @RequirePermission("MEMBER:VIEW")
     public ApiResponse<List<TenantInvitationResponse>> tenantInvitations(@PathVariable Long tenantId) {
         return ApiResponse.success(tenantInvitationService.tenantInvitations(tenantId));
     }

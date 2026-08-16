@@ -1,21 +1,89 @@
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
   ModalForm,
   PageContainer,
+  ProFormSelect,
   ProFormText,
   ProTable,
 } from '@ant-design/pro-components';
-import { App, Button, Empty, Popconfirm, Space, Tag } from 'antd';
+import { App, Button, Empty, Form, Popconfirm, Space, Tag } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
-import type { TenantMember } from '@/services/account-team/types';
+import type { Role, TenantMember } from '@/services/account-team/types';
 import {
   createInvitation,
+  queryMemberRoles,
   queryCurrentTenant,
+  queryTenantRoles,
   queryTenantMembers,
   removeTenantMember,
+  updateMemberRoles,
 } from './service';
+
+const MemberRoleEditor = ({
+  tenantId,
+  member,
+  onDone,
+}: {
+  tenantId: number;
+  member: TenantMember;
+  onDone: () => void;
+}) => {
+  const [form] = Form.useForm<{ roleIds: number[] }>();
+  const { message } = App.useApp();
+  const [roles, setRoles] = useState<Role[]>([]);
+
+  const load = async () => {
+    const [roleResponse, memberRoleResponse] = await Promise.all([
+      queryTenantRoles(tenantId),
+      queryMemberRoles(tenantId, member.id),
+    ]);
+    setRoles(roleResponse.data);
+    form.setFieldsValue({
+      roleIds: memberRoleResponse.data.map((role) => role.id),
+    });
+  };
+
+  return (
+    <ModalForm<{ roleIds: number[] }>
+      title="分配成员角色"
+      form={form}
+      trigger={
+        <Button type="link" icon={<SafetyCertificateOutlined />}>
+          角色
+        </Button>
+      }
+      modalProps={{ destroyOnHidden: true }}
+      onOpenChange={async (open) => {
+        if (open) {
+          await load();
+        } else {
+          form.resetFields();
+        }
+      }}
+      onFinish={async (values) => {
+        await updateMemberRoles(tenantId, member.id, values.roleIds || []);
+        message.success('成员角色已更新');
+        onDone();
+        return true;
+      }}
+    >
+      <ProFormSelect
+        name="roleIds"
+        label="角色"
+        mode="multiple"
+        options={roles
+          .filter((role) => role.status === 'ACTIVE')
+          .map((role) => ({
+            label: `${role.name} (${role.code})`,
+            value: role.id,
+          }))}
+        rules={[{ required: true, message: '请选择角色' }]}
+      />
+    </ModalForm>
+  );
+};
 
 const TeamMembers = () => {
   const tenantId = getCurrentTenantId();
@@ -67,18 +135,25 @@ const TeamMembers = () => {
       render: (_, record) => (
         <Space>
           {isOwner && record.memberType === 'MEMBER' && (
-            <Popconfirm
-              title="确认移除该成员？"
-              onConfirm={async () => {
-                await removeTenantMember(tenantId, record.id);
-                message.success('成员已移除');
-                actionRef.current?.reload();
-              }}
-            >
-              <Button type="link" danger>
-                移除
-              </Button>
-            </Popconfirm>
+            <>
+              <MemberRoleEditor
+                tenantId={tenantId}
+                member={record}
+                onDone={() => actionRef.current?.reload()}
+              />
+              <Popconfirm
+                title="确认移除该成员？"
+                onConfirm={async () => {
+                  await removeTenantMember(tenantId, record.id);
+                  message.success('成员已移除');
+                  actionRef.current?.reload();
+                }}
+              >
+                <Button type="link" danger>
+                  移除
+                </Button>
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),

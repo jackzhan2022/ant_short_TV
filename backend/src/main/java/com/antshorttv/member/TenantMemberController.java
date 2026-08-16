@@ -1,6 +1,7 @@
 package com.antshorttv.member;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.rbac.RequirePermission;
 import com.antshorttv.tenant.TenantSummaryResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -24,11 +25,13 @@ public class TenantMemberController {
     }
 
     @GetMapping("/members")
+    @RequirePermission("MEMBER:VIEW")
     public ApiResponse<List<TenantMemberResponse>> list(@PathVariable Long tenantId) {
         return ApiResponse.success(tenantMemberService.list(tenantId));
     }
 
     @DeleteMapping("/members/{memberId}")
+    @RequirePermission("MEMBER:REMOVE")
     public ApiResponse<Void> remove(
         @PathVariable Long tenantId,
         @PathVariable Long memberId,

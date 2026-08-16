@@ -21,9 +21,14 @@ class SchemaMigrationTest {
         Integer tableCount = jdbc.queryForObject("""
             select count(distinct lower(table_name))
             from information_schema.tables
-            where lower(table_name) in ('app_user', 'tenant', 'tenant_member', 'tenant_invitation', 'operation_log')
+            where lower(table_name) in (
+              'app_user', 'tenant', 'tenant_member', 'tenant_invitation', 'operation_log',
+              'role', 'permission', 'role_permission', 'member_role',
+              'organization', 'organization_member', 'project', 'project_member',
+              'project_role', 'project_role_permission', 'project_operation_log'
+            )
             """, Integer.class);
 
-        assertThat(tableCount).isEqualTo(5);
+        assertThat(tableCount).isEqualTo(16);
     }
 }

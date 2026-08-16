@@ -5,4 +5,9 @@ export {
   queryTenantMembers,
   removeTenantMember,
 } from '@/services/account-team/member';
+export {
+  queryMemberRoles,
+  queryTenantRoles,
+  updateMemberRoles,
+} from '@/services/account-team/rbac';
 export { queryCurrentTenant } from '@/services/account-team/tenant';

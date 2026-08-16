@@ -1,6 +1,7 @@
 package com.antshorttv.tenant;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.rbac.RequirePermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -36,11 +37,13 @@ public class TenantController {
     }
 
     @GetMapping("/{id}")
+    @RequirePermission("TENANT:VIEW")
     public ApiResponse<TenantSummaryResponse> detail(@PathVariable Long id) {
         return ApiResponse.success(tenantService.detail(id));
     }
 
     @PutMapping("/{id}")
+    @RequirePermission("TENANT:EDIT")
     public ApiResponse<TenantSummaryResponse> update(
         @PathVariable Long id,
         @Valid @RequestBody UpdateTenantRequest request,
@@ -50,6 +53,7 @@ public class TenantController {
     }
 
     @PutMapping("/{id}/status")
+    @RequirePermission("TENANT:EDIT")
     public ApiResponse<TenantSummaryResponse> updateStatus(
         @PathVariable Long id,
         @Valid @RequestBody UpdateTenantStatusRequest request,
