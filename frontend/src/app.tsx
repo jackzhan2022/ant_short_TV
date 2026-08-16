@@ -35,7 +35,7 @@ const toLayoutCurrentUser = (user: UserProfile): API.CurrentUser => ({
   phone: user.mobile,
   title: user.status === 'ACTIVE' ? '创作团队成员' : '账号已停用',
   group: 'Ant Short TV',
-  access: 'admin',
+  access: 'user',
 });
 
 /**

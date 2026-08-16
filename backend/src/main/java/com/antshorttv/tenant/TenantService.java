@@ -130,11 +130,26 @@ public class TenantService {
         return new CurrentTenantResponse(context.userId(), context.tenantId(), context.memberId(), context.memberType());
     }
 
-    public CurrentTenantResponse current() {
+    public CurrentTenantResponse current(HttpServletRequest servletRequest) {
+        String tenantIdHeader = servletRequest.getHeader("X-Tenant-Id");
+        if (tenantIdHeader != null && !tenantIdHeader.isBlank()) {
+            TenantContext context = tenantContextResolver.requireActiveMember(parseTenantId(tenantIdHeader));
+            currentTenantStore.put(context);
+            return new CurrentTenantResponse(context.userId(), context.tenantId(), context.memberId(), context.memberType());
+        }
+
         Long userId = CurrentUserHolder.require().userId();
         TenantContext context = currentTenantStore.get(userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "尚未选择当前创作团队。"));
         return new CurrentTenantResponse(context.userId(), context.tenantId(), context.memberId(), context.memberType());
+    }
+
+    private Long parseTenantId(String tenantIdHeader) {
+        try {
+            return Long.valueOf(tenantIdHeader);
+        } catch (NumberFormatException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前创作团队标识不正确。");
+        }
     }
 
     private String validateTenantName(String rawName) {

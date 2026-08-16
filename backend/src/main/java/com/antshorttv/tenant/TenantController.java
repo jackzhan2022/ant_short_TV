@@ -67,7 +67,7 @@ public class TenantController {
     }
 
     @GetMapping("/current")
-    public ApiResponse<CurrentTenantResponse> current() {
-        return ApiResponse.success(tenantService.current());
+    public ApiResponse<CurrentTenantResponse> current(HttpServletRequest servletRequest) {
+        return ApiResponse.success(tenantService.current(servletRequest));
     }
 }

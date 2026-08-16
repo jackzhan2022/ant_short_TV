@@ -80,7 +80,7 @@ describe('app getInitialState', () => {
       phone: '13800000000',
       title: '创作团队成员',
       group: 'Ant Short TV',
-      access: 'admin',
+      access: 'user',
     });
     expect(state.settingDrawerOpen).toBe(false);
     expect(state.fetchUserInfo).toBeDefined();
@@ -167,7 +167,7 @@ describe('app getInitialState', () => {
       phone: '13800000001',
       title: '账号已停用',
       group: 'Ant Short TV',
-      access: 'admin',
+      access: 'user',
     });
   });
 

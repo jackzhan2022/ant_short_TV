@@ -94,6 +94,26 @@ class TenantControllerTest {
             .andExpect(jsonPath("$.errorMessage", is("当前创作团队已被停用，暂时无法进入。")));
     }
 
+    @Test
+    void currentTenantCanBeResolvedFromValidatedTenantHeader() throws Exception {
+        String ownerToken = registerUser("13800000104", "赵六");
+        Long ownerTenantId = readLong(createTenant(ownerToken, "Header测试团队", "STUDIO"), "$.data.id");
+        String otherToken = registerUser("13800000105", "钱七");
+
+        mockMvc.perform(get("/api/tenants/current")
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .header("X-Tenant-Id", ownerTenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.tenantId", is(ownerTenantId.intValue())))
+            .andExpect(jsonPath("$.data.memberType", is("OWNER")));
+
+        mockMvc.perform(get("/api/tenants/current")
+                .header(HttpHeaders.AUTHORIZATION, bearer(otherToken))
+                .header("X-Tenant-Id", ownerTenantId))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.errorCode", is("FORBIDDEN")));
+    }
+
     private String registerUser(String mobile, String nickname) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)

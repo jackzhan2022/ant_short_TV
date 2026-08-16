@@ -5,6 +5,7 @@ public record CurrentUserResponse(
     String avatar,
     String userid,
     String email,
+    String phone,
     String signature,
     String title,
     String group,
