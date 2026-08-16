@@ -8,6 +8,7 @@ _roadhog-api-doc
 
 # production
 /dist
+**/dist
 
 # misc
 .DS_Store
@@ -42,6 +43,7 @@ screenshot
 .firebase
 
 build
+**/target
 
 # worktrees
 .worktrees

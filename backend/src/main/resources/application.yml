@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ant-short-tv-backend
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
