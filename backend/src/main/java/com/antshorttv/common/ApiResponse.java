@@ -14,4 +14,8 @@ public record ApiResponse<T>(
     public static ApiResponse<Void> ok() {
         return new ApiResponse<>(true, null, null, null);
     }
+
+    public static <T> ApiResponse<T> fail(String errorCode, String errorMessage) {
+        return new ApiResponse<>(false, null, errorCode, errorMessage);
+    }
 }
