@@ -346,8 +346,23 @@ export default [
     component: './chatbot',
   },
   {
-    path: '/',
-    redirect: '/team/my',
+    path: '/ai-service-management',
+    name: 'ai-service-management',
+    icon: 'api',
+    access: 'canViewAiServices',
+    routes: [
+      {
+        path: '/ai-service-management',
+        redirect: '/ai-service-management/services',
+      },
+      {
+        path: '/ai-service-management/services',
+        name: 'services',
+        icon: 'setting',
+        access: 'canViewAiServices',
+        component: './ai-service-management/services',
+      },
+    ],
   },
   {
     path: '/projects',
@@ -371,6 +386,10 @@ export default [
         component: './projects/detail',
       },
     ],
+  },
+  {
+    path: '/',
+    redirect: '/team/my',
   },
   {
     component: './exception/404',

@@ -49,4 +49,6 @@ export default {
   'menu.editor.flow': 'フローエディタ',
   'menu.editor.mind': 'マインドエディター',
   'menu.editor.koni': 'コニエディター',
+  'menu.ai-service-management': 'AI Services',
+  'menu.ai-service-management.services': 'Service Configs',
 };

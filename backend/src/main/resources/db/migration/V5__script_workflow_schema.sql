@@ -1,0 +1,122 @@
+create table script (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  title varchar(200) not null,
+  source_type varchar(32) not null,
+  content text not null,
+  status varchar(32) not null,
+  current_version_id bigint null,
+  created_by bigint not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  deleted_at datetime null,
+  index idx_script_tenant_project (tenant_id, project_id),
+  index idx_script_tenant_status (tenant_id, status)
+);
+
+create table script_version (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  script_id bigint not null,
+  version_no int not null,
+  source_type varchar(32) not null,
+  input_summary text null,
+  content text not null,
+  ai_call_log_id bigint null,
+  status varchar(32) not null,
+  created_by bigint not null,
+  created_at datetime not null,
+  unique key uk_script_version_no (script_id, version_no),
+  index idx_script_version_project (tenant_id, project_id),
+  index idx_script_version_script (script_id)
+);
+
+create table character_asset (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  name varchar(100) not null,
+  role_type varchar(32) not null,
+  gender varchar(32) null,
+  age_range varchar(32) null,
+  identity varchar(200) null,
+  personality varchar(500) null,
+  appearance varchar(500) null,
+  relationship_text varchar(500) null,
+  plot_function varchar(500) null,
+  prompt text null,
+  status varchar(32) not null,
+  created_by bigint not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  deleted_at datetime null,
+  index idx_character_asset_project (tenant_id, project_id)
+);
+
+create table scene_asset (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  name varchar(100) not null,
+  scene_type varchar(32) not null,
+  time_atmosphere varchar(100) null,
+  description text null,
+  visual_style varchar(300) null,
+  plot_reference varchar(500) null,
+  prompt text null,
+  status varchar(32) not null,
+  created_by bigint not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  deleted_at datetime null,
+  index idx_scene_asset_project (tenant_id, project_id)
+);
+
+create table prop_asset (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  name varchar(100) not null,
+  prop_type varchar(32) not null,
+  appearance varchar(500) null,
+  plot_function varchar(500) null,
+  related_character varchar(200) null,
+  prompt text null,
+  status varchar(32) not null,
+  created_by bigint not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  deleted_at datetime null,
+  index idx_prop_asset_project (tenant_id, project_id)
+);
+
+create table storyboard (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  script_id bigint null,
+  episode_no int not null,
+  shot_no int not null,
+  scene_no varchar(50) null,
+  shot_type varchar(50) null,
+  visual_description text not null,
+  characters varchar(500) null,
+  actions text null,
+  dialogue text null,
+  scene varchar(200) null,
+  props varchar(500) null,
+  mood varchar(200) null,
+  duration_seconds int null,
+  image_prompt text null,
+  video_prompt text null,
+  status varchar(32) not null,
+  created_by bigint not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  deleted_at datetime null,
+  unique key uk_storyboard_project_episode_shot (project_id, episode_no, shot_no, deleted_at),
+  index idx_storyboard_project (tenant_id, project_id),
+  index idx_storyboard_script (script_id)
+);

@@ -49,4 +49,6 @@ export default {
   'menu.editor.flow': '流程編輯器',
   'menu.editor.mind': '腦圖編輯器',
   'menu.editor.koni': '拓撲編輯器',
+  'menu.ai-service-management': 'AI服務管理',
+  'menu.ai-service-management.services': '服務配置',
 };

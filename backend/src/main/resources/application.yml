@@ -23,3 +23,6 @@ mybatis-plus:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+ai:
+  secret-key: ${AI_SECRET_KEY:}

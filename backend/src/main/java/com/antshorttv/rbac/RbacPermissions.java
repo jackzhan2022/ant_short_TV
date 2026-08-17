@@ -34,7 +34,13 @@ final class RbacPermissions {
         new RbacPermissionDefinition("SCRIPT:VIEW", "查看剧本", PermissionType.PAGE, "SCRIPT", "VIEW"),
         new RbacPermissionDefinition("SCRIPT:CREATE", "创建剧本", PermissionType.BUTTON, "SCRIPT", "CREATE"),
         new RbacPermissionDefinition("SCRIPT:EDIT", "编辑剧本", PermissionType.BUTTON, "SCRIPT", "EDIT"),
-        new RbacPermissionDefinition("SCRIPT:DELETE", "删除剧本", PermissionType.BUTTON, "SCRIPT", "DELETE")
+        new RbacPermissionDefinition("SCRIPT:DELETE", "删除剧本", PermissionType.BUTTON, "SCRIPT", "DELETE"),
+        new RbacPermissionDefinition("AI_SERVICE:VIEW", "查看AI服务", PermissionType.PAGE, "AI_SERVICE", "VIEW"),
+        new RbacPermissionDefinition("AI_SERVICE:CREATE", "新增AI服务", PermissionType.BUTTON, "AI_SERVICE", "CREATE"),
+        new RbacPermissionDefinition("AI_SERVICE:EDIT", "编辑AI服务", PermissionType.BUTTON, "AI_SERVICE", "EDIT"),
+        new RbacPermissionDefinition("AI_SERVICE:DELETE", "删除AI服务", PermissionType.BUTTON, "AI_SERVICE", "DELETE"),
+        new RbacPermissionDefinition("AI_SERVICE:TEST", "测试AI服务", PermissionType.BUTTON, "AI_SERVICE", "TEST"),
+        new RbacPermissionDefinition("AI_SERVICE:USE", "使用AI服务", PermissionType.BUTTON, "AI_SERVICE", "USE")
     );
 
     private RbacPermissions() {

@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@umijs/max', () => ({
   Helmet: ({ children }: { children: ReactNode }) => <>{children}</>,
+  Link: ({ children, to }: { children: ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
+  ),
   SelectLang: () => <div data-testid="select-lang" />,
   history: { replace: mocks.replace },
   useIntl: () => ({
@@ -134,5 +137,13 @@ describe('Login Page', () => {
     });
     expect(mocks.success).toHaveBeenCalledWith('登录成功');
     expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+  });
+
+  it('shows a register entry that links to the register page', () => {
+    render(<Login />);
+
+    const registerLink = screen.getByRole('link', { name: '注册新用户' });
+
+    expect(registerLink).toHaveAttribute('href', '/user/register');
   });
 });

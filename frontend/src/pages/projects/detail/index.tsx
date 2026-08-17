@@ -48,6 +48,7 @@ import {
   updateProjectMemberRole,
   updateProjectRole,
 } from './service';
+import ScriptCreationWorkspace from './components/ScriptCreationWorkspace';
 
 const statusText: Record<Project['status'], string> = {
   NOT_STARTED: '未开始',
@@ -522,6 +523,16 @@ const ProjectDetail = () => {
                     onDone={loadRoles}
                   />,
                 ]}
+              />
+            ),
+          },
+          {
+            key: 'creation',
+            label: '剧本创作',
+            children: (
+              <ScriptCreationWorkspace
+                projectId={projectId}
+                projectName={project?.name}
               />
             ),
           },

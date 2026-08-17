@@ -1,0 +1,243 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import ScriptCreationWorkspace from './ScriptCreationWorkspace';
+
+const mocks = vi.hoisted(() => ({
+  generateScript: vi.fn(),
+  queryScriptWorkspace: vi.fn(),
+}));
+
+vi.mock('@ant-design/icons', () => ({
+  BulbOutlined: () => <span data-testid="bulb-icon" />,
+  EditOutlined: () => <span data-testid="edit-icon" />,
+  FileTextOutlined: () => <span data-testid="file-icon" />,
+  PlusOutlined: () => <span data-testid="plus-icon" />,
+  RobotOutlined: () => <span data-testid="robot-icon" />,
+  SaveOutlined: () => <span data-testid="save-icon" />,
+  SplitCellsOutlined: () => <span data-testid="split-icon" />,
+  TagsOutlined: () => <span data-testid="tags-icon" />,
+}));
+
+vi.mock('antd', () => ({
+  App: {
+    useApp: () => ({ message: { success: vi.fn() } }),
+  },
+  Button: ({ children, icon, onClick }: any) => (
+    <button type="button" onClick={onClick}>
+      {icon}
+      {children}
+    </button>
+  ),
+  Drawer: ({ children, extra, open, title }: any) =>
+    open ? (
+      <section aria-label={title}>
+        <h2>{title}</h2>
+        {extra}
+        {children}
+      </section>
+    ) : null,
+  Empty: ({ description }: any) => <div>{description || '暂无数据'}</div>,
+  Flex: ({ children }: any) => <div>{children}</div>,
+  Form: {
+    useForm: () => [
+      {
+        resetFields: vi.fn(),
+        submit: vi.fn(),
+        setFieldsValue: vi.fn(),
+      },
+    ],
+  },
+  Input: Object.assign(
+    ({ value, onChange, ...props }: any) => (
+      <input
+        value={value}
+        onChange={(event) => onChange?.(event)}
+        {...props}
+      />
+    ),
+    {
+      TextArea: ({ value, onChange, autoSize: _autoSize, ...props }: any) => (
+        <textarea
+          value={value}
+          onChange={(event) => onChange?.(event)}
+          {...props}
+        />
+      ),
+    },
+  ),
+  Modal: {
+    confirm: vi.fn(),
+  },
+  Popconfirm: ({ children }: any) => <>{children}</>,
+  Select: ({ options = [], value, onChange }: any) => (
+    <select value={value} onChange={(event) => onChange?.(event.target.value)}>
+      {options.map((option: any) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
+  Space: ({ children }: any) => <div>{children}</div>,
+  Tabs: ({ items }: any) => (
+    <div>
+      <nav>
+        {items.map((item: any) => (
+          <button key={item.key} type="button">
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      {items.map((item: any) => (
+        <section key={item.key}>{item.children}</section>
+      ))}
+    </div>
+  ),
+  Tag: ({ children }: any) => <span>{children}</span>,
+  Typography: {
+    Paragraph: ({ children }: any) => <p>{children}</p>,
+    Text: ({ children }: any) => <span>{children}</span>,
+    Title: ({ children }: any) => <h3>{children}</h3>,
+  },
+}));
+
+vi.mock('@ant-design/pro-components', () => ({
+  ModalForm: ({ children, onFinish, title, trigger }: any) => (
+    <div>
+      {trigger}
+      <form
+        aria-label={title}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onFinish?.({
+            storyIdea: '落魄千金重回豪门',
+            genre: '逆袭',
+            episodeCount: 12,
+            duration: 90,
+          });
+        }}
+      >
+        {children}
+        <button type="submit">提交{title}</button>
+      </form>
+    </div>
+  ),
+  ProCard: ({ children, title, extra }: any) => (
+    <section>
+      {title && <h2>{title}</h2>}
+      {extra}
+      {children}
+    </section>
+  ),
+  ProFormDigit: ({ label }: any) => <span>{label}</span>,
+  ProFormSelect: ({ label }: any) => <span>{label}</span>,
+  ProFormText: ({ label }: any) => <span>{label}</span>,
+  ProFormTextArea: ({ label }: any) => <span>{label}</span>,
+  ProTable: ({ columns = [], dataSource = [], toolBarRender }: any) => (
+    <section>
+      <div>{toolBarRender?.()}</div>
+      <table>
+        <thead>
+          <tr>
+            {columns.map((column: any) => (
+              <th key={column.dataIndex || column.key || column.title}>
+                {column.title}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {dataSource.map((record: any) => (
+            <tr key={record.id}>
+              {columns.map((column: any) => (
+                <td key={column.dataIndex || column.key || column.title}>
+                  {column.render
+                    ? column.render(record[column.dataIndex], record)
+                    : record[column.dataIndex]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  ),
+}));
+
+vi.mock('./service', () => ({
+  generateScript: mocks.generateScript,
+  queryScriptWorkspace: mocks.queryScriptWorkspace,
+}));
+
+describe('ScriptCreationWorkspace', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.queryScriptWorkspace.mockResolvedValue({
+      success: true,
+      data: {
+        projectId: 1,
+        script: null,
+        versions: [],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+      },
+    });
+    mocks.generateScript.mockResolvedValue({
+      success: true,
+      data: {
+        projectId: 1,
+        script: {
+          id: 1,
+          projectId: 1,
+          title: '短剧项目',
+          sourceType: 'AI_GENERATE',
+          content: '落魄千金重回豪门后发现当年的陷害另有隐情',
+          status: 'DRAFT',
+          currentVersionId: 1,
+        },
+        versions: [{ id: 1, versionNo: 1, sourceType: 'AI_GENERATE' }],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+      },
+    });
+  });
+
+  it('renders the Ant Pro creation workspace tabs', async () => {
+    render(<ScriptCreationWorkspace projectId={1} projectName="短剧项目" />);
+
+    expect(screen.getByText('剧本')).toBeInTheDocument();
+    expect(screen.getAllByText('角色').length).toBeGreaterThan(0);
+    expect(screen.getByText('场景/道具')).toBeInTheDocument();
+    expect(screen.getByText('分镜')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it('applies generated script preview to the editable script area', async () => {
+    render(<ScriptCreationWorkspace projectId={1} projectName="短剧项目" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /AI生成剧本/ })[0]);
+    fireEvent.submit(screen.getByRole('form', { name: 'AI生成剧本' }));
+
+    await waitFor(() => {
+      expect(mocks.generateScript).toHaveBeenCalledWith(1, {
+        duration: 90,
+        episodeCount: 12,
+        genre: '逆袭',
+        storyIdea: '落魄千金重回豪门',
+      });
+    });
+    expect(screen.getByText('生成结果预览')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '应用到剧本' }));
+
+    expect(
+      screen.getByDisplayValue(/落魄千金重回豪门后发现当年的陷害另有隐情/),
+    ).toBeInTheDocument();
+  });
+});

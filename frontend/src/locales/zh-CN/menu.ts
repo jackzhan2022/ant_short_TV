@@ -50,6 +50,8 @@ export default {
   'menu.editor.mind': '脑图编辑器',
   'menu.editor.koni': '拓扑编辑器',
   'menu.chatbot': 'AI 助手',
+  'menu.ai-service-management': 'AI服务管理',
+  'menu.ai-service-management.services': '服务配置',
   'menu.team': '创作团队',
   'menu.team.my': '我的团队',
   'menu.team.select': '选择团队',

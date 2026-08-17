@@ -33,6 +33,32 @@ describe('access', () => {
     expect(result.canManageRoles).toBe(true);
   });
 
+  it('should expose AI service permissions from current tenant permissions', () => {
+    const initialState = {
+      currentUser: {
+        userid: '1',
+        name: 'AI Operator',
+        avatar: 'https://example.com/avatar.png',
+        access: 'user',
+      },
+      permissions: [
+        'AI_SERVICE:VIEW',
+        'AI_SERVICE:CREATE',
+        'AI_SERVICE:EDIT',
+        'AI_SERVICE:DELETE',
+        'AI_SERVICE:TEST',
+      ],
+    };
+
+    const result = access(initialState);
+
+    expect(result.canViewAiServices).toBe(true);
+    expect(result.canCreateAiServices).toBe(true);
+    expect(result.canEditAiServices).toBe(true);
+    expect(result.canDeleteAiServices).toBe(true);
+    expect(result.canTestAiServices).toBe(true);
+  });
+
   it('should allow authenticated users to enter project center routes', () => {
     const initialState = {
       currentUser: {

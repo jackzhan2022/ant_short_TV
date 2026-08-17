@@ -50,4 +50,6 @@ export default {
   'menu.editor.flow': 'Penyusun Alur',
   'menu.editor.mind': 'Penyusun Mind',
   'menu.editor.koni': 'Penyusun Koni',
+  'menu.ai-service-management': 'AI Services',
+  'menu.ai-service-management.services': 'Service Configs',
 };

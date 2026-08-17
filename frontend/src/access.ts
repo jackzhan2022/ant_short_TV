@@ -15,5 +15,10 @@ export default function access(
       currentUser && permissions.includes('ORGANIZATION:VIEW'),
     canUseProjectCenter: Boolean(currentUser),
     canViewProjects: currentUser && permissions.includes('PROJECT:VIEW'),
+    canViewAiServices: currentUser && permissions.includes('AI_SERVICE:VIEW'),
+    canCreateAiServices: currentUser && permissions.includes('AI_SERVICE:CREATE'),
+    canEditAiServices: currentUser && permissions.includes('AI_SERVICE:EDIT'),
+    canDeleteAiServices: currentUser && permissions.includes('AI_SERVICE:DELETE'),
+    canTestAiServices: currentUser && permissions.includes('AI_SERVICE:TEST'),
   };
 }

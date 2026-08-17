@@ -14,3 +14,6 @@ mybatis-plus:
   global-config:
     db-config:
       id-type: auto
+
+ai:
+  secret-key: test-ai-secret-key

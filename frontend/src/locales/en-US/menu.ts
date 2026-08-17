@@ -50,6 +50,8 @@ export default {
   'menu.editor.mind': 'Mind Editor',
   'menu.editor.koni': 'Koni Editor',
   'menu.chatbot': 'AI Assistant',
+  'menu.ai-service-management': 'AI Services',
+  'menu.ai-service-management.services': 'Service Configs',
   'menu.team': 'Creative Team',
   'menu.team.my': 'My Teams',
   'menu.team.select': 'Select Team',

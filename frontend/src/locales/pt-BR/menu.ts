@@ -51,4 +51,6 @@ export default {
   'menu.editor.flow': 'Flow Editor',
   'menu.editor.mind': 'Mind Editor',
   'menu.editor.koni': 'Koni Editor',
+  'menu.ai-service-management': 'AI Services',
+  'menu.ai-service-management.services': 'Service Configs',
 };

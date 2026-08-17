@@ -20,7 +20,8 @@ public class GlobalExceptionHandler {
                 ROLE_NAME_DUPLICATE, ROLE_DISABLED, ROLE_IN_USE, ORGANIZATION_HAS_CHILDREN,
                 ORGANIZATION_HAS_MEMBERS, PROJECT_MEMBER_EXISTS -> HttpStatus.CONFLICT;
             case NOT_FOUND, INVITATION_EXPIRED, ROLE_NOT_FOUND, PERMISSION_NOT_FOUND,
-                ORGANIZATION_NOT_FOUND, PROJECT_NOT_FOUND, PROJECT_MEMBER_NOT_FOUND -> HttpStatus.NOT_FOUND;
+                ORGANIZATION_NOT_FOUND, PROJECT_NOT_FOUND, PROJECT_MEMBER_NOT_FOUND,
+                AI_PROVIDER_NOT_FOUND, AI_SERVICE_CONFIG_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case ORGANIZATION_LEVEL_EXCEEDED, PROJECT_ARCHIVED -> HttpStatus.UNPROCESSABLE_ENTITY;
             case VALIDATION_ERROR -> HttpStatus.BAD_REQUEST;
         };
@@ -29,10 +30,17 @@ public class GlobalExceptionHandler {
             .body(ApiResponse.fail(exception.getErrorCode().name(), exception.getMessage()));
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class})
-    public ResponseEntity<ApiResponse<Void>> handleValidationException(Exception exception) {
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValidException() {
         return ResponseEntity
             .badRequest()
-            .body(ApiResponse.fail(ErrorCode.VALIDATION_ERROR.name(), exception.getMessage()));
+            .body(ApiResponse.fail(ErrorCode.VALIDATION_ERROR.name(), "请求参数不正确。"));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolationException() {
+        return ResponseEntity
+            .badRequest()
+            .body(ApiResponse.fail(ErrorCode.VALIDATION_ERROR.name(), "请求参数不正确。"));
     }
 }

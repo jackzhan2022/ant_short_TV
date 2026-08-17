@@ -49,4 +49,6 @@ export default {
   'menu.editor.flow': 'ফ্লো এডিটর',
   'menu.editor.mind': 'মাইন্ড এডিটর',
   'menu.editor.koni': 'কোনি সম্পাদক',
+  'menu.ai-service-management': 'AI Services',
+  'menu.ai-service-management.services': 'Service Configs',
 };

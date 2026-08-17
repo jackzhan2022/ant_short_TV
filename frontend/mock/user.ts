@@ -9,6 +9,25 @@ const { ANT_DESIGN_PRO_ONLY_DO_NOT_USE_IN_YOUR_PRODUCTION } = process.env;
  * 如果是 pro 的预览，默认是有权限的
  */
 let access = ANT_DESIGN_PRO_ONLY_DO_NOT_USE_IN_YOUR_PRODUCTION === 'site' ? 'admin' : '';
+const mockUser = {
+  id: 1,
+  mobile: '13800138000',
+  email: 'admin@antshorttv.local',
+  nickname: '短剧管理员',
+  avatar: null,
+  status: 'ACTIVE',
+};
+const mockTenant = {
+  id: 10,
+  code: 'DEFAULT_TEAM',
+  name: '默认创作团队',
+  type: 'STUDIO',
+  logo: null,
+  description: '前端开发 Mock 团队',
+  status: 'ACTIVE',
+  memberType: 'OWNER',
+  memberId: 100,
+};
 
 const getAccess = () => {
   return access;
@@ -34,6 +53,84 @@ export default {
       data: {
         ...defaultUser,
         access: getAccess(),
+      },
+    });
+  },
+  'POST /api/auth/login': async (req: Request, res: Response) => {
+    const { mobile, password } = req.body;
+    await waitTime(500);
+    if (mobile === '13800138000' && password === 'ant.design') {
+      access = 'admin';
+      res.send({
+        success: true,
+        data: {
+          accessToken: 'mock-access-token',
+          user: mockUser,
+          tenants: [mockTenant],
+          nextAction: 'ENTER_WORKSPACE',
+        },
+      });
+      return;
+    }
+    res.send({
+      success: false,
+      errorCode: 'INVALID_CREDENTIALS',
+      errorMessage: '手机号或密码错误。',
+    });
+  },
+  'GET /api/user/me': (_req: Request, res: Response) => {
+    res.send({
+      success: true,
+      data: mockUser,
+    });
+  },
+  'GET /api/tenants/my': (_req: Request, res: Response) => {
+    res.send({
+      success: true,
+      data: [mockTenant],
+    });
+  },
+  'GET /api/tenants/current': (_req: Request, res: Response) => {
+    res.send({
+      success: true,
+      data: {
+        userId: mockUser.id,
+        tenantId: mockTenant.id,
+        memberId: mockTenant.memberId,
+        memberType: mockTenant.memberType,
+      },
+    });
+  },
+  'POST /api/tenants/current': (_req: Request, res: Response) => {
+    res.send({
+      success: true,
+      data: {
+        userId: mockUser.id,
+        tenantId: mockTenant.id,
+        memberId: mockTenant.memberId,
+        memberType: mockTenant.memberType,
+      },
+    });
+  },
+  'GET /api/auth/permissions': (_req: Request, res: Response) => {
+    res.send({
+      success: true,
+      data: {
+        menus: [],
+        permissions: [
+          'TENANT:VIEW',
+          'TENANT:EDIT',
+          'MEMBER:VIEW',
+          'ROLE:VIEW',
+          'ORGANIZATION:VIEW',
+          'PROJECT:VIEW',
+          'AI_SERVICE:VIEW',
+          'AI_SERVICE:CREATE',
+          'AI_SERVICE:EDIT',
+          'AI_SERVICE:DELETE',
+          'AI_SERVICE:TEST',
+          'AI_SERVICE:USE',
+        ],
       },
     });
   },

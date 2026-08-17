@@ -1,6 +1,6 @@
 import { LockOutlined, MobileOutlined } from '@ant-design/icons';
 import { LoginForm, ProFormText } from '@ant-design/pro-components';
-import { Helmet, SelectLang, history, useIntl, useModel } from '@umijs/max';
+import { Helmet, Link, SelectLang, history, useIntl, useModel } from '@umijs/max';
 import { App } from 'antd';
 import React, { startTransition } from 'react';
 import { Footer } from '@/components';
@@ -114,6 +114,9 @@ const Login: React.FC = () => {
             placeholder="密码"
             rules={[{ required: true, message: '请输入密码' }]}
           />
+          <div style={{ textAlign: 'right' }}>
+            <Link to="/user/register">注册新用户</Link>
+          </div>
         </LoginForm>
       </div>
       <Footer />
