@@ -52,6 +52,7 @@ export default {
   'menu.chatbot': 'AI Assistant',
   'menu.ai-service-management': 'AI Services',
   'menu.ai-service-management.services': 'Service Configs',
+  'menu.ai-service-management.logs': 'Call Logs',
   'menu.team': 'Creative Team',
   'menu.team.my': 'My Teams',
   'menu.team.select': 'Select Team',

@@ -3,8 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ScriptCreationWorkspace from './ScriptCreationWorkspace';
 
 const mocks = vi.hoisted(() => ({
+  breakdownStoryboards: vi.fn(),
+  extractScriptElements: vi.fn(),
   generateScript: vi.fn(),
+  generateWorkflowPrompts: vi.fn(),
   queryScriptWorkspace: vi.fn(),
+  rewriteScript: vi.fn(),
+  saveCurrentScript: vi.fn(),
 }));
 
 vi.mock('@ant-design/icons', () => ({
@@ -109,6 +114,14 @@ vi.mock('@ant-design/pro-components', () => ({
         aria-label={title}
         onSubmit={(event) => {
           event.preventDefault();
+          if (title === 'AI改写剧本') {
+            onFinish?.({
+              rewriteType: '冲突增强',
+              requirement: '强化前三秒钩子',
+              outputLength: 'KEEP',
+            });
+            return;
+          }
           onFinish?.({
             storyIdea: '落魄千金重回豪门',
             genre: '逆袭',
@@ -165,8 +178,13 @@ vi.mock('@ant-design/pro-components', () => ({
 }));
 
 vi.mock('./service', () => ({
+  breakdownStoryboards: mocks.breakdownStoryboards,
+  extractScriptElements: mocks.extractScriptElements,
   generateScript: mocks.generateScript,
+  generateWorkflowPrompts: mocks.generateWorkflowPrompts,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
+  rewriteScript: mocks.rewriteScript,
+  saveCurrentScript: mocks.saveCurrentScript,
 }));
 
 describe('ScriptCreationWorkspace', () => {
@@ -199,6 +217,123 @@ describe('ScriptCreationWorkspace', () => {
         },
         versions: [{ id: 1, versionNo: 1, sourceType: 'AI_GENERATE' }],
         characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+      },
+    });
+    mocks.extractScriptElements.mockResolvedValue({
+      success: true,
+      data: {
+        projectId: 1,
+        script: null,
+        versions: [],
+        characters: [
+          {
+            id: 1,
+            name: '主角',
+            roleType: 'LEAD',
+            gender: '女',
+            ageRange: '25-30',
+            identity: '落魄千金',
+            personality: ['坚韧'],
+            appearance: '雨夜拖着行李箱',
+            prompt: '短剧女主角色图',
+          },
+        ],
+        scenes: [],
+        props: [],
+        storyboards: [],
+      },
+    });
+    mocks.rewriteScript.mockResolvedValue({
+      success: true,
+      data: {
+        projectId: 1,
+        script: {
+          id: 1,
+          projectId: 1,
+          title: '短剧项目',
+          sourceType: 'AI_REWRITE',
+          content: '改写后剧本正文',
+          status: 'DRAFT',
+          currentVersionId: 2,
+        },
+        versions: [
+          { id: 2, versionNo: 2, sourceType: 'AI_REWRITE' },
+          { id: 1, versionNo: 1, sourceType: 'AI_GENERATE' },
+        ],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+      },
+    });
+    mocks.saveCurrentScript.mockResolvedValue({
+      success: true,
+      data: {
+        projectId: 1,
+        script: {
+          id: 1,
+          projectId: 1,
+          title: '短剧项目',
+          sourceType: 'MANUAL_EDIT',
+          content: '手工保存剧本',
+          status: 'DRAFT',
+          currentVersionId: 3,
+        },
+        versions: [{ id: 3, versionNo: 3, sourceType: 'MANUAL_EDIT' }],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+      },
+    });
+    mocks.breakdownStoryboards.mockResolvedValue({
+      success: true,
+      data: {
+        projectId: 1,
+        script: null,
+        versions: [],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [
+          {
+            id: 1,
+            shotNo: 1,
+            episodeNo: 1,
+            shotType: '远景',
+            visualDescription: '雨夜老宅门口',
+            characters: '主角',
+            scene: '林家老宅门口',
+            dialogue: '我回来了。',
+            durationSeconds: 5,
+            imagePrompt: '首帧提示词',
+            videoPrompt: '竖屏短剧提示词',
+          },
+        ],
+      },
+    });
+    mocks.generateWorkflowPrompts.mockResolvedValue({
+      success: true,
+      data: {
+        projectId: 1,
+        script: null,
+        versions: [],
+        characters: [
+          {
+            id: 1,
+            name: '主角',
+            roleType: 'LEAD',
+            gender: '女',
+            ageRange: '25-30',
+            identity: '落魄千金',
+            personality: ['坚韧'],
+            appearance: '雨夜拖着行李箱',
+            prompt: '角色定妆提示词：主角',
+          },
+        ],
         scenes: [],
         props: [],
         storyboards: [],
@@ -239,5 +374,62 @@ describe('ScriptCreationWorkspace', () => {
     expect(
       screen.getByDisplayValue(/落魄千金重回豪门后发现当年的陷害另有隐情/),
     ).toBeInTheDocument();
+  });
+
+  it('extracts characters when the AI extract button is clicked', async () => {
+    render(<ScriptCreationWorkspace projectId={1} projectName="短剧项目" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /AI提取角色/ })[0]);
+
+    await waitFor(() => {
+      expect(mocks.extractScriptElements).toHaveBeenCalledWith(1, {
+        elementType: 'CHARACTER',
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText('主角').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('runs the remaining phase two workflow actions from real buttons', async () => {
+    render(<ScriptCreationWorkspace projectId={1} projectName="短剧项目" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /AI改写剧本/ })[0]);
+    fireEvent.submit(screen.getByRole('form', { name: 'AI改写剧本' }));
+
+    await waitFor(() => {
+      expect(mocks.rewriteScript).toHaveBeenCalledWith(1, {
+        outputLength: 'KEEP',
+        requirement: '强化前三秒钩子',
+        rewriteType: '冲突增强',
+      });
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('暂无剧本内容'), {
+      target: { value: '手工保存剧本' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存草稿' }));
+
+    await waitFor(() => {
+      expect(mocks.saveCurrentScript).toHaveBeenCalledWith(1, {
+        content: '手工保存剧本',
+        status: 'DRAFT',
+        title: '短剧项目',
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '拆解分镜' }));
+    await waitFor(() => {
+      expect(mocks.breakdownStoryboards).toHaveBeenCalledWith(1, {
+        scope: 'FULL',
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '生成提示词' }));
+    await waitFor(() => {
+      expect(mocks.generateWorkflowPrompts).toHaveBeenCalledWith(1, {
+        targetType: 'ALL',
+      });
+    });
   });
 });

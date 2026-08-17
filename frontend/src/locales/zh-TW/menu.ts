@@ -51,4 +51,5 @@ export default {
   'menu.editor.koni': '拓撲編輯器',
   'menu.ai-service-management': 'AI服務管理',
   'menu.ai-service-management.services': '服務配置',
+  'menu.ai-service-management.logs': '調用日誌',
 };

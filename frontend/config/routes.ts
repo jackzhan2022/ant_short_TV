@@ -362,6 +362,13 @@ export default [
         access: 'canViewAiServices',
         component: './ai-service-management/services',
       },
+      {
+        path: '/ai-service-management/logs',
+        name: 'logs',
+        icon: 'profile',
+        access: 'canViewAiServices',
+        component: './ai-service-management/logs',
+      },
     ],
   },
   {

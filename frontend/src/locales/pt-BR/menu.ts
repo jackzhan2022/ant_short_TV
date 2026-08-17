@@ -53,4 +53,5 @@ export default {
   'menu.editor.koni': 'Koni Editor',
   'menu.ai-service-management': 'AI Services',
   'menu.ai-service-management.services': 'Service Configs',
+  'menu.ai-service-management.logs': 'Call Logs',
 };

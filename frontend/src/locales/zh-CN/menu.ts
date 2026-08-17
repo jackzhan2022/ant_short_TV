@@ -52,6 +52,7 @@ export default {
   'menu.chatbot': 'AI 助手',
   'menu.ai-service-management': 'AI服务管理',
   'menu.ai-service-management.services': '服务配置',
+  'menu.ai-service-management.logs': '调用日志',
   'menu.team': '创作团队',
   'menu.team.my': '我的团队',
   'menu.team.select': '选择团队',

@@ -25,6 +25,7 @@ import {
   Empty,
   Flex,
   Input,
+  Popconfirm,
   Space,
   Tabs,
   Tag,
@@ -32,14 +33,30 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  applyScriptVersion,
+  breakdownStoryboards,
+  confirmScriptElement,
+  confirmStoryboards,
+  createStoryboard,
+  deleteScriptElement,
+  deleteStoryboard,
+  extractScriptElements,
   generateScript,
+  generateWorkflowPrompts,
   queryScriptWorkspace,
+  rewriteScript,
+  saveCurrentScript,
   type CharacterAsset,
   type GenerateScriptValues,
   type PropAsset,
+  type PromptTargetType,
   type SceneAsset,
+  type ScriptElementType,
   type ScriptWorkspace,
+  type SaveStoryboardValues,
   type StoryboardShot,
+  updateScriptElement,
+  updateStoryboard,
 } from './service';
 
 type ScriptCreationWorkspaceProps = {
@@ -56,6 +73,12 @@ type ScriptGenerateFormValues = {
   mainCharacter?: string;
   styleRequirement?: string[];
   referenceContent?: string;
+};
+
+type ScriptRewriteFormValues = {
+  rewriteType: string;
+  requirement?: string;
+  outputLength?: string;
 };
 
 type GeneratedScript = {
@@ -167,6 +190,8 @@ const ScriptCreationWorkspace = ({
   );
   const [scriptContent, setScriptContent] = useState('');
   const [loading, setLoading] = useState(false);
+  const [extractingElement, setExtractingElement] = useState<ScriptElementType>();
+  const [processingAction, setProcessingAction] = useState<string>();
   const [preview, setPreview] = useState<GeneratedScript | null>(null);
 
   useEffect(() => {
@@ -194,6 +219,231 @@ const ScriptCreationWorkspace = ({
     };
   }, [projectId]);
 
+  const applyWorkspace = (
+    nextWorkspace: ScriptWorkspace | undefined,
+    successText?: string,
+  ) => {
+    const normalized = normalizeWorkspace(nextWorkspace, projectId);
+    setWorkspace(normalized);
+    setScriptContent(normalized.script?.content ?? scriptContent);
+    if (successText) {
+      message.success(successText);
+    }
+  };
+
+  const rewriteCurrentScript = async (values: ScriptRewriteFormValues) => {
+    setProcessingAction('rewrite');
+    try {
+      const response = await rewriteScript(projectId, values);
+      const nextWorkspace = normalizeWorkspace(response.data, projectId);
+      setWorkspace(nextWorkspace);
+      setScriptContent(nextWorkspace.script?.content ?? scriptContent);
+      setPreview(buildPreview(nextWorkspace, projectName));
+      message.success('AI改写完成');
+      return true;
+    } catch {
+      message.error('AI改写剧本失败');
+      return false;
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const saveScriptDraft = async () => {
+    if (!scriptContent.trim()) {
+      message.warning('请先填写剧本内容');
+      return;
+    }
+    setProcessingAction('save-script');
+    try {
+      const response = await saveCurrentScript(projectId, {
+        title: workspace.script?.title || projectName,
+        content: scriptContent,
+        status: 'DRAFT',
+      });
+      applyWorkspace(response.data, '剧本草稿已保存');
+    } catch {
+      message.error('保存剧本失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const applyVersion = async (versionId: number) => {
+    setProcessingAction(`apply-version-${versionId}`);
+    try {
+      const response = await applyScriptVersion(projectId, versionId);
+      applyWorkspace(response.data, '版本已应用为正式剧本');
+    } catch {
+      message.error('应用版本失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const breakdown = async () => {
+    setProcessingAction('breakdown');
+    try {
+      const response = await breakdownStoryboards(projectId, { scope: 'FULL' });
+      applyWorkspace(response.data, 'AI分镜拆解完成');
+    } catch {
+      message.error('AI拆解分镜失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const generatePrompts = async (
+    targetType: PromptTargetType,
+    targetId?: number,
+    successText = '提示词已生成',
+  ) => {
+    setProcessingAction(`prompt-${targetType}-${targetId ?? 'all'}`);
+    try {
+      const response = await generateWorkflowPrompts(projectId, {
+        targetType,
+        ...(targetId ? { targetId } : {}),
+      });
+      applyWorkspace(response.data, successText);
+    } catch {
+      message.error('生成提示词失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const saveElement = async (
+    elementType: Exclude<ScriptElementType, 'ALL'>,
+    record: CharacterAsset | SceneAsset | PropAsset,
+  ) => {
+    setProcessingAction(`element-${elementType}-${record.id}`);
+    try {
+      const response = await updateScriptElement(projectId, elementType, record.id, {
+        ...record,
+        status: 'DRAFT',
+      });
+      applyWorkspace(response.data, '元素已保存');
+    } catch {
+      message.error('保存元素失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const confirmElement = async (
+    elementType: Exclude<ScriptElementType, 'ALL'>,
+    elementId: number,
+  ) => {
+    setProcessingAction(`confirm-${elementType}-${elementId}`);
+    try {
+      const response = await confirmScriptElement(projectId, elementType, elementId);
+      applyWorkspace(response.data, '元素已确认入库');
+    } catch {
+      message.error('确认元素失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const confirmAllCharacters = async () => {
+    if (!workspace.characters.length) {
+      message.warning('暂无可确认角色');
+      return;
+    }
+    setProcessingAction('confirm-characters');
+    try {
+      let latestWorkspace: ScriptWorkspace | undefined;
+      for (const character of workspace.characters) {
+        const response = await confirmScriptElement(
+          projectId,
+          'CHARACTER',
+          character.id,
+        );
+        latestWorkspace = response.data;
+      }
+      applyWorkspace(latestWorkspace, '角色已批量确认入库');
+    } catch {
+      message.error('批量确认角色失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const removeElement = async (
+    elementType: Exclude<ScriptElementType, 'ALL'>,
+    elementId: number,
+  ) => {
+    setProcessingAction(`delete-${elementType}-${elementId}`);
+    try {
+      const response = await deleteScriptElement(projectId, elementType, elementId);
+      applyWorkspace(response.data, '元素已删除');
+    } catch {
+      message.error('删除元素失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const saveStoryboard = async (record?: StoryboardShot) => {
+    const values: SaveStoryboardValues = record
+      ? {
+          episodeNo: record.episodeNo,
+          shotNo: record.shotNo,
+          shotType: record.shotType,
+          visualDescription: record.visualDescription,
+          characters: record.characters,
+          scene: record.scene,
+          dialogue: record.dialogue,
+          durationSeconds: record.durationSeconds,
+          imagePrompt: record.imagePrompt,
+          videoPrompt: record.videoPrompt,
+          status: 'DRAFT',
+        }
+      : {
+          episodeNo: 1,
+          shotNo: workspace.storyboards.length + 1,
+          shotType: '中景',
+          visualDescription: '新增镜头画面描述',
+          durationSeconds: 5,
+          status: 'DRAFT',
+        };
+    setProcessingAction(record ? `storyboard-${record.id}` : 'storyboard-create');
+    try {
+      const response = record
+        ? await updateStoryboard(projectId, record.id, values)
+        : await createStoryboard(projectId, values);
+      applyWorkspace(response.data, record ? '分镜已保存' : '分镜已新增');
+    } catch {
+      message.error(record ? '保存分镜失败' : '新增分镜失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const confirmAllStoryboards = async () => {
+    setProcessingAction('storyboard-confirm');
+    try {
+      const response = await confirmStoryboards(projectId);
+      applyWorkspace(response.data, '分镜已确认');
+    } catch {
+      message.error('确认分镜失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const removeStoryboard = async (storyboardId: number) => {
+    setProcessingAction(`storyboard-delete-${storyboardId}`);
+    try {
+      const response = await deleteStoryboard(projectId, storyboardId);
+      applyWorkspace(response.data, '分镜已删除');
+    } catch {
+      message.error('删除分镜失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
   const characterColumns = useMemo<ProColumns<CharacterAsset>[]>(
     () => [
       { title: '角色名称', dataIndex: 'name', width: 120 },
@@ -212,14 +462,39 @@ const ScriptCreationWorkspace = ({
       {
         title: '操作',
         valueType: 'option',
-        render: () => (
+        render: (_, record) => (
           <Space>
-            <Button type="link" icon={<EditOutlined />}>
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => saveElement('CHARACTER', record)}
+            >
               编辑
             </Button>
-            <Button type="link" icon={<BulbOutlined />}>
+            <Button
+              type="link"
+              icon={<BulbOutlined />}
+              onClick={() =>
+                generatePrompts('CHARACTER', record.id, '角色提示词已刷新')
+              }
+            >
               刷新提示词
             </Button>
+            <Button
+              type="link"
+              icon={<SaveOutlined />}
+              onClick={() => confirmElement('CHARACTER', record.id)}
+            >
+              确认
+            </Button>
+            <Popconfirm
+              title="确认删除该角色？"
+              onConfirm={() => removeElement('CHARACTER', record.id)}
+            >
+              <Button type="link" danger>
+                删除
+              </Button>
+            </Popconfirm>
           </Space>
         ),
       },
@@ -235,6 +510,45 @@ const ScriptCreationWorkspace = ({
       { title: '空间描述', dataIndex: 'description', ellipsis: true, search: false },
       { title: '视觉风格', dataIndex: 'visualStyle', width: 180, search: false },
       { title: '场景提示词', dataIndex: 'prompt', ellipsis: true, search: false },
+      {
+        title: '操作',
+        valueType: 'option',
+        render: (_, record) => (
+          <Space>
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => saveElement('SCENE', record)}
+            >
+              编辑
+            </Button>
+            <Button
+              type="link"
+              icon={<BulbOutlined />}
+              onClick={() =>
+                generatePrompts('SCENE', record.id, '场景提示词已刷新')
+              }
+            >
+              刷新提示词
+            </Button>
+            <Button
+              type="link"
+              icon={<SaveOutlined />}
+              onClick={() => confirmElement('SCENE', record.id)}
+            >
+              确认
+            </Button>
+            <Popconfirm
+              title="确认删除该场景？"
+              onConfirm={() => removeElement('SCENE', record.id)}
+            >
+              <Button type="link" danger>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        ),
+      },
     ],
     [],
   );
@@ -246,6 +560,45 @@ const ScriptCreationWorkspace = ({
       { title: '外观描述', dataIndex: 'appearance', ellipsis: true, search: false },
       { title: '剧情作用', dataIndex: 'plotFunction', ellipsis: true, search: false },
       { title: '道具提示词', dataIndex: 'prompt', ellipsis: true, search: false },
+      {
+        title: '操作',
+        valueType: 'option',
+        render: (_, record) => (
+          <Space>
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => saveElement('PROP', record)}
+            >
+              编辑
+            </Button>
+            <Button
+              type="link"
+              icon={<BulbOutlined />}
+              onClick={() =>
+                generatePrompts('PROP', record.id, '道具提示词已刷新')
+              }
+            >
+              刷新提示词
+            </Button>
+            <Button
+              type="link"
+              icon={<SaveOutlined />}
+              onClick={() => confirmElement('PROP', record.id)}
+            >
+              确认
+            </Button>
+            <Popconfirm
+              title="确认删除该道具？"
+              onConfirm={() => removeElement('PROP', record.id)}
+            >
+              <Button type="link" danger>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        ),
+      },
     ],
     [],
   );
@@ -272,14 +625,32 @@ const ScriptCreationWorkspace = ({
         title: '操作',
         valueType: 'option',
         fixed: 'right',
-        render: () => (
+        render: (_, record) => (
           <Space>
-            <Button type="link" icon={<EditOutlined />}>
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => saveStoryboard(record)}
+            >
               编辑
             </Button>
-            <Button type="link" icon={<BulbOutlined />}>
+            <Button
+              type="link"
+              icon={<BulbOutlined />}
+              onClick={() =>
+                generatePrompts('STORYBOARD', record.id, '分镜提示词已刷新')
+              }
+            >
               刷新提示词
             </Button>
+            <Popconfirm
+              title="确认删除该分镜？"
+              onConfirm={() => removeStoryboard(record.id)}
+            >
+              <Button type="link" danger>
+                删除
+              </Button>
+            </Popconfirm>
           </Space>
         ),
       },
@@ -292,6 +663,18 @@ const ScriptCreationWorkspace = ({
     setScriptContent(preview.content);
     setPreview(null);
     message.success('剧本已应用到编辑区');
+  };
+
+  const extractElements = async (elementType: ScriptElementType) => {
+    setExtractingElement(elementType);
+    try {
+      const response = await extractScriptElements(projectId, { elementType });
+      applyWorkspace(response.data, 'AI元素提取完成');
+    } catch {
+      message.error('AI元素提取失败');
+    } finally {
+      setExtractingElement(undefined);
+    }
   };
 
   const scriptTab = (
@@ -357,20 +740,11 @@ const ScriptCreationWorkspace = ({
             />
             <ProFormTextArea name="referenceContent" label="参考内容" />
           </ModalForm>
-          <ModalForm<{ rewriteType: string; requirement?: string }>
+          <ModalForm<ScriptRewriteFormValues>
             title="AI改写剧本"
             trigger={<Button icon={<EditOutlined />}>AI改写剧本</Button>}
             modalProps={{ destroyOnHidden: true }}
-            onFinish={async (values) => {
-              setPreview({
-                title: projectName || '改写剧本',
-                summary: `已按${values.rewriteType}方向生成改写版本。`,
-                highlights: ['保留核心剧情', '增强镜头钩子', '优化对白节奏'],
-                outline: ['第1集：冲突前置', '第2集：关系升级', '第3集：反转加深'],
-                content: `${scriptContent}\n\n【AI改写说明】已按${values.rewriteType}方向强化短剧节奏。`,
-              });
-              return true;
-            }}
+            onFinish={rewriteCurrentScript}
           >
             <ProFormSelect
               name="rewriteType"
@@ -379,8 +753,23 @@ const ScriptCreationWorkspace = ({
               rules={[{ required: true, message: '请选择改写类型' }]}
             />
             <ProFormTextArea name="requirement" label="改写要求" />
+            <ProFormSelect
+              name="outputLength"
+              label="输出长度"
+              options={[
+                { label: '保持原长度', value: 'KEEP' },
+                { label: '压缩', value: 'SHORTER' },
+                { label: '扩写', value: 'LONGER' },
+              ]}
+            />
           </ModalForm>
-          <Button icon={<SaveOutlined />}>保存草稿</Button>
+          <Button
+            icon={<SaveOutlined />}
+            loading={processingAction === 'save-script'}
+            onClick={saveScriptDraft}
+          >
+            保存草稿
+          </Button>
         </Space>
       }
     >
@@ -397,7 +786,12 @@ const ScriptCreationWorkspace = ({
           <Flex vertical gap="small" style={{ width: '100%' }}>
             {workspace.versions.length ? (
               workspace.versions.map((item) => (
-                <Button key={item.id} block>
+                <Button
+                  key={item.id}
+                  block
+                  loading={processingAction === `apply-version-${item.id}`}
+                  onClick={() => applyVersion(item.id)}
+                >
                   版本 {item.versionNo}
                   <Tag>{item.status || item.sourceType}</Tag>
                 </Button>
@@ -419,13 +813,28 @@ const ScriptCreationWorkspace = ({
         <section>
           <Typography.Title level={5}>AI 操作建议</Typography.Title>
           <Flex vertical gap="small" style={{ width: '100%' }}>
-            <Button block icon={<TagsOutlined />}>
+            <Button
+              block
+              icon={<TagsOutlined />}
+              loading={extractingElement === 'ALL'}
+              onClick={() => extractElements('ALL')}
+            >
               提取角色/场景/道具
             </Button>
-            <Button block icon={<SplitCellsOutlined />}>
+            <Button
+              block
+              icon={<SplitCellsOutlined />}
+              loading={processingAction === 'breakdown'}
+              onClick={breakdown}
+            >
               拆解分镜
             </Button>
-            <Button block icon={<BulbOutlined />}>
+            <Button
+              block
+              icon={<BulbOutlined />}
+              loading={processingAction === 'prompt-ALL-all'}
+              onClick={() => generatePrompts('ALL')}
+            >
               生成提示词
             </Button>
           </Flex>
@@ -453,7 +862,13 @@ const ScriptCreationWorkspace = ({
               dataSource={workspace.characters}
               loading={loading}
               toolBarRender={() => [
-                <Button key="extract" type="primary" icon={<RobotOutlined />}>
+                <Button
+                  key="extract"
+                  type="primary"
+                  icon={<RobotOutlined />}
+                  loading={extractingElement === 'CHARACTER'}
+                  onClick={() => extractElements('CHARACTER')}
+                >
                   AI提取角色
                 </Button>,
               ]}
@@ -473,7 +888,13 @@ const ScriptCreationWorkspace = ({
               dataSource={workspace.scenes}
               loading={loading}
               toolBarRender={() => [
-                <Button key="extract" type="primary" icon={<RobotOutlined />}>
+                <Button
+                  key="extract"
+                  type="primary"
+                  icon={<RobotOutlined />}
+                  loading={extractingElement === 'SCENE'}
+                  onClick={() => extractElements('SCENE')}
+                >
                   AI提取场景
                 </Button>,
               ]}
@@ -493,7 +914,13 @@ const ScriptCreationWorkspace = ({
               dataSource={workspace.props}
               loading={loading}
               toolBarRender={() => [
-                <Button key="extract" type="primary" icon={<RobotOutlined />}>
+                <Button
+                  key="extract"
+                  type="primary"
+                  icon={<RobotOutlined />}
+                  loading={extractingElement === 'PROP'}
+                  onClick={() => extractElements('PROP')}
+                >
                   AI提取道具
                 </Button>,
               ]}
@@ -540,10 +967,21 @@ const ScriptCreationWorkspace = ({
                 dataSource={workspace.characters}
                 loading={loading}
                 toolBarRender={() => [
-                  <Button key="extract" type="primary" icon={<RobotOutlined />}>
+                  <Button
+                    key="extract"
+                    type="primary"
+                    icon={<RobotOutlined />}
+                    loading={extractingElement === 'CHARACTER'}
+                    onClick={() => extractElements('CHARACTER')}
+                  >
                     AI提取角色
                   </Button>,
-                  <Button key="confirm" icon={<SaveOutlined />}>
+                  <Button
+                    key="confirm"
+                    icon={<SaveOutlined />}
+                    loading={processingAction === 'confirm-characters'}
+                    onClick={confirmAllCharacters}
+                  >
                     批量确认
                   </Button>,
                 ]}
@@ -563,7 +1001,7 @@ const ScriptCreationWorkspace = ({
                 分镜
               </Space>
             ),
-            children: workspace.storyboards.length ? (
+            children: (
               <ProTable<StoryboardShot>
                 rowKey="id"
                 search={false}
@@ -574,19 +1012,33 @@ const ScriptCreationWorkspace = ({
                 dataSource={workspace.storyboards}
                 loading={loading}
                 toolBarRender={() => [
-                  <Button key="breakdown" type="primary" icon={<RobotOutlined />}>
+                  <Button
+                    key="breakdown"
+                    type="primary"
+                    icon={<RobotOutlined />}
+                    loading={processingAction === 'breakdown'}
+                    onClick={breakdown}
+                  >
                     AI拆解分镜
                   </Button>,
-                  <Button key="add" icon={<PlusOutlined />}>
+                  <Button
+                    key="add"
+                    icon={<PlusOutlined />}
+                    loading={processingAction === 'storyboard-create'}
+                    onClick={() => saveStoryboard()}
+                  >
                     新增分镜
                   </Button>,
-                  <Button key="confirm" icon={<SaveOutlined />}>
+                  <Button
+                    key="confirm"
+                    icon={<SaveOutlined />}
+                    loading={processingAction === 'storyboard-confirm'}
+                    onClick={confirmAllStoryboards}
+                  >
                     确认分镜
                   </Button>,
                 ]}
               />
-            ) : (
-              <Empty description="暂无分镜" />
             ),
           },
         ]}

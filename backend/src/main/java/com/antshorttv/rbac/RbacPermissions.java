@@ -35,12 +35,27 @@ final class RbacPermissions {
         new RbacPermissionDefinition("SCRIPT:CREATE", "创建剧本", PermissionType.BUTTON, "SCRIPT", "CREATE"),
         new RbacPermissionDefinition("SCRIPT:EDIT", "编辑剧本", PermissionType.BUTTON, "SCRIPT", "EDIT"),
         new RbacPermissionDefinition("SCRIPT:DELETE", "删除剧本", PermissionType.BUTTON, "SCRIPT", "DELETE"),
+        new RbacPermissionDefinition("SCRIPT:AI_GENERATE", "AI生成剧本", PermissionType.BUTTON, "SCRIPT", "AI_GENERATE"),
+        new RbacPermissionDefinition("SCRIPT:AI_REWRITE", "AI改写剧本", PermissionType.BUTTON, "SCRIPT", "AI_REWRITE"),
+        new RbacPermissionDefinition("ELEMENT:VIEW", "查看元素库", PermissionType.PAGE, "ELEMENT", "VIEW"),
+        new RbacPermissionDefinition("ELEMENT:AI_EXTRACT", "AI提取元素", PermissionType.BUTTON, "ELEMENT", "AI_EXTRACT"),
+        new RbacPermissionDefinition("ELEMENT:EDIT", "编辑元素", PermissionType.BUTTON, "ELEMENT", "EDIT"),
+        new RbacPermissionDefinition("STORYBOARD:VIEW", "查看分镜", PermissionType.PAGE, "STORYBOARD", "VIEW"),
+        new RbacPermissionDefinition("STORYBOARD:AI_BREAKDOWN", "AI拆解分镜", PermissionType.BUTTON, "STORYBOARD", "AI_BREAKDOWN"),
+        new RbacPermissionDefinition("STORYBOARD:EDIT", "编辑分镜", PermissionType.BUTTON, "STORYBOARD", "EDIT"),
+        new RbacPermissionDefinition("PROMPT:AI_GENERATE", "AI生成提示词", PermissionType.BUTTON, "PROMPT", "AI_GENERATE"),
         new RbacPermissionDefinition("AI_SERVICE:VIEW", "查看AI服务", PermissionType.PAGE, "AI_SERVICE", "VIEW"),
         new RbacPermissionDefinition("AI_SERVICE:CREATE", "新增AI服务", PermissionType.BUTTON, "AI_SERVICE", "CREATE"),
         new RbacPermissionDefinition("AI_SERVICE:EDIT", "编辑AI服务", PermissionType.BUTTON, "AI_SERVICE", "EDIT"),
         new RbacPermissionDefinition("AI_SERVICE:DELETE", "删除AI服务", PermissionType.BUTTON, "AI_SERVICE", "DELETE"),
         new RbacPermissionDefinition("AI_SERVICE:TEST", "测试AI服务", PermissionType.BUTTON, "AI_SERVICE", "TEST"),
-        new RbacPermissionDefinition("AI_SERVICE:USE", "使用AI服务", PermissionType.BUTTON, "AI_SERVICE", "USE")
+        new RbacPermissionDefinition("AI_SERVICE:USE", "使用AI服务", PermissionType.BUTTON, "AI_SERVICE", "USE"),
+        new RbacPermissionDefinition("AI_IMAGE_TASK:VIEW", "查看图片生成任务", PermissionType.PAGE, "AI_IMAGE_TASK", "VIEW"),
+        new RbacPermissionDefinition("AI_IMAGE_TASK:CREATE", "创建图片生成任务", PermissionType.BUTTON, "AI_IMAGE_TASK", "CREATE"),
+        new RbacPermissionDefinition("AI_IMAGE_TASK:CANCEL", "取消图片生成任务", PermissionType.BUTTON, "AI_IMAGE_TASK", "CANCEL"),
+        new RbacPermissionDefinition("AI_IMAGE_TASK:DELETE", "删除图片生成记录", PermissionType.BUTTON, "AI_IMAGE_TASK", "DELETE"),
+        new RbacPermissionDefinition("AI_IMAGE_RESULT:SAVE", "保存生成图片", PermissionType.BUTTON, "AI_IMAGE_RESULT", "SAVE"),
+        new RbacPermissionDefinition("AI_IMAGE_RESULT:BIND", "设置业务主图", PermissionType.BUTTON, "AI_IMAGE_RESULT", "BIND")
     );
 
     private RbacPermissions() {

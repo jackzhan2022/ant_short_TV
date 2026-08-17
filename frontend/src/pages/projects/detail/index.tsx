@@ -49,6 +49,7 @@ import {
   updateProjectRole,
 } from './service';
 import ScriptCreationWorkspace from './components/ScriptCreationWorkspace';
+import AiImageProductionWorkspace from './components/AiImageProductionWorkspace';
 
 const statusText: Record<Project['status'], string> = {
   NOT_STARTED: '未开始',
@@ -535,6 +536,11 @@ const ProjectDetail = () => {
                 projectName={project?.name}
               />
             ),
+          },
+          {
+            key: 'image-production',
+            label: '图片生产',
+            children: <AiImageProductionWorkspace projectId={projectId} />,
           },
           {
             key: 'logs',
