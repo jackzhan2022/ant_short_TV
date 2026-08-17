@@ -26,3 +26,12 @@ springdoc:
 
 ai:
   secret-key: ${AI_SECRET_KEY:}
+  video:
+    storage-root: ${AI_VIDEO_STORAGE_ROOT:storage}
+    max-concurrent-per-tenant: ${AI_VIDEO_MAX_CONCURRENT_PER_TENANT:3}
+    task-timeout-minutes: ${AI_VIDEO_TASK_TIMEOUT_MINUTES:20}
+    poll-retry-limit: ${AI_VIDEO_POLL_RETRY_LIMIT:3}
+    due-task-batch-size: ${AI_VIDEO_DUE_TASK_BATCH_SIZE:20}
+    poll-fixed-delay-ms: ${AI_VIDEO_POLL_FIXED_DELAY_MS:15000}
+    scheduler:
+      enabled: ${AI_VIDEO_SCHEDULER_ENABLED:true}

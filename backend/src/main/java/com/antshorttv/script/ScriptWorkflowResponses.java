@@ -99,8 +99,29 @@ record StoryboardResponse(
     String dialogue,
     Integer durationSeconds,
     String imagePrompt,
-    String videoPrompt
+    String videoPrompt,
+    String firstFrameUrl,
+    Long currentVideoResultId,
+    String currentVideoUrl
 ) {
+    static StoryboardResponse from(StoryboardEntity entity) {
+        return new StoryboardResponse(
+            entity.id,
+            entity.shotNo,
+            entity.episodeNo,
+            null,
+            entity.visualDescription,
+            entity.characters,
+            entity.scene,
+            null,
+            entity.durationSeconds,
+            entity.imagePrompt,
+            entity.videoPrompt,
+            entity.firstFrameUrl,
+            entity.currentVideoResultId,
+            entity.currentVideoUrl
+        );
+    }
 }
 
 record ScriptWorkspaceResponse(

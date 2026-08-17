@@ -494,7 +494,7 @@ public class ScriptWorkflowService {
 
     private List<StoryboardResponse> storyboards(Long tenantId, Long projectId) {
         return jdbcTemplate.query("""
-            select id, shot_no, episode_no, shot_type, visual_description, characters, scene, dialogue, duration_seconds, image_prompt, video_prompt
+            select id, shot_no, episode_no, shot_type, visual_description, characters, scene, dialogue, duration_seconds, image_prompt, video_prompt, first_frame_url, current_video_result_id, current_video_url
               from storyboard
              where tenant_id = ? and project_id = ? and deleted_at is null
              order by episode_no, shot_no, id
@@ -509,7 +509,10 @@ public class ScriptWorkflowService {
                 rs.getString("dialogue"),
                 rs.getObject("duration_seconds", Integer.class),
                 rs.getString("image_prompt"),
-                rs.getString("video_prompt")
+                rs.getString("video_prompt"),
+                rs.getString("first_frame_url"),
+                rs.getObject("current_video_result_id", Long.class),
+                rs.getString("current_video_url")
             ), tenantId, projectId);
     }
 

@@ -1,0 +1,66 @@
+alter table storyboard add column first_frame_image_id bigint null;
+alter table storyboard add column first_frame_url varchar(1000) null;
+alter table storyboard add column current_video_result_id bigint null;
+alter table storyboard add column current_video_material_id bigint null;
+alter table storyboard add column current_video_url varchar(1000) null;
+
+create table ai_video_task (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  storyboard_id bigint not null,
+  service_config_id bigint not null,
+  provider_code varchar(64) not null,
+  model varchar(128) not null,
+  prompt text not null,
+  negative_prompt text null,
+  first_frame_image_id bigint null,
+  first_frame_url varchar(1000) not null,
+  last_frame_image_id bigint null,
+  last_frame_url varchar(1000) null,
+  reference_images text null,
+  duration_seconds int not null,
+  aspect_ratio varchar(32) not null,
+  resolution varchar(32) null,
+  motion_strength varchar(32) null,
+  camera_movement varchar(64) null,
+  random_seed bigint null,
+  external_task_id varchar(256) null,
+  external_status varchar(64) null,
+  status varchar(32) not null,
+  error_message text null,
+  submitted_at datetime null,
+  started_at datetime null,
+  completed_at datetime null,
+  created_by bigint not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  deleted_at datetime null,
+  index idx_ai_video_task_project_status (tenant_id, project_id, status),
+  index idx_ai_video_task_storyboard (tenant_id, project_id, storyboard_id),
+  index idx_ai_video_task_created_at (created_at)
+);
+
+create table ai_video_result (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  task_id bigint not null,
+  storyboard_id bigint not null,
+  video_url varchar(1000) not null,
+  storage_path varchar(1000) not null,
+  cover_url varchar(1000) null,
+  duration_seconds decimal(8,2) null,
+  width int null,
+  height int null,
+  file_size bigint null,
+  format varchar(32) null,
+  material_id bigint null,
+  is_selected boolean not null,
+  status varchar(32) not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  index idx_ai_video_result_task (task_id),
+  index idx_ai_video_result_storyboard (tenant_id, project_id, storyboard_id),
+  index idx_ai_video_result_material (material_id)
+);

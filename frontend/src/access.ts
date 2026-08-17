@@ -48,5 +48,19 @@ export default function access(
       currentUser &&
       permissions.includes('PROMPT:AI_GENERATE') &&
       permissions.includes('AI_SERVICE:USE'),
+    canViewAiVideoTasks:
+      currentUser && permissions.includes('AI_VIDEO_TASK:VIEW'),
+    canCreateAiVideoTasks:
+      currentUser && permissions.includes('AI_VIDEO_TASK:CREATE'),
+    canCancelAiVideoTasks:
+      currentUser && permissions.includes('AI_VIDEO_TASK:CANCEL'),
+    canDeleteAiVideoTasks:
+      currentUser && permissions.includes('AI_VIDEO_TASK:DELETE'),
+    canSaveAiVideoResults:
+      currentUser && permissions.includes('AI_VIDEO_RESULT:SAVE'),
+    canBindAiVideoResults:
+      currentUser && permissions.includes('AI_VIDEO_RESULT:BIND'),
+    canDownloadAiVideoResults:
+      currentUser && permissions.includes('AI_VIDEO_RESULT:DOWNLOAD'),
   };
 }

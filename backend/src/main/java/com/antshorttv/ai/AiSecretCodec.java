@@ -14,7 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
-class AiSecretCodec {
+public class AiSecretCodec {
 
     private static final int IV_LENGTH = 12;
     private static final int TAG_LENGTH = 128;
@@ -52,7 +52,7 @@ class AiSecretCodec {
         return plainText.substring(0, 3) + "****" + plainText.substring(plainText.length() - 4);
     }
 
-    String decrypt(String cipherText) {
+    public String decrypt(String cipherText) {
         try {
             byte[] bytes = Base64.getDecoder().decode(cipherText);
             byte[] iv = new byte[IV_LENGTH];

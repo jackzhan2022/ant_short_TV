@@ -4,23 +4,39 @@ import ScriptCreationWorkspace from './ScriptCreationWorkspace';
 
 const mocks = vi.hoisted(() => ({
   breakdownStoryboards: vi.fn(),
+  bindAiVideoResultToStoryboard: vi.fn(),
+  cancelAiVideoTask: vi.fn(),
+  createAiVideoTask: vi.fn(),
+  deleteAiVideoResult: vi.fn(),
+  deleteAiVideoTask: vi.fn(),
   extractScriptElements: vi.fn(),
+  downloadAiVideoResult: vi.fn(),
   generateScript: vi.fn(),
   generateWorkflowPrompts: vi.fn(),
+  getCurrentTenantId: vi.fn(),
+  pollAiVideoTask: vi.fn(),
+  queryAiServiceConfigs: vi.fn(),
+  queryAiVideoTasks: vi.fn(),
   queryScriptWorkspace: vi.fn(),
   rewriteScript: vi.fn(),
   saveCurrentScript: vi.fn(),
+  regenerateAiVideoTask: vi.fn(),
+  saveAiVideoResultAsMaterial: vi.fn(),
 }));
 
 vi.mock('@ant-design/icons', () => ({
   BulbOutlined: () => <span data-testid="bulb-icon" />,
+  DeleteOutlined: () => <span data-testid="delete-icon" />,
   EditOutlined: () => <span data-testid="edit-icon" />,
   FileTextOutlined: () => <span data-testid="file-icon" />,
+  LinkOutlined: () => <span data-testid="link-icon" />,
   PlusOutlined: () => <span data-testid="plus-icon" />,
   RobotOutlined: () => <span data-testid="robot-icon" />,
   SaveOutlined: () => <span data-testid="save-icon" />,
   SplitCellsOutlined: () => <span data-testid="split-icon" />,
+  StopOutlined: () => <span data-testid="stop-icon" />,
   TagsOutlined: () => <span data-testid="tags-icon" />,
+  VideoCameraOutlined: () => <span data-testid="video-icon" />,
 }));
 
 vi.mock('antd', () => ({
@@ -177,14 +193,46 @@ vi.mock('@ant-design/pro-components', () => ({
   ),
 }));
 
+vi.mock('@umijs/max', () => ({
+  useAccess: () => ({
+    canViewAiVideoTasks: true,
+    canCreateAiVideoTasks: true,
+    canCancelAiVideoTasks: true,
+    canDeleteAiVideoTasks: true,
+    canSaveAiVideoResults: true,
+    canBindAiVideoResults: true,
+    canDownloadAiVideoResults: true,
+  }),
+}));
+
 vi.mock('./service', () => ({
   breakdownStoryboards: mocks.breakdownStoryboards,
+  bindAiVideoResultToStoryboard: mocks.bindAiVideoResultToStoryboard,
+  cancelAiVideoTask: mocks.cancelAiVideoTask,
+  createAiVideoTask: mocks.createAiVideoTask,
+  deleteAiVideoResult: mocks.deleteAiVideoResult,
+  deleteAiVideoTask: mocks.deleteAiVideoTask,
   extractScriptElements: mocks.extractScriptElements,
+  downloadAiVideoResult: mocks.downloadAiVideoResult,
   generateScript: mocks.generateScript,
   generateWorkflowPrompts: mocks.generateWorkflowPrompts,
+  getCurrentTenantId: mocks.getCurrentTenantId,
+  pollAiVideoTask: mocks.pollAiVideoTask,
+  queryAiServiceConfigs: mocks.queryAiServiceConfigs,
+  queryAiVideoTasks: mocks.queryAiVideoTasks,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   rewriteScript: mocks.rewriteScript,
+  regenerateAiVideoTask: mocks.regenerateAiVideoTask,
   saveCurrentScript: mocks.saveCurrentScript,
+  saveAiVideoResultAsMaterial: mocks.saveAiVideoResultAsMaterial,
+}));
+
+vi.mock('@/services/account-team/auth', () => ({
+  getCurrentTenantId: mocks.getCurrentTenantId,
+}));
+
+vi.mock('@/pages/ai-service-management/services/service', () => ({
+  queryAiServiceConfigs: mocks.queryAiServiceConfigs,
 }));
 
 describe('ScriptCreationWorkspace', () => {
@@ -202,6 +250,15 @@ describe('ScriptCreationWorkspace', () => {
         storyboards: [],
       },
     });
+    mocks.queryAiVideoTasks.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    mocks.queryAiServiceConfigs.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    mocks.getCurrentTenantId.mockReturnValue(1);
     mocks.generateScript.mockResolvedValue({
       success: true,
       data: {
@@ -347,7 +404,8 @@ describe('ScriptCreationWorkspace', () => {
     expect(screen.getByText('剧本')).toBeInTheDocument();
     expect(screen.getAllByText('角色').length).toBeGreaterThan(0);
     expect(screen.getByText('场景/道具')).toBeInTheDocument();
-    expect(screen.getByText('分镜')).toBeInTheDocument();
+    expect(screen.getByText('视频任务')).toBeInTheDocument();
+    expect(screen.getAllByText('分镜').length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1);
     });
