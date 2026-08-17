@@ -20,5 +20,18 @@ export default function access(
     canEditAiServices: currentUser && permissions.includes('AI_SERVICE:EDIT'),
     canDeleteAiServices: currentUser && permissions.includes('AI_SERVICE:DELETE'),
     canTestAiServices: currentUser && permissions.includes('AI_SERVICE:TEST'),
+    canViewAiVideoTasks: currentUser && permissions.includes('AI_VIDEO_TASK:VIEW'),
+    canCreateAiVideoTasks:
+      currentUser && permissions.includes('AI_VIDEO_TASK:CREATE'),
+    canCancelAiVideoTasks:
+      currentUser && permissions.includes('AI_VIDEO_TASK:CANCEL'),
+    canDeleteAiVideoTasks:
+      currentUser && permissions.includes('AI_VIDEO_TASK:DELETE'),
+    canSaveAiVideoResults:
+      currentUser && permissions.includes('AI_VIDEO_RESULT:SAVE'),
+    canBindAiVideoResults:
+      currentUser && permissions.includes('AI_VIDEO_RESULT:BIND'),
+    canDownloadAiVideoResults:
+      currentUser && permissions.includes('AI_VIDEO_RESULT:DOWNLOAD'),
   };
 }

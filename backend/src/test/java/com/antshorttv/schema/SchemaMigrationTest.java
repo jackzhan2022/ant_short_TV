@@ -76,4 +76,28 @@ class SchemaMigrationTest {
                'model-b', 90, true, true, 'UNTESTED', 1, now(), now())
             """)).isInstanceOf(Exception.class);
     }
+
+    @Test
+    void flywayCreatesAiVideoTaskTablesAndStoryboardVideoColumns() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+            from information_schema.tables
+            where lower(table_name) in (
+              'ai_video_task', 'ai_video_result', 'material'
+            )
+            """, Integer.class);
+        Integer storyboardColumnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'storyboard'
+              and lower(column_name) in (
+                'first_frame_url', 'current_video_result_id', 'current_video_url'
+              )
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(3);
+        assertThat(storyboardColumnCount).isEqualTo(3);
+    }
 }

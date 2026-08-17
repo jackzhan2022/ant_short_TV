@@ -40,11 +40,29 @@ public class ProjectService {
             "PROJECT_ROLE:CREATE",
             "PROJECT_ROLE:UPDATE",
             "PROJECT_ROLE:DELETE",
-            "PROJECT_ROLE:PERMISSION"
+            "PROJECT_ROLE:PERMISSION",
+            "AI_VIDEO_TASK:VIEW",
+            "AI_VIDEO_TASK:CREATE",
+            "AI_VIDEO_TASK:CANCEL",
+            "AI_VIDEO_TASK:DELETE",
+            "AI_VIDEO_RESULT:SAVE",
+            "AI_VIDEO_RESULT:BIND",
+            "AI_VIDEO_RESULT:DOWNLOAD"
         )),
         new DefaultProjectRole("WRITER", "编剧", ProjectDataScope.PROJECT, List.of("PROJECT:VIEW")),
-        new DefaultProjectRole("DIRECTOR", "导演", ProjectDataScope.PROJECT, List.of("PROJECT:VIEW")),
-        new DefaultProjectRole("PRODUCER", "制片", ProjectDataScope.PROJECT, List.of("PROJECT:VIEW")),
+        new DefaultProjectRole("DIRECTOR", "导演", ProjectDataScope.PROJECT, List.of(
+            "PROJECT:VIEW",
+            "AI_VIDEO_TASK:VIEW",
+            "AI_VIDEO_TASK:CREATE",
+            "AI_VIDEO_TASK:CANCEL",
+            "AI_VIDEO_RESULT:BIND"
+        )),
+        new DefaultProjectRole("PRODUCER", "制片", ProjectDataScope.PROJECT, List.of(
+            "PROJECT:VIEW",
+            "AI_VIDEO_TASK:VIEW",
+            "AI_VIDEO_RESULT:SAVE",
+            "AI_VIDEO_RESULT:DOWNLOAD"
+        )),
         new DefaultProjectRole("MEMBER", "项目成员", ProjectDataScope.PROJECT, List.of("PROJECT:VIEW"))
     );
 
@@ -446,7 +464,14 @@ public class ProjectService {
             new ProjectPermissionSeed("PROJECT_ROLE:CREATE", "创建项目角色", "PROJECT_ROLE", "CREATE"),
             new ProjectPermissionSeed("PROJECT_ROLE:UPDATE", "编辑项目角色", "PROJECT_ROLE", "UPDATE"),
             new ProjectPermissionSeed("PROJECT_ROLE:DELETE", "删除项目角色", "PROJECT_ROLE", "DELETE"),
-            new ProjectPermissionSeed("PROJECT_ROLE:PERMISSION", "配置项目角色权限", "PROJECT_ROLE", "PERMISSION")
+            new ProjectPermissionSeed("PROJECT_ROLE:PERMISSION", "配置项目角色权限", "PROJECT_ROLE", "PERMISSION"),
+            new ProjectPermissionSeed("AI_VIDEO_TASK:VIEW", "查看视频生成任务", "AI_VIDEO_TASK", "VIEW"),
+            new ProjectPermissionSeed("AI_VIDEO_TASK:CREATE", "创建视频生成任务", "AI_VIDEO_TASK", "CREATE"),
+            new ProjectPermissionSeed("AI_VIDEO_TASK:CANCEL", "取消视频生成任务", "AI_VIDEO_TASK", "CANCEL"),
+            new ProjectPermissionSeed("AI_VIDEO_TASK:DELETE", "删除视频生成记录", "AI_VIDEO_TASK", "DELETE"),
+            new ProjectPermissionSeed("AI_VIDEO_RESULT:SAVE", "保存生成视频", "AI_VIDEO_RESULT", "SAVE"),
+            new ProjectPermissionSeed("AI_VIDEO_RESULT:BIND", "设置分镜视频", "AI_VIDEO_RESULT", "BIND"),
+            new ProjectPermissionSeed("AI_VIDEO_RESULT:DOWNLOAD", "下载生成视频", "AI_VIDEO_RESULT", "DOWNLOAD")
         );
         for (ProjectPermissionSeed seed : seeds) {
             if (permissionMapper.selectByCode(seed.code()) != null) {

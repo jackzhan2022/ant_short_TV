@@ -24,6 +24,7 @@ public class ScriptWorkflowService {
     private final TenantContextResolver tenantContextResolver;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
+    private final StoryboardMapper storyboardMapper;
 
     public ScriptWorkflowService(
         ProjectMapper projectMapper,
@@ -31,7 +32,8 @@ public class ScriptWorkflowService {
         RbacPermissionService rbacPermissionService,
         TenantContextResolver tenantContextResolver,
         ScriptMapper scriptMapper,
-        ScriptVersionMapper scriptVersionMapper
+        ScriptVersionMapper scriptVersionMapper,
+        StoryboardMapper storyboardMapper
     ) {
         this.projectMapper = projectMapper;
         this.projectMemberMapper = projectMemberMapper;
@@ -39,6 +41,7 @@ public class ScriptWorkflowService {
         this.tenantContextResolver = tenantContextResolver;
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
+        this.storyboardMapper = storyboardMapper;
     }
 
     public ScriptWorkspaceResponse workspace(Long tenantId, Long projectId) {
@@ -58,7 +61,10 @@ public class ScriptWorkflowService {
             List.of(),
             List.of(),
             List.of(),
-            List.of()
+            storyboardMapper.selectByProject(tenantId, projectId)
+                .stream()
+                .map(StoryboardResponse::from)
+                .toList()
         );
     }
 

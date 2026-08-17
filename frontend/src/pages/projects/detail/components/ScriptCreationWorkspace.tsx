@@ -1,12 +1,19 @@
 import {
   BulbOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   FileTextOutlined,
+  LinkOutlined,
   PlusOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
   RobotOutlined,
   SaveOutlined,
   SplitCellsOutlined,
+  StopOutlined,
   TagsOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
 import type { ProColumns } from '@ant-design/pro-components';
 import {
@@ -25,15 +32,32 @@ import {
   Empty,
   Flex,
   Input,
+  Popconfirm,
   Space,
   Tabs,
   Tag,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAccess } from '@umijs/max';
+import { getCurrentTenantId } from '@/services/account-team/auth';
+import { queryAiServiceConfigs } from '@/pages/ai-service-management/services/service';
 import {
+  bindAiVideoResultToStoryboard,
+  cancelAiVideoTask,
+  createAiVideoTask,
+  deleteAiVideoResult,
+  deleteAiVideoTask,
+  downloadAiVideoResult,
   generateScript,
+  pollAiVideoTask,
   queryScriptWorkspace,
+  queryAiVideoTasks,
+  regenerateAiVideoTask,
+  saveAiVideoResultAsMaterial,
+  type AiVideoTask,
+  type AiVideoTaskStatus,
+  type CreateAiVideoTaskValues,
   type CharacterAsset,
   type GenerateScriptValues,
   type PropAsset,
@@ -80,6 +104,76 @@ const rewriteOptions = [
   { label: '对白优化', value: '对白优化' },
   { label: '风格转换', value: '风格转换' },
 ];
+
+const videoStatusText: Record<AiVideoTaskStatus, string> = {
+  PENDING: '待执行',
+  SUBMITTING: '提交中',
+  GENERATING: '生成中',
+  SUCCEEDED: '生成成功',
+  FAILED: '生成失败',
+  CANCELED: '已取消',
+};
+
+const videoStatusColor: Record<AiVideoTaskStatus, string> = {
+  PENDING: 'default',
+  SUBMITTING: 'processing',
+  GENERATING: 'processing',
+  SUCCEEDED: 'success',
+  FAILED: 'error',
+  CANCELED: 'default',
+};
+
+const activeVideoStatuses: AiVideoTaskStatus[] = [
+  'PENDING',
+  'SUBMITTING',
+  'GENERATING',
+];
+
+const videoDurationOptions = [
+  { label: '5 秒', value: 5 },
+  { label: '8 秒', value: 8 },
+  { label: '10 秒', value: 10 },
+];
+
+const aspectRatioOptions = [
+  { label: '9:16', value: '9:16' },
+  { label: '16:9', value: '16:9' },
+  { label: '1:1', value: '1:1' },
+];
+
+const resolutionOptions = [
+  { label: '标准', value: 'STANDARD' },
+  { label: '高清', value: 'HD' },
+];
+
+const cameraMovementOptions = [
+  { label: '推近', value: 'PUSH_IN' },
+  { label: '拉远', value: 'PULL_OUT' },
+  { label: '平移', value: 'PAN' },
+  { label: '环绕', value: 'ORBIT' },
+  { label: '固定镜头', value: 'STATIC' },
+];
+
+const motionStrengthOptions = [
+  { label: '弱', value: 'LOW' },
+  { label: '中', value: 'MEDIUM' },
+  { label: '强', value: 'HIGH' },
+];
+
+const toVideoInitialValues = (
+  storyboard?: StoryboardShot,
+): Partial<CreateAiVideoTaskValues> => ({
+  storyboardId: storyboard?.id,
+  prompt:
+    storyboard?.videoPrompt ||
+    storyboard?.visualDescription ||
+    '',
+  firstFrameUrl: storyboard?.firstFrameUrl || undefined,
+  durationSeconds: storyboard?.durationSeconds || 5,
+  aspectRatio: '9:16',
+  resolution: 'STANDARD',
+  motionStrength: 'MEDIUM',
+});
 
 const createEmptyWorkspace = (projectId: number): ScriptWorkspace => ({
   projectId,
@@ -162,12 +256,70 @@ const ScriptCreationWorkspace = ({
   projectName,
 }: ScriptCreationWorkspaceProps) => {
   const { message } = App.useApp();
+  const access = useAccess();
+  const canViewAiVideoTasks = Boolean(access.canViewAiVideoTasks);
+  const canCreateAiVideoTasks = Boolean(access.canCreateAiVideoTasks);
+  const canCancelAiVideoTasks = Boolean(access.canCancelAiVideoTasks);
+  const canDeleteAiVideoTasks = Boolean(access.canDeleteAiVideoTasks);
+  const canSaveAiVideoResults = Boolean(access.canSaveAiVideoResults);
+  const canBindAiVideoResults = Boolean(access.canBindAiVideoResults);
+  const canDownloadAiVideoResults = Boolean(access.canDownloadAiVideoResults);
   const [workspace, setWorkspace] = useState<ScriptWorkspace>(() =>
     createEmptyWorkspace(projectId),
   );
   const [scriptContent, setScriptContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<GeneratedScript | null>(null);
+  const [videoTasks, setVideoTasks] = useState<AiVideoTask[]>([]);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoCreateOpen, setVideoCreateOpen] = useState(false);
+  const [videoSeedStoryboard, setVideoSeedStoryboard] =
+    useState<StoryboardShot>();
+  const [videoDetail, setVideoDetail] = useState<AiVideoTask | null>(null);
+  const [videoServiceOptions, setVideoServiceOptions] = useState<
+    { label: string; value: number }[]
+  >([]);
+
+  const loadVideoTasks = useCallback(async () => {
+    if (!canViewAiVideoTasks) {
+      setVideoTasks([]);
+      return;
+    }
+    setVideoLoading(true);
+    try {
+      const response = await queryAiVideoTasks(projectId);
+      setVideoTasks(response.data || []);
+    } catch {
+      message.error('视频任务加载失败');
+    } finally {
+      setVideoLoading(false);
+    }
+  }, [canViewAiVideoTasks, projectId]);
+
+  const loadVideoServices = useCallback(async () => {
+    if (!canCreateAiVideoTasks) {
+      setVideoServiceOptions([]);
+      return;
+    }
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) {
+      setVideoServiceOptions([]);
+      return;
+    }
+    try {
+      const response = await queryAiServiceConfigs(tenantId);
+      setVideoServiceOptions(
+        response.data
+          .filter((item) => item.serviceType === 'VIDEO' && item.enabled)
+          .map((item) => ({
+            label: `${item.name} / ${item.provider} / ${item.model}`,
+            value: item.id,
+          })),
+      );
+    } catch {
+      setVideoServiceOptions([]);
+    }
+  }, [canCreateAiVideoTasks]);
 
   useEffect(() => {
     let active = true;
@@ -193,6 +345,27 @@ const ScriptCreationWorkspace = ({
       active = false;
     };
   }, [projectId]);
+
+  useEffect(() => {
+    loadVideoTasks();
+    loadVideoServices();
+  }, [loadVideoTasks, loadVideoServices]);
+
+  useEffect(() => {
+    const activeTasks = videoTasks.filter((task) =>
+      activeVideoStatuses.includes(task.status),
+    );
+    if (!activeTasks.length) {
+      return undefined;
+    }
+    const timer = window.setInterval(async () => {
+      await Promise.all(
+        activeTasks.map((task) => pollAiVideoTask(projectId, task.id)),
+      );
+      await loadVideoTasks();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [loadVideoTasks, projectId, videoTasks]);
 
   const characterColumns = useMemo<ProColumns<CharacterAsset>[]>(
     () => [
@@ -269,11 +442,35 @@ const ScriptCreationWorkspace = ({
       { title: '图片提示词', dataIndex: 'imagePrompt', ellipsis: true, search: false },
       { title: '视频提示词', dataIndex: 'videoPrompt', ellipsis: true, search: false },
       {
+        title: '当前视频',
+        dataIndex: 'currentVideoUrl',
+        width: 120,
+        search: false,
+        render: (_, record) =>
+          record.currentVideoUrl ? (
+            <Tag color="green">已设置</Tag>
+          ) : (
+            <Tag>未设置</Tag>
+          ),
+      },
+      {
         title: '操作',
         valueType: 'option',
         fixed: 'right',
-        render: () => (
+        render: (_, record) => (
           <Space>
+            {canCreateAiVideoTasks && (
+              <Button
+                type="link"
+                icon={<VideoCameraOutlined />}
+                onClick={() => {
+                  setVideoSeedStoryboard(record);
+                  setVideoCreateOpen(true);
+                }}
+              >
+                生成视频
+              </Button>
+            )}
             <Button type="link" icon={<EditOutlined />}>
               编辑
             </Button>
@@ -284,7 +481,190 @@ const ScriptCreationWorkspace = ({
         ),
       },
     ],
-    [],
+    [canCreateAiVideoTasks],
+  );
+
+  const openVideoCreate = (storyboard?: StoryboardShot) => {
+    setVideoSeedStoryboard(storyboard);
+    setVideoCreateOpen(true);
+  };
+
+  const refreshVideoWorkspace = async () => {
+    await loadVideoTasks();
+    const response = await queryScriptWorkspace(projectId);
+    setWorkspace(normalizeWorkspace(response.data, projectId));
+  };
+
+  const handleVideoAction = async (
+    action: () => Promise<unknown>,
+    successText: string,
+  ) => {
+    try {
+      await action();
+      message.success(successText);
+      await refreshVideoWorkspace();
+    } catch {
+      message.error('操作失败');
+    }
+  };
+
+  const videoTaskColumns = useMemo<ProColumns<AiVideoTask>[]>(
+    () => [
+      {
+        title: '任务ID',
+        dataIndex: 'id',
+        width: 90,
+        search: false,
+      },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 110,
+        render: (_, record) => (
+          <Tag color={videoStatusColor[record.status]}>
+            {videoStatusText[record.status]}
+          </Tag>
+        ),
+      },
+      {
+        title: '分镜',
+        dataIndex: 'storyboardId',
+        width: 100,
+        renderText: (value) => `#${value}`,
+      },
+      {
+        title: '首帧',
+        dataIndex: 'firstFrameUrl',
+        width: 96,
+        search: false,
+        render: (_, record) =>
+          record.firstFrameUrl ? (
+            <img
+              src={record.firstFrameUrl}
+              alt="首帧"
+              style={{
+                width: 56,
+                height: 72,
+                objectFit: 'cover',
+                borderRadius: 4,
+              }}
+            />
+          ) : (
+            '-'
+          ),
+      },
+      { title: '服务商', dataIndex: 'providerCode', width: 100 },
+      { title: '模型', dataIndex: 'model', width: 140, ellipsis: true },
+      { title: '提示词', dataIndex: 'prompt', ellipsis: true, search: false },
+      {
+        title: '参数',
+        dataIndex: 'aspectRatio',
+        width: 140,
+        search: false,
+        render: (_, record) =>
+          `${record.aspectRatio} / ${record.durationSeconds}s`,
+      },
+      {
+        title: '失败原因',
+        dataIndex: 'errorMessage',
+        ellipsis: true,
+        search: false,
+      },
+      {
+        title: '创建时间',
+        dataIndex: 'createdAt',
+        valueType: 'dateTime',
+        width: 160,
+        search: false,
+      },
+      {
+        title: '操作',
+        valueType: 'option',
+        fixed: 'right',
+        width: 260,
+        render: (_, record) => (
+          <Space>
+            <Button
+              type="link"
+              icon={<PlayCircleOutlined />}
+              onClick={() => setVideoDetail(record)}
+            >
+              查看
+            </Button>
+            {activeVideoStatuses.includes(record.status) && (
+              <>
+                {canViewAiVideoTasks && (
+                  <Button
+                    type="link"
+                    icon={<ReloadOutlined />}
+                    onClick={() =>
+                      handleVideoAction(
+                        () => pollAiVideoTask(projectId, record.id),
+                        '任务状态已更新',
+                      )
+                    }
+                  >
+                    查询
+                  </Button>
+                )}
+                {canCancelAiVideoTasks && (
+                  <Button
+                    type="link"
+                    icon={<StopOutlined />}
+                    onClick={() =>
+                      handleVideoAction(
+                        () => cancelAiVideoTask(projectId, record.id),
+                        '任务已取消',
+                      )
+                    }
+                  >
+                    取消
+                  </Button>
+                )}
+              </>
+            )}
+            {!activeVideoStatuses.includes(record.status) && (
+              canCreateAiVideoTasks && (
+                <Button
+                  type="link"
+                  icon={<ReloadOutlined />}
+                  onClick={() =>
+                    handleVideoAction(
+                      () => regenerateAiVideoTask(projectId, record.id),
+                      '已创建重新生成任务',
+                    )
+                  }
+                >
+                  重生成
+                </Button>
+              )
+            )}
+            {canDeleteAiVideoTasks && (
+              <Popconfirm
+                title="确认删除该视频任务记录？"
+                onConfirm={() =>
+                  handleVideoAction(
+                    () => deleteAiVideoTask(projectId, record.id),
+                    '任务记录已删除',
+                  )
+                }
+              >
+                <Button type="link" danger icon={<DeleteOutlined />}>
+                  删除
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
+        ),
+      },
+    ],
+    [
+      canCancelAiVideoTasks,
+      canCreateAiVideoTasks,
+      canDeleteAiVideoTasks,
+      canViewAiVideoTasks,
+      projectId,
+    ],
   );
 
   const applyPreview = () => {
@@ -504,6 +884,32 @@ const ScriptCreationWorkspace = ({
     />
   );
 
+  const videoTaskTab = (
+    <ProTable<AiVideoTask>
+      rowKey="id"
+      search={false}
+      options={false}
+      loading={videoLoading}
+      columns={videoTaskColumns}
+      dataSource={videoTasks}
+      scroll={{ x: 1500 }}
+      toolBarRender={() =>
+        canCreateAiVideoTasks
+          ? [
+              <Button
+                key="create"
+                type="primary"
+                icon={<VideoCameraOutlined />}
+                onClick={() => openVideoCreate(workspace.storyboards[0])}
+              >
+                新建视频任务
+              </Button>,
+            ]
+          : []
+      }
+    />
+  );
+
   return (
     <ProCard
       title="剧本创作"
@@ -555,6 +961,20 @@ const ScriptCreationWorkspace = ({
             label: '场景/道具',
             children: elementTab,
           },
+          ...(canViewAiVideoTasks
+            ? [
+                {
+                  key: 'videoTasks',
+                  label: (
+                    <Space>
+                      <VideoCameraOutlined />
+                      视频任务
+                    </Space>
+                  ),
+                  children: videoTaskTab,
+                },
+              ]
+            : []),
           {
             key: 'storyboard',
             label: (
@@ -591,6 +1011,263 @@ const ScriptCreationWorkspace = ({
           },
         ]}
       />
+      <ModalForm<CreateAiVideoTaskValues>
+        key={videoSeedStoryboard?.id || 'new-video-task'}
+        title="生成分镜视频"
+        open={videoCreateOpen}
+        modalProps={{ destroyOnHidden: true }}
+        initialValues={toVideoInitialValues(videoSeedStoryboard)}
+        onOpenChange={(open) => {
+          setVideoCreateOpen(open);
+          if (!open) {
+            setVideoSeedStoryboard(undefined);
+          }
+        }}
+        onFinish={async (values) => {
+          try {
+            await createAiVideoTask(projectId, {
+              ...values,
+              serviceConfigId: values.serviceConfigId || undefined,
+              firstFrameUrl: values.firstFrameUrl || undefined,
+            });
+            message.success('视频任务已创建');
+            await loadVideoTasks();
+            return true;
+          } catch {
+            message.error('视频任务创建失败');
+            return false;
+          }
+        }}
+      >
+        <ProFormSelect
+          name="storyboardId"
+          label="关联分镜"
+          options={workspace.storyboards.map((item) => ({
+            label: `第${item.episodeNo}集 / 镜头${item.shotNo}`,
+            value: item.id,
+          }))}
+          rules={[{ required: true, message: '请选择分镜' }]}
+        />
+        <ProFormSelect
+          name="serviceConfigId"
+          label="视频服务"
+          allowClear
+          options={videoServiceOptions}
+          placeholder="不选则使用默认视频服务"
+        />
+        <ProFormText
+          name="firstFrameUrl"
+          label="首帧图地址"
+          rules={[{ required: true, message: '请先选择可用的首帧图' }]}
+        />
+        <ProFormTextArea
+          name="prompt"
+          label="视频提示词"
+          fieldProps={{ autoSize: { minRows: 4, maxRows: 8 } }}
+          rules={[{ required: true, message: '请输入视频生成提示词' }]}
+        />
+        <ProFormTextArea
+          name="negativePrompt"
+          label="负向提示词"
+          fieldProps={{ autoSize: { minRows: 2, maxRows: 4 } }}
+        />
+        <ProFormSelect
+          name="aspectRatio"
+          label="视频比例"
+          options={aspectRatioOptions}
+          rules={[{ required: true, message: '请选择视频比例' }]}
+        />
+        <ProFormSelect
+          name="durationSeconds"
+          label="视频时长"
+          options={videoDurationOptions}
+          rules={[{ required: true, message: '请选择视频时长' }]}
+        />
+        <ProFormSelect
+          name="resolution"
+          label="分辨率"
+          options={resolutionOptions}
+        />
+        <ProFormSelect
+          name="cameraMovement"
+          label="镜头运动"
+          allowClear
+          options={cameraMovementOptions}
+        />
+        <ProFormSelect
+          name="motionStrength"
+          label="运镜强度"
+          options={motionStrengthOptions}
+        />
+        <ProFormDigit name="randomSeed" label="随机种子" min={0} />
+      </ModalForm>
+      <Drawer
+        title="视频任务详情"
+        size="large"
+        open={Boolean(videoDetail)}
+        destroyOnHidden
+        onClose={() => setVideoDetail(null)}
+        extra={
+          videoDetail ? (
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={async () => {
+                await loadVideoTasks();
+                setVideoDetail(
+                  videoTasks.find((task) => task.id === videoDetail.id) || videoDetail,
+                );
+              }}
+            >
+              刷新
+            </Button>
+          ) : null
+        }
+      >
+        {videoDetail && (
+          <Flex vertical gap="large" style={{ width: '100%' }}>
+            <section>
+              <Space>
+                <Typography.Title level={4} style={{ margin: 0 }}>
+                  任务 #{videoDetail.id}
+                </Typography.Title>
+                <Tag color={videoStatusColor[videoDetail.status]}>
+                  {videoStatusText[videoDetail.status]}
+                </Tag>
+              </Space>
+              {videoDetail.errorMessage && (
+                <Typography.Paragraph type="danger" style={{ marginTop: 8 }}>
+                  {videoDetail.errorMessage}
+                </Typography.Paragraph>
+              )}
+            </section>
+            <section>
+              <Typography.Text type="secondary">服务信息</Typography.Text>
+              <Typography.Paragraph>
+                {videoDetail.providerCode} / {videoDetail.model} /{' '}
+                {videoDetail.externalTaskId || '-'}
+              </Typography.Paragraph>
+            </section>
+            <section>
+              <Typography.Text type="secondary">提示词</Typography.Text>
+              <Typography.Paragraph>{videoDetail.prompt}</Typography.Paragraph>
+            </section>
+            <section>
+              <Typography.Text type="secondary">生成参数</Typography.Text>
+              <Typography.Paragraph>
+                {videoDetail.aspectRatio} / {videoDetail.durationSeconds}s /{' '}
+                {videoDetail.resolution || 'STANDARD'} /{' '}
+                {videoDetail.cameraMovement || '-'} /{' '}
+                {videoDetail.motionStrength || '-'}
+              </Typography.Paragraph>
+            </section>
+            <section>
+              <Typography.Text type="secondary">生成结果</Typography.Text>
+              <Flex vertical gap="middle" style={{ width: '100%', marginTop: 12 }}>
+                {videoDetail.results.length ? (
+                  videoDetail.results.map((result) => (
+                    <div
+                      key={result.id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(220px, 360px) 1fr',
+                        gap: 16,
+                        alignItems: 'start',
+                      }}
+                    >
+                      <video
+                        src={result.videoUrl}
+                        poster={result.coverUrl || undefined}
+                        controls
+                        style={{
+                          width: '100%',
+                          aspectRatio: '9 / 16',
+                          background: '#000',
+                          borderRadius: 6,
+                        }}
+                      >
+                        <track kind="captions" label="暂无字幕" />
+                      </video>
+                      <Flex vertical gap="small" style={{ width: '100%' }}>
+                        <Space>
+                          {result.isSelected && <Tag color="green">当前分镜视频</Tag>}
+                          {result.materialId && <Tag color="blue">已保存素材</Tag>}
+                        </Space>
+                        <Typography.Text copyable>{result.videoUrl}</Typography.Text>
+                        <Space wrap>
+                          {canDownloadAiVideoResults && (
+                            <Button
+                              icon={<DownloadOutlined />}
+                              onClick={() =>
+                                handleVideoAction(
+                                  () => downloadAiVideoResult(projectId, result.id),
+                                  '已记录下载操作',
+                                )
+                              }
+                            >
+                              下载
+                            </Button>
+                          )}
+                          {canSaveAiVideoResults && (
+                            <Button
+                              icon={<SaveOutlined />}
+                              onClick={() =>
+                                handleVideoAction(
+                                  () =>
+                                    saveAiVideoResultAsMaterial(projectId, result.id),
+                                  '已保存到素材库',
+                                )
+                              }
+                            >
+                              保存素材
+                            </Button>
+                          )}
+                          {canBindAiVideoResults && (
+                            <Button
+                              type="primary"
+                              icon={<LinkOutlined />}
+                              onClick={() =>
+                                handleVideoAction(
+                                  () =>
+                                    bindAiVideoResultToStoryboard(projectId, result.id),
+                                  '已设置为分镜视频',
+                                )
+                              }
+                            >
+                              设为分镜视频
+                            </Button>
+                          )}
+                          {canDeleteAiVideoTasks && (
+                            <Popconfirm
+                              title="确认删除该视频结果？"
+                              description={
+                                result.isSelected
+                                  ? '当前视频已被引用，后端会阻止静默删除。'
+                                  : undefined
+                              }
+                              onConfirm={() =>
+                                handleVideoAction(
+                                  () => deleteAiVideoResult(projectId, result.id),
+                                  '视频结果已删除',
+                                )
+                              }
+                            >
+                              <Button danger icon={<DeleteOutlined />}>
+                                删除
+                              </Button>
+                            </Popconfirm>
+                          )}
+                        </Space>
+                      </Flex>
+                    </div>
+                  ))
+                ) : (
+                  <Empty description="暂无生成结果" />
+                )}
+              </Flex>
+            </section>
+          </Flex>
+        )}
+      </Drawer>
       <Drawer
         title="生成结果预览"
         size={720}
