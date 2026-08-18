@@ -19,6 +19,9 @@ import com.antshorttv.member.TenantMemberMapper;
 import com.jayway.jsonpath.JsonPath;
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -111,7 +114,6 @@ class OrganizationProjectControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.name", is("重生后我成了首富")));
 
-        insertDefaultTextService(tenantId, userIdByMobile("13800011002"));
         MvcResult roleResult = mockMvc.perform(get("/api/projects/%d/roles".formatted(projectId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
                 .header("X-Tenant-Id", tenantId))
@@ -132,15 +134,22 @@ class OrganizationProjectControllerTest {
                 "SCRIPT:AI_REWRITE",
                 "AI_SERVICE:USE"
             )));
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"storyIdea":"落魄千金雨夜回归豪门","genre":"逆袭","episodeCount":3,"duration":60}
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.script.content", containsString("落魄千金雨夜回归豪门")));
+        HttpServer server = startTextServer("落魄千金雨夜回归豪门，模型生成正文。");
+        try {
+            createTextServiceConfig(ownerToken, tenantId, "http://127.0.0.1:%d".formatted(server.getAddress().getPort()), "/chat/completions");
+
+            mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(memberToken))
+                    .header("X-Tenant-Id", tenantId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"storyIdea":"落魄千金雨夜回归豪门","genre":"逆袭","episodeCount":3,"duration":60}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.script.content", containsString("落魄千金雨夜回归豪门")));
+        } finally {
+            server.stop(0);
+        }
 
         mockMvc.perform(delete("/api/projects/%d/members/%d".formatted(projectId, memberUserId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
@@ -357,12 +366,49 @@ class OrganizationProjectControllerTest {
         tenantMemberMapper.insert(member);
     }
 
-    private void insertDefaultTextService(Long tenantId, Long userId) {
-        jdbcTemplate.update("""
-            insert into ai_service_config
-              (tenant_id, provider, service_type, name, base_url, api_key_cipher, model, endpoint, priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
-            values (?, 'OpenAI', 'TEXT', '默认文本服务', 'https://example.com/v1', 'cipher', 'gpt-4.1-mini', '/chat/completions', 100, true, true, 'SUCCESS', ?, now(), now())
-            """, tenantId, userId);
+    private void createTextServiceConfig(String token, Long tenantId, String baseUrl, String endpoint) throws Exception {
+        mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "name":"项目权限测试文本服务",
+                      "serviceType":"TEXT",
+                      "provider":"OpenAI",
+                      "baseUrl":"%s",
+                      "apiKey":"sk-test-1234",
+                      "model":"gpt-test",
+                      "endpoint":"%s",
+                      "priority":100,
+                      "isDefault":true,
+                      "enabled":true
+                    }
+                    """.formatted(baseUrl, endpoint)))
+            .andExpect(status().isOk());
+    }
+
+    private HttpServer startTextServer(String content) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/chat/completions", exchange -> {
+            byte[] body = openAiResponse(content).getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        return server;
+    }
+
+    private String openAiResponse(String content) {
+        String escaped = content
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n");
+        return """
+            {"choices":[{"message":{"content":"%s"}}]}
+            """.formatted(escaped);
     }
 
     private Long userIdByMobile(String mobile) {

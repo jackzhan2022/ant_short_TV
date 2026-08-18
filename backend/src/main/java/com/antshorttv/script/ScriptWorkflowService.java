@@ -2,6 +2,9 @@ package com.antshorttv.script;
 
 import com.antshorttv.ai.AiServiceConfigEntity;
 import com.antshorttv.ai.AiServiceConfigMapper;
+import com.antshorttv.ai.AiTextGenerationRequest;
+import com.antshorttv.ai.AiTextGenerationResponse;
+import com.antshorttv.ai.AiTextGenerationService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.project.ProjectEntity;
@@ -12,6 +15,7 @@ import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.servlet.http.HttpServletRequest;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -35,6 +39,7 @@ public class ScriptWorkflowService {
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final AiServiceConfigMapper aiServiceConfigMapper;
+    private final AiTextGenerationService aiTextGenerationService;
     private final JdbcTemplate jdbcTemplate;
 
     public ScriptWorkflowService(
@@ -45,6 +50,7 @@ public class ScriptWorkflowService {
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
         AiServiceConfigMapper aiServiceConfigMapper,
+        AiTextGenerationService aiTextGenerationService,
         JdbcTemplate jdbcTemplate
     ) {
         this.projectMapper = projectMapper;
@@ -54,6 +60,7 @@ public class ScriptWorkflowService {
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
         this.aiServiceConfigMapper = aiServiceConfigMapper;
+        this.aiTextGenerationService = aiTextGenerationService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -83,7 +90,6 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProjectAccess(context, projectId);
         requirePermission(context, "SCRIPT:AI_GENERATE", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         LocalDateTime now = LocalDateTime.now();
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         if (script == null) {
@@ -95,8 +101,16 @@ public class ScriptWorkflowService {
         }
 
         String title = resolveTitle(project, request);
-        String content = buildScriptContent(title, request);
-        Long callLogId = recordAiCall(context, config, "script_generate", request.storyIdea(), "生成剧本草稿成功");
+        AiTextGenerationResponse generation = aiTextGenerationService.generateText(new AiTextGenerationRequest(
+            tenantId,
+            context.userId(),
+            "script_generate",
+            request.storyIdea(),
+            scriptGenerateSystemPrompt(),
+            scriptGenerateUserPrompt(title, request)
+        ));
+        String content = generation.content();
+        Long callLogId = generation.callLogId();
         script.setTitle(title);
         script.setSourceType("AI_GENERATE");
         script.setContent(content);
@@ -132,20 +146,17 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "SCRIPT:AI_REWRITE", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = requireScript(tenantId, projectId);
-        String type = request.rewriteType().trim();
-        String requirement = blankToNull(request.requirement());
-        String content = """
-            %s
-
-            【AI改写版本】
-            改写类型：%s
-            改写要求：%s
-            改写说明：已将冲突前置、对白缩短，并为每一场保留明确镜头钩子。
-            风险提示：请确认角色关系和关键伏笔是否与正式设定一致。
-            """.formatted(script.getContent(), type, requirement == null ? "保持原剧情核心" : requirement);
-        Long callLogId = recordAiCall(context, config, "script_rewrite", type, "改写剧本成功");
+        AiTextGenerationResponse generation = aiTextGenerationService.generateText(new AiTextGenerationRequest(
+            tenantId,
+            context.userId(),
+            "script_rewrite",
+            request.rewriteType(),
+            rewriteSystemPrompt(),
+            rewriteUserPrompt(script, request)
+        ));
+        String content = generation.content();
+        Long callLogId = generation.callLogId();
         LocalDateTime now = LocalDateTime.now();
 
         script.setSourceType("AI_REWRITE");
@@ -154,7 +165,7 @@ public class ScriptWorkflowService {
         script.setUpdatedAt(now);
         scriptMapper.updateById(script);
 
-        ScriptVersionEntity version = createVersion(context, projectId, script.getId(), "AI_REWRITE", type, content, callLogId, now);
+        ScriptVersionEntity version = createVersion(context, projectId, script.getId(), "AI_REWRITE", request.rewriteType(), content, callLogId, now);
         script.setCurrentVersionId(version.getId());
         scriptMapper.updateById(script);
         return workspace(tenantId, projectId);
@@ -219,32 +230,33 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:AI_EXTRACT", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         if (script == null || script.getContent() == null || script.getContent().isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先生成或填写剧本内容。");
         }
         String elementType = request.elementType().trim();
+        JsonNode response = aiTextGenerationService.generateJson(new AiTextGenerationRequest(
+            tenantId,
+            context.userId(),
+            "element_extract_" + elementType,
+            script.getTitle(),
+            elementExtractSystemPrompt(elementType),
+            elementExtractUserPrompt(script, elementType)
+        ));
         switch (elementType) {
             case "CHARACTER" -> {
-                ensureCharacters(tenantId, projectId, context.userId(), script.getContent());
-                recordAiCall(context, config, "character_extract", script.getTitle(), "提取角色成功");
+                upsertCharactersFromJson(tenantId, projectId, context.userId(), response.path("characters"));
             }
             case "SCENE" -> {
-                ensureScenes(tenantId, projectId, context.userId(), script.getContent());
-                recordAiCall(context, config, "scene_extract", script.getTitle(), "提取场景成功");
+                upsertScenesFromJson(tenantId, projectId, context.userId(), response.path("scenes"));
             }
             case "PROP" -> {
-                ensureProps(tenantId, projectId, context.userId(), script.getContent());
-                recordAiCall(context, config, "prop_extract", script.getTitle(), "提取道具成功");
+                upsertPropsFromJson(tenantId, projectId, context.userId(), response.path("props"));
             }
             case "ALL" -> {
-                ensureCharacters(tenantId, projectId, context.userId(), script.getContent());
-                ensureScenes(tenantId, projectId, context.userId(), script.getContent());
-                ensureProps(tenantId, projectId, context.userId(), script.getContent());
-                recordAiCall(context, config, "character_extract", script.getTitle(), "提取角色成功");
-                recordAiCall(context, config, "scene_extract", script.getTitle(), "提取场景成功");
-                recordAiCall(context, config, "prop_extract", script.getTitle(), "提取道具成功");
+                upsertCharactersFromJson(tenantId, projectId, context.userId(), response.path("characters"));
+                upsertScenesFromJson(tenantId, projectId, context.userId(), response.path("scenes"));
+                upsertPropsFromJson(tenantId, projectId, context.userId(), response.path("props"));
             }
             default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择要提取的元素类型。");
         }
@@ -306,16 +318,20 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:AI_BREAKDOWN", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = requireScript(tenantId, projectId);
+        JsonNode response = aiTextGenerationService.generateJson(new AiTextGenerationRequest(
+            tenantId,
+            context.userId(),
+            "storyboard_breakdown",
+            script.getTitle(),
+            storyboardBreakdownSystemPrompt(),
+            storyboardBreakdownUserPrompt(script, request)
+        ));
         jdbcTemplate.update("""
             update storyboard set deleted_at = now(), updated_at = now()
              where tenant_id = ? and project_id = ? and status = 'DRAFT' and deleted_at is null
             """, tenantId, projectId);
-        insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 1, "场景一", "远景", "雨夜中，林家老宅大门外亮起冷光，主角拖着行李箱出现。", "主角", "主角停在门前，抬头看向门匾。", "三年前你们把我赶出去，今天我回来。", "林家老宅门口", "行李箱", "压抑、回归", 5, "首帧：雨夜豪门老宅门口，主角拖行李箱，冷色电影感", "竖屏短剧镜头，雨水落下，镜头缓慢推进", "DRAFT");
-        insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 2, "场景二", "中景", "宴会厅内笑声戛然而止，宾客同时回头。", "主角、旧日熟人", "旧日熟人后退半步，表情震惊。", "这不可能，她怎么会回来？", "宴会厅", "香槟杯", "震惊、反转", 6, "首帧：豪门宴会厅众人回头，主角站在入口", "竖屏短剧镜头，人群视线聚焦，轻微推拉", "DRAFT");
-        insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 3, "场景二", "特写", "旧股权协议末页的签名被主角按在灯光下。", "主角", "主角将协议推到桌面中央。", "属于我的，我一分都不会让。", "宴会厅", "旧股权协议", "强冲突、悬念", 4, "首帧：旧股权协议签名特写，手指压住纸张", "竖屏短剧镜头，特写切入，灯光扫过签名", "DRAFT");
-        recordAiCall(context, config, "storyboard_breakdown", script.getTitle(), "拆解分镜成功");
+        upsertStoryboardsFromJson(tenantId, projectId, context.userId(), script.getId(), response.path("storyboards"));
         return workspace(tenantId, projectId);
     }
 
@@ -383,39 +399,27 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "PROMPT:AI_GENERATE", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         String targetType = normalizePromptTarget(request.targetType());
+        JsonNode response = aiTextGenerationService.generateJson(new AiTextGenerationRequest(
+            tenantId,
+            context.userId(),
+            "prompt_generate",
+            targetType,
+            promptGenerateSystemPrompt(),
+            promptGenerateUserPrompt(tenantId, projectId, targetType, request)
+        ));
         if ("ALL".equals(targetType) || "CHARACTER".equals(targetType)) {
-            jdbcTemplate.update("""
-                update character_asset
-                   set prompt = concat('角色定妆提示词：', name, '，', coalesce(identity, ''), '，', coalesce(appearance, ''), '，竖屏短剧写实风格'), updated_at = now()
-                 where tenant_id = ? and project_id = ? and deleted_at is null
-                """, tenantId, projectId);
+            updateCharacterPromptsFromJson(tenantId, projectId, response.path("characters"));
         }
         if ("ALL".equals(targetType) || "SCENE".equals(targetType)) {
-            jdbcTemplate.update("""
-                update scene_asset
-                   set prompt = concat('场景图提示词：', name, '，', coalesce(description, ''), '，', coalesce(visual_style, ''), '，电影感光影'), updated_at = now()
-                 where tenant_id = ? and project_id = ? and deleted_at is null
-                """, tenantId, projectId);
+            updateScenePromptsFromJson(tenantId, projectId, response.path("scenes"));
         }
         if ("ALL".equals(targetType) || "PROP".equals(targetType)) {
-            jdbcTemplate.update("""
-                update prop_asset
-                   set prompt = concat('道具图提示词：', name, '，', coalesce(appearance, ''), '，关键线索特写'), updated_at = now()
-                 where tenant_id = ? and project_id = ? and deleted_at is null
-                """, tenantId, projectId);
+            updatePropPromptsFromJson(tenantId, projectId, response.path("props"));
         }
         if ("ALL".equals(targetType) || "STORYBOARD".equals(targetType)) {
-            jdbcTemplate.update("""
-                update storyboard
-                   set image_prompt = concat('首帧图片提示词：', visual_description, '，竖屏短剧，电影感'),
-                       video_prompt = concat('竖屏短剧视频提示词：', coalesce(actions, visual_description), '，镜头自然运动，情绪连续'),
-                       updated_at = now()
-                 where tenant_id = ? and project_id = ? and deleted_at is null
-                """, tenantId, projectId);
+            updateStoryboardPromptsFromJson(tenantId, projectId, response.path("storyboards"));
         }
-        recordAiCall(context, config, "prompt_generate", targetType, "生成提示词成功");
         return workspace(tenantId, projectId);
     }
 
@@ -562,11 +566,295 @@ public class ScriptWorkflowService {
         if (!props(tenantId, projectId).isEmpty()) {
             return;
         }
+        insertProp(tenantId, projectId, userId, "旧股权协议", "DOCUMENT", "带旧签名的纸质协议，边角泛黄", "揭开主角回归和身份反转的关键证据", "主角", "短剧关键道具，旧股权协议，纸张特写，签名清晰");
+    }
+
+    private void insertProp(Long tenantId, Long projectId, Long userId, String name, String propType, String appearance, String plotFunction, String relatedCharacter, String prompt) {
         jdbcTemplate.update("""
             insert into prop_asset
               (tenant_id, project_id, name, prop_type, appearance, plot_function, related_character, prompt, status, created_by, created_at, updated_at)
-            values (?, ?, '旧股权协议', 'DOCUMENT', '带旧签名的纸质协议，边角泛黄', '揭开主角回归和身份反转的关键证据', '主角', '短剧关键道具，旧股权协议，纸张特写，签名清晰', 'DRAFT', ?, now(), now())
-            """, tenantId, projectId, userId);
+            values (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, now(), now())
+            """, tenantId, projectId, name, propType, appearance, plotFunction, relatedCharacter, prompt, userId);
+    }
+
+    private void upsertCharactersFromJson(Long tenantId, Long projectId, Long userId, JsonNode nodes) {
+        if (!characters(tenantId, projectId).isEmpty()) {
+            return;
+        }
+        JsonNode array = requireArray(nodes, "模型返回缺少角色数据。");
+        for (JsonNode item : array) {
+            insertCharacter(
+                tenantId,
+                projectId,
+                userId,
+                requiredText(item, "name", "角色名称不能为空。"),
+                defaultValue(text(item, "roleType"), "SUPPORTING"),
+                text(item, "gender"),
+                text(item, "ageRange"),
+                text(item, "identity"),
+                joinTags(textList(item, "personality")),
+                text(item, "appearance"),
+                text(item, "prompt")
+            );
+        }
+    }
+
+    private void upsertScenesFromJson(Long tenantId, Long projectId, Long userId, JsonNode nodes) {
+        if (!scenes(tenantId, projectId).isEmpty()) {
+            return;
+        }
+        JsonNode array = requireArray(nodes, "模型返回缺少场景数据。");
+        for (JsonNode item : array) {
+            insertScene(
+                tenantId,
+                projectId,
+                userId,
+                requiredText(item, "name", "场景名称不能为空。"),
+                defaultValue(text(item, "sceneType"), "INTERIOR"),
+                text(item, "atmosphere"),
+                text(item, "description"),
+                text(item, "visualStyle"),
+                text(item, "prompt")
+            );
+        }
+    }
+
+    private void upsertPropsFromJson(Long tenantId, Long projectId, Long userId, JsonNode nodes) {
+        if (!props(tenantId, projectId).isEmpty()) {
+            return;
+        }
+        JsonNode array = requireArray(nodes, "模型返回缺少道具数据。");
+        for (JsonNode item : array) {
+            insertProp(
+                tenantId,
+                projectId,
+                userId,
+                requiredText(item, "name", "道具名称不能为空。"),
+                defaultValue(text(item, "propType"), "KEY_PROP"),
+                text(item, "appearance"),
+                text(item, "plotFunction"),
+                text(item, "relatedCharacter"),
+                text(item, "prompt")
+            );
+        }
+    }
+
+    private void upsertStoryboardsFromJson(Long tenantId, Long projectId, Long userId, Long scriptId, JsonNode nodes) {
+        JsonNode array = requireArray(nodes, "模型返回缺少分镜数据。");
+        for (JsonNode item : array) {
+            insertStoryboard(
+                tenantId,
+                projectId,
+                scriptId,
+                userId,
+                intValue(item, "episodeNo", 1),
+                intValue(item, "shotNo", null),
+                text(item, "sceneNo"),
+                defaultValue(text(item, "shotType"), "中景"),
+                requiredText(item, "visualDescription", "分镜视觉描述不能为空。"),
+                text(item, "characters"),
+                text(item, "actions"),
+                text(item, "dialogue"),
+                text(item, "scene"),
+                text(item, "props"),
+                text(item, "mood"),
+                intValue(item, "durationSeconds", 5),
+                text(item, "imagePrompt"),
+                text(item, "videoPrompt"),
+                "DRAFT"
+            );
+        }
+    }
+
+    private void updateCharacterPromptsFromJson(Long tenantId, Long projectId, JsonNode nodes) {
+        if (!nodes.isArray()) {
+            return;
+        }
+        for (JsonNode item : nodes) {
+            updatePromptById("character_asset", "prompt", tenantId, projectId, longValue(item, "id"), text(item, "prompt"));
+        }
+    }
+
+    private void updateScenePromptsFromJson(Long tenantId, Long projectId, JsonNode nodes) {
+        if (!nodes.isArray()) {
+            return;
+        }
+        for (JsonNode item : nodes) {
+            updatePromptById("scene_asset", "prompt", tenantId, projectId, longValue(item, "id"), text(item, "prompt"));
+        }
+    }
+
+    private void updatePropPromptsFromJson(Long tenantId, Long projectId, JsonNode nodes) {
+        if (!nodes.isArray()) {
+            return;
+        }
+        for (JsonNode item : nodes) {
+            updatePromptById("prop_asset", "prompt", tenantId, projectId, longValue(item, "id"), text(item, "prompt"));
+        }
+    }
+
+    private void updateStoryboardPromptsFromJson(Long tenantId, Long projectId, JsonNode nodes) {
+        if (!nodes.isArray()) {
+            return;
+        }
+        for (JsonNode item : nodes) {
+            Long id = longValue(item, "id");
+            if (id == null) {
+                continue;
+            }
+            jdbcTemplate.update("""
+                update storyboard
+                   set image_prompt = coalesce(?, image_prompt),
+                       video_prompt = coalesce(?, video_prompt),
+                       updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+                """, text(item, "imagePrompt"), text(item, "videoPrompt"), tenantId, projectId, id);
+        }
+    }
+
+    private void updatePromptById(String table, String column, Long tenantId, Long projectId, Long id, String prompt) {
+        if (id == null || prompt == null || prompt.isBlank()) {
+            return;
+        }
+        jdbcTemplate.update("""
+            update %s
+               set %s = ?, updated_at = now()
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+            """.formatted(table, column), prompt, tenantId, projectId, id);
+    }
+
+    private String rewriteSystemPrompt() {
+        return "你是短剧编剧，请根据原剧本和改写要求输出改写后的完整剧本正文。";
+    }
+
+    private String rewriteUserPrompt(ScriptEntity script, RewriteScriptRequest request) {
+        String requirement = blankToNull(request.requirement());
+        String outputLength = blankToNull(request.outputLength());
+        return """
+            请改写以下短剧剧本。
+
+            改写类型：%s
+            改写要求：%s
+            输出长度：%s
+
+            原剧本：
+            %s
+            """.formatted(
+            request.rewriteType().trim(),
+            requirement == null ? "保持原剧情核心" : requirement,
+            outputLength == null ? "默认" : outputLength,
+            script.getContent()
+        );
+    }
+
+    private String elementExtractSystemPrompt(String elementType) {
+        return switch (elementType) {
+            case "CHARACTER" -> "你是短剧角色抽取助手，请只输出 JSON。";
+            case "SCENE" -> "你是短剧场景抽取助手，请只输出 JSON。";
+            case "PROP" -> "你是短剧道具抽取助手，请只输出 JSON。";
+            default -> "你是短剧元素抽取助手，请只输出 JSON。";
+        };
+    }
+
+    private String elementExtractUserPrompt(ScriptEntity script, String elementType) {
+        return """
+            请根据以下剧本内容抽取%s数据，并以 JSON 返回，字段包括 characters、scenes、props。
+
+            剧本标题：%s
+            剧本内容：
+            %s
+            """.formatted(elementType, script.getTitle(), script.getContent());
+    }
+
+    private String storyboardBreakdownSystemPrompt() {
+        return "你是短剧分镜拆解助手，请只输出 JSON。";
+    }
+
+    private String storyboardBreakdownUserPrompt(ScriptEntity script, StoryboardBreakdownRequest request) {
+        String selectedText = blankToNull(request.selectedText());
+        return """
+            请根据以下剧本内容拆解分镜，并以 JSON 返回，字段为 storyboards 数组。
+
+            剧本标题：%s
+            拆解范围：%s
+            指定集数：%s
+            选中文本：%s
+
+            剧本内容：
+            %s
+            """.formatted(
+            script.getTitle(),
+            blankToNull(request.scope()) == null ? "FULL" : request.scope().trim(),
+            request.episodeNo() == null ? "ALL" : request.episodeNo().toString(),
+            selectedText == null ? "无" : selectedText,
+            script.getContent()
+        );
+    }
+
+    private String promptGenerateSystemPrompt() {
+        return "你是短剧提示词生成助手，请只输出 JSON。";
+    }
+
+    private String promptGenerateUserPrompt(Long tenantId, Long projectId, String targetType, GeneratePromptRequest request) {
+        return """
+            请根据当前项目素材为下列对象生成提示词，并以 JSON 返回。返回字段可包含 characters、scenes、props、storyboards，每个数组对象用 id 关联已有记录。
+
+            目标类型：%s
+            目标 ID：%s
+            租户 ID：%d
+            项目 ID：%d
+            """.formatted(targetType, request.targetId() == null ? "ALL" : request.targetId().toString(), tenantId, projectId);
+    }
+
+    private JsonNode requireArray(JsonNode nodes, String message) {
+        if (nodes == null || !nodes.isArray()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, message);
+        }
+        return nodes;
+    }
+
+    private String text(JsonNode node, String field) {
+        if (node == null) {
+            return null;
+        }
+        String value = node.path(field).asText(null);
+        return blankToNull(value);
+    }
+
+    private List<String> textList(JsonNode node, String field) {
+        if (node == null || !node.path(field).isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<String> values = new java.util.ArrayList<>();
+        for (JsonNode item : node.path(field)) {
+            String value = blankToNull(item.asText(null));
+            if (value != null) {
+                values.add(value);
+            }
+        }
+        return values;
+    }
+
+    private String requiredText(JsonNode node, String field, String message) {
+        String value = text(node, field);
+        if (value == null || value.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, message);
+        }
+        return value;
+    }
+
+    private Long longValue(JsonNode node, String field) {
+        if (node == null || !node.path(field).canConvertToLong()) {
+            return null;
+        }
+        return node.path(field).asLong();
+    }
+
+    private Integer intValue(JsonNode node, String field, Integer fallback) {
+        if (node == null || !node.path(field).canConvertToInt()) {
+            return fallback;
+        }
+        return node.path(field).asInt();
     }
 
     private ScriptEntity requireScript(Long tenantId, Long projectId) {
@@ -758,37 +1046,41 @@ public class ScriptWorkflowService {
             : request.title().trim();
     }
 
-    private String buildScriptContent(String title, GenerateScriptRequest request) {
+    private String scriptGenerateSystemPrompt() {
+        return "你是短剧平台的专业编剧，请输出可直接进入项目剧本草稿的中文短剧正文。";
+    }
+
+    private String scriptGenerateUserPrompt(String title, GenerateScriptRequest request) {
         int episodeCount = request.episodeCount() == null ? 12 : request.episodeCount();
         int duration = request.duration() == null ? 90 : request.duration();
         String style = request.styleRequirement() == null || request.styleRequirement().isBlank()
             ? "强冲突、快节奏"
             : request.styleRequirement().trim();
         return """
-            剧名：《%s》
+            请生成短剧剧本草稿。
+
+            剧名：%s
             题材：%s
-            规格：%d集，每集约%d秒
-            风格：%s
+            集数：%d
+            单集时长：%d秒
+            主角设定：%s
+            风格要求：%s
+            故事创意：%s
+            参考内容：%s
 
-            故事简介：
-            %s。故事围绕主角回归、身份反转和情感拉扯展开，以快节奏冲突推动每集结尾钩子。
-
-            核心看点：
-            1. 三秒进入冲突，快速建立主角困境。
-            2. 每集结尾保留反转钩子。
-            3. 人物关系持续升级，适合短剧连续追看。
-
-            第1集
-            场景一：雨夜，林家老宅门口。
-            主角拖着行李箱站在铁门外，雨水顺着发梢落下。
-            主角：三年前你们把我赶出去，今天我回来，只拿回属于我的东西。
-
-            场景二：宴会厅。
-            宾客的笑声戛然而止，旧日熟人在人群后方认出主角。
-            旧日熟人：这不可能，她怎么会回来？
-
-            本集钩子：
-            主角拿出旧股权协议，协议末页却出现关键人物的签名。
-            """.formatted(title, request.genre(), episodeCount, duration, style, request.storyIdea());
+            输出要求：
+            1. 直接输出剧本正文，不要解释生成过程。
+            2. 包含标题、故事简介、核心看点、至少第1集正文和结尾钩子。
+            3. 对白适合竖屏短剧节奏。
+            """.formatted(
+                title,
+                request.genre(),
+                episodeCount,
+                duration,
+                blankToNull(request.mainCharacter()) == null ? "未指定" : request.mainCharacter().trim(),
+                style,
+                request.storyIdea(),
+                blankToNull(request.referenceContent()) == null ? "无" : request.referenceContent().trim()
+            );
     }
 }
