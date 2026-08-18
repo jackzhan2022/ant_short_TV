@@ -26,6 +26,12 @@ public class StoryboardEntity {
     public Long currentVideoResultId;
     public Long currentVideoMaterialId;
     public String currentVideoUrl;
+    public Long currentVoiceResultId;
+    public String currentAudioUrl;
+    public Long currentSubtitleId;
+    public String currentSubtitleUrl;
+    public Long currentShotResultId;
+    public String currentShotVideoUrl;
     public String status;
     public Long createdBy;
     public LocalDateTime createdAt;

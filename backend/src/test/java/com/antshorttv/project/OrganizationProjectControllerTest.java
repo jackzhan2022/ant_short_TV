@@ -1,7 +1,9 @@
 package com.antshorttv.project;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -14,9 +16,9 @@ import com.antshorttv.member.MemberStatus;
 import com.antshorttv.member.MemberType;
 import com.antshorttv.member.TenantMemberEntity;
 import com.antshorttv.member.TenantMemberMapper;
+import com.jayway.jsonpath.JsonPath;
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
-import com.jayway.jsonpath.JsonPath;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -40,6 +43,9 @@ class OrganizationProjectControllerTest {
 
     @Autowired
     private TenantMemberMapper tenantMemberMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void managesOrganizationTreeAndEnforcesDeleteRulesAndLevelLimit() throws Exception {
@@ -104,6 +110,37 @@ class OrganizationProjectControllerTest {
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.name", is("重生后我成了首富")));
+
+        insertDefaultTextService(tenantId, userIdByMobile("13800011002"));
+        MvcResult roleResult = mockMvc.perform(get("/api/projects/%d/roles".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andReturn();
+        List<Integer> projectOwnerRoleIds = JsonPath.read(
+            roleResult.getResponse().getContentAsString(),
+            "$.data[?(@.code=='PROJECT_OWNER')].id"
+        );
+        Long projectOwnerRoleId = projectOwnerRoleIds.get(0).longValue();
+        mockMvc.perform(get("/api/projects/%d/roles/%d/permissions".formatted(projectId, projectOwnerRoleId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[*].code", hasItems(
+                "SCRIPT:VIEW",
+                "SCRIPT:AI_GENERATE",
+                "SCRIPT:AI_REWRITE",
+                "AI_SERVICE:USE"
+            )));
+        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"storyIdea":"落魄千金雨夜回归豪门","genre":"逆袭","episodeCount":3,"duration":60}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.script.content", containsString("落魄千金雨夜回归豪门")));
 
         mockMvc.perform(delete("/api/projects/%d/members/%d".formatted(projectId, memberUserId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
@@ -318,6 +355,14 @@ class OrganizationProjectControllerTest {
         member.setCreatedAt(LocalDateTime.now());
         member.setUpdatedAt(LocalDateTime.now());
         tenantMemberMapper.insert(member);
+    }
+
+    private void insertDefaultTextService(Long tenantId, Long userId) {
+        jdbcTemplate.update("""
+            insert into ai_service_config
+              (tenant_id, provider, service_type, name, base_url, api_key_cipher, model, endpoint, priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
+            values (?, 'OpenAI', 'TEXT', '默认文本服务', 'https://example.com/v1', 'cipher', 'gpt-4.1-mini', '/chat/completions', 100, true, true, 'SUCCESS', ?, now(), now())
+            """, tenantId, userId);
     }
 
     private Long userIdByMobile(String mobile) {

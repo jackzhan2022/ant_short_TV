@@ -82,7 +82,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse generate(Long tenantId, Long projectId, GenerateScriptRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProjectAccess(context, projectId);
-        requirePermission(context, "SCRIPT:AI_GENERATE");
+        requirePermission(context, "SCRIPT:AI_GENERATE", projectId);
         AiServiceConfigEntity config = resolveTextService(tenantId);
         LocalDateTime now = LocalDateTime.now();
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
@@ -131,7 +131,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse rewrite(Long tenantId, Long projectId, RewriteScriptRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "SCRIPT:AI_REWRITE");
+        requirePermission(context, "SCRIPT:AI_REWRITE", projectId);
         AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = requireScript(tenantId, projectId);
         String type = request.rewriteType().trim();
@@ -164,7 +164,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse saveCurrent(Long tenantId, Long projectId, SaveScriptRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProjectAccess(context, projectId);
-        requirePermission(context, "SCRIPT:EDIT");
+        requirePermission(context, "SCRIPT:EDIT", projectId);
         LocalDateTime now = LocalDateTime.now();
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         if (script == null) {
@@ -194,7 +194,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse applyVersion(Long tenantId, Long projectId, Long versionId, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "SCRIPT:EDIT");
+        requirePermission(context, "SCRIPT:EDIT", projectId);
         ScriptVersionEntity version = scriptVersionMapper.selectById(versionId);
         if (version == null || !tenantId.equals(version.getTenantId()) || !projectId.equals(version.getProjectId())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "剧本版本不存在。");
@@ -218,7 +218,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse extractElements(Long tenantId, Long projectId, ExtractScriptElementsRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "ELEMENT:AI_EXTRACT");
+        requirePermission(context, "ELEMENT:AI_EXTRACT", projectId);
         AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         if (script == null || script.getContent() == null || script.getContent().isBlank()) {
@@ -255,7 +255,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse updateElement(Long tenantId, Long projectId, String elementType, Long elementId, UpdateScriptElementRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "ELEMENT:EDIT");
+        requirePermission(context, "ELEMENT:EDIT", projectId);
         switch (normalizeElementType(elementType)) {
             case "CHARACTER" -> jdbcTemplate.update("""
                 update character_asset
@@ -281,7 +281,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse confirmElement(Long tenantId, Long projectId, String elementType, Long elementId, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "ELEMENT:EDIT");
+        requirePermission(context, "ELEMENT:EDIT", projectId);
         jdbcTemplate.update("""
             update %s set status = 'CONFIRMED', updated_at = now()
              where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
@@ -293,7 +293,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse deleteElement(Long tenantId, Long projectId, String elementType, Long elementId, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "ELEMENT:EDIT");
+        requirePermission(context, "ELEMENT:EDIT", projectId);
         jdbcTemplate.update("""
             update %s set deleted_at = now(), updated_at = now()
              where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
@@ -305,7 +305,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse breakdownStoryboards(Long tenantId, Long projectId, StoryboardBreakdownRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "STORYBOARD:AI_BREAKDOWN");
+        requirePermission(context, "STORYBOARD:AI_BREAKDOWN", projectId);
         AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = requireScript(tenantId, projectId);
         jdbcTemplate.update("""
@@ -323,7 +323,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse createStoryboard(Long tenantId, Long projectId, SaveStoryboardRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "STORYBOARD:EDIT");
+        requirePermission(context, "STORYBOARD:EDIT", projectId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         insertStoryboard(tenantId, projectId, script == null ? null : script.getId(), context.userId(), request.episodeNo(), request.shotNo(), request.sceneNo(), request.shotType(), request.visualDescription(), request.characters(), request.actions(), request.dialogue(), request.scene(), request.props(), request.mood(), request.durationSeconds(), request.imagePrompt(), request.videoPrompt(), normalizeStatus(request.status()));
         return workspace(tenantId, projectId);
@@ -333,7 +333,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse updateStoryboard(Long tenantId, Long projectId, Long storyboardId, SaveStoryboardRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "STORYBOARD:EDIT");
+        requirePermission(context, "STORYBOARD:EDIT", projectId);
         jdbcTemplate.update("""
             update storyboard
                set episode_no = ?, shot_no = ?, scene_no = ?, shot_type = ?, visual_description = ?, characters = ?, actions = ?, dialogue = ?, scene = ?, props = ?, mood = ?, duration_seconds = ?, image_prompt = ?, video_prompt = ?, status = ?, updated_at = now()
@@ -346,7 +346,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse moveStoryboard(Long tenantId, Long projectId, Long storyboardId, MoveStoryboardRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "STORYBOARD:EDIT");
+        requirePermission(context, "STORYBOARD:EDIT", projectId);
         jdbcTemplate.update("""
             update storyboard set shot_no = ?, updated_at = now()
              where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
@@ -358,7 +358,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse confirmStoryboards(Long tenantId, Long projectId, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "STORYBOARD:EDIT");
+        requirePermission(context, "STORYBOARD:EDIT", projectId);
         jdbcTemplate.update("""
             update storyboard set status = 'CONFIRMED', updated_at = now()
              where tenant_id = ? and project_id = ? and deleted_at is null
@@ -370,7 +370,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse deleteStoryboard(Long tenantId, Long projectId, Long storyboardId, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "STORYBOARD:EDIT");
+        requirePermission(context, "STORYBOARD:EDIT", projectId);
         jdbcTemplate.update("""
             update storyboard set deleted_at = now(), updated_at = now()
              where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
@@ -382,7 +382,7 @@ public class ScriptWorkflowService {
     public ScriptWorkspaceResponse generatePrompts(Long tenantId, Long projectId, GeneratePromptRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        requirePermission(context, "PROMPT:AI_GENERATE");
+        requirePermission(context, "PROMPT:AI_GENERATE", projectId);
         AiServiceConfigEntity config = resolveTextService(tenantId);
         String targetType = normalizePromptTarget(request.targetType());
         if ("ALL".equals(targetType) || "CHARACTER".equals(targetType)) {
@@ -434,8 +434,8 @@ public class ScriptWorkflowService {
         return project;
     }
 
-    private void requirePermission(TenantContext context, String permissionCode) {
-        if (!rbacPermissionService.hasPermission(context, permissionCode)) {
+    private void requirePermission(TenantContext context, String permissionCode, Long projectId) {
+        if (!rbacPermissionService.hasPermission(context, permissionCode, projectId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权执行该操作。");
         }
     }

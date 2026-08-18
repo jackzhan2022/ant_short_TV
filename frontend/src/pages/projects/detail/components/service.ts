@@ -75,6 +75,11 @@ export type StoryboardShot = {
   firstFrameUrl?: string | null;
   currentVideoResultId?: number | null;
   currentVideoUrl?: string | null;
+  currentAudioUrl?: string | null;
+  currentSubtitleId?: number | null;
+  currentSubtitleUrl?: string | null;
+  currentShotResultId?: number | null;
+  currentShotVideoUrl?: string | null;
 };
 
 export type ScriptWorkspace = {
@@ -614,5 +619,353 @@ export const deleteAiVideoResult = async (
 ) =>
   request<ApiResponse<null>>(
     `/api/projects/${projectId}/ai-video-results/${resultId}`,
+    { method: 'DELETE' },
+  );
+
+export type ShotTaskStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'SUCCEEDED'
+  | 'FAILED'
+  | 'CANCELED';
+
+export type AiVoiceResult = {
+  id: number;
+  taskId: number;
+  storyboardId: number;
+  audioUrl: string;
+  storagePath: string;
+  durationSeconds?: number | null;
+  fileSize?: number | null;
+  format?: string | null;
+  materialId?: number | null;
+  selected: boolean;
+  status: string;
+  createdAt?: string;
+};
+
+export type AiVoiceTask = {
+  id: number;
+  projectId: number;
+  storyboardId: number;
+  serviceConfigId?: number | null;
+  providerCode?: string | null;
+  model?: string | null;
+  voiceType: string;
+  speakerName?: string | null;
+  voiceId: string;
+  textContent: string;
+  speed?: number | null;
+  pitch?: number | null;
+  volume?: number | null;
+  status: ShotTaskStatus;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt?: string;
+  results: AiVoiceResult[];
+};
+
+export type CreateAiVoiceTaskValues = {
+  storyboardId: number;
+  serviceConfigId?: number;
+  voiceType: string;
+  speakerName?: string;
+  voiceId: string;
+  textContent: string;
+  speed?: number;
+  pitch?: number;
+  volume?: number;
+};
+
+export type SubtitleSegment = {
+  text: string;
+  startTime: number;
+  endTime: number;
+};
+
+export type StoryboardSubtitle = {
+  id: number;
+  storyboardId: number;
+  voiceResultId?: number | null;
+  subtitleType: string;
+  textContent: string;
+  srtUrl?: string | null;
+  styleConfig?: string | null;
+  selected: boolean;
+  status: string;
+  createdAt?: string;
+  segments: SubtitleSegment[];
+};
+
+export type CreateStoryboardSubtitleValues = {
+  storyboardId: number;
+  voiceResultId?: number;
+  subtitleType: string;
+  textContent: string;
+  startTime?: number;
+  endTime?: number;
+  styleConfig?: Record<string, unknown>;
+};
+
+export type UpdateStoryboardSubtitleValues = {
+  textContent: string;
+  startTime?: number;
+  endTime?: number;
+  styleConfig?: Record<string, unknown>;
+};
+
+export type ShotComposeResult = {
+  id: number;
+  taskId: number;
+  storyboardId: number;
+  videoUrl: string;
+  storagePath: string;
+  coverUrl?: string | null;
+  durationSeconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  fileSize?: number | null;
+  format?: string | null;
+  materialId?: number | null;
+  selected: boolean;
+  status: string;
+  createdAt?: string;
+};
+
+export type ShotComposeTask = {
+  id: number;
+  projectId: number;
+  storyboardId: number;
+  voiceResultId?: number | null;
+  subtitleId?: number | null;
+  composeConfig?: string | null;
+  status: ShotTaskStatus;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt?: string;
+  results: ShotComposeResult[];
+};
+
+export type CreateShotComposeTaskValues = {
+  storyboardId: number;
+  voiceResultId?: number;
+  subtitleId?: number;
+  includeSubtitle?: boolean;
+  audioVolume?: number;
+  outputFormat?: string;
+};
+
+export const queryAiVoiceTasks = async (
+  projectId: number,
+  params?: { status?: string; storyboardId?: number },
+) =>
+  request<ApiResponse<AiVoiceTask[]>>(
+    `/api/projects/${projectId}/ai-voice-tasks`,
+    { params },
+  );
+
+export const createAiVoiceTask = async (
+  projectId: number,
+  values: CreateAiVoiceTaskValues,
+) =>
+  request<ApiResponse<AiVoiceTask>>(`/api/projects/${projectId}/ai-voice-tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: values,
+  });
+
+export const bindAiVoiceResultToStoryboard = async (
+  projectId: number,
+  resultId: number,
+) =>
+  request<ApiResponse<AiVoiceResult>>(
+    `/api/projects/${projectId}/ai-voice-results/${resultId}/bind-storyboard`,
+    { method: 'POST' },
+  );
+
+export const saveAiVoiceResultAsMaterial = async (
+  projectId: number,
+  resultId: number,
+) =>
+  request<ApiResponse<AiVoiceResult>>(
+    `/api/projects/${projectId}/ai-voice-results/${resultId}/save-material`,
+    { method: 'POST' },
+  );
+
+export const deleteAiVoiceResult = async (
+  projectId: number,
+  resultId: number,
+) =>
+  request<ApiResponse<void>>(
+    `/api/projects/${projectId}/ai-voice-results/${resultId}`,
+    { method: 'DELETE' },
+  );
+
+export const createStoryboardSubtitle = async (
+  projectId: number,
+  values: CreateStoryboardSubtitleValues,
+) =>
+  request<ApiResponse<StoryboardSubtitle>>(
+    `/api/projects/${projectId}/storyboard-subtitles`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const queryStoryboardSubtitles = async (
+  projectId: number,
+  params?: { storyboardId?: number; status?: string },
+) =>
+  request<ApiResponse<StoryboardSubtitle[]>>(
+    `/api/projects/${projectId}/storyboard-subtitles`,
+    { params },
+  );
+
+export const updateStoryboardSubtitle = async (
+  projectId: number,
+  subtitleId: number,
+  values: UpdateStoryboardSubtitleValues,
+) =>
+  request<ApiResponse<StoryboardSubtitle>>(
+    `/api/projects/${projectId}/storyboard-subtitles/${subtitleId}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const deleteStoryboardSubtitle = async (
+  projectId: number,
+  subtitleId: number,
+) =>
+  request<ApiResponse<void>>(
+    `/api/projects/${projectId}/storyboard-subtitles/${subtitleId}`,
+    { method: 'DELETE' },
+  );
+
+export const selectStoryboardSubtitle = async (
+  projectId: number,
+  subtitleId: number,
+) =>
+  request<ApiResponse<StoryboardSubtitle>>(
+    `/api/projects/${projectId}/storyboard-subtitles/${subtitleId}/selected`,
+    { method: 'PUT' },
+  );
+
+export const queryShotComposeTasks = async (
+  projectId: number,
+  params?: { status?: string; storyboardId?: number },
+) =>
+  request<ApiResponse<ShotComposeTask[]>>(
+    `/api/projects/${projectId}/shot-compose-tasks`,
+    { params },
+  );
+
+export const createShotComposeTask = async (
+  projectId: number,
+  values: CreateShotComposeTaskValues,
+) =>
+  request<ApiResponse<ShotComposeTask>>(
+    `/api/projects/${projectId}/shot-compose-tasks`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const cancelAiVoiceTask = async (projectId: number, taskId: number) =>
+  request<ApiResponse<AiVoiceTask>>(
+    `/api/projects/${projectId}/ai-voice-tasks/${taskId}/cancel`,
+    { method: 'POST' },
+  );
+
+export const regenerateAiVoiceTask = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<AiVoiceTask>>(
+    `/api/projects/${projectId}/ai-voice-tasks/${taskId}/regenerate`,
+    { method: 'POST' },
+  );
+
+export const deleteAiVoiceTask = async (projectId: number, taskId: number) =>
+  request<ApiResponse<void>>(
+    `/api/projects/${projectId}/ai-voice-tasks/${taskId}`,
+    { method: 'DELETE' },
+  );
+
+export const queryAiVoiceTaskResults = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<AiVoiceResult[]>>(
+    `/api/projects/${projectId}/ai-voice-tasks/${taskId}/results`,
+  );
+
+export const cancelShotComposeTask = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<ShotComposeTask>>(
+    `/api/projects/${projectId}/shot-compose-tasks/${taskId}/cancel`,
+    { method: 'POST' },
+  );
+
+export const regenerateShotComposeTask = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<ShotComposeTask>>(
+    `/api/projects/${projectId}/shot-compose-tasks/${taskId}/regenerate`,
+    { method: 'POST' },
+  );
+
+export const deleteShotComposeTask = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<void>>(
+    `/api/projects/${projectId}/shot-compose-tasks/${taskId}`,
+    { method: 'DELETE' },
+  );
+
+export const queryShotComposeTaskResults = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<ShotComposeResult[]>>(
+    `/api/projects/${projectId}/shot-compose-tasks/${taskId}/results`,
+  );
+
+export const saveShotComposeResultAsMaterial = async (
+  projectId: number,
+  resultId: number,
+) =>
+  request<ApiResponse<ShotComposeResult>>(
+    `/api/projects/${projectId}/shot-compose-results/${resultId}/save-material`,
+    { method: 'POST' },
+  );
+
+export const bindShotComposeResultToStoryboard = async (
+  projectId: number,
+  resultId: number,
+) =>
+  request<ApiResponse<ShotComposeResult>>(
+    `/api/projects/${projectId}/shot-compose-results/${resultId}/bind-storyboard`,
+    { method: 'POST' },
+  );
+
+export const deleteShotComposeResult = async (
+  projectId: number,
+  resultId: number,
+) =>
+  request<ApiResponse<void>>(
+    `/api/projects/${projectId}/shot-compose-results/${resultId}`,
     { method: 'DELETE' },
   );

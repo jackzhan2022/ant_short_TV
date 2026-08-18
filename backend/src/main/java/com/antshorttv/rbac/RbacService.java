@@ -533,6 +533,9 @@ public class RbacService {
             case "ROLE" -> "角色管理";
             case "PROJECT" -> "项目管理";
             case "SCRIPT" -> "剧本管理";
+            case "AI_VOICE_TASK", "AI_VOICE_RESULT" -> "语音合成";
+            case "SUBTITLE" -> "字幕管理";
+            case "SHOT_COMPOSE" -> "单镜头合成";
             default -> resource;
         };
     }
