@@ -389,6 +389,13 @@ export default [
         component: './projects/list',
       },
       {
+        path: '/projects/:id/production-workbench',
+        hideInMenu: true,
+        access: 'canViewProjects',
+        layout: false,
+        component: './projects/production-workbench',
+      },
+      {
         path: '/projects/:id',
         component: './projects/detail',
       },

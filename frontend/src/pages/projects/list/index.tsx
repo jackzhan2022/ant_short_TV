@@ -1,4 +1,9 @@
-import { EditOutlined, FolderOpenOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  EditOutlined,
+  FolderOpenOutlined,
+  PlusOutlined,
+  ProfileOutlined,
+} from '@ant-design/icons';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
   ModalForm,
@@ -238,6 +243,15 @@ const ProjectList = () => {
             onClick={() => history.push(`/projects/${record.id}`)}
           >
             进入
+          </Button>
+          <Button
+            type="link"
+            icon={<ProfileOutlined />}
+            onClick={() =>
+              history.push(`/projects/${record.id}/production-workbench`)
+            }
+          >
+            进度
           </Button>
           <ProjectEditor
             project={record}
