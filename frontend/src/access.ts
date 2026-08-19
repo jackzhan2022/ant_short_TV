@@ -62,5 +62,23 @@ export default function access(
       currentUser && permissions.includes('AI_VIDEO_RESULT:BIND'),
     canDownloadAiVideoResults:
       currentUser && permissions.includes('AI_VIDEO_RESULT:DOWNLOAD'),
+    canViewEpisodeComposeTasks:
+      currentUser && permissions.includes('EPISODE_COMPOSE:VIEW'),
+    canCreateEpisodeComposeTasks:
+      currentUser && permissions.includes('EPISODE_COMPOSE:CREATE'),
+    canCancelEpisodeComposeTasks:
+      currentUser && permissions.includes('EPISODE_COMPOSE:CANCEL'),
+    canDeleteEpisodeComposeTasks:
+      currentUser && permissions.includes('EPISODE_COMPOSE:DELETE'),
+    canViewEpisodeVersions:
+      currentUser && permissions.includes('EPISODE_VERSION:VIEW'),
+    canSetCurrentEpisodeVersion:
+      currentUser && permissions.includes('EPISODE_VERSION:SET_CURRENT'),
+    canDownloadEpisodeVersions:
+      currentUser && permissions.includes('EPISODE_VERSION:DOWNLOAD'),
+    canDeleteEpisodeVersions:
+      currentUser && permissions.includes('EPISODE_VERSION:DELETE'),
+    canSaveEpisodeVersions:
+      currentUser && permissions.includes('EPISODE_VERSION:SAVE_MATERIAL'),
   };
 }

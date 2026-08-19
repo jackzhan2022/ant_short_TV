@@ -2,7 +2,6 @@ import { UploadOutlined } from '@ant-design/icons';
 import type { ProFormInstance } from '@ant-design/pro-components';
 import {
   ProForm,
-  ProFormDependency,
   ProFormFieldSet,
   ProFormSelect,
   ProFormText,
@@ -11,9 +10,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Button, Input, message, Upload } from 'antd';
 import React from 'react';
-import { getCityOptions, provinceOptions } from '@/utils/chinaDivision';
-import type { GeographicItemType } from '../data';
-import { queryCity, queryCurrent, queryProvince } from '../service';
+import { queryCurrent } from '../service';
 import useStyles from './index.style';
 
 const validatorPhone = (
@@ -30,24 +27,6 @@ const validatorPhone = (
   callback();
 };
 
-const toSelectValue = (item?: { label?: string; key?: string }) =>
-  item?.key
-    ? {
-        label: item.label,
-        value: item.key,
-      }
-    : undefined;
-
-const toSelectOptions = (items: GeographicItemType[]) =>
-  items
-    .map((item) => {
-      const label = item.name ?? item.label;
-      const value = item.id ?? item.key;
-
-      return label && value ? { label, value } : undefined;
-    })
-    .filter((item): item is { label: string; value: string } => Boolean(item));
-
 const handleFinish = async () => {
   message.success('更新基本信息成功');
 };
@@ -55,12 +34,6 @@ const handleFinish = async () => {
 const BaseView: React.FC = () => {
   const { styles } = useStyles();
   const formRef = React.useRef<ProFormInstance>(undefined);
-
-  const handleValuesChange = (changedValues: Record<string, unknown>) => {
-    if ('province' in changedValues) {
-      formRef.current?.setFieldValue('city', undefined);
-    }
-  };
 
   const { data: currentUser, isLoading: loading } = useQuery({
     queryKey: ['current-user'],
@@ -86,7 +59,6 @@ const BaseView: React.FC = () => {
               formRef={formRef}
               layout="vertical"
               onFinish={handleFinish}
-              onValuesChange={handleValuesChange}
               submitter={{
                 searchConfig: {
                   submitText: '更新基本信息',
@@ -95,8 +67,6 @@ const BaseView: React.FC = () => {
               }}
               initialValues={{
                 ...currentUser,
-                province: toSelectValue(currentUser?.geographic?.province),
-                city: toSelectValue(currentUser?.geographic?.city),
                 phone: currentUser?.phone?.split('-'),
               }}
               requiredMark={false}
@@ -152,64 +122,6 @@ const BaseView: React.FC = () => {
                 ]}
               />
 
-              <ProForm.Group size={8}>
-                <ProFormSelect
-                  label="所在省市"
-                  rules={[
-                    {
-                      required: true,
-                      message: '请输入您的所在省!',
-                    },
-                  ]}
-                  width="sm"
-                  fieldProps={{
-                    labelInValue: true,
-                  }}
-                  name="province"
-                  request={async () => {
-                    const options = toSelectOptions(await queryProvince());
-                    return options.length
-                      ? options
-                      : toSelectOptions(provinceOptions);
-                  }}
-                />
-                <ProFormDependency name={['province']}>
-                  {({ province }) => {
-                    return (
-                      <ProFormSelect
-                        label=" "
-                        params={{
-                          key: province?.value,
-                        }}
-                        name="city"
-                        width="sm"
-                        rules={[
-                          {
-                            required: true,
-                            message: '请输入您的所在城市!',
-                          },
-                        ]}
-                        fieldProps={{
-                          labelInValue: true,
-                        }}
-                        disabled={!province}
-                        request={async (params) => {
-                          if (!params.key) {
-                            return [];
-                          }
-                          const provinceKey = String(params.key);
-                          const options = toSelectOptions(
-                            await queryCity(provinceKey),
-                          );
-                          return options.length
-                            ? options
-                            : toSelectOptions(getCityOptions(provinceKey));
-                        }}
-                      />
-                    );
-                  }}
-                </ProFormDependency>
-              </ProForm.Group>
               <ProFormText
                 width="md"
                 name="address"

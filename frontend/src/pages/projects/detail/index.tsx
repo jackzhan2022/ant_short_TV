@@ -2,6 +2,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
+  ProfileOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
@@ -13,7 +14,7 @@ import {
   ProFormTextArea,
   ProTable,
 } from '@ant-design/pro-components';
-import { useParams } from '@umijs/max';
+import { history, useAccess, useParams } from '@umijs/max';
 import { App, Button, Descriptions, Empty, Form, Popconfirm, Space, Tabs, Tag, Tree } from 'antd';
 import type { TreeProps } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -51,6 +52,7 @@ import {
 import ScriptCreationWorkspace from './components/ScriptCreationWorkspace';
 import AiImageProductionWorkspace from './components/AiImageProductionWorkspace';
 import ShotProductionWorkspace from './components/ShotProductionWorkspace';
+import EpisodeProductionWorkspace from './components/EpisodeProductionWorkspace';
 
 const statusText: Record<Project['status'], string> = {
   NOT_STARTED: '未开始',
@@ -280,6 +282,7 @@ const ProjectDetail = () => {
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
   const tenantId = getCurrentTenantId();
+  const access = useAccess();
   const memberActionRef = useRef<ActionType | null>(null);
   const roleActionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
@@ -441,7 +444,18 @@ const ProjectDetail = () => {
   ];
 
   return (
-    <PageContainer title={project?.name || '项目详情'}>
+    <PageContainer
+      title={project?.name || '项目详情'}
+      extra={
+        <Button
+          type="primary"
+          icon={<ProfileOutlined />}
+          onClick={() => history.push(`/projects/${projectId}/production-workbench`)}
+        >
+          进入制作台
+        </Button>
+      }
+    >
       <Tabs
         items={[
           {
@@ -548,6 +562,15 @@ const ProjectDetail = () => {
             label: '语音字幕与单镜头',
             children: <ShotProductionWorkspace projectId={projectId} />,
           },
+          ...(access.canViewEpisodeComposeTasks || access.canViewEpisodeVersions
+            ? [
+                {
+                  key: 'episode-production',
+                  label: '单集合成与成片',
+                  children: <EpisodeProductionWorkspace projectId={projectId} />,
+                },
+              ]
+            : []),
           {
             key: 'logs',
             label: '操作记录',

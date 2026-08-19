@@ -536,6 +536,7 @@ public class RbacService {
             case "AI_VOICE_TASK", "AI_VOICE_RESULT" -> "语音合成";
             case "SUBTITLE" -> "字幕管理";
             case "SHOT_COMPOSE" -> "单镜头合成";
+            case "EPISODE_COMPOSE", "EPISODE_VERSION" -> "单集成片";
             default -> resource;
         };
     }

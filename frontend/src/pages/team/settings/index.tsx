@@ -2,20 +2,26 @@ import {
   ModalForm,
   PageContainer,
   ProForm,
+  ProFormDigit,
   ProFormSelect,
   ProFormText,
   ProFormTextArea,
 } from '@ant-design/pro-components';
-import { App, Button, Empty, Popconfirm, Space, Tag } from 'antd';
+import { App, Button, Card, Empty, Popconfirm, Space, Statistic, Table, Tag } from 'antd';
 import { useEffect, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type {
+  TeamPointAccount,
+  TeamPointTransaction,
   TenantMember,
   TenantSummary,
   TenantType,
 } from '@/services/account-team/types';
 import {
+  adjustTeamPoints,
   leaveTenant,
+  queryTeamPointAccount,
+  queryTeamPointTransactions,
   queryTenant,
   queryTenantMembers,
   transferOwner,
@@ -35,11 +41,22 @@ const TeamSettings = () => {
   const { message } = App.useApp();
   const [tenant, setTenant] = useState<TenantSummary>();
   const [members, setMembers] = useState<TenantMember[]>([]);
+  const [pointAccount, setPointAccount] = useState<TeamPointAccount>();
+  const [pointTransactions, setPointTransactions] = useState<
+    TeamPointTransaction[]
+  >([]);
 
   const load = async () => {
     if (!tenantId) return;
-    const tenantResponse = await queryTenant(tenantId);
+    const [tenantResponse, pointResponse, transactionResponse] =
+      await Promise.all([
+        queryTenant(tenantId),
+        queryTeamPointAccount(tenantId),
+        queryTeamPointTransactions(tenantId),
+      ]);
     setTenant(tenantResponse.data);
+    setPointAccount(pointResponse.data);
+    setPointTransactions(transactionResponse.data.records);
     if (tenantResponse.data.memberType === 'OWNER') {
       const memberResponse = await queryTenantMembers(tenantId);
       setMembers(memberResponse.data);
@@ -155,6 +172,74 @@ const TeamSettings = () => {
           <ProFormText name="logo" label="Logo 地址" />
           <ProFormTextArea name="description" label="团队简介" />
         </ProForm>
+      )}
+      {tenant && pointAccount && (
+        <Card
+          title="团队积分"
+          style={{ marginTop: 24 }}
+          extra={
+            isOwner ? (
+              <ModalForm<{ amount: number; description?: string }>
+                title="调整团队积分"
+                trigger={<Button type="primary">调整积分</Button>}
+                modalProps={{ destroyOnHidden: true }}
+                onFinish={async (values) => {
+                  await adjustTeamPoints(tenant.id, values);
+                  message.success('团队积分已更新');
+                  await load();
+                  return true;
+                }}
+              >
+                <ProFormDigit
+                  name="amount"
+                  label="调整数量"
+                  fieldProps={{ precision: 0 }}
+                  rules={[{ required: true, message: '请输入调整数量' }]}
+                />
+                <ProFormTextArea name="description" label="说明" />
+              </ModalForm>
+            ) : null
+          }
+        >
+          <Space size={48} wrap>
+            <Statistic title="可用积分" value={pointAccount.balance} suffix="点" />
+            <Statistic title="累计获得" value={pointAccount.totalGranted} suffix="点" />
+            <Statistic
+              title="累计消耗"
+              value={pointAccount.totalConsumed}
+              suffix="点"
+            />
+          </Space>
+          <Table<TeamPointTransaction>
+            rowKey="id"
+            size="small"
+            style={{ marginTop: 24 }}
+            dataSource={pointTransactions}
+            pagination={false}
+            columns={[
+              {
+                title: '类型',
+                dataIndex: 'transactionType',
+                render: (value) =>
+                  value === 'AI_CONSUME'
+                    ? 'AI 消耗'
+                    : value === 'ADJUST_GRANT'
+                      ? '手动增加'
+                      : '手动扣减',
+              },
+              {
+                title: '变动',
+                dataIndex: 'changeAmount',
+                render: (value: number) => (
+                  <Tag color={value > 0 ? 'green' : 'red'}>{value}</Tag>
+                ),
+              },
+              { title: '余额', dataIndex: 'balanceAfter' },
+              { title: '说明', dataIndex: 'description', ellipsis: true },
+              { title: '时间', dataIndex: 'createdAt' },
+            ]}
+          />
+        </Card>
       )}
     </PageContainer>
   );

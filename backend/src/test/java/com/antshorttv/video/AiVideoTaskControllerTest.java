@@ -54,6 +54,7 @@ class AiVideoTaskControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "分镜视频项目", "AI_VIDEO_TASK_FLOW");
         Long serviceConfigId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 5);
 
         MvcResult createResult = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -140,6 +141,7 @@ class AiVideoTaskControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "幂等视频项目", "AI_VIDEO_IDEMPOTENT");
         Long serviceConfigId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 1);
 
         Long firstTaskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "同一条视频提示词");
         Long secondTaskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "同一条视频提示词");
@@ -152,6 +154,8 @@ class AiVideoTaskControllerTest {
             projectId
         );
         assert taskCount == 1;
+        Integer balance = jdbc.queryForObject("select balance from team_point_account where tenant_id = ?", Integer.class, tenantId);
+        assert balance == 0;
     }
 
     @Test
@@ -163,6 +167,7 @@ class AiVideoTaskControllerTest {
         Long serviceConfigId = createVideoService(token, tenantId);
         Long firstStoryboardId = createStoryboard(tenantId, projectId, ownerId);
         Long secondStoryboardId = createStoryboardWithShot(tenantId, projectId, ownerId, 2);
+        grantTeamPoints(tenantId, 1);
         createVideoTask(token, tenantId, projectId, firstStoryboardId, serviceConfigId, "第一条视频提示词");
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
@@ -175,6 +180,24 @@ class AiVideoTaskControllerTest {
     }
 
     @Test
+    void rejectsVideoTaskWhenTeamPointsAreInsufficient() throws Exception {
+        String token = registerUser("13800016008", "Video Point Owner");
+        Long tenantId = createTenant(token, "视频积分团队");
+        Long ownerId = userIdByMobile("13800016008");
+        Long projectId = createProject(token, tenantId, ownerId, "视频积分项目", "AI_VIDEO_NO_POINTS");
+        Long serviceConfigId = createVideoService(token, tenantId);
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+
+        mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(videoTaskPayload(storyboardId, serviceConfigId, "积分不足的视频提示词")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
+    }
+
+    @Test
     void backgroundPollingCompletesDueGeneratingTasks() throws Exception {
         String token = registerUser("13800016006", "Polling Owner");
         Long tenantId = createTenant(token, "轮询视频团队");
@@ -182,6 +205,7 @@ class AiVideoTaskControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "轮询视频项目", "AI_VIDEO_POLLING");
         Long serviceConfigId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 1);
         Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "后台轮询视频提示词");
 
         aiVideoTaskService.pollDueTasks();
@@ -202,6 +226,7 @@ class AiVideoTaskControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "超时视频项目", "AI_VIDEO_TIMEOUT");
         Long serviceConfigId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 1);
         Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "超时视频提示词");
         jdbc.update("""
             update ai_video_task
@@ -252,6 +277,7 @@ class AiVideoTaskControllerTest {
         Long ownerId = userIdByMobile("13800016003");
         Long projectId = createProject(token, tenantId, ownerId, "无服务项目", "AI_VIDEO_NO_SERVICE");
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        jdbc.update("delete from ai_service_config where service_type = 'VIDEO'");
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -342,6 +368,14 @@ class AiVideoTaskControllerTest {
             .andExpect(status().isOk())
             .andReturn();
         return readLong(result, "$.data.id");
+    }
+
+    private void grantTeamPoints(Long tenantId, int amount) {
+        jdbc.update("""
+            insert into team_point_account
+              (tenant_id, balance, total_granted, total_consumed, created_at, updated_at)
+            values (?, ?, ?, 0, now(), now())
+            """, tenantId, amount, amount);
     }
 
     private String videoTaskPayload(Long storyboardId, Long serviceConfigId, String prompt) {

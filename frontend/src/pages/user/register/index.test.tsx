@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Register from './index';
@@ -19,7 +20,9 @@ vi.mock('@ant-design/icons', () => ({
 
 vi.mock('@umijs/max', () => ({
   Helmet: ({ children }: { children: ReactNode }) => <>{children}</>,
-  Link: ({ children }: { children: ReactNode }) => <a href="/user/login">{children}</a>,
+  Link: ({ children, to }: { children: ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
+  ),
   SelectLang: () => <div data-testid="select-lang" />,
   history: { replace: mocks.replace },
   useIntl: () => ({
@@ -32,49 +35,83 @@ vi.mock('@umijs/max', () => ({
   }),
 }));
 
-vi.mock('@ant-design/pro-components', () => {
-  const ProFormText = ({ name, placeholder }: any) => (
-    <input aria-label={placeholder} name={name} placeholder={placeholder} />
+vi.mock('antd', () => {
+  const Form = ({ children, onFinish }: any) => (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const currentTarget = event.currentTarget as HTMLFormElement;
+        const fieldValue = (name: string) =>
+          (
+            currentTarget.querySelector(
+              `input[name="${name}"]`,
+            ) as HTMLInputElement | null
+          )?.value;
+        onFinish?.({
+          mobile: fieldValue('mobile'),
+          verificationCode: fieldValue('verificationCode'),
+          nickname: fieldValue('nickname'),
+          password: fieldValue('password'),
+        });
+      }}
+    >
+      {children}
+    </form>
   );
-  ProFormText.Password = ({ name, placeholder }: any) => (
-    <input
-      aria-label={placeholder}
-      name={name}
-      placeholder={placeholder}
-      type="password"
-    />
+  Form.Item = ({ children, name }: any) =>
+    React.cloneElement(children, { name });
+
+  const Input = ({ name, placeholder, prefix, suffix }: any) => {
+    const [value, setValue] = React.useState('');
+    return (
+      <label>
+        {prefix}
+        <input
+          aria-label={placeholder}
+          name={name}
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        {suffix}
+      </label>
+    );
+  };
+  Input.Password = ({ name, placeholder, prefix }: any) => {
+    const [value, setValue] = React.useState('');
+    return (
+      <label>
+        {prefix}
+        <input
+          aria-label={placeholder}
+          name={name}
+          placeholder={placeholder}
+          type="password"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </label>
+    );
+  };
+
+  const Button = ({ children, htmlType, onClick }: any) => (
+    <button
+      type={htmlType === 'submit' ? 'submit' : 'button'}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 
   return {
-    LoginForm: ({ children, onFinish }: any) => (
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const formData = new FormData(event.currentTarget);
-          onFinish?.({
-            mobile: formData.get('mobile'),
-            verificationCode: formData.get('verificationCode'),
-            nickname: formData.get('nickname'),
-            password: formData.get('password'),
-          });
-        }}
-      >
-        {children}
-        <button type="submit">注册</button>
-      </form>
-    ),
-    ProFormCaptcha: ({ name, placeholder }: any) => (
-      <input aria-label={placeholder} name={name} placeholder={placeholder} />
-    ),
-    ProFormText,
+    App: {
+      useApp: () => ({ message: { success: mocks.success } }),
+    },
+    Button,
+    Form,
+    Input,
   };
 });
-
-vi.mock('antd', () => ({
-  App: {
-    useApp: () => ({ message: { success: mocks.success } }),
-  },
-}));
 
 vi.mock('@/components', () => ({
   Footer: () => <footer />,
@@ -94,16 +131,16 @@ describe('Register Page', () => {
   it('refreshes current user before entering team pages after registration', async () => {
     render(<Register />);
 
-    fireEvent.change(screen.getByPlaceholderText('手机号'), {
+    fireEvent.change(screen.getByPlaceholderText('请输入手机号'), {
       target: { value: '13800000000' },
     });
-    fireEvent.change(screen.getByPlaceholderText('验证码'), {
+    fireEvent.change(screen.getByPlaceholderText('请输入验证码'), {
       target: { value: '123456' },
     });
-    fireEvent.change(screen.getByPlaceholderText('昵称'), {
+    fireEvent.change(screen.getByPlaceholderText('请输入昵称'), {
       target: { value: '新用户' },
     });
-    fireEvent.change(screen.getByPlaceholderText('至少 8 位密码'), {
+    fireEvent.change(screen.getByPlaceholderText('请输入至少8位密码'), {
       target: { value: 'Password123' },
     });
     fireEvent.click(screen.getByRole('button', { name: '注册' }));
@@ -119,5 +156,14 @@ describe('Register Page', () => {
     expect(mocks.fetchUserInfo).toHaveBeenCalled();
     expect(mocks.setInitialState).toHaveBeenCalled();
     expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+  });
+
+  it('renders the same video-and-form layout as login', () => {
+    render(<Register />);
+
+    expect(screen.getByTestId('login-background-video')).toHaveAttribute(
+      'src',
+      'https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4',
+    );
   });
 });

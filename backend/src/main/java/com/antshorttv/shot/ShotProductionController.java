@@ -5,6 +5,11 @@ import com.antshorttv.rbac.RequirePermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -270,6 +275,172 @@ public class ShotProductionController {
         HttpServletRequest request
     ) {
         return ApiResponse.success(service.composeTaskResults(tenantId(request), projectId, taskId));
+    }
+
+    @GetMapping("/episode-compose-tasks")
+    @RequirePermission("EPISODE_COMPOSE:VIEW")
+    public ApiResponse<List<EpisodeComposeTaskResponse>> episodeComposeTasks(
+        @PathVariable Long projectId,
+        @RequestParam(required = false) Integer episodeNo,
+        @RequestParam(required = false) String status,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.episodeComposeTasks(tenantId(request), projectId, episodeNo, status));
+    }
+
+    @GetMapping("/episode-compose-tasks/{taskId}")
+    @RequirePermission("EPISODE_COMPOSE:VIEW")
+    public ApiResponse<EpisodeComposeTaskResponse> episodeComposeTask(
+        @PathVariable Long projectId,
+        @PathVariable Long taskId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.episodeComposeTask(tenantId(request), projectId, taskId));
+    }
+
+    @PostMapping("/episode-compose-tasks")
+    @RequirePermission("EPISODE_COMPOSE:CREATE")
+    public ApiResponse<EpisodeComposeTaskResponse> createEpisodeComposeTask(
+        @PathVariable Long projectId,
+        @Valid @RequestBody CreateEpisodeComposeTaskRequest body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.createEpisodeComposeTask(tenantId(request), projectId, body, request));
+    }
+
+    @PostMapping("/episode-compose-tasks/{taskId}/cancel")
+    @RequirePermission("EPISODE_COMPOSE:CANCEL")
+    public ApiResponse<EpisodeComposeTaskResponse> cancelEpisodeComposeTask(
+        @PathVariable Long projectId,
+        @PathVariable Long taskId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.cancelEpisodeComposeTask(tenantId(request), projectId, taskId, request));
+    }
+
+    @PostMapping("/episode-compose-tasks/{taskId}/regenerate")
+    @RequirePermission("EPISODE_COMPOSE:CREATE")
+    public ApiResponse<EpisodeComposeTaskResponse> regenerateEpisodeComposeTask(
+        @PathVariable Long projectId,
+        @PathVariable Long taskId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.regenerateEpisodeComposeTask(tenantId(request), projectId, taskId, request));
+    }
+
+    @DeleteMapping("/episode-compose-tasks/{taskId}")
+    @RequirePermission("EPISODE_COMPOSE:DELETE")
+    public ApiResponse<Void> deleteEpisodeComposeTask(
+        @PathVariable Long projectId,
+        @PathVariable Long taskId,
+        HttpServletRequest request
+    ) {
+        service.deleteEpisodeComposeTask(tenantId(request), projectId, taskId, request);
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/episode-video-versions")
+    @RequirePermission("EPISODE_VERSION:VIEW")
+    public ApiResponse<List<EpisodeVideoVersionResponse>> episodeVideoVersions(
+        @PathVariable Long projectId,
+        @RequestParam Integer episodeNo,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.episodeVideoVersions(tenantId(request), projectId, episodeNo));
+    }
+
+    @GetMapping("/episode-video-versions/{versionId}")
+    @RequirePermission("EPISODE_VERSION:VIEW")
+    public ApiResponse<EpisodeVideoVersionResponse> episodeVideoVersion(
+        @PathVariable Long projectId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.episodeVideoVersion(tenantId(request), projectId, versionId));
+    }
+
+    @PutMapping("/episode-video-versions/{versionId}")
+    @RequirePermission("EPISODE_VERSION:SET_CURRENT")
+    public ApiResponse<EpisodeVideoVersionResponse> renameEpisodeVideoVersion(
+        @PathVariable Long projectId,
+        @PathVariable Long versionId,
+        @Valid @RequestBody RenameEpisodeVideoVersionRequest body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.renameEpisodeVideoVersion(tenantId(request), projectId, versionId, body, request));
+    }
+
+    @PostMapping("/episode-video-versions/{versionId}/current")
+    @RequirePermission("EPISODE_VERSION:SET_CURRENT")
+    public ApiResponse<EpisodeVideoVersionResponse> setCurrentEpisodeVideoVersion(
+        @PathVariable Long projectId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.setCurrentEpisodeVideoVersion(tenantId(request), projectId, versionId, request));
+    }
+
+    @GetMapping("/episode-video-versions/{versionId}/download")
+    @RequirePermission("EPISODE_VERSION:DOWNLOAD")
+    public ResponseEntity<Resource> downloadEpisodeVideoVersion(
+        @PathVariable Long projectId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        EpisodeVideoDownloadResource download = service.downloadEpisodeVideoVersion(tenantId(request), projectId, versionId, request);
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+            .contentType(MediaType.valueOf("video/mp4"))
+            .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                .filename(download.fileName())
+                .build()
+                .toString());
+        if (download.fileSize() != null) {
+            response.contentLength(download.fileSize());
+        }
+        return response.body(download.resource());
+    }
+
+    @GetMapping("/episode-video-versions/{versionId}/cover")
+    @RequirePermission("EPISODE_VERSION:VIEW")
+    public ResponseEntity<Resource> episodeVideoCover(
+        @PathVariable Long projectId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.ok()
+            .contentType(MediaType.IMAGE_PNG)
+            .body(service.episodeVideoCover(tenantId(request), projectId, versionId));
+    }
+
+    @PostMapping("/episode-video-versions/{versionId}/save-material")
+    @RequirePermission("EPISODE_VERSION:SAVE_MATERIAL")
+    public ApiResponse<EpisodeVideoVersionResponse> saveEpisodeVideoMaterial(
+        @PathVariable Long projectId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.saveEpisodeVideoMaterial(tenantId(request), projectId, versionId, request));
+    }
+
+    @DeleteMapping("/episode-video-versions/{versionId}")
+    @RequirePermission("EPISODE_VERSION:DELETE")
+    public ApiResponse<Void> deleteEpisodeVideoVersion(
+        @PathVariable Long projectId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        service.deleteEpisodeVideoVersion(tenantId(request), projectId, versionId, request);
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/episode-export-records")
+    @RequirePermission("EPISODE_VERSION:VIEW")
+    public ApiResponse<List<EpisodeExportRecordResponse>> episodeExportRecords(
+        @PathVariable Long projectId,
+        @RequestParam(required = false) Integer episodeNo,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.episodeExportRecords(tenantId(request), projectId, episodeNo));
     }
 
     @GetMapping("/shot-compose-results/{resultId}/download")

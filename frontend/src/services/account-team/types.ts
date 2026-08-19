@@ -80,6 +80,34 @@ export type CurrentTenant = {
   memberType: MemberType;
 };
 
+export type TeamPointAccount = {
+  tenantId: number;
+  balance: number;
+  totalGranted: number;
+  totalConsumed: number;
+  updatedAt?: string | null;
+};
+
+export type TeamPointTransaction = {
+  id: number;
+  tenantId: number;
+  userId: number;
+  transactionType: string;
+  changeAmount: number;
+  balanceAfter: number;
+  businessScene?: string | null;
+  businessId?: number | null;
+  description?: string | null;
+  createdAt: string;
+};
+
+export type TeamPointTransactionPage = {
+  records: TeamPointTransaction[];
+  total: number;
+  current: number;
+  pageSize: number;
+};
+
 export type Role = {
   id: number;
   tenantId: number;

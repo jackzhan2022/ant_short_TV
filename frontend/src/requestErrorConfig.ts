@@ -15,10 +15,18 @@ enum ErrorShowType {
 interface ResponseStructure {
   success: boolean;
   data: unknown;
-  errorCode?: number;
+  errorCode?: string;
   errorMessage?: string;
   showType?: ErrorShowType;
 }
+
+const getBackendErrorText = (response?: ResponseStructure) => {
+  if (!response?.errorCode && !response?.errorMessage) return undefined;
+  if (response.errorCode && response.errorMessage) {
+    return `${response.errorCode}：${response.errorMessage}`;
+  }
+  return response.errorMessage || response.errorCode;
+};
 
 /**
  * @name 错误处理
@@ -73,7 +81,8 @@ export const errorConfig: RequestConfig = {
       } else if (error.response) {
         // Axios 的错误
         // 请求成功发出且服务器也响应了状态码，但状态代码超出了 2xx 的范围
-        message.error(`Response status:${error.response.status}`);
+        const errorText = getBackendErrorText(error.response.data);
+        message.error(errorText || `Response status:${error.response.status}`);
       } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
         message.error(
           getIntl().formatMessage({

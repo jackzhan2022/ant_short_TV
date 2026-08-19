@@ -116,3 +116,84 @@ interface ShotComposeResultMapper extends BaseMapper<ShotComposeResultEntity> {
             .orderByAsc("id"));
     }
 }
+
+@Mapper
+interface EpisodeComposeTaskMapper extends BaseMapper<EpisodeComposeTaskEntity> {
+    default EpisodeComposeTaskEntity selectActive(Long tenantId, Long projectId, Long id) {
+        return selectOne(new QueryWrapper<EpisodeComposeTaskEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .eq("id", id)
+            .isNull("deleted_at"));
+    }
+
+    default List<EpisodeComposeTaskEntity> selectByProject(Long tenantId, Long projectId, Integer episodeNo, String status) {
+        QueryWrapper<EpisodeComposeTaskEntity> query = new QueryWrapper<EpisodeComposeTaskEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .isNull("deleted_at")
+            .orderByDesc("id");
+        if (episodeNo != null) {
+            query.eq("episode_no", episodeNo);
+        }
+        if (status != null && !status.isBlank()) {
+            query.eq("status", status);
+        }
+        return selectList(query);
+    }
+}
+
+@Mapper
+interface EpisodeComposeItemMapper extends BaseMapper<EpisodeComposeItemEntity> {
+    default List<EpisodeComposeItemEntity> selectByTask(Long tenantId, Long projectId, Long taskId) {
+        return selectList(new QueryWrapper<EpisodeComposeItemEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .eq("task_id", taskId)
+            .orderByAsc("storyboard_order"));
+    }
+}
+
+@Mapper
+interface EpisodeVideoVersionMapper extends BaseMapper<EpisodeVideoVersionEntity> {
+    default EpisodeVideoVersionEntity selectActive(Long tenantId, Long projectId, Long id) {
+        return selectOne(new QueryWrapper<EpisodeVideoVersionEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .eq("id", id)
+            .eq("status", ShotResultStatus.ACTIVE.name()));
+    }
+
+    default EpisodeVideoVersionEntity selectByTask(Long tenantId, Long projectId, Long taskId) {
+        return selectOne(new QueryWrapper<EpisodeVideoVersionEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .eq("compose_task_id", taskId)
+            .eq("status", ShotResultStatus.ACTIVE.name())
+            .last("limit 1"));
+    }
+
+    default List<EpisodeVideoVersionEntity> selectByEpisode(Long tenantId, Long projectId, Integer episodeNo) {
+        return selectList(new QueryWrapper<EpisodeVideoVersionEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .eq("episode_no", episodeNo)
+            .eq("status", ShotResultStatus.ACTIVE.name())
+            .orderByDesc("is_current")
+            .orderByDesc("version_no"));
+    }
+}
+
+@Mapper
+interface EpisodeExportRecordMapper extends BaseMapper<EpisodeExportRecordEntity> {
+    default List<EpisodeExportRecordEntity> selectByProject(Long tenantId, Long projectId, Integer episodeNo) {
+        QueryWrapper<EpisodeExportRecordEntity> query = new QueryWrapper<EpisodeExportRecordEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .orderByDesc("id");
+        if (episodeNo != null) {
+            query.eq("episode_no", episodeNo);
+        }
+        return selectList(query);
+    }
+}

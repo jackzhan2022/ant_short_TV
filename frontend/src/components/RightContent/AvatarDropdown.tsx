@@ -5,7 +5,7 @@ import {
 } from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
 import type { MenuProps } from 'antd';
-import { Spin } from 'antd';
+import { Avatar, Spin } from 'antd';
 import React, { startTransition } from 'react';
 import { logout } from '@/services/account-team/auth';
 import HeaderDropdown from '../HeaderDropdown';
@@ -96,7 +96,18 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
       }}
       arrow
     >
-      {children}
+      <span className="ant-short-account-trigger">
+        <Avatar
+          size={22}
+          src={currentUser.avatar}
+          alt={currentUser.name || '当前用户'}
+        >
+          {currentUser.name?.slice(0, 1)}
+        </Avatar>
+        <span className="ant-short-account-name">
+          {currentUser.name || children}
+        </span>
+      </span>
     </HeaderDropdown>
   );
 };

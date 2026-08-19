@@ -52,28 +52,29 @@ class AiServiceConfigControllerTest {
         mockMvc.perform(get("/api/tenants/%d/ai-service-configs".formatted(tenantId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(1)))
-            .andExpect(jsonPath("$.data[0].id", is(configId.intValue())))
-            .andExpect(jsonPath("$.data[0].apiKey", is("sk-****1234")))
-            .andExpect(jsonPath("$.data[0].apiKey", not("sk-test-1234")))
-            .andExpect(jsonPath("$.data[0].isDefault", is(true)))
-            .andExpect(jsonPath("$.data[0].lastTestStatus", is("UNTESTED")));
+            .andExpect(jsonPath("$.data[?(@.id == %d)]".formatted(configId), hasSize(1)))
+            .andExpect(jsonPath("$.data[?(@.id == %d)].apiKey".formatted(configId), hasItem("sk-****1234")))
+            .andExpect(jsonPath("$.data[?(@.id == %d)].apiKey".formatted(configId), not(hasItem("sk-test-1234"))))
+            .andExpect(jsonPath("$.data[?(@.id == %d)].isDefault".formatted(configId), hasItem(true)))
+            .andExpect(jsonPath("$.data[?(@.id == %d)].lastTestStatus".formatted(configId), hasItem("UNTESTED")));
     }
 
     @Test
-    void keepsOneDefaultPerTenantAndServiceType() throws Exception {
+    void keepsOneDefaultPerServiceTypeGlobally() throws Exception {
         String token = registerUser("13800012002", "Default Owner");
         Long tenantId = createTenant(token, "默认服务团队");
+        String secondToken = registerUser("13800012022", "Second Default Owner");
+        Long secondTenantId = createTenant(secondToken, "第二默认服务团队");
 
         MvcResult first = createConfig(token, tenantId, "Gemini 文本服务", "TEXT", "Gemini", true);
         Long firstId = readLong(first, "$.data.id");
-        MvcResult second = createConfig(token, tenantId, "火山文本服务", "TEXT", "火山", true);
+        MvcResult second = createConfig(secondToken, secondTenantId, "火山文本服务", "TEXT", "火山", true);
         Long secondId = readLong(second, "$.data.id");
 
-        mockMvc.perform(get("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+        mockMvc.perform(get("/api/ai-service-configs")
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[?(@.id == %d)].isDefault".formatted(firstId), hasSize(1)))
             .andExpect(jsonPath("$.data[?(@.id == %d)].isDefault".formatted(firstId), hasItem(false)))
             .andExpect(jsonPath("$.data[?(@.id == %d)].isDefault".formatted(secondId), hasItem(true)));
     }
@@ -127,14 +128,14 @@ class AiServiceConfigControllerTest {
             mockMvc.perform(get("/api/tenants/%d/ai-service-configs".formatted(tenantId))
                     .header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data", hasSize(0)));
+                .andExpect(jsonPath("$.data[?(@.id == %d)]".formatted(configId), hasSize(0)));
         } finally {
             server.stop(0);
         }
     }
 
     @Test
-    void blocksCrossTenantConfigAccess() throws Exception {
+    void sharesAiServiceConfigsAcrossTenants() throws Exception {
         String firstToken = registerUser("13800012004", "First Owner");
         Long firstTenantId = createTenant(firstToken, "第一AI团队");
         String secondToken = registerUser("13800012005", "Second Owner");
@@ -144,10 +145,17 @@ class AiServiceConfigControllerTest {
             "$.data.id"
         );
 
+        mockMvc.perform(get("/api/ai-service-configs")
+                .header(HttpHeaders.AUTHORIZATION, bearer(secondToken))
+                .header("X-Tenant-Id", secondTenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[?(@.id == %d)].id".formatted(configId), hasItem(configId.intValue())));
+
         mockMvc.perform(put("/api/tenants/%d/ai-service-configs/%d/default".formatted(secondTenantId, configId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(secondToken)))
-            .andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.errorCode", is("AI_SERVICE_CONFIG_NOT_FOUND")));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id", is(configId.intValue())))
+            .andExpect(jsonPath("$.data.isDefault", is(true)));
     }
 
     @Test

@@ -47,6 +47,7 @@ export default [
     path: '/welcome',
     name: 'welcome',
     icon: 'home',
+    hideInMenu: true,
     component: './Welcome',
   },
   {
@@ -68,12 +69,14 @@ export default [
         path: '/team/select',
         name: 'select',
         icon: 'select',
+        hideInMenu: true,
         component: './team/select',
       },
       {
         path: '/team/members',
         name: 'members',
         icon: 'usergroupAdd',
+        hideInMenu: true,
         component: './team/members',
       },
       {
@@ -104,6 +107,7 @@ export default [
         path: '/team/settings',
         name: 'settings',
         icon: 'setting',
+        hideInMenu: true,
         component: './team/settings',
       },
     ],
@@ -113,6 +117,7 @@ export default [
     name: 'admin',
     icon: 'crown',
     access: 'canAdmin',
+    hideInMenu: true,
     routes: [
       {
         path: '/admin',
@@ -129,6 +134,7 @@ export default [
     path: '/dashboard',
     name: 'dashboard',
     icon: 'dashboard',
+    hideInMenu: true,
     routes: [
       {
         path: '/dashboard',
@@ -158,6 +164,7 @@ export default [
     path: '/form',
     icon: 'form',
     name: 'form',
+    hideInMenu: true,
     routes: [
       {
         path: '/form',
@@ -187,6 +194,7 @@ export default [
     path: '/list',
     icon: 'table',
     name: 'list',
+    hideInMenu: true,
     routes: [
       {
         path: '/list/search',
@@ -245,6 +253,7 @@ export default [
     path: '/profile',
     name: 'profile',
     icon: 'profile',
+    hideInMenu: true,
     routes: [
       {
         path: '/profile',
@@ -268,6 +277,7 @@ export default [
     name: 'result',
     icon: 'checkCircle',
     path: '/result',
+    hideInMenu: true,
     routes: [
       {
         path: '/result',
@@ -291,6 +301,7 @@ export default [
     name: 'exception',
     icon: 'warning',
     path: '/exception',
+    hideInMenu: true,
     routes: [
       {
         path: '/exception',
@@ -320,6 +331,7 @@ export default [
     name: 'account',
     icon: 'user',
     path: '/account',
+    hideInMenu: true,
     routes: [
       {
         path: '/account',
@@ -343,6 +355,7 @@ export default [
     path: '/chatbot',
     name: 'chatbot',
     icon: 'robot',
+    hideInMenu: true,
     component: './chatbot',
   },
   {

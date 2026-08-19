@@ -1,3 +1,4 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock all heavy dependencies before importing app
@@ -30,12 +31,17 @@ vi.mock('@/services/account-team/rbac', () => ({
 }));
 
 vi.mock('@/components', () => ({
-  AvatarDropdown: () => null,
+  AvatarDropdown: ({ children }: any) => <div>{children}</div>,
   DocLink: () => null,
   ErrorBoundary: ({ children }: any) => children,
   Footer: () => null,
   LangDropdown: () => null,
   OfflineBanner: () => null,
+  TeamSwitcher: ({ currentTenantId, onChange }: any) => (
+    <button type="button" onClick={() => onChange?.(22)}>
+      当前团队 {currentTenantId}
+    </button>
+  ),
   VersionDropdown: () => null,
 }));
 
@@ -117,6 +123,7 @@ describe('app getInitialState', () => {
     expect(mockQueryCurrentPermissions).toHaveBeenCalledWith({
       skipErrorHandler: true,
     });
+    expect(state.currentTenantId).toBe(10);
     expect(state.permissions).toEqual(['ROLE:VIEW']);
   });
 
@@ -209,5 +216,41 @@ describe('app getInitialState', () => {
     const { request } = await import('./app');
 
     expect(request.baseURL).toBe('');
+  });
+
+  it('renders the team switcher in the sidebar and refreshes permissions after switching', async () => {
+    const { layout } = await import('./app');
+    const setInitialState = vi.fn();
+    mockQueryCurrentPermissions.mockResolvedValue({
+      data: { menus: ['PROJECT'], permissions: ['PROJECT:VIEW'] },
+    });
+
+    const layoutConfig = layout({
+      initialState: {
+        currentUser: { name: 'Test User' },
+        currentTenantId: 10,
+      },
+      setInitialState,
+    } as any);
+
+    const menuExtraRender = layoutConfig.menuExtraRender;
+    if (typeof menuExtraRender !== 'function') {
+      throw new Error('menuExtraRender should be available');
+    }
+    render(menuExtraRender({ collapsed: false } as any) as React.ReactElement);
+    fireEvent.click(screen.getByRole('button', { name: '当前团队 10' }));
+
+    await waitFor(() => {
+      expect(mockQueryCurrentPermissions).toHaveBeenCalledWith({
+        skipErrorHandler: true,
+      });
+      expect(setInitialState).toHaveBeenCalled();
+    });
+
+    const updater = setInitialState.mock.calls[0][0];
+    expect(updater({ currentTenantId: 10, permissions: [] })).toMatchObject({
+      currentTenantId: 22,
+      permissions: ['PROJECT:VIEW'],
+    });
   });
 });

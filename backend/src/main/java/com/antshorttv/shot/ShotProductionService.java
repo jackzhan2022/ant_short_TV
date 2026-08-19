@@ -4,10 +4,12 @@ import com.antshorttv.ai.AiServiceConfigEntity;
 import com.antshorttv.ai.AiServiceConfigMapper;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.material.MaterialFileAccessService;
 import com.antshorttv.material.VideoMaterialEntity;
 import com.antshorttv.material.VideoMaterialMapper;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
+import com.antshorttv.points.TeamPointService;
 import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.project.ProjectMemberEntity;
@@ -17,10 +19,16 @@ import com.antshorttv.script.StoryboardEntity;
 import com.antshorttv.script.StoryboardMapper;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +39,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.imageio.ImageIO;
+import org.jcodec.api.awt.AWTSequenceEncoder;
+import org.springframework.core.io.Resource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,11 +59,17 @@ public class ShotProductionService {
     private final StoryboardSubtitleMapper subtitleMapper;
     private final ShotComposeTaskMapper shotComposeTaskMapper;
     private final ShotComposeResultMapper shotComposeResultMapper;
+    private final EpisodeComposeTaskMapper episodeComposeTaskMapper;
+    private final EpisodeComposeItemMapper episodeComposeItemMapper;
+    private final EpisodeVideoVersionMapper episodeVideoVersionMapper;
+    private final EpisodeExportRecordMapper episodeExportRecordMapper;
     private final VideoMaterialMapper materialMapper;
     private final TenantContextResolver tenantContextResolver;
     private final RbacPermissionService rbacPermissionService;
     private final OperationLogService operationLogService;
     private final ObjectMapper objectMapper;
+    private final MaterialFileAccessService materialFileAccessService;
+    private final TeamPointService teamPointService;
     private final Path storageRoot;
 
     public ShotProductionService(
@@ -65,11 +82,17 @@ public class ShotProductionService {
         StoryboardSubtitleMapper subtitleMapper,
         ShotComposeTaskMapper shotComposeTaskMapper,
         ShotComposeResultMapper shotComposeResultMapper,
+        EpisodeComposeTaskMapper episodeComposeTaskMapper,
+        EpisodeComposeItemMapper episodeComposeItemMapper,
+        EpisodeVideoVersionMapper episodeVideoVersionMapper,
+        EpisodeExportRecordMapper episodeExportRecordMapper,
         VideoMaterialMapper materialMapper,
         TenantContextResolver tenantContextResolver,
         RbacPermissionService rbacPermissionService,
         OperationLogService operationLogService,
         ObjectMapper objectMapper,
+        MaterialFileAccessService materialFileAccessService,
+        TeamPointService teamPointService,
         @Value("${ai.video.storage-root:storage}") String storageRoot
     ) {
         this.projectMapper = projectMapper;
@@ -81,11 +104,17 @@ public class ShotProductionService {
         this.subtitleMapper = subtitleMapper;
         this.shotComposeTaskMapper = shotComposeTaskMapper;
         this.shotComposeResultMapper = shotComposeResultMapper;
+        this.episodeComposeTaskMapper = episodeComposeTaskMapper;
+        this.episodeComposeItemMapper = episodeComposeItemMapper;
+        this.episodeVideoVersionMapper = episodeVideoVersionMapper;
+        this.episodeExportRecordMapper = episodeExportRecordMapper;
         this.materialMapper = materialMapper;
         this.tenantContextResolver = tenantContextResolver;
         this.rbacPermissionService = rbacPermissionService;
         this.operationLogService = operationLogService;
         this.objectMapper = objectMapper;
+        this.materialFileAccessService = materialFileAccessService;
+        this.teamPointService = teamPointService;
         this.storageRoot = Path.of(storageRoot);
     }
 
@@ -207,6 +236,7 @@ public class ShotProductionService {
         TenantContext context = requireContext(tenantId, projectId);
         StoryboardEntity storyboard = requireStoryboard(tenantId, projectId, request.storyboardId());
         AiServiceConfigEntity serviceConfig = resolveVoiceService(tenantId, request.serviceConfigId());
+        teamPointService.consumeForAi(context, 1, "AI_VOICE_SYNTHESIS", null, "AI 配音生成消耗积分");
         LocalDateTime now = LocalDateTime.now();
 
         AiVoiceTaskEntity task = new AiVoiceTaskEntity();
@@ -442,6 +472,207 @@ public class ShotProductionService {
             .toList();
     }
 
+    public List<EpisodeComposeTaskResponse> episodeComposeTasks(Long tenantId, Long projectId, Integer episodeNo, String status) {
+        requireContext(tenantId, projectId);
+        return episodeComposeTaskMapper.selectByProject(tenantId, projectId, episodeNo, status)
+            .stream()
+            .map(this::episodeTaskResponse)
+            .toList();
+    }
+
+    public EpisodeComposeTaskResponse episodeComposeTask(Long tenantId, Long projectId, Long taskId) {
+        requireContext(tenantId, projectId);
+        return episodeTaskResponse(requireEpisodeComposeTask(tenantId, projectId, taskId));
+    }
+
+    @Transactional
+    public EpisodeComposeTaskResponse cancelEpisodeComposeTask(Long tenantId, Long projectId, Long taskId, HttpServletRequest request) {
+        TenantContext context = requireContext(tenantId, projectId);
+        EpisodeComposeTaskEntity task = requireEpisodeComposeTask(tenantId, projectId, taskId);
+        if (!List.of(EpisodeComposeTaskStatus.PENDING.name(), EpisodeComposeTaskStatus.PROCESSING.name()).contains(task.status)) {
+            throw new BusinessException(ErrorCode.EPISODE_COMPOSE_TASK_STATUS_INVALID, "当前任务状态不可取消。");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        task.status = EpisodeComposeTaskStatus.CANCELED.name();
+        task.completedAt = now;
+        task.updatedAt = now;
+        episodeComposeTaskMapper.updateById(task);
+        recordOperation(context, "CANCEL_EPISODE_COMPOSE_TASK", task.id, request);
+        return episodeTaskResponse(task);
+    }
+
+    @Transactional
+    public EpisodeComposeTaskResponse regenerateEpisodeComposeTask(Long tenantId, Long projectId, Long taskId, HttpServletRequest request) {
+        EpisodeComposeTaskEntity source = requireEpisodeComposeTask(tenantId, projectId, taskId);
+        Map<String, Object> config = readJsonMap(source.composeConfig);
+        CreateEpisodeComposeTaskRequest body = new CreateEpisodeComposeTaskRequest(
+            source.episodeNo,
+            source.taskName,
+            null,
+            String.valueOf(config.getOrDefault("outputFormat", "mp4")),
+            String.valueOf(config.getOrDefault("quality", "STANDARD")),
+            Boolean.valueOf(String.valueOf(config.getOrDefault("generateCover", "true")))
+        );
+        return createEpisodeComposeTask(tenantId, projectId, body, request);
+    }
+
+    @Transactional
+    public void deleteEpisodeComposeTask(Long tenantId, Long projectId, Long taskId, HttpServletRequest request) {
+        TenantContext context = requireContext(tenantId, projectId);
+        EpisodeComposeTaskEntity task = requireEpisodeComposeTask(tenantId, projectId, taskId);
+        task.deletedAt = LocalDateTime.now();
+        task.updatedAt = task.deletedAt;
+        episodeComposeTaskMapper.updateById(task);
+        recordOperation(context, "DELETE_EPISODE_COMPOSE_TASK", task.id, request);
+    }
+
+    @Transactional
+    public EpisodeComposeTaskResponse createEpisodeComposeTask(Long tenantId, Long projectId, CreateEpisodeComposeTaskRequest request, HttpServletRequest servletRequest) {
+        TenantContext context = requireContext(tenantId, projectId);
+        Integer episodeNo = request.episodeNo();
+        if (episodeNo == null || episodeNo < 1) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择有效单集。");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<StoryboardEntity> storyboards = storyboardsByEpisode(tenantId, projectId, episodeNo);
+
+        EpisodeComposeTaskEntity task = new EpisodeComposeTaskEntity();
+        task.tenantId = tenantId;
+        task.projectId = projectId;
+        task.episodeNo = episodeNo;
+        task.taskName = blankToNull(request.taskName()) == null ? "第%d集成片合成".formatted(episodeNo) : request.taskName().trim();
+        task.composeConfig = writeJson(Map.of(
+            "outputFormat", blankToNull(request.outputFormat()) == null ? "mp4" : request.outputFormat().trim(),
+            "quality", blankToNull(request.quality()) == null ? "STANDARD" : request.quality().trim(),
+            "generateCover", request.generateCover() == null || Boolean.TRUE.equals(request.generateCover())
+        ));
+        task.storyboardCount = storyboards.size();
+        task.totalDurationSeconds = totalDuration(storyboards);
+        task.status = EpisodeComposeTaskStatus.PENDING_VALIDATION.name();
+        task.createdBy = context.userId();
+        task.createdAt = now;
+        task.updatedAt = now;
+        episodeComposeTaskMapper.insert(task);
+
+        List<EpisodeComposeItemEntity> items = createEpisodeItems(task, storyboards, now);
+        List<EpisodeComposeItemEntity> failedItems = items.stream()
+            .filter(item -> EpisodeComposeItemStatus.FAILED.name().equals(item.status))
+            .toList();
+        if (storyboards.isEmpty() || !failedItems.isEmpty()) {
+            task.status = EpisodeComposeTaskStatus.VALIDATION_FAILED.name();
+            task.errorMessage = storyboards.isEmpty()
+                ? "当前单集暂无可合成分镜。"
+                : "存在分镜缺少单镜头视频或视频不可用。";
+            task.completedAt = now;
+            task.updatedAt = now;
+            episodeComposeTaskMapper.updateById(task);
+            recordOperation(context, "EPISODE_COMPOSE_VALIDATION_FAILED", task.id, servletRequest);
+            return EpisodeComposeTaskResponse.from(task, items, null);
+        }
+
+        task.status = EpisodeComposeTaskStatus.PROCESSING.name();
+        task.startedAt = now;
+        task.updatedAt = now;
+        episodeComposeTaskMapper.updateById(task);
+        EpisodeVideoVersionEntity version = createEpisodeVersion(context, task, items, request.versionName(), now);
+        task.status = EpisodeComposeTaskStatus.SUCCEEDED.name();
+        task.completedAt = now;
+        task.updatedAt = now;
+        episodeComposeTaskMapper.updateById(task);
+        recordOperation(context, "CREATE_EPISODE_COMPOSE_TASK", task.id, servletRequest);
+        return EpisodeComposeTaskResponse.from(task, items, version);
+    }
+
+    public List<EpisodeVideoVersionResponse> episodeVideoVersions(Long tenantId, Long projectId, Integer episodeNo) {
+        requireContext(tenantId, projectId);
+        if (episodeNo == null || episodeNo < 1) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择有效单集。");
+        }
+        return episodeVideoVersionMapper.selectByEpisode(tenantId, projectId, episodeNo)
+            .stream()
+            .map(EpisodeVideoVersionResponse::from)
+            .toList();
+    }
+
+    public EpisodeVideoVersionResponse episodeVideoVersion(Long tenantId, Long projectId, Long versionId) {
+        requireContext(tenantId, projectId);
+        return EpisodeVideoVersionResponse.from(requireEpisodeVideoVersion(tenantId, projectId, versionId));
+    }
+
+    @Transactional
+    public EpisodeVideoVersionResponse renameEpisodeVideoVersion(Long tenantId, Long projectId, Long versionId, RenameEpisodeVideoVersionRequest request, HttpServletRequest servletRequest) {
+        TenantContext context = requireContext(tenantId, projectId);
+        EpisodeVideoVersionEntity version = requireEpisodeVideoVersion(tenantId, projectId, versionId);
+        version.versionName = request.versionName().trim();
+        version.updatedAt = LocalDateTime.now();
+        episodeVideoVersionMapper.updateById(version);
+        recordOperation(context, "RENAME_EPISODE_VIDEO_VERSION", version.id, servletRequest);
+        return EpisodeVideoVersionResponse.from(version);
+    }
+
+    @Transactional
+    public EpisodeVideoVersionResponse setCurrentEpisodeVideoVersion(Long tenantId, Long projectId, Long versionId, HttpServletRequest request) {
+        TenantContext context = requireContext(tenantId, projectId);
+        EpisodeVideoVersionEntity version = requireEpisodeVideoVersion(tenantId, projectId, versionId);
+        markCurrentVersion(version, LocalDateTime.now());
+        recordOperation(context, "SET_CURRENT_EPISODE_VIDEO_VERSION", version.id, request);
+        return EpisodeVideoVersionResponse.from(version);
+    }
+
+    @Transactional
+    public EpisodeVideoDownloadResource downloadEpisodeVideoVersion(Long tenantId, Long projectId, Long versionId, HttpServletRequest request) {
+        TenantContext context = requireContext(tenantId, projectId);
+        EpisodeVideoVersionEntity version = requireEpisodeVideoVersion(tenantId, projectId, versionId);
+        EpisodeExportRecordEntity record = createEpisodeExportRecord(context, version, "DOWNLOAD", version.videoUrl, null);
+        recordOperation(context, "DOWNLOAD_EPISODE_VIDEO_VERSION", version.id, request);
+        return new EpisodeVideoDownloadResource(
+            materialFileAccessService.resource(version.storagePath),
+            record.fileName,
+            record.fileSize
+        );
+    }
+
+    public Resource episodeVideoCover(Long tenantId, Long projectId, Long versionId) {
+        requireContext(tenantId, projectId);
+        EpisodeVideoVersionEntity version = requireEpisodeVideoVersion(tenantId, projectId, versionId);
+        return materialFileAccessService.resource(version.coverUrl);
+    }
+
+    @Transactional
+    public EpisodeVideoVersionResponse saveEpisodeVideoMaterial(Long tenantId, Long projectId, Long versionId, HttpServletRequest request) {
+        TenantContext context = requireContext(tenantId, projectId);
+        EpisodeVideoVersionEntity version = requireEpisodeVideoVersion(tenantId, projectId, versionId);
+        if (version.materialId == null) {
+            version.materialId = createMaterial(context, projectId, "VIDEO", version.composeTaskId, version.id, "第%d集成片-v%d".formatted(version.episodeNo, version.versionNo), version.videoUrl, version.coverUrl, version.durationSeconds, version.width, version.height, version.format, version.fileSize);
+            version.updatedAt = LocalDateTime.now();
+            episodeVideoVersionMapper.updateById(version);
+        }
+        createEpisodeExportRecord(context, version, "SAVE_MATERIAL", version.videoUrl, null);
+        recordOperation(context, "SAVE_EPISODE_VIDEO_MATERIAL", version.id, request);
+        return EpisodeVideoVersionResponse.from(version);
+    }
+
+    @Transactional
+    public void deleteEpisodeVideoVersion(Long tenantId, Long projectId, Long versionId, HttpServletRequest request) {
+        TenantContext context = requireContext(tenantId, projectId);
+        EpisodeVideoVersionEntity version = requireEpisodeVideoVersion(tenantId, projectId, versionId);
+        if (Boolean.TRUE.equals(version.isCurrent)) {
+            throw new BusinessException(ErrorCode.EPISODE_VIDEO_VERSION_IN_USE, "当前成片版本已被单集引用，不能静默删除。");
+        }
+        version.status = ShotResultStatus.DELETED.name();
+        version.updatedAt = LocalDateTime.now();
+        episodeVideoVersionMapper.updateById(version);
+        recordOperation(context, "DELETE_EPISODE_VIDEO_VERSION", version.id, request);
+    }
+
+    public List<EpisodeExportRecordResponse> episodeExportRecords(Long tenantId, Long projectId, Integer episodeNo) {
+        requireContext(tenantId, projectId);
+        return episodeExportRecordMapper.selectByProject(tenantId, projectId, episodeNo)
+            .stream()
+            .map(EpisodeExportRecordResponse::from)
+            .toList();
+    }
+
     public ShotComposeResultResponse downloadComposeResult(Long tenantId, Long projectId, Long resultId, HttpServletRequest request) {
         TenantContext context = requireContext(tenantId, projectId);
         ShotComposeResultEntity result = requireComposeResult(tenantId, projectId, resultId);
@@ -549,7 +780,7 @@ public class ShotProductionService {
         String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
         result.storagePath = "/materials/%d/%d/audios/%s/%d.mp3".formatted(task.tenantId, task.projectId, day, task.id);
         result.fileSize = writeFile(result.storagePath, "mock mp3 audio: " + task.textContent);
-        result.audioUrl = result.storagePath;
+        result.audioUrl = materialFileAccessService.publicUrl(result.storagePath);
         result.durationSeconds = duration;
         result.format = "mp3";
         result.isSelected = false;
@@ -569,8 +800,8 @@ public class ShotProductionService {
         String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
         result.storagePath = "/materials/%d/%d/shots/%s/%d.mp4".formatted(task.tenantId, task.projectId, day, task.id);
         result.fileSize = writeFile(result.storagePath, "mock composed mp4: " + storyboard.currentVideoUrl);
-        result.videoUrl = result.storagePath;
-        result.coverUrl = storyboard.firstFrameUrl;
+        result.videoUrl = materialFileAccessService.publicUrl(result.storagePath);
+        result.coverUrl = storyboard.firstFrameUrl == null ? null : materialFileAccessService.publicUrl(storyboard.firstFrameUrl);
         result.durationSeconds = BigDecimal.valueOf(storyboard.durationSeconds == null ? 5 : storyboard.durationSeconds);
         result.width = 720;
         result.height = 1280;
@@ -581,6 +812,172 @@ public class ShotProductionService {
         result.updatedAt = now;
         shotComposeResultMapper.insert(result);
         return result;
+    }
+
+    private List<StoryboardEntity> storyboardsByEpisode(Long tenantId, Long projectId, Integer episodeNo) {
+        return storyboardMapper.selectList(new QueryWrapper<StoryboardEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .eq("episode_no", episodeNo)
+            .isNull("deleted_at")
+            .orderByAsc("shot_no")
+            .orderByAsc("id"));
+    }
+
+    private List<EpisodeComposeItemEntity> createEpisodeItems(EpisodeComposeTaskEntity task, List<StoryboardEntity> storyboards, LocalDateTime now) {
+        Integer baseWidth = null;
+        Integer baseHeight = null;
+        java.util.ArrayList<EpisodeComposeItemEntity> items = new java.util.ArrayList<>();
+        for (StoryboardEntity storyboard : storyboards) {
+            ShotComposeResultEntity shotResult = storyboard.currentShotResultId == null
+                ? null
+                : shotComposeResultMapper.selectActive(task.tenantId, task.projectId, storyboard.currentShotResultId);
+            String videoUrl = firstNonBlank(storyboard.currentShotVideoUrl, storyboard.currentVideoUrl, shotResult == null ? null : shotResult.videoUrl);
+            Integer width = shotResult == null || shotResult.width == null ? 720 : shotResult.width;
+            Integer height = shotResult == null || shotResult.height == null ? 1280 : shotResult.height;
+
+            EpisodeComposeItemEntity item = new EpisodeComposeItemEntity();
+            item.tenantId = task.tenantId;
+            item.projectId = task.projectId;
+            item.taskId = task.id;
+            item.episodeNo = task.episodeNo;
+            item.storyboardId = storyboard.id;
+            item.storyboardOrder = storyboard.shotNo == null ? items.size() + 1 : storyboard.shotNo;
+            item.shotResultId = storyboard.currentShotResultId == null ? storyboard.currentVideoResultId : storyboard.currentShotResultId;
+            item.videoUrl = videoUrl;
+            item.durationSeconds = shotResult == null || shotResult.durationSeconds == null
+                ? BigDecimal.valueOf(storyboard.durationSeconds == null ? 5 : storyboard.durationSeconds)
+                : shotResult.durationSeconds;
+            item.width = width;
+            item.height = height;
+            item.createdAt = now;
+
+            if (blankToNull(videoUrl) == null) {
+                item.status = EpisodeComposeItemStatus.FAILED.name();
+                item.errorMessage = "分镜缺少单镜头视频。";
+            } else if (item.durationSeconds == null || item.durationSeconds.compareTo(BigDecimal.ZERO) <= 0) {
+                item.status = EpisodeComposeItemStatus.FAILED.name();
+                item.errorMessage = "单镜头视频时长无效。";
+            } else if (baseWidth != null && aspectRatioDiffers(baseWidth, baseHeight, width, height)) {
+                item.status = EpisodeComposeItemStatus.FAILED.name();
+                item.errorMessage = "分镜视频比例不一致。";
+            } else {
+                item.status = EpisodeComposeItemStatus.READY.name();
+                baseWidth = width;
+                baseHeight = height;
+            }
+            episodeComposeItemMapper.insert(item);
+            items.add(item);
+        }
+        return items;
+    }
+
+    private boolean aspectRatioDiffers(Integer baseWidth, Integer baseHeight, Integer width, Integer height) {
+        return (long) baseWidth * height != (long) width * baseHeight;
+    }
+
+    private EpisodeVideoVersionEntity createEpisodeVersion(
+        TenantContext context,
+        EpisodeComposeTaskEntity task,
+        List<EpisodeComposeItemEntity> items,
+        String requestedVersionName,
+        LocalDateTime now
+    ) {
+        int versionNo = episodeVideoVersionMapper.selectByEpisode(task.tenantId, task.projectId, task.episodeNo)
+            .stream()
+            .map(version -> version.versionNo == null ? 0 : version.versionNo)
+            .max(Integer::compareTo)
+            .orElse(0) + 1;
+        BigDecimal duration = items.stream()
+            .map(item -> item.durationSeconds == null ? BigDecimal.ZERO : item.durationSeconds)
+            .reduce(BigDecimal.ZERO, BigDecimal::add)
+            .setScale(2, RoundingMode.HALF_UP);
+        Integer width = items.isEmpty() ? 720 : items.get(0).width;
+        Integer height = items.isEmpty() ? 1280 : items.get(0).height;
+        String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
+        String storagePath = "/materials/%d/%d/episodes/%d/%s/task_%d_v%d.mp4".formatted(task.tenantId, task.projectId, task.episodeNo, day, task.id, versionNo);
+        String coverPath = "/materials/%d/%d/episodes/%d/%s/task_%d_v%d_cover.png".formatted(task.tenantId, task.projectId, task.episodeNo, day, task.id, versionNo);
+
+        EpisodeVideoVersionEntity version = new EpisodeVideoVersionEntity();
+        version.tenantId = task.tenantId;
+        version.projectId = task.projectId;
+        version.episodeNo = task.episodeNo;
+        version.composeTaskId = task.id;
+        version.versionNo = versionNo;
+        version.versionName = blankToNull(requestedVersionName) == null ? "第%d集 成片 v%d".formatted(task.episodeNo, versionNo) : requestedVersionName.trim();
+        version.storagePath = storagePath;
+        version.videoUrl = materialFileAccessService.publicUrl(storagePath);
+        version.coverUrl = materialFileAccessService.publicUrl(coverPath);
+        version.durationSeconds = duration;
+        version.width = width;
+        version.height = height;
+        version.format = "mp4";
+        version.isCurrent = false;
+        version.status = ShotResultStatus.ACTIVE.name();
+        version.createdBy = context.userId();
+        version.createdAt = now;
+        version.updatedAt = now;
+        version.fileSize = writeEpisodeVideoFile(storagePath, task, items, width, height);
+        writeEpisodeCoverFile(coverPath, task, items, width, height);
+        episodeVideoVersionMapper.insert(version);
+        markCurrentVersion(version, now);
+        return version;
+    }
+
+    private void markCurrentVersion(EpisodeVideoVersionEntity target, LocalDateTime now) {
+        EpisodeVideoVersionEntity reset = new EpisodeVideoVersionEntity();
+        reset.isCurrent = false;
+        reset.updatedAt = now;
+        episodeVideoVersionMapper.update(reset, new UpdateWrapper<EpisodeVideoVersionEntity>()
+            .eq("tenant_id", target.tenantId)
+            .eq("project_id", target.projectId)
+            .eq("episode_no", target.episodeNo)
+            .eq("status", ShotResultStatus.ACTIVE.name())
+            .eq("is_current", true));
+        target.isCurrent = true;
+        target.updatedAt = now;
+        episodeVideoVersionMapper.updateById(target);
+    }
+
+    private EpisodeExportRecordEntity createEpisodeExportRecord(
+        TenantContext context,
+        EpisodeVideoVersionEntity version,
+        String exportType,
+        String downloadUrl,
+        String errorMessage
+    ) {
+        EpisodeExportRecordEntity record = new EpisodeExportRecordEntity();
+        record.tenantId = context.tenantId();
+        record.projectId = version.projectId;
+        record.episodeNo = version.episodeNo;
+        record.videoVersionId = version.id;
+        record.exportType = exportType;
+        record.exportStatus = errorMessage == null ? EpisodeExportStatus.SUCCESS.name() : EpisodeExportStatus.FAILED.name();
+        record.fileName = "episode_%d_v%d.%s".formatted(version.episodeNo, version.versionNo, version.format == null ? "mp4" : version.format);
+        record.fileSize = version.fileSize;
+        record.downloadUrl = downloadUrl;
+        record.errorMessage = errorMessage;
+        record.createdBy = context.userId();
+        record.createdAt = LocalDateTime.now();
+        episodeExportRecordMapper.insert(record);
+        return record;
+    }
+
+    private BigDecimal totalDuration(List<StoryboardEntity> storyboards) {
+        return storyboards.stream()
+            .map(storyboard -> BigDecimal.valueOf(storyboard.durationSeconds == null ? 5 : storyboard.durationSeconds))
+            .reduce(BigDecimal.ZERO, BigDecimal::add)
+            .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            String normalized = blankToNull(value);
+            if (normalized != null) {
+                return normalized;
+            }
+        }
+        return null;
     }
 
     private String writeSubtitleFile(Long tenantId, Long projectId, Long subtitleId, List<SubtitleSegmentResponse> segments, String storagePath) {
@@ -598,6 +995,73 @@ public class ShotProductionService {
         }
         writeFile(storagePath, body.toString());
         return storagePath;
+    }
+
+    private long writeEpisodeVideoFile(
+        String storagePath,
+        EpisodeComposeTaskEntity task,
+        List<EpisodeComposeItemEntity> items,
+        Integer width,
+        Integer height
+    ) {
+        try {
+            Path file = storageFile(storagePath);
+            Files.createDirectories(file.getParent());
+            AWTSequenceEncoder encoder = AWTSequenceEncoder.createSequenceEncoder(file.toFile(), 2);
+            int frameCount = Math.max(2, Math.min(12, items.size() * 2));
+            for (int index = 0; index < frameCount; index++) {
+                encoder.encodeImage(episodeFrame(task, items, width, height, index));
+            }
+            encoder.finish();
+            return Files.size(file);
+        } catch (Exception exception) {
+            throw new IllegalStateException("成片文件生成失败：" + exception.getMessage(), exception);
+        }
+    }
+
+    private void writeEpisodeCoverFile(
+        String storagePath,
+        EpisodeComposeTaskEntity task,
+        List<EpisodeComposeItemEntity> items,
+        Integer width,
+        Integer height
+    ) {
+        try {
+            Path file = storageFile(storagePath);
+            Files.createDirectories(file.getParent());
+            ImageIO.write(episodeFrame(task, items, width, height, 0), "png", file.toFile());
+        } catch (Exception exception) {
+            throw new IllegalStateException("成片封面生成失败：" + exception.getMessage(), exception);
+        }
+    }
+
+    private BufferedImage episodeFrame(
+        EpisodeComposeTaskEntity task,
+        List<EpisodeComposeItemEntity> items,
+        Integer width,
+        Integer height,
+        int frameIndex
+    ) {
+        int safeWidth = width == null || width < 160 ? 720 : width;
+        int safeHeight = height == null || height < 160 ? 1280 : height;
+        BufferedImage image = new BufferedImage(safeWidth, safeHeight, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D graphics = image.createGraphics();
+        try {
+            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            graphics.setColor(new Color(24, 28, 36));
+            graphics.fillRect(0, 0, safeWidth, safeHeight);
+            graphics.setColor(new Color(37 + frameIndex * 7 % 80, 92, 132));
+            graphics.fillRect(0, safeHeight / 4, safeWidth, safeHeight / 2);
+            graphics.setColor(new Color(255, 255, 255, 235));
+            graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, Math.max(28, safeWidth / 16)));
+            graphics.drawString("Episode " + task.episodeNo, Math.max(24, safeWidth / 12), Math.max(80, safeHeight / 7));
+            graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, Math.max(18, safeWidth / 28)));
+            graphics.drawString("Shots: " + items.size(), Math.max(24, safeWidth / 12), Math.max(130, safeHeight / 7 + 54));
+            graphics.drawString("Frame: " + (frameIndex + 1), Math.max(24, safeWidth / 12), Math.max(170, safeHeight / 7 + 96));
+        } finally {
+            graphics.dispose();
+        }
+        return image;
     }
 
     private String subtitleStoragePath(Long tenantId, Long projectId, Long subtitleId) {
@@ -647,7 +1111,6 @@ public class ShotProductionService {
 
     private AiServiceConfigEntity resolveVoiceService(Long tenantId, Long serviceConfigId) {
         QueryWrapper<AiServiceConfigEntity> base = new QueryWrapper<AiServiceConfigEntity>()
-            .eq("tenant_id", tenantId)
             .eq("service_type", "VOICE")
             .eq("enabled", true)
             .isNull("deleted_at");
@@ -664,7 +1127,7 @@ public class ShotProductionService {
         }
         AiServiceConfigEntity fallback = aiServiceConfigMapper.selectOne(base.orderByDesc("priority").orderByDesc("id").last("limit 1"));
         if (fallback == null) {
-            throw new BusinessException(ErrorCode.AI_VOICE_SERVICE_UNAVAILABLE, "当前团队未配置可用语音服务。");
+            throw new BusinessException(ErrorCode.AI_VOICE_SERVICE_UNAVAILABLE, "未配置可用语音服务。");
         }
         return fallback;
     }
@@ -706,9 +1169,9 @@ public class ShotProductionService {
             Map<String, Object> content = objectMapper.readValue(entity.content, new TypeReference<>() {});
             String text = String.valueOf(content.get("textContent"));
             List<SubtitleSegmentResponse> segments = readSubtitleSegments(content, text);
-            return new StoryboardSubtitleResponse(entity.id, entity.storyboardId, entity.voiceResultId, entity.subtitleType, text, entity.srtUrl, entity.styleConfig, entity.isSelected, entity.status, entity.createdAt, segments);
+            return new StoryboardSubtitleResponse(entity.id, entity.storyboardId, entity.voiceResultId, entity.subtitleType, text, materialFileAccessService.publicUrl(entity.srtUrl), entity.styleConfig, entity.isSelected, entity.status, entity.createdAt, segments);
         } catch (Exception exception) {
-            return new StoryboardSubtitleResponse(entity.id, entity.storyboardId, entity.voiceResultId, entity.subtitleType, "", entity.srtUrl, entity.styleConfig, entity.isSelected, entity.status, entity.createdAt, List.of());
+            return new StoryboardSubtitleResponse(entity.id, entity.storyboardId, entity.voiceResultId, entity.subtitleType, "", materialFileAccessService.publicUrl(entity.srtUrl), entity.styleConfig, entity.isSelected, entity.status, entity.createdAt, List.of());
         }
     }
 
@@ -764,12 +1227,36 @@ public class ShotProductionService {
         return task;
     }
 
+    private EpisodeComposeTaskEntity requireEpisodeComposeTask(Long tenantId, Long projectId, Long taskId) {
+        EpisodeComposeTaskEntity task = episodeComposeTaskMapper.selectActive(tenantId, projectId, taskId);
+        if (task == null) {
+            throw new BusinessException(ErrorCode.EPISODE_COMPOSE_TASK_NOT_FOUND, "单集合成任务不存在。");
+        }
+        return task;
+    }
+
+    private EpisodeVideoVersionEntity requireEpisodeVideoVersion(Long tenantId, Long projectId, Long versionId) {
+        EpisodeVideoVersionEntity version = episodeVideoVersionMapper.selectActive(tenantId, projectId, versionId);
+        if (version == null) {
+            throw new BusinessException(ErrorCode.EPISODE_VIDEO_VERSION_NOT_FOUND, "成片版本不存在。");
+        }
+        return version;
+    }
+
     private AiVoiceTaskResponse voiceTaskResponse(AiVoiceTaskEntity task) {
         return AiVoiceTaskResponse.from(task, aiVoiceResultMapper.selectByTask(task.tenantId, task.projectId, task.id));
     }
 
     private ShotComposeTaskResponse composeTaskResponse(ShotComposeTaskEntity task) {
         return ShotComposeTaskResponse.from(task, shotComposeResultMapper.selectByTask(task.tenantId, task.projectId, task.id));
+    }
+
+    private EpisodeComposeTaskResponse episodeTaskResponse(EpisodeComposeTaskEntity task) {
+        return EpisodeComposeTaskResponse.from(
+            task,
+            episodeComposeItemMapper.selectByTask(task.tenantId, task.projectId, task.id),
+            episodeVideoVersionMapper.selectByTask(task.tenantId, task.projectId, task.id)
+        );
     }
 
     private Map<String, Object> readJsonMap(String json) {
@@ -797,13 +1284,22 @@ public class ShotProductionService {
 
     private long writeFile(String storagePath, String content) {
         try {
-            Path file = storageRoot.resolve(storagePath.substring(1));
+            Path file = storageFile(storagePath);
             Files.createDirectories(file.getParent());
             Files.writeString(file, content, StandardCharsets.UTF_8);
             return Files.size(file);
         } catch (Exception exception) {
             throw new IllegalStateException("文件写入失败：" + exception.getMessage(), exception);
         }
+    }
+
+    private Path storageFile(String storagePath) {
+        Path root = storageRoot.toAbsolutePath().normalize();
+        Path file = root.resolve(storagePath.substring(1)).normalize();
+        if (!file.startsWith(root)) {
+            throw new IllegalStateException("文件路径不合法");
+        }
+        return file;
     }
 
     private BigDecimal estimateDuration(String text) {

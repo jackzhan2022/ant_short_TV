@@ -132,6 +132,7 @@ class OrganizationProjectControllerTest {
                 "SCRIPT:AI_REWRITE",
                 "AI_SERVICE:USE"
             )));
+        grantTeamPoints(tenantId, 1);
         mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(memberToken))
                 .header("X-Tenant-Id", tenantId)
@@ -359,10 +360,26 @@ class OrganizationProjectControllerTest {
 
     private void insertDefaultTextService(Long tenantId, Long userId) {
         jdbcTemplate.update("""
+            update ai_service_config
+               set is_default = false,
+                   updated_at = now()
+             where service_type = 'TEXT'
+               and is_default = true
+               and deleted_at is null
+            """);
+        jdbcTemplate.update("""
             insert into ai_service_config
               (tenant_id, provider, service_type, name, base_url, api_key_cipher, model, endpoint, priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
             values (?, 'OpenAI', 'TEXT', '默认文本服务', 'https://example.com/v1', 'cipher', 'gpt-4.1-mini', '/chat/completions', 100, true, true, 'SUCCESS', ?, now(), now())
             """, tenantId, userId);
+    }
+
+    private void grantTeamPoints(Long tenantId, int amount) {
+        jdbcTemplate.update("""
+            insert into team_point_account
+              (tenant_id, balance, total_granted, total_consumed, created_at, updated_at)
+            values (?, ?, ?, 0, now(), now())
+            """, tenantId, amount, amount);
     }
 
     private Long userIdByMobile(String mobile) {

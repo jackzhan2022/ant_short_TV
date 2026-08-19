@@ -16,11 +16,7 @@ public class MaterialStorageConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String location = storageRoot.toUri().toString();
-        if (!location.endsWith("/")) {
-            location = location + "/";
-        }
-        registry.addResourceHandler("/materials/**")
-            .addResourceLocations(location);
+        // Files under /materials are served by MaterialFileController so every
+        // request passes through project access or signed URL validation.
     }
 }

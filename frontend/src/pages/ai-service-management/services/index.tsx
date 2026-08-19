@@ -19,7 +19,6 @@ import {
   App,
   Button,
   Dropdown,
-  Empty,
   Form,
   Popconfirm,
   Space,
@@ -29,7 +28,6 @@ import {
 import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useAccess } from '@umijs/max';
-import { getCurrentTenantId } from '@/services/account-team/auth';
 import type {
   AiProviderCode,
   AiServiceConfig,
@@ -97,7 +95,6 @@ const testStatusColor: Record<string, string> = {
 };
 
 const ServiceEditor = ({
-  tenantId,
   record,
   serviceType,
   trigger,
@@ -106,7 +103,6 @@ const ServiceEditor = ({
   onDone,
   onClose,
 }: {
-  tenantId: number;
   record?: AiServiceConfig;
   serviceType?: AiServiceConfigFormValues['serviceType'];
   trigger: ReactElement;
@@ -173,10 +169,10 @@ const ServiceEditor = ({
           apiKey: values.apiKey?.trim(),
         };
         if (record) {
-          await updateAiServiceConfig(tenantId, record.id, payload);
+          await updateAiServiceConfig(record.id, payload);
           message.success('AI 服务已更新');
         } else {
-          await createAiServiceConfig(tenantId, payload);
+          await createAiServiceConfig(payload);
           message.success('AI 服务已创建');
         }
         onDone();
@@ -231,11 +227,9 @@ const ServiceEditor = ({
 };
 
 const CreateServiceDropdown = ({
-  tenantId,
   providerOptions,
   onDone,
 }: {
-  tenantId: number;
   providerOptions: ProviderOption[];
   onDone: () => void;
 }) => {
@@ -265,7 +259,6 @@ const CreateServiceDropdown = ({
       </Dropdown>
       {open && (
         <ServiceEditor
-          tenantId={tenantId}
           serviceType={serviceType}
           providerOptions={providerOptions}
           trigger={<span />}
@@ -282,7 +275,6 @@ const CreateServiceDropdown = ({
 };
 
 const AiServiceManagement = () => {
-  const tenantId = getCurrentTenantId();
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
   const access = useAccess();
@@ -309,14 +301,6 @@ const AiServiceManagement = () => {
         message.warning('服务商列表加载失败，已使用默认服务商');
       });
   }, [message]);
-
-  if (!tenantId) {
-    return (
-      <PageContainer>
-        <Empty description="请先在我的团队中选择当前创作团队" />
-      </PageContainer>
-    );
-  }
 
   const reload = () => actionRef.current?.reload();
 
@@ -369,7 +353,7 @@ const AiServiceManagement = () => {
           disabled={!access.canEditAiServices}
           onChange={async (checked) => {
             if (!checked || record.isDefault) return;
-            await setDefaultAiServiceConfig(tenantId, record.id);
+            await setDefaultAiServiceConfig(record.id);
             message.success('已设为默认');
             reload();
           }}
@@ -393,7 +377,7 @@ const AiServiceManagement = () => {
           unCheckedChildren="停用"
           disabled={!access.canEditAiServices}
           onChange={async (checked) => {
-            await updateAiServiceConfigStatus(tenantId, record.id, checked);
+            await updateAiServiceConfigStatus(record.id, checked);
             message.success(checked ? '已启用' : '已停用');
             reload();
           }}
@@ -433,7 +417,6 @@ const AiServiceManagement = () => {
           access.canEditAiServices && (
             <ServiceEditor
               key="edit"
-              tenantId={tenantId}
               record={record}
               providerOptions={providerOptions}
               trigger={
@@ -450,7 +433,7 @@ const AiServiceManagement = () => {
               type="link"
               icon={<ThunderboltOutlined />}
               onClick={async () => {
-                await testAiServiceConfig(tenantId, record.id);
+                await testAiServiceConfig(record.id);
                 message.success('测试已完成');
                 reload();
               }}
@@ -463,7 +446,7 @@ const AiServiceManagement = () => {
               key="delete"
               title="确认删除该服务配置？"
               onConfirm={async () => {
-                await deleteAiServiceConfig(tenantId, record.id);
+                await deleteAiServiceConfig(record.id);
                 message.success('AI 服务已删除');
                 reload();
               }}
@@ -489,7 +472,7 @@ const AiServiceManagement = () => {
         tableLayout="fixed"
         scroll={{ x: 1400 }}
         request={async () => {
-          const response = await queryAiServiceConfigs(tenantId);
+          const response = await queryAiServiceConfigs();
           return { data: response.data, success: response.success };
         }}
         columns={columns}
@@ -498,7 +481,6 @@ const AiServiceManagement = () => {
             ? [
                 <CreateServiceDropdown
                   key="create"
-                  tenantId={tenantId}
                   providerOptions={providerOptions}
                   onDone={reload}
                 />,

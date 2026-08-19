@@ -757,6 +757,94 @@ export type CreateShotComposeTaskValues = {
   outputFormat?: string;
 };
 
+export type EpisodeComposeTaskStatus =
+  | 'PENDING_VALIDATION'
+  | 'VALIDATION_FAILED'
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'SUCCEEDED'
+  | 'FAILED'
+  | 'CANCELED';
+
+export type EpisodeComposeItem = {
+  id: number;
+  taskId: number;
+  episodeNo: number;
+  storyboardId: number;
+  storyboardOrder: number;
+  shotResultId?: number | null;
+  videoUrl?: string | null;
+  durationSeconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  status: string;
+  errorMessage?: string | null;
+  createdAt?: string;
+};
+
+export type EpisodeVideoVersion = {
+  id: number;
+  episodeNo: number;
+  composeTaskId: number;
+  versionNo: number;
+  versionName: string;
+  videoUrl: string;
+  storagePath: string;
+  coverUrl?: string | null;
+  durationSeconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  fileSize?: number | null;
+  format?: string | null;
+  materialId?: number | null;
+  current: boolean;
+  status: string;
+  createdAt?: string;
+};
+
+export type EpisodeExportRecord = {
+  id: number;
+  episodeNo: number;
+  videoVersionId: number;
+  exportType: string;
+  exportStatus: string;
+  fileName?: string | null;
+  fileSize?: number | null;
+  downloadUrl?: string | null;
+  errorMessage?: string | null;
+  createdAt?: string;
+};
+
+export type EpisodeComposeTask = {
+  id: number;
+  projectId: number;
+  episodeNo: number;
+  taskName: string;
+  composeConfig?: string | null;
+  storyboardCount: number;
+  totalDurationSeconds?: number | null;
+  status: EpisodeComposeTaskStatus;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt?: string;
+  items: EpisodeComposeItem[];
+  videoVersion?: EpisodeVideoVersion | null;
+};
+
+export type CreateEpisodeComposeTaskValues = {
+  episodeNo: number;
+  taskName?: string;
+  versionName?: string;
+  outputFormat?: string;
+  quality?: string;
+  generateCover?: boolean;
+};
+
+export type RenameEpisodeVideoVersionValues = {
+  versionName: string;
+};
+
 export const queryAiVoiceTasks = async (
   projectId: number,
   params?: { status?: string; storyboardId?: number },
@@ -877,6 +965,166 @@ export const createShotComposeTask = async (
       headers: { 'Content-Type': 'application/json' },
       data: values,
     },
+  );
+
+export const queryEpisodeComposeTasks = async (
+  projectId: number,
+  params?: { episodeNo?: number; status?: EpisodeComposeTaskStatus },
+) =>
+  request<ApiResponse<EpisodeComposeTask[]>>(
+    `/api/projects/${projectId}/episode-compose-tasks`,
+    { params },
+  );
+
+export const queryEpisodeComposeTask = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<EpisodeComposeTask>>(
+    `/api/projects/${projectId}/episode-compose-tasks/${taskId}`,
+  );
+
+export const createEpisodeComposeTask = async (
+  projectId: number,
+  values: CreateEpisodeComposeTaskValues,
+) =>
+  request<ApiResponse<EpisodeComposeTask>>(
+    `/api/projects/${projectId}/episode-compose-tasks`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const cancelEpisodeComposeTask = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<EpisodeComposeTask>>(
+    `/api/projects/${projectId}/episode-compose-tasks/${taskId}/cancel`,
+    { method: 'POST' },
+  );
+
+export const regenerateEpisodeComposeTask = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<EpisodeComposeTask>>(
+    `/api/projects/${projectId}/episode-compose-tasks/${taskId}/regenerate`,
+    { method: 'POST' },
+  );
+
+export const deleteEpisodeComposeTask = async (
+  projectId: number,
+  taskId: number,
+) =>
+  request<ApiResponse<void>>(
+    `/api/projects/${projectId}/episode-compose-tasks/${taskId}`,
+    { method: 'DELETE' },
+  );
+
+export const queryEpisodeVideoVersions = async (
+  projectId: number,
+  episodeNo: number,
+) =>
+  request<ApiResponse<EpisodeVideoVersion[]>>(
+    `/api/projects/${projectId}/episode-video-versions`,
+    { params: { episodeNo } },
+  );
+
+export const queryEpisodeVideoVersion = async (
+  projectId: number,
+  versionId: number,
+) =>
+  request<ApiResponse<EpisodeVideoVersion>>(
+    `/api/projects/${projectId}/episode-video-versions/${versionId}`,
+  );
+
+export const renameEpisodeVideoVersion = async (
+  projectId: number,
+  versionId: number,
+  values: RenameEpisodeVideoVersionValues,
+) =>
+  request<ApiResponse<EpisodeVideoVersion>>(
+    `/api/projects/${projectId}/episode-video-versions/${versionId}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const setCurrentEpisodeVideoVersion = async (
+  projectId: number,
+  versionId: number,
+) =>
+  request<ApiResponse<EpisodeVideoVersion>>(
+    `/api/projects/${projectId}/episode-video-versions/${versionId}/current`,
+    { method: 'POST' },
+  );
+
+export const downloadEpisodeVideoVersion = async (
+  projectId: number,
+  versionId: number,
+) =>
+  (async () => {
+    const token = localStorage.getItem('accessToken');
+    const currentTenantId = localStorage.getItem('currentTenantId');
+    const response = await fetch(
+      `/api/projects/${projectId}/episode-video-versions/${versionId}/download`,
+      {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(currentTenantId ? { 'X-Tenant-Id': currentTenantId } : {}),
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`下载失败：${response.status}`);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('content-disposition') || '';
+    const fileName =
+      disposition.match(/filename="?([^";]+)"?/i)?.[1] ||
+      `episode_${versionId}.mp4`;
+    const url = URL.createObjectURL(blob);
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.rel = 'noreferrer';
+      link.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  })();
+
+export const saveEpisodeVideoMaterial = async (
+  projectId: number,
+  versionId: number,
+) =>
+  request<ApiResponse<EpisodeVideoVersion>>(
+    `/api/projects/${projectId}/episode-video-versions/${versionId}/save-material`,
+    { method: 'POST' },
+  );
+
+export const deleteEpisodeVideoVersion = async (
+  projectId: number,
+  versionId: number,
+) =>
+  request<ApiResponse<void>>(
+    `/api/projects/${projectId}/episode-video-versions/${versionId}`,
+    { method: 'DELETE' },
+  );
+
+export const queryEpisodeExportRecords = async (
+  projectId: number,
+  params?: { episodeNo?: number },
+) =>
+  request<ApiResponse<EpisodeExportRecord[]>>(
+    `/api/projects/${projectId}/episode-export-records`,
+    { params },
   );
 
 export const cancelAiVoiceTask = async (projectId: number, taskId: number) =>

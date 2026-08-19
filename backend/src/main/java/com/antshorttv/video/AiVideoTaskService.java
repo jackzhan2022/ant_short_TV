@@ -7,10 +7,12 @@ import com.antshorttv.ai.AiServiceConfigEntity;
 import com.antshorttv.ai.AiServiceConfigMapper;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.material.MaterialFileAccessService;
 import com.antshorttv.material.VideoMaterialEntity;
 import com.antshorttv.material.VideoMaterialMapper;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
+import com.antshorttv.points.TeamPointService;
 import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.project.ProjectMemberEntity;
@@ -64,7 +66,9 @@ public class AiVideoTaskService {
     private final TenantContextResolver tenantContextResolver;
     private final RbacPermissionService rbacPermissionService;
     private final OperationLogService operationLogService;
+    private final MaterialFileAccessService materialFileAccessService;
     private final AiSecretCodec aiSecretCodec;
+    private final TeamPointService teamPointService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final int maxConcurrentPerTenant;
@@ -86,7 +90,9 @@ public class AiVideoTaskService {
         TenantContextResolver tenantContextResolver,
         RbacPermissionService rbacPermissionService,
         OperationLogService operationLogService,
+        MaterialFileAccessService materialFileAccessService,
         AiSecretCodec aiSecretCodec,
+        TeamPointService teamPointService,
         ObjectMapper objectMapper,
         @Value("${ai.video.max-concurrent-per-tenant:3}") int maxConcurrentPerTenant,
         @Value("${ai.video.task-timeout-minutes:20}") int taskTimeoutMinutes,
@@ -106,7 +112,9 @@ public class AiVideoTaskService {
         this.tenantContextResolver = tenantContextResolver;
         this.rbacPermissionService = rbacPermissionService;
         this.operationLogService = operationLogService;
+        this.materialFileAccessService = materialFileAccessService;
         this.aiSecretCodec = aiSecretCodec;
+        this.teamPointService = teamPointService;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newHttpClient();
         this.maxConcurrentPerTenant = maxConcurrentPerTenant;
@@ -153,6 +161,7 @@ public class AiVideoTaskService {
         if (aiVideoTaskMapper.countActiveByTenant(tenantId) >= maxConcurrentPerTenant) {
             throw new BusinessException(ErrorCode.AI_VIDEO_CONCURRENCY_LIMIT_EXCEEDED, "当前团队视频生成并发已达上限，请稍后再试。");
         }
+        teamPointService.consumeForAi(context, 1, "STORYBOARD_VIDEO_GENERATION", null, "AI 视频生成消耗积分");
         LocalDateTime now = LocalDateTime.now();
 
         AiVideoTaskEntity task = new AiVideoTaskEntity();
@@ -165,7 +174,7 @@ public class AiVideoTaskService {
         task.prompt = request.prompt().trim();
         task.negativePrompt = blankToNull(request.negativePrompt());
         task.firstFrameImageId = request.firstFrameImageId() == null ? storyboard.firstFrameImageId : request.firstFrameImageId();
-        task.firstFrameUrl = firstFrameUrl;
+        task.firstFrameUrl = materialFileAccessService.publicUrl(firstFrameUrl);
         task.lastFrameImageId = request.lastFrameImageId();
         task.lastFrameUrl = blankToNull(request.lastFrameUrl());
         task.durationSeconds = request.durationSeconds() == null ? 5 : request.durationSeconds();
@@ -386,7 +395,6 @@ public class AiVideoTaskService {
 
     private AiServiceConfigEntity resolveVideoService(Long tenantId, Long serviceConfigId) {
         QueryWrapper<AiServiceConfigEntity> query = new QueryWrapper<AiServiceConfigEntity>()
-            .eq("tenant_id", tenantId)
             .eq("service_type", "VIDEO")
             .eq("enabled", true)
             .isNull("deleted_at");
@@ -404,7 +412,7 @@ public class AiVideoTaskService {
         }
         AiServiceConfigEntity fallback = aiServiceConfigMapper.selectOne(query.orderByDesc("priority").orderByDesc("id").last("limit 1"));
         if (fallback == null) {
-            throw new BusinessException(ErrorCode.AI_VIDEO_SERVICE_UNAVAILABLE, "当前团队未配置可用视频服务。");
+            throw new BusinessException(ErrorCode.AI_VIDEO_SERVICE_UNAVAILABLE, "未配置可用视频服务。");
         }
         return fallback;
     }
@@ -572,8 +580,8 @@ public class AiVideoTaskService {
         String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
         result.storagePath = "/materials/%d/%d/videos/%s/%d.mp4".formatted(task.tenantId, task.projectId, day, task.id);
         long fileSize = writeVideoFile(result.storagePath, externalVideoUrl);
-        result.videoUrl = result.storagePath;
-        result.coverUrl = task.firstFrameUrl;
+        result.videoUrl = materialFileAccessService.publicUrl(result.storagePath);
+        result.coverUrl = task.firstFrameUrl == null ? null : materialFileAccessService.publicUrl(task.firstFrameUrl);
         result.durationSeconds = BigDecimal.valueOf(task.durationSeconds == null ? 5 : task.durationSeconds);
         result.width = "16:9".equals(task.aspectRatio) ? 1280 : 720;
         result.height = "16:9".equals(task.aspectRatio) ? 720 : 1280;

@@ -5,7 +5,6 @@ import AiServiceManagement from './index';
 const mocks = vi.hoisted(() => ({
   createAiServiceConfig: vi.fn(),
   deleteAiServiceConfig: vi.fn(),
-  getCurrentTenantId: vi.fn(),
   lastProTableProps: undefined as any,
   providerSelectProps: undefined as any,
   queryAiProviders: vi.fn(),
@@ -122,10 +121,6 @@ vi.mock('@ant-design/pro-components', () => ({
   },
 }));
 
-vi.mock('@/services/account-team/auth', () => ({
-  getCurrentTenantId: mocks.getCurrentTenantId,
-}));
-
 vi.mock('./service', () => ({
   createAiServiceConfig: mocks.createAiServiceConfig,
   deleteAiServiceConfig: mocks.deleteAiServiceConfig,
@@ -142,7 +137,6 @@ describe('AiServiceManagement', () => {
     vi.clearAllMocks();
     mocks.lastProTableProps = undefined;
     mocks.providerSelectProps = undefined;
-    mocks.getCurrentTenantId.mockReturnValue(10);
     mocks.queryAiProviders.mockResolvedValue({
       success: true,
       data: [
@@ -159,7 +153,7 @@ describe('AiServiceManagement', () => {
     mocks.queryAiServiceConfigs.mockResolvedValue({ success: true, data: [] });
   });
 
-  it('renders AI service configuration table for the current team', async () => {
+  it('renders AI service configuration table as a global view', async () => {
     render(<AiServiceManagement />);
 
     expect(screen.getByText('AI服务配置')).toBeInTheDocument();
@@ -182,7 +176,7 @@ describe('AiServiceManagement', () => {
     expect(screen.getAllByText('模型').length).toBeGreaterThan(0);
 
     await waitFor(() => {
-      expect(mocks.queryAiServiceConfigs).toHaveBeenCalledWith(10);
+      expect(mocks.queryAiServiceConfigs).toHaveBeenCalledWith();
     });
     await waitFor(() => {
       expect(mocks.queryAiProviders).toHaveBeenCalled();
@@ -204,13 +198,11 @@ describe('AiServiceManagement', () => {
     expect(mocks.lastProTableProps.columns.at(-1).align).toBe('center');
   });
 
-  it('prompts users to select a team when there is no current tenant', () => {
-    mocks.getCurrentTenantId.mockReturnValue(undefined);
-
+  it('loads service configs without current tenant context', async () => {
     render(<AiServiceManagement />);
 
-    expect(
-      screen.getByText('请先在我的团队中选择当前创作团队'),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mocks.queryAiServiceConfigs).toHaveBeenCalledWith();
+    });
   });
 });

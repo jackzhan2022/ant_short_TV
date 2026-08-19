@@ -49,3 +49,18 @@ record CreateShotComposeTaskRequest(
     String outputFormat
 ) {
 }
+
+record CreateEpisodeComposeTaskRequest(
+    @NotNull Integer episodeNo,
+    String taskName,
+    String versionName,
+    String outputFormat,
+    String quality,
+    Boolean generateCover
+) {
+}
+
+record RenameEpisodeVideoVersionRequest(
+    @NotBlank @Size(max = 100) String versionName
+) {
+}

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthSession } from '@/services/account-team/types';
@@ -31,44 +32,78 @@ vi.mock('@umijs/max', () => ({
   }),
 }));
 
-vi.mock('@ant-design/pro-components', () => {
-  const ProFormText = ({ name, placeholder }: any) => (
-    <input aria-label={placeholder} name={name} placeholder={placeholder} />
+vi.mock('antd', () => {
+  const Form = ({ children, onFinish }: any) => (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const currentTarget = event.currentTarget as HTMLFormElement;
+        const mobileInput = currentTarget.querySelector(
+          'input[name="mobile"]',
+        ) as HTMLInputElement | null;
+        const passwordInput = currentTarget.querySelector(
+          'input[name="password"]',
+        ) as HTMLInputElement | null;
+        onFinish?.({
+          mobile: mobileInput?.value,
+          password: passwordInput?.value,
+        });
+      }}
+    >
+      {children}
+    </form>
   );
-  ProFormText.Password = ({ name, placeholder }: any) => (
-    <input
-      aria-label={placeholder}
-      name={name}
-      placeholder={placeholder}
-      type="password"
-    />
+  Form.Item = ({ children, name }: any) =>
+    React.cloneElement(children, { name });
+
+  const Input = ({ name, placeholder, prefix, suffix }: any) => {
+    const [value, setValue] = React.useState('');
+    return (
+      <label>
+        {prefix}
+        <input
+          aria-label={placeholder}
+          name={name}
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        {suffix}
+      </label>
+    );
+  };
+  Input.Password = ({ name, placeholder, prefix }: any) => {
+    const [value, setValue] = React.useState('');
+    return (
+      <label>
+        {prefix}
+        <input
+          aria-label={placeholder}
+          name={name}
+          placeholder={placeholder}
+          type="password"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </label>
+    );
+  };
+
+  const Button = ({ children, htmlType }: any) => (
+    <button type={htmlType === 'submit' ? 'submit' : 'button'}>
+      {children}
+    </button>
   );
 
   return {
-    LoginForm: ({ children, onFinish }: any) => (
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const formData = new FormData(event.currentTarget);
-          onFinish?.({
-            mobile: formData.get('mobile'),
-            password: formData.get('password'),
-          });
-        }}
-      >
-        {children}
-        <button type="submit">登录</button>
-      </form>
-    ),
-    ProFormText,
+    App: {
+      useApp: () => ({ message: { success: mocks.success } }),
+    },
+    Button,
+    Form,
+    Input,
   };
 });
-
-vi.mock('antd', () => ({
-  App: {
-    useApp: () => ({ message: { success: mocks.success } }),
-  },
-}));
 
 vi.mock('@/components', () => ({
   Footer: () => <footer />,
@@ -117,10 +152,10 @@ describe('Login Page', () => {
   it('submits mobile and password login', async () => {
     render(<Login />);
 
-    fireEvent.change(screen.getByPlaceholderText('手机号'), {
+    fireEvent.input(screen.getByPlaceholderText('请输入手机号'), {
       target: { value: '13800000000' },
     });
-    fireEvent.change(screen.getByPlaceholderText('密码'), {
+    fireEvent.input(screen.getByPlaceholderText('请输入密码'), {
       target: { value: 'Password123' },
     });
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
@@ -139,10 +174,10 @@ describe('Login Page', () => {
     expect(mocks.replace).toHaveBeenCalledWith('/team/my');
   });
 
-  it('shows a register entry that links to the register page', () => {
+  it('shows a register entry', () => {
     render(<Login />);
 
-    const registerLink = screen.getByRole('link', { name: '注册新用户' });
+    const registerLink = screen.getByRole('link', { name: '注册账号' });
 
     expect(registerLink).toHaveAttribute('href', '/user/register');
   });

@@ -1,4 +1,3 @@
-import { LinkOutlined } from '@ant-design/icons';
 import type { Settings as LayoutSettings } from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
@@ -12,12 +11,10 @@ dayjs.extend(relativeTime);
 
 import {
   AvatarDropdown,
-  DocLink,
   ErrorBoundary,
   Footer,
-  LangDropdown,
   OfflineBanner,
-  VersionDropdown,
+  TeamSwitcher,
 } from '@/components';
 import {
   currentUser as queryCurrentUser,
@@ -48,6 +45,7 @@ const toLayoutCurrentUser = (user: UserProfile): API.CurrentUser => ({
 export async function getInitialState(): Promise<{
   settings?: Partial<LayoutSettings>;
   currentUser?: API.CurrentUser;
+  currentTenantId?: number;
   permissions?: string[];
   loading?: boolean;
   fetchUserInfo?: () => Promise<API.CurrentUser | undefined>;
@@ -75,8 +73,9 @@ export async function getInitialState(): Promise<{
     )
   ) {
     const currentUser = await fetchUserInfo();
+    const currentTenantId = getCurrentTenantId();
     let permissions: string[] = [];
-    if (currentUser && getCurrentTenantId()) {
+    if (currentUser && currentTenantId) {
       try {
         const permissionResponse = await queryCurrentPermissions({
           skipErrorHandler: true,
@@ -89,6 +88,7 @@ export async function getInitialState(): Promise<{
     return {
       fetchUserInfo,
       currentUser,
+      currentTenantId,
       permissions,
       settings: defaultSettings as Partial<LayoutSettings>,
       settingDrawerOpen: false,
@@ -106,6 +106,23 @@ export const layout: RunTimeLayoutConfig = ({
   initialState,
   setInitialState,
 }) => {
+  const refreshTenantContext = async (tenantId: number) => {
+    let permissions: string[] = [];
+    try {
+      const permissionResponse = await queryCurrentPermissions({
+        skipErrorHandler: true,
+      });
+      permissions = permissionResponse.data.permissions;
+    } catch (_error) {
+      permissions = [];
+    }
+    setInitialState((state) => ({
+      ...state,
+      currentTenantId: tenantId,
+      permissions,
+    }));
+  };
+
   return {
     menuItemRender: (item, dom) => {
       if (item.path) {
@@ -118,15 +135,7 @@ export const layout: RunTimeLayoutConfig = ({
       return dom;
     },
     actionsRender: () => {
-      // `locale: false` opts out of the language switcher. ProLayout's own
-      // `locale` prop is a locale string, so narrow to the boolean toggle here.
-      const localeEnabled =
-        (initialState?.settings as { locale?: boolean })?.locale !== false;
-      return [
-        <DocLink key="doc" />,
-        <VersionDropdown key="version" />,
-        localeEnabled && <LangDropdown key="lang" />,
-      ].filter(Boolean);
+      return [];
     },
     avatarProps: {
       src: initialState?.currentUser?.avatar,
@@ -168,14 +177,16 @@ export const layout: RunTimeLayoutConfig = ({
         width: '331px',
       },
     ],
-    links: isDev
-      ? [
-          <Link key="openapi" to="/umi/plugin/openapi" target="_blank">
-            <LinkOutlined />
-            <span>OpenAPI 文档</span>
-          </Link>,
-        ]
-      : [],
+    links: isDev ? [] : [],
+    menuExtraRender: (props) =>
+      props.collapsed || !initialState?.currentUser ? null : (
+        <div className="ant-short-team-switcher-shell">
+          <TeamSwitcher
+            currentTenantId={initialState.currentTenantId}
+            onChange={refreshTenantContext}
+          />
+        </div>
+      ),
     // Replace ProLayout's default ErrorBoundary with our offline-aware version,
     // so chunk load errors show friendly messages instead of "Something went wrong."
     ErrorBoundary,

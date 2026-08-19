@@ -47,6 +47,7 @@ class AiImageTaskControllerTest {
         Long tenantId = createTenant(token, "图片生成团队");
         Long ownerId = userIdByMobile("13800014001");
         Long projectId = createProject(token, tenantId, ownerId, "图片生成项目", "IMAGE_TASK_NO_SERVICE");
+        jdbcTemplate.update("delete from ai_service_config where service_type = 'IMAGE'");
 
         mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -60,6 +61,25 @@ class AiImageTaskControllerTest {
     }
 
     @Test
+    void rejectsImageTaskWhenTeamPointsAreInsufficient() throws Exception {
+        String token = registerUser("13800014004", "Image Point Owner");
+        Long tenantId = createTenant(token, "图片积分团队");
+        Long ownerId = userIdByMobile("13800014004");
+        Long projectId = createProject(token, tenantId, ownerId, "图片积分项目", "IMAGE_TASK_NO_POINTS");
+        createImageService(token, tenantId);
+
+        mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"taskType":"CHARACTER","targetType":"CHARACTER","targetId":1,"prompt":"赛博短剧女主角色立绘","aspectRatio":"3:4","imageCount":1}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
+    }
+
+    @Test
     void createsImageTaskAndManagesGeneratedResult() throws Exception {
         String token = registerUser("13800014002", "Image Creator");
         Long tenantId = createTenant(token, "图片结果团队");
@@ -67,6 +87,7 @@ class AiImageTaskControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "首帧项目", "IMAGE_TASK_RESULT");
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
 
         MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -161,6 +182,7 @@ class AiImageTaskControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "取消项目", "IMAGE_TASK_CANCEL");
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
 
         MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -273,6 +295,14 @@ class AiImageTaskControllerTest {
             .andExpect(status().isOk())
             .andReturn();
         return readLong(result, "$.data.id");
+    }
+
+    private void grantTeamPoints(Long tenantId, int amount) {
+        jdbcTemplate.update("""
+            insert into team_point_account
+              (tenant_id, balance, total_granted, total_consumed, created_at, updated_at)
+            values (?, ?, ?, 0, now(), now())
+            """, tenantId, amount, amount);
     }
 
     private Long createStoryboard(Long tenantId, Long projectId, Long userId) {

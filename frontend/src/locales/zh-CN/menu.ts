@@ -54,7 +54,7 @@ export default {
   'menu.ai-service-management.services': '服务配置',
   'menu.ai-service-management.logs': '调用日志',
   'menu.team': '创作团队',
-  'menu.team.my': '我的团队',
+  'menu.team.my': '团队管理',
   'menu.team.select': '选择团队',
   'menu.team.members': '成员管理',
   'menu.team.roles': '权限与角色',

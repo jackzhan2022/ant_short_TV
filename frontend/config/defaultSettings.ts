@@ -8,9 +8,10 @@ const Settings: ProLayoutProps & {
 } = {
   navTheme: 'light',
   colorPrimary: '#1677ff',
-  layout: 'mix',
+  layout: 'side',
+  siderWidth: 200,
   contentWidth: 'Fluid',
-  fixedHeader: false,
+  fixedHeader: true,
   fixSiderbar: true,
   colorWeak: false,
   title: 'Ant Design Pro',
@@ -20,6 +21,8 @@ const Settings: ProLayoutProps & {
     // 参见ts声明，demo 见文档，通过token 修改样式
     //https://procomponents.ant.design/components/layout#%E9%80%9A%E8%BF%87-token-%E4%BF%AE%E6%94%B9%E6%A0%B7%E5%BC%8F
   },
+  siderMenuType: 'group',
+  splitMenus: false,
 };
 
 export default Settings;

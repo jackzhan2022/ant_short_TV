@@ -26,11 +26,12 @@ class SchemaMigrationTest {
               'app_user', 'tenant', 'tenant_member', 'tenant_invitation', 'operation_log',
               'role', 'permission', 'role_permission', 'member_role',
               'organization', 'organization_member', 'project', 'project_member',
-              'project_role', 'project_role_permission', 'project_operation_log'
+              'project_role', 'project_role_permission', 'project_operation_log',
+              'team_point_account', 'team_point_transaction'
             )
             """, Integer.class);
 
-        assertThat(tableCount).isEqualTo(16);
+        assertThat(tableCount).isEqualTo(18);
     }
 
     @Test
@@ -55,9 +56,10 @@ class SchemaMigrationTest {
     }
 
     @Test
-    void aiServiceConfigKeepsOneActiveDefaultPerTenantAndType() {
+    void aiServiceConfigKeepsOneActiveDefaultPerServiceTypeGlobally() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
+        jdbc.update("delete from ai_service_config");
         jdbc.update("""
             insert into ai_service_config
               (tenant_id, provider, service_type, name, base_url, api_key_cipher, model,
@@ -72,7 +74,7 @@ class SchemaMigrationTest {
               (tenant_id, provider, service_type, name, base_url, api_key_cipher, model,
                priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
             values
-              (100, 'Gemini', 'TEXT', 'Gemini 默认', 'https://example.com', 'cipher-2',
+              (101, 'Gemini', 'TEXT', 'Gemini 默认', 'https://example.com', 'cipher-2',
                'model-b', 90, true, true, 'UNTESTED', 1, now(), now())
             """)).isInstanceOf(Exception.class);
     }

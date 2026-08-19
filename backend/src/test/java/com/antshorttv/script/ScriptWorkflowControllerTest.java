@@ -57,6 +57,7 @@ class ScriptWorkflowControllerTest {
         String token = registerUser("13800013002", "Generate Owner");
         Long tenantId = createTenant(token, "AI剧本团队");
         createDefaultTextService(tenantId, userIdByMobile("13800013002"));
+        grantTeamPoints(tenantId, 5);
         Long ownerId = userIdByMobile("13800013002");
         Long projectId = createProject(token, tenantId, ownerId, "豪门逆袭", "SCRIPT_WORKFLOW_GENERATE");
 
@@ -88,10 +89,99 @@ class ScriptWorkflowControllerTest {
     }
 
     @Test
+    void generatesScriptWithGlobalTextServiceFromAnotherTenant() throws Exception {
+        String configToken = registerUser("13800013012", "Global Config Owner");
+        Long configTenantId = createTenant(configToken, "全局配置来源团队");
+        createDefaultTextService(configTenantId, userIdByMobile("13800013012"));
+
+        String projectToken = registerUser("13800013013", "Global Project Owner");
+        Long projectTenantId = createTenant(projectToken, "全局配置使用团队");
+        grantTeamPoints(projectTenantId, 5);
+        Long ownerId = userIdByMobile("13800013013");
+        Long projectId = createProject(projectToken, projectTenantId, ownerId, "跨团队剧本", "SCRIPT_GLOBAL_AI_CONFIG");
+
+        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(projectToken))
+                .header("X-Tenant-Id", projectTenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "title":"全局服务剧本",
+                      "storyIdea":"团队未单独配置 AI 服务时仍可生成剧本",
+                      "genre":"逆袭"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.script.title", is("全局服务剧本")))
+            .andExpect(jsonPath("$.data.versions", hasSize(1)));
+    }
+
+    @Test
+    void aiScriptGenerationConsumesTeamPoint() throws Exception {
+        String token = registerUser("13800013014", "Point Script Owner");
+        Long tenantId = createTenant(token, "剧本积分团队");
+        Long ownerId = userIdByMobile("13800013014");
+        createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 2);
+        Long projectId = createProject(token, tenantId, ownerId, "积分剧本", "SCRIPT_POINTS_CONSUME");
+
+        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "title":"积分生成剧本",
+                      "storyIdea":"每次AI生成剧本都要扣减团队积分",
+                      "genre":"逆袭"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.script.title", is("积分生成剧本")));
+
+        Integer balance = jdbcTemplate.queryForObject(
+            "select balance from team_point_account where tenant_id = ?",
+            Integer.class,
+            tenantId
+        );
+        Integer consumeCount = jdbcTemplate.queryForObject(
+            "select count(*) from team_point_transaction where tenant_id = ? and transaction_type = 'AI_CONSUME' and business_scene = 'script_generate'",
+            Integer.class,
+            tenantId
+        );
+        org.assertj.core.api.Assertions.assertThat(balance).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(consumeCount).isEqualTo(1);
+    }
+
+    @Test
+    void aiScriptGenerationRequiresTeamPoint() throws Exception {
+        String token = registerUser("13800013015", "No Point Owner");
+        Long tenantId = createTenant(token, "无积分剧本团队");
+        Long ownerId = userIdByMobile("13800013015");
+        createDefaultTextService(tenantId, ownerId);
+        Long projectId = createProject(token, tenantId, ownerId, "无积分剧本", "SCRIPT_POINTS_REQUIRED");
+
+        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "title":"不能生成",
+                      "storyIdea":"团队没有积分时不能发起AI生成剧本",
+                      "genre":"逆袭"
+                    }
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
+    }
+
+    @Test
     void extractsCharactersAndScenesFromCurrentScript() throws Exception {
         String token = registerUser("13800013003", "Extract Owner");
         Long tenantId = createTenant(token, "AI元素团队");
         createDefaultTextService(tenantId, userIdByMobile("13800013003"));
+        grantTeamPoints(tenantId, 5);
         Long ownerId = userIdByMobile("13800013003");
         Long projectId = createProject(token, tenantId, ownerId, "豪门元素", "SCRIPT_WORKFLOW_EXTRACT");
 
@@ -137,6 +227,7 @@ class ScriptWorkflowControllerTest {
         Long tenantId = createTenant(token, "AI文本全链路团队");
         Long ownerId = userIdByMobile("13800013004");
         createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 20);
         Long projectId = createProject(token, tenantId, ownerId, "全链路短剧", "SCRIPT_WORKFLOW_FULL");
 
         MvcResult generateResult = mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
@@ -303,10 +394,26 @@ class ScriptWorkflowControllerTest {
 
     private void createDefaultTextService(Long tenantId, Long userId) {
         jdbcTemplate.update("""
+            update ai_service_config
+               set is_default = false,
+                   updated_at = now()
+             where service_type = 'TEXT'
+               and is_default = true
+               and deleted_at is null
+            """);
+        jdbcTemplate.update("""
             insert into ai_service_config
               (tenant_id, provider, service_type, name, base_url, api_key_cipher, model, endpoint, priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
             values (?, 'OpenAI', 'TEXT', '默认文本服务', 'https://example.com/v1', 'cipher', 'gpt-4.1-mini', '/chat/completions', 100, true, true, 'SUCCESS', ?, now(), now())
             """, tenantId, userId);
+    }
+
+    private void grantTeamPoints(Long tenantId, int amount) {
+        jdbcTemplate.update("""
+            insert into team_point_account
+              (tenant_id, balance, total_granted, total_consumed, created_at, updated_at)
+            values (?, ?, ?, 0, now(), now())
+            """, tenantId, amount, amount);
     }
 
     private String bearer(String token) {

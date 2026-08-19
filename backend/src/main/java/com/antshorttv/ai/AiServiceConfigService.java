@@ -63,7 +63,8 @@ public class AiServiceConfigService {
 
     public List<AiServiceConfigResponse> list(Long tenantId) {
         tenantContextResolver.requireActiveMember(tenantId);
-        return aiServiceConfigMapper.selectList(activeTenantWrapper(tenantId)
+        return aiServiceConfigMapper.selectList(new LambdaQueryWrapper<AiServiceConfigEntity>()
+                .isNull(AiServiceConfigEntity::getDeletedAt)
                 .orderByDesc(AiServiceConfigEntity::getPriority)
                 .orderByDesc(AiServiceConfigEntity::getId))
             .stream()
@@ -228,7 +229,9 @@ public class AiServiceConfigService {
 
     private AiServiceConfigEntity requireConfig(Long tenantId, Long id) {
         AiServiceConfigEntity entity = aiServiceConfigMapper.selectOne(
-            activeTenantWrapper(tenantId).eq(AiServiceConfigEntity::getId, id)
+            new LambdaQueryWrapper<AiServiceConfigEntity>()
+                .eq(AiServiceConfigEntity::getId, id)
+                .isNull(AiServiceConfigEntity::getDeletedAt)
         );
         if (entity == null) {
             throw new BusinessException(ErrorCode.AI_SERVICE_CONFIG_NOT_FOUND, "AI 服务配置不存在。");
@@ -236,17 +239,12 @@ public class AiServiceConfigService {
         return entity;
     }
 
-    private LambdaQueryWrapper<AiServiceConfigEntity> activeTenantWrapper(Long tenantId) {
-        return new LambdaQueryWrapper<AiServiceConfigEntity>()
-            .eq(AiServiceConfigEntity::getTenantId, tenantId)
-            .isNull(AiServiceConfigEntity::getDeletedAt);
-    }
-
     private void clearDefault(Long tenantId, String serviceType, Long exceptId) {
         List<AiServiceConfigEntity> defaults = aiServiceConfigMapper.selectList(
-            activeTenantWrapper(tenantId)
+            new LambdaQueryWrapper<AiServiceConfigEntity>()
                 .eq(AiServiceConfigEntity::getServiceType, serviceType)
                 .eq(AiServiceConfigEntity::getIsDefault, true)
+                .isNull(AiServiceConfigEntity::getDeletedAt)
         );
         for (AiServiceConfigEntity item : defaults) {
             if (exceptId != null && exceptId.equals(item.getId())) {

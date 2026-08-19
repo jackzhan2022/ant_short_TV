@@ -76,32 +76,41 @@ const MyTeams = () => {
         </Tag>
       ),
     },
-    {
-      title: '操作',
-      valueType: 'option',
-      render: (_, record) => (
-        <Space>
-          <Button
-            type="link"
-            onClick={async () => {
-              await switchTenant(record.id);
-              message.success(`已切换至 ${record.name}`);
-            }}
-          >
-            切换
-          </Button>
-          <Button
-            type="link"
-            onClick={async () => {
-              await switchTenant(record.id);
-              history.push('/team/settings');
-            }}
-          >
-            设置
-          </Button>
-        </Space>
-      ),
-    },
+      {
+        title: '操作',
+        valueType: 'option',
+        render: (_, record) => (
+          <Space>
+            <Button
+              type="link"
+              onClick={async () => {
+                await switchTenant(record.id);
+                message.success(`已切换至 ${record.name}`);
+              }}
+            >
+              切换
+            </Button>
+            <Button
+              type="link"
+              onClick={async () => {
+                await switchTenant(record.id);
+                history.push('/team/members');
+              }}
+            >
+              成员管理
+            </Button>
+            <Button
+              type="link"
+              onClick={async () => {
+                await switchTenant(record.id);
+                history.push('/team/settings');
+              }}
+            >
+              团队设置
+            </Button>
+          </Space>
+        ),
+      },
   ];
 
   return (
@@ -109,7 +118,7 @@ const MyTeams = () => {
       <ProTable<TenantSummary>
         actionRef={actionRef}
         rowKey="id"
-        headerTitle="我的创作团队"
+        headerTitle="团队管理"
         search={false}
         request={async () => {
           const response = await queryMyTenants();

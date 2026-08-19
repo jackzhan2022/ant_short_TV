@@ -1,21 +1,17 @@
-import { LockOutlined, MobileOutlined } from '@ant-design/icons';
-import { LoginForm, ProFormText } from '@ant-design/pro-components';
-import { Helmet, Link, SelectLang, history, useIntl, useModel } from '@umijs/max';
-import { App } from 'antd';
+import { Helmet, Link, history, useIntl, useModel } from '@umijs/max';
+import { App, Button, Form, Input } from 'antd';
 import React, { startTransition } from 'react';
-import { Footer } from '@/components';
-import {
-  loginByMobile,
-  saveAuthSession,
-} from '@/services/account-team/auth';
+import { loginByMobile, saveAuthSession } from '@/services/account-team/auth';
 import { switchTenant } from '@/services/account-team/tenant';
 import type { AuthSession } from '@/services/account-team/types';
 import Settings from '../../../../config/defaultSettings';
+import AuthPageLayout from '../components/AuthPageLayout';
 
 const loginPath = '/user/login';
 
 const getSafeRedirectUrl = (redirect: string | null): string => {
-  if (!redirect?.startsWith('/') || redirect.startsWith('//')) return '/team/my';
+  if (!redirect?.startsWith('/') || redirect.startsWith('//'))
+    return '/team/my';
 
   try {
     const parsed = new URL(redirect, window.location.origin);
@@ -51,7 +47,10 @@ const Login: React.FC = () => {
   };
 
   const handleSubmit = async (values: { mobile: string; password: string }) => {
-    const response = await loginByMobile(values);
+    const response = await loginByMobile({
+      mobile: values.mobile,
+      password: values.password,
+    });
     const session = response.data;
     if (session.tenants.length === 1) {
       await switchTenant(session.tenants[0].id);
@@ -66,112 +65,143 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        backgroundColor: '#eef2f7',
-      }}
-    >
-      <video
-        autoPlay
-        aria-hidden="true"
-        data-testid="login-background-video"
-        loop
-        muted
-        playsInline
-        src="https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4"
-        poster="https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          zIndex: 0,
-        }}
-      >
-        <source
-          src="https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4"
-          type="video/mp4"
-        />
-      </video>
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          zIndex: 1,
-          background:
-            'linear-gradient(135deg, rgba(239, 244, 255, 0.72), rgba(244, 247, 252, 0.58))',
-        }}
-      />
+    <AuthPageLayout>
       <Helmet>
         <title>
           {intl.formatMessage({ id: 'menu.login', defaultMessage: '登录' })}
           {Settings.title && ` - ${Settings.title}`}
         </title>
       </Helmet>
-      <div style={{ position: 'fixed', right: 16, top: 16, zIndex: 2 }}>
-        <SelectLang />
-      </div>
-      <div
+
+      <h1
         style={{
-          position: 'relative',
-          zIndex: 2,
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '48px 24px',
+          margin: '0 0 28px',
+          textAlign: 'center',
+          color: '#2b2d33',
+          fontSize: 28,
+          fontWeight: 700,
+          lineHeight: 1.35,
+          letterSpacing: 0,
         }}
       >
-        <LoginForm
-          logo={<img alt="logo" src="/logo.svg" />}
-          title="Ant Short TV"
-          subTitle="短剧制作 SaaS 平台"
+        开启您的AI创作之旅
+      </h1>
+
+      <div
+        style={{
+          marginBottom: 24,
+          color: '#1f2329',
+          fontSize: 16,
+          lineHeight: 1.5,
+          fontWeight: 500,
+        }}
+      >
+        手机登录
+      </div>
+
+      <Form
+        layout="vertical"
+        requiredMark={false}
+        onFinish={handleSubmit}
+        style={{ width: '100%' }}
+      >
+        <Form.Item
+          name="mobile"
+          rules={[
+            { required: true, message: '请输入手机号' },
+            { pattern: /^1\d{10}$/, message: '手机号格式错误' },
+          ]}
+          style={{ marginBottom: 20 }}
+        >
+          <Input
+            size="large"
+            placeholder="请输入手机号"
+            prefix={
+              <span style={{ color: '#202124', marginRight: 8 }}>手机号:</span>
+            }
+            style={{
+              height: 48,
+              borderRadius: 8,
+              background: 'rgba(255, 255, 255, 0.72)',
+              borderColor: '#e3e5ee',
+              boxShadow: 'none',
+              fontSize: 14,
+            }}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="password"
+          rules={[{ required: true, message: '请输入密码' }]}
+          style={{ marginBottom: 24 }}
+        >
+          <Input.Password
+            size="large"
+            placeholder="请输入密码"
+            prefix={
+              <span style={{ color: '#202124', marginRight: 8 }}>密码:</span>
+            }
+            style={{
+              height: 48,
+              borderRadius: 8,
+              background: 'rgba(255, 255, 255, 0.72)',
+              borderColor: '#e3e5ee',
+              boxShadow: 'none',
+              fontSize: 14,
+            }}
+          />
+        </Form.Item>
+
+        <Button
+          type="primary"
+          htmlType="submit"
+          block
+          size="large"
           style={{
-            width: '100%',
-            maxWidth: 420,
-            margin: '0 auto',
-          }}
-          onFinish={async (values) => {
-            await handleSubmit(values as { mobile: string; password: string });
+            height: 48,
+            borderRadius: 8,
+            border: 0,
+            background: 'linear-gradient(90deg, #c498f4 0%, #9c8bf1 100%)',
+            boxShadow: 'none',
+            fontSize: 16,
+            fontWeight: 600,
           }}
         >
-          <ProFormText
-            name="mobile"
-            fieldProps={{
-              size: 'large',
-              prefix: <MobileOutlined />,
-            }}
-            placeholder="手机号"
-            rules={[
-              { required: true, message: '请输入手机号' },
-              { pattern: /^1\d{10}$/, message: '手机号格式错误' },
-            ]}
-          />
-          <ProFormText.Password
-            name="password"
-            fieldProps={{
-              size: 'large',
-              prefix: <LockOutlined />,
-            }}
-            placeholder="密码"
-            rules={[{ required: true, message: '请输入密码' }]}
-          />
-          <div style={{ textAlign: 'right' }}>
-            <Link to="/user/register">注册新用户</Link>
-          </div>
-        </LoginForm>
-      </div>
-      <div style={{ position: 'relative', zIndex: 2 }}>
-        <Footer />
-      </div>
-    </div>
+          登录
+        </Button>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginTop: 10,
+            color: '#8f949e',
+            fontSize: 12,
+            lineHeight: 1.7,
+          }}
+        >
+          <span>
+            登录即代表已阅读并同意&nbsp;
+            <Link to="/docs/user-agreement" style={{ color: '#7a37ff' }}>
+              《用户协议》
+            </Link>
+            &nbsp;和&nbsp;
+            <Link to="/docs/privacy-policy" style={{ color: '#7a37ff' }}>
+              《隐私政策》
+            </Link>
+            ，未注册手机号将自动注册
+          </span>
+        </div>
+
+        <div style={{ marginTop: 16, textAlign: 'right' }}>
+          <Link to="/user/register" style={{ color: '#202124', fontSize: 14 }}>
+            注册账号
+          </Link>
+        </div>
+      </Form>
+    </AuthPageLayout>
   );
 };
 

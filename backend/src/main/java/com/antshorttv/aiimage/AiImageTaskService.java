@@ -6,6 +6,7 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
+import com.antshorttv.points.TeamPointService;
 import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.security.TenantContext;
@@ -37,6 +38,7 @@ public class AiImageTaskService {
     private final AiImageStorageService storageService;
     private final JdbcTemplate jdbcTemplate;
     private final OperationLogService operationLogService;
+    private final TeamPointService teamPointService;
 
     public AiImageTaskService(
         TenantContextResolver tenantContextResolver,
@@ -48,7 +50,8 @@ public class AiImageTaskService {
         AiImageTaskExecutionService executionService,
         AiImageStorageService storageService,
         JdbcTemplate jdbcTemplate,
-        OperationLogService operationLogService
+        OperationLogService operationLogService,
+        TeamPointService teamPointService
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.projectMapper = projectMapper;
@@ -60,6 +63,7 @@ public class AiImageTaskService {
         this.storageService = storageService;
         this.jdbcTemplate = jdbcTemplate;
         this.operationLogService = operationLogService;
+        this.teamPointService = teamPointService;
     }
 
     public List<AiImageTaskResponse> list(Long tenantId, Long projectId, String taskType, String status) {
@@ -80,12 +84,14 @@ public class AiImageTaskService {
         TenantContext context = requireProject(tenantId, projectId);
         validateRequest(request);
         AiServiceConfigEntity config = resolveImageService(tenantId, request.serviceConfigId());
+        String taskType = request.taskType().trim();
+        teamPointService.consumeForAi(context, 1, taskType, null, "AI 图片生成消耗积分");
         LocalDateTime now = LocalDateTime.now();
 
         AiImageTaskEntity task = new AiImageTaskEntity();
         task.setTenantId(tenantId);
         task.setProjectId(projectId);
-        task.setTaskType(request.taskType().trim());
+        task.setTaskType(taskType);
         task.setTargetType(request.targetType().trim());
         task.setTargetId(request.targetId());
         task.setServiceConfigId(config.getId());
@@ -313,7 +319,6 @@ public class AiImageTaskService {
 
     private AiServiceConfigEntity resolveImageService(Long tenantId, Long serviceConfigId) {
         LambdaQueryWrapper<AiServiceConfigEntity> wrapper = new LambdaQueryWrapper<AiServiceConfigEntity>()
-            .eq(AiServiceConfigEntity::getTenantId, tenantId)
             .eq(AiServiceConfigEntity::getServiceType, "IMAGE")
             .eq(AiServiceConfigEntity::getEnabled, true)
             .isNull(AiServiceConfigEntity::getDeletedAt);
@@ -322,7 +327,7 @@ public class AiImageTaskService {
         }
         AiServiceConfigEntity config = aiServiceConfigMapper.selectOne(wrapper.orderByDesc(AiServiceConfigEntity::getIsDefault).orderByDesc(AiServiceConfigEntity::getPriority).last("limit 1"));
         if (config == null) {
-            throw new BusinessException(ErrorCode.AI_IMAGE_SERVICE_UNAVAILABLE, "当前团队未配置可用图片服务。");
+            throw new BusinessException(ErrorCode.AI_IMAGE_SERVICE_UNAVAILABLE, "未配置可用图片服务。");
         }
         return config;
     }

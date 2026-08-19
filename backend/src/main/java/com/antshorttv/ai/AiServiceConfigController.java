@@ -1,6 +1,8 @@
 package com.antshorttv.ai;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
 import com.antshorttv.rbac.RequirePermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -35,6 +37,12 @@ public class AiServiceConfigController {
         return ApiResponse.success(aiServiceConfigService.list(tenantId));
     }
 
+    @GetMapping("/ai-service-configs")
+    @RequirePermission("AI_SERVICE:VIEW")
+    public ApiResponse<List<AiServiceConfigResponse>> listGlobal(HttpServletRequest servletRequest) {
+        return ApiResponse.success(aiServiceConfigService.list(requireTenantId(servletRequest)));
+    }
+
     @PostMapping("/tenants/{tenantId}/ai-service-configs")
     @RequirePermission("AI_SERVICE:CREATE")
     public ApiResponse<AiServiceConfigResponse> create(
@@ -43,6 +51,15 @@ public class AiServiceConfigController {
         HttpServletRequest servletRequest
     ) {
         return ApiResponse.success(aiServiceConfigService.create(tenantId, request, servletRequest));
+    }
+
+    @PostMapping("/ai-service-configs")
+    @RequirePermission("AI_SERVICE:CREATE")
+    public ApiResponse<AiServiceConfigResponse> createGlobal(
+        @Valid @RequestBody AiServiceConfigRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(aiServiceConfigService.create(requireTenantId(servletRequest), request, servletRequest));
     }
 
     @PutMapping("/tenants/{tenantId}/ai-service-configs/{id}")
@@ -56,6 +73,16 @@ public class AiServiceConfigController {
         return ApiResponse.success(aiServiceConfigService.update(tenantId, id, request, servletRequest));
     }
 
+    @PutMapping("/ai-service-configs/{id}")
+    @RequirePermission("AI_SERVICE:EDIT")
+    public ApiResponse<AiServiceConfigResponse> updateGlobal(
+        @PathVariable Long id,
+        @Valid @RequestBody AiServiceConfigRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(aiServiceConfigService.update(requireTenantId(servletRequest), id, request, servletRequest));
+    }
+
     @PutMapping("/tenants/{tenantId}/ai-service-configs/{id}/status")
     @RequirePermission("AI_SERVICE:EDIT")
     public ApiResponse<AiServiceConfigResponse> updateStatus(
@@ -65,6 +92,16 @@ public class AiServiceConfigController {
         HttpServletRequest servletRequest
     ) {
         return ApiResponse.success(aiServiceConfigService.updateStatus(tenantId, id, request, servletRequest));
+    }
+
+    @PutMapping("/ai-service-configs/{id}/status")
+    @RequirePermission("AI_SERVICE:EDIT")
+    public ApiResponse<AiServiceConfigResponse> updateStatusGlobal(
+        @PathVariable Long id,
+        @Valid @RequestBody AiServiceStatusRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(aiServiceConfigService.updateStatus(requireTenantId(servletRequest), id, request, servletRequest));
     }
 
     @PutMapping("/tenants/{tenantId}/ai-service-configs/{id}/default")
@@ -77,6 +114,15 @@ public class AiServiceConfigController {
         return ApiResponse.success(aiServiceConfigService.setDefault(tenantId, id, servletRequest));
     }
 
+    @PutMapping("/ai-service-configs/{id}/default")
+    @RequirePermission("AI_SERVICE:EDIT")
+    public ApiResponse<AiServiceConfigResponse> setDefaultGlobal(
+        @PathVariable Long id,
+        HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(aiServiceConfigService.setDefault(requireTenantId(servletRequest), id, servletRequest));
+    }
+
     @PostMapping("/tenants/{tenantId}/ai-service-configs/{id}/test")
     @RequirePermission("AI_SERVICE:TEST")
     public ApiResponse<AiServiceTestResponse> test(
@@ -85,6 +131,15 @@ public class AiServiceConfigController {
         HttpServletRequest servletRequest
     ) {
         return ApiResponse.success(aiServiceConfigService.test(tenantId, id, servletRequest));
+    }
+
+    @PostMapping("/ai-service-configs/{id}/test")
+    @RequirePermission("AI_SERVICE:TEST")
+    public ApiResponse<AiServiceTestResponse> testGlobal(
+        @PathVariable Long id,
+        HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(aiServiceConfigService.test(requireTenantId(servletRequest), id, servletRequest));
     }
 
     @DeleteMapping("/tenants/{tenantId}/ai-service-configs/{id}")
@@ -96,5 +151,27 @@ public class AiServiceConfigController {
     ) {
         aiServiceConfigService.delete(tenantId, id, servletRequest);
         return ApiResponse.ok();
+    }
+
+    @DeleteMapping("/ai-service-configs/{id}")
+    @RequirePermission("AI_SERVICE:DELETE")
+    public ApiResponse<Void> deleteGlobal(
+        @PathVariable Long id,
+        HttpServletRequest servletRequest
+    ) {
+        aiServiceConfigService.delete(requireTenantId(servletRequest), id, servletRequest);
+        return ApiResponse.ok();
+    }
+
+    private Long requireTenantId(HttpServletRequest request) {
+        String tenantId = request.getHeader("X-Tenant-Id");
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少团队上下文。");
+        }
+        try {
+            return Long.valueOf(tenantId);
+        } catch (NumberFormatException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前创作团队标识不正确。");
+        }
     }
 }

@@ -8,6 +8,8 @@ import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.project.ProjectMemberEntity;
 import com.antshorttv.project.ProjectMemberMapper;
+import com.antshorttv.material.MaterialFileAccessService;
+import com.antshorttv.points.TeamPointService;
 import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
@@ -35,6 +37,8 @@ public class ScriptWorkflowService {
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final AiServiceConfigMapper aiServiceConfigMapper;
+    private final MaterialFileAccessService materialFileAccessService;
+    private final TeamPointService teamPointService;
     private final JdbcTemplate jdbcTemplate;
 
     public ScriptWorkflowService(
@@ -45,6 +49,8 @@ public class ScriptWorkflowService {
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
         AiServiceConfigMapper aiServiceConfigMapper,
+        MaterialFileAccessService materialFileAccessService,
+        TeamPointService teamPointService,
         JdbcTemplate jdbcTemplate
     ) {
         this.projectMapper = projectMapper;
@@ -54,6 +60,8 @@ public class ScriptWorkflowService {
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
         this.aiServiceConfigMapper = aiServiceConfigMapper;
+        this.materialFileAccessService = materialFileAccessService;
+        this.teamPointService = teamPointService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -510,9 +518,9 @@ public class ScriptWorkflowService {
                 rs.getObject("duration_seconds", Integer.class),
                 rs.getString("image_prompt"),
                 rs.getString("video_prompt"),
-                rs.getString("first_frame_url"),
+                materialFileAccessService.publicUrl(rs.getString("first_frame_url")),
                 rs.getObject("current_video_result_id", Long.class),
-                rs.getString("current_video_url")
+                materialFileAccessService.publicUrl(rs.getString("current_video_url"))
             ), tenantId, projectId);
     }
 
@@ -579,7 +587,6 @@ public class ScriptWorkflowService {
 
     private AiServiceConfigEntity resolveTextService(Long tenantId) {
         AiServiceConfigEntity config = aiServiceConfigMapper.selectOne(new LambdaQueryWrapper<AiServiceConfigEntity>()
-            .eq(AiServiceConfigEntity::getTenantId, tenantId)
             .eq(AiServiceConfigEntity::getServiceType, "TEXT")
             .eq(AiServiceConfigEntity::getEnabled, true)
             .isNull(AiServiceConfigEntity::getDeletedAt)
@@ -587,7 +594,7 @@ public class ScriptWorkflowService {
             .orderByDesc(AiServiceConfigEntity::getPriority)
             .last("limit 1"));
         if (config == null) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前团队未配置可用文本服务。");
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未配置可用文本服务。");
         }
         return config;
     }
@@ -595,6 +602,7 @@ public class ScriptWorkflowService {
     private Long recordAiCall(TenantContext context, AiServiceConfigEntity config, String scene, String requestSummary, String responseSummary) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         long started = System.currentTimeMillis();
+        teamPointService.consumeForAi(context, 1, scene, null, "AI 调用消耗积分");
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement("""
                 insert into ai_call_log

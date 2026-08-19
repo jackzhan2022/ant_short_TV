@@ -42,12 +42,28 @@ vi.mock('@ant-design/pro-components', () => ({
   ProFormSelect: ({ label }: any) => <span>{label}</span>,
   ProFormText: ({ label }: any) => <span>{label}</span>,
   ProFormTextArea: ({ label }: any) => <span>{label}</span>,
-  ProTable: ({ headerTitle, request, toolBarRender }: any) => {
+  ProTable: ({ headerTitle, request, toolBarRender, columns }: any) => {
     request?.({}, {}, {});
+    const sampleTenant = {
+      id: 1,
+      code: 'T0000001',
+      name: '测试团队',
+      type: 'STUDIO',
+      status: 'ACTIVE',
+      memberType: 'OWNER',
+      memberId: 100,
+    };
     return (
       <section>
         <h1>{headerTitle}</h1>
         <div>{toolBarRender?.()}</div>
+        <div>
+          {columns?.map((column: any) => (
+            <div key={column.title}>
+              {column.render ? column.render(undefined, sampleTenant) : column.title}
+            </div>
+          ))}
+        </div>
       </section>
     );
   },
@@ -68,7 +84,7 @@ describe('MyTeams', () => {
   it('renders create action and requests my team list', async () => {
     render(<MyTeams />);
 
-    expect(screen.getByText('我的创作团队')).toBeInTheDocument();
+    expect(screen.getByText('团队管理')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '创建创作团队' }),
     ).toBeInTheDocument();
@@ -76,5 +92,16 @@ describe('MyTeams', () => {
     await waitFor(() => {
       expect(mocks.queryMyTenants).toHaveBeenCalled();
     });
+  });
+
+  it('shows member management and settings actions in the team list', () => {
+    render(<MyTeams />);
+
+    expect(
+      screen.getByRole('button', { name: '成员管理' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '团队设置' }),
+    ).toBeInTheDocument();
   });
 });

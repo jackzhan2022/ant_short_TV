@@ -39,7 +39,6 @@ import {
 } from 'antd';
 import { useAccess } from '@umijs/max';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryAiServiceConfigs } from '@/pages/ai-service-management/services/service';
 import {
   applyScriptVersion,
@@ -340,21 +339,18 @@ const ScriptCreationWorkspace = ({
       setVideoServiceOptions([]);
       return;
     }
-    const tenantId = getCurrentTenantId();
-    if (!tenantId) {
-      setVideoServiceOptions([]);
-      return;
-    }
     try {
-      const response = await queryAiServiceConfigs(tenantId);
-      setVideoServiceOptions(
-        response.data
-          .filter((item) => item.serviceType === 'VIDEO' && item.enabled)
-          .map((item) => ({
-            label: `${item.name} / ${item.provider} / ${item.model}`,
-            value: item.id,
-          })),
-      );
+      const response = await queryAiServiceConfigs();
+      const nextOptions = response.data
+        .filter(
+          (serviceConfig) =>
+            serviceConfig.serviceType === 'VIDEO' && serviceConfig.enabled,
+        )
+        .map(({ id, name, provider, model }) => ({
+          label: `${name} / ${provider} / ${model}`,
+          value: id,
+        }));
+      setVideoServiceOptions(nextOptions);
     } catch {
       setVideoServiceOptions([]);
     }
