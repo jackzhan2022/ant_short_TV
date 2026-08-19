@@ -7,12 +7,17 @@ const mocks = vi.hoisted(() => ({
   createAiImageTask: vi.fn(),
   deleteScriptElement: vi.fn(),
   extractScriptElements: vi.fn(),
+  applyScriptVersion: vi.fn(),
+  breakdownStoryboards: vi.fn(),
+  generateScript: vi.fn(),
   generateWorkflowPrompts: vi.fn(),
   historyPush: vi.fn(),
   messageWarning: vi.fn(),
   queryProject: vi.fn(),
   queryScriptWorkspace: vi.fn(),
   queryAiImageTasks: vi.fn(),
+  rewriteScript: vi.fn(),
+  saveCurrentScript: vi.fn(),
   updateScriptElement: vi.fn(),
 }));
 
@@ -28,13 +33,18 @@ vi.mock('../detail/service', () => ({
 }));
 
 vi.mock('../detail/components/service', () => ({
+  applyScriptVersion: mocks.applyScriptVersion,
+  breakdownStoryboards: mocks.breakdownStoryboards,
   confirmScriptElement: mocks.confirmScriptElement,
   createAiImageTask: mocks.createAiImageTask,
   deleteScriptElement: mocks.deleteScriptElement,
   extractScriptElements: mocks.extractScriptElements,
+  generateScript: mocks.generateScript,
   generateWorkflowPrompts: mocks.generateWorkflowPrompts,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   queryAiImageTasks: mocks.queryAiImageTasks,
+  rewriteScript: mocks.rewriteScript,
+  saveCurrentScript: mocks.saveCurrentScript,
   updateScriptElement: mocks.updateScriptElement,
 }));
 
@@ -64,9 +74,12 @@ vi.mock('@ant-design/icons', () => ({
   PictureOutlined: () => <span>image</span>,
   PlusOutlined: () => <span>plus</span>,
   ReloadOutlined: () => <span>reload</span>,
+  RobotOutlined: () => <span>robot</span>,
+  SaveOutlined: () => <span>save</span>,
   SettingOutlined: () => <span>setting</span>,
   SoundOutlined: () => <span>sound</span>,
   SplitCellsOutlined: () => <span>split</span>,
+  TagsOutlined: () => <span>tags</span>,
   PlayCircleOutlined: () => <span>play</span>,
   UploadOutlined: () => <span>upload</span>,
   VideoCameraOutlined: () => <span>video</span>,
@@ -88,6 +101,35 @@ vi.mock('antd', () => ({
   Empty: ({ description }: any) => <div>{description || '暂无数据'}</div>,
   Flex: ({ children }: any) => <div>{children}</div>,
   Image: ({ alt, src }: any) => <img alt={alt} src={src} />,
+  Input: Object.assign(
+    ({ value, onChange, placeholder, ...props }: any) => (
+      <input
+        aria-label={props['aria-label'] || placeholder}
+        placeholder={placeholder}
+        value={value || ''}
+        onChange={onChange}
+      />
+    ),
+    {
+      TextArea: ({ value, onChange, placeholder, ...props }: any) => (
+        <textarea
+          aria-label={props['aria-label'] || placeholder}
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+        />
+      ),
+    },
+  ),
+  Modal: ({ children, okText, onOk, open, title }: any) =>
+    open ? (
+      <div role="dialog" aria-label={title}>
+        {children}
+        <button type="button" onClick={onOk}>
+          {okText || '确定'}
+        </button>
+      </div>
+    ) : null,
   Spin: ({ children }: any) => <div>{children}</div>,
   Tooltip: ({ children }: any) => <>{children}</>,
   Tag: ({ children }: any) => <span>{children}</span>,
@@ -282,6 +324,9 @@ describe('ProductionWorkbench script page', () => {
     setupWorkspaceResponse();
     mocks.extractScriptElements.mockResolvedValue({ data: {} });
     mocks.generateWorkflowPrompts.mockResolvedValue({ data: {} });
+    mocks.generateScript.mockResolvedValue({ data: {} });
+    mocks.saveCurrentScript.mockResolvedValue({ data: {} });
+    mocks.breakdownStoryboards.mockResolvedValue({ data: {} });
   });
 
   it('renders collage media and runs the settings actions', async () => {
@@ -389,7 +434,25 @@ describe('ProductionWorkbench script page', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: '剧本' }));
-    expect(screen.getByText('剧本容器-script')).toBeInTheDocument();
+    expect(screen.getByText('剧本编辑区')).toBeInTheDocument();
+    expect(screen.getByText('剧本版本')).toBeInTheDocument();
+    expect(screen.getByText('AI 操作')).toBeInTheDocument();
+    expect(screen.queryByText('剧本容器-script')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '保存草稿' }));
+    await waitFor(() => {
+      expect(mocks.saveCurrentScript).toHaveBeenCalledWith(1, {
+        title: '最危险的捉迷藏',
+        content:
+          '剧本正文\n\n1. 第一集\n2. 第二集\n人物：斌斌、冯建业、李慧、刘凤英、物业经理、司机',
+        status: 'DRAFT',
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '拆解分镜' }));
+    await waitFor(() => {
+      expect(mocks.breakdownStoryboards).toHaveBeenCalledWith(1, { scope: 'FULL' });
+    });
 
     fireEvent.click(screen.getByRole('button', { name: '分镜' }));
     expect(screen.getByText('剧本容器-storyboard')).toBeInTheDocument();
@@ -400,5 +463,100 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(screen.getByRole('button', { name: '设定' }));
     expect(screen.getByText('角色总计 13')).toBeInTheDocument();
     expect(mocks.historyPush).not.toHaveBeenCalled();
+  });
+
+  it('saves unsaved script edits before running script AI actions', async () => {
+    render(<ProductionWorkbench />);
+
+    await waitFor(() => {
+      expect(screen.getByText('角色总计 13')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '剧本' }));
+    fireEvent.change(screen.getByLabelText('暂无剧本内容'), {
+      target: { value: '未保存剧本内容' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '拆解分镜' }));
+
+    await waitFor(() => {
+      expect(mocks.saveCurrentScript).toHaveBeenCalledWith(1, {
+        title: '最危险的捉迷藏',
+        content: '未保存剧本内容',
+        status: 'DRAFT',
+      });
+      expect(mocks.breakdownStoryboards).toHaveBeenCalledWith(1, {
+        scope: 'FULL',
+      });
+    });
+    expect(mocks.saveCurrentScript.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.breakdownStoryboards.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('saves unsaved script edits before running settings AI actions', async () => {
+    render(<ProductionWorkbench />);
+
+    await waitFor(() => {
+      expect(screen.getByText('角色总计 13')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '剧本' }));
+    fireEvent.change(screen.getByLabelText('暂无剧本内容'), {
+      target: { value: '切回设定前的未保存剧本' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '设定' }));
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }));
+
+    await waitFor(() => {
+      expect(mocks.saveCurrentScript).toHaveBeenCalledWith(1, {
+        title: '最危险的捉迷藏',
+        content: '切回设定前的未保存剧本',
+        status: 'DRAFT',
+      });
+      expect(mocks.extractScriptElements).toHaveBeenCalledWith(1, {
+        elementType: 'CHARACTER',
+      });
+    });
+    expect(mocks.saveCurrentScript.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.extractScriptElements.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('saves unsaved script edits before generating a new AI script', async () => {
+    render(<ProductionWorkbench />);
+
+    await waitFor(() => {
+      expect(screen.getByText('角色总计 13')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '剧本' }));
+    fireEvent.change(screen.getByLabelText('暂无剧本内容'), {
+      target: { value: '生成前也要保留的剧本草稿' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'AI生成剧本' }));
+    fireEvent.change(screen.getByLabelText('故事创意'), {
+      target: { value: '一个新的悬疑短剧创意' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    await waitFor(() => {
+      expect(mocks.saveCurrentScript).toHaveBeenCalledWith(1, {
+        title: '最危险的捉迷藏',
+        content: '生成前也要保留的剧本草稿',
+        status: 'DRAFT',
+      });
+      expect(mocks.generateScript).toHaveBeenCalledWith(1, {
+        storyIdea: '一个新的悬疑短剧创意',
+        genre: '悬疑',
+        title: undefined,
+        mainCharacter: undefined,
+        styleRequirement: undefined,
+        referenceContent: undefined,
+      });
+    });
+    expect(mocks.saveCurrentScript.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.generateScript.mock.invocationCallOrder[0],
+    );
   });
 });

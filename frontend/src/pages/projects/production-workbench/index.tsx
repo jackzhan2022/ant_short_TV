@@ -10,36 +10,58 @@ import {
   MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
+  RobotOutlined,
+  SaveOutlined,
   SettingOutlined,
   SoundOutlined,
   SplitCellsOutlined,
+  TagsOutlined,
   UploadOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import { history, useParams } from '@umijs/max';
-import { App, Button, Empty, Flex, Image, Tooltip, Typography } from 'antd';
+import {
+  App,
+  Button,
+  Empty,
+  Flex,
+  Image,
+  Input,
+  Modal,
+  Tooltip,
+  Typography,
+} from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ScriptCreationWorkspace from '../detail/components/ScriptCreationWorkspace';
 import ShotProductionWorkspace from '../detail/components/ShotProductionWorkspace';
 import { queryProject } from '../detail/service';
 import {
+  applyScriptVersion,
+  breakdownStoryboards,
   confirmScriptElement,
   createAiImageTask,
   deleteScriptElement,
   extractScriptElements,
+  generateScript,
   generateWorkflowPrompts,
   queryAiImageTasks,
   queryScriptWorkspace,
+  rewriteScript,
+  saveCurrentScript,
   updateScriptElement,
 } from '../detail/components/service';
 import type {
   AiImageResult,
   AiImageTask,
   CharacterAsset,
+  GenerateScriptValues,
   CreateAiImageTaskValues,
+  PromptTargetType,
   PropAsset,
   SceneAsset,
+  ScriptElementType,
   ScriptWorkspace,
+  RewriteScriptValues,
   UpdateScriptElementValues,
 } from '../detail/components/service';
 
@@ -53,6 +75,7 @@ type ProjectLite = {
 
 type SettingTabKey = 'characters' | 'scenes' | 'props';
 type ProductionStepKey = 'script' | 'settings' | 'storyboard' | 'video';
+type ScriptModalKey = 'generate' | 'rewrite';
 
 type SettingCard = {
   id: number;
@@ -106,6 +129,18 @@ const tabAspectRatios: Record<SettingTabKey, string> = {
   scenes: '16:9',
   props: '1:1',
 };
+
+const genreOptions = ['逆袭', '甜宠', '悬疑', '都市', '家庭'];
+const rewriteOptions = ['节奏优化', '冲突增强', '对白优化', '风格转换'];
+
+const createEmptyGenerateForm = (): GenerateScriptValues => ({
+  storyIdea: '',
+  genre: '悬疑',
+});
+
+const createEmptyRewriteForm = (): RewriteScriptValues => ({
+  rewriteType: '节奏优化',
+});
 
 const generatingStatuses = ['PENDING', 'RUNNING', 'SUBMITTING', 'GENERATING'];
 const successStatuses = ['SUCCESS', 'SUCCEEDED'];
@@ -218,6 +253,27 @@ const getStatusCount = (imageTasks: AiImageTask[], targetType: string) => ({
 
 const truncateText = (text: string, length = 84) =>
   text.length > length ? `${text.slice(0, length)}...` : text;
+
+const getScriptStats = (content: string) => {
+  const normalized = content.trim();
+  const episodes = normalized
+    ? normalized.split(/\r?\n/).filter((item) => /^第\d+集/.test(item.trim())).length
+    : 0;
+  return {
+    characters: normalized.length,
+    lines: normalized ? normalized.split(/\r?\n/).length : 0,
+    episodes,
+  };
+};
+
+const normalizeGeneratedPayload = (values: GenerateScriptValues) => ({
+  ...values,
+  title: values.title?.trim() || undefined,
+  storyIdea: values.storyIdea.trim(),
+  mainCharacter: values.mainCharacter?.trim() || undefined,
+  styleRequirement: values.styleRequirement?.trim() || undefined,
+  referenceContent: values.referenceContent?.trim() || undefined,
+});
 
 const getVisualHeight = (activeTab: SettingTabKey) => {
   if (activeTab === 'characters') {
@@ -365,6 +421,14 @@ const ProductionWorkbench = () => {
   const [noticeVisible, setNoticeVisible] = useState(true);
   const [actionLoading, setActionLoading] = useState<string>();
   const [imageTasks, setImageTasks] = useState<AiImageTask[]>([]);
+  const [scriptContent, setScriptContent] = useState('');
+  const [scriptModal, setScriptModal] = useState<ScriptModalKey>();
+  const [generateForm, setGenerateForm] = useState<GenerateScriptValues>(() =>
+    createEmptyGenerateForm(),
+  );
+  const [rewriteForm, setRewriteForm] = useState<RewriteScriptValues>(() =>
+    createEmptyRewriteForm(),
+  );
   const [workspace, setWorkspace] = useState<ScriptWorkspace>({
     projectId: projectId || 0,
     script: null,
@@ -389,6 +453,7 @@ const ProductionWorkbench = () => {
         props: nextWorkspace.props || [],
         storyboards: nextWorkspace.storyboards || [],
       });
+      setScriptContent(nextWorkspace.script?.content || '');
     },
     [projectId],
   );
@@ -452,6 +517,7 @@ const ProductionWorkbench = () => {
       : activeTab === 'scenes'
         ? scenes.length
         : props.length;
+  const scriptStats = getScriptStats(scriptContent);
 
   const runAction = async (key: string, action: () => Promise<void>) => {
     setActionLoading(key);
@@ -464,8 +530,122 @@ const ProductionWorkbench = () => {
     }
   };
 
+  const saveScriptDraft = async () => {
+    const response = await saveCurrentScript(projectId, {
+      title: workspace.script?.title || scriptTitle,
+      content: scriptContent,
+      status: 'DRAFT',
+    });
+    applyWorkspace(response.data);
+  };
+
+  const persistCurrentScriptIfNeeded = async () => {
+    if (!scriptContent.trim()) {
+      message.warning('请先填写剧本内容');
+      return false;
+    }
+    if (scriptContent === (workspace.script?.content || '')) {
+      return true;
+    }
+    await saveScriptDraft();
+    return true;
+  };
+
+  const persistDirtyScriptIfPresent = async () => {
+    if (
+      !scriptContent.trim() ||
+      scriptContent === (workspace.script?.content || '')
+    ) {
+      return;
+    }
+    await saveScriptDraft();
+  };
+
+  const handleSaveScript = () =>
+    runAction('save-script', async () => {
+      if (!scriptContent.trim()) {
+        message.warning('请先填写剧本内容');
+        return;
+      }
+      await saveScriptDraft();
+      message.success('剧本草稿已保存');
+    });
+
+  const handleApplyVersion = (versionId: number) =>
+    runAction(`apply-version-${versionId}`, async () => {
+      const response = await applyScriptVersion(projectId, versionId);
+      applyWorkspace(response.data);
+      message.success('版本已应用为当前剧本');
+    });
+
+  const handleGenerateScript = () =>
+    runAction('generate-script', async () => {
+      if (!generateForm.storyIdea.trim()) {
+        message.warning('请先填写故事创意');
+        return;
+      }
+      await persistDirtyScriptIfPresent();
+      const response = await generateScript(
+        projectId,
+        normalizeGeneratedPayload(generateForm),
+      );
+      applyWorkspace(response.data);
+      setScriptModal(undefined);
+      setGenerateForm(createEmptyGenerateForm());
+      message.success('AI剧本已生成');
+    });
+
+  const handleRewriteScript = () =>
+    runAction('rewrite-script', async () => {
+      if (!(await persistCurrentScriptIfNeeded())) {
+        return;
+      }
+      const response = await rewriteScript(projectId, rewriteForm);
+      applyWorkspace(response.data);
+      setScriptModal(undefined);
+      setRewriteForm(createEmptyRewriteForm());
+      message.success('AI改写完成');
+    });
+
+  const handleExtractAllElements = () =>
+    runAction('extract-all-elements', async () => {
+      if (!(await persistCurrentScriptIfNeeded())) {
+        return;
+      }
+      const response = await extractScriptElements(projectId, {
+        elementType: 'ALL' as ScriptElementType,
+      });
+      applyWorkspace(response.data);
+      message.success('角色、场景及道具已提取');
+    });
+
+  const handleBreakdownStoryboards = () =>
+    runAction('breakdown-storyboards', async () => {
+      if (!(await persistCurrentScriptIfNeeded())) {
+        return;
+      }
+      const response = await breakdownStoryboards(projectId, { scope: 'FULL' });
+      applyWorkspace(response.data);
+      message.success('AI分镜拆解完成');
+    });
+
+  const handleGenerateAllPrompts = () =>
+    runAction('generate-all-prompts', async () => {
+      if (!(await persistCurrentScriptIfNeeded())) {
+        return;
+      }
+      const response = await generateWorkflowPrompts(projectId, {
+        targetType: 'ALL' as PromptTargetType,
+      });
+      applyWorkspace(response.data);
+      message.success('全流程提示词已生成');
+    });
+
   const handleExtractActive = () =>
     runAction(`extract-${activeTab}`, async () => {
+      if (!(await persistCurrentScriptIfNeeded())) {
+        return;
+      }
       const response = await extractScriptElements(projectId, {
         elementType: tabElementTypes[activeTab],
       });
@@ -475,6 +655,9 @@ const ProductionWorkbench = () => {
 
   const handleGeneratePrompts = () =>
     runAction(`prompts-${activeTab}`, async () => {
+      if (!(await persistCurrentScriptIfNeeded())) {
+        return;
+      }
       const response = await generateWorkflowPrompts(projectId, {
         targetType: tabElementTypes[activeTab],
       });
@@ -672,7 +855,361 @@ const ProductionWorkbench = () => {
         }}
       >
         {activeStep === 'script' && (
-          <ScriptCreationWorkspace projectId={projectId} projectName={scriptTitle} />
+          <>
+            <section
+              aria-label="剧本工作台"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '260px minmax(520px, 1fr) 300px',
+                gap: 20,
+                alignItems: 'start',
+              }}
+            >
+              <aside
+                style={{
+                  minHeight: 620,
+                  borderRight: '1px solid #e7edf8',
+                  paddingRight: 20,
+                }}
+              >
+                <Flex align="center" justify="space-between">
+                  <Typography.Title
+                    level={5}
+                    style={{ margin: 0, color: '#1f2937', fontSize: 18 }}
+                  >
+                    剧本版本
+                  </Typography.Title>
+                  <span style={{ color: '#66708a', fontSize: 13 }}>
+                    {workspace.versions.length}
+                  </span>
+                </Flex>
+                <Flex
+                  vertical
+                  gap={10}
+                  style={{ width: '100%', marginTop: 18 }}
+                >
+                  {workspace.versions.length ? (
+                    workspace.versions.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleApplyVersion(item.id)}
+                        disabled={actionLoading === `apply-version-${item.id}`}
+                        style={{
+                          width: '100%',
+                          minHeight: 68,
+                          borderRadius: 8,
+                          border: '1px solid #e5ebf7',
+                          background: '#fff',
+                          color: '#1f2937',
+                          cursor: 'pointer',
+                          padding: '10px 12px',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <Flex align="center" justify="space-between">
+                          <span style={{ fontSize: 15, fontWeight: 600 }}>
+                            版本 {item.versionNo}
+                          </span>
+                          <span style={{ color: '#3156ff', fontSize: 12 }}>
+                            {item.status || item.sourceType}
+                          </span>
+                        </Flex>
+                        <div
+                          style={{
+                            marginTop: 8,
+                            color: '#66708a',
+                            fontSize: 12,
+                          }}
+                        >
+                          {item.createdAt || '暂无生成时间'}
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <Empty description="暂无版本" />
+                  )}
+                </Flex>
+              </aside>
+
+              <section style={{ minWidth: 0 }}>
+                <Flex align="center" justify="space-between">
+                  <div>
+                    <Typography.Title
+                      level={4}
+                      style={{ margin: 0, color: '#1f2937', fontSize: 22 }}
+                    >
+                      剧本编辑区
+                    </Typography.Title>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        color: '#66708a',
+                        fontSize: 13,
+                      }}
+                    >
+                      {scriptStats.characters} 字 · {scriptStats.lines} 行 ·{' '}
+                      {scriptStats.episodes} 集
+                    </div>
+                  </div>
+                  <Flex gap={10}>
+                    <Button
+                      icon={<RobotOutlined />}
+                      aria-label="AI生成剧本"
+                      onClick={() => setScriptModal('generate')}
+                    >
+                      AI生成剧本
+                    </Button>
+                    <Button
+                      icon={<EditOutlined />}
+                      aria-label="AI改写剧本"
+                      onClick={() => setScriptModal('rewrite')}
+                    >
+                      AI改写剧本
+                    </Button>
+                    <Button
+                      type="primary"
+                      icon={<SaveOutlined />}
+                      aria-label="保存草稿"
+                      loading={actionLoading === 'save-script'}
+                      onClick={handleSaveScript}
+                    >
+                      保存草稿
+                    </Button>
+                  </Flex>
+                </Flex>
+
+                <Input.TextArea
+                  aria-label="暂无剧本内容"
+                  value={scriptContent}
+                  onChange={(event) => setScriptContent(event.target.value)}
+                  placeholder="暂无剧本内容"
+                  autoSize={{ minRows: 26, maxRows: 38 }}
+                  style={{
+                    marginTop: 18,
+                    borderColor: '#e5ebf7',
+                    borderRadius: 8,
+                    background: '#fff',
+                    color: '#1f2937',
+                    fontSize: 14,
+                    lineHeight: 1.72,
+                    padding: 16,
+                  }}
+                />
+              </section>
+
+              <aside
+                style={{
+                  minHeight: 620,
+                  borderLeft: '1px solid #e7edf8',
+                  paddingLeft: 20,
+                }}
+              >
+                <Typography.Title
+                  level={5}
+                  style={{ margin: 0, color: '#1f2937', fontSize: 18 }}
+                >
+                  AI 操作
+                </Typography.Title>
+                <Flex vertical gap={12} style={{ width: '100%', marginTop: 18 }}>
+                  <Button
+                    block
+                    icon={<TagsOutlined />}
+                    aria-label="提取角色/场景/道具"
+                    loading={actionLoading === 'extract-all-elements'}
+                    onClick={handleExtractAllElements}
+                  >
+                    提取角色/场景/道具
+                  </Button>
+                  <Button
+                    block
+                    icon={<SplitCellsOutlined />}
+                    aria-label="拆解分镜"
+                    loading={actionLoading === 'breakdown-storyboards'}
+                    onClick={handleBreakdownStoryboards}
+                  >
+                    拆解分镜
+                  </Button>
+                  <Button
+                    block
+                    icon={<BulbOutlined />}
+                    aria-label="生成提示词"
+                    loading={actionLoading === 'generate-all-prompts'}
+                    onClick={handleGenerateAllPrompts}
+                  >
+                    生成提示词
+                  </Button>
+                </Flex>
+
+                <div
+                  style={{
+                    marginTop: 28,
+                    paddingTop: 22,
+                    borderTop: '1px solid #e7edf8',
+                    color: '#66708a',
+                    fontSize: 13,
+                    lineHeight: 1.8,
+                  }}
+                >
+                  <div>角色 {characters.length}</div>
+                  <div>场景 {scenes.length}</div>
+                  <div>道具 {props.length}</div>
+                  <div>分镜 {workspace.storyboards.length}</div>
+                </div>
+              </aside>
+            </section>
+
+            <Modal
+              title="AI生成剧本"
+              open={scriptModal === 'generate'}
+              destroyOnHidden
+              okText="生成"
+              confirmLoading={actionLoading === 'generate-script'}
+              onOk={handleGenerateScript}
+              onCancel={() => setScriptModal(undefined)}
+              width={720}
+            >
+              <Flex vertical gap={12}>
+                <div>
+                  <Typography.Text>剧名</Typography.Text>
+                  <Input
+                    aria-label="剧名"
+                    value={generateForm.title}
+                    placeholder="不填则由 AI 推荐"
+                    onChange={(event) =>
+                      setGenerateForm((current) => ({
+                        ...current,
+                        title: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Typography.Text>故事创意</Typography.Text>
+                  <Input.TextArea
+                    aria-label="故事创意"
+                    value={generateForm.storyIdea}
+                    placeholder="请输入故事创意"
+                    autoSize={{ minRows: 4, maxRows: 8 }}
+                    onChange={(event) =>
+                      setGenerateForm((current) => ({
+                        ...current,
+                        storyIdea: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Typography.Text>题材类型</Typography.Text>
+                  <select
+                    value={generateForm.genre}
+                    aria-label="题材类型"
+                    onChange={(event) =>
+                      setGenerateForm((current) => ({
+                        ...current,
+                        genre: event.target.value,
+                      }))
+                    }
+                    style={{
+                      width: '100%',
+                      height: 32,
+                      border: '1px solid #d9d9d9',
+                      borderRadius: 6,
+                      padding: '0 10px',
+                    }}
+                  >
+                    {genreOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Typography.Text>主角设定</Typography.Text>
+                  <Input.TextArea
+                    aria-label="主角设定"
+                    value={generateForm.mainCharacter}
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                    onChange={(event) =>
+                      setGenerateForm((current) => ({
+                        ...current,
+                        mainCharacter: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Typography.Text>参考内容</Typography.Text>
+                  <Input.TextArea
+                    aria-label="参考内容"
+                    value={generateForm.referenceContent}
+                    autoSize={{ minRows: 3, maxRows: 6 }}
+                    onChange={(event) =>
+                      setGenerateForm((current) => ({
+                        ...current,
+                        referenceContent: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </Flex>
+            </Modal>
+
+            <Modal
+              title="AI改写剧本"
+              open={scriptModal === 'rewrite'}
+              destroyOnHidden
+              okText="改写"
+              confirmLoading={actionLoading === 'rewrite-script'}
+              onOk={handleRewriteScript}
+              onCancel={() => setScriptModal(undefined)}
+              width={640}
+            >
+              <Flex vertical gap={12}>
+                <div>
+                  <Typography.Text>改写类型</Typography.Text>
+                  <select
+                    value={rewriteForm.rewriteType}
+                    aria-label="改写类型"
+                    onChange={(event) =>
+                      setRewriteForm((current) => ({
+                        ...current,
+                        rewriteType: event.target.value,
+                      }))
+                    }
+                    style={{
+                      width: '100%',
+                      height: 32,
+                      border: '1px solid #d9d9d9',
+                      borderRadius: 6,
+                      padding: '0 10px',
+                    }}
+                  >
+                    {rewriteOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Typography.Text>改写要求</Typography.Text>
+                  <Input.TextArea
+                    aria-label="改写要求"
+                    value={rewriteForm.requirement}
+                    autoSize={{ minRows: 4, maxRows: 8 }}
+                    onChange={(event) =>
+                      setRewriteForm((current) => ({
+                        ...current,
+                        requirement: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </Flex>
+            </Modal>
+          </>
         )}
         {activeStep === 'storyboard' && (
           <ScriptCreationWorkspace
