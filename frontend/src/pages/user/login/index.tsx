@@ -68,27 +68,76 @@ const Login: React.FC = () => {
   return (
     <div
       style={{
+        position: 'relative',
         minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        background:
-          "url('https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/V-_oS6r-i7wAAAAAAAAAAAAAFl94AQBr') center / cover",
+        overflow: 'hidden',
+        backgroundColor: '#eef2f7',
       }}
     >
+      <video
+        autoPlay
+        aria-hidden="true"
+        data-testid="login-background-video"
+        loop
+        muted
+        playsInline
+        src="https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4"
+        poster="https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          zIndex: 0,
+        }}
+      >
+        <source
+          src="https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4"
+          type="video/mp4"
+        />
+      </video>
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 1,
+          background:
+            'linear-gradient(135deg, rgba(239, 244, 255, 0.72), rgba(244, 247, 252, 0.58))',
+        }}
+      />
       <Helmet>
         <title>
           {intl.formatMessage({ id: 'menu.login', defaultMessage: '登录' })}
           {Settings.title && ` - ${Settings.title}`}
         </title>
       </Helmet>
-      <div style={{ position: 'fixed', right: 16, top: 16 }}>
+      <div style={{ position: 'fixed', right: 16, top: 16, zIndex: 2 }}>
         <SelectLang />
       </div>
-      <div style={{ flex: 1, padding: '48px 0' }}>
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 2,
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '48px 24px',
+        }}
+      >
         <LoginForm
           logo={<img alt="logo" src="/logo.svg" />}
           title="Ant Short TV"
           subTitle="短剧制作 SaaS 平台"
+          style={{
+            width: '100%',
+            maxWidth: 420,
+            margin: '0 auto',
+          }}
           onFinish={async (values) => {
             await handleSubmit(values as { mobile: string; password: string });
           }}
@@ -119,7 +168,9 @@ const Login: React.FC = () => {
           </div>
         </LoginForm>
       </div>
-      <Footer />
+      <div style={{ position: 'relative', zIndex: 2 }}>
+        <Footer />
+      </div>
     </div>
   );
 };

@@ -146,4 +146,15 @@ describe('Login Page', () => {
 
     expect(registerLink).toHaveAttribute('href', '/user/register');
   });
+
+  it('renders the login background video', () => {
+    render(<Login />);
+
+    const video = screen.getByTestId('login-background-video');
+
+    expect(video).toHaveAttribute(
+      'src',
+      'https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4',
+    );
+  });
 });
