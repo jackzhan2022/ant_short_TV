@@ -83,6 +83,7 @@ import {
 type ScriptCreationWorkspaceProps = {
   projectId: number;
   projectName?: string;
+  initialTabKey?: 'script' | 'characters' | 'elements' | 'videoTasks' | 'storyboard';
 };
 
 type ScriptGenerateFormValues = {
@@ -265,6 +266,7 @@ const renderTags = (items: string[] = []) => (
 const ScriptCreationWorkspace = ({
   projectId,
   projectName,
+  initialTabKey = 'script',
 }: ScriptCreationWorkspaceProps) => {
   const { message } = App.useApp();
   const access = useAccess();
@@ -1310,6 +1312,7 @@ const ScriptCreationWorkspace = ({
       extra={<Tag color="blue">二期文本工作流</Tag>}
     >
       <Tabs
+        defaultActiveKey={initialTabKey}
         items={[
           {
             key: 'script',

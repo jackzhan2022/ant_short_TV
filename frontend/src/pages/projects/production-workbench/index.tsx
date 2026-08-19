@@ -19,6 +19,8 @@ import {
 import { history, useParams } from '@umijs/max';
 import { App, Button, Empty, Flex, Image, Tooltip, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import ScriptCreationWorkspace from '../detail/components/ScriptCreationWorkspace';
+import ShotProductionWorkspace from '../detail/components/ShotProductionWorkspace';
 import { queryProject } from '../detail/service';
 import {
   confirmScriptElement,
@@ -50,6 +52,7 @@ type ProjectLite = {
 };
 
 type SettingTabKey = 'characters' | 'scenes' | 'props';
+type ProductionStepKey = 'script' | 'settings' | 'storyboard' | 'video';
 
 type SettingCard = {
   id: number;
@@ -63,9 +66,11 @@ type SettingCard = {
   source: CharacterAsset | SceneAsset | PropAsset;
 };
 
-const activeStepKey = 'settings';
-
-const topSteps = [
+const topSteps: Array<{
+  key: ProductionStepKey;
+  label: string;
+  icon: React.ReactNode;
+}> = [
   { key: 'script', label: '剧本', icon: <BookOutlined /> },
   { key: 'settings', label: '设定', icon: <SettingOutlined /> },
   { key: 'storyboard', label: '分镜', icon: <SplitCellsOutlined /> },
@@ -355,6 +360,7 @@ const ProductionWorkbench = () => {
   const projectId = Number(params.id);
   const { message, modal } = App.useApp();
   const [project, setProject] = useState<ProjectLite>();
+  const [activeStep, setActiveStep] = useState<ProductionStepKey>('settings');
   const [activeTab, setActiveTab] = useState<SettingTabKey>('characters');
   const [noticeVisible, setNoticeVisible] = useState(true);
   const [actionLoading, setActionLoading] = useState<string>();
@@ -601,10 +607,14 @@ const ProductionWorkbench = () => {
 
         <Flex align="center" gap={0} style={{ transform: 'translateX(-20px)' }}>
           {topSteps.map((step, index) => {
-            const active = step.key === activeStepKey;
+            const active = step.key === activeStep;
             return (
               <div key={step.key} style={{ display: 'flex', alignItems: 'center' }}>
-                <div
+                <button
+                  type="button"
+                  onClick={() => setActiveStep(step.key)}
+                  aria-label={step.label}
+                  aria-pressed={active}
                   style={{
                     width: 72,
                     height: 44,
@@ -618,11 +628,13 @@ const ProductionWorkbench = () => {
                     background: active ? '#f5f7ff' : '#fff',
                     fontSize: 12,
                     boxShadow: active ? '0 0 0 1px rgba(49,86,255,0.03)' : 'none',
+                    cursor: 'pointer',
+                    padding: 0,
                   }}
                 >
                   <span style={{ height: 16, lineHeight: '16px' }}>{step.icon}</span>
                   <span style={{ marginTop: 1 }}>{step.label}</span>
-                </div>
+                </button>
                 {index < topSteps.length - 1 && (
                   <div style={{ width: 18, height: 1, background: '#dfe5f2' }} />
                 )}
@@ -659,6 +671,19 @@ const ProductionWorkbench = () => {
           padding: '24px 44px 88px',
         }}
       >
+        {activeStep === 'script' && (
+          <ScriptCreationWorkspace projectId={projectId} projectName={scriptTitle} />
+        )}
+        {activeStep === 'storyboard' && (
+          <ScriptCreationWorkspace
+            projectId={projectId}
+            projectName={scriptTitle}
+            initialTabKey="storyboard"
+          />
+        )}
+        {activeStep === 'video' && <ShotProductionWorkspace projectId={projectId} />}
+        {activeStep === 'settings' && (
+          <>
         {noticeVisible && (
           <div
             style={{
@@ -921,6 +946,8 @@ const ProductionWorkbench = () => {
             )}
           </div>
         </section>
+          </>
+        )}
       </main>
     </div>
   );

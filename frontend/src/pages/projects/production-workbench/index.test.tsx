@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   deleteScriptElement: vi.fn(),
   extractScriptElements: vi.fn(),
   generateWorkflowPrompts: vi.fn(),
+  historyPush: vi.fn(),
   messageWarning: vi.fn(),
   queryProject: vi.fn(),
   queryScriptWorkspace: vi.fn(),
@@ -17,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@umijs/max', () => ({
   history: {
-    push: vi.fn(),
+    push: mocks.historyPush,
   },
   useParams: () => ({ id: '1' }),
 }));
@@ -37,8 +38,14 @@ vi.mock('../detail/components/service', () => ({
   updateScriptElement: mocks.updateScriptElement,
 }));
 
+vi.mock('../detail/components/ScriptCreationWorkspace', () => ({
+  default: ({ initialTabKey }: { initialTabKey?: string }) => (
+    <div>剧本容器-{initialTabKey || 'script'}</div>
+  ),
+}));
+
 vi.mock('../detail/components/ShotProductionWorkspace', () => ({
-  default: () => null,
+  default: () => <div>视频容器</div>,
 }));
 
 vi.mock('@ant-design/icons', () => ({
@@ -372,5 +379,26 @@ describe('ProductionWorkbench script page', () => {
     expect(mocks.messageWarning).toHaveBeenCalledWith(
       '当前后端暂不支持道具图片生成任务',
     );
+  });
+
+  it('switches top production steps inside the workbench', async () => {
+    render(<ProductionWorkbench />);
+
+    await waitFor(() => {
+      expect(screen.getByText('角色总计 13')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '剧本' }));
+    expect(screen.getByText('剧本容器-script')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '分镜' }));
+    expect(screen.getByText('剧本容器-storyboard')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '视频' }));
+    expect(screen.getByText('视频容器')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '设定' }));
+    expect(screen.getByText('角色总计 13')).toBeInTheDocument();
+    expect(mocks.historyPush).not.toHaveBeenCalled();
   });
 });
