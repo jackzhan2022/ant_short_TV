@@ -25,6 +25,7 @@ yarn.lock
 # visual studio code
 .history
 *.log
+*.pid
 functions/*
 .temp/**
 
@@ -54,3 +55,6 @@ docs/superpowers
 # cloudflare wrangler
 .wrangler
 requestRecord.mock.js
+
+# runtime storage
+backend/storage/
