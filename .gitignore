@@ -58,3 +58,4 @@ requestRecord.mock.js
 
 # runtime storage
 backend/storage/
+frontend/run-frontend-dev.ps1
