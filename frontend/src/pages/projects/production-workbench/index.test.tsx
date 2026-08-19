@@ -3,9 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbench from './index';
 
 const mocks = vi.hoisted(() => ({
+  confirmScriptElement: vi.fn(),
+  createAiImageTask: vi.fn(),
+  deleteScriptElement: vi.fn(),
+  extractScriptElements: vi.fn(),
+  generateWorkflowPrompts: vi.fn(),
+  messageWarning: vi.fn(),
   queryProject: vi.fn(),
   queryScriptWorkspace: vi.fn(),
   queryAiImageTasks: vi.fn(),
+  updateScriptElement: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -20,8 +27,14 @@ vi.mock('../detail/service', () => ({
 }));
 
 vi.mock('../detail/components/service', () => ({
+  confirmScriptElement: mocks.confirmScriptElement,
+  createAiImageTask: mocks.createAiImageTask,
+  deleteScriptElement: mocks.deleteScriptElement,
+  extractScriptElements: mocks.extractScriptElements,
+  generateWorkflowPrompts: mocks.generateWorkflowPrompts,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   queryAiImageTasks: mocks.queryAiImageTasks,
+  updateScriptElement: mocks.updateScriptElement,
 }));
 
 vi.mock('../detail/components/ShotProductionWorkspace', () => ({
@@ -36,6 +49,7 @@ vi.mock('@ant-design/icons', () => ({
   CheckCircleOutlined: () => <span>check</span>,
   CloseOutlined: () => <span>close</span>,
   CopyOutlined: () => <span>copy</span>,
+  DeleteOutlined: () => <span>delete</span>,
   EditOutlined: () => <span>edit</span>,
   FileTextOutlined: () => <span>file</span>,
   BookOutlined: () => <span>book</span>,
@@ -53,10 +67,13 @@ vi.mock('@ant-design/icons', () => ({
 
 vi.mock('antd', () => ({
   App: {
-    useApp: () => ({ message: { error: vi.fn() } }),
+    useApp: () => ({
+      message: { error: vi.fn(), success: vi.fn(), warning: mocks.messageWarning },
+      modal: { confirm: vi.fn() },
+    }),
   },
-  Button: ({ children, icon, onClick }: any) => (
-    <button type="button" onClick={onClick}>
+  Button: ({ children, icon, onClick, ...props }: any) => (
+    <button type="button" onClick={onClick} aria-label={props['aria-label']}>
       {icon}
       {children}
     </button>
@@ -65,6 +82,7 @@ vi.mock('antd', () => ({
   Flex: ({ children }: any) => <div>{children}</div>,
   Image: ({ alt, src }: any) => <img alt={alt} src={src} />,
   Spin: ({ children }: any) => <div>{children}</div>,
+  Tooltip: ({ children }: any) => <>{children}</>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Tabs: ({ items = [] }: any) => (
     <div>
@@ -215,6 +233,36 @@ const setupWorkspaceResponse = (
               selected: true,
               status: 'SUCCESS',
             },
+            {
+              id: 12,
+              taskId: 101,
+              targetType: 'CHARACTER',
+              targetId: 1,
+              imageUrl: 'https://example.com/character-2.png',
+              thumbnailUrl: 'https://example.com/character-2-thumb.png',
+              selected: false,
+              status: 'SUCCESS',
+            },
+            {
+              id: 13,
+              taskId: 101,
+              targetType: 'CHARACTER',
+              targetId: 1,
+              imageUrl: 'https://example.com/character-3.png',
+              thumbnailUrl: 'https://example.com/character-3-thumb.png',
+              selected: false,
+              status: 'SUCCESS',
+            },
+            {
+              id: 14,
+              taskId: 101,
+              targetType: 'CHARACTER',
+              targetId: 1,
+              imageUrl: 'https://example.com/character-4.png',
+              thumbnailUrl: 'https://example.com/character-4-thumb.png',
+              selected: false,
+              status: 'SUCCESS',
+            },
           ],
         },
       ],
@@ -225,9 +273,11 @@ describe('ProductionWorkbench script page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupWorkspaceResponse();
+    mocks.extractScriptElements.mockResolvedValue({ data: {} });
+    mocks.generateWorkflowPrompts.mockResolvedValue({ data: {} });
   });
 
-  it('renders the settings section from the screenshot', async () => {
+  it('renders collage media and runs the settings actions', async () => {
     render(<ProductionWorkbench />);
 
     await waitFor(() => {
@@ -247,13 +297,26 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByText('道具')).toBeInTheDocument();
     expect(screen.getByText('角色总计 13')).toBeInTheDocument();
     expect(screen.getByText('斌斌')).toBeInTheDocument();
-    expect(screen.getByText('冯建业')).toBeInTheDocument();
-    expect(screen.getByText('李慧')).toBeInTheDocument();
-    expect(screen.getByText('刘凤英')).toBeInTheDocument();
-    expect(screen.getByText('物业经理')).toBeInTheDocument();
-    expect(screen.getByText('司机')).toBeInTheDocument();
     expect(screen.getByText(/斌斌身份/)).toBeInTheDocument();
+    expect(screen.getAllByAltText('斌斌参考图').length).toBe(4);
     expect(screen.getAllByText('配置音色').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }));
+    await waitFor(() => {
+      expect(mocks.extractScriptElements).toHaveBeenCalledWith(1, {
+        elementType: 'CHARACTER',
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '批量生成' }));
+    await waitFor(() => {
+      expect(mocks.generateWorkflowPrompts).toHaveBeenCalledWith(1, {
+        targetType: 'CHARACTER',
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭提示' }));
+    expect(screen.queryByText(/请确保角色、场景及道具已全部生成/)).not.toBeInTheDocument();
 
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: '场景' }));
@@ -287,5 +350,27 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.queryByText('斌斌')).not.toBeInTheDocument();
     expect(screen.queryByText('停车场')).not.toBeInTheDocument();
     expect(screen.queryByText('棒棒糖')).not.toBeInTheDocument();
+  });
+
+  it('does not submit unsupported settings actions to missing backend APIs', async () => {
+    render(<ProductionWorkbench />);
+
+    await waitFor(() => {
+      expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1);
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /配置音色/ })[0]);
+    expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+    expect(mocks.messageWarning).toHaveBeenCalledWith(
+      '角色音色配置请在语音字幕流程中完成',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '道具' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成灰色轿车后备箱图片' }));
+
+    expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+    expect(mocks.messageWarning).toHaveBeenCalledWith(
+      '当前后端暂不支持道具图片生成任务',
+    );
   });
 });

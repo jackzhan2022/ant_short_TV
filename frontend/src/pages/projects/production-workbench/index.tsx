@@ -5,6 +5,7 @@ import {
   BulbOutlined,
   CloseOutlined,
   CopyOutlined,
+  DeleteOutlined,
   EditOutlined,
   MoreOutlined,
   PlusOutlined,
@@ -16,19 +17,28 @@ import {
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import { history, useParams } from '@umijs/max';
-import { App, Button, Empty, Flex, Image, Typography } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { App, Button, Empty, Flex, Image, Tooltip, Typography } from 'antd';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { queryProject } from '../detail/service';
 import {
+  confirmScriptElement,
+  createAiImageTask,
+  deleteScriptElement,
+  extractScriptElements,
+  generateWorkflowPrompts,
   queryAiImageTasks,
   queryScriptWorkspace,
+  updateScriptElement,
 } from '../detail/components/service';
 import type {
+  AiImageResult,
   AiImageTask,
   CharacterAsset,
+  CreateAiImageTaskValues,
   PropAsset,
   SceneAsset,
   ScriptWorkspace,
+  UpdateScriptElementValues,
 } from '../detail/components/service';
 
 type ProjectLite = {
@@ -46,9 +56,11 @@ type SettingCard = {
   name: string;
   countText: string;
   summary: string;
-  imageUrl?: string;
+  images: string[];
   placeholder: string;
   actions?: 'voice' | 'upload';
+  prompt?: string;
+  source: CharacterAsset | SceneAsset | PropAsset;
 };
 
 const activeStepKey = 'settings';
@@ -72,47 +84,82 @@ const tabTargetTypes: Record<SettingTabKey, string> = {
   props: 'PROP',
 };
 
+const tabElementTypes: Record<SettingTabKey, 'CHARACTER' | 'SCENE' | 'PROP'> = {
+  characters: 'CHARACTER',
+  scenes: 'SCENE',
+  props: 'PROP',
+};
+
+const tabTaskTypes: Record<SettingTabKey, string> = {
+  characters: 'CHARACTER',
+  scenes: 'SCENE',
+  props: 'SCENE',
+};
+
+const tabAspectRatios: Record<SettingTabKey, string> = {
+  characters: '3:4',
+  scenes: '16:9',
+  props: '1:1',
+};
+
 const generatingStatuses = ['PENDING', 'RUNNING', 'SUBMITTING', 'GENERATING'];
 const successStatuses = ['SUCCESS', 'SUCCEEDED'];
 
-const getTaskImage = (
+const getTaskImages = (
   imageTasks: AiImageTask[],
   targetType: string,
   targetId: number,
 ) => {
-  const tasks = imageTasks.filter(
-    (item) =>
-      item.targetType === targetType &&
-      item.targetId === targetId &&
-      successStatuses.includes(item.status) &&
-      item.results?.length,
+  const results = imageTasks
+    .filter(
+      (item) =>
+        item.targetType === targetType &&
+        item.targetId === targetId &&
+        successStatuses.includes(item.status) &&
+        item.results?.length,
+    )
+    .flatMap((task) => task.results)
+    .filter((result) => successStatuses.includes(result.status));
+  const sorted = [...results].sort(
+    (left, right) => Number(right.selected) - Number(left.selected),
   );
-  const selectedResult =
-    tasks
-      .flatMap((task) => task.results)
-      .find((result) => result.selected && successStatuses.includes(result.status)) ||
-    tasks[0]?.results.find((result) => successStatuses.includes(result.status)) ||
-    tasks[0]?.results[0];
-  return selectedResult?.thumbnailUrl || selectedResult?.imageUrl || undefined;
+  return sorted
+    .map((result: AiImageResult) => result.thumbnailUrl || result.imageUrl)
+    .filter(Boolean)
+    .slice(0, 4) as string[];
+};
+
+const getImageCountText = (
+  imageTasks: AiImageTask[],
+  targetType: string,
+  targetId: number,
+) => {
+  const count = getTaskImages(imageTasks, targetType, targetId).length || 1;
+  return `${count}个形象`;
 };
 
 const buildCharacterCards = (
   characters: CharacterAsset[],
   imageTasks: AiImageTask[],
 ): SettingCard[] =>
-  characters.map((item, index) => ({
-    id: item.id,
-    name: item.name,
-    countText: index === 0 || index === 3 ? '2个形象' : '1个形象',
-    summary: [
-      `身份：${item.identity || item.roleType || '-'}`,
-      `个性：${item.personality?.slice(0, 3).join('、') || '-'}`,
-      `简介：${item.appearance || item.prompt || '-'}`,
-    ].join(' '),
-    imageUrl: getTaskImage(imageTasks, 'CHARACTER', item.id),
-    placeholder: `character-${index % 4}`,
-    actions: index === 2 ? 'upload' : 'voice',
-  }));
+  characters.map((item, index) => {
+    const images = getTaskImages(imageTasks, 'CHARACTER', item.id);
+    return {
+      id: item.id,
+      name: item.name,
+      countText: `${images.length || 1}个形象`,
+      summary: [
+        `身份：${item.identity || item.roleType || '-'}`,
+        `个性：${item.personality?.slice(0, 3).join('、') || '-'}`,
+        `简介：${item.appearance || item.prompt || '-'}`,
+      ].join(' '),
+      images,
+      placeholder: `character-${index % 4}`,
+      actions: index === 2 ? 'upload' : 'voice',
+      prompt: item.prompt,
+      source: item,
+    };
+  });
 
 const buildSceneCards = (
   scenes: SceneAsset[],
@@ -121,7 +168,7 @@ const buildSceneCards = (
   scenes.map((item, index) => ({
     id: item.id,
     name: item.name,
-    countText: '1个形象',
+    countText: getImageCountText(imageTasks, 'SCENE', item.id),
     summary: [
       item.description || item.prompt || '-',
       item.atmosphere ? `氛围：${item.atmosphere}` : '',
@@ -129,8 +176,10 @@ const buildSceneCards = (
     ]
       .filter(Boolean)
       .join(' '),
-    imageUrl: getTaskImage(imageTasks, 'SCENE', item.id),
+    images: getTaskImages(imageTasks, 'SCENE', item.id),
     placeholder: `scene-${index % 4}`,
+    prompt: item.prompt,
+    source: item,
   }));
 
 const buildPropCards = (
@@ -140,10 +189,12 @@ const buildPropCards = (
   props.map((item, index) => ({
     id: item.id,
     name: item.name,
-    countText: index === 1 ? '4个形象' : '1个形象',
+    countText: getImageCountText(imageTasks, 'PROP', item.id),
     summary: item.appearance || item.plotFunction || item.prompt || '-',
-    imageUrl: getTaskImage(imageTasks, 'PROP', item.id),
+    images: getTaskImages(imageTasks, 'PROP', item.id),
     placeholder: `prop-${index % 4}`,
+    prompt: item.prompt,
+    source: item,
   }));
 
 const getStatusCount = (imageTasks: AiImageTask[], targetType: string) => ({
@@ -198,12 +249,115 @@ const getPlaceholderBackground = (key: string) => {
   ][Number(key.at(-1)) || 0];
 };
 
+const toElementPayload = (
+  card: SettingCard,
+  activeTab: SettingTabKey,
+): UpdateScriptElementValues => {
+  if (activeTab === 'characters') {
+    const source = card.source as CharacterAsset;
+    return {
+      name: card.name,
+      roleType: source.roleType,
+      gender: source.gender,
+      ageRange: source.ageRange,
+      identity: source.identity,
+      personality: source.personality,
+      appearance: source.appearance,
+      prompt: source.prompt,
+      status: 'CONFIRMED',
+    };
+  }
+  if (activeTab === 'scenes') {
+    const source = card.source as SceneAsset;
+    return {
+      name: card.name,
+      sceneType: source.sceneType,
+      atmosphere: source.atmosphere,
+      description: source.description,
+      visualStyle: source.visualStyle,
+      prompt: source.prompt,
+      status: 'CONFIRMED',
+    };
+  }
+  const source = card.source as PropAsset;
+  return {
+    name: card.name,
+    propType: source.propType,
+    appearance: source.appearance,
+    plotFunction: source.plotFunction,
+    prompt: source.prompt,
+    status: 'CONFIRMED',
+  };
+};
+
+const CollageMedia = ({
+  card,
+  height,
+}: {
+  card: SettingCard;
+  height: number;
+}) => {
+  const images = card.images.length ? card.images : [];
+  if (!images.length) {
+    return (
+      <div
+        role="img"
+        aria-label={`${card.name}参考图`}
+        style={{
+          width: '100%',
+          height,
+          background: getPlaceholderBackground(card.placeholder),
+        }}
+      />
+    );
+  }
+  if (images.length === 1) {
+    return (
+      <Image
+        src={images[0]}
+        alt={`${card.name}参考图`}
+        width="100%"
+        height="100%"
+        preview={false}
+        style={{ objectFit: 'cover' }}
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gridTemplateRows: 'repeat(2, 1fr)',
+        gap: 1,
+        width: '100%',
+        height: '100%',
+        background: '#f1f4fb',
+      }}
+    >
+      {Array.from({ length: 4 }, (_, index) => (
+        <Image
+          key={`${card.id}-${images[index] || index}`}
+          src={images[index] || images[0]}
+          alt={`${card.name}参考图`}
+          width="100%"
+          height="100%"
+          preview={false}
+          style={{ objectFit: 'cover' }}
+        />
+      ))}
+    </div>
+  );
+};
+
 const ProductionWorkbench = () => {
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [project, setProject] = useState<ProjectLite>();
   const [activeTab, setActiveTab] = useState<SettingTabKey>('characters');
+  const [noticeVisible, setNoticeVisible] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string>();
   const [imageTasks, setImageTasks] = useState<AiImageTask[]>([]);
   const [workspace, setWorkspace] = useState<ScriptWorkspace>({
     projectId: projectId || 0,
@@ -215,31 +369,48 @@ const ProductionWorkbench = () => {
     storyboards: [],
   });
 
+  const applyWorkspace = useCallback(
+    (nextWorkspace?: ScriptWorkspace | null) => {
+      if (!nextWorkspace) {
+        return;
+      }
+      setWorkspace({
+        projectId,
+        script: nextWorkspace.script || null,
+        versions: nextWorkspace.versions || [],
+        characters: nextWorkspace.characters || [],
+        scenes: nextWorkspace.scenes || [],
+        props: nextWorkspace.props || [],
+        storyboards: nextWorkspace.storyboards || [],
+      });
+    },
+    [projectId],
+  );
+
+  const loadWorkbench = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    const [projectResponse, workspaceResponse, imageTaskResponse] = await Promise.all([
+      queryProject(projectId),
+      queryScriptWorkspace(projectId),
+      queryAiImageTasks(projectId, undefined).catch(() => ({ data: [] })),
+    ]);
+    setProject(projectResponse.data);
+    applyWorkspace(workspaceResponse.data);
+    setImageTasks(imageTaskResponse.data || []);
+  }, [applyWorkspace, projectId]);
+
   useEffect(() => {
     if (!projectId) {
       return;
     }
     let active = true;
-    Promise.all([
-      queryProject(projectId),
-      queryScriptWorkspace(projectId),
-      queryAiImageTasks(projectId, undefined).catch(() => ({ data: [] })),
-    ])
-      .then(([projectResponse, workspaceResponse, imageTaskResponse]) => {
+    loadWorkbench()
+      .then(() => {
         if (!active) {
           return;
         }
-        setProject(projectResponse.data);
-        setWorkspace({
-          projectId,
-          script: workspaceResponse.data?.script || null,
-          versions: workspaceResponse.data?.versions || [],
-          characters: workspaceResponse.data?.characters || [],
-          scenes: workspaceResponse.data?.scenes || [],
-          props: workspaceResponse.data?.props || [],
-          storyboards: workspaceResponse.data?.storyboards || [],
-        });
-        setImageTasks(imageTaskResponse.data || []);
       })
       .catch(() => {
         if (active) {
@@ -249,7 +420,7 @@ const ProductionWorkbench = () => {
     return () => {
       active = false;
     };
-  }, [message, projectId]);
+  }, [loadWorkbench, message, projectId]);
 
   const characters = workspace.characters;
   const scenes = workspace.scenes;
@@ -275,6 +446,104 @@ const ProductionWorkbench = () => {
       : activeTab === 'scenes'
         ? scenes.length
         : props.length;
+
+  const runAction = async (key: string, action: () => Promise<void>) => {
+    setActionLoading(key);
+    try {
+      await action();
+    } catch {
+      message.error('操作失败，请稍后重试');
+    } finally {
+      setActionLoading(undefined);
+    }
+  };
+
+  const handleExtractActive = () =>
+    runAction(`extract-${activeTab}`, async () => {
+      const response = await extractScriptElements(projectId, {
+        elementType: tabElementTypes[activeTab],
+      });
+      applyWorkspace(response.data);
+      message.success(`${tabLabels[activeTab]}设定已同步`);
+    });
+
+  const handleGeneratePrompts = () =>
+    runAction(`prompts-${activeTab}`, async () => {
+      const response = await generateWorkflowPrompts(projectId, {
+        targetType: tabElementTypes[activeTab],
+      });
+      applyWorkspace(response.data);
+      message.success(`${tabLabels[activeTab]}提示词已生成`);
+    });
+
+  const handleRefresh = () =>
+    runAction('refresh', async () => {
+      await loadWorkbench();
+      message.success('设定数据已刷新');
+    });
+
+  const handleGenerateCard = (card: SettingCard) =>
+    runAction(`${activeTab}-${card.id}-image`, async () => {
+      if (activeTab === 'props') {
+        message.warning('当前后端暂不支持道具图片生成任务');
+        return;
+      }
+      const payload: CreateAiImageTaskValues = {
+        taskType: tabTaskTypes[activeTab],
+        targetType: tabElementTypes[activeTab],
+        targetId: card.id,
+        prompt: card.prompt || card.summary || card.name,
+        aspectRatio: tabAspectRatios[activeTab],
+        imageCount: 4,
+        quality: 'STANDARD',
+      };
+      await createAiImageTask(projectId, payload);
+      message.success('图片生成任务已创建');
+      await loadWorkbench();
+    });
+
+  const handleConfirmCard = (card: SettingCard) =>
+    runAction(`${activeTab}-${card.id}-confirm`, async () => {
+      const response = await confirmScriptElement(
+        projectId,
+        tabElementTypes[activeTab],
+        card.id,
+      );
+      applyWorkspace(response.data);
+      message.success(`${card.name}已确认`);
+    });
+
+  const handleUpdateCard = (card: SettingCard) =>
+    runAction(`${activeTab}-${card.id}-update`, async () => {
+      const response = await updateScriptElement(
+        projectId,
+        tabElementTypes[activeTab],
+        card.id,
+        toElementPayload(card, activeTab),
+      );
+      applyWorkspace(response.data);
+      message.success(`${card.name}设定已更新`);
+    });
+
+  const handleDeleteCard = (card: SettingCard) => {
+    modal.confirm({
+      title: `删除${tabLabels[activeTab]}设定`,
+      content: `确认删除「${card.name}」？`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await runAction(`${activeTab}-${card.id}-delete`, async () => {
+          const response = await deleteScriptElement(
+            projectId,
+            tabElementTypes[activeTab],
+            card.id,
+          );
+          applyWorkspace(response.data);
+          message.success(`${card.name}已删除`);
+        });
+      },
+    });
+  };
 
   if (!projectId) {
     return <Empty description="项目不存在" />;
@@ -390,28 +659,36 @@ const ProductionWorkbench = () => {
           padding: '24px 44px 88px',
         }}
       >
-        <div
-          style={{
-            height: 42,
-            borderRadius: 8,
-            border: '1px solid #e1e8ff',
-            background: '#f3f6ff',
-            color: '#265cff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 16px',
-            fontSize: 14,
-          }}
-        >
-          <Flex align="center" gap={8}>
-            <BulbOutlined />
-            <span>
-              请确保角色、场景及道具已全部生成。 点击角色图片可配置【变装】，未配置的变装将导致分镜无参考图可用，直接影响视频准确性。
-            </span>
-          </Flex>
-          <CloseOutlined style={{ color: '#1f2937' }} />
-        </div>
+        {noticeVisible && (
+          <div
+            style={{
+              height: 42,
+              borderRadius: 8,
+              border: '1px solid #e1e8ff',
+              background: '#f3f6ff',
+              color: '#265cff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0 16px',
+              fontSize: 14,
+            }}
+          >
+            <Flex align="center" gap={8}>
+              <BulbOutlined />
+              <span>
+                请确保角色、场景及道具已全部生成。 点击角色图片可配置【变装】，未配置的变装将导致分镜无参考图可用，直接影响视频准确性。
+              </span>
+            </Flex>
+            <Button
+              type="text"
+              aria-label="关闭提示"
+              icon={<CloseOutlined />}
+              onClick={() => setNoticeVisible(false)}
+              style={{ color: '#1f2937', paddingInline: 0 }}
+            />
+          </div>
+        )}
 
         <section style={{ marginTop: 38 }}>
           <Flex align="center" justify="space-between">
@@ -449,11 +726,32 @@ const ProductionWorkbench = () => {
               <span>
                 失败 <span style={{ color: failed ? '#f04438' : '#66708a' }}>{failed}</span>
               </span>
-              <ReloadOutlined style={{ color: '#3156ff' }} />
-              <Button type="text" icon={<PlusOutlined />} style={{ paddingInline: 4 }}>
+              <Button
+                type="text"
+                aria-label="刷新设定"
+                icon={<ReloadOutlined style={{ color: '#3156ff' }} />}
+                loading={actionLoading === 'refresh'}
+                onClick={handleRefresh}
+                style={{ paddingInline: 0 }}
+              />
+              <Button
+                type="text"
+                aria-label={`添加${tabLabels[activeTab]}`}
+                icon={<PlusOutlined />}
+                loading={actionLoading === `extract-${activeTab}`}
+                onClick={handleExtractActive}
+                style={{ paddingInline: 4 }}
+              >
                 添加{tabLabels[activeTab]}
               </Button>
-              <Button type="text" icon={<BarsOutlined />} style={{ paddingInline: 4 }}>
+              <Button
+                type="text"
+                aria-label="批量生成"
+                icon={<BarsOutlined />}
+                loading={actionLoading === `prompts-${activeTab}`}
+                onClick={handleGeneratePrompts}
+                style={{ paddingInline: 4 }}
+              >
                 批量生成
               </Button>
               <Button
@@ -488,26 +786,7 @@ const ProductionWorkbench = () => {
                     background: '#fff',
                   }}
                 >
-                  {item.imageUrl ? (
-                    <Image
-                      src={item.imageUrl}
-                      alt={item.name}
-                      width="100%"
-                      height="100%"
-                      preview={false}
-                      style={{ objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <div
-                      role="img"
-                      aria-label={`${item.name}参考图`}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        background: getPlaceholderBackground(item.placeholder),
-                      }}
-                    />
-                  )}
+                  <CollageMedia card={item} height={getVisualHeight(activeTab)} />
                   {(activeTab !== 'characters' || index === 2 || index === 1) && (
                     <Flex
                       align="center"
@@ -527,9 +806,42 @@ const ProductionWorkbench = () => {
                         fontSize: 15,
                       }}
                     >
-                      <EditOutlined />
-                      <CopyOutlined />
-                      <UploadOutlined />
+                      <Tooltip title="确认设定">
+                        <Button
+                          type="text"
+                          aria-label={`确认${item.name}`}
+                          icon={<CopyOutlined />}
+                          onClick={() => handleConfirmCard(item)}
+                          style={{ color: '#fff', paddingInline: 0 }}
+                        />
+                      </Tooltip>
+                      <Tooltip title="生成图片">
+                        <Button
+                          type="text"
+                          aria-label={`生成${item.name}图片`}
+                          icon={<UploadOutlined />}
+                          onClick={() => handleGenerateCard(item)}
+                          style={{ color: '#fff', paddingInline: 0 }}
+                        />
+                      </Tooltip>
+                      <Tooltip title="同步设定">
+                        <Button
+                          type="text"
+                          aria-label={`同步${item.name}`}
+                          icon={<EditOutlined />}
+                          onClick={() => handleUpdateCard(item)}
+                          style={{ color: '#fff', paddingInline: 0 }}
+                        />
+                      </Tooltip>
+                      <Tooltip title="删除设定">
+                        <Button
+                          type="text"
+                          aria-label={`删除${item.name}`}
+                          icon={<DeleteOutlined />}
+                          onClick={() => handleDeleteCard(item)}
+                          style={{ color: '#fff', paddingInline: 0 }}
+                        />
+                      </Tooltip>
                       <MoreOutlined />
                     </Flex>
                   )}
@@ -593,6 +905,9 @@ const ProductionWorkbench = () => {
                       background: '#fff',
                       fontSize: 13,
                     }}
+                    onClick={() =>
+                      message.warning('角色音色配置请在语音字幕流程中完成')
+                    }
                   >
                     {item.actions === 'upload' ? '本地上传 | 自定义音色' : '配置音色'}
                   </Button>
