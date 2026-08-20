@@ -407,6 +407,32 @@ export default [
         access: 'canViewProjects',
         layout: false,
         component: './projects/production-workbench',
+        routes: [
+          {
+            path: '/projects/:id/production-workbench',
+            redirect: '/projects/:id/production-workbench/storyboard',
+          },
+          {
+            path: '/projects/:id/production-workbench/script',
+            hideInMenu: true,
+            component: './projects/production-workbench/script',
+          },
+          {
+            path: '/projects/:id/production-workbench/settings',
+            hideInMenu: true,
+            component: './projects/production-workbench/settings',
+          },
+          {
+            path: '/projects/:id/production-workbench/storyboard',
+            hideInMenu: true,
+            component: './projects/production-workbench/storyboard',
+          },
+          {
+            path: '/projects/:id/production-workbench/video',
+            hideInMenu: true,
+            component: './projects/production-workbench/video',
+          },
+        ],
       },
       {
         path: '/projects/:id',
