@@ -19,7 +19,7 @@ const findRoute = (path: string, routeList: Route[]): Route | undefined => {
 };
 
 describe('menu routes visibility', () => {
-  it('hides Ant Design Pro demo pages from the sidebar menu', () => {
+  it('removes template demo pages from the route table', () => {
     const demoPaths = [
       '/welcome',
       '/admin',
@@ -28,13 +28,18 @@ describe('menu routes visibility', () => {
       '/list',
       '/profile',
       '/result',
-      '/exception',
       '/account',
     ];
 
     for (const path of demoPaths) {
-      expect(findRoute(path, routes)).toMatchObject({ hideInMenu: true });
+      expect(findRoute(path, routes)).toBeUndefined();
     }
+  });
+
+  it('keeps exception pages available but hidden from the sidebar menu', () => {
+    expect(findRoute('/exception', routes)).toMatchObject({
+      hideInMenu: true,
+    });
   });
 
   it('hides duplicated team and AI assistant entries from the sidebar menu', () => {

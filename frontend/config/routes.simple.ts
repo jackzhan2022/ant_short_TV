@@ -4,44 +4,47 @@ export default [
     layout: false,
     routes: [
       {
-        name: '登录',
+        name: 'login',
         path: '/user/login',
         component: './user/login',
       },
     ],
   },
   {
-    path: '/welcome',
-    name: '欢迎',
-    icon: 'smile',
-    component: './Welcome',
-  },
-  {
-    path: '/admin',
-    name: '管理页',
-    icon: 'crown',
-    access: 'canAdmin',
+    path: '/team',
+    name: 'team',
+    icon: 'team',
     routes: [
       {
-        path: '/admin',
-        redirect: '/admin/sub-page',
+        path: '/team',
+        redirect: '/team/my',
       },
       {
-        path: '/admin/sub-page',
-        name: '二级管理页',
-        component: './Admin',
+        path: '/team/my',
+        name: 'my',
+        component: './team/my',
       },
     ],
   },
   {
-    name: '查询表格',
-    icon: 'table',
-    path: '/list',
-    component: './table-list',
+    path: '/projects',
+    name: 'projects',
+    icon: 'project',
+    routes: [
+      {
+        path: '/projects',
+        redirect: '/projects/list',
+      },
+      {
+        path: '/projects/list',
+        name: 'list',
+        component: './projects/list',
+      },
+    ],
   },
   {
     path: '/',
-    redirect: '/welcome',
+    redirect: '/team/my',
   },
   {
     component: './exception/404',

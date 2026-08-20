@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockReplace = vi.fn();
 const mockHistory = {
   location: {
-    pathname: '/welcome',
+    pathname: '/team/my',
     search: '',
     hash: '',
   },
@@ -65,7 +65,7 @@ describe('app getInitialState', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockHistory.location = {
-      pathname: '/welcome',
+      pathname: '/team/my',
       search: '',
       hash: '',
     };

@@ -5,14 +5,13 @@ import { createStyles } from 'antd-style';
 import React from 'react';
 
 const getRepoUrl = () => {
-  if (!packageJson.repository)
-    return 'https://github.com/ant-design/ant-design-pro';
+  const repository = (packageJson as { repository?: string | { url: string } })
+    .repository;
+  if (!repository) return '';
   const repo =
-    typeof packageJson.repository === 'string'
-      ? packageJson.repository
-      : (packageJson.repository as { url: string }).url;
+    typeof repository === 'string' ? repository : repository.url;
   const match = repo.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
-  if (!match) return 'https://github.com/ant-design/ant-design-pro';
+  if (!match) return '';
   return `https://github.com/${match[1]}/${match[2]}`;
 };
 
@@ -69,19 +68,23 @@ const Footer: React.FC = () => {
 
   return (
     <div className={styles.footer}>
-      <div className={styles.copyright}>Ant Design Pro &copy; {year}</div>
+      <div className={styles.copyright}>Ant Short TV &copy; {year}</div>
       <div className={styles.meta}>
         <span className={styles.group}>
           <span className={styles.label}>ver</span>
-          <a
-            className={styles.link}
-            href={REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {__APP_VERSION__}
-          </a>
-          {COMMIT_HASH && (
+          {REPO_URL ? (
+            <a
+              className={styles.link}
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {__APP_VERSION__}
+            </a>
+          ) : (
+            <span>{__APP_VERSION__}</span>
+          )}
+          {COMMIT_HASH && REPO_URL && (
             <a
               className={styles.link}
               href={`${REPO_URL}/commit/${COMMIT_HASH}`}
@@ -116,16 +119,20 @@ const Footer: React.FC = () => {
             {__UTOO_VERSION__}
           </a>
         </span>
-        <Divider orientation="vertical" className={styles.divider} />
-        <a
-          className={styles.link}
-          href={REPO_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <GithubOutlined style={{ marginRight: 4 }} />
-          GitHub
-        </a>
+        {REPO_URL && (
+          <>
+            <Divider orientation="vertical" className={styles.divider} />
+            <a
+              className={styles.link}
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <GithubOutlined style={{ marginRight: 4 }} />
+              GitHub
+            </a>
+          </>
+        )}
       </div>
     </div>
   );

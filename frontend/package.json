@@ -1,9 +1,8 @@
 {
-  "name": "ant-design-pro",
+  "name": "ant-short-tv-frontend",
   "version": "6.0.2",
   "private": true,
-  "description": "An out-of-box UI solution for enterprise applications",
-  "repository": "git@github.com:ant-design/ant-design-pro.git",
+  "description": "Frontend for the Ant Short TV production platform",
   "scripts": {
     "analyze": "cross-env ANALYZE=1 max build",
     "build": "max build",

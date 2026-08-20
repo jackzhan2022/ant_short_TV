@@ -1,10 +1,10 @@
 {
-  "name": "Ant Design Pro",
-  "short_name": "Ant Design Pro",
+  "name": "Ant Short TV",
+  "short_name": "Ant Short TV",
   "display": "standalone",
   "start_url": "./?utm_source=homescreen",
-  "theme_color": "#002140",
-  "background_color": "#001529",
+  "theme_color": "#111827",
+  "background_color": "#f8fafc",
   "icons": [
     {
       "src": "icons/icon-192x192.png",

@@ -73,7 +73,9 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
       setInitialState((s) => ({ ...s, settingDrawerOpen: true }));
       return;
     }
-    history.push(`/account/${key}`);
+    if (key === 'settings') {
+      history.push('/team/settings');
+    }
   };
 
   if (!initialState) {
