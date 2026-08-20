@@ -19,6 +19,7 @@ import com.antshorttv.script.StoryboardEntity;
 import com.antshorttv.script.StoryboardMapper;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
+import com.antshorttv.storage.ObjectStorageService;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -29,6 +30,7 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -70,6 +72,7 @@ public class ShotProductionService {
     private final ObjectMapper objectMapper;
     private final MaterialFileAccessService materialFileAccessService;
     private final TeamPointService teamPointService;
+    private final ObjectStorageService objectStorageService;
     private final Path storageRoot;
 
     public ShotProductionService(
@@ -93,6 +96,7 @@ public class ShotProductionService {
         ObjectMapper objectMapper,
         MaterialFileAccessService materialFileAccessService,
         TeamPointService teamPointService,
+        ObjectStorageService objectStorageService,
         @Value("${ai.video.storage-root:storage}") String storageRoot
     ) {
         this.projectMapper = projectMapper;
@@ -115,6 +119,7 @@ public class ShotProductionService {
         this.objectMapper = objectMapper;
         this.materialFileAccessService = materialFileAccessService;
         this.teamPointService = teamPointService;
+        this.objectStorageService = objectStorageService;
         this.storageRoot = Path.of(storageRoot);
     }
 
@@ -1005,6 +1010,22 @@ public class ShotProductionService {
         Integer height
     ) {
         try {
+            if (objectStorageService.enabled()) {
+                Path file = Files.createTempFile("ant-short-tv-episode-", ".mp4");
+                try {
+                    AWTSequenceEncoder encoder = AWTSequenceEncoder.createSequenceEncoder(file.toFile(), 2);
+                    int frameCount = Math.max(2, Math.min(12, items.size() * 2));
+                    for (int index = 0; index < frameCount; index++) {
+                        encoder.encodeImage(episodeFrame(task, items, width, height, index));
+                    }
+                    encoder.finish();
+                    long fileSize = Files.size(file);
+                    objectStorageService.uploadFile(storagePath, file, "video/mp4");
+                    return fileSize;
+                } finally {
+                    Files.deleteIfExists(file);
+                }
+            }
             Path file = storageFile(storagePath);
             Files.createDirectories(file.getParent());
             AWTSequenceEncoder encoder = AWTSequenceEncoder.createSequenceEncoder(file.toFile(), 2);
@@ -1027,6 +1048,12 @@ public class ShotProductionService {
         Integer height
     ) {
         try {
+            if (objectStorageService.enabled()) {
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                ImageIO.write(episodeFrame(task, items, width, height, 0), "png", output);
+                objectStorageService.upload(storagePath, output.toByteArray(), "image/png");
+                return;
+            }
             Path file = storageFile(storagePath);
             Files.createDirectories(file.getParent());
             ImageIO.write(episodeFrame(task, items, width, height, 0), "png", file.toFile());
@@ -1284,9 +1311,14 @@ public class ShotProductionService {
 
     private long writeFile(String storagePath, String content) {
         try {
+            byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+            if (objectStorageService.enabled()) {
+                objectStorageService.upload(storagePath, bytes, materialFileAccessService.contentType(storagePath));
+                return bytes.length;
+            }
             Path file = storageFile(storagePath);
             Files.createDirectories(file.getParent());
-            Files.writeString(file, content, StandardCharsets.UTF_8);
+            Files.write(file, bytes);
             return Files.size(file);
         } catch (Exception exception) {
             throw new IllegalStateException("文件写入失败：" + exception.getMessage(), exception);

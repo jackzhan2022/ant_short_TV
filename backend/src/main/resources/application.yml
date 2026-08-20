@@ -24,6 +24,15 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+object-storage:
+  mode: ${OBJECT_STORAGE_MODE:s3}
+  endpoint: ${OBJECT_STORAGE_ENDPOINT:https://minio.aixmax.cn}
+  bucket: ${OBJECT_STORAGE_BUCKET:ant-short-tv}
+  access-key: ${OBJECT_STORAGE_ACCESS_KEY:}
+  secret-key: ${OBJECT_STORAGE_SECRET_KEY:}
+  region: ${OBJECT_STORAGE_REGION:}
+  auto-create-bucket: ${OBJECT_STORAGE_AUTO_CREATE_BUCKET:true}
+
 ai:
   secret-key: ${AI_SECRET_KEY:}
   video:

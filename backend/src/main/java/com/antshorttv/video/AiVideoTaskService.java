@@ -24,6 +24,7 @@ import com.antshorttv.script.StoryboardEntity;
 import com.antshorttv.script.StoryboardMapper;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
+import com.antshorttv.storage.ObjectStorageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -67,6 +68,7 @@ public class AiVideoTaskService {
     private final RbacPermissionService rbacPermissionService;
     private final OperationLogService operationLogService;
     private final MaterialFileAccessService materialFileAccessService;
+    private final ObjectStorageService objectStorageService;
     private final AiSecretCodec aiSecretCodec;
     private final TeamPointService teamPointService;
     private final ObjectMapper objectMapper;
@@ -91,6 +93,7 @@ public class AiVideoTaskService {
         RbacPermissionService rbacPermissionService,
         OperationLogService operationLogService,
         MaterialFileAccessService materialFileAccessService,
+        ObjectStorageService objectStorageService,
         AiSecretCodec aiSecretCodec,
         TeamPointService teamPointService,
         ObjectMapper objectMapper,
@@ -113,6 +116,7 @@ public class AiVideoTaskService {
         this.rbacPermissionService = rbacPermissionService;
         this.operationLogService = operationLogService;
         this.materialFileAccessService = materialFileAccessService;
+        this.objectStorageService = objectStorageService;
         this.aiSecretCodec = aiSecretCodec;
         this.teamPointService = teamPointService;
         this.objectMapper = objectMapper;
@@ -595,11 +599,15 @@ public class AiVideoTaskService {
     }
 
     private long writeVideoFile(String storagePath, String externalVideoUrl) throws Exception {
-        Path file = storageRoot.resolve(storagePath.substring(1));
-        Files.createDirectories(file.getParent());
         byte[] bytes = externalVideoUrl == null || externalVideoUrl.isBlank()
             ? placeholderMp4Bytes()
             : downloadVideoBytes(externalVideoUrl);
+        if (objectStorageService.enabled()) {
+            objectStorageService.upload(storagePath, bytes, "video/mp4");
+            return bytes.length;
+        }
+        Path file = storageRoot.resolve(storagePath.substring(1));
+        Files.createDirectories(file.getParent());
         Files.write(file, bytes);
         return Files.size(file);
     }

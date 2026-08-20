@@ -15,5 +15,8 @@ mybatis-plus:
     db-config:
       id-type: auto
 
+object-storage:
+  mode: local
+
 ai:
   secret-key: test-ai-secret-key

@@ -78,6 +78,18 @@ Useful local URLs:
 - `http://localhost:8080/v3/api-docs`
 - `http://localhost:8080/api/currentUser`
 
+Object storage is enabled by default for backend file storage and reads. Configure MinIO/S3 through environment variables:
+
+```powershell
+$env:OBJECT_STORAGE_MODE = "s3"
+$env:OBJECT_STORAGE_ENDPOINT = "https://minio.aixmax.cn"
+$env:OBJECT_STORAGE_BUCKET = "ant-short-tv"
+$env:OBJECT_STORAGE_ACCESS_KEY = "<access-key>"
+$env:OBJECT_STORAGE_SECRET_KEY = "<secret-key>"
+```
+
+The backend creates the bucket automatically when `OBJECT_STORAGE_AUTO_CREATE_BUCKET` is `true`.
+
 ## Development Flow
 
 1. Start the backend from `backend/`.

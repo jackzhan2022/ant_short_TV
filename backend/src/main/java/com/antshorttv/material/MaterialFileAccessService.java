@@ -2,6 +2,7 @@ package com.antshorttv.material;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.storage.ObjectStorageService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,13 +19,16 @@ import org.springframework.stereotype.Service;
 public class MaterialFileAccessService {
     private final Path storageRoot;
     private final byte[] secret;
+    private final ObjectStorageService objectStorageService;
 
     public MaterialFileAccessService(
         @Value("${ai.video.storage-root:storage}") String storageRoot,
-        @Value("${material.access-secret:ant-short-tv-material-access}") String secret
+        @Value("${material.access-secret:ant-short-tv-material-access}") String secret,
+        ObjectStorageService objectStorageService
     ) {
         this.storageRoot = Path.of(storageRoot).toAbsolutePath().normalize();
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
+        this.objectStorageService = objectStorageService;
     }
 
     public String publicUrl(String storagePath) {
@@ -43,6 +47,9 @@ public class MaterialFileAccessService {
     }
 
     public Resource resource(String storagePath) {
+        if (objectStorageService.enabled()) {
+            return objectStorageService.resource(storagePath);
+        }
         Path file = resolve(storagePath);
         if (!Files.exists(file) || !Files.isRegularFile(file)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "素材文件不存在。");

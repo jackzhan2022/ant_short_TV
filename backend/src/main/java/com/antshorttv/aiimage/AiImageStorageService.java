@@ -2,11 +2,13 @@ package com.antshorttv.aiimage;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.storage.ObjectStorageService;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -20,9 +22,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class AiImageStorageService {
     private final Path root;
+    private final ObjectStorageService objectStorageService;
 
-    public AiImageStorageService(@Value("${ai.image.storage-dir:storage}") String storageDir) {
+    public AiImageStorageService(
+        @Value("${ai.image.storage-dir:storage}") String storageDir,
+        ObjectStorageService objectStorageService
+    ) {
         this.root = Path.of(storageDir).toAbsolutePath().normalize();
+        this.objectStorageService = objectStorageService;
     }
 
     public StoredImage createPlaceholder(AiImageTaskEntity task, Long resultId, int index) {
@@ -40,7 +47,6 @@ public class AiImageStorageService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "图片存储路径不正确。");
         }
         try {
-            Files.createDirectories(file.getParent());
             BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
             Graphics2D graphics = image.createGraphics();
             graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -52,6 +58,14 @@ public class AiImageStorageService {
             graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, Math.max(18, width / 30)));
             graphics.drawString("Result #" + index + " / " + resultId, Math.max(24, width / 16), Math.max(104, height / 2 + 48));
             graphics.dispose();
+            if (objectStorageService.enabled()) {
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                ImageIO.write(image, "png", output);
+                byte[] bytes = output.toByteArray();
+                objectStorageService.upload(relativePath, bytes, "image/png");
+                return new StoredImage(relativePath, width, height, (long) bytes.length);
+            }
+            Files.createDirectories(file.getParent());
             ImageIO.write(image, "png", file.toFile());
             return new StoredImage(relativePath, width, height, Files.size(file));
         } catch (Exception exception) {
@@ -62,6 +76,9 @@ public class AiImageStorageService {
     public Resource resource(AiImageResultEntity result) {
         if (result.getStoragePath() == null || result.getStoragePath().isBlank()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "图片文件不存在。");
+        }
+        if (objectStorageService.enabled()) {
+            return objectStorageService.resource(result.getStoragePath());
         }
         Path file = root.resolve(result.getStoragePath()).normalize();
         if (!file.startsWith(root) || !Files.exists(file)) {
