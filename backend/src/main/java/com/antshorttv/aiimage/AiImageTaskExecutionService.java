@@ -3,6 +3,7 @@ package com.antshorttv.aiimage;
 import com.antshorttv.ai.AiContext;
 import com.antshorttv.ai.AiGateway;
 import com.antshorttv.ai.AiImageRequest;
+import com.antshorttv.ai.AiImageResponse;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import java.time.LocalDateTime;
 import org.springframework.scheduling.annotation.Async;
@@ -47,12 +48,13 @@ public class AiImageTaskExecutionService {
             if (isCanceled(task.getId())) {
                 return;
             }
-            aiGateway.image(
+            AiImageResponse response = aiGateway.image(
                 new AiContext(task.getTenantId(), task.getCreatedBy(), task.getProjectId(), task.getId(), task.getModelId(), task.getTaskType(), null),
                 new AiImageRequest(task.getPrompt(), task.getNegativePrompt(), null, task.getAspectRatio(), task.getImageCount(), ReferenceImagesCodec.decode(task.getReferenceImages()))
             );
             for (int index = 1; index <= task.getImageCount(); index++) {
-                createResult(task, index);
+                String imageUrl = response.imageUrls().size() >= index ? response.imageUrls().get(index - 1) : null;
+                createResult(task, index, imageUrl);
             }
             if (isCanceled(task.getId())) {
                 return;
@@ -81,29 +83,31 @@ public class AiImageTaskExecutionService {
         return latest == null || AiImageTaskStatus.CANCELED.name().equals(latest.getStatus());
     }
 
-    private void createResult(AiImageTaskEntity task, int index) {
+    private void createResult(AiImageTaskEntity task, int index, String providerImageUrl) {
         AiImageResultEntity result = new AiImageResultEntity();
         result.setTenantId(task.getTenantId());
         result.setProjectId(task.getProjectId());
         result.setTaskId(task.getId());
         result.setTargetType(task.getTargetType());
         result.setTargetId(task.getTargetId());
-        result.setImageUrl("");
-        result.setThumbnailUrl("");
+        result.setImageUrl(providerImageUrl == null ? "" : providerImageUrl);
+        result.setThumbnailUrl(providerImageUrl == null ? "" : providerImageUrl);
         result.setIsSelected(false);
         result.setStatus(AiImageResultStatus.ACTIVE.name());
         result.setCreatedAt(LocalDateTime.now());
         result.setUpdatedAt(result.getCreatedAt());
         resultMapper.insert(result);
 
-        StoredImage storedImage = storageService.createPlaceholder(task, result.getId(), index);
-        String url = "/api/projects/%d/ai-image-results/%d/download".formatted(task.getProjectId(), result.getId());
-        result.setImageUrl(url);
-        result.setThumbnailUrl(url);
-        result.setStoragePath(storedImage.storagePath());
-        result.setWidth(storedImage.width());
-        result.setHeight(storedImage.height());
-        result.setFileSize(storedImage.fileSize());
+        if (providerImageUrl == null || providerImageUrl.isBlank()) {
+            StoredImage storedImage = storageService.createPlaceholder(task, result.getId(), index);
+            String url = "/api/projects/%d/ai-image-results/%d/download".formatted(task.getProjectId(), result.getId());
+            result.setImageUrl(url);
+            result.setThumbnailUrl(url);
+            result.setStoragePath(storedImage.storagePath());
+            result.setWidth(storedImage.width());
+            result.setHeight(storedImage.height());
+            result.setFileSize(storedImage.fileSize());
+        }
         result.setUpdatedAt(LocalDateTime.now());
         resultMapper.updateById(result);
     }

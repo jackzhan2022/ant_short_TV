@@ -14,6 +14,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
 import com.jayway.jsonpath.JsonPath;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import org.junit.jupiter.api.Test;
@@ -175,6 +178,56 @@ class AiImageTaskControllerTest {
     }
 
     @Test
+    void storesProviderImageUrlWhenGatewayReturnsRealImages() throws Exception {
+        String token = registerUser("13800014005", "Real Image Creator");
+        Long tenantId = createTenant(token, "真实图片团队");
+        Long ownerId = userIdByMobile("13800014005");
+        Long projectId = createProject(token, tenantId, ownerId, "真实图片项目", "IMAGE_TASK_REAL_PROVIDER");
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 5);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/images/generations", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] body = """
+                {"data":[{"url":"https://cdn.example.com/generated-first-frame.png"}]}
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            createImageService(token, tenantId, "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-image");
+            MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .header("X-Tenant-Id", tenantId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "taskType":"STORYBOARD_FIRST_FRAME",
+                          "targetType":"STORYBOARD",
+                          "targetId":%d,
+                          "prompt":"真实 Provider 首帧",
+                          "aspectRatio":"9:16",
+                          "imageCount":1
+                        }
+                        """.formatted(storyboardId)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+            Long taskId = readLong(created, "$.data.id");
+            MvcResult completed = waitForTaskSuccess(token, tenantId, projectId, taskId);
+
+            String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
+            org.assertj.core.api.Assertions.assertThat(imageUrl).isEqualTo("https://cdn.example.com/generated-first-frame.png");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void keepsRunningTaskCanceledWhenExecutorCompletesLater() throws Exception {
         String token = registerUser("13800014003", "Image Canceler");
         Long tenantId = createTenant(token, "图片取消团队");
@@ -240,6 +293,10 @@ class AiImageTaskControllerTest {
     }
 
     private void createImageService(String token, Long tenantId) throws Exception {
+        createImageService(token, tenantId, "https://api.openai.com/v1", "test-key");
+    }
+
+    private void createImageService(String token, Long tenantId, String baseUrl, String apiKey) throws Exception {
         mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
                 .header("X-Tenant-Id", tenantId)
@@ -249,15 +306,15 @@ class AiImageTaskControllerTest {
                       "name":"默认图片服务",
                       "serviceType":"IMAGE",
                       "provider":"OpenAI",
-                      "baseUrl":"https://api.openai.com/v1",
-                      "apiKey":"test-key",
+                      "baseUrl":"%s",
+                      "apiKey":"%s",
                       "model":"local-image-model",
                       "endpoint":"/images/generations",
                       "priority":100,
                       "isDefault":true,
                       "enabled":true
                     }
-                    """))
+                    """.formatted(baseUrl, apiKey)))
             .andExpect(status().isOk());
     }
 

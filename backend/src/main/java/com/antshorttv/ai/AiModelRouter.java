@@ -14,17 +14,20 @@ public class AiModelRouter {
     private final AiModelMapper aiModelMapper;
     private final AiProviderMapper aiProviderMapper;
     private final AiProviderConfigMapper aiProviderConfigMapper;
+    private final AiServiceConfigMapper aiServiceConfigMapper;
     private final Map<String, AiProviderAdapter> adapters;
 
     public AiModelRouter(
         AiModelMapper aiModelMapper,
         AiProviderMapper aiProviderMapper,
         AiProviderConfigMapper aiProviderConfigMapper,
+        AiServiceConfigMapper aiServiceConfigMapper,
         List<AiProviderAdapter> adapters
     ) {
         this.aiModelMapper = aiModelMapper;
         this.aiProviderMapper = aiProviderMapper;
         this.aiProviderConfigMapper = aiProviderConfigMapper;
+        this.aiServiceConfigMapper = aiServiceConfigMapper;
         this.adapters = adapters.stream().collect(Collectors.toMap(adapter -> adapter.providerCode().toUpperCase(Locale.ROOT), Function.identity()));
     }
 
@@ -46,9 +49,12 @@ public class AiModelRouter {
         if (!"ENABLED".equals(provider.getStatus())) {
             throw new AiGatewayException(ErrorCode.AI_PROVIDER_DISABLED, "AI 服务商已停用。");
         }
-        AiProviderConfigEntity config = aiProviderConfigMapper.selectOne(new LambdaQueryWrapper<AiProviderConfigEntity>()
+        AiProviderConfigEntity config = legacyConfig(model);
+        if (config == null) {
+            config = aiProviderConfigMapper.selectOne(new LambdaQueryWrapper<AiProviderConfigEntity>()
             .eq(AiProviderConfigEntity::getProviderId, provider.getId())
             .last("limit 1"));
+        }
         if (config == null || !"ENABLED".equals(config.getStatus())) {
             throw new AiGatewayException(ErrorCode.AI_PROVIDER_DISABLED, "AI 服务商配置不可用。");
         }
@@ -57,6 +63,23 @@ public class AiModelRouter {
             throw new AiGatewayException(ErrorCode.AI_PROVIDER_NOT_SUPPORTED, "AI 服务商暂未接入 Gateway。");
         }
         return new AiModelRoute(model, provider, config, adapter);
+    }
+
+    private AiProviderConfigEntity legacyConfig(AiModelEntity model) {
+        if (model.getLegacyServiceConfigId() == null) {
+            return null;
+        }
+        AiServiceConfigEntity serviceConfig = aiServiceConfigMapper.selectById(model.getLegacyServiceConfigId());
+        if (serviceConfig == null || serviceConfig.getDeletedAt() != null || !Boolean.TRUE.equals(serviceConfig.getEnabled())) {
+            return null;
+        }
+        AiProviderConfigEntity config = new AiProviderConfigEntity();
+        config.setId(serviceConfig.getId());
+        config.setBaseUrl(serviceConfig.getBaseUrl());
+        config.setApiKeyCipher(serviceConfig.getApiKeyCipher());
+        config.setExtraConfig(serviceConfig.getEndpoint());
+        config.setStatus("ENABLED");
+        return config;
     }
 
     private AiModelEntity defaultModel(String serviceType) {
