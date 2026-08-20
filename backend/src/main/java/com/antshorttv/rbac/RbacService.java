@@ -1,5 +1,6 @@
 package com.antshorttv.rbac;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.member.MemberStatus;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -360,12 +362,39 @@ public class RbacService {
         try {
             roleMapper.insert(role);
             return role;
-        } catch (DuplicateKeyException ignored) {
-            return roleMapper.selectActiveByTenantIdAndCode(tenantId, code);
+        } catch (DuplicateKeyException | PessimisticLockingFailureException ignored) {
+            return reactivateSystemRole(tenantId, code, name, description, isDefault, now);
         }
     }
 
+    private RoleEntity reactivateSystemRole(
+        Long tenantId,
+        String code,
+        String name,
+        String description,
+        boolean isDefault,
+        LocalDateTime now
+    ) {
+        RoleEntity role = roleMapper.selectByTenantIdAndCode(tenantId, code);
+        if (role == null) {
+            throw new BusinessException(ErrorCode.ROLE_NOT_FOUND, "系统角色初始化失败。");
+        }
+        roleMapper.update(null, new LambdaUpdateWrapper<RoleEntity>()
+            .eq(RoleEntity::getId, role.getId())
+            .set(RoleEntity::getName, name)
+            .set(RoleEntity::getDescription, description)
+            .set(RoleEntity::getRoleType, RoleType.SYSTEM.name())
+            .set(RoleEntity::getStatus, RoleStatus.ACTIVE.name())
+            .set(RoleEntity::getIsDefault, isDefault)
+            .set(RoleEntity::getDeletedAt, null)
+            .set(RoleEntity::getUpdatedAt, now));
+        return roleMapper.selectActiveByTenantIdAndCode(tenantId, code);
+    }
+
     private void ensureRolePermissions(RoleEntity role, List<String> permissionCodes) {
+        if (role == null) {
+            throw new BusinessException(ErrorCode.ROLE_NOT_FOUND, "系统角色初始化失败。");
+        }
         Set<String> codes = permissionCodes == null ? Set.of() : permissionCodes.stream()
             .map(String::trim)
             .filter(code -> !code.isBlank())

@@ -102,4 +102,33 @@ class SchemaMigrationTest {
         assertThat(tableCount).isEqualTo(3);
         assertThat(storyboardColumnCount).isEqualTo(3);
     }
+
+    @Test
+    void scriptContentColumnsAcceptLongDrafts() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        String longContent = "剧本正文".repeat(10000);
+
+        jdbc.update("""
+            insert into script
+              (tenant_id, project_id, title, source_type, content, status, created_by, created_at, updated_at)
+            values
+              (9001, 9002, '长剧本', 'MANUAL_EDIT', ?, 'DRAFT', 9003, now(), now())
+            """, longContent);
+        Long scriptId = jdbc.queryForObject("select id from script where tenant_id = 9001", Long.class);
+
+        jdbc.update("""
+            insert into script_version
+              (tenant_id, project_id, script_id, version_no, source_type, input_summary, content, status, created_by, created_at)
+            values
+              (9001, 9002, ?, 1, 'MANUAL_EDIT', ?, ?, 'DRAFT', 9003, now())
+            """, scriptId, longContent, longContent);
+
+        Integer storedLength = jdbc.queryForObject(
+            "select length(content) from script where id = ?",
+            Integer.class,
+            scriptId
+        );
+
+        assertThat(storedLength).isEqualTo(longContent.length());
+    }
 }

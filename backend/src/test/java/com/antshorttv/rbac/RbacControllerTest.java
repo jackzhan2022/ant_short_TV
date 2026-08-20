@@ -47,6 +47,9 @@ class RbacControllerTest {
     @Autowired
     private TenantMemberMapper tenantMemberMapper;
 
+    @Autowired
+    private RoleMapper roleMapper;
+
     @Test
     void initializesDefaultRolesWhenListingTenantRoles() throws Exception {
         String ownerToken = registerUser("13800009001", "RBAC Owner");
@@ -64,6 +67,34 @@ class RbacControllerTest {
                 .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(3)));
+    }
+
+    @Test
+    void reactivatesDeletedSystemRoleDuringTenantInitialization() throws Exception {
+        String ownerToken = registerUser("13800009015", "Deleted Role Owner");
+        Long tenantId = createTenant(ownerToken, "恢复系统角色团队");
+        RoleEntity deletedAdminRole = new RoleEntity();
+        deletedAdminRole.setTenantId(tenantId);
+        deletedAdminRole.setCode("ADMIN");
+        deletedAdminRole.setName("Deleted Admin");
+        deletedAdminRole.setDescription("曾被删除的系统角色");
+        deletedAdminRole.setRoleType(RoleType.SYSTEM.name());
+        deletedAdminRole.setStatus(RoleStatus.ACTIVE.name());
+        deletedAdminRole.setIsDefault(true);
+        deletedAdminRole.setCreatedAt(LocalDateTime.now());
+        deletedAdminRole.setUpdatedAt(LocalDateTime.now());
+        deletedAdminRole.setDeletedAt(LocalDateTime.now());
+        roleMapper.insert(deletedAdminRole);
+
+        mockMvc.perform(get("/api/tenants/%d/roles".formatted(tenantId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[*].code", containsInAnyOrder("OWNER", "ADMIN", "MEMBER")));
+
+        RoleEntity activeAdminRole = roleMapper.selectActiveByTenantIdAndCode(tenantId, "ADMIN");
+        assertThat(activeAdminRole).isNotNull();
+        assertThat(activeAdminRole.getDeletedAt()).isNull();
+        assertThat(activeAdminRole.getName()).isEqualTo("Admin");
     }
 
     @Test

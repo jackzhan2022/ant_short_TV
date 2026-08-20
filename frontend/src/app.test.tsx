@@ -49,6 +49,12 @@ vi.mock('@ant-design/pro-components', () => ({
   SettingDrawer: () => null,
 }));
 
+vi.mock('antd', () => ({
+  App: ({ children }: any) => (
+    <div data-testid="antd-app-provider">{children}</div>
+  ),
+}));
+
 vi.mock('@ant-design/icons', () => ({
   LinkOutlined: () => null,
 }));
@@ -252,5 +258,14 @@ describe('app getInitialState', () => {
       currentTenantId: 22,
       permissions: ['PROJECT:VIEW'],
     });
+  });
+
+  it('wraps routed pages with antd App context for message APIs', async () => {
+    const { rootContainer } = await import('./app');
+
+    render(rootContainer(<div>page</div>) as React.ReactElement);
+
+    expect(screen.getByTestId('antd-app-provider')).toBeInTheDocument();
+    expect(screen.getByText('page')).toBeInTheDocument();
   });
 });

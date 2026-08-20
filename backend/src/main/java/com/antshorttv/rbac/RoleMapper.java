@@ -13,6 +13,12 @@ public interface RoleMapper extends BaseMapper<RoleEntity> {
             .eq(RoleEntity::getCode, code));
     }
 
+    default RoleEntity selectByTenantIdAndCode(Long tenantId, String code) {
+        return selectOne(new LambdaQueryWrapper<RoleEntity>()
+            .eq(RoleEntity::getTenantId, tenantId)
+            .eq(RoleEntity::getCode, code));
+    }
+
     default List<RoleEntity> selectByTenantId(Long tenantId) {
         return selectList(baseTenantQuery(tenantId)
             .orderByAsc(RoleEntity::getRoleType)
