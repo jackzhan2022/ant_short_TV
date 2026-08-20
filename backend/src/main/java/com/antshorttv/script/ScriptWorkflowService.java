@@ -1,7 +1,9 @@
 package com.antshorttv.script;
 
-import com.antshorttv.ai.AiServiceConfigEntity;
-import com.antshorttv.ai.AiServiceConfigMapper;
+import com.antshorttv.ai.AiContext;
+import com.antshorttv.ai.AiGateway;
+import com.antshorttv.ai.AiTextRequest;
+import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.project.ProjectEntity;
@@ -13,7 +15,6 @@ import com.antshorttv.points.TeamPointService;
 import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -36,7 +37,8 @@ public class ScriptWorkflowService {
     private final TenantContextResolver tenantContextResolver;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
-    private final AiServiceConfigMapper aiServiceConfigMapper;
+    private final ProjectAiConfigService projectAiConfigService;
+    private final AiGateway aiGateway;
     private final MaterialFileAccessService materialFileAccessService;
     private final TeamPointService teamPointService;
     private final JdbcTemplate jdbcTemplate;
@@ -48,7 +50,8 @@ public class ScriptWorkflowService {
         TenantContextResolver tenantContextResolver,
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
-        AiServiceConfigMapper aiServiceConfigMapper,
+        ProjectAiConfigService projectAiConfigService,
+        AiGateway aiGateway,
         MaterialFileAccessService materialFileAccessService,
         TeamPointService teamPointService,
         JdbcTemplate jdbcTemplate
@@ -59,7 +62,8 @@ public class ScriptWorkflowService {
         this.tenantContextResolver = tenantContextResolver;
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
-        this.aiServiceConfigMapper = aiServiceConfigMapper;
+        this.projectAiConfigService = projectAiConfigService;
+        this.aiGateway = aiGateway;
         this.materialFileAccessService = materialFileAccessService;
         this.teamPointService = teamPointService;
         this.jdbcTemplate = jdbcTemplate;
@@ -91,7 +95,6 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProjectAccess(context, projectId);
         requirePermission(context, "SCRIPT:AI_GENERATE", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         LocalDateTime now = LocalDateTime.now();
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         if (script == null) {
@@ -103,8 +106,8 @@ public class ScriptWorkflowService {
         }
 
         String title = resolveTitle(project, request);
-        String content = buildScriptContent(title, request);
-        Long callLogId = recordAiCall(context, config, "script_generate", request.storyIdea(), "生成剧本草稿成功");
+        String content = callTextGateway(context, projectId, "script_generate", request.storyIdea(), buildScriptContent(title, request));
+        Long callLogId = latestCallLogId(context, projectId, "script_generate");
         script.setTitle(title);
         script.setSourceType("AI_GENERATE");
         script.setContent(content);
@@ -140,7 +143,6 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "SCRIPT:AI_REWRITE", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = requireScript(tenantId, projectId);
         String type = request.rewriteType().trim();
         String requirement = blankToNull(request.requirement());
@@ -153,7 +155,8 @@ public class ScriptWorkflowService {
             改写说明：已将冲突前置、对白缩短，并为每一场保留明确镜头钩子。
             风险提示：请确认角色关系和关键伏笔是否与正式设定一致。
             """.formatted(script.getContent(), type, requirement == null ? "保持原剧情核心" : requirement);
-        Long callLogId = recordAiCall(context, config, "script_rewrite", type, "改写剧本成功");
+        content = callTextGateway(context, projectId, "script_rewrite", type, content);
+        Long callLogId = latestCallLogId(context, projectId, "script_rewrite");
         LocalDateTime now = LocalDateTime.now();
 
         script.setSourceType("AI_REWRITE");
@@ -227,7 +230,6 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:AI_EXTRACT", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         if (script == null || script.getContent() == null || script.getContent().isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先生成或填写剧本内容。");
@@ -236,23 +238,23 @@ public class ScriptWorkflowService {
         switch (elementType) {
             case "CHARACTER" -> {
                 ensureCharacters(tenantId, projectId, context.userId(), script.getContent());
-                recordAiCall(context, config, "character_extract", script.getTitle(), "提取角色成功");
+                callTextGateway(context, projectId, "character_extract", script.getTitle(), "提取角色成功");
             }
             case "SCENE" -> {
                 ensureScenes(tenantId, projectId, context.userId(), script.getContent());
-                recordAiCall(context, config, "scene_extract", script.getTitle(), "提取场景成功");
+                callTextGateway(context, projectId, "scene_extract", script.getTitle(), "提取场景成功");
             }
             case "PROP" -> {
                 ensureProps(tenantId, projectId, context.userId(), script.getContent());
-                recordAiCall(context, config, "prop_extract", script.getTitle(), "提取道具成功");
+                callTextGateway(context, projectId, "prop_extract", script.getTitle(), "提取道具成功");
             }
             case "ALL" -> {
                 ensureCharacters(tenantId, projectId, context.userId(), script.getContent());
                 ensureScenes(tenantId, projectId, context.userId(), script.getContent());
                 ensureProps(tenantId, projectId, context.userId(), script.getContent());
-                recordAiCall(context, config, "character_extract", script.getTitle(), "提取角色成功");
-                recordAiCall(context, config, "scene_extract", script.getTitle(), "提取场景成功");
-                recordAiCall(context, config, "prop_extract", script.getTitle(), "提取道具成功");
+                callTextGateway(context, projectId, "character_extract", script.getTitle(), "提取角色成功");
+                callTextGateway(context, projectId, "scene_extract", script.getTitle(), "提取场景成功");
+                callTextGateway(context, projectId, "prop_extract", script.getTitle(), "提取道具成功");
             }
             default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择要提取的元素类型。");
         }
@@ -314,7 +316,6 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:AI_BREAKDOWN", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         ScriptEntity script = requireScript(tenantId, projectId);
         jdbcTemplate.update("""
             update storyboard set deleted_at = now(), updated_at = now()
@@ -323,7 +324,7 @@ public class ScriptWorkflowService {
         insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 1, "场景一", "远景", "雨夜中，林家老宅大门外亮起冷光，主角拖着行李箱出现。", "主角", "主角停在门前，抬头看向门匾。", "三年前你们把我赶出去，今天我回来。", "林家老宅门口", "行李箱", "压抑、回归", 5, "首帧：雨夜豪门老宅门口，主角拖行李箱，冷色电影感", "竖屏短剧镜头，雨水落下，镜头缓慢推进", "DRAFT");
         insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 2, "场景二", "中景", "宴会厅内笑声戛然而止，宾客同时回头。", "主角、旧日熟人", "旧日熟人后退半步，表情震惊。", "这不可能，她怎么会回来？", "宴会厅", "香槟杯", "震惊、反转", 6, "首帧：豪门宴会厅众人回头，主角站在入口", "竖屏短剧镜头，人群视线聚焦，轻微推拉", "DRAFT");
         insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 3, "场景二", "特写", "旧股权协议末页的签名被主角按在灯光下。", "主角", "主角将协议推到桌面中央。", "属于我的，我一分都不会让。", "宴会厅", "旧股权协议", "强冲突、悬念", 4, "首帧：旧股权协议签名特写，手指压住纸张", "竖屏短剧镜头，特写切入，灯光扫过签名", "DRAFT");
-        recordAiCall(context, config, "storyboard_breakdown", script.getTitle(), "拆解分镜成功");
+        callTextGateway(context, projectId, "storyboard_breakdown", script.getTitle(), "拆解分镜成功");
         return workspace(tenantId, projectId);
     }
 
@@ -391,7 +392,6 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "PROMPT:AI_GENERATE", projectId);
-        AiServiceConfigEntity config = resolveTextService(tenantId);
         String targetType = normalizePromptTarget(request.targetType());
         if ("ALL".equals(targetType) || "CHARACTER".equals(targetType)) {
             jdbcTemplate.update("""
@@ -423,7 +423,7 @@ public class ScriptWorkflowService {
                  where tenant_id = ? and project_id = ? and deleted_at is null
                 """, tenantId, projectId);
         }
-        recordAiCall(context, config, "prompt_generate", targetType, "生成提示词成功");
+        callTextGateway(context, projectId, "prompt_generate", targetType, "生成提示词成功");
         return workspace(tenantId, projectId);
     }
 
@@ -585,44 +585,22 @@ public class ScriptWorkflowService {
         return script;
     }
 
-    private AiServiceConfigEntity resolveTextService(Long tenantId) {
-        AiServiceConfigEntity config = aiServiceConfigMapper.selectOne(new LambdaQueryWrapper<AiServiceConfigEntity>()
-            .eq(AiServiceConfigEntity::getServiceType, "TEXT")
-            .eq(AiServiceConfigEntity::getEnabled, true)
-            .isNull(AiServiceConfigEntity::getDeletedAt)
-            .orderByDesc(AiServiceConfigEntity::getIsDefault)
-            .orderByDesc(AiServiceConfigEntity::getPriority)
-            .last("limit 1"));
-        if (config == null) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未配置可用文本服务。");
-        }
-        return config;
+    private String callTextGateway(TenantContext context, Long projectId, String scene, String requestSummary, String fallbackContent) {
+        teamPointService.consumeForAi(context, 1, scene, null, "AI 调用消耗积分");
+        Long modelId = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
+        return aiGateway.text(
+            new AiContext(context.tenantId(), context.userId(), projectId, null, modelId, scene, null),
+            new AiTextRequest(null, fallbackContent == null ? requestSummary : fallbackContent, 0.7, 2048, null)
+        ).content();
     }
 
-    private Long recordAiCall(TenantContext context, AiServiceConfigEntity config, String scene, String requestSummary, String responseSummary) {
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        long started = System.currentTimeMillis();
-        teamPointService.consumeForAi(context, 1, scene, null, "AI 调用消耗积分");
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement("""
-                insert into ai_call_log
-                  (tenant_id, user_id, service_config_id, provider, service_type, model, business_scene, request_summary, response_summary, status, error_message, duration_ms, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUCCESS', null, ?, now())
-                """, Statement.RETURN_GENERATED_KEYS);
-            ps.setLong(1, context.tenantId());
-            ps.setLong(2, context.userId());
-            ps.setLong(3, config.getId());
-            ps.setString(4, config.getProvider());
-            ps.setString(5, config.getServiceType());
-            ps.setString(6, config.getModel());
-            ps.setString(7, scene);
-            ps.setString(8, trimSummary(requestSummary));
-            ps.setString(9, trimSummary(responseSummary));
-            ps.setLong(10, Math.max(1, System.currentTimeMillis() - started));
-            return ps;
-        }, keyHolder);
-        Number key = keyHolder.getKey();
-        return key == null ? null : key.longValue();
+    private Long latestCallLogId(TenantContext context, Long projectId, String scene) {
+        return jdbcTemplate.queryForObject("""
+            select id from ai_call_log
+             where tenant_id = ? and user_id = ? and business_scene = ?
+             order by id desc
+             limit 1
+            """, Long.class, context.tenantId(), context.userId(), scene);
     }
 
     private ScriptVersionEntity createVersion(TenantContext context, Long projectId, Long scriptId, String sourceType, String inputSummary, String content, Long callLogId, LocalDateTime now) {

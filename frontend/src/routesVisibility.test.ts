@@ -5,6 +5,7 @@ import zhCNMenu from './locales/zh-CN/menu';
 type Route = {
   path?: string;
   hideInMenu?: boolean;
+  layout?: boolean;
   routes?: Route[];
 };
 
@@ -42,6 +43,7 @@ describe('menu routes visibility', () => {
       '/team/members',
       '/team/settings',
       '/chatbot',
+      '/projects/:id/production-workbench/ai-config',
     ];
 
     for (const path of hiddenPaths) {
@@ -54,8 +56,12 @@ describe('menu routes visibility', () => {
   });
 
   it('keeps the production workbench as an independent hidden project page', () => {
+    expect(findRoute('/projects/:id/production-workbench', routes)).toMatchObject({
+      hideInMenu: true,
+      layout: false,
+    });
+
     const hiddenPaths = [
-      '/projects/:id/production-workbench',
       '/projects/:id/production-workbench/script',
       '/projects/:id/production-workbench/settings',
       '/projects/:id/production-workbench/storyboard',

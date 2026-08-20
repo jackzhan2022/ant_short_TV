@@ -15,6 +15,7 @@ public class AiImageTaskEntity {
     private String targetType;
     private Long targetId;
     private Long serviceConfigId;
+    private Long modelId;
     private String providerCode;
     private String model;
     private String prompt;
@@ -49,6 +50,8 @@ public class AiImageTaskEntity {
     public void setTargetId(Long targetId) { this.targetId = targetId; }
     public Long getServiceConfigId() { return serviceConfigId; }
     public void setServiceConfigId(Long serviceConfigId) { this.serviceConfigId = serviceConfigId; }
+    public Long getModelId() { return modelId; }
+    public void setModelId(Long modelId) { this.modelId = modelId; }
     public String getProviderCode() { return providerCode; }
     public void setProviderCode(String providerCode) { this.providerCode = providerCode; }
     public String getModel() { return model; }

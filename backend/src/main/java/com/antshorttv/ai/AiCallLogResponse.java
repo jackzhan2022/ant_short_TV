@@ -7,6 +7,9 @@ public record AiCallLogResponse(
     Long tenantId,
     Long userId,
     Long serviceConfigId,
+    Long taskId,
+    Long modelId,
+    Long providerId,
     String serviceConfigName,
     String provider,
     String serviceType,
@@ -17,6 +20,11 @@ public record AiCallLogResponse(
     String status,
     String errorMessage,
     Long durationMs,
+    String traceId,
+    String providerRequestId,
+    Integer promptTokens,
+    Integer completionTokens,
+    Integer totalTokens,
     LocalDateTime createdAt
 ) {
 }

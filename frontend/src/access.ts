@@ -16,10 +16,37 @@ export default function access(
     canUseProjectCenter: Boolean(currentUser),
     canViewProjects: currentUser && permissions.includes('PROJECT:VIEW'),
     canViewAiServices: currentUser && permissions.includes('AI_SERVICE:VIEW'),
+    canViewAiManagement:
+      currentUser &&
+      (permissions.includes('AI_SERVICE:VIEW') ||
+        permissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
+        permissions.includes('PLATFORM_AI_MODEL_VIEW')),
     canCreateAiServices: currentUser && permissions.includes('AI_SERVICE:CREATE'),
     canEditAiServices: currentUser && permissions.includes('AI_SERVICE:EDIT'),
     canDeleteAiServices: currentUser && permissions.includes('AI_SERVICE:DELETE'),
     canTestAiServices: currentUser && permissions.includes('AI_SERVICE:TEST'),
+    canViewPlatformAiProviders:
+      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
+    canCreatePlatformAiProviders:
+      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_CREATE'),
+    canEditPlatformAiProviders:
+      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_EDIT'),
+    canEnablePlatformAiProviders:
+      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_ENABLE'),
+    canTestPlatformAiProviders:
+      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_TEST'),
+    canViewPlatformAiModels:
+      currentUser && permissions.includes('PLATFORM_AI_MODEL_VIEW'),
+    canCreatePlatformAiModels:
+      currentUser && permissions.includes('PLATFORM_AI_MODEL_CREATE'),
+    canEditPlatformAiModels:
+      currentUser && permissions.includes('PLATFORM_AI_MODEL_EDIT'),
+    canEnablePlatformAiModels:
+      currentUser && permissions.includes('PLATFORM_AI_MODEL_ENABLE'),
+    canViewProjectAiConfig:
+      currentUser && permissions.includes('PROJECT_AI_CONFIG_VIEW'),
+    canEditProjectAiConfig:
+      currentUser && permissions.includes('PROJECT_AI_CONFIG_EDIT'),
     canViewAiImageTasks:
       currentUser && permissions.includes('AI_IMAGE_TASK:VIEW'),
     canCreateAiImageTasks:

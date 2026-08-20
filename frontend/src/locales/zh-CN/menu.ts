@@ -51,6 +51,8 @@ export default {
   'menu.editor.koni': '拓扑编辑器',
   'menu.chatbot': 'AI 助手',
   'menu.ai-service-management': 'AI服务管理',
+  'menu.ai-service-management.providers': '平台 Provider',
+  'menu.ai-service-management.models': '平台 Model',
   'menu.ai-service-management.services': '服务配置',
   'menu.ai-service-management.logs': '调用日志',
   'menu.team': '创作团队',

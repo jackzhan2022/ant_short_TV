@@ -42,6 +42,7 @@ vi.mock('@ant-design/icons', () => ({
   ArrowLeftOutlined: () => <span>back</span>,
   BookOutlined: () => <span>book</span>,
   EditOutlined: () => <span>edit</span>,
+  RobotOutlined: () => <span>robot</span>,
   SettingOutlined: () => <span>setting</span>,
   SplitCellsOutlined: () => <span>split</span>,
   VideoCameraOutlined: () => <span>video</span>,
@@ -64,11 +65,21 @@ describe('ProductionWorkbench shell', () => {
     expect(await screen.findByText('最危险的捉迷藏')).toBeInTheDocument();
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设定' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AI 模型' })).toBeInTheDocument();
+    expect(screen.queryByText('绘梦工坊')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '初始设定' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '角色资产' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '分镜' }));
 
     expect(mocks.historyPush).toHaveBeenCalledWith(
       '/projects/1/production-workbench/storyboard',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI 模型' }));
+
+    expect(mocks.historyPush).toHaveBeenCalledWith(
+      '/projects/1/production-workbench/ai-config',
     );
   });
 });

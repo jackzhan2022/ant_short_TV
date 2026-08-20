@@ -52,6 +52,9 @@ public class AiCallLogService {
                   l.tenant_id,
                   l.user_id,
                   l.service_config_id,
+                  l.task_id,
+                  l.model_id,
+                  l.provider_id,
                   c.name as service_config_name,
                   l.provider,
                   l.service_type,
@@ -62,6 +65,11 @@ public class AiCallLogService {
                   l.status,
                   l.error_message,
                   l.duration_ms,
+                  l.trace_id,
+                  l.provider_request_id,
+                  l.prompt_tokens,
+                  l.completion_tokens,
+                  l.total_tokens,
                   l.created_at
                 from ai_call_log l
                 left join ai_service_config c
@@ -76,6 +84,9 @@ public class AiCallLogService {
                 rs.getLong("tenant_id"),
                 rs.getLong("user_id"),
                 rs.getObject("service_config_id", Long.class),
+                rs.getObject("task_id", Long.class),
+                rs.getObject("model_id", Long.class),
+                rs.getObject("provider_id", Long.class),
                 rs.getString("service_config_name"),
                 rs.getString("provider"),
                 rs.getString("service_type"),
@@ -86,6 +97,11 @@ public class AiCallLogService {
                 rs.getString("status"),
                 rs.getString("error_message"),
                 rs.getLong("duration_ms"),
+                rs.getString("trace_id"),
+                rs.getString("provider_request_id"),
+                rs.getObject("prompt_tokens", Integer.class),
+                rs.getObject("completion_tokens", Integer.class),
+                rs.getObject("total_tokens", Integer.class),
                 toLocalDateTime(rs.getTimestamp("created_at"))
             ),
             pageArgs.toArray()

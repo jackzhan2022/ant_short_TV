@@ -2,6 +2,11 @@ package com.antshorttv.aiimage;
 
 import com.antshorttv.ai.AiServiceConfigEntity;
 import com.antshorttv.ai.AiServiceConfigMapper;
+import com.antshorttv.ai.AiModelEntity;
+import com.antshorttv.ai.AiModelMapper;
+import com.antshorttv.ai.AiProviderEntity;
+import com.antshorttv.ai.AiProviderMapper;
+import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.operationlog.OperationLogService;
@@ -31,6 +36,9 @@ public class AiImageTaskService {
     private final TenantContextResolver tenantContextResolver;
     private final ProjectMapper projectMapper;
     private final AiServiceConfigMapper aiServiceConfigMapper;
+    private final AiModelMapper aiModelMapper;
+    private final AiProviderMapper aiProviderMapper;
+    private final ProjectAiConfigService projectAiConfigService;
     private final AiImageTaskMapper taskMapper;
     private final AiImageResultMapper resultMapper;
     private final MaterialMapper materialMapper;
@@ -44,6 +52,9 @@ public class AiImageTaskService {
         TenantContextResolver tenantContextResolver,
         ProjectMapper projectMapper,
         AiServiceConfigMapper aiServiceConfigMapper,
+        AiModelMapper aiModelMapper,
+        AiProviderMapper aiProviderMapper,
+        ProjectAiConfigService projectAiConfigService,
         AiImageTaskMapper taskMapper,
         AiImageResultMapper resultMapper,
         MaterialMapper materialMapper,
@@ -56,6 +67,9 @@ public class AiImageTaskService {
         this.tenantContextResolver = tenantContextResolver;
         this.projectMapper = projectMapper;
         this.aiServiceConfigMapper = aiServiceConfigMapper;
+        this.aiModelMapper = aiModelMapper;
+        this.aiProviderMapper = aiProviderMapper;
+        this.projectAiConfigService = projectAiConfigService;
         this.taskMapper = taskMapper;
         this.resultMapper = resultMapper;
         this.materialMapper = materialMapper;
@@ -83,9 +97,9 @@ public class AiImageTaskService {
     public AiImageTaskResponse create(Long tenantId, Long projectId, CreateAiImageTaskRequest request, HttpServletRequest servletRequest) {
         TenantContext context = requireProject(tenantId, projectId);
         validateRequest(request);
-        AiServiceConfigEntity config = resolveImageService(tenantId, request.serviceConfigId());
+        ResolvedImageModel resolved = resolveImageModel(tenantId, projectId, request.serviceConfigId());
+        teamPointService.consumeForAi(context, 1, request.taskType().trim(), null, "AI 图片生成消耗积分");
         String taskType = request.taskType().trim();
-        teamPointService.consumeForAi(context, 1, taskType, null, "AI 图片生成消耗积分");
         LocalDateTime now = LocalDateTime.now();
 
         AiImageTaskEntity task = new AiImageTaskEntity();
@@ -94,9 +108,10 @@ public class AiImageTaskService {
         task.setTaskType(taskType);
         task.setTargetType(request.targetType().trim());
         task.setTargetId(request.targetId());
-        task.setServiceConfigId(config.getId());
-        task.setProviderCode(config.getProvider());
-        task.setModel(config.getModel());
+        task.setServiceConfigId(resolved.legacyServiceConfigId());
+        task.setModelId(resolved.modelId());
+        task.setProviderCode(resolved.providerCode());
+        task.setModel(resolved.modelName());
         task.setPrompt(request.prompt().trim());
         task.setNegativePrompt(blankToNull(request.negativePrompt()));
         task.setReferenceImages(ReferenceImagesCodec.encode(request.referenceImages()));
@@ -330,6 +345,34 @@ public class AiImageTaskService {
             throw new BusinessException(ErrorCode.AI_IMAGE_SERVICE_UNAVAILABLE, "未配置可用图片服务。");
         }
         return config;
+    }
+
+    private ResolvedImageModel resolveImageModel(Long tenantId, Long projectId, Long serviceConfigId) {
+        if (serviceConfigId != null) {
+            AiServiceConfigEntity config = resolveImageService(tenantId, serviceConfigId);
+            AiModelEntity model = aiModelMapper.selectOne(new LambdaQueryWrapper<AiModelEntity>()
+                .eq(AiModelEntity::getLegacyServiceConfigId, config.getId())
+                .last("limit 1"));
+            return new ResolvedImageModel(
+                config.getId(),
+                model == null ? null : model.getId(),
+                config.getProvider(),
+                model == null ? config.getModel() : model.getName()
+            );
+        }
+        Long modelId = projectAiConfigService.resolveModelId(tenantId, projectId, "IMAGE");
+        AiModelEntity model = modelId == null ? null : aiModelMapper.selectById(modelId);
+        if (model == null || !"ENABLED".equals(model.getStatus())) {
+            throw new BusinessException(ErrorCode.AI_IMAGE_SERVICE_UNAVAILABLE, "未配置可用图片模型。");
+        }
+        AiProviderEntity provider = aiProviderMapper.selectById(model.getProviderId());
+        if (provider == null || !"ENABLED".equals(provider.getStatus())) {
+            throw new BusinessException(ErrorCode.AI_IMAGE_SERVICE_UNAVAILABLE, "图片模型服务商不可用。");
+        }
+        return new ResolvedImageModel(model.getLegacyServiceConfigId(), model.getId(), provider.getCode(), model.getName());
+    }
+
+    private record ResolvedImageModel(Long legacyServiceConfigId, Long modelId, String providerCode, String modelName) {
     }
 
     private AiImageTaskEntity requireTask(Long tenantId, Long projectId, Long taskId) {

@@ -59,6 +59,60 @@ describe('access', () => {
     expect(result.canTestAiServices).toBe(true);
   });
 
+  it('should expose platform AI and project AI config permissions', () => {
+    const initialState = {
+      currentUser: {
+        userid: '1',
+        name: 'AI Admin',
+        avatar: 'https://example.com/avatar.png',
+        access: 'user',
+      },
+      permissions: [
+        'PLATFORM_AI_PROVIDER_VIEW',
+        'PLATFORM_AI_PROVIDER_CREATE',
+        'PLATFORM_AI_PROVIDER_EDIT',
+        'PLATFORM_AI_PROVIDER_ENABLE',
+        'PLATFORM_AI_PROVIDER_TEST',
+        'PLATFORM_AI_MODEL_VIEW',
+        'PLATFORM_AI_MODEL_CREATE',
+        'PLATFORM_AI_MODEL_EDIT',
+        'PLATFORM_AI_MODEL_ENABLE',
+        'PROJECT_AI_CONFIG_VIEW',
+        'PROJECT_AI_CONFIG_EDIT',
+      ],
+    };
+
+    const result = access(initialState);
+
+    expect(result.canViewPlatformAiProviders).toBe(true);
+    expect(result.canCreatePlatformAiProviders).toBe(true);
+    expect(result.canEditPlatformAiProviders).toBe(true);
+    expect(result.canEnablePlatformAiProviders).toBe(true);
+    expect(result.canTestPlatformAiProviders).toBe(true);
+    expect(result.canViewPlatformAiModels).toBe(true);
+    expect(result.canCreatePlatformAiModels).toBe(true);
+    expect(result.canEditPlatformAiModels).toBe(true);
+    expect(result.canEnablePlatformAiModels).toBe(true);
+    expect(result.canViewProjectAiConfig).toBe(true);
+    expect(result.canEditProjectAiConfig).toBe(true);
+  });
+
+  it('should expose the combined AI management entry for legacy and platform permissions', () => {
+    const initialState = {
+      currentUser: {
+        userid: '1',
+        name: 'AI Viewer',
+        avatar: 'https://example.com/avatar.png',
+        access: 'user',
+      },
+      permissions: ['PLATFORM_AI_PROVIDER_VIEW'],
+    };
+
+    const result = access(initialState);
+
+    expect(result.canViewAiManagement).toBe(true);
+  });
+
   it('should allow authenticated users to enter project center routes', () => {
     const initialState = {
       currentUser: {

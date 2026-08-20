@@ -362,11 +362,25 @@ export default [
     path: '/ai-service-management',
     name: 'ai-service-management',
     icon: 'api',
-    access: 'canViewAiServices',
+    access: 'canViewAiManagement',
     routes: [
       {
         path: '/ai-service-management',
         redirect: '/ai-service-management/services',
+      },
+      {
+        path: '/ai-service-management/providers',
+        name: 'providers',
+        icon: 'api',
+        access: 'canViewPlatformAiProviders',
+        component: './ai-service-management/providers',
+      },
+      {
+        path: '/ai-service-management/models',
+        name: 'models',
+        icon: 'robot',
+        access: 'canViewPlatformAiModels',
+        component: './ai-service-management/models',
       },
       {
         path: '/ai-service-management/services',
@@ -381,6 +395,45 @@ export default [
         icon: 'profile',
         access: 'canViewAiServices',
         component: './ai-service-management/logs',
+      },
+    ],
+  },
+  {
+    path: '/projects/:id/production-workbench',
+    hideInMenu: true,
+    access: 'canViewProjects',
+    layout: false,
+    component: './projects/production-workbench',
+    routes: [
+      {
+        path: '/projects/:id/production-workbench',
+        redirect: '/projects/:id/production-workbench/storyboard',
+      },
+      {
+        path: '/projects/:id/production-workbench/ai-config',
+        hideInMenu: true,
+        access: 'canViewProjectAiConfig',
+        component: './projects/production-workbench/ai-config',
+      },
+      {
+        path: '/projects/:id/production-workbench/script',
+        hideInMenu: true,
+        component: './projects/production-workbench/script',
+      },
+      {
+        path: '/projects/:id/production-workbench/settings',
+        hideInMenu: true,
+        component: './projects/production-workbench/settings',
+      },
+      {
+        path: '/projects/:id/production-workbench/storyboard',
+        hideInMenu: true,
+        component: './projects/production-workbench/storyboard',
+      },
+      {
+        path: '/projects/:id/production-workbench/video',
+        hideInMenu: true,
+        component: './projects/production-workbench/video',
       },
     ],
   },
@@ -400,39 +453,6 @@ export default [
         icon: 'profile',
         access: 'canViewProjects',
         component: './projects/list',
-      },
-      {
-        path: '/projects/:id/production-workbench',
-        hideInMenu: true,
-        access: 'canViewProjects',
-        layout: false,
-        component: './projects/production-workbench',
-        routes: [
-          {
-            path: '/projects/:id/production-workbench',
-            redirect: '/projects/:id/production-workbench/storyboard',
-          },
-          {
-            path: '/projects/:id/production-workbench/script',
-            hideInMenu: true,
-            component: './projects/production-workbench/script',
-          },
-          {
-            path: '/projects/:id/production-workbench/settings',
-            hideInMenu: true,
-            component: './projects/production-workbench/settings',
-          },
-          {
-            path: '/projects/:id/production-workbench/storyboard',
-            hideInMenu: true,
-            component: './projects/production-workbench/storyboard',
-          },
-          {
-            path: '/projects/:id/production-workbench/video',
-            hideInMenu: true,
-            component: './projects/production-workbench/video',
-          },
-        ],
       },
       {
         path: '/projects/:id',

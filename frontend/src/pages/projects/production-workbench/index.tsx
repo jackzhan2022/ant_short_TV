@@ -2,6 +2,7 @@ import {
   ArrowLeftOutlined,
   BookOutlined,
   EditOutlined,
+  RobotOutlined,
   SettingOutlined,
   SplitCellsOutlined,
   VideoCameraOutlined,
@@ -120,6 +121,20 @@ const ProductionWorkbench = () => {
                 }
               >
                 查看剧本
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                icon={<RobotOutlined />}
+                aria-label="AI 模型"
+                style={{ padding: 0, height: 'auto', marginLeft: 10 }}
+                onClick={() =>
+                  history.push(
+                    `/projects/${projectId}/production-workbench/ai-config`,
+                  )
+                }
+              >
+                AI 模型
               </Button>
             </div>
           </div>

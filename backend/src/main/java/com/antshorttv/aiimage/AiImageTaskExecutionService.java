@@ -1,7 +1,9 @@
 package com.antshorttv.aiimage;
 
+import com.antshorttv.ai.AiContext;
+import com.antshorttv.ai.AiGateway;
+import com.antshorttv.ai.AiImageRequest;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -12,17 +14,20 @@ public class AiImageTaskExecutionService {
     private final AiImageResultMapper resultMapper;
     private final AiCallLogMapper aiCallLogMapper;
     private final AiImageStorageService storageService;
+    private final AiGateway aiGateway;
 
     public AiImageTaskExecutionService(
         AiImageTaskMapper taskMapper,
         AiImageResultMapper resultMapper,
         AiCallLogMapper aiCallLogMapper,
-        AiImageStorageService storageService
+        AiImageStorageService storageService,
+        AiGateway aiGateway
     ) {
         this.taskMapper = taskMapper;
         this.resultMapper = resultMapper;
         this.aiCallLogMapper = aiCallLogMapper;
         this.storageService = storageService;
+        this.aiGateway = aiGateway;
     }
 
     @Async
@@ -37,13 +42,15 @@ public class AiImageTaskExecutionService {
         task.setUpdatedAt(started);
         taskMapper.updateById(task);
 
-        String status = "SUCCESS";
-        String errorMessage = null;
         try {
             Thread.sleep(200);
             if (isCanceled(task.getId())) {
                 return;
             }
+            aiGateway.image(
+                new AiContext(task.getTenantId(), task.getCreatedBy(), task.getProjectId(), task.getId(), task.getModelId(), task.getTaskType(), null),
+                new AiImageRequest(task.getPrompt(), task.getNegativePrompt(), null, task.getAspectRatio(), task.getImageCount(), ReferenceImagesCodec.decode(task.getReferenceImages()))
+            );
             for (int index = 1; index <= task.getImageCount(); index++) {
                 createResult(task, index);
             }
@@ -52,30 +59,18 @@ public class AiImageTaskExecutionService {
             }
             task.setStatus(AiImageTaskStatus.SUCCESS.name());
         } catch (Exception exception) {
-            status = "FAILED";
-            errorMessage = exception.getMessage();
             task.setStatus(AiImageTaskStatus.FAILED.name());
-            task.setErrorMessage(errorMessage);
+            task.setErrorMessage(exception.getMessage());
         }
 
         LocalDateTime completed = LocalDateTime.now();
-        AiCallLogEntity log = new AiCallLogEntity();
-        log.setTenantId(task.getTenantId());
-        log.setUserId(task.getCreatedBy());
-        log.setServiceConfigId(task.getServiceConfigId());
-        log.setProvider(task.getProviderCode());
-        log.setServiceType("IMAGE");
-        log.setModel(task.getModel());
-        log.setBusinessScene(task.getTaskType());
-        log.setRequestSummary(task.getPrompt());
-        log.setResponseSummary("generated=%d".formatted(resultMapper.selectActiveByTask(task.getId()).size()));
-        log.setStatus(status);
-        log.setErrorMessage(errorMessage);
-        log.setDurationMs(Duration.between(started, completed).toMillis());
-        log.setCreatedAt(completed);
-        aiCallLogMapper.insert(log);
-
-        task.setAiCallLogId(log.getId());
+        AiCallLogEntity log = aiCallLogMapper.selectOne(new LambdaQueryWrapper<AiCallLogEntity>()
+            .eq(AiCallLogEntity::getTenantId, task.getTenantId())
+            .eq(AiCallLogEntity::getUserId, task.getCreatedBy())
+            .eq(AiCallLogEntity::getBusinessScene, task.getTaskType())
+            .orderByDesc(AiCallLogEntity::getId)
+            .last("limit 1"));
+        task.setAiCallLogId(log == null ? null : log.getId());
         task.setCompletedAt(completed);
         task.setUpdatedAt(completed);
         taskMapper.updateById(task);

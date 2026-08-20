@@ -32,6 +32,7 @@ public class AiServiceConfigService {
     private final AiSecretCodec aiSecretCodec;
     private final TenantContextResolver tenantContextResolver;
     private final OperationLogService operationLogService;
+    private final PlatformAiManagementService platformAiManagementService;
 
     public AiServiceConfigService(
         AiProviderMapper aiProviderMapper,
@@ -39,7 +40,8 @@ public class AiServiceConfigService {
         AiServiceTestLogMapper aiServiceTestLogMapper,
         AiSecretCodec aiSecretCodec,
         TenantContextResolver tenantContextResolver,
-        OperationLogService operationLogService
+        OperationLogService operationLogService,
+        PlatformAiManagementService platformAiManagementService
     ) {
         this.aiProviderMapper = aiProviderMapper;
         this.aiServiceConfigMapper = aiServiceConfigMapper;
@@ -48,6 +50,7 @@ public class AiServiceConfigService {
         this.aiSecretCodec = aiSecretCodec;
         this.tenantContextResolver = tenantContextResolver;
         this.operationLogService = operationLogService;
+        this.platformAiManagementService = platformAiManagementService;
     }
 
     public List<AiProviderResponse> providers() {
@@ -91,6 +94,7 @@ public class AiServiceConfigService {
             clearDefault(tenantId, entity.getServiceType(), null);
         }
         aiServiceConfigMapper.insert(entity);
+        platformAiManagementService.syncLegacyConfig(entity);
         operationLogService.record(context.userId(), tenantId, "CREATE_AI_SERVICE_CONFIG", entity.getId(), OperationResult.SUCCESS, servletRequest);
         return toResponse(entity);
     }
@@ -119,6 +123,7 @@ public class AiServiceConfigService {
             clearDefault(tenantId, entity.getServiceType(), entity.getId());
         }
         aiServiceConfigMapper.updateById(entity);
+        platformAiManagementService.syncLegacyConfig(entity);
         operationLogService.record(context.userId(), tenantId, "UPDATE_AI_SERVICE_CONFIG", entity.getId(), OperationResult.SUCCESS, servletRequest);
         return toResponse(entity);
     }
@@ -135,6 +140,7 @@ public class AiServiceConfigService {
         entity.setEnabled(request.enabled());
         entity.setUpdatedAt(LocalDateTime.now());
         aiServiceConfigMapper.updateById(entity);
+        platformAiManagementService.syncLegacyConfig(entity);
         operationLogService.record(context.userId(), tenantId, "UPDATE_AI_SERVICE_CONFIG_STATUS", entity.getId(), OperationResult.SUCCESS, servletRequest);
         return toResponse(entity);
     }
@@ -147,6 +153,7 @@ public class AiServiceConfigService {
         entity.setIsDefault(true);
         entity.setUpdatedAt(LocalDateTime.now());
         aiServiceConfigMapper.updateById(entity);
+        platformAiManagementService.syncLegacyConfig(entity);
         operationLogService.record(context.userId(), tenantId, "SET_DEFAULT_AI_SERVICE_CONFIG", entity.getId(), OperationResult.SUCCESS, servletRequest);
         return toResponse(entity);
     }

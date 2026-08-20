@@ -12,6 +12,9 @@ public class AiCallLogEntity {
     private Long tenantId;
     private Long userId;
     private Long serviceConfigId;
+    private Long taskId;
+    private Long modelId;
+    private Long providerId;
     private String provider;
     private String serviceType;
     private String model;
@@ -21,6 +24,11 @@ public class AiCallLogEntity {
     private String status;
     private String errorMessage;
     private Long durationMs;
+    private String traceId;
+    private String providerRequestId;
+    private Integer promptTokens;
+    private Integer completionTokens;
+    private Integer totalTokens;
     private LocalDateTime createdAt;
 
     public Long getId() { return id; }
@@ -31,6 +39,12 @@ public class AiCallLogEntity {
     public void setUserId(Long userId) { this.userId = userId; }
     public Long getServiceConfigId() { return serviceConfigId; }
     public void setServiceConfigId(Long serviceConfigId) { this.serviceConfigId = serviceConfigId; }
+    public Long getTaskId() { return taskId; }
+    public void setTaskId(Long taskId) { this.taskId = taskId; }
+    public Long getModelId() { return modelId; }
+    public void setModelId(Long modelId) { this.modelId = modelId; }
+    public Long getProviderId() { return providerId; }
+    public void setProviderId(Long providerId) { this.providerId = providerId; }
     public String getProvider() { return provider; }
     public void setProvider(String provider) { this.provider = provider; }
     public String getServiceType() { return serviceType; }
@@ -49,6 +63,16 @@ public class AiCallLogEntity {
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public Long getDurationMs() { return durationMs; }
     public void setDurationMs(Long durationMs) { this.durationMs = durationMs; }
+    public String getTraceId() { return traceId; }
+    public void setTraceId(String traceId) { this.traceId = traceId; }
+    public String getProviderRequestId() { return providerRequestId; }
+    public void setProviderRequestId(String providerRequestId) { this.providerRequestId = providerRequestId; }
+    public Integer getPromptTokens() { return promptTokens; }
+    public void setPromptTokens(Integer promptTokens) { this.promptTokens = promptTokens; }
+    public Integer getCompletionTokens() { return completionTokens; }
+    public void setCompletionTokens(Integer completionTokens) { this.completionTokens = completionTokens; }
+    public Integer getTotalTokens() { return totalTokens; }
+    public void setTotalTokens(Integer totalTokens) { this.totalTokens = totalTokens; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
