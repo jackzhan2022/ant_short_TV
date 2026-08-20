@@ -54,8 +54,18 @@ describe('menu routes visibility', () => {
   });
 
   it('keeps the production workbench as an independent hidden project page', () => {
-    expect(findRoute('/projects/:id/production-workbench', routes)).toMatchObject({
-      hideInMenu: true,
-    });
+    const hiddenPaths = [
+      '/projects/:id/production-workbench',
+      '/projects/:id/production-workbench/script',
+      '/projects/:id/production-workbench/settings',
+      '/projects/:id/production-workbench/storyboard',
+      '/projects/:id/production-workbench/video',
+    ];
+
+    for (const path of hiddenPaths) {
+      expect(findRoute(path, routes)).toMatchObject({
+        hideInMenu: true,
+      });
+    }
   });
 });
