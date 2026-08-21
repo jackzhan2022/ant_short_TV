@@ -190,6 +190,13 @@ export default [
     component: './video-script-decomposition',
   },
   {
+    path: '/style-library',
+    name: 'style-library',
+    icon: 'picture',
+    access: 'canViewStyleLibrary',
+    component: './style-library',
+  },
+  {
     path: '/projects/:id/production-workbench',
     hideInMenu: true,
     access: 'canViewProjects',

@@ -171,4 +171,45 @@ class SchemaMigrationTest {
         assertThat(aiVideoTaskColumns).isEqualTo(7);
         assertThat(aiVideoAttemptTableCount).isEqualTo(1);
     }
+
+    @Test
+    void flywayCreatesAndSeedsPublicStyleLibrary() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+            from information_schema.tables
+            where lower(table_name) = 'style_library'
+            """, Integer.class);
+        Integer columnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'style_library'
+              and lower(column_name) in (
+                'external_id', 'name', 'category', 'description',
+                'source_image_url', 'storage_path', 'image_url',
+                'image_width', 'image_height', 'is_public', 'sort_order'
+              )
+            """, Integer.class);
+        Integer styleCount = jdbc.queryForObject("select count(*) from style_library", Integer.class);
+        String category = jdbc.queryForObject(
+            "select category from style_library where external_id = '864621266010645040'",
+            String.class
+        );
+        String storagePath = jdbc.queryForObject(
+            "select storage_path from style_library where external_id = '864621266010645040'",
+            String.class
+        );
+        String imageUrl = jdbc.queryForObject(
+            "select image_url from style_library where external_id = '864621266010645040'",
+            String.class
+        );
+
+        assertThat(tableCount).isEqualTo(1);
+        assertThat(columnCount).isEqualTo(11);
+        assertThat(styleCount).isEqualTo(139);
+        assertThat(category).isEqualTo("3D风格");
+        assertThat(storagePath).isEqualTo("style-library/public/864621266010645040/cover.png");
+        assertThat(imageUrl).isEqualTo("/api/style-library/images/864621266010645040");
+    }
 }

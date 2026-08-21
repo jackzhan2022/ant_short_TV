@@ -469,7 +469,7 @@ public class AiVideoTaskService {
         ));
         HttpRequest request = HttpRequest.newBuilder(buildUri(serviceConfig.getBaseUrl(), endpoint))
             .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer " + aiSecretCodec.decrypt(serviceConfig.getApiKeyCipher()))
+            .header("Authorization", "Bearer " + aiSecretCodec.requireDecrypted(serviceConfig.getApiKeyCipher()))
             .POST(HttpRequest.BodyPublishers.ofString(payload))
             .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -582,7 +582,7 @@ public class AiVideoTaskService {
         String payload = objectMapper.writeValueAsString(Map.of("externalTaskId", task.externalTaskId));
         HttpRequest request = HttpRequest.newBuilder(buildUri(serviceConfig.getBaseUrl(), queryEndpoint))
             .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer " + aiSecretCodec.decrypt(serviceConfig.getApiKeyCipher()))
+            .header("Authorization", "Bearer " + aiSecretCodec.requireDecrypted(serviceConfig.getApiKeyCipher()))
             .POST(HttpRequest.BodyPublishers.ofString(payload))
             .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());

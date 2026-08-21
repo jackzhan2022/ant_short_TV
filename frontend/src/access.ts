@@ -14,6 +14,7 @@ export default function access(
     canManageOrganizations:
       currentUser && permissions.includes('ORGANIZATION:VIEW'),
     canUseProjectCenter: Boolean(currentUser),
+    canViewStyleLibrary: Boolean(currentUser),
     canUseVideoScriptDecomposition:
       currentUser &&
       permissions.includes('PROJECT:VIEW') &&

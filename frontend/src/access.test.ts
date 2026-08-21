@@ -130,6 +130,22 @@ describe('access', () => {
     expect(result.canViewProjects).toBe(false);
   });
 
+  it('should allow authenticated users to view the public style library', () => {
+    const initialState = {
+      currentUser: {
+        userid: '1',
+        name: 'Style Viewer',
+        avatar: 'https://example.com/avatar.png',
+        access: 'user',
+      },
+      permissions: [],
+    };
+
+    const result = access(initialState);
+
+    expect(result.canViewStyleLibrary).toBe(true);
+  });
+
   it('should return canAdmin false when user has non-admin access', () => {
     const initialState = {
       currentUser: {

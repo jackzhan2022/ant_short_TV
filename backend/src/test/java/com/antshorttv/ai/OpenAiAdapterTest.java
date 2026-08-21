@@ -3,10 +3,13 @@ package com.antshorttv.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -149,6 +152,40 @@ class OpenAiAdapterTest {
                 .isInstanceOf(AiGatewayException.class)
                 .hasMessageContaining("AI 服务商返回 HTTP 502")
                 .hasMessageContaining("bad gateway");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void rejectsUndecryptableApiKeyBeforeCallingProvider() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requests.incrementAndGet();
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            AiProviderConfigEntity config = new AiProviderConfigEntity();
+            config.setBaseUrl("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()));
+            config.setApiKeyCipher(new AiSecretCodec("other-secret").encrypt("sk-real-123"));
+            config.setStatus("ENABLED");
+
+            assertThatThrownBy(() -> adapter.text(
+                provider(),
+                config,
+                model("gpt-test", "TEXT"),
+                new AiTextRequest(null, "用户提示", 0.3, 256, null)
+            ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.AI_AUTH_FAILED);
+            assertThat(requests).hasValue(0);
         } finally {
             server.stop(0);
         }

@@ -8,6 +8,7 @@ import Login from './index';
 const mocks = vi.hoisted(() => ({
   fetchUserInfo: vi.fn(),
   loginByMobile: vi.fn(),
+  queryCurrentPermissions: vi.fn(),
   replace: vi.fn(),
   saveAuthSession: vi.fn(),
   setInitialState: vi.fn(),
@@ -89,8 +90,8 @@ vi.mock('antd', () => {
     );
   };
 
-  const Button = ({ children, htmlType }: any) => (
-    <button type={htmlType === 'submit' ? 'submit' : 'button'}>
+  const Button = ({ children, htmlType, onClick }: any) => (
+    <button type={htmlType === 'submit' ? 'submit' : 'button'} onClick={onClick}>
       {children}
     </button>
   );
@@ -112,6 +113,10 @@ vi.mock('@/components', () => ({
 vi.mock('@/services/account-team/auth', () => ({
   loginByMobile: mocks.loginByMobile,
   saveAuthSession: mocks.saveAuthSession,
+}));
+
+vi.mock('@/services/account-team/rbac', () => ({
+  queryCurrentPermissions: mocks.queryCurrentPermissions,
 }));
 
 vi.mock('@/services/account-team/tenant', () => ({
@@ -146,6 +151,9 @@ describe('Login Page', () => {
     mocks.loginByMobile.mockResolvedValue({ success: true, data: session });
     mocks.switchTenant.mockResolvedValue({ success: true });
     mocks.fetchUserInfo.mockResolvedValue({ name: '测试用户' });
+    mocks.queryCurrentPermissions.mockResolvedValue({
+      data: { menus: ['PROJECT'], permissions: ['PROJECT:VIEW'] },
+    });
     window.history.replaceState({}, '', '/user/login');
   });
 
@@ -170,8 +178,138 @@ describe('Login Page', () => {
     expect(mocks.saveAuthSession).toHaveBeenCalledWith({
       currentTenantId: 10,
     });
+    expect(mocks.fetchUserInfo).not.toHaveBeenCalled();
+    expect(mocks.queryCurrentPermissions).toHaveBeenCalledWith({
+      skipErrorHandler: true,
+    });
+    expect(mocks.setInitialState).toHaveBeenCalled();
+    expect(mocks.setInitialState.mock.calls[0][0]({})).toMatchObject({
+      currentTenantId: 10,
+      currentUser: {
+        name: '测试用户',
+        phone: '13800000000',
+      },
+      permissions: ['PROJECT:VIEW'],
+    });
     expect(mocks.success).toHaveBeenCalledWith('登录成功');
     expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+  });
+
+  it('asks users with multiple teams to choose a team before entering', async () => {
+    mocks.loginByMobile.mockResolvedValue({
+      success: true,
+      data: {
+        ...session,
+        tenants: [
+          session.tenants[0],
+          {
+            id: 11,
+            code: 'T0000002',
+            name: '第二团队',
+            type: 'COMPANY',
+            status: 'ACTIVE',
+            memberId: 101,
+            memberType: 'MEMBER',
+          },
+        ],
+        nextAction: 'SELECT_TENANT',
+      },
+    });
+
+    render(<Login />);
+
+    fireEvent.input(screen.getByPlaceholderText('请输入手机号'), {
+      target: { value: '13800000000' },
+    });
+    fireEvent.input(screen.getByPlaceholderText('请输入密码'), {
+      target: { value: 'Password123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+
+    await screen.findByText('请选择登录团队');
+
+    expect(screen.getByText('当前登录账号可访问2个团队空间，请选择')).toBeInTheDocument();
+    expect(screen.getByText('测试团队')).toBeInTheDocument();
+    expect(screen.getByText('第二团队')).toBeInTheDocument();
+    expect(mocks.replace).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('第二团队'));
+    fireEvent.click(screen.getByRole('button', { name: '立即登录' }));
+
+    await waitFor(() => {
+      expect(mocks.switchTenant).toHaveBeenCalledWith(11);
+    });
+    expect(mocks.saveAuthSession).toHaveBeenCalledWith({
+      currentTenantId: 11,
+    });
+    expect(mocks.fetchUserInfo).not.toHaveBeenCalled();
+    expect(mocks.queryCurrentPermissions).toHaveBeenCalledWith({
+      skipErrorHandler: true,
+    });
+    expect(mocks.setInitialState.mock.calls[0][0]({})).toMatchObject({
+      currentTenantId: 11,
+      currentUser: {
+        name: '测试用户',
+        phone: '13800000000',
+      },
+      permissions: ['PROJECT:VIEW'],
+    });
+    expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+  });
+
+  it('waits for initial state to apply before navigating after team selection', async () => {
+    let resolveInitialState: (() => void) | undefined;
+    mocks.setInitialState.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInitialState = resolve;
+        }),
+    );
+    mocks.loginByMobile.mockResolvedValue({
+      success: true,
+      data: {
+        ...session,
+        tenants: [
+          session.tenants[0],
+          {
+            id: 11,
+            code: 'T0000002',
+            name: '第二团队',
+            type: 'COMPANY',
+            status: 'ACTIVE',
+            memberId: 101,
+            memberType: 'MEMBER',
+          },
+        ],
+        nextAction: 'SELECT_TENANT',
+      },
+    });
+
+    render(<Login />);
+
+    fireEvent.input(screen.getByPlaceholderText('请输入手机号'), {
+      target: { value: '13800000000' },
+    });
+    fireEvent.input(screen.getByPlaceholderText('请输入密码'), {
+      target: { value: 'Password123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+
+    await screen.findByText('请选择登录团队');
+
+    fireEvent.click(screen.getByText('第二团队'));
+    fireEvent.click(screen.getByRole('button', { name: '立即登录' }));
+
+    await waitFor(() => {
+      expect(mocks.setInitialState).toHaveBeenCalled();
+    });
+    expect(mocks.replace).not.toHaveBeenCalled();
+
+    resolveInitialState?.();
+
+    await waitFor(() => {
+      expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+    });
   });
 
   it('shows a register entry', () => {

@@ -3,6 +3,7 @@ package com.antshorttv.ai;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
 import org.junit.jupiter.api.Test;
 
 class AiSecretCodecTest {
@@ -21,5 +22,15 @@ class AiSecretCodecTest {
         assertThatThrownBy(() -> codec.decrypt("not-a-valid-cipher"))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("AI 服务密钥解密失败");
+    }
+
+    @Test
+    void rejectsCipherThatCannotBeDecrypted() {
+        AiSecretCodec codec = new AiSecretCodec("test-secret");
+
+        assertThatThrownBy(() -> codec.requireDecrypted("not-a-valid-cipher"))
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception -> ((BusinessException) exception).getErrorCode())
+            .isEqualTo(ErrorCode.AI_AUTH_FAILED);
     }
 }

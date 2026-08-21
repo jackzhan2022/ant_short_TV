@@ -1,15 +1,20 @@
 package com.antshorttv.video;
 
-import com.antshorttv.ai.AiContext;
-import com.antshorttv.ai.AiGateway;
+import com.antshorttv.ai.AiBusinessScene;
 import com.antshorttv.ai.AiGatewayException;
+import com.antshorttv.ai.AiInvocationRequest;
+import com.antshorttv.ai.AiInvocationResult;
+import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiTextRequest;
 import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
+import com.antshorttv.ai.PromptTemplateRenderer;
+import com.antshorttv.common.ErrorCode;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,10 +26,10 @@ public class VideoDecompositionExecutionService {
     private final VideoDecompositionAnalysisMapper analysisMapper;
     private final VideoDecompositionAttemptMapper attemptMapper;
     private final ModelAccessibleVideoUrlResolver videoUrlResolver;
-    private final VideoUnderstandingGateway videoUnderstandingGateway;
     private final VideoAnalysisNormalizer normalizer;
-    private final AiGateway aiGateway;
+    private final AiInvocationService aiInvocationService;
     private final ProjectAiConfigService projectAiConfigService;
+    private final PromptTemplateRenderer promptTemplateRenderer;
     private final JdbcTemplate jdbcTemplate;
     private final AiTaskExecutionSupport executionSupport;
 
@@ -34,10 +39,10 @@ public class VideoDecompositionExecutionService {
         VideoDecompositionAnalysisMapper analysisMapper,
         VideoDecompositionAttemptMapper attemptMapper,
         ModelAccessibleVideoUrlResolver videoUrlResolver,
-        VideoUnderstandingGateway videoUnderstandingGateway,
         VideoAnalysisNormalizer normalizer,
-        AiGateway aiGateway,
+        AiInvocationService aiInvocationService,
         ProjectAiConfigService projectAiConfigService,
+        PromptTemplateRenderer promptTemplateRenderer,
         JdbcTemplate jdbcTemplate,
         AiTaskExecutionSupport executionSupport
     ) {
@@ -46,10 +51,10 @@ public class VideoDecompositionExecutionService {
         this.analysisMapper = analysisMapper;
         this.attemptMapper = attemptMapper;
         this.videoUrlResolver = videoUrlResolver;
-        this.videoUnderstandingGateway = videoUnderstandingGateway;
         this.normalizer = normalizer;
-        this.aiGateway = aiGateway;
+        this.aiInvocationService = aiInvocationService;
         this.projectAiConfigService = projectAiConfigService;
+        this.promptTemplateRenderer = promptTemplateRenderer;
         this.jdbcTemplate = jdbcTemplate;
         this.executionSupport = executionSupport;
     }
@@ -104,23 +109,21 @@ public class VideoDecompositionExecutionService {
         LocalDateTime now = LocalDateTime.now();
         markRunning(episode, attempt, now);
 
-        VideoUnderstandingCallResult callResult = null;
+        AiInvocationResult<VideoUnderstandingResponse> callResult = null;
         String rawResponse = null;
         try {
             String videoUrl = videoUrlResolver.resolve(episode.getStoragePath());
-            callResult = videoUnderstandingGateway.call(
-                new AiContext(
-                    episode.getTenantId(),
-                    episode.getCreatedBy(),
-                    episode.getProjectId(),
-                    episode.getId(),
-                    batch.getModelId(),
-                    "video_understanding",
-                    "video-decomposition-%d".formatted(episode.getId())
-                ),
-                new VideoUnderstandingRequest(videoUrl, structuredPrompt(episode))
-            );
-            rawResponse = callResult.response().content();
+            callResult = aiInvocationService.invokeVideoUnderstanding(AiInvocationRequest.videoUnderstanding()
+                .tenantId(episode.getTenantId())
+                .userId(episode.getCreatedBy())
+                .projectId(episode.getProjectId())
+                .taskId(episode.getId())
+                .modelId(batch.getModelId())
+                .scene(AiBusinessScene.VIDEO_UNDERSTANDING)
+                .traceId("video-decomposition-%d".formatted(episode.getId()))
+                .videoRequest(new VideoUnderstandingRequest(videoUrl, structuredPrompt(episode)))
+                .build());
+            rawResponse = callResult.content();
             VideoAnalysis analysis = normalizer.normalize(rawResponse);
             insertAnalysis(episode, "SUCCEEDED", rawResponse, analysis.normalizedJson(), callResult);
             episode.setStatus("ANALYSIS_SUCCEEDED");
@@ -134,12 +137,12 @@ public class VideoDecompositionExecutionService {
             executeDraftGeneration(episode, analysis.normalizedJson());
         } catch (VideoAnalysisParseException exception) {
             if (callResult != null) {
-                videoUnderstandingGateway.markBusinessFailure(callResult.aiCallLogId(), exception.getMessage());
+                aiInvocationService.markBusinessFailure(callResult.aiCallLogId(), ErrorCode.AI_RESPONSE_INVALID, exception.getMessage());
             }
             insertAnalysis(episode, "FAILED", rawResponse, null, callResult);
             failEpisode(episode, attempt, "AI_RESPONSE_INVALID", exception.getMessage(), callResult);
         } catch (AiGatewayException exception) {
-            failEpisode(episode, attempt, exception.getErrorCode().name(), exception.getMessage(), callResult);
+            failEpisode(episode, attempt, exception.getErrorCode().name(), exception.getMessage(), callResult, exception.getAiCallLogId());
         } catch (Exception exception) {
             failEpisode(episode, attempt, "VALIDATION_ERROR", exception.getMessage(), callResult);
         } finally {
@@ -171,25 +174,23 @@ public class VideoDecompositionExecutionService {
                 throw new AiGatewayException(com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID, "缺少可用于生成剧本的结构化解析结果。");
             }
             Long textModelId = projectAiConfigService.resolveModelId(episode.getTenantId(), episode.getProjectId(), "TEXT");
-            AiTextResponse response = aiGateway.text(
-                new AiContext(
-                    episode.getTenantId(),
-                    episode.getCreatedBy(),
-                    episode.getProjectId(),
-                    episode.getId(),
-                    textModelId,
-                    "video_script_draft",
-                    "video-script-draft-%d-v%d".formatted(episode.getId(), episode.getAnalysisVersion())
-                ),
-                new AiTextRequest(
+            AiInvocationResult<AiTextResponse> invocation = aiInvocationService.invokeText(AiInvocationRequest.text()
+                .tenantId(episode.getTenantId())
+                .userId(episode.getCreatedBy())
+                .projectId(episode.getProjectId())
+                .taskId(episode.getId())
+                .modelId(textModelId)
+                .scene(AiBusinessScene.VIDEO_SCRIPT_DRAFT)
+                .traceId("video-script-draft-%d-v%d".formatted(episode.getId(), episode.getAnalysisVersion()))
+                .textRequest(new AiTextRequest(
                     "你是短剧编剧，请根据结构化视频拆解结果输出可直接审核的中文分集剧本。",
                     draftPrompt(episode, normalizedJson),
                     0.7,
                     4096,
                     null
-                )
-            );
-            episode.setDraftContent(response.content());
+                ))
+                .build());
+            episode.setDraftContent(invocation.content());
             episode.setDraftStatus("PENDING_REVIEW");
             episode.setDraftVersion((episode.getDraftVersion() == null ? 0 : episode.getDraftVersion()) + 1);
             episode.setStatus("PENDING_REVIEW");
@@ -199,11 +200,11 @@ public class VideoDecompositionExecutionService {
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
             clearExecutionColumns(episode.getId(), false);
-            markAttempt(attempt, "SUCCEEDED", response.providerRequestId(), latestCallLogId(episode.getId(), "video_script_draft"), null, null);
+            markAttempt(attempt, "SUCCEEDED", invocation.providerRequestId(), invocation.aiCallLogId(), null, null);
         } catch (AiGatewayException exception) {
-            failDraft(episode, attempt, exception.getErrorCode().name(), exception.getMessage());
+            failDraft(episode, attempt, exception.getErrorCode().name(), exception.getMessage(), exception.getAiCallLogId());
         } catch (Exception exception) {
-            failDraft(episode, attempt, "AI_PROVIDER_ERROR", exception.getMessage());
+            failDraft(episode, attempt, "AI_PROVIDER_ERROR", exception.getMessage(), null);
         }
     }
 
@@ -228,7 +229,18 @@ public class VideoDecompositionExecutionService {
         VideoDecompositionAttemptEntity attempt,
         String errorCode,
         String errorMessage,
-        VideoUnderstandingCallResult callResult
+        AiInvocationResult<VideoUnderstandingResponse> callResult
+    ) {
+        failEpisode(episode, attempt, errorCode, errorMessage, callResult, null);
+    }
+
+    private void failEpisode(
+        VideoDecompositionEpisodeEntity episode,
+        VideoDecompositionAttemptEntity attempt,
+        String errorCode,
+        String errorMessage,
+        AiInvocationResult<VideoUnderstandingResponse> callResult,
+        Long fallbackCallLogId
     ) {
         episode.setStatus("FAILED");
         episode.setErrorCode(errorCode);
@@ -251,8 +263,8 @@ public class VideoDecompositionExecutionService {
         markAttempt(
             attempt,
             "FAILED",
-            callResult == null ? null : callResult.response().providerRequestId(),
-            callResult == null ? null : callResult.aiCallLogId(),
+            callResult == null ? null : callResult.providerRequestId(),
+            callResult == null ? fallbackCallLogId : callResult.aiCallLogId(),
             errorCode,
             errorMessage
         );
@@ -281,7 +293,7 @@ public class VideoDecompositionExecutionService {
         String status,
         String rawResponse,
         String normalizedJson,
-        VideoUnderstandingCallResult callResult
+        AiInvocationResult<VideoUnderstandingResponse> callResult
     ) {
         VideoDecompositionAnalysisEntity entity = new VideoDecompositionAnalysisEntity();
         entity.setEpisodeId(episode.getId());
@@ -289,7 +301,7 @@ public class VideoDecompositionExecutionService {
         entity.setStatus(status);
         entity.setRawResponse(rawResponse);
         entity.setNormalizedJson(normalizedJson);
-        entity.setProviderRequestId(callResult == null ? null : callResult.response().providerRequestId());
+        entity.setProviderRequestId(callResult == null ? null : callResult.providerRequestId());
         entity.setAiCallLogId(callResult == null ? null : callResult.aiCallLogId());
         entity.setCreatedAt(LocalDateTime.now());
         analysisMapper.insert(entity);
@@ -299,7 +311,8 @@ public class VideoDecompositionExecutionService {
         VideoDecompositionEpisodeEntity episode,
         VideoDecompositionAttemptEntity attempt,
         String errorCode,
-        String errorMessage
+        String errorMessage,
+        Long callLogId
     ) {
         episode.setStatus("FAILED");
         episode.setDraftStatus("FAILED");
@@ -321,7 +334,7 @@ public class VideoDecompositionExecutionService {
                    updated_at = now()
              where id = ?
             """, errorCode, errorMessage, episode.getId());
-        markAttempt(attempt, "FAILED", null, latestCallLogId(episode.getId(), "video_script_draft"), errorCode, errorMessage);
+        markAttempt(attempt, "FAILED", null, callLogId, errorCode, errorMessage);
     }
 
     private VideoDecompositionAttemptEntity currentAttempt(Long episodeId, String phase) {
@@ -356,11 +369,10 @@ public class VideoDecompositionExecutionService {
     }
 
     private String structuredPrompt(VideoDecompositionEpisodeEntity episode) {
-        return """
-            你是短剧视频拆剧助手。请分析该短剧视频第 %d 集，只返回合法 JSON，不要解释，不要 Markdown。
-            必须包含 characters、scenes、props、timeline、dialogue、actions、emotions 七个数组字段。
-            字段缺失时使用空数组，不要编造无法从视频确认的信息。
-            """.formatted(episode.getEpisodeNo());
+        return promptTemplateRenderer.render(
+            AiBusinessScene.VIDEO_UNDERSTANDING.promptTemplateId(),
+            Map.of("episodeNo", episode.getEpisodeNo())
+        );
     }
 
     private String latestSuccessfulAnalysis(Long episodeId) {
@@ -370,16 +382,6 @@ public class VideoDecompositionExecutionService {
             .orderByDesc(VideoDecompositionAnalysisEntity::getCreatedAt)
             .last("limit 1"));
         return analysis == null ? null : analysis.getNormalizedJson();
-    }
-
-    private Long latestCallLogId(Long episodeId, String businessScene) {
-        List<Long> ids = jdbcTemplate.queryForList("""
-            select id from ai_call_log
-             where task_id = ? and business_scene = ?
-             order by created_at desc, id desc
-             limit 1
-            """, Long.class, episodeId, businessScene);
-        return ids.isEmpty() ? null : ids.get(0);
     }
 
     private void prepareDraftExecution(VideoDecompositionEpisodeEntity episode) {
@@ -427,15 +429,9 @@ public class VideoDecompositionExecutionService {
     }
 
     private String draftPrompt(VideoDecompositionEpisodeEntity episode, String normalizedJson) {
-        return """
-            请把以下第 %d 集视频拆解 JSON 改写成中文短剧剧本。
-            要求：
-            1. 保留第 %d 集标识。
-            2. 按场次输出，包含场景、人物、动作、对白、情绪。
-            3. 只根据 JSON 信息创作，不新增无法推断的关键情节。
-
-            JSON:
-            %s
-            """.formatted(episode.getEpisodeNo(), episode.getEpisodeNo(), normalizedJson);
+        return promptTemplateRenderer.render(
+            AiBusinessScene.VIDEO_SCRIPT_DRAFT.promptTemplateId(),
+            Map.of("episodeNo", episode.getEpisodeNo(), "normalizedJson", normalizedJson)
+        );
     }
 }
