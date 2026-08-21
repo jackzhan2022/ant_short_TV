@@ -27,6 +27,13 @@ public class VideoDecompositionEpisodeEntity {
     private Long confirmedScriptVersionId;
     private String errorCode;
     private String errorMessage;
+    private String executionToken;
+    private String executionPhase;
+    private Integer executionVersion;
+    private LocalDateTime claimedAt;
+    private LocalDateTime heartbeatAt;
+    private LocalDateTime executionTimeoutAt;
+    private Boolean retryable;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -67,6 +74,20 @@ public class VideoDecompositionEpisodeEntity {
     public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+    public String getExecutionToken() { return executionToken; }
+    public void setExecutionToken(String executionToken) { this.executionToken = executionToken; }
+    public String getExecutionPhase() { return executionPhase; }
+    public void setExecutionPhase(String executionPhase) { this.executionPhase = executionPhase; }
+    public Integer getExecutionVersion() { return executionVersion; }
+    public void setExecutionVersion(Integer executionVersion) { this.executionVersion = executionVersion; }
+    public LocalDateTime getClaimedAt() { return claimedAt; }
+    public void setClaimedAt(LocalDateTime claimedAt) { this.claimedAt = claimedAt; }
+    public LocalDateTime getHeartbeatAt() { return heartbeatAt; }
+    public void setHeartbeatAt(LocalDateTime heartbeatAt) { this.heartbeatAt = heartbeatAt; }
+    public LocalDateTime getExecutionTimeoutAt() { return executionTimeoutAt; }
+    public void setExecutionTimeoutAt(LocalDateTime executionTimeoutAt) { this.executionTimeoutAt = executionTimeoutAt; }
+    public Boolean getRetryable() { return retryable; }
+    public void setRetryable(Boolean retryable) { this.retryable = retryable; }
     public Long getCreatedBy() { return createdBy; }
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }

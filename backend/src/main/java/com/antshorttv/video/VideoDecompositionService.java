@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class VideoDecompositionService {
     private static final BigDecimal MAX_DURATION_SECONDS = BigDecimal.valueOf(1800);
     private static final List<String> SUPPORTED_MIME_TYPES = List.of("video/mp4", "video/quicktime", "video/x-msvideo");
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".mp4", ".mov", ".avi");
+    private static final Set<String> RETRYABLE_STATUSES = Set.of("FAILED");
 
     private final TenantContextResolver tenantContextResolver;
     private final ProjectMapper projectMapper;
@@ -192,11 +194,19 @@ public class VideoDecompositionService {
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
         requireProjectAccess(context, episode.getProjectId(), "AI_SERVICE:USE");
         String phase = normalizePhase(request == null ? null : request.phase());
+        if (!RETRYABLE_STATUSES.contains(episode.getStatus()) || episode.getExecutionToken() != null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前拆剧任务状态不可重试。");
+        }
         int attemptNo = nextAttemptNo(episodeId, phase);
         LocalDateTime now = LocalDateTime.now();
         episode.setStatus("VIDEO_ANALYSIS".equals(phase) ? "PENDING_ANALYSIS" : "PENDING_DRAFT");
         episode.setErrorCode(null);
         episode.setErrorMessage(null);
+        episode.setExecutionToken(null);
+        episode.setExecutionPhase(null);
+        episode.setHeartbeatAt(null);
+        episode.setExecutionTimeoutAt(null);
+        episode.setRetryable(false);
         episode.setUpdatedAt(now);
         episodeMapper.updateById(episode);
         createAttempt(episodeId, attemptNo, phase, "PENDING", now);
@@ -243,6 +253,7 @@ public class VideoDecompositionService {
         episode.setStatus("PENDING_REVIEW");
         episode.setErrorCode(null);
         episode.setErrorMessage(null);
+        episode.setRetryable(false);
         episode.setUpdatedAt(LocalDateTime.now());
         episodeMapper.updateById(episode);
         recalculateBatch(tenantId, episode.getBatchId());
@@ -284,6 +295,7 @@ public class VideoDecompositionService {
         episode.setDraftStatus("CONFIRMED");
         episode.setStatus("CONFIRMED");
         episode.setConfirmedScriptVersionId(version.getId());
+        episode.setRetryable(false);
         episode.setUpdatedAt(now);
         episodeMapper.updateById(episode);
         recalculateBatch(tenantId, episode.getBatchId());

@@ -131,4 +131,44 @@ class SchemaMigrationTest {
 
         assertThat(storedLength).isEqualTo(longContent.length());
     }
+
+    @Test
+    void flywayCreatesAiTaskExecutionReliabilityMetadata() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer decompositionEpisodeColumns = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'video_decomposition_episode'
+              and lower(column_name) in (
+                'execution_token', 'execution_phase', 'execution_version',
+                'claimed_at', 'heartbeat_at', 'execution_timeout_at', 'retryable'
+              )
+            """, Integer.class);
+        Integer decompositionAttemptColumns = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'video_decomposition_attempt'
+              and lower(column_name) in ('idempotency_key', 'retryable')
+            """, Integer.class);
+        Integer aiVideoTaskColumns = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'ai_video_task'
+              and lower(column_name) in (
+                'execution_token', 'execution_phase', 'execution_version',
+                'claimed_at', 'heartbeat_at', 'execution_timeout_at', 'retryable'
+              )
+            """, Integer.class);
+        Integer aiVideoAttemptTableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+            from information_schema.tables
+            where lower(table_name) = 'ai_video_task_attempt'
+            """, Integer.class);
+
+        assertThat(decompositionEpisodeColumns).isEqualTo(7);
+        assertThat(decompositionAttemptColumns).isEqualTo(2);
+        assertThat(aiVideoTaskColumns).isEqualTo(7);
+        assertThat(aiVideoAttemptTableCount).isEqualTo(1);
+    }
 }

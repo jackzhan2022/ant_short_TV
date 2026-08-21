@@ -15,6 +15,8 @@ public class VideoDecompositionAttemptEntity {
     private String status;
     private String providerRequestId;
     private Long aiCallLogId;
+    private String idempotencyKey;
+    private Boolean retryable;
     private String errorCode;
     private String errorMessage;
     private LocalDateTime startedAt;
@@ -34,6 +36,10 @@ public class VideoDecompositionAttemptEntity {
     public void setProviderRequestId(String providerRequestId) { this.providerRequestId = providerRequestId; }
     public Long getAiCallLogId() { return aiCallLogId; }
     public void setAiCallLogId(Long aiCallLogId) { this.aiCallLogId = aiCallLogId; }
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+    public Boolean getRetryable() { return retryable; }
+    public void setRetryable(Boolean retryable) { this.retryable = retryable; }
     public String getErrorCode() { return errorCode; }
     public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
     public String getErrorMessage() { return errorMessage; }

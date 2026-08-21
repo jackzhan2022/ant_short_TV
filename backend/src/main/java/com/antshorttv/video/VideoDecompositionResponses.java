@@ -56,6 +56,8 @@ record VideoDecompositionEpisodeResponse(
     Long confirmedScriptVersionId,
     String errorCode,
     String errorMessage,
+    String executionPhase,
+    Boolean retryable,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -77,6 +79,8 @@ record VideoDecompositionEpisodeResponse(
             entity.getConfirmedScriptVersionId(),
             entity.getErrorCode(),
             entity.getErrorMessage(),
+            entity.getExecutionPhase(),
+            entity.getRetryable(),
             entity.getCreatedAt(),
             entity.getUpdatedAt()
         );
@@ -109,6 +113,8 @@ record VideoDecompositionAttemptResponse(
     String status,
     String providerRequestId,
     Long aiCallLogId,
+    String idempotencyKey,
+    Boolean retryable,
     String errorCode,
     String errorMessage,
     LocalDateTime startedAt,
@@ -122,6 +128,8 @@ record VideoDecompositionAttemptResponse(
             entity.getStatus(),
             entity.getProviderRequestId(),
             entity.getAiCallLogId(),
+            entity.getIdempotencyKey(),
+            entity.getRetryable(),
             entity.getErrorCode(),
             entity.getErrorMessage(),
             entity.getStartedAt(),

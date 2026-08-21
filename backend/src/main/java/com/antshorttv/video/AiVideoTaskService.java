@@ -61,6 +61,7 @@ public class AiVideoTaskService {
     private final AiServiceConfigMapper aiServiceConfigMapper;
     private final AiVideoTaskMapper aiVideoTaskMapper;
     private final AiVideoResultMapper aiVideoResultMapper;
+    private final AiVideoTaskAttemptMapper aiVideoTaskAttemptMapper;
     private final VideoMaterialMapper materialMapper;
     private final AiVideoCallLogMapper aiCallLogMapper;
     private final ProjectOperationLogMapper projectOperationLogMapper;
@@ -71,6 +72,7 @@ public class AiVideoTaskService {
     private final ObjectStorageService objectStorageService;
     private final AiSecretCodec aiSecretCodec;
     private final TeamPointService teamPointService;
+    private final AiTaskExecutionSupport executionSupport;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final int maxConcurrentPerTenant;
@@ -86,6 +88,7 @@ public class AiVideoTaskService {
         AiServiceConfigMapper aiServiceConfigMapper,
         AiVideoTaskMapper aiVideoTaskMapper,
         AiVideoResultMapper aiVideoResultMapper,
+        AiVideoTaskAttemptMapper aiVideoTaskAttemptMapper,
         VideoMaterialMapper materialMapper,
         AiVideoCallLogMapper aiCallLogMapper,
         ProjectOperationLogMapper projectOperationLogMapper,
@@ -96,6 +99,7 @@ public class AiVideoTaskService {
         ObjectStorageService objectStorageService,
         AiSecretCodec aiSecretCodec,
         TeamPointService teamPointService,
+        AiTaskExecutionSupport executionSupport,
         ObjectMapper objectMapper,
         @Value("${ai.video.max-concurrent-per-tenant:3}") int maxConcurrentPerTenant,
         @Value("${ai.video.task-timeout-minutes:20}") int taskTimeoutMinutes,
@@ -109,6 +113,7 @@ public class AiVideoTaskService {
         this.aiServiceConfigMapper = aiServiceConfigMapper;
         this.aiVideoTaskMapper = aiVideoTaskMapper;
         this.aiVideoResultMapper = aiVideoResultMapper;
+        this.aiVideoTaskAttemptMapper = aiVideoTaskAttemptMapper;
         this.materialMapper = materialMapper;
         this.aiCallLogMapper = aiCallLogMapper;
         this.projectOperationLogMapper = projectOperationLogMapper;
@@ -119,6 +124,7 @@ public class AiVideoTaskService {
         this.objectStorageService = objectStorageService;
         this.aiSecretCodec = aiSecretCodec;
         this.teamPointService = teamPointService;
+        this.executionSupport = executionSupport;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newHttpClient();
         this.maxConcurrentPerTenant = maxConcurrentPerTenant;
@@ -483,9 +489,31 @@ public class AiVideoTaskService {
         if (!isActiveTask(task)) {
             return;
         }
+        AiTaskExecutionSupport.ClaimResult claim = executionSupport.claimAiVideoTask(
+            task.id,
+            task.status,
+            "VIDEO_QUERY",
+            Duration.ofMinutes(taskTimeoutMinutes)
+        );
+        if (!claim.claimed()) {
+            return;
+        }
+        task.executionToken = claim.executionToken();
+        task.executionPhase = "VIDEO_QUERY";
+        task.executionVersion = claim.executionVersion();
+        Long attemptId = executionSupport.createAiVideoTaskAttempt(
+            task.id,
+            nextAiVideoAttemptNo(task.id, "VIDEO_QUERY"),
+            "VIDEO_QUERY",
+            "RUNNING",
+            claim.idempotencyKey(),
+            false
+        );
         LocalDateTime now = LocalDateTime.now();
         if (isTimedOut(task, now)) {
             failTask(task, "视频生成超时。", userId, now);
+            executionSupport.finishAiVideoTaskAttempt(attemptId, "TIMED_OUT", task.externalTaskId, null, false, "AI_PROVIDER_TIMEOUT", "视频生成超时。");
+            executionSupport.clearAiVideoTaskClaim(task.id, false);
             return;
         }
         try {
@@ -502,18 +530,24 @@ public class AiVideoTaskService {
                 task.nextPollAt = null;
                 aiVideoTaskMapper.updateById(task);
                 long durationMs = task.submittedAt == null ? 0L : Duration.between(task.submittedAt, now).toMillis();
-                recordAiCall(userId, task.tenantId, task, "GENERATE_SUCCESS", "resultCount=1", durationMs, null);
+                Long callLogId = recordAiCall(userId, task.tenantId, task, "GENERATE_SUCCESS", "resultCount=1", durationMs, null);
+                executionSupport.finishAiVideoTaskAttempt(attemptId, "SUCCEEDED", task.externalTaskId, callLogId, false, null, null);
+                executionSupport.clearAiVideoTaskClaim(task.id, false);
                 return;
             }
             if ("FAILED".equals(outcome.status())) {
                 failTask(task, outcome.errorMessage() == null ? "视频生成失败。" : outcome.errorMessage(), userId, now);
+                executionSupport.finishAiVideoTaskAttempt(attemptId, "FAILED", task.externalTaskId, null, false, "AI_PROVIDER_ERROR", task.errorMessage);
+                executionSupport.clearAiVideoTaskClaim(task.id, false);
                 return;
             }
             task.externalStatus = outcome.status();
             task.nextPollAt = now.plusSeconds(10);
             task.updatedAt = now;
             aiVideoTaskMapper.updateById(task);
-            recordAiCall(userId, task.tenantId, task, "QUERY_RUNNING", "externalStatus=" + task.externalStatus, 0L, null);
+            Long callLogId = recordAiCall(userId, task.tenantId, task, "QUERY_RUNNING", "externalStatus=" + task.externalStatus, 0L, null);
+            executionSupport.finishAiVideoTaskAttempt(attemptId, "SUCCEEDED", task.externalTaskId, callLogId, false, null, null);
+            executionSupport.clearAiVideoTaskClaim(task.id, false);
         } catch (Exception exception) {
             int nextRetryCount = task.pollRetryCount == null ? 1 : task.pollRetryCount + 1;
             task.pollRetryCount = nextRetryCount;
@@ -521,11 +555,15 @@ public class AiVideoTaskService {
             task.updatedAt = now;
             if (nextRetryCount >= pollRetryLimit) {
                 failTask(task, "外部任务查询失败：" + exception.getMessage(), userId, now);
+                executionSupport.finishAiVideoTaskAttempt(attemptId, "FAILED", task.externalTaskId, null, false, "AI_PROVIDER_ERROR", task.errorMessage);
+                executionSupport.clearAiVideoTaskClaim(task.id, false);
                 return;
             }
             task.nextPollAt = now.plusSeconds(10L * nextRetryCount);
             aiVideoTaskMapper.updateById(task);
-            recordAiCall(userId, task.tenantId, task, "QUERY_RETRY", "retryCount=" + nextRetryCount, 0L, exception.getMessage());
+            Long callLogId = recordAiCall(userId, task.tenantId, task, "QUERY_RETRY", "retryCount=" + nextRetryCount, 0L, exception.getMessage());
+            executionSupport.finishAiVideoTaskAttempt(attemptId, "FAILED", task.externalTaskId, callLogId, true, "AI_PROVIDER_ERROR", exception.getMessage());
+            executionSupport.clearAiVideoTaskClaim(task.id, true);
         }
     }
 
@@ -752,7 +790,7 @@ public class AiVideoTaskService {
         return result;
     }
 
-    private void recordAiCall(
+    private Long recordAiCall(
         Long userId,
         Long tenantId,
         AiVideoTaskEntity task,
@@ -776,6 +814,14 @@ public class AiVideoTaskService {
         log.setDurationMs(durationMs);
         log.setCreatedAt(LocalDateTime.now());
         aiCallLogMapper.insert(log);
+        return log.getId();
+    }
+
+    private int nextAiVideoAttemptNo(Long taskId, String phase) {
+        Long count = aiVideoTaskAttemptMapper.selectCount(new QueryWrapper<AiVideoTaskAttemptEntity>()
+            .eq("task_id", taskId)
+            .eq("phase", phase));
+        return count.intValue() + 1;
     }
 
     private void recordOperation(TenantContext context, Long projectId, String operation, Long resourceId, HttpServletRequest request) {

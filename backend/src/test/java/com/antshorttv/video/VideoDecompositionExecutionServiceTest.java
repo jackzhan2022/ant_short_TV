@@ -61,6 +61,7 @@ class VideoDecompositionExecutionServiceTest {
             Long episodeId = insertEpisode(batchId);
 
             executionService.executeEpisode(episodeId);
+            executionService.executeEpisode(episodeId);
 
             var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
             assertThat(episode.get("status")).isEqualTo("PENDING_REVIEW");
@@ -68,6 +69,8 @@ class VideoDecompositionExecutionServiceTest {
             assertThat((String) episode.get("draft_content")).contains("第 1 集");
             assertThat(episode.get("draft_version")).isEqualTo(1);
             assertThat(calls.get()).isEqualTo(2);
+            assertThat(episode.get("execution_token")).isNull();
+            assertThat(episode.get("retryable")).isEqualTo(false);
             Integer draftLogs = jdbc.queryForObject("""
                 select count(*) from ai_call_log
                  where task_id = ? and business_scene = 'video_script_draft'

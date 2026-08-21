@@ -34,6 +34,13 @@ public class AiVideoTaskEntity {
     public String errorMessage;
     public String requestHash;
     public Integer pollRetryCount;
+    public String executionToken;
+    public String executionPhase;
+    public Integer executionVersion;
+    public LocalDateTime claimedAt;
+    public LocalDateTime heartbeatAt;
+    public LocalDateTime executionTimeoutAt;
+    public Boolean retryable;
     public LocalDateTime submittedAt;
     public LocalDateTime startedAt;
     public LocalDateTime completedAt;

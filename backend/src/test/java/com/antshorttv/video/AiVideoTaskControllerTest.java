@@ -209,6 +209,7 @@ class AiVideoTaskControllerTest {
         Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "后台轮询视频提示词");
 
         aiVideoTaskService.pollDueTasks();
+        aiVideoTaskService.pollDueTasks();
 
         mockMvc.perform(get("/api/projects/%d/ai-video-tasks/%d".formatted(projectId, taskId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -216,6 +217,12 @@ class AiVideoTaskControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
             .andExpect(jsonPath("$.data.results", hasSize(1)));
+        Integer resultCount = jdbc.queryForObject("select count(*) from ai_video_result where task_id = ?", Integer.class, taskId);
+        Integer attemptCount = jdbc.queryForObject("select count(*) from ai_video_task_attempt where task_id = ?", Integer.class, taskId);
+        var task = jdbc.queryForMap("select * from ai_video_task where id = ?", taskId);
+        org.assertj.core.api.Assertions.assertThat(resultCount).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(attemptCount).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(task.get("execution_token")).isNull();
     }
 
     @Test

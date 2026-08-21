@@ -2,6 +2,7 @@ package com.antshorttv.video;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -158,6 +159,61 @@ class VideoDecompositionControllerTest {
         org.assertj.core.api.Assertions.assertThat(episode.get("draft_content")).isEqualTo("待确认草稿");
         org.assertj.core.api.Assertions.assertThat(episode.get("status")).isEqualTo("PENDING_REVIEW");
         org.assertj.core.api.Assertions.assertThat(episode.get("confirmed_script_version_id")).isNull();
+    }
+
+    @Test
+    void rejectsRetryForConfirmedEpisode() throws Exception {
+        String mobile = uniqueMobile();
+        String token = registerUser(mobile, "Decomposition Retry Reviewer");
+        Long tenantId = createTenant(token, "拆剧重试团队");
+        Long ownerId = userIdByMobile(mobile);
+        Long projectId = createProject(token, tenantId, ownerId, "拆剧重试项目", "VIDEO_DECOMP_RETRY");
+        Long episodeId = insertReviewableEpisode(tenantId, projectId, ownerId, "已确认草稿", 1);
+        jdbc.update("""
+            update video_decomposition_episode
+               set status = 'CONFIRMED',
+                   draft_status = 'CONFIRMED',
+                   retryable = false,
+                   updated_at = now()
+             where id = ?
+            """, episodeId);
+
+        mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/retry".formatted(episodeId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"phase\":\"VIDEO_ANALYSIS\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+
+        var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
+        org.assertj.core.api.Assertions.assertThat(episode.get("status")).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    void exposesRetryabilityInEpisodeDetail() throws Exception {
+        String mobile = uniqueMobile();
+        String token = registerUser(mobile, "Decomposition Detail Reviewer");
+        Long tenantId = createTenant(token, "拆剧详情团队");
+        Long ownerId = userIdByMobile(mobile);
+        Long projectId = createProject(token, tenantId, ownerId, "拆剧详情项目", "VIDEO_DECOMP_DETAIL");
+        Long episodeId = insertReviewableEpisode(tenantId, projectId, ownerId, "失败草稿", 1);
+        jdbc.update("""
+            update video_decomposition_episode
+               set status = 'FAILED',
+                   error_code = 'AI_RESPONSE_INVALID',
+                   error_message = '业务解析失败',
+                   retryable = true,
+                   updated_at = now()
+             where id = ?
+            """, episodeId);
+
+        mockMvc.perform(get("/api/video-script-decomposition/episodes/%d".formatted(episodeId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.episode.status", is("FAILED")))
+            .andExpect(jsonPath("$.data.episode.retryable", is(true)));
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

@@ -7,6 +7,7 @@ import com.antshorttv.ai.AiTextRequest;
 import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,6 +26,7 @@ public class VideoDecompositionExecutionService {
     private final AiGateway aiGateway;
     private final ProjectAiConfigService projectAiConfigService;
     private final JdbcTemplate jdbcTemplate;
+    private final AiTaskExecutionSupport executionSupport;
 
     public VideoDecompositionExecutionService(
         VideoDecompositionBatchMapper batchMapper,
@@ -36,7 +38,8 @@ public class VideoDecompositionExecutionService {
         VideoAnalysisNormalizer normalizer,
         AiGateway aiGateway,
         ProjectAiConfigService projectAiConfigService,
-        JdbcTemplate jdbcTemplate
+        JdbcTemplate jdbcTemplate,
+        AiTaskExecutionSupport executionSupport
     ) {
         this.batchMapper = batchMapper;
         this.episodeMapper = episodeMapper;
@@ -48,6 +51,7 @@ public class VideoDecompositionExecutionService {
         this.aiGateway = aiGateway;
         this.projectAiConfigService = projectAiConfigService;
         this.jdbcTemplate = jdbcTemplate;
+        this.executionSupport = executionSupport;
     }
 
     @Transactional
@@ -60,9 +64,40 @@ public class VideoDecompositionExecutionService {
         if (batch == null) {
             return;
         }
-        if ("PENDING_DRAFT".equals(episode.getStatus())) {
+        if ("PENDING_ANALYSIS".equals(episode.getStatus())) {
+            AiTaskExecutionSupport.ClaimResult claim = executionSupport.claimVideoDecompositionEpisode(
+                episodeId,
+                "PENDING_ANALYSIS",
+                "ANALYZING",
+                "VIDEO_ANALYSIS",
+                Duration.ofMinutes(30)
+            );
+            if (!claim.claimed()) {
+                return;
+            }
+            applyClaim(episode, claim, "ANALYZING", "VIDEO_ANALYSIS");
+        } else if ("PENDING_DRAFT".equals(episode.getStatus())) {
+            AiTaskExecutionSupport.ClaimResult claim = executionSupport.claimVideoDecompositionEpisode(
+                episodeId,
+                "PENDING_DRAFT",
+                "DRAFT_GENERATING",
+                "DRAFT_GENERATION",
+                Duration.ofMinutes(30)
+            );
+            if (!claim.claimed()) {
+                return;
+            }
+            applyClaim(episode, claim, "DRAFT_GENERATING", "DRAFT_GENERATION");
+        }
+        if (episode.getExecutionToken() == null) {
+            return;
+        }
+        if ("DRAFT_GENERATING".equals(episode.getStatus())) {
             executeDraftGeneration(episode, latestSuccessfulAnalysis(episodeId));
             recalculateBatch(episode.getTenantId(), episode.getBatchId());
+            return;
+        }
+        if (!"ANALYZING".equals(episode.getStatus())) {
             return;
         }
         VideoDecompositionAttemptEntity attempt = currentAttempt(episodeId, "VIDEO_ANALYSIS");
@@ -95,6 +130,7 @@ public class VideoDecompositionExecutionService {
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
             markAttempt(attempt, "SUCCEEDED", callResult.response().providerRequestId(), callResult.aiCallLogId(), null, null);
+            prepareDraftExecution(episode);
             executeDraftGeneration(episode, analysis.normalizedJson());
         } catch (VideoAnalysisParseException exception) {
             if (callResult != null) {
@@ -116,10 +152,18 @@ public class VideoDecompositionExecutionService {
         LocalDateTime now = LocalDateTime.now();
         episode.setStatus("DRAFT_GENERATING");
         episode.setDraftStatus("GENERATING");
+        episode.setExecutionPhase("DRAFT_GENERATION");
         episode.setUpdatedAt(now);
         episodeMapper.updateById(episode);
+        attempt.setIdempotencyKey(executionSupport.idempotencyKey(
+            "VIDEO_DECOMPOSITION",
+            episode.getId(),
+            "DRAFT_GENERATION",
+            safeVersion(episode.getExecutionVersion())
+        ));
         attempt.setStatus("RUNNING");
         attempt.setStartedAt(now);
+        attempt.setRetryable(false);
         attemptMapper.updateById(attempt);
 
         try {
@@ -151,8 +195,10 @@ public class VideoDecompositionExecutionService {
             episode.setStatus("PENDING_REVIEW");
             episode.setErrorCode(null);
             episode.setErrorMessage(null);
+            clearExecution(episode, false);
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
+            clearExecutionColumns(episode.getId(), false);
             markAttempt(attempt, "SUCCEEDED", response.providerRequestId(), latestCallLogId(episode.getId(), "video_script_draft"), null, null);
         } catch (AiGatewayException exception) {
             failDraft(episode, attempt, exception.getErrorCode().name(), exception.getMessage());
@@ -165,8 +211,15 @@ public class VideoDecompositionExecutionService {
         episode.setStatus("ANALYZING");
         episode.setUpdatedAt(now);
         episodeMapper.updateById(episode);
+        attempt.setIdempotencyKey(executionSupport.idempotencyKey(
+            "VIDEO_DECOMPOSITION",
+            episode.getId(),
+            "VIDEO_ANALYSIS",
+            safeVersion(episode.getExecutionVersion())
+        ));
         attempt.setStatus("RUNNING");
         attempt.setStartedAt(now);
+        attempt.setRetryable(false);
         attemptMapper.updateById(attempt);
     }
 
@@ -180,8 +233,21 @@ public class VideoDecompositionExecutionService {
         episode.setStatus("FAILED");
         episode.setErrorCode(errorCode);
         episode.setErrorMessage(errorMessage);
+        clearExecution(episode, true);
         episode.setUpdatedAt(LocalDateTime.now());
-        episodeMapper.updateById(episode);
+        jdbcTemplate.update("""
+            update video_decomposition_episode
+               set status = 'FAILED',
+                   error_code = ?,
+                   error_message = ?,
+                   execution_token = null,
+                   execution_phase = null,
+                   heartbeat_at = null,
+                   execution_timeout_at = null,
+                   retryable = true,
+                   updated_at = now()
+             where id = ?
+            """, errorCode, errorMessage, episode.getId());
         markAttempt(
             attempt,
             "FAILED",
@@ -205,6 +271,7 @@ public class VideoDecompositionExecutionService {
         attempt.setAiCallLogId(callLogId);
         attempt.setErrorCode(errorCode);
         attempt.setErrorMessage(errorMessage);
+        attempt.setRetryable("FAILED".equals(status));
         attempt.setFinishedAt(LocalDateTime.now());
         attemptMapper.updateById(attempt);
     }
@@ -238,8 +305,22 @@ public class VideoDecompositionExecutionService {
         episode.setDraftStatus("FAILED");
         episode.setErrorCode(errorCode);
         episode.setErrorMessage(errorMessage);
+        clearExecution(episode, true);
         episode.setUpdatedAt(LocalDateTime.now());
-        episodeMapper.updateById(episode);
+        jdbcTemplate.update("""
+            update video_decomposition_episode
+               set status = 'FAILED',
+                   draft_status = 'FAILED',
+                   error_code = ?,
+                   error_message = ?,
+                   execution_token = null,
+                   execution_phase = null,
+                   heartbeat_at = null,
+                   execution_timeout_at = null,
+                   retryable = true,
+                   updated_at = now()
+             where id = ?
+            """, errorCode, errorMessage, episode.getId());
         markAttempt(attempt, "FAILED", null, latestCallLogId(episode.getId(), "video_script_draft"), errorCode, errorMessage);
     }
 
@@ -299,6 +380,50 @@ public class VideoDecompositionExecutionService {
              limit 1
             """, Long.class, episodeId, businessScene);
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private void prepareDraftExecution(VideoDecompositionEpisodeEntity episode) {
+        episode.setExecutionPhase("DRAFT_GENERATION");
+        episode.setHeartbeatAt(LocalDateTime.now());
+        episode.setExecutionTimeoutAt(LocalDateTime.now().plusMinutes(30));
+        episodeMapper.updateById(episode);
+    }
+
+    private void applyClaim(
+        VideoDecompositionEpisodeEntity episode,
+        AiTaskExecutionSupport.ClaimResult claim,
+        String status,
+        String phase
+    ) {
+        episode.setStatus(status);
+        episode.setExecutionToken(claim.executionToken());
+        episode.setExecutionPhase(phase);
+        episode.setExecutionVersion(claim.executionVersion());
+        episode.setRetryable(false);
+    }
+
+    private void clearExecution(VideoDecompositionEpisodeEntity episode, boolean retryable) {
+        episode.setExecutionToken(null);
+        episode.setExecutionPhase(null);
+        episode.setHeartbeatAt(null);
+        episode.setExecutionTimeoutAt(null);
+        episode.setRetryable(retryable);
+    }
+
+    private void clearExecutionColumns(Long episodeId, boolean retryable) {
+        jdbcTemplate.update("""
+            update video_decomposition_episode
+               set execution_token = null,
+                   execution_phase = null,
+                   heartbeat_at = null,
+                   execution_timeout_at = null,
+                   retryable = ?
+             where id = ?
+            """, retryable, episodeId);
+    }
+
+    private int safeVersion(Integer version) {
+        return version == null ? 0 : version;
     }
 
     private String draftPrompt(VideoDecompositionEpisodeEntity episode, String normalizedJson) {
