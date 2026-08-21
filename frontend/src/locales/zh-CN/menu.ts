@@ -55,6 +55,7 @@ export default {
   'menu.ai-service-management.models': '平台 Model',
   'menu.ai-service-management.services': '服务配置',
   'menu.ai-service-management.logs': '调用日志',
+  'menu.video-script-decomposition': '视频拆剧',
   'menu.team': '创作团队',
   'menu.team.my': '团队管理',
   'menu.team.select': '选择团队',

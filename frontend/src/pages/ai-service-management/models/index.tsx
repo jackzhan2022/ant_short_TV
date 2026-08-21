@@ -55,6 +55,7 @@ const serviceTypeOptions: Array<{
   { label: '文本', value: 'TEXT' },
   { label: '图片', value: 'IMAGE' },
   { label: '视频', value: 'VIDEO' },
+  { label: '视频理解', value: 'VIDEO_UNDERSTANDING' },
   { label: '音频', value: 'AUDIO' },
 ];
 
@@ -62,6 +63,7 @@ const serviceTypeValueEnum = {
   TEXT: { text: '文本' },
   IMAGE: { text: '图片' },
   VIDEO: { text: '视频' },
+  VIDEO_UNDERSTANDING: { text: '视频理解' },
   AUDIO: { text: '音频' },
 };
 

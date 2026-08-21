@@ -55,6 +55,7 @@ export default {
   'menu.ai-service-management.models': 'Platform Models',
   'menu.ai-service-management.services': 'Service Configs',
   'menu.ai-service-management.logs': 'Call Logs',
+  'menu.video-script-decomposition': 'Video Script Decomposition',
   'menu.team': 'Creative Team',
   'menu.team.my': 'My Teams',
   'menu.team.select': 'Select Team',

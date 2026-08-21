@@ -183,6 +183,13 @@ export default [
     ],
   },
   {
+    path: '/video-script-decomposition',
+    name: 'video-script-decomposition',
+    icon: 'videoCamera',
+    access: 'canUseVideoScriptDecomposition',
+    component: './video-script-decomposition',
+  },
+  {
     path: '/projects/:id/production-workbench',
     hideInMenu: true,
     access: 'canViewProjects',

@@ -21,14 +21,14 @@ public class AiSecretCodec {
     private final SecureRandom secureRandom = new SecureRandom();
     private final SecretKeySpec secretKey;
 
-    AiSecretCodec(@Value("${ai.secret-key:}") String secret) {
+    public AiSecretCodec(@Value("${ai.secret-key:}") String secret) {
         if (secret == null || secret.isBlank()) {
             throw new IllegalStateException("ai.secret-key must be configured.");
         }
         this.secretKey = new SecretKeySpec(sha256(secret), "AES");
     }
 
-    String encrypt(String plainText) {
+    public String encrypt(String plainText) {
         try {
             byte[] iv = new byte[IV_LENGTH];
             secureRandom.nextBytes(iv);

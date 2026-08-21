@@ -14,6 +14,10 @@ export default function access(
     canManageOrganizations:
       currentUser && permissions.includes('ORGANIZATION:VIEW'),
     canUseProjectCenter: Boolean(currentUser),
+    canUseVideoScriptDecomposition:
+      currentUser &&
+      permissions.includes('PROJECT:VIEW') &&
+      permissions.includes('AI_SERVICE:USE'),
     canViewProjects: currentUser && permissions.includes('PROJECT:VIEW'),
     canViewAiServices: currentUser && permissions.includes('AI_SERVICE:VIEW'),
     canViewAiManagement:

@@ -9,7 +9,12 @@ export type ApiResponse<T> = {
 
 export type PlatformProviderStatus = 'ENABLED' | 'DISABLED';
 export type PlatformTestStatus = 'UNTESTED' | 'SUCCESS' | 'FAILED';
-export type PlatformModelServiceType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO';
+export type PlatformModelServiceType =
+  | 'TEXT'
+  | 'IMAGE'
+  | 'VIDEO'
+  | 'VIDEO_UNDERSTANDING'
+  | 'AUDIO';
 
 export type PlatformProvider = {
   id: number;
@@ -83,6 +88,7 @@ export const serviceTypeText: Record<PlatformModelServiceType, string> = {
   TEXT: '文本',
   IMAGE: '图片',
   VIDEO: '视频',
+  VIDEO_UNDERSTANDING: '视频理解',
   AUDIO: '音频',
 };
 

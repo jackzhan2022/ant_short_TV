@@ -45,6 +45,7 @@ const serviceTypeOptions = [
   { label: '文本', value: 'TEXT' },
   { label: '图片', value: 'IMAGE' },
   { label: '视频', value: 'VIDEO' },
+  { label: '视频理解', value: 'VIDEO_UNDERSTANDING' },
   { label: '音频', value: 'AUDIO' },
 ];
 

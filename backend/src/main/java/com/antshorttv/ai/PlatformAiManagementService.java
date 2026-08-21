@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PlatformAiManagementService {
-    private static final List<String> SERVICE_TYPES = List.of("TEXT", "IMAGE", "VIDEO", "AUDIO", "VOICE");
+    private static final List<String> SERVICE_TYPES = List.of("TEXT", "IMAGE", "VIDEO", "VIDEO_UNDERSTANDING", "AUDIO", "VOICE");
 
     private final AiProviderMapper aiProviderMapper;
     private final AiProviderConfigMapper aiProviderConfigMapper;
@@ -320,6 +320,7 @@ public class PlatformAiManagementService {
             case "TEXT" -> "TEXT_GENERATION";
             case "IMAGE" -> "IMAGE_GENERATION";
             case "VIDEO" -> "VIDEO_GENERATION";
+            case "VIDEO_UNDERSTANDING" -> "VIDEO_UNDERSTANDING";
             case "AUDIO", "VOICE" -> "AUDIO_GENERATION";
             default -> model.getServiceType() + "_GENERATION";
         };

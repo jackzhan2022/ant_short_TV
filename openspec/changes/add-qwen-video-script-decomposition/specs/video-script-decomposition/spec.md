@@ -1,5 +1,19 @@
 ## ADDED Requirements
 
+### Requirement: Expose video decomposition as an independent menu
+The system SHALL expose video script decomposition through an independent first-level `视频拆剧` menu and SHALL NOT embed its entry point under project detail or project workbench navigation.
+
+#### Scenario: Open the decomposition workspace
+- **WHEN** an authorized user selects the `视频拆剧` first-level menu
+- **THEN** the system opens the independent decomposition workspace route
+- **AND** the workspace can list and create decomposition batches without first opening a project detail page
+- **AND** project association is selected or resolved as batch data rather than represented by a nested project route
+
+#### Scenario: Preserve project authorization
+- **WHEN** the user lists or operates on a decomposition batch
+- **THEN** the system applies the associated project's tenant and permission checks
+- **AND** unauthorized batches and episode data remain inaccessible
+
 ### Requirement: Create a video script decomposition batch
 The system SHALL allow an authorized project user to create a decomposition batch containing one or more uploaded videos, where each video represents exactly one episode.
 
