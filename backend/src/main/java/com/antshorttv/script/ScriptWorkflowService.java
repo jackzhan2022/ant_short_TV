@@ -16,12 +16,15 @@ import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import jakarta.servlet.http.HttpServletRequest;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -42,6 +45,7 @@ public class ScriptWorkflowService {
     private final MaterialFileAccessService materialFileAccessService;
     private final TeamPointService teamPointService;
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
     public ScriptWorkflowService(
         ProjectMapper projectMapper,
@@ -54,7 +58,8 @@ public class ScriptWorkflowService {
         AiGateway aiGateway,
         MaterialFileAccessService materialFileAccessService,
         TeamPointService teamPointService,
-        JdbcTemplate jdbcTemplate
+        JdbcTemplate jdbcTemplate,
+        ObjectMapper objectMapper
     ) {
         this.projectMapper = projectMapper;
         this.projectMemberMapper = projectMemberMapper;
@@ -67,6 +72,7 @@ public class ScriptWorkflowService {
         this.materialFileAccessService = materialFileAccessService;
         this.teamPointService = teamPointService;
         this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
     }
 
     public ScriptWorkspaceResponse workspace(Long tenantId, Long projectId) {
@@ -236,29 +242,338 @@ public class ScriptWorkflowService {
         }
         String elementType = request.elementType().trim();
         switch (elementType) {
-            case "CHARACTER" -> {
-                ensureCharacters(tenantId, projectId, context.userId(), script.getContent());
-                callTextGateway(context, projectId, "character_extract", script.getTitle(), "提取角色成功");
-            }
-            case "SCENE" -> {
-                ensureScenes(tenantId, projectId, context.userId(), script.getContent());
-                callTextGateway(context, projectId, "scene_extract", script.getTitle(), "提取场景成功");
-            }
-            case "PROP" -> {
-                ensureProps(tenantId, projectId, context.userId(), script.getContent());
-                callTextGateway(context, projectId, "prop_extract", script.getTitle(), "提取道具成功");
-            }
+            case "CHARACTER" -> extractCharacters(context, tenantId, projectId, script);
+            case "SCENE" -> extractScenes(context, tenantId, projectId, script);
+            case "PROP" -> extractProps(context, tenantId, projectId, script);
             case "ALL" -> {
-                ensureCharacters(tenantId, projectId, context.userId(), script.getContent());
-                ensureScenes(tenantId, projectId, context.userId(), script.getContent());
-                ensureProps(tenantId, projectId, context.userId(), script.getContent());
-                callTextGateway(context, projectId, "character_extract", script.getTitle(), "提取角色成功");
-                callTextGateway(context, projectId, "scene_extract", script.getTitle(), "提取场景成功");
-                callTextGateway(context, projectId, "prop_extract", script.getTitle(), "提取道具成功");
+                extractCharacters(context, tenantId, projectId, script);
+                extractScenes(context, tenantId, projectId, script);
+                extractProps(context, tenantId, projectId, script);
             }
             default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择要提取的元素类型。");
         }
         return workspace(tenantId, projectId);
+    }
+
+    private void extractCharacters(TenantContext context, Long tenantId, Long projectId, ScriptEntity script) {
+        String response = callElementExtraction(context, projectId, "character_extract", script.getTitle(), buildCharacterExtractionPrompt(script));
+        JsonNode root = parseExtractionResponse(response);
+        clearUnconfirmedElements("character_asset", tenantId, projectId);
+        JsonNode items = extractionItems(root, "characters");
+        for (JsonNode item : items) {
+            String name = text(item, "name");
+            if (name == null) {
+                continue;
+            }
+            Long mergeTargetId = confirmedElementId("character_asset", tenantId, projectId, name);
+            insertCharacterAsset(tenantId, projectId, context.userId(), item, mergeTargetId, mergeTargetId == null ? "DRAFT" : "PENDING_REVIEW");
+        }
+    }
+
+    private void extractScenes(TenantContext context, Long tenantId, Long projectId, ScriptEntity script) {
+        String response = callElementExtraction(context, projectId, "scene_extract", script.getTitle(), buildSceneExtractionPrompt(script));
+        JsonNode root = parseExtractionResponse(response);
+        clearUnconfirmedElements("scene_asset", tenantId, projectId);
+        JsonNode items = extractionItems(root, "scenes");
+        for (JsonNode item : items) {
+            String name = text(item, "name");
+            if (name == null) {
+                continue;
+            }
+            Long mergeTargetId = confirmedElementId("scene_asset", tenantId, projectId, name);
+            insertSceneAsset(tenantId, projectId, context.userId(), item, mergeTargetId, mergeTargetId == null ? "DRAFT" : "PENDING_REVIEW");
+        }
+    }
+
+    private void extractProps(TenantContext context, Long tenantId, Long projectId, ScriptEntity script) {
+        String response = callElementExtraction(context, projectId, "prop_extract", script.getTitle(), buildPropExtractionPrompt(script));
+        JsonNode root = parseExtractionResponse(response);
+        clearUnconfirmedElements("prop_asset", tenantId, projectId);
+        JsonNode items = extractionItems(root, "props");
+        for (JsonNode item : items) {
+            String name = text(item, "name");
+            if (name == null) {
+                continue;
+            }
+            Long mergeTargetId = confirmedElementId("prop_asset", tenantId, projectId, name);
+            insertPropAsset(tenantId, projectId, context.userId(), item, mergeTargetId, mergeTargetId == null ? "DRAFT" : "PENDING_REVIEW");
+        }
+    }
+
+    private String callElementExtraction(
+        TenantContext context,
+        Long projectId,
+        String businessScene,
+        String requestSummary,
+        String prompt
+    ) {
+        return callTextGateway(context, projectId, businessScene, requestSummary, prompt);
+    }
+
+    private String buildCharacterExtractionPrompt(ScriptEntity script) {
+        return """
+            你是短剧剧本结构化信息提取助手。
+            请仅基于剧本内容提取角色信息，只返回合法 JSON，不要解释，不要 Markdown，不要代码块。
+            字段缺失时使用空字符串或空数组，不要编造。
+            角色名称要稳定，尽量使用剧本中明确出现的称呼，便于后续按名称合并。
+
+            返回结构：
+            {
+              "characters": [
+                {
+                  "name": "",
+                  "roleType": "LEAD",
+                  "gender": "",
+                  "ageRange": "",
+                  "identity": "",
+                  "personality": [],
+                  "appearance": "",
+                  "prompt": ""
+                }
+              ]
+            }
+
+            剧本标题：%s
+            剧本内容：
+            <<<
+            %s
+            >>>
+            """.formatted(script.getTitle(), script.getContent());
+    }
+
+    private String buildSceneExtractionPrompt(ScriptEntity script) {
+        return """
+            你是短剧剧本结构化信息提取助手。
+            请仅基于剧本内容提取场景信息，只返回合法 JSON，不要解释，不要 Markdown，不要代码块。
+            字段缺失时使用空字符串，不要编造。
+            场景名称要稳定，尽量使用剧本中明确出现的场景名，便于后续按名称合并。
+
+            返回结构：
+            {
+              "scenes": [
+                {
+                  "name": "",
+                  "sceneType": "INTERIOR",
+                  "atmosphere": "",
+                  "description": "",
+                  "visualStyle": "",
+                  "prompt": ""
+                }
+              ]
+            }
+
+            剧本标题：%s
+            剧本内容：
+            <<<
+            %s
+            >>>
+            """.formatted(script.getTitle(), script.getContent());
+    }
+
+    private String buildPropExtractionPrompt(ScriptEntity script) {
+        return """
+            你是短剧剧本结构化信息提取助手。
+            请仅基于剧本内容提取道具信息，只返回合法 JSON，不要解释，不要 Markdown，不要代码块。
+            字段缺失时使用空字符串，不要编造。
+            道具名称要稳定，尽量使用剧本中明确出现的称呼，便于后续按名称合并。
+
+            返回结构：
+            {
+              "props": [
+                {
+                  "name": "",
+                  "propType": "KEY_PROP",
+                  "appearance": "",
+                  "plotFunction": "",
+                  "prompt": ""
+                }
+              ]
+            }
+
+            剧本标题：%s
+            剧本内容：
+            <<<
+            %s
+            >>>
+            """.formatted(script.getTitle(), script.getContent());
+    }
+
+    private JsonNode parseExtractionResponse(String response) {
+        try {
+            return objectMapper.readTree(stripCodeFence(response));
+        } catch (Exception exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "AI 提取结果格式异常，请重试。");
+        }
+    }
+
+    private String stripCodeFence(String response) {
+        if (response == null) {
+            return "";
+        }
+        String value = response.trim();
+        if (value.startsWith("```")) {
+            int firstBreak = value.indexOf('\n');
+            if (firstBreak >= 0) {
+                value = value.substring(firstBreak + 1);
+            }
+            if (value.endsWith("```")) {
+                value = value.substring(0, value.length() - 3);
+            }
+        }
+        int start = value.indexOf('{');
+        int end = value.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            return value.substring(start, end + 1);
+        }
+        return value;
+    }
+
+    private JsonNode extractionItems(JsonNode root, String field) {
+        JsonNode direct = root.path(field);
+        if (direct.isArray()) {
+            return direct;
+        }
+        JsonNode nested = root.path("data").path(field);
+        if (nested.isArray()) {
+            return nested;
+        }
+        return objectMapper.createArrayNode();
+    }
+
+    private String text(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : blankToNull(value.asText());
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private Long longValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.valueOf(value.toString());
+    }
+
+    private Long confirmedElementId(String table, Long tenantId, Long projectId, String name) {
+        List<Long> ids = jdbcTemplate.query("""
+            select id
+              from %s
+             where tenant_id = ?
+               and project_id = ?
+               and deleted_at is null
+               and status = 'CONFIRMED'
+               and name = ?
+             order by id desc
+             limit 1
+            """.formatted(table), (rs, rowNum) -> rs.getLong("id"), tenantId, projectId, name);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private void clearUnconfirmedElements(String table, Long tenantId, Long projectId) {
+        jdbcTemplate.update("""
+            update %s
+               set deleted_at = now(),
+                   updated_at = now()
+             where tenant_id = ?
+               and project_id = ?
+               and deleted_at is null
+               and status <> 'CONFIRMED'
+            """.formatted(table), tenantId, projectId);
+    }
+
+    private void insertCharacterAsset(
+        Long tenantId,
+        Long projectId,
+        Long userId,
+        JsonNode item,
+        Long mergeTargetId,
+        String status
+    ) {
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, gender, age_range, identity, personality, appearance, relationship_text, plot_function, prompt, status, merge_target_id, created_by, created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, null, null, ?, ?, ?, ?, now(), now())
+            """,
+            tenantId,
+            projectId,
+            blankToNull(text(item, "name")),
+            defaultValue(text(item, "roleType"), "SUPPORTING"),
+            blankToNull(text(item, "gender")),
+            blankToNull(text(item, "ageRange")),
+            blankToNull(text(item, "identity")),
+            joinTags(arrayText(item, "personality")),
+            blankToNull(text(item, "appearance")),
+            blankToNull(text(item, "prompt")),
+            normalizeStatus(status),
+            mergeTargetId,
+            userId);
+    }
+
+    private void insertSceneAsset(
+        Long tenantId,
+        Long projectId,
+        Long userId,
+        JsonNode item,
+        Long mergeTargetId,
+        String status
+    ) {
+        jdbcTemplate.update("""
+            insert into scene_asset
+              (tenant_id, project_id, name, scene_type, time_atmosphere, description, visual_style, plot_reference, prompt, status, merge_target_id, created_by, created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?, null, ?, ?, ?, ?, now(), now())
+            """,
+            tenantId,
+            projectId,
+            blankToNull(text(item, "name")),
+            defaultValue(text(item, "sceneType"), "INTERIOR"),
+            blankToNull(text(item, "atmosphere")),
+            blankToNull(text(item, "description")),
+            blankToNull(text(item, "visualStyle")),
+            blankToNull(text(item, "prompt")),
+            normalizeStatus(status),
+            mergeTargetId,
+            userId);
+    }
+
+    private void insertPropAsset(
+        Long tenantId,
+        Long projectId,
+        Long userId,
+        JsonNode item,
+        Long mergeTargetId,
+        String status
+    ) {
+        jdbcTemplate.update("""
+            insert into prop_asset
+              (tenant_id, project_id, name, prop_type, appearance, plot_function, related_character, prompt, status, merge_target_id, created_by, created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, null, ?, ?, ?, ?, now(), now())
+            """,
+            tenantId,
+            projectId,
+            blankToNull(text(item, "name")),
+            defaultValue(text(item, "propType"), "KEY_PROP"),
+            blankToNull(text(item, "appearance")),
+            blankToNull(text(item, "plotFunction")),
+            blankToNull(text(item, "prompt")),
+            normalizeStatus(status),
+            mergeTargetId,
+            userId);
+    }
+
+    private List<String> arrayText(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isArray()) {
+            return List.of();
+        }
+        return Arrays.stream(objectMapper.convertValue(value, String[].class))
+            .map(this::blankToNull)
+            .filter(item -> item != null && !item.isBlank())
+            .toList();
     }
 
     @Transactional
@@ -292,11 +607,132 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
-        jdbcTemplate.update("""
-            update %s set status = 'CONFIRMED', updated_at = now()
-             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-            """.formatted(elementTable(normalizeElementType(elementType))), tenantId, projectId, elementId);
+        switch (normalizeElementType(elementType)) {
+            case "CHARACTER" -> confirmCharacterElement(tenantId, projectId, elementId);
+            case "SCENE" -> confirmSceneElement(tenantId, projectId, elementId);
+            case "PROP" -> confirmPropElement(tenantId, projectId, elementId);
+            default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择元素类型。");
+        }
         return workspace(tenantId, projectId);
+    }
+
+    private void confirmCharacterElement(Long tenantId, Long projectId, Long elementId) {
+        Map<String, Object> element = jdbcTemplate.queryForMap("""
+            select id, name, role_type, gender, age_range, identity, personality, appearance, prompt, status, merge_target_id
+              from character_asset
+             where tenant_id = ?
+               and project_id = ?
+               and id = ?
+               and deleted_at is null
+            """, tenantId, projectId, elementId);
+        Long mergeTargetId = longValue(element.get("merge_target_id"));
+        if ("PENDING_REVIEW".equals(stringValue(element.get("status"))) && mergeTargetId != null) {
+            jdbcTemplate.update("""
+                update character_asset
+                   set name = ?, role_type = ?, gender = ?, age_range = ?, identity = ?, personality = ?, appearance = ?, prompt = ?, status = 'CONFIRMED', updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+                """,
+                stringValue(element.get("name")),
+                stringValue(element.get("role_type")),
+                stringValue(element.get("gender")),
+                stringValue(element.get("age_range")),
+                stringValue(element.get("identity")),
+                stringValue(element.get("personality")),
+                stringValue(element.get("appearance")),
+                stringValue(element.get("prompt")),
+                tenantId,
+                projectId,
+                mergeTargetId);
+            jdbcTemplate.update("""
+                update character_asset
+                   set deleted_at = now(), updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+                """, tenantId, projectId, elementId);
+            return;
+        }
+        jdbcTemplate.update("""
+            update character_asset
+               set status = 'CONFIRMED', merge_target_id = null, updated_at = now()
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+            """, tenantId, projectId, elementId);
+    }
+
+    private void confirmSceneElement(Long tenantId, Long projectId, Long elementId) {
+        Map<String, Object> element = jdbcTemplate.queryForMap("""
+            select id, name, scene_type, time_atmosphere, description, visual_style, prompt, status, merge_target_id
+              from scene_asset
+             where tenant_id = ?
+               and project_id = ?
+               and id = ?
+               and deleted_at is null
+            """, tenantId, projectId, elementId);
+        Long mergeTargetId = longValue(element.get("merge_target_id"));
+        if ("PENDING_REVIEW".equals(stringValue(element.get("status"))) && mergeTargetId != null) {
+            jdbcTemplate.update("""
+                update scene_asset
+                   set name = ?, scene_type = ?, time_atmosphere = ?, description = ?, visual_style = ?, prompt = ?, status = 'CONFIRMED', updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+                """,
+                stringValue(element.get("name")),
+                stringValue(element.get("scene_type")),
+                stringValue(element.get("time_atmosphere")),
+                stringValue(element.get("description")),
+                stringValue(element.get("visual_style")),
+                stringValue(element.get("prompt")),
+                tenantId,
+                projectId,
+                mergeTargetId);
+            jdbcTemplate.update("""
+                update scene_asset
+                   set deleted_at = now(), updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+                """, tenantId, projectId, elementId);
+            return;
+        }
+        jdbcTemplate.update("""
+            update scene_asset
+               set status = 'CONFIRMED', merge_target_id = null, updated_at = now()
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+            """, tenantId, projectId, elementId);
+    }
+
+    private void confirmPropElement(Long tenantId, Long projectId, Long elementId) {
+        Map<String, Object> element = jdbcTemplate.queryForMap("""
+            select id, name, prop_type, appearance, plot_function, related_character, prompt, status, merge_target_id
+              from prop_asset
+             where tenant_id = ?
+               and project_id = ?
+               and id = ?
+               and deleted_at is null
+            """, tenantId, projectId, elementId);
+        Long mergeTargetId = longValue(element.get("merge_target_id"));
+        if ("PENDING_REVIEW".equals(stringValue(element.get("status"))) && mergeTargetId != null) {
+            jdbcTemplate.update("""
+                update prop_asset
+                   set name = ?, prop_type = ?, appearance = ?, plot_function = ?, related_character = ?, prompt = ?, status = 'CONFIRMED', updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+                """,
+                stringValue(element.get("name")),
+                stringValue(element.get("prop_type")),
+                stringValue(element.get("appearance")),
+                stringValue(element.get("plot_function")),
+                stringValue(element.get("related_character")),
+                stringValue(element.get("prompt")),
+                tenantId,
+                projectId,
+                mergeTargetId);
+            jdbcTemplate.update("""
+                update prop_asset
+                   set deleted_at = now(), updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+                """, tenantId, projectId, elementId);
+            return;
+        }
+        jdbcTemplate.update("""
+            update prop_asset
+               set status = 'CONFIRMED', merge_target_id = null, updated_at = now()
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+            """, tenantId, projectId, elementId);
     }
 
     @Transactional
@@ -450,7 +886,7 @@ public class ScriptWorkflowService {
 
     private List<CharacterAssetResponse> characters(Long tenantId, Long projectId) {
         return jdbcTemplate.query("""
-            select id, name, role_type, gender, age_range, identity, personality, appearance, prompt
+            select id, name, role_type, gender, age_range, identity, personality, appearance, prompt, status, merge_target_id
               from character_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
              order by id
@@ -463,13 +899,15 @@ public class ScriptWorkflowService {
                 rs.getString("identity"),
                 splitTags(rs.getString("personality")),
                 rs.getString("appearance"),
-                rs.getString("prompt")
+                rs.getString("prompt"),
+                rs.getString("status"),
+                rs.getObject("merge_target_id", Long.class)
             ), tenantId, projectId);
     }
 
     private List<SceneAssetResponse> scenes(Long tenantId, Long projectId) {
         return jdbcTemplate.query("""
-            select id, name, scene_type, time_atmosphere, description, visual_style, prompt
+            select id, name, scene_type, time_atmosphere, description, visual_style, prompt, status, merge_target_id
               from scene_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
              order by id
@@ -480,13 +918,15 @@ public class ScriptWorkflowService {
                 rs.getString("time_atmosphere"),
                 rs.getString("description"),
                 rs.getString("visual_style"),
-                rs.getString("prompt")
+                rs.getString("prompt"),
+                rs.getString("status"),
+                rs.getObject("merge_target_id", Long.class)
             ), tenantId, projectId);
     }
 
     private List<PropAssetResponse> props(Long tenantId, Long projectId) {
         return jdbcTemplate.query("""
-            select id, name, prop_type, appearance, plot_function, prompt
+            select id, name, prop_type, appearance, plot_function, prompt, status, merge_target_id
               from prop_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
              order by id
@@ -496,7 +936,9 @@ public class ScriptWorkflowService {
                 rs.getString("prop_type"),
                 rs.getString("appearance"),
                 rs.getString("plot_function"),
-                rs.getString("prompt")
+                rs.getString("prompt"),
+                rs.getString("status"),
+                rs.getObject("merge_target_id", Long.class)
             ), tenantId, projectId);
     }
 
@@ -704,7 +1146,7 @@ public class ScriptWorkflowService {
 
     private String normalizeStatus(String status) {
         String value = status == null || status.isBlank() ? "DRAFT" : status.trim().toUpperCase(Locale.ROOT);
-        if (!List.of("DRAFT", "CONFIRMED", "APPLIED").contains(value)) {
+        if (!List.of("DRAFT", "CONFIRMED", "APPLIED", "PENDING_REVIEW").contains(value)) {
             return "DRAFT";
         }
         return value;

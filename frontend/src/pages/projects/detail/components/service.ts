@@ -39,6 +39,8 @@ export type CharacterAsset = {
   personality: string[];
   appearance: string;
   prompt: string;
+  status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
+  mergeTargetId?: number | null;
 };
 
 export type SceneAsset = {
@@ -49,6 +51,8 @@ export type SceneAsset = {
   description: string;
   visualStyle: string;
   prompt: string;
+  status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
+  mergeTargetId?: number | null;
 };
 
 export type PropAsset = {
@@ -58,6 +62,8 @@ export type PropAsset = {
   appearance: string;
   plotFunction: string;
   prompt: string;
+  status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
+  mergeTargetId?: number | null;
 };
 
 export type StoryboardShot = {
@@ -133,7 +139,7 @@ export type UpdateScriptElementValues = {
   plotFunction?: string;
   relatedCharacter?: string;
   prompt?: string;
-  status?: 'DRAFT' | 'CONFIRMED';
+  status?: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
 };
 
 export type SaveStoryboardValues = {

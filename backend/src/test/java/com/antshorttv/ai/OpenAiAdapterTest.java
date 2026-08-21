@@ -1,6 +1,7 @@
 package com.antshorttv.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
@@ -96,6 +97,86 @@ class OpenAiAdapterTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void reportsNonJsonTextResponseWithProviderBodySummary() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = "<html><body>proxy error</body></html>".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/html");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            assertThatThrownBy(() -> adapter.text(
+                provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-test", "TEXT"),
+                new AiTextRequest(null, "用户提示", 0.3, 256, null)
+            ))
+                .isInstanceOf(AiGatewayException.class)
+                .hasMessageContaining("AI 服务商返回非 JSON 响应")
+                .hasMessageContaining("text/html")
+                .hasMessageContaining("proxy error");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void reportsHttpErrorWithProviderBodySummary() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = "<html><body>bad gateway</body></html>".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/html");
+            exchange.sendResponseHeaders(502, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            assertThatThrownBy(() -> adapter.text(
+                provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-test", "TEXT"),
+                new AiTextRequest(null, "用户提示", 0.3, 256, null)
+            ))
+                .isInstanceOf(AiGatewayException.class)
+                .hasMessageContaining("AI 服务商返回 HTTP 502")
+                .hasMessageContaining("bad gateway");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void returnsStructuredJsonForLocalExtractionMock() throws Exception {
+        AiTextResponse response = adapter.text(
+            provider(),
+            config("mock://local", "test-key"),
+            model("deepseek-v4-pro", "TEXT"),
+            new AiTextRequest(
+                null,
+                """
+                    你是短剧剧本结构化信息提取助手。
+                    请仅基于剧本内容提取角色信息，只返回合法 JSON，不要解释，不要 Markdown，不要代码块。
+                    剧本内容：林晚在天台拿出录音笔。
+                    """,
+                0.2,
+                512,
+                null
+            )
+        );
+
+        assertThat(response.content()).isEqualTo("""
+            {"characters":[{"name":"林晚","roleType":"LEAD","gender":"","ageRange":"","identity":"","personality":[],"appearance":"","prompt":""}]}
+            """.trim());
+        assertThat(response.providerRequestId()).startsWith("local-");
     }
 
     private AiProviderEntity provider() {

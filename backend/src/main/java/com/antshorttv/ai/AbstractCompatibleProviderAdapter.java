@@ -1,6 +1,7 @@
 package com.antshorttv.ai;
 
 import com.antshorttv.common.ErrorCode;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
@@ -31,7 +32,7 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         long started = System.currentTimeMillis();
         if (shouldUseLocalMock(config)) {
             String prompt = request.userPrompt() == null ? "" : request.userPrompt();
-            return new AiTextResponse(prompt, "local-" + started, 0, 0, 0, elapsed(started), Map.of("mode", "local"));
+            return new AiTextResponse(localMockText(prompt), "local-" + started, 0, 0, 0, elapsed(started), Map.of("mode", "local"));
         }
         if (config.getApiKeyCipher() == null || config.getApiKeyCipher().isBlank()) {
             throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
@@ -102,6 +103,23 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         return Math.max(1, Duration.ofMillis(System.currentTimeMillis() - started).toMillis());
     }
 
+    private String localMockText(String prompt) {
+        if (prompt.contains("提取角色信息")) {
+            if (prompt.contains("林晚")) {
+                return "{\"characters\":[{\"name\":\"林晚\",\"roleType\":\"LEAD\",\"gender\":\"\",\"ageRange\":\"\",\"identity\":\"\",\"personality\":[],\"appearance\":\"\",\"prompt\":\"\"}]}";
+            }
+            return "{\"characters\":[{\"name\":\"主角\",\"roleType\":\"LEAD\",\"gender\":\"\",\"ageRange\":\"\",\"identity\":\"\",\"personality\":[],\"appearance\":\"\",\"prompt\":\"主角角色定妆照\"},{\"name\":\"反派\",\"roleType\":\"VILLAIN\",\"gender\":\"\",\"ageRange\":\"\",\"identity\":\"\",\"personality\":[],\"appearance\":\"\",\"prompt\":\"反派角色定妆照\"}]}";
+        }
+        if (prompt.contains("提取场景信息")) {
+            String firstScene = prompt.contains("林家老宅门口") ? "林家老宅门口" : "主场景";
+            return "{\"scenes\":[{\"name\":\"" + firstScene + "\",\"sceneType\":\"EXTERIOR\",\"atmosphere\":\"紧张\",\"description\":\"故事主要发生地\",\"visualStyle\":\"电影感\",\"prompt\":\"" + firstScene + "场景\"},{\"name\":\"室内场景\",\"sceneType\":\"INTERIOR\",\"atmosphere\":\"压迫\",\"description\":\"室内戏场景\",\"visualStyle\":\"电影感\",\"prompt\":\"室内场景\"}]}";
+        }
+        if (prompt.contains("提取道具信息")) {
+            return "{\"props\":[{\"name\":\"股权协议\",\"propType\":\"KEY_PROP\",\"appearance\":\"重要文件\",\"plotFunction\":\"推动剧情\",\"prompt\":\"股权协议道具特写\"}]}";
+        }
+        return prompt;
+    }
+
     private JsonNode postJson(AiProviderConfigEntity config, URI uri, Map<String, Object> payload) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(uri)
             .timeout(REQUEST_TIMEOUT)
@@ -110,10 +128,31 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
             .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        String contentType = response.headers().firstValue("Content-Type").orElse("unknown");
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new AiGatewayException(ErrorCode.AI_PROVIDER_ERROR, "AI 服务商返回 HTTP %d。".formatted(response.statusCode()));
+            throw new AiGatewayException(
+                ErrorCode.AI_PROVIDER_ERROR,
+                "AI 服务商返回 HTTP %d，URL：%s，Content-Type：%s，响应：%s"
+                    .formatted(response.statusCode(), uri, contentType, responseSummary(response.body()))
+            );
         }
-        return objectMapper.readTree(response.body());
+        try {
+            return objectMapper.readTree(response.body());
+        } catch (JsonProcessingException exception) {
+            throw new AiGatewayException(
+                ErrorCode.AI_PROVIDER_ERROR,
+                "AI 服务商返回非 JSON 响应，URL：%s，Content-Type：%s，响应：%s"
+                    .formatted(uri, contentType, responseSummary(response.body()))
+            );
+        }
+    }
+
+    private String responseSummary(String body) {
+        if (body == null || body.isBlank()) {
+            return "<empty>";
+        }
+        String compact = body.replaceAll("\\s+", " ").trim();
+        return compact.length() <= 300 ? compact : compact.substring(0, 300) + "...";
     }
 
     private URI chatCompletionsUri(AiProviderConfigEntity config) {

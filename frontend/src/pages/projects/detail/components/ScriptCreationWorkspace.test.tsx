@@ -296,6 +296,7 @@ describe('ScriptCreationWorkspace', () => {
             personality: ['坚韧'],
             appearance: '雨夜拖着行李箱',
             prompt: '短剧女主角色图',
+            status: 'DRAFT',
           },
         ],
         scenes: [],
@@ -447,6 +448,39 @@ describe('ScriptCreationWorkspace', () => {
     await waitFor(() => {
       expect(screen.getAllByText('主角').length).toBeGreaterThan(0);
     });
+  });
+
+  it('keeps extracted elements when the initial workspace load resolves later', async () => {
+    let resolveInitialWorkspace: (value: unknown) => void = () => undefined;
+    mocks.queryScriptWorkspace.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveInitialWorkspace = resolve;
+      }),
+    );
+    render(<ScriptCreationWorkspace projectId={1} projectName="短剧项目" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /AI提取角色/ })[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('主角').length).toBeGreaterThan(0);
+    });
+
+    resolveInitialWorkspace({
+      success: true,
+      data: {
+        projectId: 1,
+        script: null,
+        versions: [],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('主角').length).toBeGreaterThan(0);
+    }, { timeout: 500 });
   });
 
   it('runs the remaining phase two workflow actions from real buttons', async () => {

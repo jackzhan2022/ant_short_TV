@@ -175,6 +175,18 @@ const motionStrengthOptions = [
   { label: '强', value: 'HIGH' },
 ];
 
+const elementStatusText: Record<'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW', string> = {
+  DRAFT: '草稿',
+  CONFIRMED: '已确认',
+  PENDING_REVIEW: '待确认',
+};
+
+const elementStatusColor: Record<'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW', string> = {
+  DRAFT: 'default',
+  CONFIRMED: 'success',
+  PENDING_REVIEW: 'warning',
+};
+
 const toVideoInitialValues = (
   storyboard?: StoryboardShot,
 ): Partial<CreateAiVideoTaskValues> => ({
@@ -480,7 +492,7 @@ const ScriptCreationWorkspace = ({
     try {
       const response = await updateScriptElement(projectId, elementType, record.id, {
         ...record,
-        status: 'DRAFT',
+        status: record.status,
       });
       applyWorkspace(response.data, '元素已保存');
     } catch {
@@ -787,6 +799,14 @@ const ScriptCreationWorkspace = ({
     () => [
       { title: '角色名称', dataIndex: 'name', width: 120 },
       { title: '角色类型', dataIndex: 'roleType', width: 100 },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 90,
+        render: (_, record) => (
+          <Tag color={elementStatusColor[record.status]}>{elementStatusText[record.status]}</Tag>
+        ),
+      },
       { title: '性别', dataIndex: 'gender', width: 80, search: false },
       { title: '年龄段', dataIndex: 'ageRange', width: 90, search: false },
       { title: '身份职业', dataIndex: 'identity', width: 140, search: false },
@@ -824,7 +844,7 @@ const ScriptCreationWorkspace = ({
               icon={<SaveOutlined />}
               onClick={() => confirmElement('CHARACTER', record.id)}
             >
-              确认
+              {record.status === 'PENDING_REVIEW' ? '应用更新' : '确认'}
             </Button>
             <Popconfirm
               title="确认删除该角色？"
@@ -845,6 +865,14 @@ const ScriptCreationWorkspace = ({
     () => [
       { title: '场景名称', dataIndex: 'name', width: 140 },
       { title: '场景类型', dataIndex: 'sceneType', width: 100 },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 90,
+        render: (_, record) => (
+          <Tag color={elementStatusColor[record.status]}>{elementStatusText[record.status]}</Tag>
+        ),
+      },
       { title: '时间氛围', dataIndex: 'atmosphere', width: 100, search: false },
       { title: '空间描述', dataIndex: 'description', ellipsis: true, search: false },
       { title: '视觉风格', dataIndex: 'visualStyle', width: 180, search: false },
@@ -875,7 +903,7 @@ const ScriptCreationWorkspace = ({
               icon={<SaveOutlined />}
               onClick={() => confirmElement('SCENE', record.id)}
             >
-              确认
+              {record.status === 'PENDING_REVIEW' ? '应用更新' : '确认'}
             </Button>
             <Popconfirm
               title="确认删除该场景？"
@@ -896,6 +924,14 @@ const ScriptCreationWorkspace = ({
     () => [
       { title: '道具名称', dataIndex: 'name', width: 140 },
       { title: '道具类型', dataIndex: 'propType', width: 120 },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 90,
+        render: (_, record) => (
+          <Tag color={elementStatusColor[record.status]}>{elementStatusText[record.status]}</Tag>
+        ),
+      },
       { title: '外观描述', dataIndex: 'appearance', ellipsis: true, search: false },
       { title: '剧情作用', dataIndex: 'plotFunction', ellipsis: true, search: false },
       { title: '道具提示词', dataIndex: 'prompt', ellipsis: true, search: false },
@@ -925,7 +961,7 @@ const ScriptCreationWorkspace = ({
               icon={<SaveOutlined />}
               onClick={() => confirmElement('PROP', record.id)}
             >
-              确认
+              {record.status === 'PENDING_REVIEW' ? '应用更新' : '确认'}
             </Button>
             <Popconfirm
               title="确认删除该道具？"

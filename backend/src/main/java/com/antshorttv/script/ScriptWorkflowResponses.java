@@ -63,7 +63,9 @@ record CharacterAssetResponse(
     String identity,
     List<String> personality,
     String appearance,
-    String prompt
+    String prompt,
+    String status,
+    Long mergeTargetId
 ) {
 }
 
@@ -74,7 +76,9 @@ record SceneAssetResponse(
     String atmosphere,
     String description,
     String visualStyle,
-    String prompt
+    String prompt,
+    String status,
+    Long mergeTargetId
 ) {
 }
 
@@ -84,7 +88,9 @@ record PropAssetResponse(
     String propType,
     String appearance,
     String plotFunction,
-    String prompt
+    String prompt,
+    String status,
+    Long mergeTargetId
 ) {
 }
 
