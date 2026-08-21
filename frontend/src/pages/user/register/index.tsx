@@ -1,7 +1,9 @@
 import { Helmet, Link, history, useIntl, useModel } from '@umijs/max';
 import { App, Button, Form, Input } from 'antd';
-import { startTransition, type FC } from 'react';
+import { startTransition, useState, type FC } from 'react';
 import { registerByMobile } from '@/services/account-team/auth';
+import { acceptInvitation } from '@/services/account-team/invitation';
+import { createTenant, switchTenant } from '@/services/account-team/tenant';
 import Settings from '../../../../config/defaultSettings';
 import AuthPageLayout from '../components/AuthPageLayout';
 
@@ -9,6 +11,8 @@ const Register: FC = () => {
   const { initialState, setInitialState } = useModel('@@initialState');
   const { message } = App.useApp();
   const intl = useIntl();
+  const [registered, setRegistered] = useState(false);
+  const [completing, setCompleting] = useState(false);
 
   const refreshCurrentUser = async () => {
     const userInfo = await initialState?.fetchUserInfo?.();
@@ -18,6 +22,155 @@ const Register: FC = () => {
       });
     }
   };
+
+  const enterTeamPages = () => {
+    history.replace('/team/my');
+  };
+
+  const handleComplete = async (values: {
+    teamName?: string;
+    invitationCode?: string;
+  }) => {
+    const teamName = values.teamName?.trim();
+    const invitationCode = values.invitationCode?.trim();
+
+    setCompleting(true);
+    try {
+      if (invitationCode) {
+        const response = await acceptInvitation(invitationCode);
+        await switchTenant(response.data.tenantId);
+        message.success('已加入团队');
+      } else if (teamName) {
+        const response = await createTenant({ name: teamName, type: 'STUDIO' });
+        await switchTenant(response.data.id);
+        message.success('团队创建成功');
+      }
+      enterTeamPages();
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  if (registered) {
+    return (
+      <AuthPageLayout>
+        <Helmet>
+          <title>
+            完善注册信息
+            {Settings.title && ` - ${Settings.title}`}
+          </title>
+        </Helmet>
+
+        <h1
+          style={{
+            margin: '0 0 52px',
+            textAlign: 'center',
+            color: '#252830',
+            fontSize: 28,
+            fontWeight: 800,
+            lineHeight: 1.35,
+            letterSpacing: 0,
+          }}
+        >
+          开启您的AI创作之旅
+        </h1>
+
+        <div
+          style={{
+            marginBottom: 22,
+            color: '#252830',
+            fontSize: 16,
+            lineHeight: 1.5,
+            fontWeight: 700,
+          }}
+        >
+          完善注册信息
+        </div>
+
+        <Form
+          layout="vertical"
+          requiredMark={false}
+          onFinish={handleComplete}
+          style={{ width: '100%' }}
+        >
+          <Form.Item name="teamName" style={{ marginBottom: 20 }}>
+            <Input
+              size="large"
+              placeholder="可自定义您的团队名称（选填）"
+              prefix={
+                <span style={{ color: '#202124', marginRight: 8 }}>
+                  团队名称:
+                </span>
+              }
+              style={{
+                height: 48,
+                borderRadius: 8,
+                background: 'rgba(255, 255, 255, 0.72)',
+                borderColor: '#e3e5ee',
+                boxShadow: 'none',
+                fontSize: 14,
+              }}
+            />
+          </Form.Item>
+
+          <Form.Item name="invitationCode" style={{ marginBottom: 42 }}>
+            <Input
+              size="large"
+              placeholder="若有邀请码，可填写（选填）"
+              prefix={
+                <span style={{ color: '#202124', marginRight: 8 }}>
+                  邀请码:
+                </span>
+              }
+              style={{
+                height: 48,
+                borderRadius: 8,
+                background: 'rgba(255, 255, 255, 0.72)',
+                borderColor: '#e3e5ee',
+                boxShadow: 'none',
+                fontSize: 14,
+              }}
+            />
+          </Form.Item>
+
+          <Button
+            type="primary"
+            htmlType="submit"
+            block
+            size="large"
+            loading={completing}
+            style={{
+              height: 48,
+              borderRadius: 8,
+              border: 0,
+              background: 'linear-gradient(90deg, #b469f3 0%, #6548ef 100%)',
+              boxShadow: 'none',
+              fontSize: 16,
+              fontWeight: 700,
+            }}
+          >
+            开始创作
+          </Button>
+
+          <Button
+            type="text"
+            block
+            size="large"
+            onClick={enterTeamPages}
+            style={{
+              height: 46,
+              marginTop: 14,
+              color: '#8f949e',
+              fontSize: 16,
+              fontWeight: 500,
+            }}
+          >
+            跳过
+          </Button>
+        </Form>
+      </AuthPageLayout>
+    );
+  }
 
   return (
     <AuthPageLayout>
@@ -78,7 +231,7 @@ const Register: FC = () => {
           await registerByMobile(params);
           await refreshCurrentUser();
           message.success('注册成功');
-          history.replace('/team/my');
+          setRegistered(true);
         }}
         style={{ width: '100%' }}
       >

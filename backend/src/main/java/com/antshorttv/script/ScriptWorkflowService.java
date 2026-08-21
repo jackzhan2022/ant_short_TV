@@ -1,8 +1,10 @@
 package com.antshorttv.script;
 
-import com.antshorttv.ai.AiContext;
-import com.antshorttv.ai.AiGateway;
-import com.antshorttv.ai.AiTextRequest;
+import com.antshorttv.ai.AiBusinessScene;
+import com.antshorttv.ai.AiInvocationRequest;
+import com.antshorttv.ai.AiInvocationResult;
+import com.antshorttv.ai.AiInvocationService;
+import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
@@ -16,15 +18,12 @@ import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import jakarta.servlet.http.HttpServletRequest;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -41,11 +40,13 @@ public class ScriptWorkflowService {
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final ProjectAiConfigService projectAiConfigService;
-    private final AiGateway aiGateway;
+    private final AiInvocationService aiInvocationService;
     private final MaterialFileAccessService materialFileAccessService;
     private final TeamPointService teamPointService;
+    private final ScriptElementExtractionService scriptElementExtractionService;
+    private final ScriptElementDraftService scriptElementDraftService;
+    private final ScriptElementConfirmationService scriptElementConfirmationService;
     private final JdbcTemplate jdbcTemplate;
-    private final ObjectMapper objectMapper;
 
     public ScriptWorkflowService(
         ProjectMapper projectMapper,
@@ -55,11 +56,13 @@ public class ScriptWorkflowService {
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
         ProjectAiConfigService projectAiConfigService,
-        AiGateway aiGateway,
+        AiInvocationService aiInvocationService,
         MaterialFileAccessService materialFileAccessService,
         TeamPointService teamPointService,
-        JdbcTemplate jdbcTemplate,
-        ObjectMapper objectMapper
+        ScriptElementExtractionService scriptElementExtractionService,
+        ScriptElementDraftService scriptElementDraftService,
+        ScriptElementConfirmationService scriptElementConfirmationService,
+        JdbcTemplate jdbcTemplate
     ) {
         this.projectMapper = projectMapper;
         this.projectMemberMapper = projectMemberMapper;
@@ -68,11 +71,13 @@ public class ScriptWorkflowService {
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
         this.projectAiConfigService = projectAiConfigService;
-        this.aiGateway = aiGateway;
+        this.aiInvocationService = aiInvocationService;
         this.materialFileAccessService = materialFileAccessService;
         this.teamPointService = teamPointService;
+        this.scriptElementExtractionService = scriptElementExtractionService;
+        this.scriptElementDraftService = scriptElementDraftService;
+        this.scriptElementConfirmationService = scriptElementConfirmationService;
         this.jdbcTemplate = jdbcTemplate;
-        this.objectMapper = objectMapper;
     }
 
     public ScriptWorkspaceResponse workspace(Long tenantId, Long projectId) {
@@ -112,8 +117,15 @@ public class ScriptWorkflowService {
         }
 
         String title = resolveTitle(project, request);
-        String content = callTextGateway(context, projectId, "script_generate", request.storyIdea(), buildScriptContent(title, request));
-        Long callLogId = latestCallLogId(context, projectId, "script_generate");
+        AiInvocationResult<AiTextResponse> invocation = callTextInvocation(
+            context,
+            projectId,
+            AiBusinessScene.SCRIPT_GENERATE,
+            request.storyIdea(),
+            buildScriptContent(title, request)
+        );
+        String content = invocation.content();
+        Long callLogId = invocation.aiCallLogId();
         script.setTitle(title);
         script.setSourceType("AI_GENERATE");
         script.setContent(content);
@@ -161,8 +173,15 @@ public class ScriptWorkflowService {
             改写说明：已将冲突前置、对白缩短，并为每一场保留明确镜头钩子。
             风险提示：请确认角色关系和关键伏笔是否与正式设定一致。
             """.formatted(script.getContent(), type, requirement == null ? "保持原剧情核心" : requirement);
-        content = callTextGateway(context, projectId, "script_rewrite", type, content);
-        Long callLogId = latestCallLogId(context, projectId, "script_rewrite");
+        AiInvocationResult<AiTextResponse> invocation = callTextInvocation(
+            context,
+            projectId,
+            AiBusinessScene.SCRIPT_REWRITE,
+            type,
+            content
+        );
+        content = invocation.content();
+        Long callLogId = invocation.aiCallLogId();
         LocalDateTime now = LocalDateTime.now();
 
         script.setSourceType("AI_REWRITE");
@@ -240,340 +259,10 @@ public class ScriptWorkflowService {
         if (script == null || script.getContent() == null || script.getContent().isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先生成或填写剧本内容。");
         }
-        String elementType = request.elementType().trim();
-        switch (elementType) {
-            case "CHARACTER" -> extractCharacters(context, tenantId, projectId, script);
-            case "SCENE" -> extractScenes(context, tenantId, projectId, script);
-            case "PROP" -> extractProps(context, tenantId, projectId, script);
-            case "ALL" -> {
-                extractCharacters(context, tenantId, projectId, script);
-                extractScenes(context, tenantId, projectId, script);
-                extractProps(context, tenantId, projectId, script);
-            }
-            default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择要提取的元素类型。");
-        }
+        ScriptElementType elementType = ScriptElementType.from(request.elementType());
+        ScriptElementExtractionResult result = scriptElementExtractionService.extract(context, projectId, script, elementType);
+        scriptElementDraftService.replaceDrafts(tenantId, projectId, context.userId(), result);
         return workspace(tenantId, projectId);
-    }
-
-    private void extractCharacters(TenantContext context, Long tenantId, Long projectId, ScriptEntity script) {
-        String response = callElementExtraction(context, projectId, "character_extract", script.getTitle(), buildCharacterExtractionPrompt(script));
-        JsonNode root = parseExtractionResponse(response);
-        clearUnconfirmedElements("character_asset", tenantId, projectId);
-        JsonNode items = extractionItems(root, "characters");
-        for (JsonNode item : items) {
-            String name = text(item, "name");
-            if (name == null) {
-                continue;
-            }
-            Long mergeTargetId = confirmedElementId("character_asset", tenantId, projectId, name);
-            insertCharacterAsset(tenantId, projectId, context.userId(), item, mergeTargetId, mergeTargetId == null ? "DRAFT" : "PENDING_REVIEW");
-        }
-    }
-
-    private void extractScenes(TenantContext context, Long tenantId, Long projectId, ScriptEntity script) {
-        String response = callElementExtraction(context, projectId, "scene_extract", script.getTitle(), buildSceneExtractionPrompt(script));
-        JsonNode root = parseExtractionResponse(response);
-        clearUnconfirmedElements("scene_asset", tenantId, projectId);
-        JsonNode items = extractionItems(root, "scenes");
-        for (JsonNode item : items) {
-            String name = text(item, "name");
-            if (name == null) {
-                continue;
-            }
-            Long mergeTargetId = confirmedElementId("scene_asset", tenantId, projectId, name);
-            insertSceneAsset(tenantId, projectId, context.userId(), item, mergeTargetId, mergeTargetId == null ? "DRAFT" : "PENDING_REVIEW");
-        }
-    }
-
-    private void extractProps(TenantContext context, Long tenantId, Long projectId, ScriptEntity script) {
-        String response = callElementExtraction(context, projectId, "prop_extract", script.getTitle(), buildPropExtractionPrompt(script));
-        JsonNode root = parseExtractionResponse(response);
-        clearUnconfirmedElements("prop_asset", tenantId, projectId);
-        JsonNode items = extractionItems(root, "props");
-        for (JsonNode item : items) {
-            String name = text(item, "name");
-            if (name == null) {
-                continue;
-            }
-            Long mergeTargetId = confirmedElementId("prop_asset", tenantId, projectId, name);
-            insertPropAsset(tenantId, projectId, context.userId(), item, mergeTargetId, mergeTargetId == null ? "DRAFT" : "PENDING_REVIEW");
-        }
-    }
-
-    private String callElementExtraction(
-        TenantContext context,
-        Long projectId,
-        String businessScene,
-        String requestSummary,
-        String prompt
-    ) {
-        return callTextGateway(context, projectId, businessScene, requestSummary, prompt);
-    }
-
-    private String buildCharacterExtractionPrompt(ScriptEntity script) {
-        return """
-            你是短剧剧本结构化信息提取助手。
-            请仅基于剧本内容提取角色信息，只返回合法 JSON，不要解释，不要 Markdown，不要代码块。
-            字段缺失时使用空字符串或空数组，不要编造。
-            角色名称要稳定，尽量使用剧本中明确出现的称呼，便于后续按名称合并。
-
-            返回结构：
-            {
-              "characters": [
-                {
-                  "name": "",
-                  "roleType": "LEAD",
-                  "gender": "",
-                  "ageRange": "",
-                  "identity": "",
-                  "personality": [],
-                  "appearance": "",
-                  "prompt": ""
-                }
-              ]
-            }
-
-            剧本标题：%s
-            剧本内容：
-            <<<
-            %s
-            >>>
-            """.formatted(script.getTitle(), script.getContent());
-    }
-
-    private String buildSceneExtractionPrompt(ScriptEntity script) {
-        return """
-            你是短剧剧本结构化信息提取助手。
-            请仅基于剧本内容提取场景信息，只返回合法 JSON，不要解释，不要 Markdown，不要代码块。
-            字段缺失时使用空字符串，不要编造。
-            场景名称要稳定，尽量使用剧本中明确出现的场景名，便于后续按名称合并。
-
-            返回结构：
-            {
-              "scenes": [
-                {
-                  "name": "",
-                  "sceneType": "INTERIOR",
-                  "atmosphere": "",
-                  "description": "",
-                  "visualStyle": "",
-                  "prompt": ""
-                }
-              ]
-            }
-
-            剧本标题：%s
-            剧本内容：
-            <<<
-            %s
-            >>>
-            """.formatted(script.getTitle(), script.getContent());
-    }
-
-    private String buildPropExtractionPrompt(ScriptEntity script) {
-        return """
-            你是短剧剧本结构化信息提取助手。
-            请仅基于剧本内容提取道具信息，只返回合法 JSON，不要解释，不要 Markdown，不要代码块。
-            字段缺失时使用空字符串，不要编造。
-            道具名称要稳定，尽量使用剧本中明确出现的称呼，便于后续按名称合并。
-
-            返回结构：
-            {
-              "props": [
-                {
-                  "name": "",
-                  "propType": "KEY_PROP",
-                  "appearance": "",
-                  "plotFunction": "",
-                  "prompt": ""
-                }
-              ]
-            }
-
-            剧本标题：%s
-            剧本内容：
-            <<<
-            %s
-            >>>
-            """.formatted(script.getTitle(), script.getContent());
-    }
-
-    private JsonNode parseExtractionResponse(String response) {
-        try {
-            return objectMapper.readTree(stripCodeFence(response));
-        } catch (Exception exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "AI 提取结果格式异常，请重试。");
-        }
-    }
-
-    private String stripCodeFence(String response) {
-        if (response == null) {
-            return "";
-        }
-        String value = response.trim();
-        if (value.startsWith("```")) {
-            int firstBreak = value.indexOf('\n');
-            if (firstBreak >= 0) {
-                value = value.substring(firstBreak + 1);
-            }
-            if (value.endsWith("```")) {
-                value = value.substring(0, value.length() - 3);
-            }
-        }
-        int start = value.indexOf('{');
-        int end = value.lastIndexOf('}');
-        if (start >= 0 && end > start) {
-            return value.substring(start, end + 1);
-        }
-        return value;
-    }
-
-    private JsonNode extractionItems(JsonNode root, String field) {
-        JsonNode direct = root.path(field);
-        if (direct.isArray()) {
-            return direct;
-        }
-        JsonNode nested = root.path("data").path(field);
-        if (nested.isArray()) {
-            return nested;
-        }
-        return objectMapper.createArrayNode();
-    }
-
-    private String text(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        return value == null || value.isNull() ? null : blankToNull(value.asText());
-    }
-
-    private String stringValue(Object value) {
-        return value == null ? null : value.toString();
-    }
-
-    private Long longValue(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        return Long.valueOf(value.toString());
-    }
-
-    private Long confirmedElementId(String table, Long tenantId, Long projectId, String name) {
-        List<Long> ids = jdbcTemplate.query("""
-            select id
-              from %s
-             where tenant_id = ?
-               and project_id = ?
-               and deleted_at is null
-               and status = 'CONFIRMED'
-               and name = ?
-             order by id desc
-             limit 1
-            """.formatted(table), (rs, rowNum) -> rs.getLong("id"), tenantId, projectId, name);
-        return ids.isEmpty() ? null : ids.get(0);
-    }
-
-    private void clearUnconfirmedElements(String table, Long tenantId, Long projectId) {
-        jdbcTemplate.update("""
-            update %s
-               set deleted_at = now(),
-                   updated_at = now()
-             where tenant_id = ?
-               and project_id = ?
-               and deleted_at is null
-               and status <> 'CONFIRMED'
-            """.formatted(table), tenantId, projectId);
-    }
-
-    private void insertCharacterAsset(
-        Long tenantId,
-        Long projectId,
-        Long userId,
-        JsonNode item,
-        Long mergeTargetId,
-        String status
-    ) {
-        jdbcTemplate.update("""
-            insert into character_asset
-              (tenant_id, project_id, name, role_type, gender, age_range, identity, personality, appearance, relationship_text, plot_function, prompt, status, merge_target_id, created_by, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, null, null, ?, ?, ?, ?, now(), now())
-            """,
-            tenantId,
-            projectId,
-            blankToNull(text(item, "name")),
-            defaultValue(text(item, "roleType"), "SUPPORTING"),
-            blankToNull(text(item, "gender")),
-            blankToNull(text(item, "ageRange")),
-            blankToNull(text(item, "identity")),
-            joinTags(arrayText(item, "personality")),
-            blankToNull(text(item, "appearance")),
-            blankToNull(text(item, "prompt")),
-            normalizeStatus(status),
-            mergeTargetId,
-            userId);
-    }
-
-    private void insertSceneAsset(
-        Long tenantId,
-        Long projectId,
-        Long userId,
-        JsonNode item,
-        Long mergeTargetId,
-        String status
-    ) {
-        jdbcTemplate.update("""
-            insert into scene_asset
-              (tenant_id, project_id, name, scene_type, time_atmosphere, description, visual_style, plot_reference, prompt, status, merge_target_id, created_by, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?, null, ?, ?, ?, ?, now(), now())
-            """,
-            tenantId,
-            projectId,
-            blankToNull(text(item, "name")),
-            defaultValue(text(item, "sceneType"), "INTERIOR"),
-            blankToNull(text(item, "atmosphere")),
-            blankToNull(text(item, "description")),
-            blankToNull(text(item, "visualStyle")),
-            blankToNull(text(item, "prompt")),
-            normalizeStatus(status),
-            mergeTargetId,
-            userId);
-    }
-
-    private void insertPropAsset(
-        Long tenantId,
-        Long projectId,
-        Long userId,
-        JsonNode item,
-        Long mergeTargetId,
-        String status
-    ) {
-        jdbcTemplate.update("""
-            insert into prop_asset
-              (tenant_id, project_id, name, prop_type, appearance, plot_function, related_character, prompt, status, merge_target_id, created_by, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, null, ?, ?, ?, ?, now(), now())
-            """,
-            tenantId,
-            projectId,
-            blankToNull(text(item, "name")),
-            defaultValue(text(item, "propType"), "KEY_PROP"),
-            blankToNull(text(item, "appearance")),
-            blankToNull(text(item, "plotFunction")),
-            blankToNull(text(item, "prompt")),
-            normalizeStatus(status),
-            mergeTargetId,
-            userId);
-    }
-
-    private List<String> arrayText(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        if (value == null || !value.isArray()) {
-            return List.of();
-        }
-        return Arrays.stream(objectMapper.convertValue(value, String[].class))
-            .map(this::blankToNull)
-            .filter(item -> item != null && !item.isBlank())
-            .toList();
     }
 
     @Transactional
@@ -607,132 +296,8 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
-        switch (normalizeElementType(elementType)) {
-            case "CHARACTER" -> confirmCharacterElement(tenantId, projectId, elementId);
-            case "SCENE" -> confirmSceneElement(tenantId, projectId, elementId);
-            case "PROP" -> confirmPropElement(tenantId, projectId, elementId);
-            default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择元素类型。");
-        }
+        scriptElementConfirmationService.confirm(tenantId, projectId, ScriptElementType.from(elementType), elementId);
         return workspace(tenantId, projectId);
-    }
-
-    private void confirmCharacterElement(Long tenantId, Long projectId, Long elementId) {
-        Map<String, Object> element = jdbcTemplate.queryForMap("""
-            select id, name, role_type, gender, age_range, identity, personality, appearance, prompt, status, merge_target_id
-              from character_asset
-             where tenant_id = ?
-               and project_id = ?
-               and id = ?
-               and deleted_at is null
-            """, tenantId, projectId, elementId);
-        Long mergeTargetId = longValue(element.get("merge_target_id"));
-        if ("PENDING_REVIEW".equals(stringValue(element.get("status"))) && mergeTargetId != null) {
-            jdbcTemplate.update("""
-                update character_asset
-                   set name = ?, role_type = ?, gender = ?, age_range = ?, identity = ?, personality = ?, appearance = ?, prompt = ?, status = 'CONFIRMED', updated_at = now()
-                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-                """,
-                stringValue(element.get("name")),
-                stringValue(element.get("role_type")),
-                stringValue(element.get("gender")),
-                stringValue(element.get("age_range")),
-                stringValue(element.get("identity")),
-                stringValue(element.get("personality")),
-                stringValue(element.get("appearance")),
-                stringValue(element.get("prompt")),
-                tenantId,
-                projectId,
-                mergeTargetId);
-            jdbcTemplate.update("""
-                update character_asset
-                   set deleted_at = now(), updated_at = now()
-                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-                """, tenantId, projectId, elementId);
-            return;
-        }
-        jdbcTemplate.update("""
-            update character_asset
-               set status = 'CONFIRMED', merge_target_id = null, updated_at = now()
-             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-            """, tenantId, projectId, elementId);
-    }
-
-    private void confirmSceneElement(Long tenantId, Long projectId, Long elementId) {
-        Map<String, Object> element = jdbcTemplate.queryForMap("""
-            select id, name, scene_type, time_atmosphere, description, visual_style, prompt, status, merge_target_id
-              from scene_asset
-             where tenant_id = ?
-               and project_id = ?
-               and id = ?
-               and deleted_at is null
-            """, tenantId, projectId, elementId);
-        Long mergeTargetId = longValue(element.get("merge_target_id"));
-        if ("PENDING_REVIEW".equals(stringValue(element.get("status"))) && mergeTargetId != null) {
-            jdbcTemplate.update("""
-                update scene_asset
-                   set name = ?, scene_type = ?, time_atmosphere = ?, description = ?, visual_style = ?, prompt = ?, status = 'CONFIRMED', updated_at = now()
-                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-                """,
-                stringValue(element.get("name")),
-                stringValue(element.get("scene_type")),
-                stringValue(element.get("time_atmosphere")),
-                stringValue(element.get("description")),
-                stringValue(element.get("visual_style")),
-                stringValue(element.get("prompt")),
-                tenantId,
-                projectId,
-                mergeTargetId);
-            jdbcTemplate.update("""
-                update scene_asset
-                   set deleted_at = now(), updated_at = now()
-                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-                """, tenantId, projectId, elementId);
-            return;
-        }
-        jdbcTemplate.update("""
-            update scene_asset
-               set status = 'CONFIRMED', merge_target_id = null, updated_at = now()
-             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-            """, tenantId, projectId, elementId);
-    }
-
-    private void confirmPropElement(Long tenantId, Long projectId, Long elementId) {
-        Map<String, Object> element = jdbcTemplate.queryForMap("""
-            select id, name, prop_type, appearance, plot_function, related_character, prompt, status, merge_target_id
-              from prop_asset
-             where tenant_id = ?
-               and project_id = ?
-               and id = ?
-               and deleted_at is null
-            """, tenantId, projectId, elementId);
-        Long mergeTargetId = longValue(element.get("merge_target_id"));
-        if ("PENDING_REVIEW".equals(stringValue(element.get("status"))) && mergeTargetId != null) {
-            jdbcTemplate.update("""
-                update prop_asset
-                   set name = ?, prop_type = ?, appearance = ?, plot_function = ?, related_character = ?, prompt = ?, status = 'CONFIRMED', updated_at = now()
-                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-                """,
-                stringValue(element.get("name")),
-                stringValue(element.get("prop_type")),
-                stringValue(element.get("appearance")),
-                stringValue(element.get("plot_function")),
-                stringValue(element.get("related_character")),
-                stringValue(element.get("prompt")),
-                tenantId,
-                projectId,
-                mergeTargetId);
-            jdbcTemplate.update("""
-                update prop_asset
-                   set deleted_at = now(), updated_at = now()
-                 where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-                """, tenantId, projectId, elementId);
-            return;
-        }
-        jdbcTemplate.update("""
-            update prop_asset
-               set status = 'CONFIRMED', merge_target_id = null, updated_at = now()
-             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-            """, tenantId, projectId, elementId);
     }
 
     @Transactional
@@ -760,7 +325,7 @@ public class ScriptWorkflowService {
         insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 1, "场景一", "远景", "雨夜中，林家老宅大门外亮起冷光，主角拖着行李箱出现。", "主角", "主角停在门前，抬头看向门匾。", "三年前你们把我赶出去，今天我回来。", "林家老宅门口", "行李箱", "压抑、回归", 5, "首帧：雨夜豪门老宅门口，主角拖行李箱，冷色电影感", "竖屏短剧镜头，雨水落下，镜头缓慢推进", "DRAFT");
         insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 2, "场景二", "中景", "宴会厅内笑声戛然而止，宾客同时回头。", "主角、旧日熟人", "旧日熟人后退半步，表情震惊。", "这不可能，她怎么会回来？", "宴会厅", "香槟杯", "震惊、反转", 6, "首帧：豪门宴会厅众人回头，主角站在入口", "竖屏短剧镜头，人群视线聚焦，轻微推拉", "DRAFT");
         insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 3, "场景二", "特写", "旧股权协议末页的签名被主角按在灯光下。", "主角", "主角将协议推到桌面中央。", "属于我的，我一分都不会让。", "宴会厅", "旧股权协议", "强冲突、悬念", 4, "首帧：旧股权协议签名特写，手指压住纸张", "竖屏短剧镜头，特写切入，灯光扫过签名", "DRAFT");
-        callTextGateway(context, projectId, "storyboard_breakdown", script.getTitle(), "拆解分镜成功");
+        callTextInvocation(context, projectId, AiBusinessScene.STORYBOARD_BREAKDOWN, script.getTitle(), "拆解分镜成功");
         return workspace(tenantId, projectId);
     }
 
@@ -859,7 +424,7 @@ public class ScriptWorkflowService {
                  where tenant_id = ? and project_id = ? and deleted_at is null
                 """, tenantId, projectId);
         }
-        callTextGateway(context, projectId, "prompt_generate", targetType, "生成提示词成功");
+        callTextInvocation(context, projectId, AiBusinessScene.PROMPT_GENERATE, targetType, "生成提示词成功");
         return workspace(tenantId, projectId);
     }
 
@@ -976,49 +541,6 @@ public class ScriptWorkflowService {
             .toList();
     }
 
-    private void ensureCharacters(Long tenantId, Long projectId, Long userId, String scriptContent) {
-        if (!characters(tenantId, projectId).isEmpty()) {
-            return;
-        }
-        insertCharacter(tenantId, projectId, userId, "主角", "LEAD", "女", "25-30", "落魄千金", "坚韧、果断、有复仇目标", "雨夜拖着行李箱回归，眼神坚定", "短剧女主定妆照，落魄千金回归，雨夜，坚韧眼神");
-        insertCharacter(tenantId, projectId, userId, "旧日熟人", "SUPPORTING", "未知", "30-40", "豪门旧识", "谨慎、震惊、知道旧案线索", "宴会厅人群后方认出主角", "短剧配角，豪门宴会，震惊表情，藏有秘密");
-    }
-
-    private void insertCharacter(Long tenantId, Long projectId, Long userId, String name, String roleType, String gender, String ageRange, String identity, String personality, String appearance, String prompt) {
-        jdbcTemplate.update("""
-            insert into character_asset
-              (tenant_id, project_id, name, role_type, gender, age_range, identity, personality, appearance, relationship_text, plot_function, prompt, status, created_by, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, null, null, ?, 'DRAFT', ?, now(), now())
-            """, tenantId, projectId, name, roleType, gender, ageRange, identity, personality, appearance, prompt, userId);
-    }
-
-    private void ensureScenes(Long tenantId, Long projectId, Long userId, String scriptContent) {
-        if (!scenes(tenantId, projectId).isEmpty()) {
-            return;
-        }
-        insertScene(tenantId, projectId, userId, "林家老宅门口", "EXTERIOR", "雨夜、压抑、回归", "豪门铁门外，雨水和冷光强化主角回归的压迫感", "竖屏短剧，冷色雨夜，豪门大门，电影感", "雨夜豪门老宅门口，铁门，主角拖着行李箱，冷色电影光");
-        insertScene(tenantId, projectId, userId, "宴会厅", "INTERIOR", "热闹后骤然安静", "宾客聚集的豪门宴会空间，适合制造身份反转", "暖色宴会灯光，高级酒店大厅，人物视线聚焦", "豪门宴会厅，宾客震惊，灯光华丽，短剧反转场景");
-    }
-
-    private void insertScene(Long tenantId, Long projectId, Long userId, String name, String sceneType, String atmosphere, String description, String visualStyle, String prompt) {
-        jdbcTemplate.update("""
-            insert into scene_asset
-              (tenant_id, project_id, name, scene_type, time_atmosphere, description, visual_style, plot_reference, prompt, status, created_by, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?, null, ?, 'DRAFT', ?, now(), now())
-            """, tenantId, projectId, name, sceneType, atmosphere, description, visualStyle, prompt, userId);
-    }
-
-    private void ensureProps(Long tenantId, Long projectId, Long userId, String scriptContent) {
-        if (!props(tenantId, projectId).isEmpty()) {
-            return;
-        }
-        jdbcTemplate.update("""
-            insert into prop_asset
-              (tenant_id, project_id, name, prop_type, appearance, plot_function, related_character, prompt, status, created_by, created_at, updated_at)
-            values (?, ?, '旧股权协议', 'DOCUMENT', '带旧签名的纸质协议，边角泛黄', '揭开主角回归和身份反转的关键证据', '主角', '短剧关键道具，旧股权协议，纸张特写，签名清晰', 'DRAFT', ?, now(), now())
-            """, tenantId, projectId, userId);
-    }
-
     private ScriptEntity requireScript(Long tenantId, Long projectId) {
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         if (script == null || script.getContent() == null || script.getContent().isBlank()) {
@@ -1027,22 +549,24 @@ public class ScriptWorkflowService {
         return script;
     }
 
-    private String callTextGateway(TenantContext context, Long projectId, String scene, String requestSummary, String fallbackContent) {
-        teamPointService.consumeForAi(context, 1, scene, null, "AI 调用消耗积分");
+    private AiInvocationResult<AiTextResponse> callTextInvocation(
+        TenantContext context,
+        Long projectId,
+        AiBusinessScene scene,
+        String requestSummary,
+        String fallbackContent
+    ) {
+        teamPointService.consumeForAi(context, 1, scene.pointScene(), null, "AI 调用消耗积分");
         Long modelId = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
-        return aiGateway.text(
-            new AiContext(context.tenantId(), context.userId(), projectId, null, modelId, scene, null),
-            new AiTextRequest(null, fallbackContent == null ? requestSummary : fallbackContent, 0.7, 2048, null)
-        ).content();
-    }
-
-    private Long latestCallLogId(TenantContext context, Long projectId, String scene) {
-        return jdbcTemplate.queryForObject("""
-            select id from ai_call_log
-             where tenant_id = ? and user_id = ? and business_scene = ?
-             order by id desc
-             limit 1
-            """, Long.class, context.tenantId(), context.userId(), scene);
+        return aiInvocationService.invokeText(AiInvocationRequest.text()
+            .tenantId(context.tenantId())
+            .userId(context.userId())
+            .projectId(projectId)
+            .modelId(modelId)
+            .scene(scene)
+            .requestSummary(requestSummary)
+            .userPrompt(fallbackContent == null ? requestSummary : fallbackContent)
+            .build());
     }
 
     private ScriptVersionEntity createVersion(TenantContext context, Long projectId, Long scriptId, String sourceType, String inputSummary, String content, Long callLogId, LocalDateTime now) {

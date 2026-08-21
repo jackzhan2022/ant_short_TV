@@ -8,6 +8,40 @@ import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
 public interface AiVideoTaskMapper extends BaseMapper<AiVideoTaskEntity> {
+    String[] LIST_QUERY_COLUMNS = {
+        "id",
+        "tenant_id",
+        "project_id",
+        "storyboard_id",
+        "service_config_id",
+        "provider_code",
+        "model",
+        "prompt",
+        "negative_prompt",
+        "first_frame_image_id",
+        "first_frame_url",
+        "last_frame_image_id",
+        "last_frame_url",
+        "reference_images",
+        "duration_seconds",
+        "aspect_ratio",
+        "resolution",
+        "motion_strength",
+        "camera_movement",
+        "random_seed",
+        "external_task_id",
+        "external_status",
+        "status",
+        "error_message",
+        "submitted_at",
+        "started_at",
+        "completed_at",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "deleted_at"
+    };
+
     default AiVideoTaskEntity selectActive(Long tenantId, Long projectId, Long id) {
         return selectOne(new QueryWrapper<AiVideoTaskEntity>()
             .eq("tenant_id", tenantId)
@@ -18,6 +52,7 @@ public interface AiVideoTaskMapper extends BaseMapper<AiVideoTaskEntity> {
 
     default List<AiVideoTaskEntity> selectByProject(Long tenantId, Long projectId, String status, Long storyboardId) {
         QueryWrapper<AiVideoTaskEntity> query = new QueryWrapper<AiVideoTaskEntity>()
+            .select(LIST_QUERY_COLUMNS)
             .eq("tenant_id", tenantId)
             .eq("project_id", projectId)
             .isNull("deleted_at")

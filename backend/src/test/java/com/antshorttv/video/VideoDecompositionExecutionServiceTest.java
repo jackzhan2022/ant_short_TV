@@ -64,7 +64,7 @@ class VideoDecompositionExecutionServiceTest {
             executionService.executeEpisode(episodeId);
 
             var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
-            assertThat(episode.get("status")).isEqualTo("PENDING_REVIEW");
+            assertThat(episode.get("status")).as("episode row: %s", episode).isEqualTo("PENDING_REVIEW");
             assertThat(episode.get("draft_status")).isEqualTo("PENDING_REVIEW");
             assertThat((String) episode.get("draft_content")).contains("第 1 集");
             assertThat(episode.get("draft_version")).isEqualTo(1);
@@ -108,13 +108,47 @@ class VideoDecompositionExecutionServiceTest {
 
             var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
             assertThat(episode.get("status")).isEqualTo("FAILED");
-            assertThat(episode.get("error_code")).isEqualTo("AI_RESPONSE_INVALID");
+            assertThat(episode.get("error_code")).as("episode row: %s", episode).isEqualTo("AI_RESPONSE_INVALID");
             var analysis = jdbc.queryForMap("select * from video_decomposition_analysis where episode_id = ?", episodeId);
             assertThat(analysis.get("status")).isEqualTo("FAILED");
             assertThat((String) analysis.get("raw_response")).contains("\"characters\"");
             var log = jdbc.queryForMap("select * from ai_call_log where id = ?", analysis.get("ai_call_log_id"));
             assertThat(log.get("status")).isEqualTo("FAILED");
             assertThat((String) log.get("error_message")).contains("业务解析失败");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void linksAttemptToFailedAiCallLogWhenProviderFails() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = "{\"error\":{\"message\":\"too many requests\"}}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(429, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            Long modelId = prepareModel("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()));
+            Long batchId = insertBatch(modelId);
+            Long episodeId = insertEpisode(batchId);
+
+            executionService.executeEpisode(episodeId);
+
+            var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
+            assertThat(episode.get("status")).isEqualTo("FAILED");
+            assertThat(episode.get("error_code")).isEqualTo("AI_RATE_LIMIT");
+            var attempt = jdbc.queryForMap("select * from video_decomposition_attempt where episode_id = ? and phase = 'VIDEO_ANALYSIS'", episodeId);
+            assertThat(attempt.get("status")).isEqualTo("FAILED");
+            assertThat(attempt.get("ai_call_log_id")).isNotNull();
+            var log = jdbc.queryForMap("select * from ai_call_log where id = ?", attempt.get("ai_call_log_id"));
+            assertThat(log.get("status")).isEqualTo("FAILED");
+            assertThat(log.get("business_scene")).isEqualTo("video_understanding");
+            assertThat((String) log.get("error_message")).contains("AI_RATE_LIMIT");
         } finally {
             server.stop(0);
         }

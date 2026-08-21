@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -13,8 +14,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
 import com.jayway.jsonpath.JsonPath;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -302,6 +307,63 @@ class AiVideoTaskControllerTest {
             .andExpect(jsonPath("$.errorCode", is("AI_VIDEO_SERVICE_UNAVAILABLE")));
     }
 
+    @Test
+    void rejectsUndecryptableVideoServiceKeyWithoutCallingProvider() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/video/generations", exchange -> {
+            calls.incrementAndGet();
+            byte[] body = "{\"externalTaskId\":\"unexpected\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            String token = registerUser("13800016009", "Broken Key Owner");
+            Long tenantId = createTenant(token, "坏密钥视频团队");
+            Long ownerId = userIdByMobile("13800016009");
+            Long projectId = createProject(token, tenantId, ownerId, "坏密钥视频项目", "AI_VIDEO_BROKEN_KEY");
+            Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            jdbc.update(
+                "update ai_service_config set api_key_cipher = ? where id = ?",
+                new com.antshorttv.ai.AiSecretCodec("other-secret").encrypt("sk-real-qwen"),
+                serviceConfigId
+            );
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            grantTeamPoints(tenantId, 5);
+
+            MvcResult result = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .header("X-Tenant-Id", tenantId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "storyboardId":%d,
+                          "serviceConfigId":%d,
+                          "prompt":"雨夜中女主缓慢推门进入",
+                          "firstFrameUrl":"https://cdn.example.com/first-frame.jpg",
+                          "durationSeconds":5,
+                          "aspectRatio":"9:16",
+                          "resolution":"STANDARD",
+                          "cameraMovement":"PUSH_IN",
+                          "motionStrength":"MEDIUM"
+                        }
+                        """.formatted(storyboardId, serviceConfigId)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+            assertThat(calls.get()).isZero();
+            assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.data.status")).isEqualTo("FAILED");
+            assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.data.errorMessage"))
+                .contains("API Key");
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private Long createStoryboard(Long tenantId, Long projectId, Long createdBy) {
         return createStoryboardWithShot(tenantId, projectId, createdBy, 1);
     }
@@ -335,6 +397,10 @@ class AiVideoTaskControllerTest {
     }
 
     private Long createVideoService(String token, Long tenantId) throws Exception {
+        return createVideoService(token, tenantId, "https://example.com/v1");
+    }
+
+    private Long createVideoService(String token, Long tenantId, String baseUrl) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
                 .contentType(MediaType.APPLICATION_JSON)
@@ -343,7 +409,7 @@ class AiVideoTaskControllerTest {
                       "name":"默认视频服务",
                       "serviceType":"VIDEO",
                       "provider":"火山",
-                      "baseUrl":"https://example.com/v1",
+                      "baseUrl":"%s",
                       "apiKey":"sk-test-1234",
                       "model":"seedance-test",
                       "endpoint":"/video/generations",
@@ -353,7 +419,7 @@ class AiVideoTaskControllerTest {
                       "enabled":true,
                       "remark":"测试视频服务"
                     }
-                    """))
+                    """.formatted(baseUrl)))
             .andExpect(status().isOk())
             .andReturn();
         return readLong(result, "$.data.id");

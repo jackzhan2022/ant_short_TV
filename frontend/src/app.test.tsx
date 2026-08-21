@@ -13,6 +13,7 @@ const mockHistory = {
 };
 
 const mockQueryCurrentUser = vi.fn();
+const mockGetAccessToken = vi.fn();
 const mockGetCurrentTenantId = vi.fn();
 const mockQueryCurrentPermissions = vi.fn();
 
@@ -23,6 +24,7 @@ vi.mock('@umijs/max', () => ({
 
 vi.mock('@/services/account-team/auth', () => ({
   currentUser: mockQueryCurrentUser,
+  getAccessToken: mockGetAccessToken,
   getCurrentTenantId: mockGetCurrentTenantId,
 }));
 
@@ -75,6 +77,7 @@ describe('app getInitialState', () => {
       search: '',
       hash: '',
     };
+    mockGetAccessToken.mockReturnValue(null);
     mockGetCurrentTenantId.mockReturnValue(undefined);
     mockQueryCurrentPermissions.mockResolvedValue({
       data: { menus: [], permissions: [] },
@@ -258,6 +261,25 @@ describe('app getInitialState', () => {
       currentTenantId: 22,
       permissions: ['PROJECT:VIEW'],
     });
+  });
+
+  it('does not redirect during the post-login state handoff when a token exists', async () => {
+    const { layout } = await import('./app');
+    mockGetAccessToken.mockReturnValue('token-after-login');
+    mockHistory.location = {
+      pathname: '/projects/1/production-workbench',
+      search: '',
+      hash: '',
+    };
+
+    const layoutConfig = layout({
+      initialState: {},
+      setInitialState: vi.fn(),
+    } as any);
+
+    layoutConfig.onPageChange?.({} as any);
+
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('wraps routed pages with antd App context for message APIs', async () => {

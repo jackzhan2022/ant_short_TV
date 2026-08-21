@@ -87,7 +87,7 @@ public class QwenVideoUnderstandingAdapter {
         HttpRequest httpRequest = HttpRequest.newBuilder(uri)
             .timeout(REQUEST_TIMEOUT)
             .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer " + aiSecretCodec.decrypt(config.getApiKeyCipher()))
+            .header("Authorization", "Bearer " + aiSecretCodec.requireDecrypted(config.getApiKeyCipher()))
             .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
             .build();
         HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());

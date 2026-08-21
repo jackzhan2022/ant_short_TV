@@ -60,6 +60,15 @@ describe('menu routes visibility', () => {
     expect(zhCNMenu['menu.team.my']).toBe('团队管理');
   });
 
+  it('shows the public style library as a first-level menu entry', () => {
+    expect(findRoute('/style-library', routes)).toMatchObject({
+      path: '/style-library',
+      name: 'style-library',
+      access: 'canViewStyleLibrary',
+    });
+    expect(zhCNMenu['menu.style-library']).toBe('风格库');
+  });
+
   it('keeps the production workbench as an independent hidden project page', () => {
     expect(findRoute('/projects/:id/production-workbench', routes)).toMatchObject({
       hideInMenu: true,

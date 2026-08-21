@@ -1,9 +1,14 @@
 import { Helmet, Link, history, useIntl, useModel } from '@umijs/max';
 import { App, Button, Form, Input } from 'antd';
-import React, { startTransition } from 'react';
+import React, { useState } from 'react';
 import { loginByMobile, saveAuthSession } from '@/services/account-team/auth';
+import { queryCurrentPermissions } from '@/services/account-team/rbac';
 import { switchTenant } from '@/services/account-team/tenant';
-import type { AuthSession } from '@/services/account-team/types';
+import type {
+  AuthSession,
+  TenantSummary,
+  UserProfile,
+} from '@/services/account-team/types';
 import Settings from '../../../../config/defaultSettings';
 import AuthPageLayout from '../components/AuthPageLayout';
 
@@ -32,18 +37,48 @@ const nextPathForSession = (session: AuthSession, redirectUrl: string) => {
   return redirectUrl === loginPath ? '/team/my' : redirectUrl;
 };
 
+const toLayoutCurrentUser = (user: UserProfile): API.CurrentUser => ({
+  name: user.nickname,
+  avatar: user.avatar || undefined,
+  userid: String(user.id),
+  email: user.email || undefined,
+  phone: user.mobile,
+  title: user.status === 'ACTIVE' ? '创作团队成员' : '账号已停用',
+  group: 'Ant Short TV',
+  access: 'user',
+});
+
 const Login: React.FC = () => {
-  const { initialState, setInitialState } = useModel('@@initialState');
+  const { setInitialState } = useModel('@@initialState');
   const { message } = App.useApp();
   const intl = useIntl();
+  const [pendingSession, setPendingSession] = useState<AuthSession>();
+  const [selectedTenantId, setSelectedTenantId] = useState<number>();
+  const [selectingTenant, setSelectingTenant] = useState(false);
 
-  const refreshCurrentUser = async () => {
-    const userInfo = await initialState?.fetchUserInfo?.();
-    if (userInfo) {
-      startTransition(() => {
-        setInitialState((state) => ({ ...state, currentUser: userInfo }));
-      });
+  const applyAuthenticatedState = async (
+    session: AuthSession,
+    currentTenantId?: number,
+  ) => {
+    let permissions: string[] = [];
+    if (currentTenantId) {
+      try {
+        const permissionResponse = await queryCurrentPermissions({
+          skipErrorHandler: true,
+        });
+        permissions = permissionResponse.data.permissions;
+      } catch (_error) {
+        permissions = [];
+      }
     }
+
+    const currentUser = toLayoutCurrentUser(session.user);
+    await setInitialState((state) => ({
+      ...state,
+      currentUser,
+      currentTenantId,
+      permissions,
+    }));
   };
 
   const handleSubmit = async (values: { mobile: string; password: string }) => {
@@ -52,17 +87,177 @@ const Login: React.FC = () => {
       password: values.password,
     });
     const session = response.data;
-    if (session.tenants.length === 1) {
-      await switchTenant(session.tenants[0].id);
-      saveAuthSession({ currentTenantId: session.tenants[0].id });
+    if (session.nextAction === 'SELECT_TENANT' && session.tenants.length > 1) {
+      setPendingSession(session);
+      setSelectedTenantId(session.tenants[0].id);
+      message.success('登录成功');
+      return;
     }
-    await refreshCurrentUser();
+    const singleTenantId = session.tenants[0]?.id;
+    if (singleTenantId) {
+      await switchTenant(singleTenantId);
+      saveAuthSession({ currentTenantId: singleTenantId });
+    }
+    await applyAuthenticatedState(session, singleTenantId);
     message.success('登录成功');
 
     const urlParams = new URL(window.location.href).searchParams;
     const redirectUrl = getSafeRedirectUrl(urlParams.get('redirect'));
     history.replace(nextPathForSession(session, redirectUrl));
   };
+
+  const handleEnterSelectedTenant = async () => {
+    if (!pendingSession || !selectedTenantId) return;
+
+    setSelectingTenant(true);
+    try {
+      await switchTenant(selectedTenantId);
+      saveAuthSession({ currentTenantId: selectedTenantId });
+      await applyAuthenticatedState(pendingSession, selectedTenantId);
+      message.success('登录成功');
+
+      const urlParams = new URL(window.location.href).searchParams;
+      const redirectUrl = getSafeRedirectUrl(urlParams.get('redirect'));
+      history.replace(redirectUrl === loginPath ? '/team/my' : redirectUrl);
+    } finally {
+      setSelectingTenant(false);
+    }
+  };
+
+  const renderTenantCard = (tenant: TenantSummary) => {
+    const active = tenant.id === selectedTenantId;
+    return (
+      <button
+        key={tenant.id}
+        type="button"
+        onClick={() => setSelectedTenantId(tenant.id)}
+        style={{
+          width: '100%',
+          minHeight: 86,
+          padding: '18px 22px',
+          border: active ? '1px solid transparent' : '1px solid #e5e7f0',
+          borderRadius: 8,
+          background: active
+            ? 'linear-gradient(90deg, #8b10ff 0%, #b711f4 100%)'
+            : '#f8f9fd',
+          color: active ? '#fff' : '#252830',
+          cursor: 'pointer',
+          textAlign: 'left',
+          boxShadow: active ? '0 8px 20px rgba(142, 30, 246, 0.16)' : 'none',
+        }}
+      >
+        <div
+          style={{
+            marginBottom: 12,
+            fontSize: 16,
+            fontWeight: 700,
+            lineHeight: 1.2,
+          }}
+        >
+          {tenant.name}
+        </div>
+        <div
+          style={{
+            color: active ? 'rgba(255, 255, 255, 0.82)' : '#777b86',
+            fontSize: 14,
+            lineHeight: 1.2,
+          }}
+        >
+          租户码: {tenant.code}
+        </div>
+      </button>
+    );
+  };
+
+  if (pendingSession) {
+    return (
+      <AuthPageLayout>
+        <Helmet>
+          <title>
+            选择团队
+            {Settings.title && ` - ${Settings.title}`}
+          </title>
+        </Helmet>
+
+        <button
+          type="button"
+          onClick={() => setPendingSession(undefined)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 28,
+            padding: 0,
+            border: 0,
+            background: 'transparent',
+            color: '#40424a',
+            cursor: 'pointer',
+            fontSize: 14,
+            lineHeight: 1.5,
+          }}
+        >
+          <span style={{ fontSize: 22, lineHeight: 1 }}>‹</span>
+          返回
+        </button>
+
+        <h1
+          style={{
+            margin: '0 0 14px',
+            color: '#2b2d33',
+            fontSize: 20,
+            fontWeight: 700,
+            lineHeight: 1.4,
+            letterSpacing: 0,
+          }}
+        >
+          请选择登录团队
+        </h1>
+        <p
+          style={{
+            margin: '0 0 28px',
+            color: '#7b7f8a',
+            fontSize: 14,
+            lineHeight: 1.6,
+          }}
+        >
+          当前登录账号可访问{pendingSession.tenants.length}个团队空间，请选择
+        </p>
+
+        <div
+          style={{
+            minHeight: 356,
+            marginBottom: 24,
+            padding: 16,
+            borderRadius: 8,
+            background: '#fff',
+          }}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            {pendingSession.tenants.map(renderTenantCard)}
+          </div>
+        </div>
+
+        <Button
+          type="primary"
+          block
+          size="large"
+          loading={selectingTenant}
+          onClick={handleEnterSelectedTenant}
+          style={{
+            height: 48,
+            borderRadius: 8,
+            border: 0,
+            background: 'linear-gradient(90deg, #b469f3 0%, #6548ef 100%)',
+            boxShadow: 'none',
+            fontSize: 16,
+            fontWeight: 700,
+          }}
+        >
+          立即登录
+        </Button>
+      </AuthPageLayout>
+    );
+  }
 
   return (
     <AuthPageLayout>

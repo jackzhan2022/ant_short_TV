@@ -6,10 +6,13 @@ import Register from './index';
 
 const mocks = vi.hoisted(() => ({
   fetchUserInfo: vi.fn(),
+  acceptInvitation: vi.fn(),
+  createTenant: vi.fn(),
   registerByMobile: vi.fn(),
   replace: vi.fn(),
   setInitialState: vi.fn(),
   success: vi.fn(),
+  switchTenant: vi.fn(),
 }));
 
 vi.mock('@ant-design/icons', () => ({
@@ -47,11 +50,18 @@ vi.mock('antd', () => {
               `input[name="${name}"]`,
             ) as HTMLInputElement | null
           )?.value;
+        const values = Object.fromEntries(
+          Array.from(currentTarget.querySelectorAll('input')).map((input) => [
+            input.name,
+            input.value,
+          ]),
+        );
         onFinish?.({
           mobile: fieldValue('mobile'),
           verificationCode: fieldValue('verificationCode'),
           nickname: fieldValue('nickname'),
           password: fieldValue('password'),
+          ...values,
         });
       }}
     >
@@ -121,14 +131,32 @@ vi.mock('@/services/account-team/auth', () => ({
   registerByMobile: mocks.registerByMobile,
 }));
 
+vi.mock('@/services/account-team/invitation', () => ({
+  acceptInvitation: mocks.acceptInvitation,
+}));
+
+vi.mock('@/services/account-team/tenant', () => ({
+  createTenant: mocks.createTenant,
+  switchTenant: mocks.switchTenant,
+}));
+
 describe('Register Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.registerByMobile.mockResolvedValue({ success: true, data: {} });
     mocks.fetchUserInfo.mockResolvedValue({ name: '新用户' });
+    mocks.acceptInvitation.mockResolvedValue({
+      success: true,
+      data: { tenantId: 20 },
+    });
+    mocks.createTenant.mockResolvedValue({
+      success: true,
+      data: { id: 10, name: '新团队' },
+    });
+    mocks.switchTenant.mockResolvedValue({ success: true });
   });
 
-  it('refreshes current user before entering team pages after registration', async () => {
+  it('shows a completion step after registration before entering team pages', async () => {
     render(<Register />);
 
     fireEvent.change(screen.getByPlaceholderText('请输入手机号'), {
@@ -155,6 +183,66 @@ describe('Register Page', () => {
     });
     expect(mocks.fetchUserInfo).toHaveBeenCalled();
     expect(mocks.setInitialState).toHaveBeenCalled();
+    expect(await screen.findByText('开启您的AI创作之旅')).toBeInTheDocument();
+    expect(screen.getByText('完善注册信息')).toBeInTheDocument();
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('creates a team from the completion step before entering workspace', async () => {
+    render(<Register />);
+
+    fireEvent.change(screen.getByPlaceholderText('请输入手机号'), {
+      target: { value: '13800000000' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('请输入验证码'), {
+      target: { value: '123456' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('请输入昵称'), {
+      target: { value: '新用户' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('请输入至少8位密码'), {
+      target: { value: 'Password123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '注册' }));
+
+    await screen.findByText('完善注册信息');
+
+    fireEvent.change(screen.getByPlaceholderText('可自定义您的团队名称（选填）'), {
+      target: { value: '新团队' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '开始创作' }));
+
+    await waitFor(() => {
+      expect(mocks.createTenant).toHaveBeenCalledWith({
+        name: '新团队',
+        type: 'STUDIO',
+      });
+    });
+    expect(mocks.switchTenant).toHaveBeenCalledWith(10);
+    expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+  });
+
+  it('can skip registration completion and enter team pages', async () => {
+    render(<Register />);
+
+    fireEvent.change(screen.getByPlaceholderText('请输入手机号'), {
+      target: { value: '13800000000' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('请输入验证码'), {
+      target: { value: '123456' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('请输入昵称'), {
+      target: { value: '新用户' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('请输入至少8位密码'), {
+      target: { value: 'Password123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '注册' }));
+
+    await screen.findByText('完善注册信息');
+
+    fireEvent.click(screen.getByRole('button', { name: '跳过' }));
+
     expect(mocks.replace).toHaveBeenCalledWith('/team/my');
   });
 

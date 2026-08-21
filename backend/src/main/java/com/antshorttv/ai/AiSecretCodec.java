@@ -67,6 +67,14 @@ public class AiSecretCodec {
         }
     }
 
+    public String requireDecrypted(String cipherText) {
+        String plainText = decrypt(cipherText);
+        if (plainText == null || plainText.isBlank() || "****".equals(plainText)) {
+            throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商 API Key 无法解密，请重新配置。");
+        }
+        return plainText;
+    }
+
     private byte[] sha256(String value) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));

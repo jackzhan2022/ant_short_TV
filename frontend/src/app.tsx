@@ -19,6 +19,7 @@ import {
 } from '@/components';
 import {
   currentUser as queryCurrentUser,
+  getAccessToken,
   getCurrentTenantId,
 } from '@/services/account-team/auth';
 import { queryCurrentPermissions } from '@/services/account-team/rbac';
@@ -152,7 +153,11 @@ export const layout: RunTimeLayoutConfig = ({
     onPageChange: () => {
       const { location } = history;
       // 如果没有登录，重定向到 login
-      if (!initialState?.currentUser && location.pathname !== loginPath) {
+      if (
+        !initialState?.currentUser &&
+        !getAccessToken() &&
+        location.pathname !== loginPath
+      ) {
         history.replace(
           `${loginPath}?redirect=${encodeURIComponent(location.pathname + location.search + location.hash)}`,
         );

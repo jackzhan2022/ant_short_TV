@@ -38,7 +38,7 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
         }
         try {
-            JsonNode root = postJson(config, chatCompletionsUri(config), chatPayload(model, request));
+            JsonNode root = postJson(config, chatCompletionsUri(config), chatPayload(model, request), apiKey(config));
             String content = root.path("choices").path(0).path("message").path("content").asText(null);
             if (content == null || content.isBlank()) {
                 content = root.path("choices").path(0).path("text").asText("");
@@ -71,7 +71,7 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
         }
         try {
-            JsonNode root = postJson(config, imagesUri(config), imagePayload(model, request));
+            JsonNode root = postJson(config, imagesUri(config), imagePayload(model, request), apiKey(config));
             List<String> imageUrls = new ArrayList<>();
             for (JsonNode item : root.path("data")) {
                 String url = item.path("url").asText(null);
@@ -94,9 +94,11 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
 
     protected boolean shouldUseLocalMock(AiProviderConfigEntity config) {
         String baseUrl = config.getBaseUrl();
-        String apiKey = config.getApiKeyCipher() == null ? "" : aiSecretCodec.decrypt(config.getApiKeyCipher());
-        return baseUrl == null || baseUrl.isBlank() || baseUrl.startsWith("mock://") || baseUrl.contains("example.com")
-            || "test-key".equals(apiKey) || apiKey.startsWith("sk-test-");
+        if (baseUrl == null || baseUrl.isBlank() || baseUrl.startsWith("mock://") || baseUrl.contains("example.com")) {
+            return true;
+        }
+        String apiKey = aiSecretCodec.requireDecrypted(config.getApiKeyCipher());
+        return "test-key".equals(apiKey) || apiKey.startsWith("sk-test-");
     }
 
     protected long elapsed(long started) {
@@ -120,11 +122,18 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         return prompt;
     }
 
-    private JsonNode postJson(AiProviderConfigEntity config, URI uri, Map<String, Object> payload) throws Exception {
+    private String apiKey(AiProviderConfigEntity config) {
+        if (config.getApiKeyCipher() == null || config.getApiKeyCipher().isBlank()) {
+            throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
+        }
+        return aiSecretCodec.requireDecrypted(config.getApiKeyCipher());
+    }
+
+    private JsonNode postJson(AiProviderConfigEntity config, URI uri, Map<String, Object> payload, String apiKey) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(uri)
             .timeout(REQUEST_TIMEOUT)
             .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer " + aiSecretCodec.decrypt(config.getApiKeyCipher()))
+            .header("Authorization", "Bearer " + apiKey)
             .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
             .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
