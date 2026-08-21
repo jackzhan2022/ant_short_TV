@@ -212,4 +212,29 @@ class SchemaMigrationTest {
         assertThat(storagePath).isEqualTo("style-library/public/864621266010645040/cover.png");
         assertThat(imageUrl).isEqualTo("/api/style-library/images/864621266010645040");
     }
+
+    @Test
+    void flywayCreatesPublicInspirationGalleryTable() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+            from information_schema.tables
+            where lower(table_name) = 'inspiration_creation'
+            """, Integer.class);
+        Integer columnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'inspiration_creation'
+              and lower(column_name) in (
+                'external_id', 'external_task_id', 'creation_type', 'task_type',
+                'title', 'author_name', 'url', 'storage_path', 'mime_type',
+                'file_size', 'detail_json', 'source_created_at', 'source_updated_at',
+                'import_status', 'import_error', 'sort_order', 'created_at', 'updated_at'
+              )
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(1);
+        assertThat(columnCount).isEqualTo(18);
+    }
 }
