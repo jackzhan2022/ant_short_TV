@@ -17,7 +17,7 @@ The platform needs a public example inspiration gallery so users can browse prov
 
 ### New Capabilities
 
-- `public-inspiration-gallery`: Platform public image/video inspiration records, object-bucket media transfer, sanitized metadata, list/detail/file APIs, and gallery browsing behavior.
+- `public-inspiration-gallery`: Platform public image/video inspiration records, object-bucket media transfer, sanitized metadata, and backend list/detail/file APIs.
 
 ### Modified Capabilities
 
@@ -26,6 +26,5 @@ The platform needs a public example inspiration gallery so users can browse prov
 ## Impact
 
 - Backend: new Flyway migration, entity/mapper, import service, query service, controller endpoints, and object storage integration.
-- Frontend: new service helpers, route/menu entry, public inspiration gallery list page, and detail view/modal.
-- Tests: backend import/query/file API coverage and frontend route/page/service tests.
+- Tests: backend import/query/file API coverage.
 - Operations: external API credentials must be supplied through runtime configuration or controlled admin-only import input, not committed source code.
