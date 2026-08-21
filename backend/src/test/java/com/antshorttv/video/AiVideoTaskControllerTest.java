@@ -13,8 +13,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
 import com.jayway.jsonpath.JsonPath;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -295,6 +301,43 @@ class AiVideoTaskControllerTest {
             .andExpect(jsonPath("$.errorCode", is("AI_VIDEO_SERVICE_UNAVAILABLE")));
     }
 
+    @Test
+    void rejectsVideoTaskWhenServiceKeyCannotBeDecrypted() throws Exception {
+        String token = registerUser("13800016009", "Decrypt Owner");
+        Long tenantId = createTenant(token, "解密失败团队");
+        Long ownerId = userIdByMobile("13800016009");
+        Long projectId = createProject(token, tenantId, ownerId, "解密失败项目", "AI_VIDEO_DECRYPT");
+        Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:0/v1");
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 1);
+
+        AtomicInteger callCount = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/video/generations", exchange -> handleVideoServerRequest(exchange, callCount));
+        server.start();
+        int port = server.getAddress().getPort();
+        jdbc.update(
+            "update ai_service_config set base_url = ?, api_key_cipher = ? where id = ?",
+            "http://127.0.0.1:" + port + "/v1",
+            "not-a-valid-cipher",
+            serviceConfigId
+        );
+
+        try {
+            mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .header("X-Tenant-Id", tenantId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(videoTaskPayload(storyboardId, serviceConfigId, "密钥坏掉的视频提示词")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status", is("FAILED")))
+                .andExpect(jsonPath("$.data.errorMessage", containsString("AI 服务密钥解密失败")));
+            org.junit.jupiter.api.Assertions.assertEquals(0, callCount.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private Long createStoryboard(Long tenantId, Long projectId, Long createdBy) {
         return createStoryboardWithShot(tenantId, projectId, createdBy, 1);
     }
@@ -328,6 +371,10 @@ class AiVideoTaskControllerTest {
     }
 
     private Long createVideoService(String token, Long tenantId) throws Exception {
+        return createVideoService(token, tenantId, "https://example.com/v1");
+    }
+
+    private Long createVideoService(String token, Long tenantId, String baseUrl) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
                 .contentType(MediaType.APPLICATION_JSON)
@@ -336,7 +383,7 @@ class AiVideoTaskControllerTest {
                       "name":"默认视频服务",
                       "serviceType":"VIDEO",
                       "provider":"火山",
-                      "baseUrl":"https://example.com/v1",
+                      "baseUrl":"%s",
                       "apiKey":"sk-test-1234",
                       "model":"seedance-test",
                       "endpoint":"/video/generations",
@@ -346,7 +393,7 @@ class AiVideoTaskControllerTest {
                       "enabled":true,
                       "remark":"测试视频服务"
                     }
-                    """))
+                    """.formatted(baseUrl)))
             .andExpect(status().isOk())
             .andReturn();
         return readLong(result, "$.data.id");
@@ -442,5 +489,17 @@ class AiVideoTaskControllerTest {
 
     private String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    private void handleVideoServerRequest(HttpExchange exchange, AtomicInteger callCount) throws java.io.IOException {
+        callCount.incrementAndGet();
+        byte[] body = """
+            {"externalTaskId":"server-task-1","status":"ACCEPTED"}
+            """.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+            outputStream.write(body);
+        }
     }
 }

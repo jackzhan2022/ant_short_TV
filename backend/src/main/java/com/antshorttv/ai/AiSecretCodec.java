@@ -45,11 +45,15 @@ public class AiSecretCodec {
     }
 
     String mask(String cipherText) {
-        String plainText = decrypt(cipherText);
-        if (plainText.length() <= 8) {
+        try {
+            String plainText = decrypt(cipherText);
+            if (plainText.length() <= 8) {
+                return "****";
+            }
+            return plainText.substring(0, 3) + "****" + plainText.substring(plainText.length() - 4);
+        } catch (Exception exception) {
             return "****";
         }
-        return plainText.substring(0, 3) + "****" + plainText.substring(plainText.length() - 4);
     }
 
     public String decrypt(String cipherText) {
@@ -63,7 +67,7 @@ public class AiSecretCodec {
             cipher.init(Cipher.DECRYPT_MODE, secretKey, new GCMParameterSpec(TAG_LENGTH, iv));
             return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
         } catch (Exception exception) {
-            return "****";
+            throw new BusinessException(ErrorCode.AI_AUTH_FAILED, "AI 服务密钥解密失败。");
         }
     }
 
