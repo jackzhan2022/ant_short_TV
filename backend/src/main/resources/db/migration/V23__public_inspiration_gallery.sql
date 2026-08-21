@@ -1,4 +1,4 @@
-create table inspiration_creation (
+create table if not exists inspiration_creation (
   id bigint primary key auto_increment,
   external_id varchar(64) not null,
   external_task_id varchar(64) null,
