@@ -26,6 +26,7 @@ yarn.lock
 .history
 *.log
 *.pid
+env
 functions/*
 .temp/**
 
