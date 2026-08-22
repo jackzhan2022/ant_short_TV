@@ -12,6 +12,13 @@ spring:
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-test-query: SELECT 1
+      validation-timeout: 5000
+      keepalive-time: 300000
+      max-lifetime: 1740000
+      minimum-idle: 2
+      maximum-pool-size: 10
   flyway:
     enabled: true
     locations: classpath:db/migration
