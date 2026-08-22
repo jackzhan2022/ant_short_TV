@@ -209,6 +209,16 @@ class OrganizationProjectControllerTest {
     }
 
     @Test
+    void rejectsProjectListWithoutTenantHeader() throws Exception {
+        String ownerToken = registerUser("13800011017", "Tenant Header Owner");
+
+        mockMvc.perform(get("/api/projects")
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+    }
+
+    @Test
     void blocksCrossTenantAndCrossProjectAccess() throws Exception {
         String firstOwnerToken = registerUser("13800011004", "First Project Owner");
         Long firstTenantId = createTenant(firstOwnerToken, "第一项目租户");

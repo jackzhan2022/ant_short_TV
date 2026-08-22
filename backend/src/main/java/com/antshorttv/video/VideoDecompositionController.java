@@ -1,6 +1,7 @@
 package com.antshorttv.video;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.TenantRequestSupport;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -92,6 +93,6 @@ public class VideoDecompositionController {
     }
 
     private Long tenantId(HttpServletRequest request) {
-        return Long.valueOf(request.getHeader("X-Tenant-Id"));
+        return TenantRequestSupport.tenantId(request);
     }
 }

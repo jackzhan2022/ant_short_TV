@@ -1,6 +1,7 @@
 package com.antshorttv.aiimage;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.rbac.RequirePermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -141,6 +142,6 @@ public class AiImageTaskController {
     }
 
     private Long tenantId(HttpServletRequest request) {
-        return Long.valueOf(request.getHeader("X-Tenant-Id"));
+        return TenantRequestSupport.tenantId(request);
     }
 }
