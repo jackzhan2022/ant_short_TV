@@ -195,10 +195,17 @@ public class ProjectService {
         project.code = code;
         project.description = request.description();
         project.coverUrl = request.coverUrl();
+        project.coverSource = request.coverSource();
         project.ownerId = request.ownerId();
         project.status = ProjectStatus.NOT_STARTED.name();
         project.startDate = request.startDate();
         project.endDate = request.endDate();
+        project.aspectRatio = request.aspectRatio();
+        project.fileFormat = request.fileFormat();
+        project.scriptType = request.scriptType();
+        project.breakdownStrength = request.breakdownStrength();
+        project.visualStyle = request.visualStyle();
+        project.initialScriptContent = request.initialScriptContent();
         project.createdBy = context.userId();
         project.createdAt = now;
         project.updatedAt = now;
@@ -228,8 +235,15 @@ public class ProjectService {
         project.name = validateName(request.name());
         project.description = request.description();
         project.coverUrl = request.coverUrl();
+        project.coverSource = request.coverSource();
         project.startDate = request.startDate();
         project.endDate = request.endDate();
+        project.aspectRatio = request.aspectRatio();
+        project.fileFormat = request.fileFormat();
+        project.scriptType = request.scriptType();
+        project.breakdownStrength = request.breakdownStrength();
+        project.visualStyle = request.visualStyle();
+        project.initialScriptContent = request.initialScriptContent();
         project.updatedAt = LocalDateTime.now();
         projectMapper.updateById(project);
         recordProjectLog(tenantId, id, context.userId(), "PROJECT_UPDATE", "PROJECT", id, null, project.name, servletRequest);
@@ -687,11 +701,18 @@ public class ProjectService {
             project.code,
             project.description,
             project.coverUrl,
+            project.coverSource,
             project.ownerId,
             owner == null ? null : owner.getNickname(),
             project.status,
             project.startDate,
             project.endDate,
+            project.aspectRatio,
+            project.fileFormat,
+            project.scriptType,
+            project.breakdownStrength,
+            project.visualStyle,
+            project.initialScriptContent,
             projectMemberMapper.countActiveByProjectId(tenantId, project.id),
             project.createdAt,
             project.updatedAt

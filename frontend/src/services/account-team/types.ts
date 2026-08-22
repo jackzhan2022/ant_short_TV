@@ -181,11 +181,18 @@ export type Project = {
   code: string;
   description?: string | null;
   coverUrl?: string | null;
+  coverSource?: string | null;
   ownerId: number;
   ownerName?: string | null;
   status: ProjectStatus;
   startDate?: string | null;
   endDate?: string | null;
+  aspectRatio?: string | null;
+  fileFormat?: string | null;
+  scriptType?: string | null;
+  breakdownStrength?: string | null;
+  visualStyle?: string | null;
+  initialScriptContent?: string | null;
   memberCount: number;
   createdAt: string;
   updatedAt: string;

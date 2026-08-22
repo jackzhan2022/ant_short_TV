@@ -43,6 +43,12 @@ export default [
     ],
   },
   {
+    path: '/short-drama-creation',
+    name: 'short-drama-creation',
+    icon: 'videoCamera',
+    component: './short-drama-creation',
+  },
+  {
     path: '/',
     redirect: '/team/my',
   },

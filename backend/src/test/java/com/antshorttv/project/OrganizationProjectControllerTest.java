@@ -156,6 +156,59 @@ class OrganizationProjectControllerTest {
     }
 
     @Test
+    void createsProjectWithShortDramaInitializationMetadataAndKeepsLegacyCreateCompatible() throws Exception {
+        String ownerToken = registerUser("13800011016", "Short Drama Owner");
+        Long tenantId = createTenant(ownerToken, "短剧创作团队");
+        Long ownerUserId = userIdByMobile("13800011016");
+
+        MvcResult richResult = mockMvc.perform(post("/api/projects")
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "name":"独立菜单短剧",
+                      "code":"SHORT_DRAMA_CREATION",
+                      "description":"从短剧创作入口创建",
+                      "ownerId":%d,
+                      "aspectRatio":"16:9",
+                      "fileFormat":"SCRIPT",
+                      "scriptType":"PREMIUM_DRAMA",
+                      "breakdownStrength":"MEDIUM",
+                      "coverSource":"FIRST_FRAME",
+                      "visualStyle":"3D风格-高清真实渲染",
+                      "initialScriptContent":"第一场，雨夜重逢。"
+                    }
+                    """.formatted(ownerUserId)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.aspectRatio", is("16:9")))
+            .andExpect(jsonPath("$.data.fileFormat", is("SCRIPT")))
+            .andExpect(jsonPath("$.data.scriptType", is("PREMIUM_DRAMA")))
+            .andExpect(jsonPath("$.data.breakdownStrength", is("MEDIUM")))
+            .andExpect(jsonPath("$.data.coverSource", is("FIRST_FRAME")))
+            .andExpect(jsonPath("$.data.visualStyle", is("3D风格-高清真实渲染")))
+            .andExpect(jsonPath("$.data.initialScriptContent", is("第一场，雨夜重逢。")))
+            .andReturn();
+
+        Number createdId = JsonPath.read(richResult.getResponse().getContentAsString(), "$.data.id");
+        mockMvc.perform(get("/api/projects/%d".formatted(createdId.longValue()))
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.visualStyle", is("3D风格-高清真实渲染")));
+
+        mockMvc.perform(post("/api/projects")
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"旧入口项目","code":"LEGACY_SHORT_DRAMA","description":"旧请求","ownerId":%d}
+                    """.formatted(ownerUserId)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.name", is("旧入口项目")));
+    }
+
+    @Test
     void blocksCrossTenantAndCrossProjectAccess() throws Exception {
         String firstOwnerToken = registerUser("13800011004", "First Project Owner");
         Long firstTenantId = createTenant(firstOwnerToken, "第一项目租户");

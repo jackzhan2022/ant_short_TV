@@ -12,9 +12,16 @@ record CreateProjectRequest(
     @NotBlank @Size(max = 50) String code,
     String description,
     String coverUrl,
+    String coverSource,
     @NotNull Long ownerId,
     LocalDate startDate,
-    LocalDate endDate
+    LocalDate endDate,
+    String aspectRatio,
+    String fileFormat,
+    String scriptType,
+    String breakdownStrength,
+    String visualStyle,
+    String initialScriptContent
 ) {
 }
 
@@ -23,8 +30,15 @@ record UpdateProjectRequest(
     @NotBlank @Size(max = 200) String name,
     String description,
     String coverUrl,
+    String coverSource,
     LocalDate startDate,
-    LocalDate endDate
+    LocalDate endDate,
+    String aspectRatio,
+    String fileFormat,
+    String scriptType,
+    String breakdownStrength,
+    String visualStyle,
+    String initialScriptContent
 ) {
 }
 

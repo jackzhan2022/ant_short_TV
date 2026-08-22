@@ -54,4 +54,5 @@ export default {
   'menu.ai-service-management.logs': '調用日誌',
   'menu.video-script-decomposition': '視頻拆劇',
   'menu.style-library': '風格庫',
+  'menu.short-drama-creation': '短劇創作',
 };

@@ -17,6 +17,10 @@ mybatis-plus:
 
 object-storage:
   mode: local
+  endpoint: https://minio.aixmax.cn
+  bucket: ant-short-tv
+  access-key: test-access-key
+  secret-key: test-secret-key
 
 ai:
   secret-key: test-ai-secret-key

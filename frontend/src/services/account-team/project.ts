@@ -24,9 +24,16 @@ export type ProjectFormValues = {
   code?: string;
   description?: string;
   coverUrl?: string;
+  coverSource?: string;
   ownerId: number;
   startDate?: string;
   endDate?: string;
+  aspectRatio?: string;
+  fileFormat?: string;
+  scriptType?: string;
+  breakdownStrength?: string;
+  visualStyle?: string;
+  initialScriptContent?: string;
 };
 
 export type ProjectMemberFormValues = {

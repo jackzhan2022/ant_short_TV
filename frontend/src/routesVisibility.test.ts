@@ -69,6 +69,15 @@ describe('menu routes visibility', () => {
     expect(zhCNMenu['menu.style-library']).toBe('风格库');
   });
 
+  it('shows the short drama creation entry as a first-level menu route', () => {
+    expect(findRoute('/short-drama-creation', routes)).toMatchObject({
+      path: '/short-drama-creation',
+      name: 'short-drama-creation',
+      access: 'canUseProjectCenter',
+    });
+    expect(zhCNMenu['menu.short-drama-creation']).toBe('短剧创作');
+  });
+
   it('keeps the production workbench as an independent hidden project page', () => {
     expect(findRoute('/projects/:id/production-workbench', routes)).toMatchObject({
       hideInMenu: true,
