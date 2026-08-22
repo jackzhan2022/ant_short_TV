@@ -191,6 +191,16 @@ class OrganizationProjectControllerTest {
             .andReturn();
 
         Number createdId = JsonPath.read(richResult.getResponse().getContentAsString(), "$.data.id");
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(createdId.longValue()))
+                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.script.title", is("独立菜单短剧")))
+            .andExpect(jsonPath("$.data.script.content", is("第一场，雨夜重逢。")))
+            .andExpect(jsonPath("$.data.script.sourceType", is("MANUAL_EDIT")))
+            .andExpect(jsonPath("$.data.versions", hasSize(1)))
+            .andExpect(jsonPath("$.data.versions[0].content", is("第一场，雨夜重逢。")));
+
         mockMvc.perform(get("/api/projects/%d".formatted(createdId.longValue()))
                 .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
                 .header("X-Tenant-Id", tenantId))
