@@ -32,7 +32,16 @@ public class MaterialFileAccessService {
     }
 
     public String publicUrl(String storagePath) {
-        if (storagePath == null || !storagePath.startsWith("/materials/")) {
+        if (storagePath == null || storagePath.isBlank()) {
+            return storagePath;
+        }
+        if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
+            return storagePath;
+        }
+        if (objectStorageService.enabled()) {
+            return objectStorageService.publicUrl(storagePath);
+        }
+        if (!storagePath.startsWith("/materials/")) {
             return storagePath;
         }
         String path = pathOnly(storagePath);

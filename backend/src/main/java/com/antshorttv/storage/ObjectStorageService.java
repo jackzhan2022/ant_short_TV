@@ -4,14 +4,17 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
+import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.http.Method;
 import jakarta.annotation.PostConstruct;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -76,6 +79,25 @@ public class ObjectStorageService {
             return new InputStreamResource(object);
         } catch (Exception exception) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "对象文件不存在。");
+        }
+    }
+
+    public String publicUrl(String storagePath) {
+        if (storagePath == null || storagePath.isBlank()) {
+            return storagePath;
+        }
+        if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
+            return storagePath;
+        }
+        try {
+            return client().getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+                .method(Method.GET)
+                .bucket(properties.getBucket())
+                .object(key(storagePath))
+                .expiry(7, TimeUnit.DAYS)
+                .build());
+        } catch (Exception exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "对象访问链接生成失败：" + exception.getMessage());
         }
     }
 
