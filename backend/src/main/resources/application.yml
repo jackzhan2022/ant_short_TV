@@ -8,9 +8,9 @@ spring:
   application:
     name: ant-short-tv-backend
   datasource:
-    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/ant_short_tv?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:}
+    url: ${MYSQL_URL}
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   flyway:
     enabled: true
