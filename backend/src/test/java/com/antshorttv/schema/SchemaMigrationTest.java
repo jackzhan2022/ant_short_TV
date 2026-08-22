@@ -209,7 +209,7 @@ class SchemaMigrationTest {
         assertThat(columnCount).isEqualTo(11);
         assertThat(styleCount).isEqualTo(139);
         assertThat(category).isEqualTo("3D风格");
-        assertThat(storagePath).isEqualTo("style-library/public/864621266010645040/cover.png");
-        assertThat(imageUrl).isEqualTo("/api/style-library/images/864621266010645040");
+        assertThat(storagePath).isEqualTo("style-library/public/864621266010645040/cover-compressed.jpg");
+        assertThat(imageUrl).isEqualTo("/style-library/public/864621266010645040/cover-compressed.jpg");
     }
 }
