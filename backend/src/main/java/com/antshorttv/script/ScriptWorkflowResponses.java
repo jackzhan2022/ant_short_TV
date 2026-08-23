@@ -137,6 +137,7 @@ record ScriptWorkspaceResponse(
     List<CharacterAssetResponse> characters,
     List<SceneAssetResponse> scenes,
     List<PropAssetResponse> props,
-    List<StoryboardResponse> storyboards
+    List<StoryboardResponse> storyboards,
+    List<ScriptEpisodeResponse> episodes
 ) {
 }

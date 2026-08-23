@@ -97,7 +97,8 @@ public class ScriptWorkflowService {
             characters(tenantId, projectId),
             scenes(tenantId, projectId),
             props(tenantId, projectId),
-            storyboards(tenantId, projectId)
+            storyboards(tenantId, projectId),
+            ScriptEpisodeParser.parse(script == null ? null : script.getContent())
         );
     }
 

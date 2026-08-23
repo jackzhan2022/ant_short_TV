@@ -5,6 +5,7 @@ import ProductionWorkbench from './index';
 const mocks = vi.hoisted(() => ({
   historyPush: vi.fn(),
   queryProject: vi.fn(),
+  queryTeamPointAccount: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -20,6 +21,14 @@ vi.mock('@umijs/max', () => ({
 
 vi.mock('../detail/service', () => ({
   queryProject: mocks.queryProject,
+}));
+
+vi.mock('@/services/account-team/auth', () => ({
+  getCurrentTenantId: () => 10,
+}));
+
+vi.mock('@/services/account-team/points', () => ({
+  queryTeamPointAccount: mocks.queryTeamPointAccount,
 }));
 
 vi.mock('antd', () => ({
@@ -55,7 +64,15 @@ describe('ProductionWorkbench shell', () => {
       data: {
         id: 1,
         name: '最危险的捉迷藏',
+        aspectRatio: '9:16',
+        fileFormat: 'SCRIPT',
+        scriptType: 'PREMIUM_DRAMA',
+        breakdownStrength: 'MEDIUM',
+        visualStyle: '写实都市',
       },
+    });
+    mocks.queryTeamPointAccount.mockResolvedValue({
+      data: { balance: 88 },
     });
   });
 
@@ -66,6 +83,9 @@ describe('ProductionWorkbench shell', () => {
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设定' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI 模型' })).toBeInTheDocument();
+    expect(await screen.findByText((_, element) => element?.textContent === '✦ 88')).toBeInTheDocument();
+    expect(screen.getAllByText('9:16').length).toBeGreaterThan(0);
+    expect(screen.getByText('写实都市')).toBeInTheDocument();
     expect(screen.queryByText('绘梦工坊')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '初始设定' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '角色资产' })).not.toBeInTheDocument();
