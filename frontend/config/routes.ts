@@ -180,6 +180,13 @@ export default [
         access: 'canViewAiServices',
         component: './ai-service-management/logs',
       },
+      {
+        path: '/ai-service-management/agents',
+        name: 'agents',
+        icon: 'robot',
+        access: 'canViewBuiltInAiAgents',
+        component: './ai-service-management/agents',
+      },
     ],
   },
   {

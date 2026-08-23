@@ -49,7 +49,6 @@ npm install                                                # Update dependencies
 │   ├── routes.ts     # Route definitions
 │   ├── defaultSettings.ts  # Layout & theme settings
 │   └── proxy.ts      # Dev proxy config
-├── mock/             # Mock data
 ├── src/
 │   ├── components/   # Shared components
 │   ├── locales/      # i18n resources
@@ -66,9 +65,9 @@ npm install                                                # Update dependencies
 
 | Command | Description |
 |---------|-------------|
-| `npm start` | Start dev server (UMI_ENV=dev, with Mock) |
-| `npm run dev` | Start dev server (UMI_ENV=dev, no Mock) |
-| `npm run start:no-mock` | Start without Mock |
+| `npm start` | Start dev server and proxy to backend (UMI_ENV=dev, MOCK=none) |
+| `npm run dev` | Start dev server and proxy to backend (UMI_ENV=dev, MOCK=none) |
+| `npm run start:no-mock` | Compatibility command, proxy to backend |
 | `npm run start:pre` | Pre-production environment |
 | `npm run start:test` | Test environment |
 | `npm run build` | Build for production |
@@ -448,18 +447,6 @@ npm run test:update         # Update snapshots
 
 Test files go next to the component, named `*.test.ts(x)`.
 
-**Mock data:** Create files in `mock/`:
-
-```ts
-// File: mock/user.ts
-export default {
-  'GET /api/currentUser': { name: 'Serati Ma', access: 'admin' },
-  'POST /api/login': (req, res) => { res.end('ok'); },
-};
-```
-
-Umi auto-registers mocks, active in dev mode.
-
 **Proxy config** is in `config/proxy.ts`:
 
 ```ts
@@ -474,14 +461,14 @@ export default {
 };
 ```
 
-> 💡 Use `MOCK=none` to skip mock and proxy to backend: `npm run start:no-mock`.
+> 💡 All `/api/` requests are proxied to the backend at `http://localhost:8080` during development.
 
 → See [umi Testing](https://umijs.org/en-US/docs/guides/test), [umi Mock](https://umijs.org/en-US/docs/guides/mock)
 
 ## FAQ
 
-**Q: How to disable Mock?**
-`npm run start:no-mock` or `cross-env MOCK=none max dev`
+**Q: Where do dev API requests go?**
+`/api/` requests are proxied to the backend at `http://localhost:8080` via `config/proxy.ts`.
 
 **Q: How to change the primary color?**
 Edit `colorPrimary` in `config/defaultSettings.ts`. Use SettingDrawer for live preview in dev mode.
@@ -534,16 +521,6 @@ Then run `/pro-upgrade` in Claude Code at the project root — AI will auto-diff
 # 2. Use in components
 #    import { useModel } from '@umijs/max';
 #    const { data } = useModel('myModel');  // 'myModel' matches filename
-```
-
-### Add a Mock API
-
-```bash
-# Global mock: mock/api.ts (applies to all environments)
-# Page-level mock: src/pages/my-page/_mock.ts (auto-discovered by Umi)
-
-# Mock format:
-# export default { 'GET /api/my-data': { data: [] } }
 ```
 
 ### Generate API Service Code
@@ -619,6 +596,5 @@ For other AI assistants (Cursor, etc.), paste the content of `.claude/skills/pro
 - **Biome over ESLint**: This project uses Biome for linting and formatting. Do not install ESLint or Prettier plugins.
 - **Commit convention**: Must follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g., `feat:`, `fix:`, `chore:`).
 - **`npx antd lint ./src`**: Must pass with zero errors and warnings before committing.
-- **Mock priority**: `mock/` directory for global mocks, `src/pages/**/_mock.ts` for page-level mocks. Both are auto-registered by Umi.
 - **Styling priority**: Tailwind (layout) > antd-style (theme tokens) > CSS Modules (component styles) > Less (legacy global styles only).
 - **Path aliases**: `@/*` → `./src/*`, `@@/*` → `./src/.umi/*`

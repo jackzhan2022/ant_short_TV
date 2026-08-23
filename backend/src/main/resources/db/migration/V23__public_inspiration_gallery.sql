@@ -22,3 +22,4 @@ create table if not exists inspiration_creation (
   index idx_inspiration_creation_import_order (import_status, sort_order, id),
   index idx_inspiration_creation_external_task (external_task_id)
 );
+

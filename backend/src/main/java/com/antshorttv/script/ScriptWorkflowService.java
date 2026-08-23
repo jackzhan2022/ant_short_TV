@@ -24,6 +24,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -165,23 +166,17 @@ public class ScriptWorkflowService {
         ScriptEntity script = requireScript(tenantId, projectId);
         String type = request.rewriteType().trim();
         String requirement = blankToNull(request.requirement());
-        String content = """
-            %s
-
-            【AI改写版本】
-            改写类型：%s
-            改写要求：%s
-            改写说明：已将冲突前置、对白缩短，并为每一场保留明确镜头钩子。
-            风险提示：请确认角色关系和关键伏笔是否与正式设定一致。
-            """.formatted(script.getContent(), type, requirement == null ? "保持原剧情核心" : requirement);
-        AiInvocationResult<AiTextResponse> invocation = callTextInvocation(
+        AiInvocationResult<AiTextResponse> invocation = callAgentTextInvocation(
             context,
             projectId,
             AiBusinessScene.SCRIPT_REWRITE,
             type,
-            content
+            Map.of(
+                "scriptContent", script.getContent(),
+                "rewriteRequirement", requirement == null ? "保持原剧情核心" : requirement
+            )
         );
-        content = invocation.content();
+        String content = invocation.content();
         Long callLogId = invocation.aiCallLogId();
         LocalDateTime now = LocalDateTime.now();
 
@@ -567,6 +562,27 @@ public class ScriptWorkflowService {
             .scene(scene)
             .requestSummary(requestSummary)
             .userPrompt(fallbackContent == null ? requestSummary : fallbackContent)
+            .build());
+    }
+
+    private AiInvocationResult<AiTextResponse> callAgentTextInvocation(
+        TenantContext context,
+        Long projectId,
+        AiBusinessScene scene,
+        String requestSummary,
+        Map<String, Object> variables
+    ) {
+        teamPointService.consumeForAi(context, 1, scene.pointScene(), null, "AI 调用消耗积分");
+        Long modelId = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
+        return aiInvocationService.invokeText(AiInvocationRequest.text()
+            .tenantId(context.tenantId())
+            .userId(context.userId())
+            .projectId(projectId)
+            .modelId(modelId)
+            .scene(scene)
+            .requestSummary(requestSummary)
+            .promptTemplateId(scene.agentCode())
+            .templateVariables(variables)
             .build());
     }
 

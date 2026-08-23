@@ -61,6 +61,7 @@ final class RbacPermissions {
         new RbacPermissionDefinition("PLATFORM_AI_MODEL_EDIT", "编辑平台AI模型", PermissionType.BUTTON, "PLATFORM_AI_MODEL", "EDIT"),
         new RbacPermissionDefinition("PLATFORM_AI_MODEL_ENABLE", "启停平台AI模型", PermissionType.BUTTON, "PLATFORM_AI_MODEL", "ENABLE"),
         new RbacPermissionDefinition("PLATFORM_AI_MODEL_DELETE", "删除平台AI模型", PermissionType.BUTTON, "PLATFORM_AI_MODEL", "DELETE"),
+        new RbacPermissionDefinition("PLATFORM_AI_AGENT_VIEW", "查看内置AI Agent", PermissionType.PAGE, "PLATFORM_AI_AGENT", "VIEW"),
         new RbacPermissionDefinition("PROJECT_AI_CONFIG_VIEW", "查看项目AI模型配置", PermissionType.PAGE, "PROJECT_AI_CONFIG", "VIEW"),
         new RbacPermissionDefinition("PROJECT_AI_CONFIG_EDIT", "编辑项目AI模型配置", PermissionType.BUTTON, "PROJECT_AI_CONFIG", "EDIT"),
         new RbacPermissionDefinition("AI_VIDEO_TASK:VIEW", "查看视频生成任务", PermissionType.PAGE, "AI_VIDEO_TASK", "VIEW"),

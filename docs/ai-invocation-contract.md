@@ -17,6 +17,10 @@ The contract keeps provider adapters focused on transport and keeps workflow ser
 
 Built-in prompt templates are rendered through `PromptTemplateRenderer`.
 
+Built-in business scenes may resolve to immutable Agents in the built-in Agent registry. An Agent owns the business prompt contract and an ordered list of reusable Skills. Skills are prompt modules only; they do not execute tools or maintain memory. The Agent does not select a model and follows the platform capability router.
+
+The Agent and Skill catalog is read-only. Definitions are changed through code releases and are exposed through the AI management page for inspection and final-prompt preview.
+
 Current template ids:
 
 - `script.element.character.extract`
@@ -24,6 +28,16 @@ Current template ids:
 - `script.element.prop.extract`
 - `video.understanding.analysis`
 - `video.script.draft`
+
+Current built-in Agent codes include:
+
+- `script-rewrite`
+- `script-character-extract`
+- `script-scene-extract`
+- `script-prop-extract`
+- `video-understanding`
+- `video-script-draft`
+- `script-review`
 
 Required variables are validated before provider calls. Missing variables fail with `VALIDATION_ERROR`, so the system does not create a misleading provider-success log for an invocation that never left the application.
 

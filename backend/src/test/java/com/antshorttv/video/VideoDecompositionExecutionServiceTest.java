@@ -76,6 +76,18 @@ class VideoDecompositionExecutionServiceTest {
                  where task_id = ? and business_scene = 'video_script_draft'
                 """, Integer.class, episodeId);
             assertThat(draftLogs).isEqualTo(1);
+            String understandingSummary = jdbc.queryForObject("""
+                select request_summary from ai_call_log
+                 where task_id = ? and business_scene = 'video_understanding'
+                order by id desc limit 1
+                """, String.class, episodeId);
+            String draftSummary = jdbc.queryForObject("""
+                select request_summary from ai_call_log
+                 where task_id = ? and business_scene = 'video_script_draft'
+                order by id desc limit 1
+                """, String.class, episodeId);
+            assertThat(understandingSummary).startsWith("[Agent:video-understanding]");
+            assertThat(draftSummary).startsWith("[Agent:video-script-draft]");
         } finally {
             server.stop(0);
         }
