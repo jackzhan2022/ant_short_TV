@@ -81,6 +81,15 @@ export const errorConfig: RequestConfig = {
       } else if (error.response) {
         // Axios 的错误
         // 请求成功发出且服务器也响应了状态码，但状态代码超出了 2xx 的范围
+        if (error.response.status === 0) {
+          message.error(
+            getIntl().formatMessage({
+              id: 'app.request.unreachable',
+              defaultMessage: '服务暂不可达，请确认后端已启动后重试。',
+            }),
+          );
+          return;
+        }
         const errorText = getBackendErrorText(error.response.data);
         message.error(errorText || `Response status:${error.response.status}`);
       } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -92,7 +101,12 @@ export const errorConfig: RequestConfig = {
           }),
         );
       } else if (error.request) {
-        message.error('None response! Please retry.');
+        message.error(
+          getIntl().formatMessage({
+            id: 'app.request.unreachable',
+            defaultMessage: '服务暂不可达，请确认后端已启动后重试。',
+          }),
+        );
       } else {
         message.error('Request error, please retry.');
       }

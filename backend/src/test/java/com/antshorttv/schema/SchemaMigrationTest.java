@@ -294,4 +294,25 @@ class SchemaMigrationTest {
         assertThat(tableCount).isEqualTo(1);
         assertThat(columnCount).isEqualTo(18);
     }
+
+    @Test
+    void flywayAllowsVideoDecompositionToBeTenantScopedBeforeProjectBinding() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer batchProjectNullable = jdbc.queryForObject("""
+            select case when is_nullable = 'YES' then 1 else 0 end
+            from information_schema.columns
+            where lower(table_name) = 'video_decomposition_batch'
+              and lower(column_name) = 'project_id'
+            """, Integer.class);
+        Integer episodeProjectNullable = jdbc.queryForObject("""
+            select case when is_nullable = 'YES' then 1 else 0 end
+            from information_schema.columns
+            where lower(table_name) = 'video_decomposition_episode'
+              and lower(column_name) = 'project_id'
+            """, Integer.class);
+
+        assertThat(batchProjectNullable).isEqualTo(1);
+        assertThat(episodeProjectNullable).isEqualTo(1);
+    }
 }

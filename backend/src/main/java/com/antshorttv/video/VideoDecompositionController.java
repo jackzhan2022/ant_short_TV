@@ -42,11 +42,10 @@ public class VideoDecompositionController {
 
     @PostMapping("/uploads")
     public ApiResponse<VideoDecompositionUploadResponse> upload(
-        @RequestParam Long projectId,
         @RequestParam("file") MultipartFile file,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.upload(tenantId(request), projectId, file));
+        return ApiResponse.success(service.upload(tenantId(request), file));
     }
 
     @GetMapping("/batches/{batchId}")

@@ -79,9 +79,8 @@ public class VideoDecompositionService {
         this.storageRoot = Path.of(storageRoot).toAbsolutePath().normalize();
     }
 
-    public VideoDecompositionUploadResponse upload(Long tenantId, Long projectId, MultipartFile file) {
+    public VideoDecompositionUploadResponse upload(Long tenantId, MultipartFile file) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        requireProjectAccess(context, projectId, "AI_SERVICE:USE");
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择视频文件。");
         }
@@ -90,9 +89,8 @@ public class VideoDecompositionService {
         validateVideoFile(fileName, mimeType, file.getSize(), null);
         String extension = extension(fileName);
         String day = LocalDateTime.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String storagePath = "/materials/%d/%d/video-decomposition/%s/%s%s".formatted(
+        String storagePath = "/materials/%d/video-decomposition/%s/%s%s".formatted(
             tenantId,
-            projectId,
             day,
             UUID.randomUUID(),
             extension
@@ -129,7 +127,7 @@ public class VideoDecompositionService {
             wrapper.eq(VideoDecompositionBatchEntity::getProjectId, projectId);
         }
         return batchMapper.selectList(wrapper).stream()
-            .filter(batch -> projectId != null || canViewProject(context, batch.getProjectId()))
+            .filter(batch -> projectId != null || batch.getProjectId() == null || canViewProject(context, batch.getProjectId()))
             .map(batch -> VideoDecompositionBatchResponse.from(batch, episodeMapper.selectByBatch(tenantId, batch.getId())))
             .toList();
     }
@@ -137,20 +135,18 @@ public class VideoDecompositionService {
     public VideoDecompositionBatchResponse detail(Long tenantId, Long batchId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionBatchEntity batch = requireBatch(tenantId, batchId);
-        requireProjectAccess(context, batch.getProjectId(), "PROJECT:VIEW");
+        requireProjectAccessIfBound(context, batch.getProjectId(), "PROJECT:VIEW");
         return VideoDecompositionBatchResponse.from(batch, episodeMapper.selectByBatch(tenantId, batchId));
     }
 
     @Transactional
     public VideoDecompositionBatchResponse create(Long tenantId, CreateVideoDecompositionBatchRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        requireProjectAccess(context, request.projectId(), "AI_SERVICE:USE");
-        validateVideos(tenantId, request.projectId(), request.videos());
+        validateVideos(tenantId, request.videos());
 
         LocalDateTime now = LocalDateTime.now();
         VideoDecompositionBatchEntity batch = new VideoDecompositionBatchEntity();
         batch.setTenantId(tenantId);
-        batch.setProjectId(request.projectId());
         batch.setName(request.name().trim());
         batch.setModelId(request.modelId());
         batch.setStatus("PENDING_ANALYSIS");
@@ -167,7 +163,6 @@ public class VideoDecompositionService {
             VideoDecompositionEpisodeEntity episode = new VideoDecompositionEpisodeEntity();
             episode.setBatchId(batch.getId());
             episode.setTenantId(tenantId);
-            episode.setProjectId(request.projectId());
             episode.setEpisodeNo(index + 1);
             episode.setSourceFileName(video.fileName().trim());
             episode.setStoragePath(video.storagePath().trim());
@@ -192,7 +187,7 @@ public class VideoDecompositionService {
     public VideoDecompositionEpisodeResponse retry(Long tenantId, Long episodeId, RetryVideoDecompositionEpisodeRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
-        requireProjectAccess(context, episode.getProjectId(), "AI_SERVICE:USE");
+        requireProjectAccessIfBound(context, episode.getProjectId(), "AI_SERVICE:USE");
         String phase = normalizePhase(request == null ? null : request.phase());
         if (!RETRYABLE_STATUSES.contains(episode.getStatus()) || episode.getExecutionToken() != null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前拆剧任务状态不可重试。");
@@ -217,7 +212,7 @@ public class VideoDecompositionService {
     public VideoDecompositionEpisodeDetailResponse episodeDetail(Long tenantId, Long episodeId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
-        requireProjectAccess(context, episode.getProjectId(), "PROJECT:VIEW");
+        requireProjectAccessIfBound(context, episode.getProjectId(), "PROJECT:VIEW");
         VideoDecompositionAnalysisEntity analysis = analysisMapper.selectLatest(episodeId);
         List<VideoDecompositionAttemptResponse> attempts = attemptMapper.selectList(
                 new LambdaQueryWrapper<VideoDecompositionAttemptEntity>()
@@ -244,7 +239,7 @@ public class VideoDecompositionService {
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
-        requireProjectAccess(context, episode.getProjectId(), "AI_SERVICE:USE");
+        requireProjectAccessIfBound(context, episode.getProjectId(), "AI_SERVICE:USE");
         requireDraftVersion(episode, request.expectedDraftVersion());
 
         episode.setDraftContent(request.draftContent().trim());
@@ -268,10 +263,13 @@ public class VideoDecompositionService {
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
-        requireProjectAccess(context, episode.getProjectId(), "AI_SERVICE:USE");
+        requireProjectAccess(context, request.projectId(), "AI_SERVICE:USE");
+        if (episode.getProjectId() != null && !episode.getProjectId().equals(request.projectId())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "该拆剧单集已绑定其他项目。");
+        }
         requireDraftVersion(episode, request.expectedDraftVersion());
 
-        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, episode.getProjectId());
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, request.projectId());
         Long currentVersionId = script == null ? null : script.getCurrentVersionId();
         if (request.expectedCurrentScriptVersionId() != null
             && !request.expectedCurrentScriptVersionId().equals(currentVersionId)) {
@@ -279,6 +277,15 @@ public class VideoDecompositionService {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        if (episode.getProjectId() == null) {
+            episode.setProjectId(request.projectId());
+            VideoDecompositionBatchEntity batch = requireBatch(tenantId, episode.getBatchId());
+            if (batch.getProjectId() == null) {
+                batch.setProjectId(request.projectId());
+                batch.setUpdatedAt(now);
+                batchMapper.updateById(batch);
+            }
+        }
         if (script == null) {
             script = createVideoImportScript(context, episode, request.draftContent().trim(), now);
         }
@@ -302,11 +309,11 @@ public class VideoDecompositionService {
         return VideoDecompositionEpisodeResponse.from(episode);
     }
 
-    private void validateVideos(Long tenantId, Long projectId, List<VideoUploadMetadataRequest> videos) {
+    private void validateVideos(Long tenantId, List<VideoUploadMetadataRequest> videos) {
         for (VideoUploadMetadataRequest video : videos) {
             String storagePath = video.storagePath().trim();
-            if (!storagePath.startsWith("/materials/%d/%d/".formatted(tenantId, projectId)) || storagePath.contains("..")) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频文件必须属于当前项目素材。");
+            if (!storagePath.startsWith("/materials/%d/video-decomposition/".formatted(tenantId)) || storagePath.contains("..")) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频文件必须属于当前租户的拆剧素材。");
             }
             validateVideoFile(video.fileName(), video.mimeType(), video.fileSize(), video.durationSeconds());
         }
@@ -468,7 +475,16 @@ public class VideoDecompositionService {
         throw new BusinessException(ErrorCode.PROJECT_ACCESS_DENIED, "无权访问该项目。");
     }
 
+    private void requireProjectAccessIfBound(TenantContext context, Long projectId, String permissionCode) {
+        if (projectId != null) {
+            requireProjectAccess(context, projectId, permissionCode);
+        }
+    }
+
     private boolean canViewProject(TenantContext context, Long projectId) {
+        if (projectId == null) {
+            return true;
+        }
         try {
             requireProjectAccess(context, projectId, "PROJECT:VIEW");
             return true;

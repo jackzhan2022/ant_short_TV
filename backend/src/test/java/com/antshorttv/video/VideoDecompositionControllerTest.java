@@ -3,6 +3,7 @@ package com.antshorttv.video;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -17,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -34,12 +36,32 @@ class VideoDecompositionControllerTest {
     private UserMapper userMapper;
 
     @Test
-    void createsBatchAndKeepsUploadOrderAsEpisodeNumbers() throws Exception {
+    void uploadsVideoWithoutProjectId() throws Exception {
+        String mobile = uniqueMobile();
+        String token = registerUser(mobile, "Decomposition Uploader");
+        Long tenantId = createTenant(token, "独立拆剧团队");
+
+        mockMvc.perform(multipart("/api/video-script-decomposition/uploads")
+                .file(new MockMultipartFile(
+                    "file",
+                    "episode-1.mp4",
+                    "video/mp4",
+                    "video bytes".getBytes()
+                ))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.storagePath", org.hamcrest.Matchers.startsWith(
+                "/materials/%d/video-decomposition/".formatted(tenantId)
+            )));
+    }
+
+    @Test
+    void createsUnboundBatchAndKeepsUploadOrderAsEpisodeNumbers() throws Exception {
         String mobile = uniqueMobile();
         String token = registerUser(mobile, "Decomposition Owner");
         Long tenantId = createTenant(token, "拆剧团队");
         Long ownerId = userIdByMobile(mobile);
-        Long projectId = createProject(token, tenantId, ownerId, "拆剧项目", "VIDEO_DECOMP_ORDER");
 
         MvcResult result = mockMvc.perform(post("/api/video-script-decomposition/batches")
                 .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -47,29 +69,28 @@ class VideoDecompositionControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
-                      "projectId":%d,
                       "name":"第一季拆剧",
                       "modelId":10,
                       "videos":[
                         {
                           "fileName":"episode-b.mp4",
-                          "storagePath":"/materials/%d/%d/episode-b.mp4",
+                          "storagePath":"/materials/%d/video-decomposition/20260823/episode-b.mp4",
                           "mimeType":"video/mp4",
                           "fileSize":2048,
                           "durationSeconds":96.5
                         },
                         {
                           "fileName":"episode-a.mp4",
-                          "storagePath":"/materials/%d/%d/episode-a.mp4",
+                          "storagePath":"/materials/%d/video-decomposition/20260823/episode-a.mp4",
                           "mimeType":"video/mp4",
                           "fileSize":4096,
                           "durationSeconds":88
                         }
                       ]
                     }
-                    """.formatted(projectId, tenantId, projectId, tenantId, projectId)))
+                    """.formatted(tenantId, tenantId)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.projectId", is(projectId.intValue())))
+            .andExpect(jsonPath("$.data.projectId").doesNotExist())
             .andExpect(jsonPath("$.data.totalEpisodes", is(2)))
             .andExpect(jsonPath("$.data.episodes", hasSize(2)))
             .andExpect(jsonPath("$.data.episodes[0].episodeNo", is(1)))
@@ -113,8 +134,8 @@ class VideoDecompositionControllerTest {
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"draftContent":"审核后第 1 集剧本","expectedDraftVersion":1,"expectedCurrentScriptVersionId":null}
-                    """))
+                    {"draftContent":"审核后第 1 集剧本","expectedDraftVersion":1,"projectId":%d,"expectedCurrentScriptVersionId":null}
+                    """.formatted(projectId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("CONFIRMED")))
             .andExpect(jsonPath("$.data.draftStatus", is("CONFIRMED")));
@@ -150,8 +171,8 @@ class VideoDecompositionControllerTest {
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"draftContent":"待确认草稿","expectedDraftVersion":3,"expectedCurrentScriptVersionId":%d}
-                    """.formatted(oldVersionId)))
+                    {"draftContent":"待确认草稿","expectedDraftVersion":3,"projectId":%d,"expectedCurrentScriptVersionId":%d}
+                    """.formatted(projectId, oldVersionId)))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.errorCode", is("SCRIPT_VERSION_CONFLICT")));
 
@@ -159,6 +180,29 @@ class VideoDecompositionControllerTest {
         org.assertj.core.api.Assertions.assertThat(episode.get("draft_content")).isEqualTo("待确认草稿");
         org.assertj.core.api.Assertions.assertThat(episode.get("status")).isEqualTo("PENDING_REVIEW");
         org.assertj.core.api.Assertions.assertThat(episode.get("confirmed_script_version_id")).isNull();
+    }
+
+    @Test
+    void rejectsConfirmWithoutTargetProjectId() throws Exception {
+        String mobile = uniqueMobile();
+        String token = registerUser(mobile, "Decomposition Missing Project");
+        Long tenantId = createTenant(token, "拆剧项目校验团队");
+        Long ownerId = userIdByMobile(mobile);
+        Long projectId = createProject(token, tenantId, ownerId, "拆剧目标项目", "VIDEO_DECOMP_TARGET");
+        Long episodeId = insertReviewableEpisode(tenantId, null, ownerId, "待确认草稿", 1);
+
+        mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/confirm".formatted(episodeId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"draftContent":"待确认草稿","expectedDraftVersion":1,"expectedCurrentScriptVersionId":null}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+
+        var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
+        org.assertj.core.api.Assertions.assertThat(episode.get("project_id")).isNull();
     }
 
     @Test

@@ -11,4 +11,5 @@ export default {
   'app.error.reload': '刷新页面',
   'app.error.home': '返回首页',
   'app.request.offline': '网络不可用，请检查网络连接后重试。',
+  'app.request.unreachable': '服务暂不可达，请确认后端已启动后重试。',
 };

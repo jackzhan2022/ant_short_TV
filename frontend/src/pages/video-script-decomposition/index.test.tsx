@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import VideoScriptDecompositionPage from './index';
+import VideoScriptDecompositionPage, {
+  buildDefaultVideoDecompositionBatchName,
+  canCreateVideoDecompositionBatch,
+} from './index';
 
 const mocks = vi.hoisted(() => ({
-  confirm: vi.fn(async ({ onOk }) => onOk?.()),
   success: vi.fn(),
   historyPush: vi.fn(),
   queryVideoDecompositionBatches: vi.fn(),
@@ -34,7 +36,6 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({
       message: { success: mocks.success, error: vi.fn(), warning: vi.fn() },
-      modal: { confirm: mocks.confirm },
     }),
   },
   Button: ({ children, disabled, onClick }: any) => (
@@ -86,6 +87,29 @@ vi.mock('antd', () => ({
       placeholder={placeholder}
       onChange={(event) => onChange?.(Number(event.target.value))}
     />
+  ),
+  Modal: ({ children, open, title, onCancel, onOk }: any) =>
+    open ? (
+      <section>
+        <h2>{title}</h2>
+        {children}
+        <button type="button" onClick={onOk}>
+          确认导入
+        </button>
+        <button type="button" onClick={onCancel}>
+          取消
+        </button>
+      </section>
+    ) : null,
+  Progress: ({ percent }: any) => <div>{percent}%</div>,
+  Steps: ({ items = [], current }: any) => (
+    <ol>
+      {items.map((item: any, index: number) => (
+        <li key={item.title} aria-current={index === current ? 'step' : undefined}>
+          {item.title}
+        </li>
+      ))}
+    </ol>
   ),
   Row: ({ children }: any) => <div>{children}</div>,
   Space: ({ children }: any) => <div>{children}</div>,
@@ -145,11 +169,12 @@ vi.mock('./service', () => ({
 describe('VideoScriptDecompositionPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    let currentDraftContent = '原始草稿';
     mocks.queryVideoDecompositionBatches.mockResolvedValue({
       data: [
         {
           id: 9,
-          projectId: 101,
+          projectId: null,
           name: '第一季拆剧',
           status: 'PENDING_REVIEW',
           totalEpisodes: 1,
@@ -159,10 +184,10 @@ describe('VideoScriptDecompositionPage', () => {
             {
               id: 88,
               batchId: 9,
-              projectId: 101,
+              projectId: null,
               episodeNo: 1,
               sourceFileName: 'episode-1.mp4',
-              storagePath: '/materials/1/101/episode-1.mp4',
+              storagePath: '/materials/1/video-decomposition/20260823/episode-1.mp4',
               fileSize: 2048,
               status: 'PENDING_REVIEW',
               draftStatus: 'PENDING_REVIEW',
@@ -172,29 +197,32 @@ describe('VideoScriptDecompositionPage', () => {
         },
       ],
     });
-    mocks.queryVideoDecompositionEpisode.mockResolvedValue({
+    mocks.queryVideoDecompositionEpisode.mockImplementation(async () => ({
       data: {
         episode: {
           id: 88,
           batchId: 9,
-          projectId: 101,
+          projectId: null,
           episodeNo: 1,
           sourceFileName: 'episode-1.mp4',
-          storagePath: '/materials/1/101/episode-1.mp4',
+          storagePath: '/materials/1/video-decomposition/20260823/episode-1.mp4',
           fileSize: 2048,
           status: 'PENDING_REVIEW',
           analysisVersion: 1,
           draftVersion: 2,
         },
-        draftContent: '原始草稿',
+        draftContent: currentDraftContent,
         currentScriptVersionId: 12,
         rawResponse: '{"characters":[]}',
         normalizedJson:
           '{"characters":[],"scenes":[],"props":[],"timeline":[],"dialogue":[],"actions":[],"emotions":[]}',
         attempts: [],
       },
+    }));
+    mocks.updateVideoDecompositionDraft.mockImplementation(async () => {
+      currentDraftContent = '审核后草稿';
+      return { data: {} };
     });
-    mocks.updateVideoDecompositionDraft.mockResolvedValue({ data: {} });
     mocks.confirmVideoDecompositionDraft.mockResolvedValue({ data: {} });
   });
 
@@ -213,10 +241,16 @@ describe('VideoScriptDecompositionPage', () => {
       expect(mocks.updateVideoDecompositionDraft).toHaveBeenCalledWith(88, '审核后草稿', 2);
     });
 
-    fireEvent.change(screen.getByPlaceholderText('等待草稿生成后可在此审核和编辑'), {
-      target: { value: '审核后草稿' },
-    });
     fireEvent.click(screen.getByRole('button', { name: '确认导入' }));
+    const dialog = (await screen.findByText('确认导入第 1 集剧本？')).closest('section');
+    expect(dialog).toBeTruthy();
+    fireEvent.change(
+      within(dialog as HTMLElement).getByPlaceholderText('请输入要导入的项目 ID'),
+      { target: { value: '101' } },
+    );
+    fireEvent.click(
+      within(dialog as HTMLElement).getByRole('button', { name: '确认导入' }),
+    );
 
     await waitFor(() => {
       expect(mocks.confirmVideoDecompositionDraft).toHaveBeenCalledWith(
@@ -224,8 +258,27 @@ describe('VideoScriptDecompositionPage', () => {
         '审核后草稿',
         2,
         12,
+        101,
       );
     });
-    expect(mocks.confirm).toHaveBeenCalled();
+  });
+
+  it('uses a generated batch name and allows submission when uploads are ready', () => {
+    expect(buildDefaultVideoDecompositionBatchName(new Date('2026-08-24T01:23:45'))).toBe(
+      '拆剧批次-20260824-012345',
+    );
+    expect(
+      canCreateVideoDecompositionBatch([
+        {
+          uid: '1',
+          episodeNo: 1,
+          fileName: 'episode-1.mp4',
+          size: 2048,
+          status: 'READY',
+          storagePath: '/materials/1/video-decomposition/20260824/episode-1.mp4',
+        },
+      ]),
+    ).toBe(true);
+    expect(canCreateVideoDecompositionBatch([])).toBe(false);
   });
 });

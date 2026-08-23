@@ -51,4 +51,33 @@ describe('requestErrorConfig', () => {
       'DUPLICATE_MOBILE：该手机号已注册。',
     );
   });
+
+  it('shows a service unavailable message when the request has no response', () => {
+    errorConfig.errorConfig?.errorHandler?.(
+      {
+        request: {},
+      } as any,
+      {},
+    );
+
+    expect(mocks.error).toHaveBeenCalledWith(
+      '服务暂不可达，请确认后端已启动后重试。',
+    );
+  });
+
+  it('shows a service unavailable message for a zero status response', () => {
+    errorConfig.errorConfig?.errorHandler?.(
+      {
+        response: {
+          status: 0,
+          data: undefined,
+        },
+      } as any,
+      {},
+    );
+
+    expect(mocks.error).toHaveBeenCalledWith(
+      '服务暂不可达，请确认后端已启动后重试。',
+    );
+  });
 });

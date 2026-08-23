@@ -12,7 +12,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 record CreateVideoDecompositionBatchRequest(
-    @NotNull Long projectId,
     @NotBlank @Size(max = 200) String name,
     Long modelId,
     @NotEmpty @Size(max = 50) List<@Valid VideoUploadMetadataRequest> videos
@@ -42,6 +41,7 @@ record UpdateVideoDecompositionDraftRequest(
 record ConfirmVideoDecompositionDraftRequest(
     @NotBlank @Size(max = 200000) String draftContent,
     @Min(0) @Max(9999) Integer expectedDraftVersion,
+    @NotNull Long projectId,
     Long expectedCurrentScriptVersionId
 ) {
 }

@@ -22,8 +22,11 @@ import {
   Form,
   Input,
   InputNumber,
+  Progress,
+  Modal,
   Row,
   Space,
+  Steps,
   Tag,
   Typography,
   Upload,
@@ -58,6 +61,14 @@ type EpisodeUpload = {
 
 const MAX_VIDEO_SIZE = 1024 * 1024 * 1024;
 const SUPPORTED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
+
+const padTimePart = (value: number) => String(value).padStart(2, '0');
+
+export const buildDefaultVideoDecompositionBatchName = (date = new Date()) =>
+  `拆剧批次-${date.getFullYear()}${padTimePart(date.getMonth() + 1)}${padTimePart(date.getDate())}-${padTimePart(date.getHours())}${padTimePart(date.getMinutes())}${padTimePart(date.getSeconds())}`;
+
+export const canCreateVideoDecompositionBatch = (episodes: EpisodeUpload[]) =>
+  episodes.length > 0 && episodes.every((episode) => Boolean(episode.storagePath));
 
 const formatFileSize = (size: number) => {
   if (size >= 1024 * 1024 * 1024) {
@@ -106,10 +117,9 @@ const episodeStatusColor = (status: string) => {
 };
 
 const VideoScriptDecompositionPage = () => {
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const [files, setFiles] = useState<UploadFile[]>([]);
-  const [projectId, setProjectId] = useState<number>();
-  const [batchName, setBatchName] = useState('');
+  const [batchName, setBatchName] = useState(() => buildDefaultVideoDecompositionBatchName());
   const [modelId, setModelId] = useState<number>();
   const [batches, setBatches] = useState<VideoDecompositionBatch[]>([]);
   const [loading, setLoading] = useState(false);
@@ -118,14 +128,15 @@ const VideoScriptDecompositionPage = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [draftContent, setDraftContent] = useState('');
   const [draftSaving, setDraftSaving] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [confirmProjectId, setConfirmProjectId] = useState<number>();
+  const [confirmSaving, setConfirmSaving] = useState(false);
 
   const episodes = useMemo(() => normalizeEpisodes(files), [files]);
-  const canCreateBatch =
-    Boolean(projectId && batchName.trim() && episodes.length) &&
-    episodes.every((episode) => episode.storagePath);
+  const canCreateBatch = canCreateVideoDecompositionBatch(episodes);
 
   const loadBatches = async () => {
-    const response = await queryVideoDecompositionBatches(projectId);
+    const response = await queryVideoDecompositionBatches();
     setBatches(response.data ?? []);
   };
 
@@ -142,7 +153,39 @@ const VideoScriptDecompositionPage = () => {
 
   useEffect(() => {
     loadBatches().catch(() => undefined);
-  }, [projectId]);
+  }, []);
+
+  const currentBatch = batches[0];
+  const currentAnalysisPercent = currentBatch
+    ? Math.round(
+        ((currentBatch.completedEpisodes + currentBatch.failedEpisodes) /
+          Math.max(currentBatch.totalEpisodes, 1)) *
+          100,
+      )
+    : 0;
+  const activeStep = detail
+    ? detail.episode.status === 'CONFIRMED'
+      ? 3
+      : detail.episode.status === 'PENDING_REVIEW'
+        ? 2
+        : 1
+    : currentBatch
+      ? currentAnalysisPercent >= 100
+        ? 2
+        : 1
+      : episodes.length > 0
+        ? 0
+        : 0;
+  const overallPercent =
+    activeStep === 0
+      ? episodes.length > 0 && episodes.every((episode) => episode.storagePath)
+        ? 25
+        : 0
+      : activeStep === 1
+        ? 25 + Math.round(currentAnalysisPercent * 0.25)
+        : activeStep === 2
+          ? 75
+          : 100;
 
   const moveFile = (uid: string, direction: -1 | 1) => {
     setFiles((current) => {
@@ -185,24 +228,34 @@ const VideoScriptDecompositionPage = () => {
     if (!detail) {
       return;
     }
-    modal.confirm({
-      title: `确认导入第 ${detail.episode.episodeNo} 集剧本？`,
-      content:
-        '确认后会创建一个来源为 VIDEO_IMPORT 的剧本版本，不会静默覆盖当前剧本内容。',
-      okText: '确认导入',
-      cancelText: '取消',
-      onOk: async () => {
-        await confirmVideoDecompositionDraft(
-          detail.episode.id,
-          draftContent,
-          detail.episode.draftVersion,
-          detail.currentScriptVersionId,
-        );
-        message.success('已创建视频导入剧本版本');
-        await loadEpisodeDetail(detail.episode.id);
-        await loadBatches();
-      },
-    });
+    setConfirmProjectId(detail.episode.projectId ?? undefined);
+    setConfirmVisible(true);
+  };
+
+  const submitConfirmDraft = async () => {
+    if (!detail) {
+      return;
+    }
+    if (!confirmProjectId) {
+      message.warning('确认导入前请选择目标项目');
+      return;
+    }
+    setConfirmSaving(true);
+    try {
+      await confirmVideoDecompositionDraft(
+        detail.episode.id,
+        draftContent,
+        detail.episode.draftVersion,
+        detail.currentScriptVersionId,
+        confirmProjectId,
+      );
+      message.success('已创建视频导入剧本版本');
+      setConfirmVisible(false);
+      await loadEpisodeDetail(detail.episode.id);
+      await loadBatches();
+    } finally {
+      setConfirmSaving(false);
+    }
   };
 
   const uploadProps: UploadProps = {
@@ -210,10 +263,6 @@ const VideoScriptDecompositionPage = () => {
     multiple: true,
     fileList: files,
     beforeUpload: (file) => {
-      if (!projectId) {
-        message.error('请先填写项目 ID');
-        return Upload.LIST_IGNORE;
-      }
       if (file.size > MAX_VIDEO_SIZE) {
         message.error(`${file.name} 超过 1GB，不能加入拆剧批次`);
         return Upload.LIST_IGNORE;
@@ -226,13 +275,7 @@ const VideoScriptDecompositionPage = () => {
     },
     customRequest: async (options) => {
       try {
-        if (!projectId) {
-          throw new Error('请先填写项目 ID');
-        }
-        const response = await uploadEpisodeVideo(
-          projectId,
-          options.file as File,
-        );
+        const response = await uploadEpisodeVideo(options.file as File);
         options.onSuccess?.(response.data);
       } catch (error) {
         options.onError?.(error as Error);
@@ -251,19 +294,8 @@ const VideoScriptDecompositionPage = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Form layout="vertical">
           <Row gutter={16}>
-            <Col xs={24} md={8}>
-              <Form.Item label="项目 ID" required>
-                <InputNumber
-                  min={1}
-                  value={projectId}
-                  onChange={(value) => setProjectId(value ?? undefined)}
-                  style={{ width: '100%' }}
-                  placeholder="选择或输入关联项目"
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="批次名称" required>
+            <Col xs={24} md={12}>
+              <Form.Item label="批次名称">
                 <Input
                   value={batchName}
                   onChange={(event) => setBatchName(event.target.value)}
@@ -271,7 +303,7 @@ const VideoScriptDecompositionPage = () => {
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} md={8}>
+            <Col xs={24} md={12}>
               <Form.Item label="视频理解模型">
                 <InputNumber
                   min={1}
@@ -284,6 +316,36 @@ const VideoScriptDecompositionPage = () => {
             </Col>
           </Row>
         </Form>
+
+        <div>
+          <Steps
+            current={activeStep}
+            percent={overallPercent}
+            items={[
+              {
+                title: '上传视频 · 25%',
+                description: '选择视频并生成租户级拆剧批次。',
+              },
+              {
+                title: '智能分析 · 50%',
+                description: '系统自动分析视频并生成每集草稿。',
+              },
+              {
+                title: '审核草稿 · 75%',
+                description: '检查结构化结果并编辑单集草稿。',
+              },
+              {
+                title: '确认导入 · 100%',
+                description: '选择目标项目后导入正式剧本版本。',
+              },
+            ]}
+          />
+          <Progress
+            percent={overallPercent}
+            status={activeStep === 3 ? 'success' : 'active'}
+            format={(percent) => `当前流程 ${percent}%`}
+          />
+        </div>
 
         <Upload.Dragger {...uploadProps}>
           <p className="ant-upload-drag-icon">
@@ -372,15 +434,16 @@ const VideoScriptDecompositionPage = () => {
               disabled={!canCreateBatch}
               loading={loading}
               onClick={async () => {
-                if (!projectId || !canCreateBatch) {
-                  message.warning('请填写项目信息并等待视频上传完成');
+                if (!canCreateBatch) {
+                  message.warning('请等待视频上传完成');
                   return;
                 }
                 setLoading(true);
                 try {
+                  const resolvedBatchName =
+                    batchName.trim() || buildDefaultVideoDecompositionBatchName();
                   await createVideoDecompositionBatch({
-                    projectId,
-                    name: batchName,
+                    name: resolvedBatchName,
                     modelId,
                     videos: episodes.map((episode) => ({
                       fileName: episode.fileName,
@@ -391,7 +454,7 @@ const VideoScriptDecompositionPage = () => {
                   });
                   message.success('拆剧批次已创建');
                   setFiles([]);
-                  setBatchName('');
+                  setBatchName(buildDefaultVideoDecompositionBatchName());
                   await loadBatches();
                 } finally {
                   setLoading(false);
@@ -420,6 +483,7 @@ const VideoScriptDecompositionPage = () => {
               title: '项目 ID',
               dataIndex: 'projectId',
               width: 100,
+              render: (value) => value ?? '未绑定',
             },
             {
               title: '进度',
@@ -654,6 +718,30 @@ const VideoScriptDecompositionPage = () => {
             </div>
           ) : null}
         </Drawer>
+
+        <Modal
+          title={detail ? `确认导入第 ${detail.episode.episodeNo} 集剧本？` : '确认导入剧本'}
+          open={confirmVisible}
+          okText="确认导入"
+          cancelText="取消"
+          confirmLoading={confirmSaving}
+          destroyOnHidden
+          onCancel={() => setConfirmVisible(false)}
+          onOk={submitConfirmDraft}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              确认后会创建一个来源为 VIDEO_IMPORT 的剧本版本，不会静默覆盖当前剧本内容。
+            </Typography.Paragraph>
+            <InputNumber
+              min={1}
+              value={confirmProjectId}
+              onChange={(value) => setConfirmProjectId(value ?? undefined)}
+              style={{ width: '100%' }}
+              placeholder="请输入要导入的项目 ID"
+            />
+          </div>
+        </Modal>
       </div>
     </PageContainer>
   );

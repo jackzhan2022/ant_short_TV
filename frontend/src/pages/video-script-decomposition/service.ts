@@ -18,7 +18,7 @@ export type VideoDecompositionUpload = {
 export type VideoDecompositionEpisode = {
   id: number;
   batchId: number;
-  projectId: number;
+  projectId?: number | null;
   episodeNo: number;
   sourceFileName: string;
   storagePath: string;
@@ -57,7 +57,7 @@ export type VideoDecompositionEpisodeDetail = {
 
 export type VideoDecompositionBatch = {
   id: number;
-  projectId: number;
+  projectId?: number | null;
   name: string;
   modelId?: number | null;
   status: string;
@@ -70,15 +70,13 @@ export type VideoDecompositionBatch = {
 };
 
 export type CreateVideoDecompositionBatchValues = {
-  projectId: number;
   name: string;
   modelId?: number;
   videos: VideoDecompositionUpload[];
 };
 
-export const uploadEpisodeVideo = async (projectId: number, file: File) => {
+export const uploadEpisodeVideo = async (file: File) => {
   const data = new FormData();
-  data.append('projectId', String(projectId));
   data.append('file', file);
   return request<ApiResponse<VideoDecompositionUpload>>(
     '/api/video-script-decomposition/uploads',
@@ -146,6 +144,7 @@ export const confirmVideoDecompositionDraft = async (
   draftContent: string,
   expectedDraftVersion?: number | null,
   expectedCurrentScriptVersionId?: number | null,
+  projectId?: number | null,
 ) =>
   request<ApiResponse<VideoDecompositionEpisode>>(
     `/api/video-script-decomposition/episodes/${episodeId}/confirm`,
@@ -156,6 +155,7 @@ export const confirmVideoDecompositionDraft = async (
         draftContent,
         expectedDraftVersion,
         expectedCurrentScriptVersionId,
+        projectId,
       },
     },
   );
