@@ -12,7 +12,7 @@
 - [x] 2.2 Migrate current built-in prompt workflows to Agent resolution while preserving their existing input variables, output structures, and business parsing behavior.
 - [x] 2.3 Keep model selection on `AiModelRouter` platform capability routing and preserve existing provider adapter, error mapping, points, and call-log behavior.
 - [x] 2.4 Include resolved Agent and business-scene context in invocation metadata or request summaries supported by the current logging contract.
-- [ ] 2.5 Add integration and regression tests covering character extraction, scene extraction, prop extraction, video understanding, video script drafting, and script review.
+- [x] 2.5 Add integration and regression tests covering character extraction, scene extraction, prop extraction, video understanding, video script drafting, and script review.
 
 ## 3. Read-Only Backend APIs
 
@@ -32,6 +32,6 @@
 ## 5. Verification And Documentation
 
 - [x] 5.1 Document the built-in Agent and Skill registry contract and how new built-ins are added through code releases.
-- [ ] 5.2 Run backend tests and type/lint checks for changed modules.
-- [ ] 5.3 Run frontend tests, type checks, Biome lint, and Ant Design lint for changed modules.
-- [ ] 5.4 Verify the OpenSpec requirements against implemented behavior and confirm no create/edit/delete/enable/disable/version APIs exist.
+- [x] 5.2 Run backend tests and type/lint checks for changed modules.
+- [x] 5.3 Run frontend tests, type checks, Biome lint, and Ant Design lint for changed modules.
+- [x] 5.4 Verify the OpenSpec requirements against implemented behavior and confirm no create/edit/delete/enable/disable/version APIs exist.
