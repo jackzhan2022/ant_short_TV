@@ -59,6 +59,7 @@ export default {
   'menu.video-script-decomposition': '视频拆剧',
   'menu.style-library': '风格库',
   'menu.short-drama-creation': '短剧创作',
+  'menu.script-review': '剧本审核',
   'menu.team': '创作团队',
   'menu.team.my': '团队管理',
   'menu.team.select': '选择团队',

@@ -19,6 +19,10 @@ export default function access(
       currentUser &&
       permissions.includes('PROJECT:VIEW') &&
       permissions.includes('AI_SERVICE:USE'),
+    canViewScriptReview:
+      currentUser &&
+      permissions.includes('PROJECT:VIEW') &&
+      permissions.includes('SCRIPT:EDIT'),
     canViewProjects: currentUser && permissions.includes('PROJECT:VIEW'),
     canViewAiServices: currentUser && permissions.includes('AI_SERVICE:VIEW'),
     canViewAiManagement:

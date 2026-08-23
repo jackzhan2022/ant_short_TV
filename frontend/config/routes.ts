@@ -211,6 +211,13 @@ export default [
     component: './short-drama-creation',
   },
   {
+    path: '/script-review',
+    name: 'script-review',
+    icon: 'audit',
+    access: 'canViewScriptReview',
+    component: './script-review',
+  },
+  {
     path: '/projects/:id/production-workbench',
     hideInMenu: true,
     access: 'canViewProjects',

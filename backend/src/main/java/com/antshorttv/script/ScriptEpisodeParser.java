@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class ScriptEpisodeParser {
+public final class ScriptEpisodeParser {
     private static final Pattern CHINESE_HEADING = Pattern.compile(
         "^((?:第\\s*(?:\\d{1,3}|[零〇一二两三四五六七八九十百]+)\\s*集))(?:\\s*[:：-]\\s*|\\s+)?(.*)$",
         Pattern.CASE_INSENSITIVE
@@ -21,7 +21,7 @@ final class ScriptEpisodeParser {
     private ScriptEpisodeParser() {
     }
 
-    static List<ScriptEpisodeResponse> parse(String content) {
+    public static List<ScriptEpisodeResponse> parse(String content) {
         if (content == null || content.isBlank()) {
             return List.of();
         }

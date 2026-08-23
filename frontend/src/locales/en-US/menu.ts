@@ -59,6 +59,7 @@ export default {
   'menu.video-script-decomposition': 'Video Script Decomposition',
   'menu.style-library': 'Style Library',
   'menu.short-drama-creation': 'Short Drama Creation',
+  'menu.script-review': 'Script Review',
   'menu.team': 'Creative Team',
   'menu.team.my': 'My Teams',
   'menu.team.select': 'Select Team',
