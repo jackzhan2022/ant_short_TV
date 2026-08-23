@@ -120,4 +120,13 @@ describe('ProjectList', () => {
       );
     });
   });
+
+  it('opens the independent short drama creation page from toolbar', async () => {
+    render(<ProjectList />);
+
+    await screen.findByText('测试短剧');
+    fireEvent.click(screen.getByRole('button', { name: /创建项目/ }));
+
+    expect(mocks.historyPush).toHaveBeenCalledWith('/short-drama-creation');
+  });
 });

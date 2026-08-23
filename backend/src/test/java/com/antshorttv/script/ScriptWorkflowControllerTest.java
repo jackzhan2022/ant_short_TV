@@ -53,6 +53,38 @@ class ScriptWorkflowControllerTest {
     }
 
     @Test
+    void returnsParsedEpisodesInScriptWorkspace() throws Exception {
+        String token = registerUser("13800013020", "Episode Owner");
+        Long tenantId = createTenant(token, "分集团队");
+        Long ownerId = userIdByMobile("13800013020");
+        Long projectId = createProject(token, tenantId, ownerId, "分集项目", "SCRIPT_EPISODES");
+
+        mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "title":"分集项目",
+                      "content":"第1集：开端\\n主角回家。\\n\\nEP02: 冲突\\n对手出现。",
+                      "status":"DRAFT"
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.episodes", hasSize(2)))
+            .andExpect(jsonPath("$.data.episodes[0].episodeNo", is(1)))
+            .andExpect(jsonPath("$.data.episodes[0].title", is("第1集：开端")))
+            .andExpect(jsonPath("$.data.episodes[0].content", is("主角回家。")))
+            .andExpect(jsonPath("$.data.episodes[1].episodeNo", is(2)))
+            .andExpect(jsonPath("$.data.episodes[1].content", is("对手出现。")));
+    }
+
+    @Test
     void generatesScriptDraftAndWorkspaceData() throws Exception {
         String token = registerUser("13800013002", "Generate Owner");
         Long tenantId = createTenant(token, "AI剧本团队");

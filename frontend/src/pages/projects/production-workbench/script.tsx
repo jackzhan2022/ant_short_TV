@@ -4,8 +4,8 @@ import { useParams } from '@umijs/max';
 import {
   queryScriptWorkspace,
   type ScriptWorkspace,
-  type StoryboardShot,
 } from '../detail/components/service';
+import { queryProject } from '../detail/service';
 
 type EpisodeBlock = {
   episodeNo: number;
@@ -13,23 +13,29 @@ type EpisodeBlock = {
   copy: string;
 };
 
-const episodeNumbers = Array.from({ length: 24 }, (_, index) => index + 1);
-
-const sourceTypeText: Record<string, string> = {
-  AI_GENERATE: 'AI生成',
-  AI_REWRITE: 'AI改写',
-  MANUAL_EDIT: '手工编辑',
+type ProjectLite = {
+  aspectRatio?: string | null;
+  fileFormat?: string | null;
+  scriptType?: string | null;
+  breakdownStrength?: string | null;
+  visualStyle?: string | null;
 };
 
-const statusText: Record<string, string> = {
-  DRAFT: '草稿',
-  CONFIRMED: '已确认',
+const fileFormatText: Record<string, string> = {
+  SCRIPT: '剧本格式',
+  NOVEL: '小说格式',
 };
 
-const formatSourceType = (value?: string) =>
-  sourceTypeText[value || ''] || value || '-';
+const scriptTypeText: Record<string, string> = {
+  PREMIUM_DRAMA: '精品剧',
+  COMMENTARY_COMIC: '解说漫',
+};
 
-const formatStatus = (value?: string) => statusText[value || ''] || value || '-';
+const breakdownStrengthText: Record<string, string> = {
+  LOW: '低强度',
+  MEDIUM: '中强度',
+  HIGH: '高强度',
+};
 
 const collectOutline = (workspace: ScriptWorkspace) => {
   const contentLines = (workspace.script?.content || '')
@@ -56,36 +62,18 @@ const collectOutline = (workspace: ScriptWorkspace) => {
   return contentLines.slice(0, 8);
 };
 
-const groupEpisodes = (workspace: ScriptWorkspace) => {
-  const episodeMap = new Map<number, StoryboardShot[]>();
-  workspace.storyboards.forEach((item) => {
-    const episodeNo = item.episodeNo || 1;
-    const nextItems = episodeMap.get(episodeNo) || [];
-    nextItems.push(item);
-    episodeMap.set(episodeNo, nextItems);
-  });
-
-  return episodeNumbers.map<EpisodeBlock>((episodeNo) => {
-    const items = (episodeMap.get(episodeNo) || []).slice().sort((left, right) => left.shotNo - right.shotNo);
-    const body = items.length
-      ? items
-          .map((item) =>
-            [
-              `镜头${item.shotNo}：${item.visualDescription || '待补全'}`,
-              item.dialogue ? `对白：${item.dialogue}` : '',
-            ]
-              .filter(Boolean)
-              .join('\n'),
-          )
-          .join('\n\n')
-      : workspace.script?.content || '当前集剧情尚未补全';
-
-    return {
-      episodeNo,
-      title: `第${episodeNo}集`,
-      copy: body,
-    };
-  });
+const getEpisodeBlocks = (workspace: ScriptWorkspace): EpisodeBlock[] => {
+  if (workspace.episodes?.length) {
+    return workspace.episodes.map((episode) => ({
+      episodeNo: episode.episodeNo,
+      title: episode.title || `第${episode.episodeNo}集`,
+      copy: episode.content,
+    }));
+  }
+  if (workspace.script?.content?.trim()) {
+    return [{ episodeNo: 1, title: '第1集', copy: workspace.script.content }];
+  }
+  return [];
 };
 
 const metricStyle = {
@@ -116,6 +104,7 @@ const ProductionWorkbenchScript = () => {
   const { message } = App.useApp();
   const projectId = Number(params.id);
   const [workspace, setWorkspace] = useState<ScriptWorkspace | null>(null);
+  const [project, setProject] = useState<ProjectLite>();
   const [loading, setLoading] = useState(false);
   const [currentEpisodeNo, setCurrentEpisodeNo] = useState(1);
 
@@ -125,12 +114,12 @@ const ProductionWorkbenchScript = () => {
     }
     let active = true;
     setLoading(true);
-    queryScriptWorkspace(projectId)
-      .then((response) => {
-        if (!active) {
-          return;
+    Promise.all([queryScriptWorkspace(projectId), queryProject(projectId)])
+      .then(([workspaceResponse, projectResponse]) => {
+        if (active) {
+          setWorkspace(workspaceResponse.data);
+          setProject(projectResponse.data);
         }
-        setWorkspace(response.data);
       })
       .catch(() => {
         if (active) {
@@ -148,7 +137,7 @@ const ProductionWorkbenchScript = () => {
   }, [message, projectId]);
 
   const outline = useMemo(() => collectOutline(workspace || { projectId, script: null, versions: [], characters: [], scenes: [], props: [], storyboards: [] }), [projectId, workspace]);
-  const episodeBlocks = useMemo(() => groupEpisodes(workspace || { projectId, script: null, versions: [], characters: [], scenes: [], props: [], storyboards: [] }), [projectId, workspace]);
+  const episodeBlocks = useMemo(() => getEpisodeBlocks(workspace || { projectId, script: null, versions: [], characters: [], scenes: [], props: [], storyboards: [] }), [projectId, workspace]);
   const activeEpisode = episodeBlocks.find((item) => item.episodeNo === currentEpisodeNo) || episodeBlocks[0];
   const script = workspace?.script;
 
@@ -176,9 +165,9 @@ const ProductionWorkbenchScript = () => {
             </Typography.Text>
           </div>
           <Flex gap={8}>
-            <Tag color="blue">9:16</Tag>
+            <Tag color="blue">{project?.aspectRatio || '-'}</Tag>
             <Tag>720p</Tag>
-            <Tag>写实都市</Tag>
+            <Tag>{project?.visualStyle || '-'}</Tag>
           </Flex>
         </Flex>
 
@@ -208,21 +197,26 @@ const ProductionWorkbenchScript = () => {
             <div style={metricStyle}>
               <span style={labelStyle}>剧本类型</span>
               <div style={valueStyle}>
-                {formatSourceType(script?.sourceType)}
+                {fileFormatText[project?.fileFormat || ''] || '-'}
               </div>
             </div>
             <div style={metricStyle}>
               <span style={labelStyle}>剧本状态</span>
               <div style={valueStyle}>
-                {formatStatus(script?.status)}
+                {scriptTypeText[project?.scriptType || ''] || '-'}
               </div>
             </div>
             <div style={metricStyle}>
-              <span style={labelStyle}>当前版本</span>
+              <span style={labelStyle}>解析力度</span>
               <div style={valueStyle}>
-                {script?.currentVersionId ? `#${script.currentVersionId}` : '-'}
+                {breakdownStrengthText[project?.breakdownStrength || ''] ||
+                  '-'}
               </div>
             </div>
+          </div>
+
+          <div style={{ marginTop: 10, color: '#7a849a', fontSize: 12 }}>
+            当前版本 {script?.currentVersionId ? `#${script.currentVersionId}` : '-'}
           </div>
 
           <div

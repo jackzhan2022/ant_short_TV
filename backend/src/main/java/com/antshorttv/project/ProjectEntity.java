@@ -16,10 +16,17 @@ public class ProjectEntity {
     public String code;
     public String description;
     public String coverUrl;
+    public String coverSource;
     public Long ownerId;
     public String status;
     public LocalDate startDate;
     public LocalDate endDate;
+    public String aspectRatio;
+    public String fileFormat;
+    public String scriptType;
+    public String breakdownStrength;
+    public String visualStyle;
+    public String initialScriptContent;
     public Long createdBy;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;

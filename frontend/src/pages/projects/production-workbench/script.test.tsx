@@ -4,6 +4,7 @@ import ProductionWorkbenchScript from './script';
 
 const mocks = vi.hoisted(() => ({
   queryScriptWorkspace: vi.fn(),
+  queryProject: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -31,11 +32,29 @@ vi.mock('antd', () => ({
 
 vi.mock('../detail/components/service', () => ({
   queryScriptWorkspace: mocks.queryScriptWorkspace,
+  queryProject: mocks.queryProject,
 }));
 
 describe('ProductionWorkbenchScript', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.queryProject.mockResolvedValue({
+      data: {
+        id: 1,
+        tenantId: 10,
+        name: '最危险的捉迷藏',
+        code: 'SCRIPT_TEST',
+        ownerId: 1,
+        status: 'NOT_STARTED',
+        aspectRatio: '9:16',
+        fileFormat: 'SCRIPT',
+        scriptType: 'PREMIUM_DRAMA',
+        visualStyle: '写实都市',
+        memberCount: 1,
+        createdAt: '',
+        updatedAt: '',
+      },
+    });
     mocks.queryScriptWorkspace.mockResolvedValue({
       data: {
         projectId: 1,
@@ -82,6 +101,18 @@ describe('ProductionWorkbenchScript', () => {
             videoPrompt: '',
           },
         ],
+        episodes: [
+          {
+            episodeNo: 1,
+            title: '第1集 致命捉迷藏',
+            content: '斌斌独自下楼玩耍。',
+          },
+          {
+            episodeNo: 2,
+            title: '第2集 夜色警报',
+            content: '家人开始寻找失踪的孩子。',
+          },
+        ],
       },
     });
   });
@@ -94,13 +125,41 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('大纲')).toBeInTheDocument();
     expect(screen.getByText('分集剧情')).toBeInTheDocument();
     expect(screen.getByText('当前集剧情正文')).toBeInTheDocument();
-    expect(screen.getByText('第1集')).toBeInTheDocument();
-    expect(screen.getByText('第2集')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '第1集 致命捉迷藏' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '第2集 夜色警报' })).toBeInTheDocument();
     expect(screen.queryByText('人物列表')).not.toBeInTheDocument();
     expect(screen.queryByText('人物小传')).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1);
     });
+  });
+
+  it('falls back to one episode when an older workspace omits episodes', async () => {
+    mocks.queryScriptWorkspace.mockResolvedValue({
+      data: {
+        projectId: 1,
+        script: {
+          id: 11,
+          projectId: 1,
+          title: '旧响应剧本',
+          sourceType: 'MANUAL_EDIT',
+          content: '一段没有集标题的剧本。',
+          status: 'DRAFT',
+          currentVersionId: 1,
+        },
+        versions: [],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+      },
+    });
+
+    render(<ProductionWorkbenchScript />);
+
+    expect(await screen.findByRole('button', { name: '第1集' })).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue('一段没有集标题的剧本。').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: '第2集' })).not.toBeInTheDocument();
   });
 });

@@ -29,6 +29,12 @@ export type ScriptVersion = {
   createdAt?: string;
 };
 
+export type ScriptEpisode = {
+  episodeNo: number;
+  title: string;
+  content: string;
+};
+
 export type CharacterAsset = {
   id: number;
   name: string;
@@ -96,6 +102,7 @@ export type ScriptWorkspace = {
   scenes: SceneAsset[];
   props: PropAsset[];
   storyboards: StoryboardShot[];
+  episodes?: ScriptEpisode[];
 };
 
 export type GenerateScriptValues = {

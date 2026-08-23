@@ -26,7 +26,6 @@ import type {
 } from '@/services/account-team/types';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import {
-  createProject,
   queryOrganizations,
   queryProjects,
   queryTenantMembers,
@@ -59,13 +58,12 @@ const ProjectEditor = ({
   members,
   onDone,
 }: {
-  project?: Project;
+  project: Project;
   organizations: Organization[];
   members: TenantMember[];
   onDone: () => void;
 }) => {
   const { message } = App.useApp();
-  const isEdit = Boolean(project);
   const organizationOptions = organizations.map((item) => ({
     label: `${'　'.repeat(Math.max(item.level - 1, 0))}${item.name}`,
     value: item.id,
@@ -77,17 +75,11 @@ const ProjectEditor = ({
 
   return (
     <ModalForm<ProjectFormValues>
-      title={isEdit ? '编辑项目' : '创建项目'}
+      title="编辑项目"
       trigger={
-        project ? (
-          <Button type="link" icon={<EditOutlined />}>
-            编辑
-          </Button>
-        ) : (
-          <Button type="primary" icon={<PlusOutlined />}>
-            创建项目
-          </Button>
-        )
+        <Button type="link" icon={<EditOutlined />}>
+          编辑
+        </Button>
       }
       modalProps={{ destroyOnHidden: true }}
       initialValues={{
@@ -106,13 +98,8 @@ const ProjectEditor = ({
           organizationId: values.organizationId || null,
           code: values.code?.trim().toUpperCase(),
         };
-        if (project) {
-          await updateProject(project.id, payload);
-          message.success('项目已更新');
-        } else {
-          await createProject(payload);
-          message.success('项目已创建');
-        }
+        await updateProject(project.id, payload);
+        message.success('项目已更新');
         onDone();
         return true;
       }}
@@ -122,20 +109,6 @@ const ProjectEditor = ({
         label="项目名称"
         rules={[{ required: true, message: '请输入项目名称' }]}
       />
-      {!isEdit && (
-        <ProFormText
-          name="code"
-          label="项目编码"
-          fieldProps={{ style: { textTransform: 'uppercase' } }}
-          rules={[
-            { required: true, message: '请输入项目编码' },
-            {
-              pattern: /^[A-Za-z][A-Za-z0-9_]{1,49}$/,
-              message: '使用2-50位字母、数字或下划线',
-            },
-          ]}
-        />
-      )}
       <ProFormSelect
         name="organizationId"
         label="所属组织"
@@ -289,12 +262,14 @@ const ProjectList = () => {
           return { data: response.data, success: response.success };
         }}
         toolBarRender={() => [
-          <ProjectEditor
+          <Button
             key="create"
-            organizations={organizations}
-            members={members}
-            onDone={reload}
-          />,
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => history.push('/short-drama-creation')}
+          >
+            创建项目
+          </Button>,
         ]}
       />
     </PageContainer>

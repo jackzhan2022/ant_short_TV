@@ -197,6 +197,13 @@ export default [
     component: './style-library',
   },
   {
+    path: '/short-drama-creation',
+    name: 'short-drama-creation',
+    icon: 'videoCamera',
+    access: 'canUseProjectCenter',
+    component: './short-drama-creation',
+  },
+  {
     path: '/projects/:id/production-workbench',
     hideInMenu: true,
     access: 'canViewProjects',

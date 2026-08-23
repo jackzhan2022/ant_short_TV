@@ -10,6 +10,8 @@ import {
 import { history, Outlet, useLocation, useParams } from '@umijs/max';
 import { App, Button, Flex, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
+import { getCurrentTenantId } from '@/services/account-team/auth';
+import { queryTeamPointAccount } from '@/services/account-team/points';
 import { queryProject } from '../detail/service';
 
 type ProjectLite = {
@@ -18,6 +20,11 @@ type ProjectLite = {
   code?: string;
   status?: string;
   coverUrl?: string | null;
+  aspectRatio?: string | null;
+  fileFormat?: string | null;
+  scriptType?: string | null;
+  breakdownStrength?: string | null;
+  visualStyle?: string | null;
 };
 
 const topSteps = [
@@ -40,6 +47,7 @@ const ProductionWorkbench = () => {
   const projectId = Number(params.id);
   const { message } = App.useApp();
   const [project, setProject] = useState<ProjectLite>();
+  const [pointBalance, setPointBalance] = useState<number>();
 
   useEffect(() => {
     if (!projectId) {
@@ -61,6 +69,28 @@ const ProductionWorkbench = () => {
       active = false;
     };
   }, [message, projectId]);
+
+  useEffect(() => {
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) {
+      return;
+    }
+    let active = true;
+    queryTeamPointAccount(tenantId)
+      .then((response) => {
+        if (active) {
+          setPointBalance(response.data?.balance);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPointBalance(undefined);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const activeStep = useMemo(() => {
     const matched = topSteps.find((step) =>
@@ -107,10 +137,14 @@ const ProductionWorkbench = () => {
                 style={{ paddingInline: 2, height: 20 }}
               />
             </Flex>
-            <div style={{ marginTop: 5, color: '#65708a', fontSize: 13 }}>
-              <span style={{ marginRight: 12 }}>9:16</span>
-              <span style={{ marginRight: 12 }}>720p</span>
-              <span style={{ marginRight: 12 }}>写实都市</span>
+          <div style={{ marginTop: 5, color: '#65708a', fontSize: 13 }}>
+            <span style={{ marginRight: 12 }}>
+              {project?.aspectRatio || '-'}
+            </span>
+            <span style={{ marginRight: 12 }}>720p</span>
+            <span style={{ marginRight: 12 }}>
+              {project?.visualStyle || '-'}
+            </span>
               <Button
                 type="link"
                 size="small"
@@ -199,7 +233,7 @@ const ProductionWorkbench = () => {
             fontWeight: 600,
           }}
         >
-          ✦ 801,910
+          ✦ {pointBalance ?? '-'}
         </div>
       </header>
 

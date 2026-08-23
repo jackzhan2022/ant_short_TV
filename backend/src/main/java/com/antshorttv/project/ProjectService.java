@@ -7,6 +7,10 @@ import com.antshorttv.member.TenantMemberEntity;
 import com.antshorttv.member.TenantMemberMapper;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
+import com.antshorttv.script.ScriptEntity;
+import com.antshorttv.script.ScriptMapper;
+import com.antshorttv.script.ScriptVersionEntity;
+import com.antshorttv.script.ScriptVersionMapper;
 import com.antshorttv.rbac.PermissionEntity;
 import com.antshorttv.rbac.PermissionMapper;
 import com.antshorttv.rbac.PermissionType;
@@ -136,6 +140,8 @@ public class ProjectService {
     private final OrganizationMapper organizationMapper;
     private final TenantMemberMapper tenantMemberMapper;
     private final UserMapper userMapper;
+    private final ScriptMapper scriptMapper;
+    private final ScriptVersionMapper scriptVersionMapper;
     private final PermissionMapper permissionMapper;
     private final RbacPermissionService rbacPermissionService;
     private final TenantContextResolver tenantContextResolver;
@@ -150,6 +156,8 @@ public class ProjectService {
         OrganizationMapper organizationMapper,
         TenantMemberMapper tenantMemberMapper,
         UserMapper userMapper,
+        ScriptMapper scriptMapper,
+        ScriptVersionMapper scriptVersionMapper,
         PermissionMapper permissionMapper,
         RbacPermissionService rbacPermissionService,
         TenantContextResolver tenantContextResolver,
@@ -163,6 +171,8 @@ public class ProjectService {
         this.organizationMapper = organizationMapper;
         this.tenantMemberMapper = tenantMemberMapper;
         this.userMapper = userMapper;
+        this.scriptMapper = scriptMapper;
+        this.scriptVersionMapper = scriptVersionMapper;
         this.permissionMapper = permissionMapper;
         this.rbacPermissionService = rbacPermissionService;
         this.tenantContextResolver = tenantContextResolver;
@@ -195,10 +205,17 @@ public class ProjectService {
         project.code = code;
         project.description = request.description();
         project.coverUrl = request.coverUrl();
+        project.coverSource = request.coverSource();
         project.ownerId = request.ownerId();
         project.status = ProjectStatus.NOT_STARTED.name();
         project.startDate = request.startDate();
         project.endDate = request.endDate();
+        project.aspectRatio = request.aspectRatio();
+        project.fileFormat = request.fileFormat();
+        project.scriptType = request.scriptType();
+        project.breakdownStrength = request.breakdownStrength();
+        project.visualStyle = request.visualStyle();
+        project.initialScriptContent = request.initialScriptContent();
         project.createdBy = context.userId();
         project.createdAt = now;
         project.updatedAt = now;
@@ -206,6 +223,7 @@ public class ProjectService {
 
         Map<String, ProjectRoleEntity> defaultRoles = createDefaultRoles(tenantId, project.id, context.userId(), now);
         addOwnerMember(tenantId, project.id, request.ownerId(), request.organizationId(), defaultRoles.get("PROJECT_OWNER").id, context.userId(), now);
+        createInitialScriptIfNeeded(project, request.initialScriptContent(), context.userId(), now);
         recordProjectLog(tenantId, project.id, context.userId(), "PROJECT_CREATE", "PROJECT", project.id, null, project.name, servletRequest);
         operationLogService.record(context.userId(), tenantId, "CREATE_PROJECT", project.id, OperationResult.SUCCESS, servletRequest);
         return toProjectResponse(project, tenantId);
@@ -228,8 +246,15 @@ public class ProjectService {
         project.name = validateName(request.name());
         project.description = request.description();
         project.coverUrl = request.coverUrl();
+        project.coverSource = request.coverSource();
         project.startDate = request.startDate();
         project.endDate = request.endDate();
+        project.aspectRatio = request.aspectRatio();
+        project.fileFormat = request.fileFormat();
+        project.scriptType = request.scriptType();
+        project.breakdownStrength = request.breakdownStrength();
+        project.visualStyle = request.visualStyle();
+        project.initialScriptContent = request.initialScriptContent();
         project.updatedAt = LocalDateTime.now();
         projectMapper.updateById(project);
         recordProjectLog(tenantId, id, context.userId(), "PROJECT_UPDATE", "PROJECT", id, null, project.name, servletRequest);
@@ -687,11 +712,18 @@ public class ProjectService {
             project.code,
             project.description,
             project.coverUrl,
+            project.coverSource,
             project.ownerId,
             owner == null ? null : owner.getNickname(),
             project.status,
             project.startDate,
             project.endDate,
+            project.aspectRatio,
+            project.fileFormat,
+            project.scriptType,
+            project.breakdownStrength,
+            project.visualStyle,
+            project.initialScriptContent,
             projectMemberMapper.countActiveByProjectId(tenantId, project.id),
             project.createdAt,
             project.updatedAt
@@ -759,6 +791,47 @@ public class ProjectService {
         log.userAgent = request == null ? null : request.getHeader("User-Agent");
         log.createdAt = LocalDateTime.now();
         projectOperationLogMapper.insert(log);
+    }
+
+    private void createInitialScriptIfNeeded(
+        ProjectEntity project,
+        String initialScriptContent,
+        Long userId,
+        LocalDateTime now
+    ) {
+        if (initialScriptContent == null || initialScriptContent.isBlank()) {
+            return;
+        }
+
+        String content = initialScriptContent.trim();
+
+        ScriptEntity script = new ScriptEntity();
+        script.setTenantId(project.tenantId);
+        script.setProjectId(project.id);
+        script.setTitle(project.name);
+        script.setSourceType("MANUAL_EDIT");
+        script.setContent(content);
+        script.setStatus("DRAFT");
+        script.setCreatedBy(userId);
+        script.setCreatedAt(now);
+        script.setUpdatedAt(now);
+        scriptMapper.insert(script);
+
+        ScriptVersionEntity version = new ScriptVersionEntity();
+        version.setTenantId(project.tenantId);
+        version.setProjectId(project.id);
+        version.setScriptId(script.getId());
+        version.setVersionNo(1);
+        version.setSourceType("MANUAL_EDIT");
+        version.setInputSummary("项目创建初始剧本");
+        version.setContent(content);
+        version.setStatus("DRAFT");
+        version.setCreatedBy(userId);
+        version.setCreatedAt(now);
+        scriptVersionMapper.insert(version);
+
+        script.setCurrentVersionId(version.getId());
+        scriptMapper.updateById(script);
     }
 
     private String resolveIp(HttpServletRequest request) {

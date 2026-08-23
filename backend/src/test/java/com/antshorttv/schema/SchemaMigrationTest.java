@@ -104,6 +104,24 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void flywayCreatesProjectMetadataColumns() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer columnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'project'
+              and lower(column_name) in (
+                'aspect_ratio', 'file_format', 'script_type',
+                'breakdown_strength', 'cover_source', 'visual_style',
+                'initial_script_content'
+              )
+            """, Integer.class);
+
+        assertThat(columnCount).isEqualTo(7);
+    }
+
+    @Test
     void scriptContentColumnsAcceptLongDrafts() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         String longContent = "剧本正文".repeat(10000);
@@ -209,8 +227,8 @@ class SchemaMigrationTest {
         assertThat(columnCount).isEqualTo(11);
         assertThat(styleCount).isEqualTo(139);
         assertThat(category).isEqualTo("3D风格");
-        assertThat(storagePath).isEqualTo("style-library/public/864621266010645040/cover.png");
-        assertThat(imageUrl).isEqualTo("/api/style-library/images/864621266010645040");
+        assertThat(storagePath).isEqualTo("style-library/public/864621266010645040/cover-compressed.jpg");
+        assertThat(imageUrl).isEqualTo("/style-library/public/864621266010645040/cover-compressed.jpg");
     }
 
     @Test
