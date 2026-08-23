@@ -43,7 +43,7 @@ public class AiInvocationService {
                 effectiveRequest.toAiContext().withModelId(route.model().getId()),
                 route,
                 AiCapability.TEXT,
-                effectiveRequest.effectiveRequestSummary(),
+                logSummary(effectiveRequest),
                 response.content(),
                 elapsed(started, response.durationMs()),
                 response.providerRequestId(),
@@ -73,7 +73,7 @@ public class AiInvocationService {
                 request.toAiContext().withModelId(route.model().getId()),
                 route,
                 AiCapability.IMAGE,
-                request.effectiveRequestSummary(),
+                logSummary(request),
                 responseSummary,
                 elapsed(started, response.durationMs()),
                 response.providerRequestId(),
@@ -117,7 +117,7 @@ public class AiInvocationService {
                 request.toAiContext().withModelId(route.model().getId()),
                 route,
                 AiCapability.VIDEO_UNDERSTANDING,
-                videoRequest.videoUrl(),
+                logSummary(request),
                 response.content(),
                 elapsed(started, response.durationMs()),
                 response.providerRequestId(),
@@ -164,10 +164,12 @@ public class AiInvocationService {
             .projectId(request.projectId())
             .taskId(request.taskId())
             .modelId(request.modelId())
+            .scene(request.scene())
             .businessSceneCode(request.businessSceneCode())
             .traceId(request.traceId())
             .promptTemplateId(request.promptTemplateId())
             .templateVariables(request.templateVariables())
+            .agentCode(request.agentCode())
             .userPrompt(prompt)
             .build();
     }
@@ -191,7 +193,7 @@ public class AiInvocationService {
             request.toAiContext().withModelId(route.model().getId()),
             route,
             capability,
-            requestSummary,
+            requestSummary(request, requestSummary),
             exception.getErrorCode().name() + " " + exception.getMessage(),
             Math.max(1, System.currentTimeMillis() - started)
         ));
@@ -200,5 +202,16 @@ public class AiInvocationService {
 
     private long elapsed(long started, Long providerDurationMs) {
         return providerDurationMs == null ? Math.max(1, System.currentTimeMillis() - started) : providerDurationMs;
+    }
+
+    private String logSummary(AiInvocationRequest request) {
+        return requestSummary(request, request.effectiveRequestSummary());
+    }
+
+    private String requestSummary(AiInvocationRequest request, String summary) {
+        if (request.agentCode() == null || request.agentCode().isBlank()) {
+            return summary;
+        }
+        return "[Agent:%s] %s".formatted(request.agentCode(), summary == null ? "" : summary);
     }
 }

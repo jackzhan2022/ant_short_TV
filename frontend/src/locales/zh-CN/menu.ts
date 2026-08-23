@@ -55,6 +55,7 @@ export default {
   'menu.ai-service-management.models': '平台 Model',
   'menu.ai-service-management.services': '服务配置',
   'menu.ai-service-management.logs': '调用日志',
+  'menu.ai-service-management.agents': 'Agent 与 Skill',
   'menu.video-script-decomposition': '视频拆剧',
   'menu.style-library': '风格库',
   'menu.short-drama-creation': '短剧创作',

@@ -84,6 +84,54 @@ export type AiServiceTestResult = {
   message: string;
 };
 
+export type BuiltInAgentVariable = {
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  description?: string;
+};
+
+export type BuiltInSkillSummary = {
+  code: string;
+  name: string;
+  category: string;
+};
+
+export type BuiltInAgent = {
+  code: string;
+  name: string;
+  description: string;
+  businessScene: string;
+  businessSceneName: string;
+  capability: string;
+  modelRouting: string;
+  variables: BuiltInAgentVariable[];
+  outputSchema: string;
+  skills: BuiltInSkillSummary[];
+};
+
+export type BuiltInAgentSummary = {
+  code: string;
+  name: string;
+  businessScene: string;
+};
+
+export type BuiltInSkill = {
+  code: string;
+  name: string;
+  description: string;
+  category: string;
+  content: string;
+  agents: BuiltInAgentSummary[];
+};
+
+export type BuiltInAgentPreview = {
+  agentCode: string;
+  prompt: string;
+  outputSchema: string;
+};
+
 export const serviceTypeText: Record<PlatformModelServiceType, string> = {
   TEXT: '文本',
   IMAGE: '图片',
@@ -159,3 +207,22 @@ export const setDefaultPlatformModel = async (id: number) =>
   request<ApiResponse<PlatformModel>>(`/api/platform/ai/models/${id}/default`, {
     method: 'POST',
   });
+
+export const queryBuiltInAgents = async () =>
+  request<ApiResponse<BuiltInAgent[]>>('/api/platform/ai/agents');
+
+export const queryBuiltInSkills = async () =>
+  request<ApiResponse<BuiltInSkill[]>>('/api/platform/ai/skills');
+
+export const previewBuiltInAgent = async (
+  code: string,
+  variables: Record<string, unknown>,
+) =>
+  request<ApiResponse<BuiltInAgentPreview>>(
+    `/api/platform/ai/agents/${code}/preview`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: { variables },
+    },
+  );

@@ -25,7 +25,8 @@ export default function access(
       currentUser &&
       (permissions.includes('AI_SERVICE:VIEW') ||
         permissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
-        permissions.includes('PLATFORM_AI_MODEL_VIEW')),
+        permissions.includes('PLATFORM_AI_MODEL_VIEW') ||
+        permissions.includes('PLATFORM_AI_AGENT_VIEW')),
     canCreateAiServices: currentUser && permissions.includes('AI_SERVICE:CREATE'),
     canEditAiServices: currentUser && permissions.includes('AI_SERVICE:EDIT'),
     canDeleteAiServices: currentUser && permissions.includes('AI_SERVICE:DELETE'),
@@ -48,6 +49,8 @@ export default function access(
       currentUser && permissions.includes('PLATFORM_AI_MODEL_EDIT'),
     canEnablePlatformAiModels:
       currentUser && permissions.includes('PLATFORM_AI_MODEL_ENABLE'),
+    canViewBuiltInAiAgents:
+      currentUser && permissions.includes('PLATFORM_AI_AGENT_VIEW'),
     canViewProjectAiConfig:
       currentUser && permissions.includes('PROJECT_AI_CONFIG_VIEW'),
     canEditProjectAiConfig:

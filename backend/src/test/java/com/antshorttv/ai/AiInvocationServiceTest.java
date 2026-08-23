@@ -13,6 +13,7 @@ import com.antshorttv.video.VideoUnderstandingRequest;
 import com.antshorttv.video.VideoUnderstandingResponse;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class AiInvocationServiceTest {
 
@@ -101,6 +102,30 @@ class AiInvocationServiceTest {
         assertThat(result.providerRequestId()).isEqualTo("req-image");
         assertThat(result.content()).isEqualTo("generated=1");
         assertThat(result.capability()).isEqualTo(AiCapability.IMAGE);
+    }
+
+    @Test
+    void invokesScriptReviewThroughUnifiedContractWithResolvedAgentContext() {
+        AiModelRoute route = route(AiCapability.TEXT);
+        when(router.route(801L, "TEXT")).thenReturn(route);
+        when(route.adapter().text(any(), any(), any(), any()))
+            .thenReturn(new AiTextResponse("{\"overallScore\":90,\"conclusion\":\"PASS\",\"issues\":[]}", "req-review", 1, 2, 3, 66L, Map.of()));
+        when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9005L);
+
+        AiInvocationResult<AiTextResponse> result = service.invokeText(AiInvocationRequest.text()
+            .tenantId(1L)
+            .userId(2L)
+            .projectId(3L)
+            .modelId(801L)
+            .scene(AiBusinessScene.SCRIPT_REVIEW)
+            .userPrompt("审核剧本")
+            .build());
+
+        assertThat(result.businessSceneCode()).isEqualTo(AiBusinessScene.SCRIPT_REVIEW.code());
+        assertThat(result.aiCallLogId()).isEqualTo(9005L);
+        ArgumentCaptor<AiInvocationLogRequest> logCaptor = ArgumentCaptor.forClass(AiInvocationLogRequest.class);
+        verify(logWriter).record(logCaptor.capture());
+        assertThat(logCaptor.getValue().requestSummary()).startsWith("[Agent:script-review]");
     }
 
 

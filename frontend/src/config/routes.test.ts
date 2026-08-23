@@ -43,3 +43,21 @@ describe('short drama creation route', () => {
     });
   });
 });
+
+describe('built-in Agent catalog route', () => {
+  it('is a read-only AI management child route', () => {
+    const parent = routes.find(
+      (item) => item.path === '/ai-service-management',
+    );
+    const route = parent?.routes?.find(
+      (item) => item.path === '/ai-service-management/agents',
+    );
+
+    expect(route).toMatchObject({
+      path: '/ai-service-management/agents',
+      name: 'agents',
+      component: './ai-service-management/agents',
+      access: 'canViewBuiltInAiAgents',
+    });
+  });
+});

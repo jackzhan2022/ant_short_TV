@@ -19,7 +19,8 @@ public record AiInvocationRequest(
     Object videoRequest,
     String requestSummary,
     String promptTemplateId,
-    Map<String, Object> templateVariables
+    Map<String, Object> templateVariables,
+    String agentCode
 ) {
     public static Builder text() {
         return new Builder(AiCapability.TEXT);
@@ -66,6 +67,7 @@ public record AiInvocationRequest(
         private String requestSummary;
         private String promptTemplateId;
         private Map<String, Object> templateVariables = Map.of();
+        private String agentCode;
 
         private Builder(AiCapability capability) {
             this.capability = capability;
@@ -107,6 +109,7 @@ public record AiInvocationRequest(
             if (scene != null) {
                 this.capability = scene.capability();
                 this.promptTemplateId = scene.promptTemplateId();
+                this.agentCode = scene.agentCode();
             }
             return this;
         }
@@ -156,6 +159,11 @@ public record AiInvocationRequest(
             return this;
         }
 
+        public Builder agentCode(String agentCode) {
+            this.agentCode = agentCode;
+            return this;
+        }
+
         public AiInvocationRequest build() {
             if (capability == null) {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR, "AI 能力不能为空。");
@@ -182,7 +190,8 @@ public record AiInvocationRequest(
                 videoRequest,
                 requestSummary,
                 promptTemplateId,
-                templateVariables
+                templateVariables,
+                agentCode
             );
         }
     }

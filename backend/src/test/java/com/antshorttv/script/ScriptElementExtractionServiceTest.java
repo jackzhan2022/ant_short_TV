@@ -72,6 +72,8 @@ class ScriptElementExtractionServiceTest {
         );
         assertThat(requestCaptor.getAllValues()).extracting(AiInvocationRequest::scene)
             .containsExactly(AiBusinessScene.CHARACTER_EXTRACT, AiBusinessScene.SCENE_EXTRACT, AiBusinessScene.PROP_EXTRACT);
+        assertThat(requestCaptor.getAllValues()).extracting(AiInvocationRequest::agentCode)
+            .containsExactly("script-character-extract", "script-scene-extract", "script-prop-extract");
     }
 
     private ScriptEntity script(String title, String content) {

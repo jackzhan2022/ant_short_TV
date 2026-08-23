@@ -49,7 +49,6 @@ npm install                                                # 更新依赖
 │   ├── routes.ts     # 路由配置
 │   ├── defaultSettings.ts  # 布局主题设置
 │   └── proxy.ts      # 开发代理配置
-├── mock/             # Mock 数据
 ├── src/
 │   ├── components/   # 公共组件
 │   ├── locales/      # 国际化资源
@@ -66,9 +65,9 @@ npm install                                                # 更新依赖
 
 | 命令 | 说明 |
 |------|------|
-| `npm start` | 启动开发服务器（UMI_ENV=dev，带 Mock） |
-| `npm run dev` | 启动开发服务器（UMI_ENV=dev，无 Mock） |
-| `npm run start:no-mock` | 无 Mock 启动 |
+| `npm start` | 启动开发服务器并直连后端（UMI_ENV=dev，MOCK=none） |
+| `npm run dev` | 启动开发服务器并直连后端（UMI_ENV=dev，MOCK=none） |
+| `npm run start:no-mock` | 兼容命令，直连后端 |
 | `npm run start:pre` | 预发布环境启动 |
 | `npm run start:test` | 测试环境启动 |
 | `npm run build` | 构建生产产物 |
@@ -448,18 +447,6 @@ npm run test:update         # 更新快照
 
 测试文件放在对应组件目录下，命名为 `*.test.ts(x)`。
 
-**Mock 数据：** 在 `mock/` 目录下创建文件：
-
-```ts
-// File: mock/user.ts
-export default {
-  'GET /api/currentUser': { name: 'Serati Ma', access: 'admin' },
-  'POST /api/login': (req, res) => { res.end('ok'); },
-};
-```
-
-Umi 自动注册 mock，开发模式下生效。
-
 **代理配置** 位于 `config/proxy.ts`：
 
 ```ts
@@ -474,14 +461,14 @@ export default {
 };
 ```
 
-> 💡 用 `MOCK=none` 启动可跳过 Mock，直接代理到后端：`npm run start:no-mock`。
+> 💡 开发时所有 `/api/` 请求都会通过代理转到后端 `http://localhost:8080`。
 
 → 更多内容见 [umi 测试](https://umijs.org/docs/guides/test)、[umi Mock](https://umijs.org/docs/guides/mock)
 
 ## FAQ
 
-**Q: 如何关闭 Mock？**
-`npm run start:no-mock` 或 `cross-env MOCK=none max dev`
+**Q: 开发时接口走哪里？**
+`/api/` 请求默认通过 `config/proxy.ts` 代理到后端 `http://localhost:8080`。
 
 **Q: 如何修改主题色？**
 修改 `config/defaultSettings.ts` 的 `colorPrimary`，开发时可用 SettingDrawer 实时调整。
@@ -534,16 +521,6 @@ npx skills add ant-design/ant-design-pro
 # 2. 在组件中使用
 #    import { useModel } from '@umijs/max';
 #    const { data } = useModel('myModel');  // 'myModel' 对应文件名
-```
-
-### 添加 Mock 接口
-
-```bash
-# 全局 Mock：mock/api.ts（匹配所有环境）
-# 页面级 Mock：src/pages/my-page/_mock.ts（Umi 自动发现）
-
-# Mock 格式：
-# export default { 'GET /api/my-data': { data: [] } }
 ```
 
 ### 生成 API 服务代码
@@ -619,6 +596,5 @@ npx skills add ant-design/ant-design-pro
 - **Biome 代替 ESLint**：项目使用 Biome 进行 lint 和格式化，不要安装 ESLint 或 Prettier 插件
 - **Commit 规范**：必须遵循 [Conventional Commits](https://www.conventionalcommits.org/)，如 `feat:`, `fix:`, `chore:` 等
 - **`npx antd lint ./src`**：提交前必须零错误零警告
-- **Mock 优先级**：`mock/` 目录为全局 Mock，`src/pages/**/_mock.ts` 为页面级 Mock，两者都会被 Umi 自动注册
 - **样式优先级**：Tailwind（布局）> antd-style（主题 token）> CSS Modules（组件样式）> Less（仅遗留全局样式）
 - **路径别名**：`@/*` → `./src/*`，`@@/*` → `./src/.umi/*`
