@@ -11,6 +11,7 @@ import com.antshorttv.script.ScriptEntity;
 import com.antshorttv.script.ScriptMapper;
 import com.antshorttv.script.ScriptVersionEntity;
 import com.antshorttv.script.ScriptVersionMapper;
+import com.antshorttv.script.ScriptAnalysisTaskService;
 import com.antshorttv.rbac.PermissionEntity;
 import com.antshorttv.rbac.PermissionMapper;
 import com.antshorttv.rbac.PermissionType;
@@ -142,6 +143,7 @@ public class ProjectService {
     private final UserMapper userMapper;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
+    private final ScriptAnalysisTaskService scriptAnalysisTaskService;
     private final PermissionMapper permissionMapper;
     private final RbacPermissionService rbacPermissionService;
     private final TenantContextResolver tenantContextResolver;
@@ -158,6 +160,7 @@ public class ProjectService {
         UserMapper userMapper,
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
+        ScriptAnalysisTaskService scriptAnalysisTaskService,
         PermissionMapper permissionMapper,
         RbacPermissionService rbacPermissionService,
         TenantContextResolver tenantContextResolver,
@@ -173,6 +176,7 @@ public class ProjectService {
         this.userMapper = userMapper;
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
+        this.scriptAnalysisTaskService = scriptAnalysisTaskService;
         this.permissionMapper = permissionMapper;
         this.rbacPermissionService = rbacPermissionService;
         this.tenantContextResolver = tenantContextResolver;
@@ -223,7 +227,33 @@ public class ProjectService {
 
         Map<String, ProjectRoleEntity> defaultRoles = createDefaultRoles(tenantId, project.id, context.userId(), now);
         addOwnerMember(tenantId, project.id, request.ownerId(), request.organizationId(), defaultRoles.get("PROJECT_OWNER").id, context.userId(), now);
-        createInitialScriptIfNeeded(project, request.initialScriptContent(), context.userId(), now);
+        ScriptVersionEntity initialVersion = createInitialScriptIfNeeded(project, request.initialScriptContent(), context.userId(), now);
+        if (initialVersion != null) {
+            ScriptEntity initialScript = scriptMapper.selectById(initialVersion.getScriptId());
+            try {
+                scriptAnalysisTaskService.createInitialTaskIfAbsent(
+                    tenantId,
+                    project.id,
+                    initialScript,
+                    initialVersion,
+                    context.userId(),
+                    now
+                );
+            } catch (RuntimeException analysisException) {
+                // Analysis is an asynchronous enhancement; project creation remains successful.
+                recordProjectLog(
+                    tenantId,
+                    project.id,
+                    context.userId(),
+                    "SCRIPT_ANALYSIS_SCHEDULE_FAILED",
+                    "SCRIPT_ANALYSIS",
+                    initialVersion.getId(),
+                    null,
+                    analysisException.getMessage(),
+                    servletRequest
+                );
+            }
+        }
         recordProjectLog(tenantId, project.id, context.userId(), "PROJECT_CREATE", "PROJECT", project.id, null, project.name, servletRequest);
         operationLogService.record(context.userId(), tenantId, "CREATE_PROJECT", project.id, OperationResult.SUCCESS, servletRequest);
         return toProjectResponse(project, tenantId);
@@ -793,14 +823,14 @@ public class ProjectService {
         projectOperationLogMapper.insert(log);
     }
 
-    private void createInitialScriptIfNeeded(
+    private ScriptVersionEntity createInitialScriptIfNeeded(
         ProjectEntity project,
         String initialScriptContent,
         Long userId,
         LocalDateTime now
     ) {
         if (initialScriptContent == null || initialScriptContent.isBlank()) {
-            return;
+            return null;
         }
 
         String content = initialScriptContent.trim();
@@ -832,6 +862,7 @@ public class ProjectService {
 
         script.setCurrentVersionId(version.getId());
         scriptMapper.updateById(script);
+        return version;
     }
 
     private String resolveIp(HttpServletRequest request) {

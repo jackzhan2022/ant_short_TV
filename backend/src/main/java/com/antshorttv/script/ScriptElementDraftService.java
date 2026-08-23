@@ -26,6 +26,48 @@ class ScriptElementDraftService {
         }
     }
 
+    void replaceAnalysisDrafts(Long tenantId, Long projectId, Long userId, ScriptElementExtractionResult result) {
+        replaceCharactersAsPendingReview(tenantId, projectId, userId, result.characters());
+        replaceScenesAsPendingReview(tenantId, projectId, userId, result.scenes());
+        replacePropsAsPendingReview(tenantId, projectId, userId, result.props());
+    }
+
+    private void replaceCharactersAsPendingReview(
+        Long tenantId,
+        Long projectId,
+        Long userId,
+        List<ScriptElementExtractionResult.CharacterElement> characters
+    ) {
+        clearUnconfirmedElements(ScriptElementType.CHARACTER.tableName(), tenantId, projectId);
+        for (ScriptElementExtractionResult.CharacterElement item : characters) {
+            insertCharacterAsset(tenantId, projectId, userId, item, null, "PENDING_REVIEW");
+        }
+    }
+
+    private void replaceScenesAsPendingReview(
+        Long tenantId,
+        Long projectId,
+        Long userId,
+        List<ScriptElementExtractionResult.SceneElement> scenes
+    ) {
+        clearUnconfirmedElements(ScriptElementType.SCENE.tableName(), tenantId, projectId);
+        for (ScriptElementExtractionResult.SceneElement item : scenes) {
+            insertSceneAsset(tenantId, projectId, userId, item, null, "PENDING_REVIEW");
+        }
+    }
+
+    private void replacePropsAsPendingReview(
+        Long tenantId,
+        Long projectId,
+        Long userId,
+        List<ScriptElementExtractionResult.PropElement> props
+    ) {
+        clearUnconfirmedElements(ScriptElementType.PROP.tableName(), tenantId, projectId);
+        for (ScriptElementExtractionResult.PropElement item : props) {
+            insertPropAsset(tenantId, projectId, userId, item, null, "PENDING_REVIEW");
+        }
+    }
+
     private void replaceCharacters(
         Long tenantId,
         Long projectId,

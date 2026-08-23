@@ -2,6 +2,7 @@ package com.antshorttv.script;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 record ScriptResponse(
     Long id,
@@ -138,6 +139,84 @@ record ScriptWorkspaceResponse(
     List<SceneAssetResponse> scenes,
     List<PropAssetResponse> props,
     List<StoryboardResponse> storyboards,
-    List<ScriptEpisodeResponse> episodes
+    List<ScriptEpisodeResponse> episodes,
+    ScriptAnalysisTaskResponse analysis
 ) {
+}
+
+record ScriptAnalysisTaskResponse(
+    Long id,
+    Long scriptVersionId,
+    String status,
+    String currentStage,
+    Integer overallProgress,
+    String currentAction,
+    String errorCode,
+    String errorMessage,
+    List<ScriptAnalysisStageResponse> stages
+) {
+    static ScriptAnalysisTaskResponse from(
+        ScriptAnalysisTaskEntity task,
+        List<ScriptAnalysisStageEntity> stages,
+        Map<Long, ScriptAnalysisResultEntity> resultsByStageId
+    ) {
+        if (task == null) {
+            return null;
+        }
+        return new ScriptAnalysisTaskResponse(
+            task.getId(),
+            task.getScriptVersionId(),
+            task.getStatus(),
+            task.getCurrentStage(),
+            task.getOverallProgress(),
+            task.getCurrentAction(),
+            task.getErrorCode(),
+            task.getErrorMessage(),
+            stages.stream().map(stage -> ScriptAnalysisStageResponse.from(stage, resultsByStageId.get(stage.getId()))).toList()
+        );
+    }
+}
+
+record ScriptAnalysisStageResponse(
+    Long id,
+    String stageCode,
+    Integer stageOrder,
+    String status,
+    Integer progressPercent,
+    Integer completedUnits,
+    Integer totalUnits,
+    String currentAction,
+    String errorCode,
+    String errorMessage,
+    Boolean retryable,
+    String resultJson,
+    String providerRequestId,
+    Long aiCallLogId,
+    Long durationMs,
+    String resultErrorCode,
+    String resultErrorMessage,
+    Boolean resultRetryable
+) {
+    static ScriptAnalysisStageResponse from(ScriptAnalysisStageEntity stage, ScriptAnalysisResultEntity result) {
+        return new ScriptAnalysisStageResponse(
+            stage.getId(),
+            stage.getStageCode(),
+            stage.getStageOrder(),
+            stage.getStatus(),
+            stage.getProgressPercent(),
+            stage.getCompletedUnits(),
+            stage.getTotalUnits(),
+            stage.getCurrentAction(),
+            stage.getErrorCode(),
+            stage.getErrorMessage(),
+            stage.getRetryable(),
+            result == null ? null : result.getNormalizedJson(),
+            result == null ? null : result.getProviderRequestId(),
+            result == null ? null : result.getAiCallLogId(),
+            result == null ? null : result.getDurationMs(),
+            result == null ? null : result.getErrorCode(),
+            result == null ? null : result.getErrorMessage(),
+            result == null ? null : result.getRetryable()
+        );
+    }
 }

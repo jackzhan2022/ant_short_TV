@@ -285,6 +285,26 @@ const ProductionWorkbenchSettings = () => {
     }
   };
 
+  const confirmAssets = async (type: ElementType, items: AssetRecord[]) => {
+    const pendingItems = items.filter((item) => item.status !== 'CONFIRMED');
+    if (!pendingItems.length) {
+      return;
+    }
+    setProcessingAction(`confirm-all-${type}`);
+    try {
+      let nextWorkspace: ScriptWorkspace | undefined;
+      for (const item of pendingItems) {
+        const response = await confirmScriptElement(projectId, type, item.id);
+        nextWorkspace = response.data;
+      }
+      applyWorkspace(nextWorkspace, `${elementLabels[type]}已批量确认`);
+    } catch {
+      message.error('批量确认失败');
+    } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
   const deleteAsset = async (type: ElementType, id: number) => {
     setProcessingAction(`delete-${type}-${id}`);
     try {
@@ -373,13 +393,23 @@ const ProductionWorkbenchSettings = () => {
                       {items.length}项
                     </span>
                   </div>
-                  <Button
-                    icon={<RobotOutlined />}
-                    loading={processingAction === `extract-${section.type}`}
-                    onClick={() => extractAssets(section.type)}
-                  >
-                    AI提取{elementLabels[section.type]}
-                  </Button>
+                  <Flex gap={8}>
+                    <Button
+                      icon={<CheckOutlined />}
+                      disabled={!items.some((item) => item.status !== 'CONFIRMED')}
+                      loading={processingAction === `confirm-all-${section.type}`}
+                      onClick={() => confirmAssets(section.type, items)}
+                    >
+                      批量确认
+                    </Button>
+                    <Button
+                      icon={<RobotOutlined />}
+                      loading={processingAction === `extract-${section.type}`}
+                      onClick={() => extractAssets(section.type)}
+                    >
+                      AI提取{elementLabels[section.type]}
+                    </Button>
+                  </Flex>
                 </Flex>
                 {items.length ? (
                   <div

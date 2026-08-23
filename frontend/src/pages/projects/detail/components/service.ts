@@ -103,6 +103,40 @@ export type ScriptWorkspace = {
   props: PropAsset[];
   storyboards: StoryboardShot[];
   episodes?: ScriptEpisode[];
+  analysis?: ScriptAnalysisTask | null;
+};
+
+export type ScriptAnalysisStage = {
+  id: number;
+  stageCode: string;
+  stageOrder: number;
+  status: string;
+  progressPercent: number;
+  completedUnits: number;
+  totalUnits: number;
+  currentAction?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  retryable?: boolean;
+  resultJson?: string | null;
+  providerRequestId?: string | null;
+  aiCallLogId?: number | null;
+  durationMs?: number | null;
+  resultErrorCode?: string | null;
+  resultErrorMessage?: string | null;
+  resultRetryable?: boolean | null;
+};
+
+export type ScriptAnalysisTask = {
+  id: number;
+  scriptVersionId: number;
+  status: string;
+  currentStage?: string | null;
+  overallProgress: number;
+  currentAction?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  stages: ScriptAnalysisStage[];
 };
 
 export type GenerateScriptValues = {
@@ -234,6 +268,30 @@ export type CreateAiImageTaskValues = {
 export const queryScriptWorkspace = async (projectId: number) =>
   request<ApiResponse<ScriptWorkspace>>(
     `/api/projects/${projectId}/script-workspace`,
+  );
+
+export const retryScriptAnalysis = async (
+  projectId: number,
+  stageCode: string,
+) =>
+  request<ApiResponse<ScriptAnalysisTask>>(
+    `/api/projects/${projectId}/script-analysis/current/retry/${stageCode}`,
+    { method: 'POST' },
+  );
+
+export const reanalyzeScript = async (projectId: number) =>
+  request<ApiResponse<ScriptAnalysisTask>>(
+    `/api/projects/${projectId}/script-analysis/current/reanalyze`,
+    { method: 'POST' },
+  );
+
+export const reanalyzeScriptVersion = async (
+  projectId: number,
+  versionId: number,
+) =>
+  request<ApiResponse<ScriptAnalysisTask>>(
+    `/api/projects/${projectId}/script-analysis/versions/${versionId}/reanalyze`,
+    { method: 'POST' },
   );
 
 export const generateScript = async (

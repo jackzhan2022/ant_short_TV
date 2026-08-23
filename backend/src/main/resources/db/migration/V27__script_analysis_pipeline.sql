@@ -1,0 +1,62 @@
+create table script_analysis_task (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  script_id bigint not null,
+  script_version_id bigint not null,
+  workflow_code varchar(64) not null,
+  status varchar(32) not null,
+  current_stage varchar(64) null,
+  overall_progress int not null default 0,
+  current_action varchar(500) null,
+  error_code varchar(64) null,
+  error_message varchar(1000) null,
+  idempotency_key varchar(200) not null,
+  created_by bigint not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  completed_at datetime null,
+  unique key uk_script_analysis_task_idempotency (tenant_id, idempotency_key),
+  index idx_script_analysis_task_version (tenant_id, project_id, script_version_id),
+  index idx_script_analysis_task_status (status, updated_at)
+);
+
+create table script_analysis_stage (
+  id bigint primary key auto_increment,
+  task_id bigint not null,
+  stage_code varchar(64) not null,
+  stage_order int not null,
+  status varchar(32) not null,
+  progress_percent int not null default 0,
+  completed_units int not null default 0,
+  total_units int not null default 0,
+  current_action varchar(500) null,
+  error_code varchar(64) null,
+  error_message varchar(1000) null,
+  attempt_no int not null default 0,
+  retryable boolean not null default false,
+  started_at datetime null,
+  finished_at datetime null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  unique key uk_script_analysis_stage_task_code (task_id, stage_code),
+  index idx_script_analysis_stage_task_order (task_id, stage_order),
+  index idx_script_analysis_stage_status (status, updated_at)
+);
+
+create table script_analysis_result (
+  id bigint primary key auto_increment,
+  task_id bigint not null,
+  stage_id bigint not null,
+  result_type varchar(64) not null,
+  schema_version varchar(32) not null,
+  status varchar(32) not null,
+  raw_response longtext null,
+  normalized_json longtext null,
+  provider_request_id varchar(128) null,
+  ai_call_log_id bigint null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  index idx_script_analysis_result_stage (stage_id, created_at),
+  index idx_script_analysis_result_task_type (task_id, result_type, created_at)
+);

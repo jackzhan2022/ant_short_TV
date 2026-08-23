@@ -65,6 +65,71 @@ public class BuiltInAgentRegistry {
         );
         this.agents = List.of(
             agent(
+                "script-global-understanding",
+                "剧情全局理解",
+                "理解剧本主线、人物关系、核心冲突和整体节奏。",
+                AiBusinessScene.SCRIPT_GLOBAL_UNDERSTANDING,
+                """
+                    你是中文短剧结构分析助手。请基于剧本输出严格 JSON：
+                    {"logline":"","themes":[],"characters":[],"relationships":[],"coreConflict":"","turningPoints":[],"endingHook":""}
+                    剧本内容：
+                    ${scriptContent}
+                    """,
+                List.of(variable("scriptContent", "剧本内容", "TEXT")),
+                "{\"logline\":\"\",\"themes\":[],\"characters\":[],\"relationships\":[],\"coreConflict\":\"\",\"turningPoints\":[],\"endingHook\":\"\"}",
+                List.of("strict-json-output", "no-invention", "short-drama-structure")
+            ),
+            agent(
+                "script-episode-split",
+                "剧集智能拆分",
+                "根据剧情节点、冲突和悬念把无明确集标题的正文拆成剧集。",
+                AiBusinessScene.SCRIPT_EPISODE_SPLIT,
+                """
+                    你是短剧分集助手。请根据剧情理解和原剧本智能拆分剧集，只返回严格 JSON：
+                    {"episodes":[{"episodeNo":1,"title":"","content":"","summary":"","endingHook":""}]}
+                    剧情理解：
+                    ${globalUnderstanding}
+                    原剧本：
+                    ${scriptContent}
+                    """,
+                List.of(
+                    variable("globalUnderstanding", "剧情全局理解", "JSON"),
+                    variable("scriptContent", "剧本内容", "TEXT")
+                ),
+                "{\"episodes\":[{\"episodeNo\":1,\"title\":\"\",\"content\":\"\",\"summary\":\"\",\"endingHook\":\"\"}]}",
+                List.of("strict-json-output", "no-invention", "short-drama-structure")
+            ),
+            agent(
+                "script-episode-summary",
+                "剧集概要提炼",
+                "为每一集提炼概要、看点和结尾悬念。",
+                AiBusinessScene.SCRIPT_EPISODE_SUMMARY,
+                """
+                    你是短剧概要提炼助手。请为输入的每一集返回严格 JSON：
+                    {"episodes":[{"episodeNo":1,"summary":"","highlights":[],"endingHook":""}]}
+                    分集内容：
+                    ${episodes}
+                    """,
+                List.of(variable("episodes", "分集内容", "JSON")),
+                "{\"episodes\":[{\"episodeNo\":1,\"summary\":\"\",\"highlights\":[],\"endingHook\":\"\"}]}",
+                List.of("strict-json-output", "no-invention")
+            ),
+            agent(
+                "script-character-scene-recognition",
+                "角色场景识别",
+                "从剧本中识别角色、场景和关键道具。",
+                AiBusinessScene.SCRIPT_CHARACTER_SCENE_RECOGNITION,
+                """
+                    你是短剧资产识别助手。请仅基于剧本返回严格 JSON：
+                    {"characters":[],"scenes":[],"props":[]}
+                    剧本内容：
+                    ${scriptContent}
+                    """,
+                List.of(variable("scriptContent", "剧本内容", "TEXT")),
+                "{\"characters\":[],\"scenes\":[],\"props\":[]}",
+                List.of("strict-json-output", "no-invention", "stable-entity-naming")
+            ),
+            agent(
                 "script-rewrite",
                 "AI 改写剧本",
                 "根据改写要求重写短剧剧本。",
@@ -239,8 +304,17 @@ public class BuiltInAgentRegistry {
                 "审核短剧剧本内容并输出问题、评分和结论。",
                 AiBusinessScene.SCRIPT_REVIEW,
                 """
-                    你是专业的中文短剧剧本审核助手。
-                    请审核以下剧本，并区分致命问题、重要问题和建议项。
+                    你是专业的中文短剧剧本审核 Agent。
+                    本轮审核模式：${reviewMode}
+                    本轮审核维度：${selectedDimensions}
+                    本轮审核范围：${reviewScope}
+                    上一轮问题摘要：${previousIssues}
+                    全局审核索引：${globalIndex}
+
+                    请基于剧本内容执行本轮审核。优先检查用户选中的维度；如果发现选中范围外的 P0/P1 剧情硬伤，允许作为“兜底问题”顺带提醒。
+                    快速审核以当前范围内的明显局部问题为主，不声称覆盖全部跨集问题；深度审核必须结合全局索引检查跨集人物、时间线、道具、伏笔和因果关系。
+                    不要为了找问题而强行判错。没有证据时使用 uncertain，不要编造剧本中不存在的事实。
+                    每个问题必须给出具体位置、原文片段、问题原因、证据和可执行修改建议。
 
                     剧本标题：${scriptTitle}
                     剧本内容：
@@ -248,25 +322,41 @@ public class BuiltInAgentRegistry {
                     ${scriptContent}
                     >>>
 
-                    返回结构：
+                    只返回严格 JSON：
                     {
                       "overallScore": 0,
-                      "conclusion": "PASS",
+                      "overallConclusion": "PASS",
+                      "summary": "",
                       "issues": [
                         {
-                          "severity": "HIGH",
-                          "category": "",
-                          "description": "",
-                          "suggestion": ""
+                          "issueNo": "R1-01",
+                          "dimension": "台词合理性",
+                          "severity": "P1",
+                          "title": "",
+                          "position": {"episode": 0, "scene": "", "shot": 0, "line": 0, "anchor": ""},
+                          "excerpt": "",
+                          "problem": "",
+                          "evidence": [],
+                          "suggestion": "",
+                          "status": "new",
+                          "relatedIssueNo": null,
+                          "hits": [
+                            {"episode": 0, "scene": "", "shot": 0, "line": 0, "anchor": "", "excerpt": "", "entity": ""}
+                          ]
                         }
                       ]
                     }
-                    """,
+                """,
                 List.of(
                     variable("scriptTitle", "剧本标题", "TEXT"),
-                    variable("scriptContent", "剧本内容", "TEXT")
+                    variable("scriptContent", "剧本内容", "TEXT"),
+                    variable("reviewMode", "审核模式", "TEXT"),
+                    variable("selectedDimensions", "审核维度", "JSON"),
+                    variable("reviewScope", "审核范围", "JSON"),
+                    variable("previousIssues", "上一轮问题", "JSON"),
+                    variable("globalIndex", "全局审核索引", "JSON")
                 ),
-                "{\"overallScore\":0,\"conclusion\":\"PASS\",\"issues\":[]}",
+                "{\"overallScore\":0,\"overallConclusion\":\"PASS\",\"summary\":\"\",\"issues\":[]}",
                 List.of("strict-json-output", "no-invention", "script-review-rules", "review-json-output")
             )
         );

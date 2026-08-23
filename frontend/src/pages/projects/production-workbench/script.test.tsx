@@ -5,6 +5,8 @@ import ProductionWorkbenchScript from './script';
 const mocks = vi.hoisted(() => ({
   queryScriptWorkspace: vi.fn(),
   queryProject: vi.fn(),
+  retryScriptAnalysis: vi.fn(),
+  reanalyzeScript: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -15,13 +17,36 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
   },
+  Button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+  Collapse: ({ items }: any) => (
+    <div>
+      {items?.map((item: any) => (
+        <section key={item.key}>
+          <span>{item.label}</span>
+          {item.children}
+        </section>
+      ))}
+    </div>
+  ),
   Flex: ({ children }: any) => <div>{children}</div>,
+  Descriptions: ({ items }: any) => (
+    <dl>
+      {items?.map((item: any) => (
+        <div key={item.key}>
+          <dt>{item.label}</dt>
+          <dd>{item.children}</dd>
+        </div>
+      ))}
+    </dl>
+  ),
   Input: Object.assign(
     ({ value, ...props }: any) => <textarea value={value} {...props} />,
     {
       TextArea: ({ value, ...props }: any) => <textarea value={value} {...props} />,
     },
   ),
+  Progress: ({ percent }: any) => <div>{percent}%</div>,
+  Skeleton: () => <div>loading skeleton</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Typography: {
     Paragraph: ({ children }: any) => <p>{children}</p>,
@@ -32,6 +57,11 @@ vi.mock('antd', () => ({
 
 vi.mock('../detail/components/service', () => ({
   queryScriptWorkspace: mocks.queryScriptWorkspace,
+  retryScriptAnalysis: mocks.retryScriptAnalysis,
+  reanalyzeScript: mocks.reanalyzeScript,
+}));
+
+vi.mock('../detail/service', () => ({
   queryProject: mocks.queryProject,
 }));
 
@@ -113,6 +143,7 @@ describe('ProductionWorkbenchScript', () => {
             content: '家人开始寻找失踪的孩子。',
           },
         ],
+        analysis: null,
       },
     });
   });
@@ -153,6 +184,7 @@ describe('ProductionWorkbenchScript', () => {
         scenes: [],
         props: [],
         storyboards: [],
+        analysis: null,
       },
     });
 
@@ -161,5 +193,98 @@ describe('ProductionWorkbenchScript', () => {
     expect(await screen.findByRole('button', { name: '第1集' })).toBeInTheDocument();
     expect(screen.getAllByDisplayValue('一段没有集标题的剧本。').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '第2集' })).not.toBeInTheDocument();
+  });
+
+  it('renders four analysis stages with percentages and intermediate result access', async () => {
+    mocks.queryScriptWorkspace.mockResolvedValue({
+      data: {
+        projectId: 1,
+        script: {
+          id: 11,
+          projectId: 1,
+          title: '分析剧本',
+          sourceType: 'MANUAL_EDIT',
+          content: '一段剧本。',
+          status: 'DRAFT',
+          currentVersionId: 7,
+        },
+        versions: [],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+        episodes: [{ episodeNo: 1, title: '第1集', content: '一段剧本。' }],
+        analysis: {
+          id: 99,
+          scriptVersionId: 7,
+          status: 'RUNNING',
+          currentStage: 'EPISODE_SUMMARY',
+          overallProgress: 56,
+          currentAction: '正在提炼每集概要',
+          stages: [
+            {
+              id: 1,
+              stageCode: 'GLOBAL_UNDERSTANDING',
+              stageOrder: 1,
+              status: 'SUCCEEDED',
+              progressPercent: 100,
+              completedUnits: 1,
+              totalUnits: 1,
+              currentAction: '已完成',
+              resultJson:
+                '{"logline":"主角回归","themes":["回家"],"characters":["林晚"],"relationships":["母女"],"coreConflict":"归来与阻拦","turningPoints":["雨夜回归"],"endingHook":"她推开了门"}',
+              providerRequestId: 'req-1',
+              aiCallLogId: 7001,
+              durationMs: 2130,
+            },
+            {
+              id: 2,
+              stageCode: 'EPISODE_SPLITTING',
+              stageOrder: 2,
+              status: 'SUCCEEDED',
+              progressPercent: 100,
+              completedUnits: 1,
+              totalUnits: 1,
+              currentAction: '已完成',
+              resultJson:
+                '{"episodes":[{"episodeNo":1,"title":"第一集","content":"开端","summary":"主角回家","endingHook":"门后有人"},{"episodeNo":2,"title":"第二集","content":"冲突","summary":"家人阻拦","endingHook":"协议出现"}]}',
+            },
+            {
+              id: 3,
+              stageCode: 'EPISODE_SUMMARY',
+              stageOrder: 3,
+              status: 'RUNNING',
+              progressPercent: 45,
+              completedUnits: 0,
+              totalUnits: 1,
+              currentAction: '正在提炼每集概要',
+            },
+            {
+              id: 4,
+              stageCode: 'CHARACTER_SCENE_RECOGNITION',
+              stageOrder: 4,
+              status: 'PENDING',
+              progressPercent: 0,
+              completedUnits: 0,
+              totalUnits: 1,
+              currentAction: '等待上一阶段完成',
+            },
+          ],
+        },
+      },
+    });
+
+    render(<ProductionWorkbenchScript />);
+
+    expect(await screen.findByText('剧本智能分析')).toBeInTheDocument();
+    expect(screen.getByText('剧情全局理解')).toBeInTheDocument();
+    expect(screen.getByText('剧集智能拆分')).toBeInTheDocument();
+    expect(screen.getByText('剧集概要提炼')).toBeInTheDocument();
+    expect(screen.getByText('角色场景识别')).toBeInTheDocument();
+    expect(screen.getByText('一句话：主角回归')).toBeInTheDocument();
+    expect(screen.getByText('主题：回家')).toBeInTheDocument();
+    expect(screen.getByText('第1集 · 第一集')).toBeInTheDocument();
+    expect(screen.getAllByText('100%').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('45%').length).toBeGreaterThanOrEqual(2);
   });
 });

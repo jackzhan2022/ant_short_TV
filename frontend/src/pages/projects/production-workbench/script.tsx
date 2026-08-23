@@ -1,8 +1,22 @@
-import { App, Flex, Input, Tag, Typography } from 'antd';
+import {
+  App,
+  Button,
+  Descriptions,
+  Collapse,
+  Flex,
+  Input,
+  Progress,
+  Skeleton,
+  Tag,
+  Typography,
+} from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from '@umijs/max';
 import {
   queryScriptWorkspace,
+  reanalyzeScript,
+  retryScriptAnalysis,
   type ScriptWorkspace,
 } from '../detail/components/service';
 import { queryProject } from '../detail/service';
@@ -35,6 +49,132 @@ const breakdownStrengthText: Record<string, string> = {
   LOW: '低强度',
   MEDIUM: '中强度',
   HIGH: '高强度',
+};
+
+const analysisStageLabels: Record<string, string> = {
+  GLOBAL_UNDERSTANDING: '剧情全局理解',
+  EPISODE_SPLITTING: '剧集智能拆分',
+  EPISODE_SUMMARY: '剧集概要提炼',
+  CHARACTER_SCENE_RECOGNITION: '角色场景识别',
+};
+
+const analysisStageDescriptions: Record<string, string> = {
+  GLOBAL_UNDERSTANDING: '先把主线、人物和冲突看清楚。',
+  EPISODE_SPLITTING: '按规则或 AI 把正文切成可追踪的分集。',
+  EPISODE_SUMMARY: '把每集的概要和钩子提炼出来。',
+  CHARACTER_SCENE_RECOGNITION: '识别角色、场景和关键道具。',
+};
+
+const safeJsonParse = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const listText = (value: unknown) => {
+  if (!Array.isArray(value) || !value.length) {
+    return '-';
+  }
+  return value
+    .map((item) => (typeof item === 'string' ? item : ''))
+    .filter(Boolean)
+    .join(' / ');
+};
+
+const renderResultSummary = (stageCode: string, resultJson?: string | null) => {
+  const parsed = safeJsonParse(resultJson);
+  if (!parsed) {
+    return (
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        暂无可解析结果
+      </Typography.Text>
+    );
+  }
+
+  if (stageCode === 'GLOBAL_UNDERSTANDING') {
+    return (
+      <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#374151' }}>
+        <div>一句话：{parsed.logline || '-'}</div>
+        <div>主题：{listText(parsed.themes)}</div>
+        <div>人物：{listText(parsed.characters)}</div>
+        <div>关系：{listText(parsed.relationships)}</div>
+        <div>核心冲突：{parsed.coreConflict || '-'}</div>
+        <div>转折：{listText(parsed.turningPoints)}</div>
+        <div>悬念：{parsed.endingHook || '-'}</div>
+      </div>
+    );
+  }
+
+  if (stageCode === 'EPISODE_SPLITTING' || stageCode === 'EPISODE_SUMMARY') {
+    const episodes = Array.isArray(parsed.episodes) ? parsed.episodes : [];
+    return (
+      <div style={{ display: 'grid', gap: 8 }}>
+        {episodes.slice(0, 3).map((episode: any) => (
+          <div
+            key={episode.episodeNo}
+            style={{
+              padding: '8px 10px',
+              borderRadius: 6,
+              background: '#f8fafc',
+              border: '1px solid #e5e7eb',
+              fontSize: 12,
+              lineHeight: '18px',
+            }}
+          >
+            <div style={{ fontWeight: 700, color: '#111827' }}>
+              第{episode.episodeNo || '-'}集 {episode.title ? `· ${episode.title}` : ''}
+            </div>
+            {stageCode === 'EPISODE_SPLITTING' ? (
+              <>
+                <div>概要：{episode.summary || '-'}</div>
+                <div>收尾：{episode.endingHook || '-'}</div>
+                <div style={{ color: '#6b7280' }}>正文：{episode.content || '-'}</div>
+              </>
+            ) : (
+              <>
+                <div>概要：{episode.summary || '-'}</div>
+                <div>亮点：{listText(episode.highlights)}</div>
+                <div>收尾：{episode.endingHook || '-'}</div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (stageCode === 'CHARACTER_SCENE_RECOGNITION') {
+    const characters = Array.isArray(parsed.characters) ? parsed.characters : [];
+    const scenes = Array.isArray(parsed.scenes) ? parsed.scenes : [];
+    const props = Array.isArray(parsed.props) ? parsed.props : [];
+    return (
+      <div style={{ display: 'grid', gap: 8, fontSize: 12 }}>
+        <div>角色：{characters.map((item: any) => item.name).filter(Boolean).join(' / ') || '-'}</div>
+        <div>场景：{scenes.map((item: any) => item.name).filter(Boolean).join(' / ') || '-'}</div>
+        <div>道具：{props.map((item: any) => item.name).filter(Boolean).join(' / ') || '-'}</div>
+      </div>
+    );
+  }
+
+  return (
+    <pre
+      style={{
+        margin: 0,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        fontSize: 12,
+        lineHeight: '18px',
+        color: '#374151',
+      }}
+    >
+      {resultJson}
+    </pre>
+  );
 };
 
 const collectOutline = (workspace: ScriptWorkspace) => {
@@ -113,33 +253,88 @@ const ProductionWorkbenchScript = () => {
       return;
     }
     let active = true;
-    setLoading(true);
-    Promise.all([queryScriptWorkspace(projectId), queryProject(projectId)])
-      .then(([workspaceResponse, projectResponse]) => {
+    const loadWorkspace = async (showLoading: boolean) => {
+      if (showLoading) {
+        setLoading(true);
+      }
+      try {
+        const [workspaceResponse, projectResponse] = await Promise.all([
+          queryScriptWorkspace(projectId),
+          queryProject(projectId),
+        ]);
         if (active) {
           setWorkspace(workspaceResponse.data);
           setProject(projectResponse.data);
         }
-      })
-      .catch(() => {
+      } catch {
         if (active) {
           message.error('剧本页加载失败');
         }
-      })
-      .finally(() => {
-        if (active) {
+      } finally {
+        if (active && showLoading) {
           setLoading(false);
         }
-      });
+      }
+    };
+    void loadWorkspace(true);
     return () => {
       active = false;
     };
   }, [message, projectId]);
 
+  useEffect(() => {
+    const stages = workspace?.analysis?.stages || [];
+    const activeAnalysis = stages.some((stage) =>
+      ['PENDING', 'RUNNING', 'RETRYING'].includes(stage.status),
+    );
+    if (!activeAnalysis) {
+      return undefined;
+    }
+    const timer = window.setInterval(async () => {
+      const response = await queryScriptWorkspace(projectId);
+      setWorkspace(response.data);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [projectId, workspace?.analysis]);
+
+  /*
+   * The page keeps its shell visible while the initial workspace request is
+   * pending, then polls only when the server reports unfinished analysis.
+   */
+  useEffect(() => {
+    if (workspace?.analysis?.status !== 'FAILED') {
+      return;
+    }
+    if (workspace.analysis.errorMessage) {
+      message.error(workspace.analysis.errorMessage);
+    }
+  }, [message, workspace?.analysis?.errorMessage, workspace?.analysis?.status]);
+
   const outline = useMemo(() => collectOutline(workspace || { projectId, script: null, versions: [], characters: [], scenes: [], props: [], storyboards: [] }), [projectId, workspace]);
   const episodeBlocks = useMemo(() => getEpisodeBlocks(workspace || { projectId, script: null, versions: [], characters: [], scenes: [], props: [], storyboards: [] }), [projectId, workspace]);
   const activeEpisode = episodeBlocks.find((item) => item.episodeNo === currentEpisodeNo) || episodeBlocks[0];
   const script = workspace?.script;
+  const analysis = workspace?.analysis;
+  const retryAnalysis = async (stageCode: string) => {
+    try {
+      await retryScriptAnalysis(projectId, stageCode);
+      const response = await queryScriptWorkspace(projectId);
+      setWorkspace(response.data);
+      message.success('已重新加入分析队列');
+    } catch {
+      message.error('分析重试失败');
+    }
+  };
+  const reanalyzeCurrent = async () => {
+    try {
+      await reanalyzeScript(projectId);
+      const response = await queryScriptWorkspace(projectId);
+      setWorkspace(response.data);
+      message.success('已重新发起分析');
+    } catch {
+      message.error('重新分析失败');
+    }
+  };
 
   if (!projectId) {
     return null;
@@ -170,6 +365,169 @@ const ProductionWorkbenchScript = () => {
             <Tag>{project?.visualStyle || '-'}</Tag>
           </Flex>
         </Flex>
+
+        {loading && !workspace ? (
+          <section
+            style={{
+              background: '#fff',
+              border: '1px solid #e6ebf5',
+              borderRadius: 8,
+              padding: 18,
+              marginBottom: 14,
+            }}
+          >
+            <Skeleton active paragraph={{ rows: 4 }} />
+          </section>
+        ) : null}
+
+        {analysis ? (
+          <section
+            aria-label="剧本分析进度"
+            style={{
+              background: '#fff',
+              border: '1px solid #e6ebf5',
+              borderRadius: 8,
+              padding: 18,
+              marginBottom: 14,
+            }}
+          >
+            <Flex justify="space-between" align="center">
+              <div>
+                <Typography.Title level={5} style={{ margin: 0 }}>
+                  剧本智能分析
+                </Typography.Title>
+                <Typography.Text type="secondary">
+                  {analysis.currentAction || '分析任务已创建'}
+                </Typography.Text>
+              </div>
+              <Typography.Text strong>{analysis.overallProgress}%</Typography.Text>
+            </Flex>
+            <Progress
+              percent={analysis.overallProgress}
+              status={analysis.status === 'FAILED' ? 'exception' : undefined}
+              showInfo={false}
+              style={{ margin: '12px 0 16px' }}
+            />
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                gap: 10,
+              }}
+            >
+              {analysis.stages.map((stage) => (
+                <div
+                  key={stage.stageCode}
+                  style={{
+                    minHeight: 92,
+                    border: '1px solid #edf1f8',
+                    borderRadius: 8,
+                    padding: 12,
+                    background: '#fbfcff',
+                  }}
+                >
+                  <Flex justify="space-between" align="center">
+                    <Typography.Text strong>
+                      {analysisStageLabels[stage.stageCode] || stage.stageCode}
+                    </Typography.Text>
+                    <Typography.Text>{stage.progressPercent}%</Typography.Text>
+                  </Flex>
+                  <Progress
+                    percent={stage.progressPercent}
+                    size="small"
+                    status={stage.status === 'FAILED' ? 'exception' : undefined}
+                    showInfo={false}
+                    style={{ margin: '8px 0 4px' }}
+                  />
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {stage.errorMessage ||
+                      stage.currentAction ||
+                      (stage.status === 'SUCCEEDED' ? '已完成' : '等待中')}
+                  </Typography.Text>
+                  {stage.resultJson ? (
+                    <div style={{ marginTop: 8 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {analysisStageDescriptions[stage.stageCode] || '阶段结果'}
+                      </Typography.Text>
+                      <div style={{ marginTop: 6 }}>{renderResultSummary(stage.stageCode, stage.resultJson)}</div>
+                      <Descriptions
+                        size="small"
+                        column={1}
+                        style={{ marginTop: 8 }}
+                        items={[
+                          {
+                            key: 'req',
+                            label: '请求',
+                            children: stage.providerRequestId || '-',
+                          },
+                          {
+                            key: 'call',
+                            label: '调用',
+                            children: stage.aiCallLogId ? `#${stage.aiCallLogId}` : '-',
+                          },
+                          {
+                            key: 'cost',
+                            label: '耗时',
+                            children: stage.durationMs ? `${Math.round(stage.durationMs / 1000)}s` : '-',
+                          },
+                          {
+                            key: 'resultError',
+                            label: '结果错误',
+                            children: stage.resultErrorMessage || stage.resultErrorCode || '-',
+                          },
+                        ]}
+                      />
+                    </div>
+                  ) : null}
+                  {stage.resultJson ? (
+                    <Collapse
+                      size="small"
+                      ghost
+                      items={[
+                        {
+                          key: 'raw',
+                          label: '查看原始内容',
+                          children: (
+                            <pre
+                              style={{
+                                margin: 0,
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                fontSize: 12,
+                                lineHeight: '18px',
+                                color: '#374151',
+                              }}
+                            >
+                              {stage.resultJson}
+                            </pre>
+                          ),
+                        },
+                      ]}
+                    />
+                  ) : null}
+                  {stage.status === 'FAILED' && stage.retryable ? (
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={() => void retryAnalysis(stage.stageCode)}
+                      style={{ padding: 0, marginTop: 6 }}
+                    >
+                      重试此步骤
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            {analysis.status === 'COMPLETED' ? (
+              <div style={{ marginTop: 14 }}>
+                <Button onClick={() => void reanalyzeCurrent()}>
+                  重新分析当前版本
+                </Button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         <section
           style={{
@@ -271,6 +629,8 @@ const ProductionWorkbenchScript = () => {
                       {item}
                     </div>
                   ))
+                ) : loading ? (
+                  <Skeleton active paragraph={{ rows: 6 }} />
                 ) : (
                   <Typography.Text type="secondary">暂无大纲</Typography.Text>
                 )}

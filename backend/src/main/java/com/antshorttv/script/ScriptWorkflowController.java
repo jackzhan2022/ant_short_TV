@@ -33,6 +33,45 @@ public class ScriptWorkflowController {
         return ApiResponse.success(scriptWorkflowService.workspace(tenantId(request), projectId));
     }
 
+    @GetMapping("/script-analysis/current")
+    @RequirePermission("PROJECT:VIEW")
+    public ApiResponse<ScriptAnalysisTaskResponse> currentAnalysis(
+        @PathVariable Long projectId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.currentAnalysis(tenantId(request), projectId));
+    }
+
+    @PostMapping("/script-analysis/current/retry/{stageCode}")
+    @RequirePermission("AI_SERVICE:USE")
+    public ApiResponse<ScriptAnalysisTaskResponse> retryAnalysis(
+        @PathVariable Long projectId,
+        @PathVariable String stageCode,
+        HttpServletRequest request
+    ) {
+        var task = scriptWorkflowService.retryAnalysis(tenantId(request), projectId, stageCode);
+        return ApiResponse.success(task);
+    }
+
+    @PostMapping("/script-analysis/current/reanalyze")
+    @RequirePermission("AI_SERVICE:USE")
+    public ApiResponse<ScriptAnalysisTaskResponse> reanalyze(
+        @PathVariable Long projectId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.reanalyze(tenantId(request), projectId));
+    }
+
+    @PostMapping("/script-analysis/versions/{versionId}/reanalyze")
+    @RequirePermission("AI_SERVICE:USE")
+    public ApiResponse<ScriptAnalysisTaskResponse> reanalyzeVersion(
+        @PathVariable Long projectId,
+        @PathVariable Long versionId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.reanalyzeVersion(tenantId(request), projectId, versionId));
+    }
+
     @PostMapping("/scripts/ai-generate")
     @RequirePermission("AI_SERVICE:USE")
     public ApiResponse<ScriptWorkspaceResponse> generate(

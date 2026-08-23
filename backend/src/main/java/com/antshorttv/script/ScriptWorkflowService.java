@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -40,6 +41,10 @@ public class ScriptWorkflowService {
     private final TenantContextResolver tenantContextResolver;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
+    private final ScriptAnalysisTaskMapper scriptAnalysisTaskMapper;
+    private final ScriptAnalysisStageMapper scriptAnalysisStageMapper;
+    private final ScriptAnalysisResultMapper scriptAnalysisResultMapper;
+    private final ScriptAnalysisTaskService scriptAnalysisTaskService;
     private final ProjectAiConfigService projectAiConfigService;
     private final AiInvocationService aiInvocationService;
     private final MaterialFileAccessService materialFileAccessService;
@@ -56,6 +61,10 @@ public class ScriptWorkflowService {
         TenantContextResolver tenantContextResolver,
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
+        ScriptAnalysisTaskMapper scriptAnalysisTaskMapper,
+        ScriptAnalysisStageMapper scriptAnalysisStageMapper,
+        ScriptAnalysisResultMapper scriptAnalysisResultMapper,
+        ScriptAnalysisTaskService scriptAnalysisTaskService,
         ProjectAiConfigService projectAiConfigService,
         AiInvocationService aiInvocationService,
         MaterialFileAccessService materialFileAccessService,
@@ -71,6 +80,10 @@ public class ScriptWorkflowService {
         this.tenantContextResolver = tenantContextResolver;
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
+        this.scriptAnalysisTaskMapper = scriptAnalysisTaskMapper;
+        this.scriptAnalysisStageMapper = scriptAnalysisStageMapper;
+        this.scriptAnalysisResultMapper = scriptAnalysisResultMapper;
+        this.scriptAnalysisTaskService = scriptAnalysisTaskService;
         this.projectAiConfigService = projectAiConfigService;
         this.aiInvocationService = aiInvocationService;
         this.materialFileAccessService = materialFileAccessService;
@@ -99,8 +112,97 @@ public class ScriptWorkflowService {
             scenes(tenantId, projectId),
             props(tenantId, projectId),
             storyboards(tenantId, projectId),
-            ScriptEpisodeParser.parse(script == null ? null : script.getContent())
+            ScriptEpisodeParser.parse(script == null ? null : script.getContent()),
+            analysis(tenantId, projectId, script)
         );
+    }
+
+    public ScriptAnalysisTaskResponse currentAnalysis(Long tenantId, Long projectId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        ProjectEntity project = requireProjectAccess(context, projectId);
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, project.id);
+        return analysis(tenantId, projectId, script);
+    }
+
+    @Transactional
+    public ScriptAnalysisTaskResponse retryAnalysis(Long tenantId, Long projectId, String stageCode) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "AI_SERVICE:USE", projectId);
+        ScriptAnalysisTaskEntity task = scriptAnalysisTaskService.retryStage(tenantId, projectId, stageCode);
+        return analysisResponse(task);
+    }
+
+    @Transactional
+    public ScriptAnalysisTaskResponse reanalyze(Long tenantId, Long projectId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "AI_SERVICE:USE", projectId);
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
+        if (script == null || script.getCurrentVersionId() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前项目暂无可重新分析的剧本版本。");
+        }
+        return reanalyzeVersion(tenantId, projectId, script.getCurrentVersionId(), context);
+    }
+
+    @Transactional
+    public ScriptAnalysisTaskResponse reanalyzeVersion(Long tenantId, Long projectId, Long versionId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "AI_SERVICE:USE", projectId);
+        return reanalyzeVersion(tenantId, projectId, versionId, context);
+    }
+
+    private ScriptAnalysisTaskResponse reanalyzeVersion(
+        Long tenantId,
+        Long projectId,
+        Long versionId,
+        TenantContext context
+    ) {
+        ScriptVersionEntity version = scriptVersionMapper.selectById(versionId);
+        if (version == null || !tenantId.equals(version.getTenantId()) || !projectId.equals(version.getProjectId())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "剧本版本不存在。");
+        }
+        ScriptEntity script = scriptMapper.selectById(version.getScriptId());
+        if (script == null || !tenantId.equals(script.getTenantId()) || !projectId.equals(script.getProjectId())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "剧本不存在。");
+        }
+        ScriptAnalysisTaskEntity task = scriptAnalysisTaskService.createManualTask(
+            tenantId,
+            projectId,
+            script,
+            version,
+            context.userId(),
+            LocalDateTime.now()
+        );
+        if (task == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前剧本内容为空，无法重新分析。");
+        }
+        return analysisResponse(task);
+    }
+
+    private ScriptAnalysisTaskResponse analysis(Long tenantId, Long projectId, ScriptEntity script) {
+        if (script == null || script.getCurrentVersionId() == null) {
+            return null;
+        }
+        ScriptAnalysisTaskEntity task = scriptAnalysisTaskMapper.selectLatestByVersion(
+            tenantId,
+            projectId,
+            script.getCurrentVersionId()
+        );
+        return task == null ? null : analysisResponse(task);
+    }
+
+    private ScriptAnalysisTaskResponse analysisResponse(ScriptAnalysisTaskEntity task) {
+        List<ScriptAnalysisStageEntity> stages = scriptAnalysisStageMapper.selectByTask(task.getId());
+        Map<Long, ScriptAnalysisResultEntity> results = new LinkedHashMap<>();
+        for (ScriptAnalysisStageEntity stage : stages) {
+            ScriptAnalysisResultEntity result = scriptAnalysisResultMapper.selectLatestByStage(stage.getId());
+            if (result != null) {
+                results.put(stage.getId(), result);
+            }
+        }
+        return ScriptAnalysisTaskResponse.from(task, stages, results);
     }
 
     @Transactional

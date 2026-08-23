@@ -122,6 +122,45 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void flywayCreatesScriptAnalysisPipelineTables() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+            from information_schema.tables
+            where lower(table_name) in (
+              'script_analysis_task',
+              'script_analysis_stage',
+              'script_analysis_result'
+            )
+            """, Integer.class);
+        Integer taskColumnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'script_analysis_task'
+              and lower(column_name) in (
+                'tenant_id', 'project_id', 'script_version_id',
+                'status', 'overall_progress', 'current_stage',
+                'idempotency_key'
+              )
+            """, Integer.class);
+        Integer resultColumnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'script_analysis_result'
+              and lower(column_name) in (
+                'raw_response', 'normalized_json', 'provider_request_id',
+                'ai_call_log_id', 'duration_ms', 'error_code',
+                'error_message', 'retryable'
+              )
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(3);
+        assertThat(taskColumnCount).isEqualTo(7);
+        assertThat(resultColumnCount).isEqualTo(8);
+    }
+
+    @Test
     void scriptContentColumnsAcceptLongDrafts() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         String longContent = "剧本正文".repeat(10000);
