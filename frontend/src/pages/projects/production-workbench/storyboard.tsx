@@ -25,7 +25,7 @@ import type {
   SceneAsset,
   ScriptWorkspace,
   StoryboardShot,
-} from '../detail/components/service';
+} from './service';
 import {
   createAiVideoTask,
   createStoryboard,
@@ -34,7 +34,7 @@ import {
   queryAiVideoTasks,
   queryScriptWorkspace,
   updateStoryboard,
-} from '../detail/components/service';
+} from './service';
 
 type StoryboardDraft = Record<
   number,

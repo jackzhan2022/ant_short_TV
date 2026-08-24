@@ -13,7 +13,10 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./tests/setupTests.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'config/**/*.{test,spec}.{ts,tsx}',
+    ],
     // Exclude Umi integration tests that depend on @umijs/max test infrastructure
     // These require Umi's Jest runner and cannot be used with Vitest directly
     exclude: [
@@ -28,6 +31,7 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'src/.umi/**',
+        'src/.umi-production/**',
         'src/services/ant-design-pro/**',
         'src/**/*.d.ts',
         'src/**/index.style.ts',

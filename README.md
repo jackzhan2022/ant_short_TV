@@ -22,8 +22,13 @@ Ant Short TV is a short-drama production platform with a React admin frontend an
 From the repository root:
 
 ```powershell
-npm run frontend:dev
+npm run dev        # Start frontend and backend together
+npm run dev:status # Show managed processes
+npm run dev:stop   # Stop frontend and backend
+npm run build     # 构建前端生产产物
 ```
+
+Repeated `npm run dev` calls are rejected when managed PIDs or ports 8000/8080 are already active. `Ctrl+C` stops both services.
 
 Or from the frontend directory:
 
@@ -38,10 +43,10 @@ The frontend dev server proxies `/api/*` requests to `http://localhost:8080`.
 Useful commands:
 
 ```powershell
-npm start          # Umi dev server with mock support
-npm run dev        # Umi dev server without mocks
+npm run dev        # Umi dev server with the real backend
 npm run lint       # Biome lint and TypeScript check
 npm run test       # Vitest
+npm run test:coverage # Vitest coverage (run inside frontend/)
 npm run build      # Production build
 npm run openapi    # Regenerate generated API services
 ```
@@ -55,6 +60,8 @@ From the repository root:
 ```powershell
 npm run backend:run
 ```
+
+The backend automatically imports the repository-root `env` file for database, object storage, and AI settings. Create it from `env.example` for local development; use deployment environment variables or a secret manager in production.
 
 Or from the backend directory:
 
@@ -92,8 +99,8 @@ The backend creates the bucket automatically when `OBJECT_STORAGE_AUTO_CREATE_BU
 
 ## Development Flow
 
-1. Start the backend from `backend/`.
-2. Start the frontend from `frontend/` with `npm run dev`.
+1. Run `npm run dev` from the repository root to start both services.
+2. Use `npm run dev:status` to inspect them and `Ctrl+C` or `npm run dev:stop` to stop them.
 3. Keep database schema changes in `backend/src/main/resources/db/migration/`.
 4. Run frontend and backend tests before merging changes.
 
@@ -102,9 +109,15 @@ The backend creates the bucket automatically when `OBJECT_STORAGE_AUTO_CREATE_BU
 ```powershell
 npm run lint
 npm run test
+npm run verify
+npm run verify:release
 
 # Or run individual checks:
 npm run frontend:lint
 npm run frontend:test
 npm run backend:test
 ```
+
+`npm run verify` runs frontend lint, the full frontend/backend test suite, and the frontend production build. Use it before merging or releasing.
+
+`npm run verify:release` performs the full verification and creates a `.release/` bundle containing frontend assets, `backend/ant-short-tv-backend.jar`, and `manifest.json`. Use `npm run package:release` when only the release bundle needs to be rebuilt.

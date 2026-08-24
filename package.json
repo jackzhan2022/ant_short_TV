@@ -2,14 +2,26 @@
   "name": "ant-short-tv",
   "private": true,
   "scripts": {
+    "dev": "node scripts/dev-processes.mjs start",
+    "start": "node scripts/dev-processes.mjs start",
+    "dev:all": "node scripts/dev-processes.mjs start",
+    "dev:stop": "node scripts/dev-processes.mjs stop",
+    "dev:status": "node scripts/dev-processes.mjs status",
+    "build": "npm run frontend:build",
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:start": "npm --prefix frontend start",
     "frontend:lint": "npm --prefix frontend run lint",
     "frontend:test": "npm --prefix frontend run test",
+    "frontend:coverage": "npm --prefix frontend run test:coverage",
     "frontend:build": "npm --prefix frontend run build",
     "backend:run": "mvn -f backend/pom.xml spring-boot:run",
     "backend:test": "mvn -f backend/pom.xml test",
+    "backend:package": "mvn -f backend/pom.xml clean package -DskipTests",
+    "package:release": "node scripts/package-release.mjs",
+    "test:changed": "node scripts/test-changed.mjs",
     "test": "npm run frontend:test && npm run backend:test",
-    "lint": "npm run frontend:lint"
+    "lint": "npm run frontend:lint",
+    "verify": "npm run lint && npm test && npm run build",
+    "verify:release": "npm run lint && npm test && npm run package:release"
   }
 }

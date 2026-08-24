@@ -1,5 +1,5 @@
 import { useParams } from '@umijs/max';
-import ShotProductionWorkspace from '../detail/components/ShotProductionWorkspace';
+import ShotProductionWorkspace from './ShotProductionWorkspace';
 
 const ProductionWorkbenchVideo = () => {
   const params = useParams<{ id: string }>();

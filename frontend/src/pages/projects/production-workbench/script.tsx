@@ -18,8 +18,8 @@ import {
   reanalyzeScript,
   retryScriptAnalysis,
   type ScriptWorkspace,
-} from '../detail/components/service';
-import { queryProject } from '../detail/service';
+} from './service';
+import { queryProject } from '@/services/account-team/project';
 
 type EpisodeBlock = {
   episodeNo: number;

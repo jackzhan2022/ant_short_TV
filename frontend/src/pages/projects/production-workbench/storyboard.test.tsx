@@ -20,11 +20,11 @@ vi.mock('@umijs/max', () => ({
   useParams: () => ({ id: '1' }),
 }));
 
-vi.mock('../detail/service', () => ({
+vi.mock('@/services/account-team/project', () => ({
   queryProject: mocks.queryProject,
 }));
 
-vi.mock('../detail/components/service', () => ({
+vi.mock('./service', () => ({
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   queryAiImageTasks: mocks.queryAiImageTasks,
   queryAiVideoTasks: mocks.queryAiVideoTasks,
@@ -34,7 +34,7 @@ vi.mock('../detail/components/service', () => ({
   deleteStoryboard: mocks.deleteStoryboard,
 }));
 
-vi.mock('../detail/components/ShotProductionWorkspace', () => ({
+vi.mock('./ShotProductionWorkspace', () => ({
   default: () => null,
 }));
 

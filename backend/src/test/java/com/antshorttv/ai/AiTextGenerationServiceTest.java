@@ -11,9 +11,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class AiTextGenerationServiceTest {
 
     @Autowired
@@ -161,6 +163,7 @@ class AiTextGenerationServiceTest {
     }
 
     private void insertTextService(Long tenantId, Long userId, String provider, String baseUrl, String endpoint, String model) {
+        jdbcTemplate.update("delete from ai_service_config where service_type = 'TEXT' and is_default = true");
         jdbcTemplate.update("""
             insert into ai_service_config
               (tenant_id, provider, service_type, name, base_url, api_key_cipher, model, endpoint, priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)

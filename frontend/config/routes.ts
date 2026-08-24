@@ -273,10 +273,6 @@ export default [
         access: 'canViewProjects',
         component: './projects/list',
       },
-      {
-        path: '/projects/:id',
-        component: './projects/detail',
-      },
     ],
   },
   {

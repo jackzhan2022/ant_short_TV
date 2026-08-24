@@ -19,7 +19,7 @@ vi.mock('@umijs/max', () => ({
   Outlet: () => <div data-testid="outlet" />,
 }));
 
-vi.mock('../detail/service', () => ({
+vi.mock('@/services/account-team/project', () => ({
   queryProject: mocks.queryProject,
 }));
 
@@ -89,6 +89,9 @@ describe('ProductionWorkbench shell', () => {
     expect(screen.queryByText('绘梦工坊')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '初始设定' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '角色资产' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    expect(mocks.historyPush).toHaveBeenCalledWith('/projects/list');
 
     fireEvent.click(screen.getByRole('button', { name: '分镜' }));
 

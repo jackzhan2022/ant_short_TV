@@ -12,7 +12,7 @@ import { App, Button, Flex, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
-import { queryProject } from '../detail/service';
+import { queryProject } from '@/services/account-team/project';
 
 type ProjectLite = {
   id: number;
@@ -120,7 +120,7 @@ const ProductionWorkbench = () => {
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
-            onClick={() => history.push(`/projects/${projectId}`)}
+            onClick={() => history.push('/projects/list')}
             aria-label="返回"
             style={{ paddingInline: 0 }}
           />

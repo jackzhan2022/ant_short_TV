@@ -97,4 +97,8 @@ describe('menu routes visibility', () => {
       });
     }
   });
+
+  it('removes the legacy project detail page', () => {
+    expect(findRoute('/projects/:id', routes)).toBeUndefined();
+  });
 });

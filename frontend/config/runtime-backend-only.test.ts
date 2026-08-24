@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const packageJson = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'),
 );
-const configSource = readFileSync(new URL('./config.ts', import.meta.url), 'utf8');
+const configSource = readFileSync(
+  resolve(process.cwd(), 'config', 'config.ts'),
+  'utf8',
+);
 
 describe('frontend runtime API mode', () => {
   it('forces development commands to use the real backend', () => {

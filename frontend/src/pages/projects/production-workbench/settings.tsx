@@ -19,7 +19,7 @@ import {
   type ScriptElementType,
   type ScriptWorkspace,
   updateScriptElement,
-} from '../detail/components/service';
+} from './service';
 
 type ElementType = Exclude<ScriptElementType, 'ALL'>;
 type AssetRecord = CharacterAsset | SceneAsset | PropAsset;

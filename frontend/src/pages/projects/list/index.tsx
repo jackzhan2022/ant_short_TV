@@ -213,7 +213,11 @@ const ProjectList = () => {
           <Button
             type="link"
             icon={<FolderOpenOutlined />}
-            onClick={() => history.push(`/projects/${record.id}`)}
+            onClick={() =>
+              history.push(
+                `/projects/${record.id}/production-workbench/script`,
+              )
+            }
           >
             进入
           </Button>

@@ -14,7 +14,7 @@ vi.mock('@umijs/max', () => ({
   useParams: () => ({ id: '1' }),
 }));
 
-vi.mock('../detail/components/service', () => ({
+vi.mock('./service', () => ({
   confirmScriptElement: mocks.confirmScriptElement,
   deleteScriptElement: mocks.deleteScriptElement,
   extractScriptElements: mocks.extractScriptElements,

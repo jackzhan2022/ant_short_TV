@@ -29,6 +29,7 @@ yarn.lock
 env
 functions/*
 .temp/**
+.release/
 
 # claude code local settings
 .claude/settings.local.json

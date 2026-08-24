@@ -108,6 +108,17 @@ describe('ProjectList', () => {
     });
   });
 
+  it('opens the production workbench script page from project entry', async () => {
+    render(<ProjectList />);
+
+    await screen.findByText('测试短剧');
+    fireEvent.click(screen.getByRole('button', { name: /进入/ }));
+
+    expect(mocks.historyPush).toHaveBeenCalledWith(
+      '/projects/1/production-workbench/script',
+    );
+  });
+
   it('opens the independent production workbench from project progress', async () => {
     render(<ProjectList />);
 

@@ -55,13 +55,13 @@ vi.mock('antd', () => ({
   },
 }));
 
-vi.mock('../detail/components/service', () => ({
+vi.mock('./service', () => ({
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   retryScriptAnalysis: mocks.retryScriptAnalysis,
   reanalyzeScript: mocks.reanalyzeScript,
 }));
 
-vi.mock('../detail/service', () => ({
+vi.mock('@/services/account-team/project', () => ({
   queryProject: mocks.queryProject,
 }));
 
