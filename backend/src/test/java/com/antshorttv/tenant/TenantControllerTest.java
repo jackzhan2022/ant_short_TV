@@ -60,58 +60,57 @@ class TenantControllerTest {
         createTenant(token, "星河影视", "COMPANY");
         createTenant(token, "蓝海传媒", "STUDIO");
 
-        mockMvc.perform(get("/api/tenants/my").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+        mockMvc.perform(get("/api/tenants/my").with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(2)))
             .andExpect(jsonPath("$.data[0].memberType", is("OWNER")));
     }
 
     @Test
-    void switchesCurrentTenantAndRejectsDisabledTenant() throws Exception {
+    void bootstrapSelectsRequestTenantAndRecoversFromDisabledTenant() throws Exception {
         String token = registerUser("13800000103", "王五");
         MvcResult result = createTenant(token, "停用测试团队", "OTHER");
         Long tenantId = readLong(result, "$.data.id");
 
-        mockMvc.perform(post("/api/tenants/current")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"tenantId\":%d}".formatted(tenantId)))
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.tenantId", is(tenantId.intValue())));
+            .andExpect(jsonPath("$.data.selectedTenant.tenant.id", is(tenantId.intValue())));
 
         mockMvc.perform(put("/api/tenants/%d/status".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"DISABLED\"}"))
             .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/tenants/current")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"tenantId\":%d}".formatted(tenantId)))
-            .andExpect(status().isForbidden())
-            .andExpect(jsonPath("$.errorCode", is("TENANT_DISABLED")))
-            .andExpect(jsonPath("$.errorMessage", is("当前创作团队已被停用，暂时无法进入。")));
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.selectedTenant").doesNotExist())
+            .andExpect(jsonPath("$.data.unavailableSelectionReason", is("TENANT_DISABLED")));
     }
 
     @Test
-    void currentTenantCanBeResolvedFromValidatedTenantHeader() throws Exception {
+    void bootstrapResolvesValidatedTenantHeader() throws Exception {
         String ownerToken = registerUser("13800000104", "赵六");
         Long ownerTenantId = readLong(createTenant(ownerToken, "Header测试团队", "STUDIO"), "$.data.id");
         String otherToken = registerUser("13800000105", "钱七");
 
-        mockMvc.perform(get("/api/tenants/current")
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", ownerTenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.tenantId", is(ownerTenantId.intValue())))
-            .andExpect(jsonPath("$.data.memberType", is("OWNER")));
+            .andExpect(jsonPath("$.data.selectedTenant.tenant.id", is(ownerTenantId.intValue())))
+            .andExpect(jsonPath("$.data.selectedTenant.membership.memberType", is("OWNER")));
 
-        mockMvc.perform(get("/api/tenants/current")
-                .header(HttpHeaders.AUTHORIZATION, bearer(otherToken))
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))
                 .header("X-Tenant-Id", ownerTenantId))
-            .andExpect(status().isForbidden())
-            .andExpect(jsonPath("$.errorCode", is("FORBIDDEN")));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.selectedTenant").doesNotExist())
+            .andExpect(jsonPath("$.data.unavailableSelectionReason", is("TENANT_UNAVAILABLE")));
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {
@@ -122,12 +121,12 @@ class TenantControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private MvcResult createTenant(String token, String name, String type) throws Exception {
         return mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"%s","logo":"https://example.com/logo.png","description":"短剧制作团队"}
@@ -136,10 +135,6 @@ class TenantControllerTest {
             .andExpect(jsonPath("$.success", is(true)))
             .andExpect(jsonPath("$.data.name", is(name)))
             .andReturn();
-    }
-
-    private String bearer(String token) {
-        return "Bearer " + token;
     }
 
     private Long readLong(MvcResult result, String path) throws Exception {

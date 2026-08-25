@@ -3,6 +3,7 @@ package com.antshorttv.project;
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.rbac.RequirePermission;
+import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -25,7 +26,6 @@ public class ProjectController {
     }
 
     @GetMapping
-    @RequirePermission("PROJECT:VIEW")
     public ApiResponse<List<ProjectResponse>> list(HttpServletRequest request) {
         return ApiResponse.success(projectService.list(tenantId(request)));
     }
@@ -37,13 +37,13 @@ public class ProjectController {
     }
 
     @GetMapping("/{id}")
-    @RequirePermission("PROJECT:VIEW")
+    @RequireProjectPermission(value = "PROJECT:VIEW", projectIdParameter = "id")
     public ApiResponse<ProjectResponse> detail(@PathVariable Long id, HttpServletRequest request) {
         return ApiResponse.success(projectService.detail(tenantId(request), id));
     }
 
     @PutMapping("/{id}")
-    @RequirePermission("PROJECT:EDIT")
+    @RequireProjectPermission(value = "PROJECT:EDIT", projectIdParameter = "id")
     public ApiResponse<ProjectResponse> update(
         @PathVariable Long id,
         @Valid @RequestBody UpdateProjectRequest body,
@@ -53,14 +53,14 @@ public class ProjectController {
     }
 
     @DeleteMapping("/{id}")
-    @RequirePermission("PROJECT:DELETE")
+    @RequireProjectPermission(value = "PROJECT:DELETE", projectIdParameter = "id")
     public ApiResponse<Void> delete(@PathVariable Long id, HttpServletRequest request) {
         projectService.delete(tenantId(request), id, request);
         return ApiResponse.ok();
     }
 
     @PutMapping("/{id}/status")
-    @RequirePermission("PROJECT:EDIT")
+    @RequireProjectPermission(value = "PROJECT:EDIT", projectIdParameter = "id")
     public ApiResponse<ProjectResponse> updateStatus(
         @PathVariable Long id,
         @Valid @RequestBody UpdateProjectStatusRequest body,
@@ -70,7 +70,7 @@ public class ProjectController {
     }
 
     @PutMapping("/{id}/owner")
-    @RequirePermission("PROJECT:EDIT")
+    @RequireProjectPermission(value = "PROJECT:EDIT", projectIdParameter = "id")
     public ApiResponse<ProjectResponse> updateOwner(
         @PathVariable Long id,
         @Valid @RequestBody UpdateProjectOwnerRequest body,
@@ -80,13 +80,13 @@ public class ProjectController {
     }
 
     @GetMapping("/{id}/members")
-    @RequirePermission("PROJECT_MEMBER:VIEW")
+    @RequireProjectPermission(value = "PROJECT_MEMBER:VIEW", projectIdParameter = "id")
     public ApiResponse<List<ProjectMemberResponse>> members(@PathVariable Long id, HttpServletRequest request) {
         return ApiResponse.success(projectService.members(tenantId(request), id));
     }
 
     @PostMapping("/{id}/members")
-    @RequirePermission("PROJECT_MEMBER:ADD")
+    @RequireProjectPermission(value = "PROJECT_MEMBER:ADD", projectIdParameter = "id")
     public ApiResponse<ProjectMemberResponse> addMember(
         @PathVariable Long id,
         @Valid @RequestBody AddProjectMemberRequest body,
@@ -96,14 +96,14 @@ public class ProjectController {
     }
 
     @DeleteMapping("/{id}/members/{userId}")
-    @RequirePermission("PROJECT_MEMBER:REMOVE")
+    @RequireProjectPermission(value = "PROJECT_MEMBER:REMOVE", projectIdParameter = "id")
     public ApiResponse<Void> removeMember(@PathVariable Long id, @PathVariable Long userId, HttpServletRequest request) {
         projectService.removeMember(tenantId(request), id, userId, request);
         return ApiResponse.ok();
     }
 
     @PutMapping("/{id}/members/{userId}/role")
-    @RequirePermission("PROJECT_MEMBER:UPDATE")
+    @RequireProjectPermission(value = "PROJECT_MEMBER:UPDATE", projectIdParameter = "id")
     public ApiResponse<ProjectMemberResponse> updateMemberRole(
         @PathVariable Long id,
         @PathVariable Long userId,
@@ -114,13 +114,13 @@ public class ProjectController {
     }
 
     @GetMapping("/{id}/roles")
-    @RequirePermission("PROJECT_ROLE:VIEW")
+    @RequireProjectPermission(value = "PROJECT_ROLE:VIEW", projectIdParameter = "id")
     public ApiResponse<List<ProjectRoleResponse>> roles(@PathVariable Long id, HttpServletRequest request) {
         return ApiResponse.success(projectService.roles(tenantId(request), id));
     }
 
     @PostMapping("/{id}/roles")
-    @RequirePermission("PROJECT_ROLE:CREATE")
+    @RequireProjectPermission(value = "PROJECT_ROLE:CREATE", projectIdParameter = "id")
     public ApiResponse<ProjectRoleResponse> createRole(
         @PathVariable Long id,
         @Valid @RequestBody CreateProjectRoleRequest body,
@@ -130,7 +130,7 @@ public class ProjectController {
     }
 
     @PutMapping("/{id}/roles/{roleId}")
-    @RequirePermission("PROJECT_ROLE:UPDATE")
+    @RequireProjectPermission(value = "PROJECT_ROLE:UPDATE", projectIdParameter = "id")
     public ApiResponse<ProjectRoleResponse> updateRole(
         @PathVariable Long id,
         @PathVariable Long roleId,
@@ -141,14 +141,14 @@ public class ProjectController {
     }
 
     @DeleteMapping("/{id}/roles/{roleId}")
-    @RequirePermission("PROJECT_ROLE:DELETE")
+    @RequireProjectPermission(value = "PROJECT_ROLE:DELETE", projectIdParameter = "id")
     public ApiResponse<Void> deleteRole(@PathVariable Long id, @PathVariable Long roleId, HttpServletRequest request) {
         projectService.deleteRole(tenantId(request), id, roleId, request);
         return ApiResponse.ok();
     }
 
     @GetMapping("/{id}/roles/{roleId}/permissions")
-    @RequirePermission("PROJECT_ROLE:VIEW")
+    @RequireProjectPermission(value = "PROJECT_ROLE:VIEW", projectIdParameter = "id")
     public ApiResponse<List<ProjectRolePermissionResponse>> rolePermissions(
         @PathVariable Long id,
         @PathVariable Long roleId,
@@ -158,7 +158,7 @@ public class ProjectController {
     }
 
     @PutMapping("/{id}/roles/{roleId}/permissions")
-    @RequirePermission("PROJECT_ROLE:PERMISSION")
+    @RequireProjectPermission(value = "PROJECT_ROLE:PERMISSION", projectIdParameter = "id")
     public ApiResponse<List<ProjectRolePermissionResponse>> updateRolePermissions(
         @PathVariable Long id,
         @PathVariable Long roleId,

@@ -39,7 +39,7 @@ class AiCallLogControllerTest {
         insertCallLog(tenantId + 999, 1L, configId, "OpenAI", "TEXT", "test-model", "chatbot", "其他团队", "不应返回", "SUCCESS", null, 99);
 
         mockMvc.perform(get("/api/tenants/%d/ai-call-logs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .param("current", "1")
                 .param("pageSize", "10")
                 .param("serviceType", "TEXT")
@@ -59,7 +59,7 @@ class AiCallLogControllerTest {
 
     private Long createConfig(String token, Long tenantId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -109,12 +109,12 @@ class AiCallLogControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"AI调用日志测试"}

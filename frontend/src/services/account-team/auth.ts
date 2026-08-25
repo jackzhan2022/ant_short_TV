@@ -1,7 +1,6 @@
 import { request } from '@umijs/max';
-import type { ApiResponse, AuthSession, UserProfile } from './types';
+import type { ApiResponse, AuthBootstrap, AuthSession } from './types';
 
-const ACCESS_TOKEN_KEY = 'accessToken';
 const CURRENT_TENANT_ID_KEY = 'currentTenantId';
 
 export type LoginByMobileParams = {
@@ -15,19 +14,11 @@ export type RegisterParams = LoginByMobileParams & {
 };
 
 export function saveAuthSession(session: {
-  accessToken?: string;
   currentTenantId?: number;
 }) {
-  if (session.accessToken) {
-    localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
-  }
   if (session.currentTenantId) {
     localStorage.setItem(CURRENT_TENANT_ID_KEY, String(session.currentTenantId));
   }
-}
-
-export function getAccessToken() {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
 export function getCurrentTenantId() {
@@ -40,22 +31,20 @@ export function setCurrentTenantId(tenantId: number) {
 }
 
 export function clearAuthSession() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem('accessToken');
   localStorage.removeItem(CURRENT_TENANT_ID_KEY);
 }
 
 export async function loginByMobile(params: LoginByMobileParams) {
-  const response = await request<ApiResponse<AuthSession>>('/api/auth/login', {
+  return request<ApiResponse<AuthSession>>('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     data: params,
   });
-  saveAuthSession({ accessToken: response.data.accessToken });
-  return response;
 }
 
 export async function registerByMobile(params: RegisterParams) {
-  const response = await request<ApiResponse<AuthSession>>(
+  return request<ApiResponse<AuthSession>>(
     '/api/auth/register',
     {
       method: 'POST',
@@ -63,8 +52,6 @@ export async function registerByMobile(params: RegisterParams) {
       data: params,
     },
   );
-  saveAuthSession({ accessToken: response.data.accessToken });
-  return response;
 }
 
 export async function logout() {
@@ -75,8 +62,15 @@ export async function logout() {
   }
 }
 
-export async function currentUser(options?: Record<string, unknown>) {
-  return request<ApiResponse<UserProfile>>('/api/user/me', {
+export async function queryAuthBootstrap(
+  tenantId?: number,
+  options?: Record<string, unknown>,
+) {
+  return request<ApiResponse<AuthBootstrap>>('/api/auth/bootstrap', {
     ...(options || {}),
+    headers: {
+      ...((options?.headers as Record<string, string> | undefined) || {}),
+      ...(tenantId ? { 'X-Tenant-Id': String(tenantId) } : {}),
+    },
   });
 }

@@ -4,7 +4,7 @@ import ProjectList from './index';
 
 const mocks = vi.hoisted(() => ({
   historyPush: vi.fn(),
-  queryOrganizations: vi.fn(),
+  canCreateProject: true,
   queryProjects: vi.fn(),
   queryTenantMembers: vi.fn(),
 }));
@@ -13,6 +13,7 @@ vi.mock('@umijs/max', () => ({
   history: {
     push: mocks.historyPush,
   },
+  useAccess: () => ({ canCreateProject: mocks.canCreateProject }),
 }));
 
 vi.mock('@/services/account-team/auth', () => ({
@@ -21,7 +22,6 @@ vi.mock('@/services/account-team/auth', () => ({
 
 vi.mock('./service', () => ({
   createProject: vi.fn(),
-  queryOrganizations: mocks.queryOrganizations,
   queryProjects: mocks.queryProjects,
   queryTenantMembers: mocks.queryTenantMembers,
   updateProject: vi.fn(),
@@ -92,7 +92,7 @@ vi.mock('@ant-design/pro-components', () => ({
 describe('ProjectList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.queryOrganizations.mockResolvedValue({ data: [] });
+    mocks.canCreateProject = true;
     mocks.queryTenantMembers.mockResolvedValue({ data: [] });
     mocks.queryProjects.mockResolvedValue({
       success: true,
@@ -103,6 +103,13 @@ describe('ProjectList', () => {
           code: 'TEST_DRAMA',
           status: 'IN_PROGRESS',
           memberCount: 3,
+          capabilities: {
+            canView: true,
+            canEdit: true,
+            canDelete: false,
+            canManageMembers: false,
+            canManageRoles: false,
+          },
         },
       ],
     });
@@ -139,5 +146,38 @@ describe('ProjectList', () => {
     fireEvent.click(screen.getByRole('button', { name: /创建项目/ }));
 
     expect(mocks.historyPush).toHaveBeenCalledWith('/short-drama-creation');
+  });
+
+  it('hides edit controls when the project capability denies editing', async () => {
+    mocks.queryProjects.mockResolvedValue({
+      success: true,
+      data: [{
+        id: 2,
+        name: '只读项目',
+        code: 'READ_ONLY',
+        status: 'IN_PROGRESS',
+        memberCount: 1,
+        capabilities: {
+          canView: true,
+          canEdit: false,
+          canDelete: false,
+          canManageMembers: false,
+          canManageRoles: false,
+        },
+      }],
+    });
+
+    render(<ProjectList />);
+
+    await screen.findByText('只读项目');
+    expect(screen.queryByRole('button', { name: /编辑/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /归档/ })).not.toBeInTheDocument();
+  });
+
+  it('hides project creation without tenant PROJECT:CREATE permission', async () => {
+    mocks.canCreateProject = false;
+    render(<ProjectList />);
+    await screen.findByText('测试短剧');
+    expect(screen.queryByRole('button', { name: /创建项目/ })).not.toBeInTheDocument();
   });
 });

@@ -6,6 +6,8 @@ import java.util.Map;
 
 record ReviewProjectSummaryResponse(
     Long id,
+    Long mainProjectId,
+    String accessSource,
     String name,
     String sourceFileName,
     String sourceType,

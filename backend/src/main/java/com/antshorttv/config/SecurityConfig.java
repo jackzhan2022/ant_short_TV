@@ -8,26 +8,48 @@ import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
-import com.antshorttv.security.AccessTokenAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import com.antshorttv.security.JsonAccessDeniedHandler;
+import com.antshorttv.security.JsonAuthenticationEntryPoint;
+import com.antshorttv.security.SessionAuthenticationFilter;
+import com.antshorttv.security.SpaCsrfTokenRequestHandler;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, AccessTokenAuthenticationFilter accessTokenAuthenticationFilter) throws Exception {
+    public SecurityFilterChain securityFilterChain(
+        HttpSecurity http,
+        SessionAuthenticationFilter sessionAuthenticationFilter,
+        JsonAuthenticationEntryPoint authenticationEntryPoint,
+        JsonAccessDeniedHandler accessDeniedHandler
+    ) throws Exception {
         return http
             .cors(Customizer.withDefaults())
-            .csrf(AbstractHttpConfigurer::disable)
+            .csrf(csrf -> csrf
+                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
+                .ignoringRequestMatchers("/api/auth/login", "/api/auth/register"))
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint(authenticationEntryPoint)
+                .accessDeniedHandler(accessDeniedHandler))
             .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/api/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                .requestMatchers(
+                    "/api/auth/login", "/api/auth/register",
+                    "/api/auth/verification-code/**",
+                    "/api/style-library/**", "/api/public/**",
+                    "/actuator/health", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
+                ).permitAll()
+                .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll())
-            .addFilterBefore(accessTokenAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(sessionAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
     }
 

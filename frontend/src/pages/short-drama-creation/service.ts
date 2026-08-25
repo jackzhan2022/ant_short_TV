@@ -1,4 +1,4 @@
-export { createProject, queryOrganizations } from '@/services/account-team/project';
+export { createProject } from '@/services/account-team/project';
 import { request } from '@umijs/max';
 import type { ApiResponse } from '@/services/account-team/types';
 

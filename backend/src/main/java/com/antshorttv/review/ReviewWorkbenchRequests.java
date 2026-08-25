@@ -11,6 +11,11 @@ record CreateReviewProjectRequest(
 ) {
 }
 
+record BindReviewProjectRequest(
+    @NotNull Long mainProjectId
+) {
+}
+
 record SaveReviewVersionRequest(
     @NotBlank @Size(max = 200000) String content,
     @Size(max = 255) String fileName,

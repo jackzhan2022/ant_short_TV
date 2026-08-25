@@ -1,6 +1,5 @@
 export {
   createProject,
-  queryOrganizations,
   queryProjects,
   updateProject,
   updateProjectStatus,

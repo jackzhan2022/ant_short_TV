@@ -1,25 +1,36 @@
 import { Helmet, Link, history, useIntl, useModel } from '@umijs/max';
 import { App, Button, Form, Input } from 'antd';
-import { startTransition, useState, type FC } from 'react';
-import { registerByMobile } from '@/services/account-team/auth';
+import { useState, type FC } from 'react';
+import {
+  queryAuthBootstrap,
+  registerByMobile,
+  setCurrentTenantId,
+} from '@/services/account-team/auth';
+import { toBootstrapState } from '@/services/account-team/bootstrap';
 import { acceptInvitation } from '@/services/account-team/invitation';
-import { createTenant, switchTenant } from '@/services/account-team/tenant';
+import { createTenant } from '@/services/account-team/tenant';
 import Settings from '../../../../config/defaultSettings';
 import AuthPageLayout from '../components/AuthPageLayout';
 
 const Register: FC = () => {
-  const { initialState, setInitialState } = useModel('@@initialState');
+  const { setInitialState } = useModel('@@initialState');
   const { message } = App.useApp();
   const intl = useIntl();
   const [registered, setRegistered] = useState(false);
   const [completing, setCompleting] = useState(false);
 
-  const refreshCurrentUser = async () => {
-    const userInfo = await initialState?.fetchUserInfo?.();
-    if (userInfo) {
-      startTransition(() => {
-        setInitialState((state) => ({ ...state, currentUser: userInfo }));
-      });
+  const applyBootstrap = async (tenantId?: number) => {
+    const bootstrap = (
+      await queryAuthBootstrap(tenantId, { skipErrorHandler: true })
+    ).data;
+    if (tenantId && bootstrap.selectedTenant?.tenant.id !== tenantId) {
+      throw new Error(
+        bootstrap.unavailableSelectionReason || 'Selected tenant is unavailable',
+      );
+    }
+    await setInitialState((state) => ({ ...state, ...toBootstrapState(bootstrap) }));
+    if (bootstrap.selectedTenant?.tenant.id) {
+      setCurrentTenantId(bootstrap.selectedTenant.tenant.id);
     }
   };
 
@@ -38,11 +49,11 @@ const Register: FC = () => {
     try {
       if (invitationCode) {
         const response = await acceptInvitation(invitationCode);
-        await switchTenant(response.data.tenantId);
+        await applyBootstrap(response.data.tenantId);
         message.success('已加入团队');
       } else if (teamName) {
         const response = await createTenant({ name: teamName, type: 'STUDIO' });
-        await switchTenant(response.data.id);
+        await applyBootstrap(response.data.id);
         message.success('团队创建成功');
       }
       enterTeamPages();
@@ -229,7 +240,7 @@ const Register: FC = () => {
             password: string;
           };
           await registerByMobile(params);
-          await refreshCurrentUser();
+          await applyBootstrap();
           message.success('注册成功');
           setRegistered(true);
         }}

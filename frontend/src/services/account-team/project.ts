@@ -1,8 +1,6 @@
 import { request } from '@umijs/max';
 import type {
   ApiResponse,
-  Organization,
-  OrganizationStatus,
   Permission,
   Project,
   ProjectMember,
@@ -10,16 +8,7 @@ import type {
   ProjectStatus,
 } from './types';
 
-export type OrganizationFormValues = {
-  parentId?: number | null;
-  name: string;
-  code: string;
-  leaderId?: number | null;
-  sort?: number;
-};
-
 export type ProjectFormValues = {
-  organizationId?: number | null;
   name: string;
   code?: string;
   description?: string;
@@ -38,7 +27,6 @@ export type ProjectFormValues = {
 
 export type ProjectMemberFormValues = {
   userId: number;
-  organizationId?: number | null;
   roleId?: number;
 };
 
@@ -47,52 +35,11 @@ export type ProjectRoleFormValues = {
   name: string;
   description?: string;
   status?: string;
-  dataScope?: string;
   permissionCodes?: string[];
 };
 
-export async function queryOrganizations() {
-  return request<ApiResponse<Organization[]>>('/api/organizations');
-}
-
-export async function createOrganization(values: OrganizationFormValues) {
-  return request<ApiResponse<Organization>>('/api/organizations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    data: values,
-  });
-}
-
-export async function updateOrganization(
-  organizationId: number,
-  values: OrganizationFormValues,
-) {
-  return request<ApiResponse<Organization>>(`/api/organizations/${organizationId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    data: values,
-  });
-}
-
-export async function deleteOrganization(organizationId: number) {
-  return request<ApiResponse<void>>(`/api/organizations/${organizationId}`, {
-    method: 'DELETE',
-  });
-}
-
-export async function updateOrganizationStatus(
-  organizationId: number,
-  status: OrganizationStatus,
-) {
-  return request<ApiResponse<Organization>>(
-    `/api/organizations/${organizationId}/status`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      data: { status },
-    },
-  );
-}
+export const hasProjectPermission = (project: Project, permission: string) =>
+  project.effectivePermissions.includes(permission);
 
 export async function queryProjects() {
   return request<ApiResponse<Project[]>>('/api/projects');

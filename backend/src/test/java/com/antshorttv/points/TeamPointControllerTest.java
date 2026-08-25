@@ -30,7 +30,7 @@ class TeamPointControllerTest {
         Long tenantId = createTenant(token, "积分团队");
 
         mockMvc.perform(get("/api/tenants/%d/points/account".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.tenantId", is(tenantId.intValue())))
             .andExpect(jsonPath("$.data.balance", is(0)))
@@ -44,7 +44,7 @@ class TeamPointControllerTest {
         Long tenantId = createTenant(token, "积分充值团队");
 
         mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"amount":50,"description":"测试充值"}
@@ -55,7 +55,7 @@ class TeamPointControllerTest {
             .andExpect(jsonPath("$.data.totalConsumed", is(0)));
 
         mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"amount":-10,"description":"测试扣减"}
@@ -66,7 +66,7 @@ class TeamPointControllerTest {
             .andExpect(jsonPath("$.data.totalConsumed", is(10)));
 
         mockMvc.perform(get("/api/tenants/%d/points/transactions".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.total", is(2)))
             .andExpect(jsonPath("$.data.records", hasSize(2)))
@@ -83,7 +83,7 @@ class TeamPointControllerTest {
         Long tenantId = createTenant(token, "积分保护团队");
 
         mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"amount":-1,"description":"超额扣减"}
@@ -100,12 +100,12 @@ class TeamPointControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"积分测试"}

@@ -3,8 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamSwitcher from './index';
 
 const mocks = vi.hoisted(() => ({
-  queryMyTenants: vi.fn(),
-  switchTenant: vi.fn(),
   messageSuccess: vi.fn(),
 }));
 
@@ -39,28 +37,24 @@ vi.mock('antd', () => ({
   ),
 }));
 
-vi.mock('@/services/account-team/tenant', () => ({
-  queryMyTenants: mocks.queryMyTenants,
-  switchTenant: mocks.switchTenant,
-}));
-
 describe('TeamSwitcher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.queryMyTenants.mockResolvedValue({
-      success: true,
-      data: [
-        { id: 10, name: '新禾文化' },
-        { id: 11, name: '星计科技' },
-      ],
-    });
-    mocks.switchTenant.mockResolvedValue({ success: true, data: {} });
   });
 
-  it('shows the current team and switches tenant from the sidebar header', async () => {
+  it('uses bootstrap tenants and confirms only after the validated change completes', async () => {
     const onChange = vi.fn();
 
-    render(<TeamSwitcher currentTenantId={10} onChange={onChange} />);
+    render(
+      <TeamSwitcher
+        currentTenantId={10}
+        tenants={[
+          { id: 10, name: '新禾文化' } as any,
+          { id: 11, name: '星计科技' } as any,
+        ]}
+        onChange={onChange}
+      />,
+    );
 
     expect(screen.getByRole('combobox')).toHaveClass('ant-short-team-switcher');
     await waitFor(() => {
@@ -70,9 +64,27 @@ describe('TeamSwitcher', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: '11' } });
 
     await waitFor(() => {
-      expect(mocks.switchTenant).toHaveBeenCalledWith(11);
       expect(mocks.messageSuccess).toHaveBeenCalledWith('已切换至 星计科技');
       expect(onChange).toHaveBeenCalledWith(11);
     });
+  });
+
+  it('does not show success when tenant validation fails', async () => {
+    const onChange = vi.fn().mockRejectedValue(new Error('unavailable'));
+    render(
+      <TeamSwitcher
+        currentTenantId={10}
+        tenants={[
+          { id: 10, name: '新禾文化' } as any,
+          { id: 11, name: '星计科技' } as any,
+        ]}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '11' } });
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(11));
+    expect(mocks.messageSuccess).not.toHaveBeenCalled();
   });
 });

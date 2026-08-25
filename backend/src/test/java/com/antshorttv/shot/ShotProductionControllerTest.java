@@ -56,7 +56,7 @@ class ShotProductionControllerTest {
         grantTeamPoints(tenantId, 1);
 
         MvcResult voiceCreate = mockMvc.perform(post("/api/projects/%d/ai-voice-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -80,13 +80,13 @@ class ShotProductionControllerTest {
         Long voiceResultId = readLong(voiceCreate, "$.data.results[0].id");
 
         mockMvc.perform(post("/api/projects/%d/ai-voice-results/%d/bind-storyboard".formatted(projectId, voiceResultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.selected", is(true)));
 
         MvcResult subtitleCreate = mockMvc.perform(post("/api/projects/%d/storyboard-subtitles".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -105,13 +105,13 @@ class ShotProductionControllerTest {
         Long subtitleId = readLong(subtitleCreate, "$.data.id");
 
         mockMvc.perform(put("/api/projects/%d/storyboard-subtitles/%d/selected".formatted(projectId, subtitleId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.selected", is(true)));
 
         MvcResult composeCreate = mockMvc.perform(post("/api/projects/%d/shot-compose-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -132,19 +132,19 @@ class ShotProductionControllerTest {
         Long composeResultId = readLong(composeCreate, "$.data.results[0].id");
 
         mockMvc.perform(post("/api/projects/%d/shot-compose-results/%d/save-material".formatted(projectId, composeResultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.materialId", notNullValue()));
 
         mockMvc.perform(post("/api/projects/%d/shot-compose-results/%d/bind-storyboard".formatted(projectId, composeResultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.selected", is(true)));
 
         mockMvc.perform(delete("/api/projects/%d/shot-compose-results/%d".formatted(projectId, composeResultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isConflict());
 
@@ -166,7 +166,7 @@ class ShotProductionControllerTest {
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
 
         mockMvc.perform(post("/api/projects/%d/ai-voice-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -194,7 +194,7 @@ class ShotProductionControllerTest {
         Long storyboardId = createStoryboardWithoutVideo(tenantId, projectId, ownerId);
 
         mockMvc.perform(post("/api/projects/%d/shot-compose-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -215,7 +215,7 @@ class ShotProductionControllerTest {
         grantTeamPoints(tenantId, 1);
 
         MvcResult voiceResult = mockMvc.perform(post("/api/projects/%d/ai-voice-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -235,7 +235,7 @@ class ShotProductionControllerTest {
         Long voiceResultId = readLong(voiceResult, "$.data.results[0].id");
 
         MvcResult subtitleCreate = mockMvc.perform(post("/api/projects/%d/storyboard-subtitles".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -252,7 +252,7 @@ class ShotProductionControllerTest {
         Long subtitleId = readLong(subtitleCreate, "$.data.id");
 
         MvcResult updated = mockMvc.perform(put("/api/projects/%d/storyboard-subtitles/%d".formatted(projectId, subtitleId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -285,7 +285,7 @@ class ShotProductionControllerTest {
         grantTeamPoints(tenantId, 3);
 
         MvcResult voiceTask = mockMvc.perform(post("/api/projects/%d/ai-voice-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -307,25 +307,25 @@ class ShotProductionControllerTest {
 
         Long pendingVoiceTaskId = insertPendingVoiceTask(tenantId, projectId, storyboardId, serviceConfigId, ownerId);
         mockMvc.perform(post("/api/projects/%d/ai-voice-tasks/%d/cancel".formatted(projectId, pendingVoiceTaskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("CANCELED")));
 
         mockMvc.perform(post("/api/projects/%d/ai-voice-tasks/%d/regenerate".formatted(projectId, voiceTaskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
             .andExpect(jsonPath("$.data.results", hasSize(1)));
 
         mockMvc.perform(delete("/api/projects/%d/ai-voice-tasks/%d".formatted(projectId, pendingVoiceTaskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk());
 
         MvcResult subtitleCreate = mockMvc.perform(post("/api/projects/%d/storyboard-subtitles".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -342,27 +342,27 @@ class ShotProductionControllerTest {
         Long subtitleId = readLong(subtitleCreate, "$.data.id");
 
         mockMvc.perform(get("/api/projects/%d/storyboard-subtitles".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .param("storyboardId", String.valueOf(storyboardId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(1)));
 
         mockMvc.perform(get("/api/projects/%d/storyboard-subtitles/%d".formatted(projectId, subtitleId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", is(subtitleId.intValue())));
 
         Long composeTaskId = insertPendingComposeTask(tenantId, projectId, storyboardId, voiceResultId, subtitleId, ownerId);
         mockMvc.perform(post("/api/projects/%d/shot-compose-tasks/%d/cancel".formatted(projectId, composeTaskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("CANCELED")));
 
         MvcResult composeCreate = mockMvc.perform(post("/api/projects/%d/shot-compose-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -380,29 +380,29 @@ class ShotProductionControllerTest {
         Long composeResultId = readLong(composeCreate, "$.data.results[0].id");
 
         mockMvc.perform(post("/api/projects/%d/shot-compose-tasks/%d/regenerate".formatted(projectId, composeTaskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
 
         mockMvc.perform(delete("/api/projects/%d/storyboard-subtitles/%d".formatted(projectId, subtitleId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk());
 
         mockMvc.perform(delete("/api/projects/%d/shot-compose-tasks/%d".formatted(projectId, composeTaskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/projects/%d/ai-voice-results/%d/download".formatted(projectId, voiceResultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", is(voiceResultId.intValue())));
 
         mockMvc.perform(get("/api/projects/%d/shot-compose-results/%d/download".formatted(projectId, composeResultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", is(composeResultId.intValue())));
@@ -418,7 +418,7 @@ class ShotProductionControllerTest {
         createStoryboardWithSelectedShot(tenantId, projectId, ownerId, 1, 2, 9102L, "/materials/1/1/shots/mock-2.mp4", 6, 720, 1280);
 
         MvcResult compose = mockMvc.perform(post("/api/projects/%d/episode-compose-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -443,14 +443,14 @@ class ShotProductionControllerTest {
         Long versionId = readLong(compose, "$.data.videoVersion.id");
 
         mockMvc.perform(get("/api/projects/%d/episode-compose-tasks/%d".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", is(taskId.intValue())))
             .andExpect(jsonPath("$.data.items", hasSize(2)));
 
         mockMvc.perform(get("/api/projects/%d/episode-video-versions".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .param("episodeNo", "1"))
             .andExpect(status().isOk())
@@ -458,26 +458,26 @@ class ShotProductionControllerTest {
             .andExpect(jsonPath("$.data[0].current", is(true)));
 
         mockMvc.perform(get("/api/projects/%d/episode-video-versions/%d/download".formatted(projectId, versionId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(content().contentTypeCompatibleWith(MediaType.valueOf("video/mp4")))
             .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, containsString("episode_1_v1.mp4")));
 
         mockMvc.perform(get("/api/projects/%d/episode-video-versions/%d/cover".formatted(projectId, versionId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
 
         mockMvc.perform(post("/api/projects/%d/episode-video-versions/%d/save-material".formatted(projectId, versionId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.materialId", notNullValue()));
 
         MvcResult recompose = mockMvc.perform(post("/api/projects/%d/episode-compose-tasks/%d/regenerate".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.videoVersion.versionNo", is(2)))
@@ -486,13 +486,13 @@ class ShotProductionControllerTest {
         Long secondVersionId = readLong(recompose, "$.data.videoVersion.id");
 
         mockMvc.perform(post("/api/projects/%d/episode-video-versions/%d/current".formatted(projectId, versionId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.current", is(true)));
 
         mockMvc.perform(delete("/api/projects/%d/episode-video-versions/%d".formatted(projectId, versionId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.errorMessage", containsString("当前成片版本已被单集引用")));
@@ -506,12 +506,12 @@ class ShotProductionControllerTest {
         org.assertj.core.api.Assertions.assertThat(currentCount).isEqualTo(1);
 
         mockMvc.perform(delete("/api/projects/%d/episode-video-versions/%d".formatted(projectId, secondVersionId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/projects/%d/episode-export-records".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .param("episodeNo", "1"))
             .andExpect(status().isOk())
@@ -537,7 +537,7 @@ class ShotProductionControllerTest {
         createStoryboardWithoutVideo(tenantId, projectId, ownerId);
 
         mockMvc.perform(post("/api/projects/%d/episode-compose-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -559,7 +559,7 @@ class ShotProductionControllerTest {
         createStoryboardWithSelectedShot(tenantId, projectId, ownerId, 1, 2, 9202L, "/materials/1/1/shots/ratio-2.mp4", 6, 1920, 1080);
 
         mockMvc.perform(post("/api/projects/%d/episode-compose-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -581,7 +581,7 @@ class ShotProductionControllerTest {
         createStoryboardWithSelectedShot(tenantId, projectId, ownerId, 1, 2, 9302L, "/materials/1/1/shots/resolution-2.mp4", 6, 1080, 1920);
 
         mockMvc.perform(post("/api/projects/%d/episode-compose-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -671,7 +671,7 @@ class ShotProductionControllerTest {
 
     private Long createVoiceService(String token, Long tenantId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -757,12 +757,12 @@ class ShotProductionControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"五期测试"}
@@ -774,7 +774,7 @@ class ShotProductionControllerTest {
 
     private Long createProject(String token, Long tenantId, Long ownerId, String name, String code) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/projects")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""

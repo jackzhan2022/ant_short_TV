@@ -36,14 +36,14 @@ public class TenantController {
         return ApiResponse.success(tenantService.myTenants());
     }
 
-    @GetMapping("/{id}")
-    @RequirePermission("TENANT:VIEW")
+    @GetMapping("/{id:\\d+}")
+    @RequirePermission(value = "TENANT:VIEW", tenantIdParameter = "id")
     public ApiResponse<TenantSummaryResponse> detail(@PathVariable Long id) {
         return ApiResponse.success(tenantService.detail(id));
     }
 
-    @PutMapping("/{id}")
-    @RequirePermission("TENANT:EDIT")
+    @PutMapping("/{id:\\d+}")
+    @RequirePermission(value = "TENANT:EDIT", tenantIdParameter = "id")
     public ApiResponse<TenantSummaryResponse> update(
         @PathVariable Long id,
         @Valid @RequestBody UpdateTenantRequest request,
@@ -52,8 +52,8 @@ public class TenantController {
         return ApiResponse.success(tenantService.update(id, request, servletRequest));
     }
 
-    @PutMapping("/{id}/status")
-    @RequirePermission("TENANT:EDIT")
+    @PutMapping("/{id:\\d+}/status")
+    @RequirePermission(value = "TENANT:EDIT", tenantIdParameter = "id")
     public ApiResponse<TenantSummaryResponse> updateStatus(
         @PathVariable Long id,
         @Valid @RequestBody UpdateTenantStatusRequest request,
@@ -62,16 +62,4 @@ public class TenantController {
         return ApiResponse.success(tenantService.updateStatus(id, request, servletRequest));
     }
 
-    @PostMapping("/current")
-    public ApiResponse<CurrentTenantResponse> switchCurrent(
-        @Valid @RequestBody SwitchTenantRequest request,
-        HttpServletRequest servletRequest
-    ) {
-        return ApiResponse.success(tenantService.switchCurrent(request, servletRequest));
-    }
-
-    @GetMapping("/current")
-    public ApiResponse<CurrentTenantResponse> current(HttpServletRequest servletRequest) {
-        return ApiResponse.success(tenantService.current(servletRequest));
-    }
 }

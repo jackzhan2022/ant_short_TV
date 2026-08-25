@@ -1,12 +1,14 @@
 import type { ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
-import { history } from '@umijs/max';
+import { history, useModel } from '@umijs/max';
 import { App, Button, Tag } from 'antd';
 import type { TenantSummary } from '@/services/account-team/types';
-import { queryMyTenants, switchTenant } from '@/services/account-team/tenant';
+import { applyBootstrapSelection } from '@/services/account-team/bootstrap';
+import { queryMyTenants } from '@/services/account-team/tenant';
 
 const TeamSelect = () => {
   const { message } = App.useApp();
+  const { setInitialState } = useModel('@@initialState');
 
   const columns: ProColumns<TenantSummary>[] = [
     { title: '团队名称', dataIndex: 'name' },
@@ -28,7 +30,7 @@ const TeamSelect = () => {
         <Button
           type="primary"
           onClick={async () => {
-            await switchTenant(record.id);
+            await applyBootstrapSelection(record.id, setInitialState);
             message.success(`已进入 ${record.name}`);
             history.replace('/team/my');
           }}

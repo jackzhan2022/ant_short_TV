@@ -3,7 +3,7 @@ package com.antshorttv.ai;
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
-import com.antshorttv.rbac.RequirePermission;
+import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,19 +22,19 @@ public class ProjectAiConfigController {
     }
 
     @GetMapping("/models")
-    @RequirePermission("PROJECT_AI_CONFIG_VIEW")
+    @RequireProjectPermission("PROJECT_AI_CONFIG_VIEW")
     public ApiResponse<ProjectAiModelsResponse> models(@PathVariable Long projectId, HttpServletRequest request) {
         return ApiResponse.success(service.availableModels(requireTenantId(request), projectId));
     }
 
     @GetMapping("/config")
-    @RequirePermission("PROJECT_AI_CONFIG_VIEW")
+    @RequireProjectPermission("PROJECT_AI_CONFIG_VIEW")
     public ApiResponse<ProjectAiConfigResponse> config(@PathVariable Long projectId, HttpServletRequest request) {
         return ApiResponse.success(service.config(requireTenantId(request), projectId));
     }
 
     @PutMapping("/config")
-    @RequirePermission("PROJECT_AI_CONFIG_EDIT")
+    @RequireProjectPermission("PROJECT_AI_CONFIG_EDIT")
     public ApiResponse<ProjectAiConfigResponse> save(@PathVariable Long projectId, @RequestBody ProjectAiConfigRequest body, HttpServletRequest request) {
         return ApiResponse.success(service.save(requireTenantId(request), projectId, body, request));
     }

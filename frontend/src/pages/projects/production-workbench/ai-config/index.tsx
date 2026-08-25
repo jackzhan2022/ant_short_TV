@@ -6,10 +6,14 @@ import {
   SoundOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
-import { useAccess, useParams } from '@umijs/max';
+import { useParams } from '@umijs/max';
 import { App, Button, Empty, Flex, Spin, Tag, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import {
+  hasProjectPermission,
+  queryProject,
+} from '@/services/account-team/project';
 import type {
   ProjectAiConfig,
   ProjectAiModels,
@@ -119,7 +123,6 @@ const ProjectAiConfigPage = () => {
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
   const { message } = App.useApp();
-  const access = useAccess();
   const [models, setModels] = useState<ProjectAiModels>(emptyModels);
   const [config, setConfig] = useState<ProjectAiConfig>({
     projectId,
@@ -130,6 +133,7 @@ const ProjectAiConfigPage = () => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
     if (!projectId) {
@@ -137,13 +141,23 @@ const ProjectAiConfigPage = () => {
     }
     let active = true;
     setLoading(true);
-    Promise.all([queryProjectAiModels(projectId), queryProjectAiConfig(projectId)])
-      .then(([modelsResponse, configResponse]) => {
+    Promise.all([
+      queryProject(projectId),
+      queryProjectAiModels(projectId),
+      queryProjectAiConfig(projectId),
+    ])
+      .then(([projectResponse, modelsResponse, configResponse]) => {
         if (!active) {
           return;
         }
         setModels(modelsResponse.data || emptyModels);
         setConfig(configResponse.data);
+        setCanEdit(
+          hasProjectPermission(
+            projectResponse.data,
+            'PROJECT_AI_CONFIG_EDIT',
+          ),
+        );
       })
       .catch(() => {
         if (active) {
@@ -167,14 +181,14 @@ const ProjectAiConfigPage = () => {
   );
 
   const updateField = (field: ModelField, value: number) => {
-    if (!access.canEditProjectAiConfig) {
+    if (!canEdit) {
       return;
     }
     setConfig((current) => ({ ...current, [field]: value }));
   };
 
   const save = async () => {
-    if (!access.canEditProjectAiConfig) {
+    if (!canEdit) {
       return;
     }
     setSaving(true);
@@ -220,7 +234,7 @@ const ProjectAiConfigPage = () => {
             <Button
               type="primary"
               loading={saving}
-              disabled={!access.canEditProjectAiConfig}
+              disabled={!canEdit}
               onClick={save}
             >
               保存配置

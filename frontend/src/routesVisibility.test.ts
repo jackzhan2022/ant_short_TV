@@ -60,6 +60,11 @@ describe('menu routes visibility', () => {
     expect(zhCNMenu['menu.team.my']).toBe('团队管理');
   });
 
+  it('removes organization management from the route table and menu catalog', () => {
+    expect(findRoute('/team/organizations', routes)).toBeUndefined();
+    expect((zhCNMenu as Record<string, string>)['menu.team.organizations']).toBeUndefined();
+  });
+
   it('shows the public style library as a first-level menu entry', () => {
     expect(findRoute('/style-library', routes)).toMatchObject({
       path: '/style-library',
@@ -83,6 +88,9 @@ describe('menu routes visibility', () => {
       hideInMenu: true,
       layout: false,
     });
+    expect(findRoute('/projects/:id/production-workbench', routes)).not.toHaveProperty(
+      'access',
+    );
 
     const hiddenPaths = [
       '/projects/:id/production-workbench/script',

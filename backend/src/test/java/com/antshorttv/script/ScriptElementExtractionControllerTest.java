@@ -43,7 +43,7 @@ class ScriptElementExtractionControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "AI解析短剧", "SCRIPT_ELEMENT_PARSE");
 
         mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -52,7 +52,7 @@ class ScriptElementExtractionControllerTest {
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -82,12 +82,12 @@ class ScriptElementExtractionControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"剧本工作流测试"}
@@ -99,7 +99,7 @@ class ScriptElementExtractionControllerTest {
 
     private Long createProject(String token, Long tenantId, Long ownerId, String name, String code) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/projects")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""

@@ -66,7 +66,7 @@ class AiVideoTaskControllerTest {
         grantTeamPoints(tenantId, 5);
 
         MvcResult createResult = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -92,7 +92,7 @@ class AiVideoTaskControllerTest {
         Long taskId = readLong(createResult, "$.data.id");
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/poll".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
@@ -100,7 +100,7 @@ class AiVideoTaskControllerTest {
             .andExpect(jsonPath("$.data.results[0].videoUrl", containsString(".mp4")));
 
         MvcResult detailResult = mockMvc.perform(get("/api/projects/%d/ai-video-tasks/%d".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
@@ -109,25 +109,25 @@ class AiVideoTaskControllerTest {
         Long resultId = readLong(detailResult, "$.data.results[0].id");
 
         mockMvc.perform(post("/api/projects/%d/ai-video-results/%d/save-material".formatted(projectId, resultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.materialId", notNullValue()));
 
         mockMvc.perform(post("/api/projects/%d/ai-video-results/%d/bind-storyboard".formatted(projectId, resultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.isSelected", is(true)));
 
         mockMvc.perform(delete("/api/projects/%d/ai-video-results/%d".formatted(projectId, resultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.errorCode", is("AI_VIDEO_RESULT_IN_USE")));
 
         mockMvc.perform(get("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .param("status", "SUCCEEDED"))
             .andExpect(status().isOk())
@@ -180,7 +180,7 @@ class AiVideoTaskControllerTest {
         createVideoTask(token, tenantId, projectId, firstStoryboardId, serviceConfigId, "第一条视频提示词");
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(videoTaskPayload(secondStoryboardId, serviceConfigId, "第二条视频提示词")))
@@ -198,7 +198,7 @@ class AiVideoTaskControllerTest {
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(videoTaskPayload(storyboardId, serviceConfigId, "积分不足的视频提示词")))
@@ -221,7 +221,7 @@ class AiVideoTaskControllerTest {
         aiVideoTaskService.pollDueTasks();
 
         mockMvc.perform(get("/api/projects/%d/ai-video-tasks/%d".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
@@ -254,7 +254,7 @@ class AiVideoTaskControllerTest {
         aiVideoTaskService.pollDueTasks();
 
         mockMvc.perform(get("/api/projects/%d/ai-video-tasks/%d".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("FAILED")))
@@ -271,7 +271,7 @@ class AiVideoTaskControllerTest {
         Long storyboardId = createStoryboardWithoutFirstFrame(tenantId, projectId, ownerId);
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -296,7 +296,7 @@ class AiVideoTaskControllerTest {
         jdbc.update("delete from ai_service_config where service_type = 'VIDEO'");
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -335,7 +335,7 @@ class AiVideoTaskControllerTest {
 
         try {
             mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(videoTaskPayload(storyboardId, serviceConfigId, "密钥坏掉的视频提示词")))
@@ -377,7 +377,7 @@ class AiVideoTaskControllerTest {
             grantTeamPoints(tenantId, 5);
 
             MvcResult result = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""
@@ -443,7 +443,7 @@ class AiVideoTaskControllerTest {
 
     private Long createVideoService(String token, Long tenantId, String baseUrl) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -475,7 +475,7 @@ class AiVideoTaskControllerTest {
         String prompt
     ) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(videoTaskPayload(storyboardId, serviceConfigId, prompt)))
@@ -516,12 +516,12 @@ class AiVideoTaskControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"视频生成测试"}
@@ -533,7 +533,7 @@ class AiVideoTaskControllerTest {
 
     private Long createProject(String token, Long tenantId, Long ownerId, String name, String code) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/projects")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""

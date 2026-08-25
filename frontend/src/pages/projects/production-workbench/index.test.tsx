@@ -42,6 +42,7 @@ vi.mock('antd', () => ({
     </button>
   ),
   Flex: ({ children }: any) => <div>{children}</div>,
+  Result: ({ status, title }: any) => <div>{status} {title}</div>,
   Typography: {
     Text: ({ children }: any) => <span>{children}</span>,
   },
@@ -69,6 +70,8 @@ describe('ProductionWorkbench shell', () => {
         scriptType: 'PREMIUM_DRAMA',
         breakdownStrength: 'MEDIUM',
         visualStyle: '写实都市',
+        effectivePermissions: ['PROJECT_AI_CONFIG_VIEW'],
+        capabilities: { canView: true, canEdit: true },
       },
     });
     mocks.queryTeamPointAccount.mockResolvedValue({
@@ -104,5 +107,14 @@ describe('ProductionWorkbench shell', () => {
     expect(mocks.historyPush).toHaveBeenCalledWith(
       '/projects/1/production-workbench/ai-config',
     );
+  });
+
+  it('renders the backend authorization failure for a forbidden dynamic route', async () => {
+    mocks.queryProject.mockRejectedValue({ response: { status: 403 } });
+
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText(/无权访问该项目/)).toBeInTheDocument();
+    expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
   });
 });

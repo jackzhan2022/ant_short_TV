@@ -16,6 +16,7 @@ public class UserEntity {
     private String nickname;
     private String avatar;
     private String status;
+    private Long tokenVersion;
     private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -75,6 +76,14 @@ public class UserEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Long getTokenVersion() {
+        return tokenVersion;
+    }
+
+    public void setTokenVersion(Long tokenVersion) {
+        this.tokenVersion = tokenVersion;
     }
 
     public LocalDateTime getLastLoginAt() {

@@ -2,7 +2,6 @@ package com.antshorttv.review;
 
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
-import com.antshorttv.rbac.RequirePermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -32,24 +31,31 @@ public class ReviewWorkbenchController {
     }
 
     @GetMapping("/projects")
-    @RequirePermission("PROJECT:VIEW")
     public ApiResponse<List<ReviewProjectSummaryResponse>> projects(HttpServletRequest request) {
         return ApiResponse.success(reviewWorkbenchService.listProjects(tenantId(request)));
     }
 
     @PostMapping(value = "/projects", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @RequirePermission("SCRIPT:EDIT")
     public ApiResponse<ReviewProjectDetailResponse> importProject(
+        @RequestPart(value = "mainProjectId", required = false) Long mainProjectId,
         @RequestPart(value = "file", required = false) MultipartFile file,
         @RequestPart(value = "content", required = false) String content,
         @RequestPart(value = "name", required = false) String name,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(reviewWorkbenchService.importProject(tenantId(request), name, file, content));
+        return ApiResponse.success(reviewWorkbenchService.importProject(tenantId(request), mainProjectId, name, file, content));
+    }
+
+    @PutMapping("/projects/{reviewProjectId}/binding")
+    public ApiResponse<ReviewProjectDetailResponse> bindProject(
+        @PathVariable Long reviewProjectId,
+        @Valid @RequestBody BindReviewProjectRequest body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(reviewWorkbenchService.bindProject(tenantId(request), reviewProjectId, body));
     }
 
     @GetMapping("/projects/{projectId}")
-    @RequirePermission("PROJECT:VIEW")
     public ApiResponse<ReviewProjectDetailResponse> project(
         @PathVariable Long projectId,
         HttpServletRequest request
@@ -58,7 +64,6 @@ public class ReviewWorkbenchController {
     }
 
     @PutMapping("/projects/{projectId}/versions")
-    @RequirePermission("SCRIPT:EDIT")
     public ApiResponse<ReviewVersionResponse> saveVersion(
         @PathVariable Long projectId,
         @Valid @RequestBody SaveReviewVersionRequest body,
@@ -68,7 +73,6 @@ public class ReviewWorkbenchController {
     }
 
     @GetMapping("/projects/{projectId}/versions/{versionId}/history")
-    @RequirePermission("PROJECT:VIEW")
     public ApiResponse<ReviewVersionHistoryResponse> versionHistory(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -78,7 +82,6 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/projects/{projectId}/tasks")
-    @RequirePermission("AI_SERVICE:USE")
     public ApiResponse<ReviewTaskResponse> createTask(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateReviewTaskRequest body,
@@ -88,7 +91,6 @@ public class ReviewWorkbenchController {
     }
 
     @GetMapping("/projects/{projectId}/tasks")
-    @RequirePermission("PROJECT:VIEW")
     public ApiResponse<List<ReviewTaskResponse>> tasks(
         @PathVariable Long projectId,
         HttpServletRequest request
@@ -97,7 +99,6 @@ public class ReviewWorkbenchController {
     }
 
     @GetMapping("/tasks/{taskId}")
-    @RequirePermission("PROJECT:VIEW")
     public ApiResponse<ReviewTaskResponse> task(
         @PathVariable Long taskId,
         HttpServletRequest request
@@ -106,7 +107,6 @@ public class ReviewWorkbenchController {
     }
 
     @PutMapping("/tasks/{taskId}/config")
-    @RequirePermission("AI_SERVICE:USE")
     public ApiResponse<ReviewTaskResponse> updateTaskConfig(
         @PathVariable Long taskId,
         @Valid @RequestBody UpdateReviewTaskRequest body,
@@ -116,7 +116,6 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/tasks/{taskId}/cancel")
-    @RequirePermission("AI_SERVICE:USE")
     public ApiResponse<ReviewTaskResponse> cancelTask(
         @PathVariable Long taskId,
         HttpServletRequest request
@@ -125,7 +124,6 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/tasks/{taskId}/retry")
-    @RequirePermission("AI_SERVICE:USE")
     public ApiResponse<ReviewTaskResponse> retryTask(
         @PathVariable Long taskId,
         HttpServletRequest request
@@ -134,7 +132,6 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/tasks/{taskId}/batch-repair")
-    @RequirePermission("SCRIPT:EDIT")
     public ApiResponse<ReviewTaskResponse> batchRepair(
         @PathVariable Long taskId,
         @Valid @RequestBody BatchRepairReviewRequest body,
@@ -144,7 +141,6 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/issues/{issueId}/resolve")
-    @RequirePermission("SCRIPT:EDIT")
     public ApiResponse<ReviewIssueResponse> resolveIssue(
         @PathVariable Long issueId,
         @Valid @RequestBody(required = false) MarkReviewIssueResolvedRequest body,
@@ -154,7 +150,6 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/projects/{projectId}/rollback")
-    @RequirePermission("SCRIPT:EDIT")
     public ApiResponse<ReviewVersionResponse> rollback(
         @PathVariable Long projectId,
         @Valid @RequestBody RollbackReviewVersionRequest body,
@@ -164,7 +159,6 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/projects/{projectId}/exports")
-    @RequirePermission("PROJECT:VIEW")
     public ApiResponse<ReviewExportRecordResponse> export(
         @PathVariable Long projectId,
         @Valid @RequestBody ExportReviewReportRequest body,
@@ -174,7 +168,6 @@ public class ReviewWorkbenchController {
     }
 
     @GetMapping("/exports/{fileName}")
-    @RequirePermission("PROJECT:VIEW")
     public ResponseEntity<Resource> downloadExport(
         @PathVariable String fileName,
         HttpServletRequest request

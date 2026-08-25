@@ -9,8 +9,6 @@ import com.antshorttv.member.TenantMemberEntity;
 import com.antshorttv.member.TenantMemberMapper;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.security.CurrentTenantStore;
-import com.antshorttv.security.CurrentUserHolder;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,8 +37,6 @@ public class RbacService {
     private final MemberRoleMapper memberRoleMapper;
     private final TenantMemberMapper tenantMemberMapper;
     private final TenantContextResolver tenantContextResolver;
-    private final CurrentTenantStore currentTenantStore;
-    private final RbacPermissionService rbacPermissionService;
     private final OperationLogService operationLogService;
 
     public RbacService(
@@ -50,8 +46,6 @@ public class RbacService {
         MemberRoleMapper memberRoleMapper,
         TenantMemberMapper tenantMemberMapper,
         TenantContextResolver tenantContextResolver,
-        CurrentTenantStore currentTenantStore,
-        RbacPermissionService rbacPermissionService,
         OperationLogService operationLogService
     ) {
         this.roleMapper = roleMapper;
@@ -60,8 +54,6 @@ public class RbacService {
         this.memberRoleMapper = memberRoleMapper;
         this.tenantMemberMapper = tenantMemberMapper;
         this.tenantContextResolver = tenantContextResolver;
-        this.currentTenantStore = currentTenantStore;
-        this.rbacPermissionService = rbacPermissionService;
         this.operationLogService = operationLogService;
     }
 
@@ -268,18 +260,6 @@ public class RbacService {
     }
 
     @Transactional
-    public AuthPermissionsResponse currentPermissions(HttpServletRequest request) {
-        TenantContext context = resolveCurrentTenant(request);
-        initializeTenant(context.tenantId());
-        Set<String> permissions = rbacPermissionService.permissionCodes(context);
-        List<String> menus = permissions.stream()
-            .map(code -> code.split(":")[0])
-            .distinct()
-            .toList();
-        return new AuthPermissionsResponse(menus, permissions);
-    }
-
-    @Transactional
     public void syncOwnerTransfer(Long tenantId, Long previousOwnerMemberId, Long nextOwnerMemberId) {
         initializeTenant(tenantId);
         RoleEntity ownerRole = roleMapper.selectActiveByTenantIdAndCode(tenantId, "OWNER");
@@ -293,7 +273,7 @@ public class RbacService {
         memberRoleMapper.deleteByMemberId(memberId);
     }
 
-    private void initializeTenant(Long tenantId) {
+    public void initializeTenant(Long tenantId) {
         ensurePermissions();
         LocalDateTime now = LocalDateTime.now();
         RoleEntity ownerRole = ensureSystemRole(tenantId, "OWNER", "Owner", "团队所有者", true, now);
@@ -507,19 +487,6 @@ public class RbacService {
             .toList();
     }
 
-    private TenantContext resolveCurrentTenant(HttpServletRequest request) {
-        String header = request.getHeader("X-Tenant-Id");
-        if (header != null && !header.isBlank()) {
-            try {
-                return tenantContextResolver.requireActiveMember(Long.valueOf(header));
-            } catch (NumberFormatException exception) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前创作团队标识不正确。");
-            }
-        }
-        Long userId = CurrentUserHolder.require().userId();
-        return currentTenantStore.get(userId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "尚未选择当前创作团队。"));
-    }
 
     private void ensureOwnerMutable(RoleEntity role) {
         if ("OWNER".equals(role.getCode())) {

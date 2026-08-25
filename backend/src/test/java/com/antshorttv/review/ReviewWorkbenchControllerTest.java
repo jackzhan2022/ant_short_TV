@@ -76,7 +76,7 @@ class ReviewWorkbenchControllerTest {
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(name)
                 .file(content)
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.project.name", is("name-confusion-sample")))
@@ -95,7 +95,7 @@ class ReviewWorkbenchControllerTest {
             }
             """.formatted(versionId);
         MvcResult firstTask = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
@@ -106,7 +106,7 @@ class ReviewWorkbenchControllerTest {
         Long firstTaskId = readLong(firstTask, "$.data.id");
 
         mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
@@ -114,14 +114,14 @@ class ReviewWorkbenchControllerTest {
             .andExpect(jsonPath("$.data.id", is(firstTaskId.intValue())));
 
         mockMvc.perform(get("/api/script-review/projects/%d".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.tasks", hasSize(1)))
             .andExpect(jsonPath("$.data.tasks[0].selectedDimensions", hasSize(2)));
 
         MvcResult exportResult = mockMvc.perform(post("/api/script-review/projects/%d/exports".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -136,7 +136,7 @@ class ReviewWorkbenchControllerTest {
         ).isTrue();
 
         mockMvc.perform(get("/api/script-review/exports/%s".formatted(fileName))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.APPLICATION_OCTET_STREAM));
@@ -149,7 +149,7 @@ class ReviewWorkbenchControllerTest {
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "Episode 1\nA".getBytes()))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andReturn();
@@ -157,7 +157,7 @@ class ReviewWorkbenchControllerTest {
         Long versionId = readLong(imported, "$.data.versions[0].id");
 
         MvcResult createdTask = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -176,7 +176,7 @@ class ReviewWorkbenchControllerTest {
             """, taskId);
 
         mockMvc.perform(put("/api/script-review/tasks/%d/config".formatted(taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -193,7 +193,7 @@ class ReviewWorkbenchControllerTest {
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n林晚说：别走。".getBytes()))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andReturn();
@@ -201,7 +201,7 @@ class ReviewWorkbenchControllerTest {
         Long firstVersionId = readLong(imported, "$.data.versions[0].id");
 
         MvcResult savedVersion = mockMvc.perform(put("/api/script-review/projects/%d/versions".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -212,7 +212,7 @@ class ReviewWorkbenchControllerTest {
         Long secondVersionId = readLong(savedVersion, "$.data.id");
 
         MvcResult createdTask = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -250,7 +250,7 @@ class ReviewWorkbenchControllerTest {
             """, tenantId, projectId, taskId, issueId);
 
         mockMvc.perform(get("/api/script-review/projects/%d/versions/%d/history".formatted(projectId, secondVersionId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.selectedVersion.id", is(secondVersionId.intValue())))
@@ -267,7 +267,7 @@ class ReviewWorkbenchControllerTest {
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n林晚说：别走。".getBytes()))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andReturn();
@@ -275,7 +275,7 @@ class ReviewWorkbenchControllerTest {
         Long versionId = readLong(imported, "$.data.versions[0].id");
 
         MvcResult createdTask = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -317,7 +317,7 @@ class ReviewWorkbenchControllerTest {
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n第2集".getBytes()))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andReturn();
@@ -325,7 +325,7 @@ class ReviewWorkbenchControllerTest {
         Long versionId = readLong(imported, "$.data.versions[0].id");
 
         MvcResult taskForCancel = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -336,13 +336,13 @@ class ReviewWorkbenchControllerTest {
         Long cancelTaskId = readLong(taskForCancel, "$.data.id");
 
         mockMvc.perform(post("/api/script-review/tasks/%d/cancel".formatted(cancelTaskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("CANCELED")));
 
         MvcResult taskForRetry = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -354,7 +354,7 @@ class ReviewWorkbenchControllerTest {
         jdbcTemplate.update("update review_task set status = 'FAILED', error_code = 'AI_RESPONSE_INVALID', error_message = 'bad json' where id = ?", retryTaskId);
 
         mockMvc.perform(post("/api/script-review/tasks/%d/retry".formatted(retryTaskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("PENDING")));
@@ -370,7 +370,7 @@ class ReviewWorkbenchControllerTest {
         Long issueId = jdbcTemplate.queryForObject("select max(id) from review_issue where task_id = ?", Long.class, retryTaskId);
 
         mockMvc.perform(post("/api/script-review/issues/%d/resolve".formatted(issueId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"note\":\"人工确认\"}"))
@@ -381,7 +381,7 @@ class ReviewWorkbenchControllerTest {
         org.assertj.core.api.Assertions.assertThat(eventCount).isEqualTo(1);
 
         mockMvc.perform(post("/api/script-review/projects/%d/rollback".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -398,7 +398,7 @@ class ReviewWorkbenchControllerTest {
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "EP1\nA\n\nEP2\nB".getBytes()))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andReturn();
@@ -426,7 +426,7 @@ class ReviewWorkbenchControllerTest {
         ));
 
         MvcResult quickTask = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -437,7 +437,7 @@ class ReviewWorkbenchControllerTest {
         Long quickTaskId = readLong(quickTask, "$.data.id");
 
         MvcResult deepTask = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -482,12 +482,12 @@ class ReviewWorkbenchControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"剧本审核测试"}

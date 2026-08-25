@@ -28,6 +28,24 @@ const getBackendErrorText = (response?: ResponseStructure) => {
   return response.errorMessage || response.errorCode;
 };
 
+const readCookie = (name: string) => {
+  if (typeof document === 'undefined') return undefined;
+  const prefix = `${name}=`;
+  const entry = document.cookie
+    .split(';')
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(prefix));
+  if (!entry) return undefined;
+  try {
+    return decodeURIComponent(entry.slice(prefix.length));
+  } catch {
+    return entry.slice(prefix.length);
+  }
+};
+
+const isUnsafeMethod = (method?: string) =>
+  !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes((method || 'GET').toUpperCase());
+
 /**
  * @name 错误处理
  * pro 自带的错误处理， 可以在这里做自己的改动
@@ -116,12 +134,15 @@ export const errorConfig: RequestConfig = {
   // 请求拦截器
   requestInterceptors: [
     (config: RequestOptions) => {
-      const token = localStorage.getItem('accessToken');
       const currentTenantId = localStorage.getItem('currentTenantId');
+      const csrfToken = isUnsafeMethod(config.method)
+        ? readCookie('XSRF-TOKEN')
+        : undefined;
+      config.withCredentials = true;
       config.headers = {
         ...config.headers,
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(currentTenantId ? { 'X-Tenant-Id': currentTenantId } : {}),
+        ...(csrfToken ? { 'X-XSRF-TOKEN': csrfToken } : {}),
       };
       return config;
     },

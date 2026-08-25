@@ -10,4 +10,3 @@ export {
   queryTenantRoles,
   updateMemberRoles,
 } from '@/services/account-team/rbac';
-export { queryCurrentTenant } from '@/services/account-team/tenant';

@@ -1,7 +1,6 @@
 import { request } from '@umijs/max';
 import type {
   ApiResponse,
-  AuthPermissions,
   Permission,
   PermissionTreeNode,
   Role,
@@ -107,10 +106,4 @@ export async function updateMemberRoles(
 
 export async function queryPermissionTree() {
   return request<ApiResponse<PermissionTreeNode[]>>('/api/permissions/tree');
-}
-
-export async function queryCurrentPermissions(options?: Record<string, unknown>) {
-  return request<ApiResponse<AuthPermissions>>('/api/auth/permissions', {
-    ...(options || {}),
-  });
 }

@@ -1,8 +1,6 @@
 import { request } from '@umijs/max';
-import { setCurrentTenantId } from './auth';
 import type {
   ApiResponse,
-  CurrentTenant,
   TenantStatus,
   TenantSummary,
   TenantType,
@@ -45,21 +43,4 @@ export async function updateTenantStatus(id: number, status: TenantStatus) {
     headers: { 'Content-Type': 'application/json' },
     data: { status },
   });
-}
-
-export async function switchTenant(tenantId: number) {
-  const response = await request<ApiResponse<CurrentTenant>>(
-    '/api/tenants/current',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      data: { tenantId },
-    },
-  );
-  setCurrentTenantId(tenantId);
-  return response;
-}
-
-export async function queryCurrentTenant() {
-  return request<ApiResponse<CurrentTenant>>('/api/tenants/current');
 }

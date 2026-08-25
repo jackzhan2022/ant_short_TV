@@ -8,13 +8,13 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { App, Button, Empty, Form, Popconfirm, Space, Tag } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useModel } from '@umijs/max';
+import { useRef, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { Role, TenantMember } from '@/services/account-team/types';
 import {
   createInvitation,
   queryMemberRoles,
-  queryCurrentTenant,
   queryTenantRoles,
   queryTenantMembers,
   removeTenantMember,
@@ -89,19 +89,8 @@ const TeamMembers = () => {
   const tenantId = getCurrentTenantId();
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
-  const [isOwner, setIsOwner] = useState(false);
-
-  useEffect(() => {
-    if (!tenantId) return;
-
-    queryCurrentTenant()
-      .then((response) => {
-        setIsOwner(response.data.memberType === 'OWNER');
-      })
-      .catch(() => {
-        setIsOwner(false);
-      });
-  }, [tenantId]);
+  const { initialState } = useModel('@@initialState');
+  const isOwner = initialState?.selectedTenant?.membership.memberType === 'OWNER';
 
   if (!tenantId) {
     return (

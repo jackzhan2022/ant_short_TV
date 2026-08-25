@@ -2,7 +2,7 @@ package com.antshorttv.video;
 
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
-import com.antshorttv.rbac.RequirePermission;
+import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -25,7 +25,7 @@ public class AiVideoTaskController {
     }
 
     @GetMapping("/ai-video-tasks")
-    @RequirePermission("AI_VIDEO_TASK:VIEW")
+    @RequireProjectPermission("AI_VIDEO_TASK:VIEW")
     public ApiResponse<List<AiVideoTaskResponse>> list(
         @PathVariable Long projectId,
         @RequestParam(required = false) String status,
@@ -36,7 +36,7 @@ public class AiVideoTaskController {
     }
 
     @PostMapping("/ai-video-tasks")
-    @RequirePermission("AI_VIDEO_TASK:CREATE")
+    @RequireProjectPermission("AI_VIDEO_TASK:CREATE")
     public ApiResponse<AiVideoTaskResponse> create(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateAiVideoTaskRequest body,
@@ -46,7 +46,7 @@ public class AiVideoTaskController {
     }
 
     @GetMapping("/ai-video-tasks/{taskId}")
-    @RequirePermission("AI_VIDEO_TASK:VIEW")
+    @RequireProjectPermission("AI_VIDEO_TASK:VIEW")
     public ApiResponse<AiVideoTaskResponse> detail(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -56,7 +56,7 @@ public class AiVideoTaskController {
     }
 
     @PostMapping("/ai-video-tasks/{taskId}/poll")
-    @RequirePermission("AI_VIDEO_TASK:VIEW")
+    @RequireProjectPermission("AI_VIDEO_TASK:VIEW")
     public ApiResponse<AiVideoTaskResponse> poll(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -66,7 +66,7 @@ public class AiVideoTaskController {
     }
 
     @PostMapping("/ai-video-tasks/{taskId}/cancel")
-    @RequirePermission("AI_VIDEO_TASK:CANCEL")
+    @RequireProjectPermission("AI_VIDEO_TASK:CANCEL")
     public ApiResponse<AiVideoTaskResponse> cancel(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -76,7 +76,7 @@ public class AiVideoTaskController {
     }
 
     @PostMapping("/ai-video-tasks/{taskId}/regenerate")
-    @RequirePermission("AI_VIDEO_TASK:CREATE")
+    @RequireProjectPermission("AI_VIDEO_TASK:CREATE")
     public ApiResponse<AiVideoTaskResponse> regenerate(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -86,7 +86,7 @@ public class AiVideoTaskController {
     }
 
     @DeleteMapping("/ai-video-tasks/{taskId}")
-    @RequirePermission("AI_VIDEO_TASK:DELETE")
+    @RequireProjectPermission("AI_VIDEO_TASK:DELETE")
     public ApiResponse<Void> deleteTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -97,7 +97,7 @@ public class AiVideoTaskController {
     }
 
     @GetMapping("/ai-video-tasks/{taskId}/results")
-    @RequirePermission("AI_VIDEO_TASK:VIEW")
+    @RequireProjectPermission("AI_VIDEO_TASK:VIEW")
     public ApiResponse<List<AiVideoResultResponse>> results(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -107,7 +107,7 @@ public class AiVideoTaskController {
     }
 
     @GetMapping("/ai-video-results/{resultId}/download")
-    @RequirePermission("AI_VIDEO_RESULT:DOWNLOAD")
+    @RequireProjectPermission("AI_VIDEO_RESULT:DOWNLOAD")
     public ApiResponse<AiVideoResultResponse> download(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -117,7 +117,7 @@ public class AiVideoTaskController {
     }
 
     @PostMapping("/ai-video-results/{resultId}/save-material")
-    @RequirePermission("AI_VIDEO_RESULT:SAVE")
+    @RequireProjectPermission("AI_VIDEO_RESULT:SAVE")
     public ApiResponse<AiVideoResultResponse> saveMaterial(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -127,7 +127,7 @@ public class AiVideoTaskController {
     }
 
     @PostMapping("/ai-video-results/{resultId}/bind-storyboard")
-    @RequirePermission("AI_VIDEO_RESULT:BIND")
+    @RequireProjectPermission("AI_VIDEO_RESULT:BIND")
     public ApiResponse<AiVideoResultResponse> bindStoryboard(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -137,7 +137,7 @@ public class AiVideoTaskController {
     }
 
     @DeleteMapping("/ai-video-results/{resultId}")
-    @RequirePermission("AI_VIDEO_TASK:DELETE")
+    @RequireProjectPermission("AI_VIDEO_TASK:DELETE")
     public ApiResponse<Void> deleteResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,

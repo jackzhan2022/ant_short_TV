@@ -11,7 +11,6 @@ public class ProjectEntity {
     @TableId(type = IdType.AUTO)
     public Long id;
     public Long tenantId;
-    public Long organizationId;
     public String name;
     public String code;
     public String description;

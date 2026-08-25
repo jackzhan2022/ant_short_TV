@@ -48,7 +48,7 @@ class VideoDecompositionControllerTest {
                     "video/mp4",
                     "video bytes".getBytes()
                 ))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.storagePath", org.hamcrest.Matchers.startsWith(
@@ -64,7 +64,7 @@ class VideoDecompositionControllerTest {
         Long ownerId = userIdByMobile(mobile);
 
         MvcResult result = mockMvc.perform(post("/api/video-script-decomposition/batches")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -119,7 +119,7 @@ class VideoDecompositionControllerTest {
         Long episodeId = insertReviewableEpisode(tenantId, projectId, ownerId, "原始拆剧草稿", 0);
 
         mockMvc.perform(put("/api/video-script-decomposition/episodes/%d/draft".formatted(episodeId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -130,7 +130,7 @@ class VideoDecompositionControllerTest {
             .andExpect(jsonPath("$.data.draftVersion", is(1)));
 
         mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/confirm".formatted(episodeId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -167,7 +167,7 @@ class VideoDecompositionControllerTest {
         Long episodeId = insertReviewableEpisode(tenantId, projectId, ownerId, "待确认草稿", 3);
 
         mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/confirm".formatted(episodeId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -192,7 +192,7 @@ class VideoDecompositionControllerTest {
         Long episodeId = insertReviewableEpisode(tenantId, null, ownerId, "待确认草稿", 1);
 
         mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/confirm".formatted(episodeId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -223,7 +223,7 @@ class VideoDecompositionControllerTest {
             """, episodeId);
 
         mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/retry".formatted(episodeId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"phase\":\"VIDEO_ANALYSIS\"}"))
@@ -253,7 +253,7 @@ class VideoDecompositionControllerTest {
             """, episodeId);
 
         mockMvc.perform(get("/api/video-script-decomposition/episodes/%d".formatted(episodeId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.episode.status", is("FAILED")))
@@ -268,12 +268,12 @@ class VideoDecompositionControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"拆剧测试"}
@@ -285,7 +285,7 @@ class VideoDecompositionControllerTest {
 
     private Long createProject(String token, Long tenantId, Long ownerId, String name, String code) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/projects")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""

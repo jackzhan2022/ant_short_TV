@@ -4,8 +4,8 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.security.CurrentUser;
-import com.antshorttv.security.CurrentUserHolder;
+import com.antshorttv.authsession.AuthenticatedUser;
+import com.antshorttv.security.CurrentPrincipal;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -24,6 +24,7 @@ public class PlatformAiManagementService {
     private final AiSecretCodec aiSecretCodec;
     private final OperationLogService operationLogService;
     private final AiModelRouter aiModelRouter;
+    private final CurrentPrincipal currentPrincipal;
 
     public PlatformAiManagementService(
         AiProviderMapper aiProviderMapper,
@@ -32,7 +33,8 @@ public class PlatformAiManagementService {
         AiModelCapabilityMapper capabilityMapper,
         AiSecretCodec aiSecretCodec,
         OperationLogService operationLogService,
-        AiModelRouter aiModelRouter
+        AiModelRouter aiModelRouter,
+        CurrentPrincipal currentPrincipal
     ) {
         this.aiProviderMapper = aiProviderMapper;
         this.aiProviderConfigMapper = aiProviderConfigMapper;
@@ -41,10 +43,11 @@ public class PlatformAiManagementService {
         this.aiSecretCodec = aiSecretCodec;
         this.operationLogService = operationLogService;
         this.aiModelRouter = aiModelRouter;
+        this.currentPrincipal = currentPrincipal;
     }
 
     public List<PlatformProviderResponse> providers() {
-        CurrentUserHolder.require();
+        currentPrincipal.require();
         return aiProviderMapper.selectList(new LambdaQueryWrapper<AiProviderEntity>().orderByAsc(AiProviderEntity::getId))
             .stream()
             .map(this::providerResponse)
@@ -53,7 +56,7 @@ public class PlatformAiManagementService {
 
     @Transactional
     public PlatformProviderResponse createProvider(PlatformProviderRequest request, HttpServletRequest servletRequest) {
-        CurrentUser user = CurrentUserHolder.require();
+        AuthenticatedUser user = currentPrincipal.require();
         LocalDateTime now = LocalDateTime.now();
         AiProviderEntity provider = new AiProviderEntity();
         provider.setName(request.name().trim());
@@ -72,7 +75,7 @@ public class PlatformAiManagementService {
 
     @Transactional
     public PlatformProviderResponse updateProvider(Long id, PlatformProviderRequest request, HttpServletRequest servletRequest) {
-        CurrentUser user = CurrentUserHolder.require();
+        AuthenticatedUser user = currentPrincipal.require();
         AiProviderEntity provider = requireProvider(id);
         LocalDateTime now = LocalDateTime.now();
         provider.setName(request.name().trim());
@@ -90,7 +93,7 @@ public class PlatformAiManagementService {
 
     @Transactional
     public PlatformProviderResponse updateProviderStatus(Long id, boolean enabled, HttpServletRequest servletRequest) {
-        CurrentUser user = CurrentUserHolder.require();
+        AuthenticatedUser user = currentPrincipal.require();
         AiProviderEntity provider = requireProvider(id);
         provider.setStatus(enabled ? "ENABLED" : "DISABLED");
         provider.setUpdatedAt(LocalDateTime.now());
@@ -107,7 +110,7 @@ public class PlatformAiManagementService {
 
     @Transactional
     public AiServiceTestResponse testProvider(Long id, HttpServletRequest servletRequest) {
-        CurrentUser user = CurrentUserHolder.require();
+        AuthenticatedUser user = currentPrincipal.require();
         AiProviderEntity provider = requireProvider(id);
         AiProviderConfigEntity config = providerConfig(provider.getId());
         LocalDateTime now = LocalDateTime.now();
@@ -125,7 +128,7 @@ public class PlatformAiManagementService {
     }
 
     public List<PlatformModelResponse> models() {
-        CurrentUserHolder.require();
+        currentPrincipal.require();
         return aiModelMapper.selectList(new LambdaQueryWrapper<AiModelEntity>()
                 .orderByAsc(AiModelEntity::getServiceType)
                 .orderByDesc(AiModelEntity::getSort)
@@ -137,7 +140,7 @@ public class PlatformAiManagementService {
 
     @Transactional
     public PlatformModelResponse createModel(PlatformModelRequest request, HttpServletRequest servletRequest) {
-        CurrentUser user = CurrentUserHolder.require();
+        AuthenticatedUser user = currentPrincipal.require();
         AiProviderEntity provider = requireProvider(request.providerId());
         validateServiceType(request.serviceType());
         LocalDateTime now = LocalDateTime.now();
@@ -154,7 +157,7 @@ public class PlatformAiManagementService {
 
     @Transactional
     public PlatformModelResponse updateModel(Long id, PlatformModelRequest request, HttpServletRequest servletRequest) {
-        CurrentUser user = CurrentUserHolder.require();
+        AuthenticatedUser user = currentPrincipal.require();
         AiModelEntity model = requireModel(id);
         requireProvider(request.providerId());
         validateServiceType(request.serviceType());
@@ -170,7 +173,7 @@ public class PlatformAiManagementService {
 
     @Transactional
     public PlatformModelResponse updateModelStatus(Long id, boolean enabled, HttpServletRequest servletRequest) {
-        CurrentUser user = CurrentUserHolder.require();
+        AuthenticatedUser user = currentPrincipal.require();
         AiModelEntity model = requireModel(id);
         model.setStatus(enabled ? "ENABLED" : "DISABLED");
         model.setUpdatedAt(LocalDateTime.now());
@@ -184,7 +187,7 @@ public class PlatformAiManagementService {
 
     @Transactional
     public PlatformModelResponse setDefault(Long id, HttpServletRequest servletRequest) {
-        CurrentUser user = CurrentUserHolder.require();
+        AuthenticatedUser user = currentPrincipal.require();
         AiModelEntity model = requireModel(id);
         if (!"ENABLED".equals(model.getStatus())) {
             throw new BusinessException(ErrorCode.AI_MODEL_DISABLED, "停用模型不能设为默认。");

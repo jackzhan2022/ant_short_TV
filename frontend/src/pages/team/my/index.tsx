@@ -8,14 +8,15 @@ import {
   ProFormTextArea,
   ProTable,
 } from '@ant-design/pro-components';
-import { history } from '@umijs/max';
+import { history, useModel } from '@umijs/max';
 import { App, Button, Space, Tag } from 'antd';
 import { useRef } from 'react';
 import type {
   TenantSummary,
   TenantType,
 } from '@/services/account-team/types';
-import { createTenant, queryMyTenants, switchTenant } from './service';
+import { applyBootstrapSelection } from '@/services/account-team/bootstrap';
+import { createTenant, queryMyTenants } from './service';
 
 const tenantTypeOptions = [
   { label: '企业', value: 'COMPANY' },
@@ -27,6 +28,7 @@ const tenantTypeOptions = [
 const MyTeams = () => {
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
+  const { setInitialState } = useModel('@@initialState');
 
   const columns: ProColumns<TenantSummary>[] = [
     {
@@ -36,7 +38,7 @@ const MyTeams = () => {
         <Button
           type="link"
           onClick={async () => {
-            await switchTenant(record.id);
+            await applyBootstrapSelection(record.id, setInitialState);
             message.success(`已切换至 ${record.name}`);
             history.push('/team/members');
           }}
@@ -84,7 +86,7 @@ const MyTeams = () => {
             <Button
               type="link"
               onClick={async () => {
-                await switchTenant(record.id);
+                await applyBootstrapSelection(record.id, setInitialState);
                 message.success(`已切换至 ${record.name}`);
               }}
             >
@@ -93,7 +95,7 @@ const MyTeams = () => {
             <Button
               type="link"
               onClick={async () => {
-                await switchTenant(record.id);
+                await applyBootstrapSelection(record.id, setInitialState);
                 history.push('/team/members');
               }}
             >
@@ -102,7 +104,7 @@ const MyTeams = () => {
             <Button
               type="link"
               onClick={async () => {
-                await switchTenant(record.id);
+                await applyBootstrapSelection(record.id, setInitialState);
                 history.push('/team/settings');
               }}
             >

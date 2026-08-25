@@ -27,6 +27,38 @@ vi.mock('@umijs/max', () => ({
 describe('requestErrorConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    document.cookie = 'XSRF-TOKEN=; Max-Age=0; path=/';
+  });
+
+  it('uses cookie credentials and copies the CSRF cookie for unsafe requests', () => {
+    localStorage.setItem('accessToken', 'legacy-token');
+    localStorage.setItem('currentTenantId', '21');
+    document.cookie = 'XSRF-TOKEN=csrf%20value; path=/';
+    const interceptor = errorConfig.requestInterceptors?.[0] as (
+      config: any,
+    ) => any;
+
+    const config = interceptor({ method: 'POST', headers: {} });
+
+    expect(config.withCredentials).toBe(true);
+    expect(config.headers).toMatchObject({
+      'X-XSRF-TOKEN': 'csrf value',
+      'X-Tenant-Id': '21',
+    });
+    expect(config.headers.Authorization).toBeUndefined();
+  });
+
+  it('does not attach a CSRF header to safe requests', () => {
+    document.cookie = 'XSRF-TOKEN=csrf-token; path=/';
+    const interceptor = errorConfig.requestInterceptors?.[0] as (
+      config: any,
+    ) => any;
+
+    const config = interceptor({ method: 'GET', headers: {} });
+
+    expect(config.withCredentials).toBe(true);
+    expect(config.headers['X-XSRF-TOKEN']).toBeUndefined();
   });
 
   it('shows backend error code and message from non-2xx responses', () => {

@@ -14,12 +14,9 @@ import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
 import com.antshorttv.points.TeamPointService;
 import com.antshorttv.project.ProjectEntity;
-import com.antshorttv.project.ProjectMapper;
-import com.antshorttv.project.ProjectMemberEntity;
-import com.antshorttv.project.ProjectMemberMapper;
+import com.antshorttv.project.ProjectAccessResolver;
 import com.antshorttv.project.ProjectOperationLogEntity;
 import com.antshorttv.project.ProjectOperationLogMapper;
-import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.script.StoryboardEntity;
 import com.antshorttv.script.StoryboardMapper;
 import com.antshorttv.security.TenantContext;
@@ -55,8 +52,7 @@ public class AiVideoTaskService {
     private static final List<Integer> SUPPORTED_DURATIONS = List.of(5, 8, 10);
     private static final List<String> SUPPORTED_ASPECT_RATIOS = List.of("9:16", "16:9", "1:1");
 
-    private final ProjectMapper projectMapper;
-    private final ProjectMemberMapper projectMemberMapper;
+    private final ProjectAccessResolver projectAccessResolver;
     private final StoryboardMapper storyboardMapper;
     private final AiServiceConfigMapper aiServiceConfigMapper;
     private final AiVideoTaskMapper aiVideoTaskMapper;
@@ -66,7 +62,6 @@ public class AiVideoTaskService {
     private final AiVideoCallLogMapper aiCallLogMapper;
     private final ProjectOperationLogMapper projectOperationLogMapper;
     private final TenantContextResolver tenantContextResolver;
-    private final RbacPermissionService rbacPermissionService;
     private final OperationLogService operationLogService;
     private final MaterialFileAccessService materialFileAccessService;
     private final ObjectStorageService objectStorageService;
@@ -82,8 +77,7 @@ public class AiVideoTaskService {
     private final Path storageRoot;
 
     public AiVideoTaskService(
-        ProjectMapper projectMapper,
-        ProjectMemberMapper projectMemberMapper,
+        ProjectAccessResolver projectAccessResolver,
         StoryboardMapper storyboardMapper,
         AiServiceConfigMapper aiServiceConfigMapper,
         AiVideoTaskMapper aiVideoTaskMapper,
@@ -93,7 +87,6 @@ public class AiVideoTaskService {
         AiVideoCallLogMapper aiCallLogMapper,
         ProjectOperationLogMapper projectOperationLogMapper,
         TenantContextResolver tenantContextResolver,
-        RbacPermissionService rbacPermissionService,
         OperationLogService operationLogService,
         MaterialFileAccessService materialFileAccessService,
         ObjectStorageService objectStorageService,
@@ -107,8 +100,7 @@ public class AiVideoTaskService {
         @Value("${ai.video.due-task-batch-size:20}") int dueTaskBatchSize,
         @Value("${ai.video.storage-root:storage}") String storageRoot
     ) {
-        this.projectMapper = projectMapper;
-        this.projectMemberMapper = projectMemberMapper;
+        this.projectAccessResolver = projectAccessResolver;
         this.storyboardMapper = storyboardMapper;
         this.aiServiceConfigMapper = aiServiceConfigMapper;
         this.aiVideoTaskMapper = aiVideoTaskMapper;
@@ -118,7 +110,6 @@ public class AiVideoTaskService {
         this.aiCallLogMapper = aiCallLogMapper;
         this.projectOperationLogMapper = projectOperationLogMapper;
         this.tenantContextResolver = tenantContextResolver;
-        this.rbacPermissionService = rbacPermissionService;
         this.operationLogService = operationLogService;
         this.materialFileAccessService = materialFileAccessService;
         this.objectStorageService = objectStorageService;
@@ -752,18 +743,7 @@ public class AiVideoTaskService {
     }
 
     private ProjectEntity requireProjectAccess(TenantContext context, Long projectId) {
-        ProjectEntity project = projectMapper.selectByTenantIdAndId(context.tenantId(), projectId);
-        if (project == null) {
-            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在。");
-        }
-        if (rbacPermissionService.hasPermission(context, "PROJECT:VIEW")) {
-            return project;
-        }
-        ProjectMemberEntity member = projectMemberMapper.selectActiveByProjectIdAndUserId(context.tenantId(), projectId, context.userId());
-        if (member == null) {
-            throw new BusinessException(ErrorCode.PROJECT_ACCESS_DENIED, "无权访问该项目。");
-        }
-        return project;
+        return projectAccessResolver.requireView(context.tenantId(), projectId).project();
     }
 
     private StoryboardEntity requireStoryboard(Long tenantId, Long projectId, Long storyboardId) {

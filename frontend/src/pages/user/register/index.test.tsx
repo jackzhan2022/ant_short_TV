@@ -9,8 +9,10 @@ const mocks = vi.hoisted(() => ({
   acceptInvitation: vi.fn(),
   createTenant: vi.fn(),
   registerByMobile: vi.fn(),
+  queryAuthBootstrap: vi.fn(),
   replace: vi.fn(),
   setInitialState: vi.fn(),
+  setCurrentTenantId: vi.fn(),
   success: vi.fn(),
   switchTenant: vi.fn(),
 }));
@@ -128,7 +130,9 @@ vi.mock('@/components', () => ({
 }));
 
 vi.mock('@/services/account-team/auth', () => ({
+  queryAuthBootstrap: mocks.queryAuthBootstrap,
   registerByMobile: mocks.registerByMobile,
+  setCurrentTenantId: mocks.setCurrentTenantId,
 }));
 
 vi.mock('@/services/account-team/invitation', () => ({
@@ -144,6 +148,16 @@ describe('Register Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.registerByMobile.mockResolvedValue({ success: true, data: {} });
+    mocks.queryAuthBootstrap.mockResolvedValue({
+      data: {
+        user: { id: 1, mobile: '13800000000', nickname: '新用户', status: 'ACTIVE' },
+        session: { sessionId: 'session-1', expiresAt: '2026-09-01T00:00:00' },
+        platform: { roles: [], permissions: [] },
+        tenants: [],
+        selectedTenant: null,
+        nextAction: 'CREATE_OR_JOIN_TEAM',
+      },
+    });
     mocks.fetchUserInfo.mockResolvedValue({ name: '新用户' });
     mocks.acceptInvitation.mockResolvedValue({
       success: true,
@@ -181,7 +195,10 @@ describe('Register Page', () => {
         password: 'Password123',
       });
     });
-    expect(mocks.fetchUserInfo).toHaveBeenCalled();
+    expect(mocks.queryAuthBootstrap).toHaveBeenCalledWith(undefined, {
+      skipErrorHandler: true,
+    });
+    expect(mocks.fetchUserInfo).not.toHaveBeenCalled();
     expect(mocks.setInitialState).toHaveBeenCalled();
     expect(await screen.findByText('开启您的AI创作之旅')).toBeInTheDocument();
     expect(screen.getByText('完善注册信息')).toBeInTheDocument();
@@ -207,6 +224,22 @@ describe('Register Page', () => {
 
     await screen.findByText('完善注册信息');
 
+    mocks.queryAuthBootstrap.mockResolvedValueOnce({
+      data: {
+        user: { id: 1, mobile: '13800000000', nickname: '新用户', status: 'ACTIVE' },
+        session: { sessionId: 'session-1', expiresAt: '2026-09-01T00:00:00' },
+        platform: { roles: [], permissions: [] },
+        tenants: [{ id: 10, name: '新团队' }],
+        selectedTenant: {
+          tenant: { id: 10, name: '新团队' },
+          membership: { id: 100, memberType: 'OWNER', status: 'ACTIVE' },
+          roles: ['OWNER'],
+          permissions: ['PROJECT:CREATE'],
+        },
+        nextAction: 'ENTER_WORKSPACE',
+      },
+    });
+
     fireEvent.change(screen.getByPlaceholderText('可自定义您的团队名称（选填）'), {
       target: { value: '新团队' },
     });
@@ -218,7 +251,11 @@ describe('Register Page', () => {
         type: 'STUDIO',
       });
     });
-    expect(mocks.switchTenant).toHaveBeenCalledWith(10);
+    expect(mocks.queryAuthBootstrap).toHaveBeenLastCalledWith(10, {
+      skipErrorHandler: true,
+    });
+    expect(mocks.switchTenant).not.toHaveBeenCalled();
+    expect(mocks.setCurrentTenantId).toHaveBeenCalledWith(10);
     expect(mocks.replace).toHaveBeenCalledWith('/team/my');
   });
 

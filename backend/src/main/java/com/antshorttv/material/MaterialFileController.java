@@ -2,13 +2,7 @@ package com.antshorttv.material;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
-import com.antshorttv.project.ProjectEntity;
-import com.antshorttv.project.ProjectMapper;
-import com.antshorttv.project.ProjectMemberEntity;
-import com.antshorttv.project.ProjectMemberMapper;
-import com.antshorttv.rbac.RbacPermissionService;
-import com.antshorttv.security.TenantContext;
-import com.antshorttv.security.TenantContextResolver;
+import com.antshorttv.rbac.ProjectPermissionGuard;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -24,23 +18,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class MaterialFileController {
     private final MaterialFileAccessService accessService;
-    private final TenantContextResolver tenantContextResolver;
-    private final ProjectMapper projectMapper;
-    private final ProjectMemberMapper projectMemberMapper;
-    private final RbacPermissionService rbacPermissionService;
+    private final ProjectPermissionGuard projectPermissionGuard;
 
     public MaterialFileController(
         MaterialFileAccessService accessService,
-        TenantContextResolver tenantContextResolver,
-        ProjectMapper projectMapper,
-        ProjectMemberMapper projectMemberMapper,
-        RbacPermissionService rbacPermissionService
+        ProjectPermissionGuard projectPermissionGuard
     ) {
         this.accessService = accessService;
-        this.tenantContextResolver = tenantContextResolver;
-        this.projectMapper = projectMapper;
-        this.projectMemberMapper = projectMemberMapper;
-        this.rbacPermissionService = rbacPermissionService;
+        this.projectPermissionGuard = projectPermissionGuard;
     }
 
     @GetMapping("/materials/{tenantId}/{projectId}/**")
@@ -61,18 +46,7 @@ public class MaterialFileController {
     }
 
     private void requireProjectAccess(Long tenantId, Long projectId) {
-        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        ProjectEntity project = projectMapper.selectByTenantIdAndId(context.tenantId(), projectId);
-        if (project == null) {
-            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在。");
-        }
-        if (rbacPermissionService.hasPermission(context, "PROJECT:VIEW")) {
-            return;
-        }
-        ProjectMemberEntity member = projectMemberMapper.selectActiveByProjectIdAndUserId(context.tenantId(), projectId, context.userId());
-        if (member == null) {
-            throw new BusinessException(ErrorCode.PROJECT_ACCESS_DENIED, "无权访问该项目。");
-        }
+        projectPermissionGuard.require(tenantId, projectId, "PROJECT:VIEW");
     }
 
     private String storagePath(HttpServletRequest request) {

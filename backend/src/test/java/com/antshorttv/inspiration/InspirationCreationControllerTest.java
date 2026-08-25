@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.antshorttv.auth.RegisterRequest;
 import com.antshorttv.auth.AuthService;
 import com.antshorttv.storage.ObjectStorageService;
+import jakarta.servlet.http.Cookie;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,17 +41,18 @@ class InspirationCreationControllerTest {
     @MockBean
     private ObjectStorageService objectStorageService;
 
-    private String token;
+    private Cookie sessionCookie;
 
     @BeforeEach
     void setUp() {
         mapper.delete(null);
-        token = authService.register(new RegisterRequest(
+        String credential = authService.register(new RegisterRequest(
             "139%08d".formatted(System.nanoTime() % 100000000),
             "123456",
             "接口测试用户",
             "Password123"
-        ), null).accessToken();
+        ), null).issuedSession().credential();
+        sessionCookie = new Cookie("ANT_SHORT_SESSION", credential);
     }
 
     @Test
@@ -65,7 +67,7 @@ class InspirationCreationControllerTest {
         mapper.insert(failed);
 
         mockMvc.perform(get("/api/inspiration-creations")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .cookie(sessionCookie))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(1)))
             .andExpect(jsonPath("$.data[0].externalId", is("external-1")))
@@ -82,7 +84,7 @@ class InspirationCreationControllerTest {
         mapper.insert(entity);
 
         mockMvc.perform(get("/api/inspiration-creations/{id}", entity.getId())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .cookie(sessionCookie))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.externalId", is("external-3")))
             .andExpect(jsonPath("$.data.detailJson.prompt", is("干净详情")))
@@ -90,7 +92,7 @@ class InspirationCreationControllerTest {
             .andExpect(jsonPath("$.data.detailJson.url", not("https://external.example/source.png")));
 
         mockMvc.perform(get("/api/inspiration-creations/{id}", 999999L)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .cookie(sessionCookie))
             .andExpect(status().isNotFound());
     }
 
@@ -104,7 +106,7 @@ class InspirationCreationControllerTest {
             .thenReturn(new ByteArrayResource("video".getBytes()));
 
         mockMvc.perform(get("/api/inspiration-creations/{id}/file", entity.getId())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .cookie(sessionCookie))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.valueOf("video/mp4")))
             .andExpect(content().bytes("video".getBytes()));

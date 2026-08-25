@@ -15,6 +15,7 @@ vi.mock('@ant-design/icons', () => ({
 
 vi.mock('@umijs/max', () => ({
   history: { push: vi.fn() },
+  useModel: () => ({ setInitialState: vi.fn() }),
 }));
 
 vi.mock('antd', () => ({

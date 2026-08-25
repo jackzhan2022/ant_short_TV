@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   historyPush: vi.fn(),
   queryInspirationCreationDetail: vi.fn(),
   queryInspirationCreations: vi.fn(),
-  queryOrganizations: vi.fn(),
   queryStyleLibrary: vi.fn(),
   queryTenantMembers: vi.fn(),
 }));
@@ -28,7 +27,6 @@ vi.mock('./service', () => ({
   createProject: mocks.createProject,
   queryInspirationCreationDetail: mocks.queryInspirationCreationDetail,
   queryInspirationCreations: mocks.queryInspirationCreations,
-  queryOrganizations: mocks.queryOrganizations,
   queryStyleLibrary: mocks.queryStyleLibrary,
   queryTenantMembers: mocks.queryTenantMembers,
 }));
@@ -46,7 +44,6 @@ describe('ShortDramaCreationPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentTenantId.mockReturnValue(9);
-    mocks.queryOrganizations.mockResolvedValue({ data: [] });
     mocks.queryTenantMembers.mockResolvedValue({
       data: [{ userId: 1, nickname: '负责人A' }],
     });

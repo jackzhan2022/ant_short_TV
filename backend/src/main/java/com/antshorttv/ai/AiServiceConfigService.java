@@ -4,7 +4,7 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.security.CurrentUserHolder;
+import com.antshorttv.security.CurrentPrincipal;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -33,6 +33,7 @@ public class AiServiceConfigService {
     private final TenantContextResolver tenantContextResolver;
     private final OperationLogService operationLogService;
     private final PlatformAiManagementService platformAiManagementService;
+    private final CurrentPrincipal currentPrincipal;
 
     public AiServiceConfigService(
         AiProviderMapper aiProviderMapper,
@@ -41,7 +42,8 @@ public class AiServiceConfigService {
         AiSecretCodec aiSecretCodec,
         TenantContextResolver tenantContextResolver,
         OperationLogService operationLogService,
-        PlatformAiManagementService platformAiManagementService
+        PlatformAiManagementService platformAiManagementService,
+        CurrentPrincipal currentPrincipal
     ) {
         this.aiProviderMapper = aiProviderMapper;
         this.aiServiceConfigMapper = aiServiceConfigMapper;
@@ -51,10 +53,11 @@ public class AiServiceConfigService {
         this.tenantContextResolver = tenantContextResolver;
         this.operationLogService = operationLogService;
         this.platformAiManagementService = platformAiManagementService;
+        this.currentPrincipal = currentPrincipal;
     }
 
     public List<AiProviderResponse> providers() {
-        CurrentUserHolder.require();
+        currentPrincipal.require();
         return aiProviderMapper.selectList(
                 new LambdaQueryWrapper<AiProviderEntity>()
                     .orderByAsc(AiProviderEntity::getId)

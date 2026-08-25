@@ -24,3 +24,14 @@ object-storage:
 
 ai:
   secret-key: test-ai-secret-key
+
+auth:
+  session:
+    token-pepper: test-auth-token-pepper-at-least-32-characters
+    ttl: 12h
+    activity-update-interval: 5m
+    cleanup-interval: PT1H
+    cleanup-retention: 30d
+    cookie-secure: false
+  platform:
+    initial-admin-mobile: "13800000999"

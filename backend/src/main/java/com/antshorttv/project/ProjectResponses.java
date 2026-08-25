@@ -3,12 +3,11 @@ package com.antshorttv.project;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 record ProjectResponse(
     Long id,
     Long tenantId,
-    Long organizationId,
-    String organizationName,
     String name,
     String code,
     String description,
@@ -26,6 +25,11 @@ record ProjectResponse(
     String visualStyle,
     String initialScriptContent,
     Long memberCount,
+    ProjectAccessSource accessSource,
+    String projectRoleCode,
+    String projectRoleName,
+    Set<String> effectivePermissions,
+    ProjectCapabilities capabilities,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -38,8 +42,6 @@ record ProjectMemberResponse(
     Long userId,
     String nickname,
     String mobile,
-    Long organizationId,
-    String organizationName,
     Long roleId,
     String roleName,
     String roleCode,
@@ -57,7 +59,6 @@ record ProjectRoleResponse(
     String description,
     Boolean isSystem,
     String status,
-    String dataScope,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {

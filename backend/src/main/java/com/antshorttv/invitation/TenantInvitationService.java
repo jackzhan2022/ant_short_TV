@@ -8,8 +8,8 @@ import com.antshorttv.member.TenantMemberEntity;
 import com.antshorttv.member.TenantMemberMapper;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.security.CurrentUser;
-import com.antshorttv.security.CurrentUserHolder;
+import com.antshorttv.authsession.AuthenticatedUser;
+import com.antshorttv.security.CurrentPrincipal;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.tenant.TenantEntity;
@@ -34,6 +34,7 @@ public class TenantInvitationService {
     private final TenantMapper tenantMapper;
     private final UserMapper userMapper;
     private final TenantContextResolver tenantContextResolver;
+    private final CurrentPrincipal currentPrincipal;
     private final OperationLogService operationLogService;
 
     public TenantInvitationService(
@@ -42,6 +43,7 @@ public class TenantInvitationService {
         TenantMapper tenantMapper,
         UserMapper userMapper,
         TenantContextResolver tenantContextResolver,
+        CurrentPrincipal currentPrincipal,
         OperationLogService operationLogService
     ) {
         this.tenantInvitationMapper = tenantInvitationMapper;
@@ -49,6 +51,7 @@ public class TenantInvitationService {
         this.tenantMapper = tenantMapper;
         this.userMapper = userMapper;
         this.tenantContextResolver = tenantContextResolver;
+        this.currentPrincipal = currentPrincipal;
         this.operationLogService = operationLogService;
     }
 
@@ -84,7 +87,7 @@ public class TenantInvitationService {
     }
 
     public List<TenantInvitationResponse> myInvitations() {
-        CurrentUser currentUser = CurrentUserHolder.require();
+        AuthenticatedUser currentUser = currentPrincipal.require();
         return tenantInvitationMapper.selectByInviteMobile(currentUser.mobile())
             .stream()
             .map(this::toResponse)
@@ -106,7 +109,7 @@ public class TenantInvitationService {
     @Transactional
     public TenantInvitationResponse accept(String token, HttpServletRequest servletRequest) {
         TenantInvitationEntity invitation = requirePendingUsable(token);
-        CurrentUser currentUser = requireInvitee(invitation);
+        AuthenticatedUser currentUser = requireInvitee(invitation);
         LocalDateTime now = LocalDateTime.now();
 
         TenantMemberEntity member = tenantMemberMapper.selectByTenantIdAndUserId(invitation.getTenantId(), currentUser.userId());
@@ -145,7 +148,7 @@ public class TenantInvitationService {
     @Transactional
     public TenantInvitationResponse reject(String token, HttpServletRequest servletRequest) {
         TenantInvitationEntity invitation = requirePendingUsable(token);
-        CurrentUser currentUser = requireInvitee(invitation);
+        AuthenticatedUser currentUser = requireInvitee(invitation);
         invitation.setInviteUserId(currentUser.userId());
         invitation.setStatus(InvitationStatus.REJECTED.name());
         invitation.setUpdatedAt(LocalDateTime.now());
@@ -185,8 +188,8 @@ public class TenantInvitationService {
         return invitation;
     }
 
-    private CurrentUser requireInvitee(TenantInvitationEntity invitation) {
-        CurrentUser currentUser = CurrentUserHolder.require();
+    private AuthenticatedUser requireInvitee(TenantInvitationEntity invitation) {
+        AuthenticatedUser currentUser = currentPrincipal.require();
         if (!invitation.getInviteMobile().equals(currentUser.mobile())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权处理该邀请。");
         }

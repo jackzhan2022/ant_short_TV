@@ -51,7 +51,7 @@ class TenantInvitationControllerTest {
         assertThat(token).isNotBlank();
 
         mockMvc.perform(post("/api/tenants/%d/invitations".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mobile\":\"13800000302\"}"))
             .andExpect(status().isConflict())
@@ -67,13 +67,13 @@ class TenantInvitationControllerTest {
         addMember(tenantId, "13800000304");
 
         mockMvc.perform(post("/api/tenants/%d/invitations".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mobile\":\"13800000305\"}"))
             .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/tenants/%d/invitations".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mobile\":\"13800000304\"}"))
             .andExpect(status().isConflict())
@@ -88,12 +88,13 @@ class TenantInvitationControllerTest {
         String inviteeToken = registerUser("13800000307", "Invitee");
         String token = readToken(invite(ownerToken, tenantId, "13800000307"));
 
-        mockMvc.perform(get("/api/invitations/%s".formatted(token)))
+        mockMvc.perform(get("/api/invitations/%s".formatted(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("PENDING")));
 
         mockMvc.perform(post("/api/invitations/%s/accept".formatted(token))
-                .header(HttpHeaders.AUTHORIZATION, bearer(inviteeToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("ACCEPTED")));
 
@@ -113,14 +114,14 @@ class TenantInvitationControllerTest {
 
         String rejectedToken = readToken(invite(ownerToken, tenantId, "13800000309"));
         mockMvc.perform(post("/api/invitations/%s/reject".formatted(rejectedToken))
-                .header(HttpHeaders.AUTHORIZATION, bearer(rejectToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(rejectToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("REJECTED")));
 
         MvcResult cancelInvite = invite(ownerToken, tenantId, "13800000310");
         Number invitationId = com.jayway.jsonpath.JsonPath.read(cancelInvite.getResponse().getContentAsString(), "$.data.id");
         mockMvc.perform(post("/api/invitations/%d/cancel".formatted(invitationId.longValue()))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("CANCELLED")));
     }
@@ -134,13 +135,13 @@ class TenantInvitationControllerTest {
         invite(ownerToken, tenantId, "13800000315");
 
         mockMvc.perform(get("/api/tenants/%d/invitations".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[0].inviteMobile", is("13800000315")))
             .andExpect(jsonPath("$.data[0].status", is("PENDING")));
 
         mockMvc.perform(get("/api/tenants/%d/invitations".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken)))
             .andExpect(status().isForbidden());
     }
 
@@ -156,7 +157,7 @@ class TenantInvitationControllerTest {
         tenantInvitationMapper.updateById(invitation);
 
         mockMvc.perform(post("/api/invitations/%s/accept".formatted(token))
-                .header(HttpHeaders.AUTHORIZATION, bearer(inviteeToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.errorCode", is("INVITATION_EXPIRED")))
             .andExpect(jsonPath("$.errorMessage", is("该邀请已过期，请联系团队管理员重新发送邀请。")));
@@ -164,7 +165,7 @@ class TenantInvitationControllerTest {
 
     private MvcResult invite(String ownerToken, Long tenantId, String mobile) throws Exception {
         return mockMvc.perform(post("/api/tenants/%d/invitations".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mobile\":\"%s\"}".formatted(mobile)))
             .andExpect(status().isOk())
@@ -184,12 +185,12 @@ class TenantInvitationControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"邀请管理测试"}

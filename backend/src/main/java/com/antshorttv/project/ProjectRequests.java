@@ -7,7 +7,6 @@ import java.time.LocalDate;
 import java.util.List;
 
 record CreateProjectRequest(
-    Long organizationId,
     @NotBlank @Size(max = 200) String name,
     @NotBlank @Size(max = 50) String code,
     String description,
@@ -26,7 +25,6 @@ record CreateProjectRequest(
 }
 
 record UpdateProjectRequest(
-    Long organizationId,
     @NotBlank @Size(max = 200) String name,
     String description,
     String coverUrl,
@@ -54,7 +52,6 @@ record UpdateProjectOwnerRequest(
 
 record AddProjectMemberRequest(
     @NotNull Long userId,
-    Long organizationId,
     Long roleId
 ) {
 }
@@ -68,7 +65,6 @@ record CreateProjectRoleRequest(
     @NotBlank @Size(max = 50) String code,
     @NotBlank @Size(max = 100) String name,
     @Size(max = 500) String description,
-    String dataScope,
     List<String> permissionCodes
 ) {
 }
@@ -77,7 +73,6 @@ record UpdateProjectRoleRequest(
     @NotBlank @Size(max = 100) String name,
     @Size(max = 500) String description,
     String status,
-    String dataScope,
     List<String> permissionCodes
 ) {
 }

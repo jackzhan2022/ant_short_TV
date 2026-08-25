@@ -2,7 +2,7 @@ package com.antshorttv.inspiration;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
-import com.antshorttv.security.CurrentUserHolder;
+import com.antshorttv.security.CurrentPrincipal;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,19 +15,22 @@ public class InspirationCreationService {
     private final InspirationCreationMapper mapper;
     private final InspirationCreationMediaStorage mediaStorage;
     private final ObjectMapper objectMapper;
+    private final CurrentPrincipal currentPrincipal;
 
     public InspirationCreationService(
         InspirationCreationMapper mapper,
         InspirationCreationMediaStorage mediaStorage,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        CurrentPrincipal currentPrincipal
     ) {
         this.mapper = mapper;
         this.mediaStorage = mediaStorage;
         this.objectMapper = objectMapper;
+        this.currentPrincipal = currentPrincipal;
     }
 
     public List<InspirationCreationListResponse> list() {
-        CurrentUserHolder.require();
+        currentPrincipal.require();
         return mapper.selectList(new LambdaQueryWrapper<InspirationCreationEntity>()
                 .eq(InspirationCreationEntity::getImportStatus, InspirationCreationImportStatus.IMPORTED.name())
                 .orderByAsc(InspirationCreationEntity::getSortOrder)
@@ -38,18 +41,18 @@ public class InspirationCreationService {
     }
 
     public InspirationCreationDetailResponse detail(Long id) {
-        CurrentUserHolder.require();
+        currentPrincipal.require();
         InspirationCreationEntity entity = requireImported(id);
         return InspirationCreationDetailResponse.from(entity, detailJson(entity));
     }
 
     public Resource file(Long id) {
-        CurrentUserHolder.require();
+        currentPrincipal.require();
         return mediaStorage.resource(requireImported(id));
     }
 
     public String contentType(Long id) {
-        CurrentUserHolder.require();
+        currentPrincipal.require();
         InspirationCreationEntity entity = requireImported(id);
         return InspirationCreationMediaStorage.contentType(entity.getStoragePath(), entity.getMimeType());
     }

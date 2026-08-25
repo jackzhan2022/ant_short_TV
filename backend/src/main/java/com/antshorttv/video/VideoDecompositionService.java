@@ -2,11 +2,7 @@ package com.antshorttv.video;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
-import com.antshorttv.project.ProjectEntity;
-import com.antshorttv.project.ProjectMapper;
-import com.antshorttv.project.ProjectMemberEntity;
-import com.antshorttv.project.ProjectMemberMapper;
-import com.antshorttv.rbac.RbacPermissionService;
+import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.script.ScriptEntity;
 import com.antshorttv.script.ScriptMapper;
 import com.antshorttv.script.ScriptVersionEntity;
@@ -39,9 +35,7 @@ public class VideoDecompositionService {
     private static final Set<String> RETRYABLE_STATUSES = Set.of("FAILED");
 
     private final TenantContextResolver tenantContextResolver;
-    private final ProjectMapper projectMapper;
-    private final ProjectMemberMapper projectMemberMapper;
-    private final RbacPermissionService rbacPermissionService;
+    private final ProjectPermissionGuard projectPermissionGuard;
     private final VideoDecompositionBatchMapper batchMapper;
     private final VideoDecompositionEpisodeMapper episodeMapper;
     private final VideoDecompositionAnalysisMapper analysisMapper;
@@ -53,9 +47,7 @@ public class VideoDecompositionService {
 
     public VideoDecompositionService(
         TenantContextResolver tenantContextResolver,
-        ProjectMapper projectMapper,
-        ProjectMemberMapper projectMemberMapper,
-        RbacPermissionService rbacPermissionService,
+        ProjectPermissionGuard projectPermissionGuard,
         VideoDecompositionBatchMapper batchMapper,
         VideoDecompositionEpisodeMapper episodeMapper,
         VideoDecompositionAnalysisMapper analysisMapper,
@@ -66,9 +58,7 @@ public class VideoDecompositionService {
         @Value("${ai.video.storage-root:storage}") String storageRoot
     ) {
         this.tenantContextResolver = tenantContextResolver;
-        this.projectMapper = projectMapper;
-        this.projectMemberMapper = projectMemberMapper;
-        this.rbacPermissionService = rbacPermissionService;
+        this.projectPermissionGuard = projectPermissionGuard;
         this.batchMapper = batchMapper;
         this.episodeMapper = episodeMapper;
         this.analysisMapper = analysisMapper;
@@ -461,18 +451,7 @@ public class VideoDecompositionService {
     }
 
     private void requireProjectAccess(TenantContext context, Long projectId, String permissionCode) {
-        ProjectEntity project = projectMapper.selectByTenantIdAndId(context.tenantId(), projectId);
-        if (project == null) {
-            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在。");
-        }
-        if (rbacPermissionService.hasPermission(context, permissionCode)) {
-            return;
-        }
-        ProjectMemberEntity member = projectMemberMapper.selectActiveByProjectIdAndUserId(context.tenantId(), projectId, context.userId());
-        if (member != null && rbacPermissionService.hasPermission(context, permissionCode, projectId)) {
-            return;
-        }
-        throw new BusinessException(ErrorCode.PROJECT_ACCESS_DENIED, "无权访问该项目。");
+        projectPermissionGuard.require(context.tenantId(), projectId, permissionCode);
     }
 
     private void requireProjectAccessIfBound(TenantContext context, Long projectId, String permissionCode) {

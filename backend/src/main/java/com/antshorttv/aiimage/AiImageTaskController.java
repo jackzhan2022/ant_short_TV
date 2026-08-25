@@ -2,7 +2,7 @@ package com.antshorttv.aiimage;
 
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
-import com.antshorttv.rbac.RequirePermission;
+import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -31,7 +31,7 @@ public class AiImageTaskController {
     }
 
     @GetMapping("/ai-image-tasks")
-    @RequirePermission("AI_IMAGE_TASK:VIEW")
+    @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
     public ApiResponse<List<AiImageTaskResponse>> list(
         @PathVariable Long projectId,
         @RequestParam(required = false) String taskType,
@@ -42,7 +42,7 @@ public class AiImageTaskController {
     }
 
     @PostMapping("/ai-image-tasks")
-    @RequirePermission("AI_IMAGE_TASK:CREATE")
+    @RequireProjectPermission("AI_IMAGE_TASK:CREATE")
     public ApiResponse<AiImageTaskResponse> create(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateAiImageTaskRequest body,
@@ -52,7 +52,7 @@ public class AiImageTaskController {
     }
 
     @GetMapping("/ai-image-tasks/{taskId}")
-    @RequirePermission("AI_IMAGE_TASK:VIEW")
+    @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
     public ApiResponse<AiImageTaskResponse> detail(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -62,7 +62,7 @@ public class AiImageTaskController {
     }
 
     @PostMapping("/ai-image-tasks/{taskId}/regenerate")
-    @RequirePermission("AI_IMAGE_TASK:CREATE")
+    @RequireProjectPermission("AI_IMAGE_TASK:CREATE")
     public ApiResponse<AiImageTaskResponse> regenerate(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -72,7 +72,7 @@ public class AiImageTaskController {
     }
 
     @PutMapping("/ai-image-tasks/{taskId}/cancel")
-    @RequirePermission("AI_IMAGE_TASK:CANCEL")
+    @RequireProjectPermission("AI_IMAGE_TASK:CANCEL")
     public ApiResponse<AiImageTaskResponse> cancel(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -82,7 +82,7 @@ public class AiImageTaskController {
     }
 
     @DeleteMapping("/ai-image-tasks/{taskId}")
-    @RequirePermission("AI_IMAGE_TASK:DELETE")
+    @RequireProjectPermission("AI_IMAGE_TASK:DELETE")
     public ApiResponse<Void> delete(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -93,7 +93,7 @@ public class AiImageTaskController {
     }
 
     @GetMapping("/ai-image-results/{resultId}/download")
-    @RequirePermission("AI_IMAGE_TASK:VIEW")
+    @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
     public ResponseEntity<Resource> downloadResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -110,7 +110,7 @@ public class AiImageTaskController {
     }
 
     @PostMapping("/ai-image-results/{resultId}/save-material")
-    @RequirePermission("AI_IMAGE_RESULT:SAVE")
+    @RequireProjectPermission("AI_IMAGE_RESULT:SAVE")
     public ApiResponse<AiImageResultResponse> saveMaterial(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -120,7 +120,7 @@ public class AiImageTaskController {
     }
 
     @PutMapping("/ai-image-results/{resultId}/selected")
-    @RequirePermission("AI_IMAGE_RESULT:BIND")
+    @RequireProjectPermission("AI_IMAGE_RESULT:BIND")
     public ApiResponse<AiImageResultResponse> selectResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -130,7 +130,7 @@ public class AiImageTaskController {
     }
 
     @DeleteMapping("/ai-image-results/{resultId}")
-    @RequirePermission("AI_IMAGE_TASK:DELETE")
+    @RequireProjectPermission("AI_IMAGE_TASK:DELETE")
     public ApiResponse<Void> deleteResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,

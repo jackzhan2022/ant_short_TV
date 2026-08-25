@@ -1,13 +1,13 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { App, Button, Space, Tag } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useModel } from '@umijs/max';
+import { useRef } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { TenantInvitation } from '@/services/account-team/types';
 import {
   acceptInvitation,
   cancelInvitation,
-  queryCurrentTenant,
   queryMyInvitations,
   queryTenantInvitations,
   rejectInvitation,
@@ -18,19 +18,8 @@ const TeamInvitations = () => {
   const sentActionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
   const tenantId = getCurrentTenantId();
-  const [isOwner, setIsOwner] = useState(false);
-
-  useEffect(() => {
-    if (!tenantId) return;
-
-    queryCurrentTenant()
-      .then((response) => {
-        setIsOwner(response.data.memberType === 'OWNER');
-      })
-      .catch(() => {
-        setIsOwner(false);
-      });
-  }, [tenantId]);
+  const { initialState } = useModel('@@initialState');
+  const isOwner = initialState?.selectedTenant?.membership.memberType === 'OWNER';
 
   const columns: ProColumns<TenantInvitation>[] = [
     { title: '团队', dataIndex: 'tenantName' },

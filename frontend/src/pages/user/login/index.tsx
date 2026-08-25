@@ -1,13 +1,16 @@
 import { Helmet, Link, history, useIntl, useModel } from '@umijs/max';
 import { App, Button, Form, Input } from 'antd';
 import React, { useState } from 'react';
-import { loginByMobile, saveAuthSession } from '@/services/account-team/auth';
-import { queryCurrentPermissions } from '@/services/account-team/rbac';
-import { switchTenant } from '@/services/account-team/tenant';
+import {
+  loginByMobile,
+  queryAuthBootstrap,
+  setCurrentTenantId,
+} from '@/services/account-team/auth';
+import { toBootstrapState } from '@/services/account-team/bootstrap';
 import type {
+  AuthBootstrap,
   AuthSession,
   TenantSummary,
-  UserProfile,
 } from '@/services/account-team/types';
 import Settings from '../../../../config/defaultSettings';
 import AuthPageLayout from '../components/AuthPageLayout';
@@ -37,48 +40,29 @@ const nextPathForSession = (session: AuthSession, redirectUrl: string) => {
   return redirectUrl === loginPath ? '/team/my' : redirectUrl;
 };
 
-const toLayoutCurrentUser = (user: UserProfile): API.CurrentUser => ({
-  name: user.nickname,
-  avatar: user.avatar || undefined,
-  userid: String(user.id),
-  email: user.email || undefined,
-  phone: user.mobile,
-  title: user.status === 'ACTIVE' ? '创作团队成员' : '账号已停用',
-  group: 'Ant Short TV',
-  access: 'user',
-});
-
 const Login: React.FC = () => {
   const { setInitialState } = useModel('@@initialState');
   const { message } = App.useApp();
   const intl = useIntl();
-  const [pendingSession, setPendingSession] = useState<AuthSession>();
+  const [pendingSession, setPendingSession] = useState<AuthBootstrap>();
   const [selectedTenantId, setSelectedTenantId] = useState<number>();
   const [selectingTenant, setSelectingTenant] = useState(false);
 
   const applyAuthenticatedState = async (
-    session: AuthSession,
-    currentTenantId?: number,
+    bootstrap: AuthBootstrap,
+    expectedTenantId?: number,
   ) => {
-    let permissions: string[] = [];
-    if (currentTenantId) {
-      try {
-        const permissionResponse = await queryCurrentPermissions({
-          skipErrorHandler: true,
-        });
-        permissions = permissionResponse.data.permissions;
-      } catch (_error) {
-        permissions = [];
-      }
+    const selectedTenantId = bootstrap.selectedTenant?.tenant.id;
+    if (expectedTenantId && selectedTenantId !== expectedTenantId) {
+      throw new Error(
+        bootstrap.unavailableSelectionReason || 'Selected tenant is unavailable',
+      );
     }
-
-    const currentUser = toLayoutCurrentUser(session.user);
     await setInitialState((state) => ({
       ...state,
-      currentUser,
-      currentTenantId,
-      permissions,
+      ...toBootstrapState(bootstrap),
     }));
+    if (selectedTenantId) setCurrentTenantId(selectedTenantId);
   };
 
   const handleSubmit = async (values: { mobile: string; password: string }) => {
@@ -86,24 +70,22 @@ const Login: React.FC = () => {
       mobile: values.mobile,
       password: values.password,
     });
-    const session = response.data;
-    if (session.nextAction === 'SELECT_TENANT' && session.tenants.length > 1) {
-      setPendingSession(session);
-      setSelectedTenantId(session.tenants[0].id);
+    void response;
+    const bootstrap = (
+      await queryAuthBootstrap(undefined, { skipErrorHandler: true })
+    ).data;
+    if (bootstrap.nextAction === 'SELECT_TENANT' && bootstrap.tenants.length > 1) {
+      setPendingSession(bootstrap);
+      setSelectedTenantId(bootstrap.tenants[0].id);
       message.success('登录成功');
       return;
     }
-    const singleTenantId = session.tenants[0]?.id;
-    if (singleTenantId) {
-      await switchTenant(singleTenantId);
-      saveAuthSession({ currentTenantId: singleTenantId });
-    }
-    await applyAuthenticatedState(session, singleTenantId);
+    await applyAuthenticatedState(bootstrap);
     message.success('登录成功');
 
     const urlParams = new URL(window.location.href).searchParams;
     const redirectUrl = getSafeRedirectUrl(urlParams.get('redirect'));
-    history.replace(nextPathForSession(session, redirectUrl));
+    history.replace(nextPathForSession(response.data, redirectUrl));
   };
 
   const handleEnterSelectedTenant = async () => {
@@ -111,9 +93,10 @@ const Login: React.FC = () => {
 
     setSelectingTenant(true);
     try {
-      await switchTenant(selectedTenantId);
-      saveAuthSession({ currentTenantId: selectedTenantId });
-      await applyAuthenticatedState(pendingSession, selectedTenantId);
+      const bootstrap = (
+        await queryAuthBootstrap(selectedTenantId, { skipErrorHandler: true })
+      ).data;
+      await applyAuthenticatedState(bootstrap, selectedTenantId);
       message.success('登录成功');
 
       const urlParams = new URL(window.location.href).searchParams;

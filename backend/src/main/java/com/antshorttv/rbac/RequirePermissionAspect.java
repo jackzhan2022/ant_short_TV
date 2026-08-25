@@ -2,90 +2,58 @@ package com.antshorttv.rbac;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
-import com.antshorttv.security.TenantContext;
-import com.antshorttv.security.TenantContextResolver;
+import com.antshorttv.common.TenantRequestSupport;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
+import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.stereotype.Component;
 
 @Aspect
 @Component
 public class RequirePermissionAspect {
 
-    private final TenantContextResolver tenantContextResolver;
-    private final RbacPermissionService rbacPermissionService;
+    private final TenantPermissionGuard tenantPermissionGuard;
 
-    public RequirePermissionAspect(TenantContextResolver tenantContextResolver, RbacPermissionService rbacPermissionService) {
-        this.tenantContextResolver = tenantContextResolver;
-        this.rbacPermissionService = rbacPermissionService;
+    public RequirePermissionAspect(TenantPermissionGuard tenantPermissionGuard) {
+        this.tenantPermissionGuard = tenantPermissionGuard;
     }
 
     @Before("@annotation(requirePermission)")
     public void require(JoinPoint joinPoint, RequirePermission requirePermission) {
-        Long tenantId = resolveTenantId(joinPoint.getArgs());
-        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        Long projectId = resolveProjectId(joinPoint.getArgs());
-        if (!rbacPermissionService.hasPermission(context, requirePermission.value(), projectId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权执行该操作。");
+        Long tenantId = resolveDeclaredTenantId(joinPoint, requirePermission.tenantIdParameter());
+        if (tenantId == null) {
+            tenantId = resolveHeaderTenantId(joinPoint.getArgs());
         }
+        if (tenantId == null) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "缺少有效的团队权限上下文。");
+        }
+        tenantPermissionGuard.require(tenantId, requirePermission.value());
     }
 
-    private Long resolveTenantId(Object[] args) {
-        for (Object arg : args) {
-            if (arg instanceof HttpServletRequest request) {
-                Long tenantIdFromPath = resolveTenantIdFromPath(request);
-                if (tenantIdFromPath != null) {
-                    return tenantIdFromPath;
-                }
-                String tenantId = request.getHeader("X-Tenant-Id");
-                if (tenantId != null && !tenantId.isBlank()) {
-                    try {
-                        return Long.valueOf(tenantId);
-                    } catch (NumberFormatException exception) {
-                        throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前创作团队标识不正确。");
-                    }
-                }
-            }
-        }
-        for (Object arg : args) {
-            if (arg instanceof Long value) {
-                return value;
-            }
-        }
-        throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少团队上下文。");
-    }
-
-    private Long resolveTenantIdFromPath(HttpServletRequest request) {
-        String uri = request.getRequestURI();
-        String prefix = "/api/tenants/";
-        if (uri == null || !uri.startsWith(prefix)) {
+    private Long resolveDeclaredTenantId(JoinPoint joinPoint, String parameterName) {
+        if (parameterName == null || parameterName.isBlank()) {
             return null;
         }
-        String rest = uri.substring(prefix.length());
-        String firstSegment = rest.contains("/") ? rest.substring(0, rest.indexOf('/')) : rest;
-        try {
-            return Long.valueOf(firstSegment);
-        } catch (NumberFormatException exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前创作团队标识不正确。");
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        String[] parameterNames = signature.getParameterNames();
+        Object[] arguments = joinPoint.getArgs();
+        for (int index = 0; index < arguments.length; index++) {
+            if (parameterName.equals(parameterNames[index])) {
+                if (arguments[index] instanceof Long value) {
+                    return value;
+                }
+                throw new BusinessException(ErrorCode.FORBIDDEN, "缺少有效的团队权限上下文。");
+            }
         }
+        return null;
     }
 
-    private Long resolveProjectId(Object[] args) {
-        for (Object arg : args) {
-            if (arg instanceof HttpServletRequest request) {
-                String uri = request.getRequestURI();
-                String prefix = "/api/projects/";
-                if (uri != null && uri.startsWith(prefix)) {
-                    String rest = uri.substring(prefix.length());
-                    String firstSegment = rest.contains("/") ? rest.substring(0, rest.indexOf('/')) : rest;
-                    try {
-                        return Long.valueOf(firstSegment);
-                    } catch (NumberFormatException ignored) {
-                        return null;
-                    }
-                }
+    private Long resolveHeaderTenantId(Object[] arguments) {
+        for (Object argument : arguments) {
+            if (argument instanceof HttpServletRequest request) {
+                return TenantRequestSupport.tenantId(request);
             }
         }
         return null;

@@ -8,7 +8,7 @@ import {
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import { history, Outlet, useLocation, useParams } from '@umijs/max';
-import { App, Button, Flex, Typography } from 'antd';
+import { App, Button, Flex, Result, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
@@ -25,6 +25,11 @@ type ProjectLite = {
   scriptType?: string | null;
   breakdownStrength?: string | null;
   visualStyle?: string | null;
+  effectivePermissions?: string[];
+  capabilities?: {
+    canView: boolean;
+    canEdit: boolean;
+  };
 };
 
 const topSteps = [
@@ -48,6 +53,7 @@ const ProductionWorkbench = () => {
   const { message } = App.useApp();
   const [project, setProject] = useState<ProjectLite>();
   const [pointBalance, setPointBalance] = useState<number>();
+  const [forbidden, setForbidden] = useState(false);
 
   useEffect(() => {
     if (!projectId) {
@@ -60,9 +66,13 @@ const ProductionWorkbench = () => {
           setProject(response.data);
         }
       })
-      .catch(() => {
+      .catch((error: { response?: { status?: number } }) => {
         if (active) {
-          message.error('制作台加载失败');
+          if (error.response?.status === 403) {
+            setForbidden(true);
+          } else {
+            message.error('制作台加载失败');
+          }
         }
       });
     return () => {
@@ -103,6 +113,17 @@ const ProductionWorkbench = () => {
     return null;
   }
 
+  if (forbidden) {
+    return (
+      <Result
+        status="403"
+        title="无权访问该项目"
+        subTitle="当前账号没有该项目的访问权限。"
+        extra={<Button onClick={() => history.push('/projects/list')}>返回项目列表</Button>}
+      />
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#f6f7fb' }}>
       <header
@@ -129,13 +150,15 @@ const ProductionWorkbench = () => {
               <Typography.Text strong style={{ fontSize: 15 }}>
                 {project?.name || '项目'}
               </Typography.Text>
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                aria-label="编辑项目名"
-                style={{ paddingInline: 2, height: 20 }}
-              />
+              {project?.capabilities?.canEdit && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  aria-label="编辑项目名"
+                  style={{ paddingInline: 2, height: 20 }}
+                />
+              )}
             </Flex>
           <div style={{ marginTop: 5, color: '#65708a', fontSize: 13 }}>
             <span style={{ marginRight: 12 }}>
@@ -156,20 +179,22 @@ const ProductionWorkbench = () => {
               >
                 查看剧本
               </Button>
-              <Button
-                type="link"
-                size="small"
-                icon={<RobotOutlined />}
-                aria-label="AI 模型"
-                style={{ padding: 0, height: 'auto', marginLeft: 10 }}
-                onClick={() =>
-                  history.push(
-                    `/projects/${projectId}/production-workbench/ai-config`,
-                  )
-                }
-              >
-                AI 模型
-              </Button>
+              {project?.effectivePermissions?.includes('PROJECT_AI_CONFIG_VIEW') && (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<RobotOutlined />}
+                  aria-label="AI 模型"
+                  style={{ padding: 0, height: 'auto', marginLeft: 10 }}
+                  onClick={() =>
+                    history.push(
+                      `/projects/${projectId}/production-workbench/ai-config`,
+                    )
+                  }
+                >
+                  AI 模型
+                </Button>
+              )}
             </div>
           </div>
         </Flex>

@@ -117,8 +117,4 @@ public class RbacController {
         return ApiResponse.success(rbacService.permissionTree());
     }
 
-    @GetMapping("/auth/permissions")
-    public ApiResponse<AuthPermissionsResponse> currentPermissions(HttpServletRequest servletRequest) {
-        return ApiResponse.success(rbacService.currentPermissions(servletRequest));
-    }
 }

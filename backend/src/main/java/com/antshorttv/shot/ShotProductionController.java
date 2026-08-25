@@ -2,7 +2,7 @@ package com.antshorttv.shot;
 
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
-import com.antshorttv.rbac.RequirePermission;
+import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -31,7 +31,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/ai-voice-tasks")
-    @RequirePermission("AI_VOICE_TASK:VIEW")
+    @RequireProjectPermission("AI_VOICE_TASK:VIEW")
     public ApiResponse<List<AiVoiceTaskResponse>> voiceTasks(
         @PathVariable Long projectId,
         @RequestParam(required = false) String status,
@@ -42,7 +42,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/ai-voice-tasks")
-    @RequirePermission("AI_VOICE_TASK:CREATE")
+    @RequireProjectPermission("AI_VOICE_TASK:CREATE")
     public ApiResponse<AiVoiceTaskResponse> createVoiceTask(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateAiVoiceTaskRequest body,
@@ -52,7 +52,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/ai-voice-results/{resultId}/bind-storyboard")
-    @RequirePermission("AI_VOICE_TASK:CREATE")
+    @RequireProjectPermission("AI_VOICE_TASK:CREATE")
     public ApiResponse<AiVoiceResultResponse> bindVoiceResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -62,7 +62,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/ai-voice-tasks/{taskId}")
-    @RequirePermission("AI_VOICE_TASK:VIEW")
+    @RequireProjectPermission("AI_VOICE_TASK:VIEW")
     public ApiResponse<AiVoiceTaskResponse> voiceTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -72,7 +72,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/ai-voice-tasks/{taskId}/cancel")
-    @RequirePermission("AI_VOICE_TASK:CANCEL")
+    @RequireProjectPermission("AI_VOICE_TASK:CANCEL")
     public ApiResponse<AiVoiceTaskResponse> cancelVoiceTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -82,7 +82,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/ai-voice-tasks/{taskId}/regenerate")
-    @RequirePermission("AI_VOICE_TASK:CREATE")
+    @RequireProjectPermission("AI_VOICE_TASK:CREATE")
     public ApiResponse<AiVoiceTaskResponse> regenerateVoiceTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -92,7 +92,7 @@ public class ShotProductionController {
     }
 
     @DeleteMapping("/ai-voice-tasks/{taskId}")
-    @RequirePermission("AI_VOICE_TASK:DELETE")
+    @RequireProjectPermission("AI_VOICE_TASK:DELETE")
     public ApiResponse<Void> deleteVoiceTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -103,7 +103,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/ai-voice-tasks/{taskId}/results")
-    @RequirePermission("AI_VOICE_TASK:VIEW")
+    @RequireProjectPermission("AI_VOICE_TASK:VIEW")
     public ApiResponse<List<AiVoiceResultResponse>> voiceTaskResults(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -113,7 +113,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/ai-voice-results/{resultId}/download")
-    @RequirePermission("AI_VOICE_RESULT:DOWNLOAD")
+    @RequireProjectPermission("AI_VOICE_RESULT:DOWNLOAD")
     public ApiResponse<AiVoiceResultResponse> downloadVoiceResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -123,7 +123,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/ai-voice-results/{resultId}/save-material")
-    @RequirePermission("AI_VOICE_RESULT:SAVE")
+    @RequireProjectPermission("AI_VOICE_RESULT:SAVE")
     public ApiResponse<AiVoiceResultResponse> saveVoiceMaterial(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -133,7 +133,7 @@ public class ShotProductionController {
     }
 
     @DeleteMapping("/ai-voice-results/{resultId}")
-    @RequirePermission("AI_VOICE_RESULT:DELETE")
+    @RequireProjectPermission("AI_VOICE_RESULT:DELETE")
     public ApiResponse<Void> deleteVoiceResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -144,7 +144,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/storyboard-subtitles")
-    @RequirePermission("SUBTITLE:EDIT")
+    @RequireProjectPermission("SUBTITLE:EDIT")
     public ApiResponse<StoryboardSubtitleResponse> createSubtitle(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateStoryboardSubtitleRequest body,
@@ -154,7 +154,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/storyboard-subtitles")
-    @RequirePermission("SUBTITLE:VIEW")
+    @RequireProjectPermission("SUBTITLE:VIEW")
     public ApiResponse<List<StoryboardSubtitleResponse>> subtitles(
         @PathVariable Long projectId,
         @RequestParam(required = false) Long storyboardId,
@@ -165,7 +165,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/storyboard-subtitles/{subtitleId}")
-    @RequirePermission("SUBTITLE:VIEW")
+    @RequireProjectPermission("SUBTITLE:VIEW")
     public ApiResponse<StoryboardSubtitleResponse> subtitle(
         @PathVariable Long projectId,
         @PathVariable Long subtitleId,
@@ -175,7 +175,7 @@ public class ShotProductionController {
     }
 
     @PutMapping("/storyboard-subtitles/{subtitleId}")
-    @RequirePermission("SUBTITLE:EDIT")
+    @RequireProjectPermission("SUBTITLE:EDIT")
     public ApiResponse<StoryboardSubtitleResponse> updateSubtitle(
         @PathVariable Long projectId,
         @PathVariable Long subtitleId,
@@ -186,7 +186,7 @@ public class ShotProductionController {
     }
 
     @PutMapping("/storyboard-subtitles/{subtitleId}/selected")
-    @RequirePermission("SUBTITLE:EDIT")
+    @RequireProjectPermission("SUBTITLE:EDIT")
     public ApiResponse<StoryboardSubtitleResponse> selectSubtitle(
         @PathVariable Long projectId,
         @PathVariable Long subtitleId,
@@ -196,7 +196,7 @@ public class ShotProductionController {
     }
 
     @DeleteMapping("/storyboard-subtitles/{subtitleId}")
-    @RequirePermission("SUBTITLE:DELETE")
+    @RequireProjectPermission("SUBTITLE:DELETE")
     public ApiResponse<Void> deleteSubtitle(
         @PathVariable Long projectId,
         @PathVariable Long subtitleId,
@@ -207,7 +207,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/shot-compose-tasks")
-    @RequirePermission("SHOT_COMPOSE:VIEW")
+    @RequireProjectPermission("SHOT_COMPOSE:VIEW")
     public ApiResponse<List<ShotComposeTaskResponse>> composeTasks(
         @PathVariable Long projectId,
         @RequestParam(required = false) String status,
@@ -218,7 +218,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/shot-compose-tasks/{taskId}")
-    @RequirePermission("SHOT_COMPOSE:VIEW")
+    @RequireProjectPermission("SHOT_COMPOSE:VIEW")
     public ApiResponse<ShotComposeTaskResponse> composeTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -228,7 +228,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/shot-compose-tasks")
-    @RequirePermission("SHOT_COMPOSE:CREATE")
+    @RequireProjectPermission("SHOT_COMPOSE:CREATE")
     public ApiResponse<ShotComposeTaskResponse> createComposeTask(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateShotComposeTaskRequest body,
@@ -238,7 +238,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/shot-compose-tasks/{taskId}/cancel")
-    @RequirePermission("SHOT_COMPOSE:CREATE")
+    @RequireProjectPermission("SHOT_COMPOSE:CREATE")
     public ApiResponse<ShotComposeTaskResponse> cancelComposeTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -248,7 +248,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/shot-compose-tasks/{taskId}/regenerate")
-    @RequirePermission("SHOT_COMPOSE:CREATE")
+    @RequireProjectPermission("SHOT_COMPOSE:CREATE")
     public ApiResponse<ShotComposeTaskResponse> regenerateComposeTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -258,7 +258,7 @@ public class ShotProductionController {
     }
 
     @DeleteMapping("/shot-compose-tasks/{taskId}")
-    @RequirePermission("SHOT_COMPOSE:DELETE")
+    @RequireProjectPermission("SHOT_COMPOSE:DELETE")
     public ApiResponse<Void> deleteComposeTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -269,7 +269,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/shot-compose-tasks/{taskId}/results")
-    @RequirePermission("SHOT_COMPOSE:VIEW")
+    @RequireProjectPermission("SHOT_COMPOSE:VIEW")
     public ApiResponse<List<ShotComposeResultResponse>> composeTaskResults(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -279,7 +279,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/episode-compose-tasks")
-    @RequirePermission("EPISODE_COMPOSE:VIEW")
+    @RequireProjectPermission("EPISODE_COMPOSE:VIEW")
     public ApiResponse<List<EpisodeComposeTaskResponse>> episodeComposeTasks(
         @PathVariable Long projectId,
         @RequestParam(required = false) Integer episodeNo,
@@ -290,7 +290,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/episode-compose-tasks/{taskId}")
-    @RequirePermission("EPISODE_COMPOSE:VIEW")
+    @RequireProjectPermission("EPISODE_COMPOSE:VIEW")
     public ApiResponse<EpisodeComposeTaskResponse> episodeComposeTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -300,7 +300,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/episode-compose-tasks")
-    @RequirePermission("EPISODE_COMPOSE:CREATE")
+    @RequireProjectPermission("EPISODE_COMPOSE:CREATE")
     public ApiResponse<EpisodeComposeTaskResponse> createEpisodeComposeTask(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateEpisodeComposeTaskRequest body,
@@ -310,7 +310,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/episode-compose-tasks/{taskId}/cancel")
-    @RequirePermission("EPISODE_COMPOSE:CANCEL")
+    @RequireProjectPermission("EPISODE_COMPOSE:CANCEL")
     public ApiResponse<EpisodeComposeTaskResponse> cancelEpisodeComposeTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -320,7 +320,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/episode-compose-tasks/{taskId}/regenerate")
-    @RequirePermission("EPISODE_COMPOSE:CREATE")
+    @RequireProjectPermission("EPISODE_COMPOSE:CREATE")
     public ApiResponse<EpisodeComposeTaskResponse> regenerateEpisodeComposeTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -330,7 +330,7 @@ public class ShotProductionController {
     }
 
     @DeleteMapping("/episode-compose-tasks/{taskId}")
-    @RequirePermission("EPISODE_COMPOSE:DELETE")
+    @RequireProjectPermission("EPISODE_COMPOSE:DELETE")
     public ApiResponse<Void> deleteEpisodeComposeTask(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
@@ -341,7 +341,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/episode-video-versions")
-    @RequirePermission("EPISODE_VERSION:VIEW")
+    @RequireProjectPermission("EPISODE_VERSION:VIEW")
     public ApiResponse<List<EpisodeVideoVersionResponse>> episodeVideoVersions(
         @PathVariable Long projectId,
         @RequestParam Integer episodeNo,
@@ -351,7 +351,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/episode-video-versions/{versionId}")
-    @RequirePermission("EPISODE_VERSION:VIEW")
+    @RequireProjectPermission("EPISODE_VERSION:VIEW")
     public ApiResponse<EpisodeVideoVersionResponse> episodeVideoVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -361,7 +361,7 @@ public class ShotProductionController {
     }
 
     @PutMapping("/episode-video-versions/{versionId}")
-    @RequirePermission("EPISODE_VERSION:SET_CURRENT")
+    @RequireProjectPermission("EPISODE_VERSION:SET_CURRENT")
     public ApiResponse<EpisodeVideoVersionResponse> renameEpisodeVideoVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -372,7 +372,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/episode-video-versions/{versionId}/current")
-    @RequirePermission("EPISODE_VERSION:SET_CURRENT")
+    @RequireProjectPermission("EPISODE_VERSION:SET_CURRENT")
     public ApiResponse<EpisodeVideoVersionResponse> setCurrentEpisodeVideoVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -382,7 +382,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/episode-video-versions/{versionId}/download")
-    @RequirePermission("EPISODE_VERSION:DOWNLOAD")
+    @RequireProjectPermission("EPISODE_VERSION:DOWNLOAD")
     public ResponseEntity<Resource> downloadEpisodeVideoVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -402,7 +402,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/episode-video-versions/{versionId}/cover")
-    @RequirePermission("EPISODE_VERSION:VIEW")
+    @RequireProjectPermission("EPISODE_VERSION:VIEW")
     public ResponseEntity<Resource> episodeVideoCover(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -414,7 +414,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/episode-video-versions/{versionId}/save-material")
-    @RequirePermission("EPISODE_VERSION:SAVE_MATERIAL")
+    @RequireProjectPermission("EPISODE_VERSION:SAVE_MATERIAL")
     public ApiResponse<EpisodeVideoVersionResponse> saveEpisodeVideoMaterial(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -424,7 +424,7 @@ public class ShotProductionController {
     }
 
     @DeleteMapping("/episode-video-versions/{versionId}")
-    @RequirePermission("EPISODE_VERSION:DELETE")
+    @RequireProjectPermission("EPISODE_VERSION:DELETE")
     public ApiResponse<Void> deleteEpisodeVideoVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -435,7 +435,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/episode-export-records")
-    @RequirePermission("EPISODE_VERSION:VIEW")
+    @RequireProjectPermission("EPISODE_VERSION:VIEW")
     public ApiResponse<List<EpisodeExportRecordResponse>> episodeExportRecords(
         @PathVariable Long projectId,
         @RequestParam(required = false) Integer episodeNo,
@@ -445,7 +445,7 @@ public class ShotProductionController {
     }
 
     @GetMapping("/shot-compose-results/{resultId}/download")
-    @RequirePermission("SHOT_COMPOSE:DOWNLOAD")
+    @RequireProjectPermission("SHOT_COMPOSE:DOWNLOAD")
     public ApiResponse<ShotComposeResultResponse> downloadComposeResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -455,7 +455,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/shot-compose-results/{resultId}/save-material")
-    @RequirePermission("SHOT_COMPOSE:SAVE")
+    @RequireProjectPermission("SHOT_COMPOSE:SAVE")
     public ApiResponse<ShotComposeResultResponse> saveComposeMaterial(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -465,7 +465,7 @@ public class ShotProductionController {
     }
 
     @PostMapping("/shot-compose-results/{resultId}/bind-storyboard")
-    @RequirePermission("SHOT_COMPOSE:BIND")
+    @RequireProjectPermission("SHOT_COMPOSE:BIND")
     public ApiResponse<ShotComposeResultResponse> bindComposeResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,
@@ -475,7 +475,7 @@ public class ShotProductionController {
     }
 
     @DeleteMapping("/shot-compose-results/{resultId}")
-    @RequirePermission("SHOT_COMPOSE:DELETE")
+    @RequireProjectPermission("SHOT_COMPOSE:DELETE")
     public ApiResponse<Void> deleteComposeResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId,

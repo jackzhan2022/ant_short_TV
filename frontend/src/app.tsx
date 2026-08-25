@@ -18,47 +18,47 @@ import {
   TeamSwitcher,
 } from '@/components';
 import {
-  currentUser as queryCurrentUser,
-  getAccessToken,
   getCurrentTenantId,
+  queryAuthBootstrap,
+  setCurrentTenantId,
 } from '@/services/account-team/auth';
-import { queryCurrentPermissions } from '@/services/account-team/rbac';
-import type { UserProfile } from '@/services/account-team/types';
+import { toBootstrapState } from '@/services/account-team/bootstrap';
+import type {
+  AuthBootstrap,
+  LayoutCurrentUser,
+  SelectedTenantAccess,
+  TenantSummary,
+} from '@/services/account-team/types';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
 
-const toLayoutCurrentUser = (user: UserProfile): API.CurrentUser => ({
-  name: user.nickname,
-  avatar: user.avatar || undefined,
-  userid: String(user.id),
-  email: user.email || undefined,
-  phone: user.mobile,
-  title: user.status === 'ACTIVE' ? '创作团队成员' : '账号已停用',
-  group: 'Ant Short TV',
-  access: 'user',
-});
+export type AppInitialState = {
+  settings?: Partial<LayoutSettings>;
+  currentUser?: LayoutCurrentUser;
+  currentTenantId?: number;
+  tenants?: TenantSummary[];
+  selectedTenant?: SelectedTenantAccess | null;
+  tenantPermissions?: string[];
+  platformPermissions?: string[];
+  bootstrap?: AuthBootstrap;
+  loading?: boolean;
+  fetchUserInfo?: () => Promise<LayoutCurrentUser | undefined>;
+  settingDrawerOpen?: boolean;
+};
 
 /**
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
  * */
-export async function getInitialState(): Promise<{
-  settings?: Partial<LayoutSettings>;
-  currentUser?: API.CurrentUser;
-  currentTenantId?: number;
-  permissions?: string[];
-  loading?: boolean;
-  fetchUserInfo?: () => Promise<API.CurrentUser | undefined>;
-  settingDrawerOpen?: boolean;
-}> {
+export async function getInitialState(): Promise<AppInitialState> {
   const fetchUserInfo = async () => {
     try {
-      const msg = await queryCurrentUser({
+      const response = await queryAuthBootstrap(getCurrentTenantId(), {
         skipErrorHandler: true,
       });
-      return toLayoutCurrentUser(msg.data);
+      return toBootstrapState(response.data).currentUser;
     } catch (_error) {
       const { pathname, search, hash } = history.location;
       history.replace(
@@ -74,24 +74,24 @@ export async function getInitialState(): Promise<{
       location.pathname,
     )
   ) {
-    const currentUser = await fetchUserInfo();
-    const currentTenantId = getCurrentTenantId();
-    let permissions: string[] = [];
-    if (currentUser && currentTenantId) {
-      try {
-        const permissionResponse = await queryCurrentPermissions({
-          skipErrorHandler: true,
-        });
-        permissions = permissionResponse.data.permissions;
-      } catch (_error) {
-        permissions = [];
-      }
+    try {
+      const response = await queryAuthBootstrap(getCurrentTenantId(), {
+        skipErrorHandler: true,
+      });
+      return {
+        ...toBootstrapState(response.data),
+        fetchUserInfo,
+        settings: defaultSettings as Partial<LayoutSettings>,
+        settingDrawerOpen: false,
+      };
+    } catch (_error) {
+      const { pathname, search, hash } = history.location;
+      history.replace(
+        `${loginPath}?redirect=${encodeURIComponent(pathname + search + hash)}`,
+      );
     }
     return {
       fetchUserInfo,
-      currentUser,
-      currentTenantId,
-      permissions,
       settings: defaultSettings as Partial<LayoutSettings>,
       settingDrawerOpen: false,
     };
@@ -109,20 +109,19 @@ export const layout: RunTimeLayoutConfig = ({
   setInitialState,
 }) => {
   const refreshTenantContext = async (tenantId: number) => {
-    let permissions: string[] = [];
-    try {
-      const permissionResponse = await queryCurrentPermissions({
-        skipErrorHandler: true,
-      });
-      permissions = permissionResponse.data.permissions;
-    } catch (_error) {
-      permissions = [];
+    const response = await queryAuthBootstrap(tenantId, {
+      skipErrorHandler: true,
+    });
+    if (response.data.selectedTenant?.tenant.id !== tenantId) {
+      throw new Error(
+        response.data.unavailableSelectionReason || 'Selected tenant is unavailable',
+      );
     }
-    setInitialState((state) => ({
+    await setInitialState((state) => ({
       ...state,
-      currentTenantId: tenantId,
-      permissions,
+      ...toBootstrapState(response.data),
     }));
+    setCurrentTenantId(tenantId);
   };
 
   return {
@@ -155,7 +154,6 @@ export const layout: RunTimeLayoutConfig = ({
       // 如果没有登录，重定向到 login
       if (
         !initialState?.currentUser &&
-        !getAccessToken() &&
         location.pathname !== loginPath
       ) {
         history.replace(
@@ -189,6 +187,7 @@ export const layout: RunTimeLayoutConfig = ({
         <div className="ant-short-team-switcher-shell">
           <TeamSwitcher
             currentTenantId={initialState.currentTenantId}
+            tenants={initialState.tenants}
             onChange={refreshTenantContext}
           />
         </div>

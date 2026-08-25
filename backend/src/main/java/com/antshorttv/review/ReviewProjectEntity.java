@@ -10,6 +10,7 @@ public class ReviewProjectEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long tenantId;
+    private Long mainProjectId;
     private String name;
     private String sourceFileName;
     private String sourceType;
@@ -26,6 +27,8 @@ public class ReviewProjectEntity {
     public void setId(Long id) { this.id = id; }
     public Long getTenantId() { return tenantId; }
     public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
+    public Long getMainProjectId() { return mainProjectId; }
+    public void setMainProjectId(Long mainProjectId) { this.mainProjectId = mainProjectId; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getSourceFileName() { return sourceFileName; }

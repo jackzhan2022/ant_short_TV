@@ -8,10 +8,12 @@ import Login from './index';
 const mocks = vi.hoisted(() => ({
   fetchUserInfo: vi.fn(),
   loginByMobile: vi.fn(),
+  queryAuthBootstrap: vi.fn(),
   queryCurrentPermissions: vi.fn(),
   replace: vi.fn(),
   saveAuthSession: vi.fn(),
   setInitialState: vi.fn(),
+  setCurrentTenantId: vi.fn(),
   success: vi.fn(),
   switchTenant: vi.fn(),
 }));
@@ -112,7 +114,9 @@ vi.mock('@/components', () => ({
 
 vi.mock('@/services/account-team/auth', () => ({
   loginByMobile: mocks.loginByMobile,
+  queryAuthBootstrap: mocks.queryAuthBootstrap,
   saveAuthSession: mocks.saveAuthSession,
+  setCurrentTenantId: mocks.setCurrentTenantId,
 }));
 
 vi.mock('@/services/account-team/rbac', () => ({
@@ -124,7 +128,6 @@ vi.mock('@/services/account-team/tenant', () => ({
 }));
 
 const session: AuthSession = {
-  accessToken: 'token',
   user: {
     id: 1,
     mobile: '13800000000',
@@ -143,7 +146,34 @@ const session: AuthSession = {
     },
   ],
   nextAction: 'ENTER_WORKSPACE',
+  expiresAt: '2026-09-01T00:00:00',
 };
+
+const secondTenant = {
+  ...session.tenants[0],
+  id: 11,
+  code: 'T0000002',
+  name: '第二团队',
+  type: 'COMPANY' as const,
+  memberId: 101,
+  memberType: 'MEMBER' as const,
+};
+
+const multipleTenantBootstrap = (selected = false) => ({
+  user: session.user,
+  session: { sessionId: 'session-1', expiresAt: session.expiresAt },
+  platform: { roles: [], permissions: [] },
+  tenants: [session.tenants[0], secondTenant],
+  selectedTenant: selected
+    ? {
+        tenant: secondTenant,
+        membership: { id: 101, memberType: 'MEMBER', status: 'ACTIVE' },
+        roles: ['MEMBER'],
+        permissions: ['PROJECT:VIEW'],
+      }
+    : null,
+  nextAction: selected ? 'ENTER_WORKSPACE' : 'SELECT_TENANT',
+});
 
 describe('Login Page', () => {
   beforeEach(() => {
@@ -153,6 +183,21 @@ describe('Login Page', () => {
     mocks.fetchUserInfo.mockResolvedValue({ name: '测试用户' });
     mocks.queryCurrentPermissions.mockResolvedValue({
       data: { menus: ['PROJECT'], permissions: ['PROJECT:VIEW'] },
+    });
+    mocks.queryAuthBootstrap.mockResolvedValue({
+      data: {
+        user: session.user,
+        session: { sessionId: 'session-1', expiresAt: session.expiresAt },
+        platform: { roles: [], permissions: [] },
+        tenants: session.tenants,
+        selectedTenant: {
+          tenant: session.tenants[0],
+          membership: { id: 100, memberType: 'OWNER', status: 'ACTIVE' },
+          roles: ['OWNER'],
+          permissions: ['PROJECT:VIEW'],
+        },
+        nextAction: 'ENTER_WORKSPACE',
+      },
     });
     window.history.replaceState({}, '', '/user/login');
   });
@@ -174,14 +219,13 @@ describe('Login Page', () => {
         password: 'Password123',
       });
     });
-    expect(mocks.switchTenant).toHaveBeenCalledWith(10);
-    expect(mocks.saveAuthSession).toHaveBeenCalledWith({
-      currentTenantId: 10,
-    });
-    expect(mocks.fetchUserInfo).not.toHaveBeenCalled();
-    expect(mocks.queryCurrentPermissions).toHaveBeenCalledWith({
+    expect(mocks.queryAuthBootstrap).toHaveBeenCalledWith(undefined, {
       skipErrorHandler: true,
     });
+    expect(mocks.switchTenant).not.toHaveBeenCalled();
+    expect(mocks.setCurrentTenantId).toHaveBeenCalledWith(10);
+    expect(mocks.fetchUserInfo).not.toHaveBeenCalled();
+    expect(mocks.queryCurrentPermissions).not.toHaveBeenCalled();
     expect(mocks.setInitialState).toHaveBeenCalled();
     expect(mocks.setInitialState.mock.calls[0][0]({})).toMatchObject({
       currentTenantId: 10,
@@ -189,13 +233,16 @@ describe('Login Page', () => {
         name: '测试用户',
         phone: '13800000000',
       },
-      permissions: ['PROJECT:VIEW'],
+      tenantPermissions: ['PROJECT:VIEW'],
     });
     expect(mocks.success).toHaveBeenCalledWith('登录成功');
     expect(mocks.replace).toHaveBeenCalledWith('/team/my');
   });
 
   it('asks users with multiple teams to choose a team before entering', async () => {
+    mocks.queryAuthBootstrap
+      .mockResolvedValueOnce({ data: multipleTenantBootstrap() })
+      .mockResolvedValueOnce({ data: multipleTenantBootstrap(true) });
     mocks.loginByMobile.mockResolvedValue({
       success: true,
       data: {
@@ -236,28 +283,28 @@ describe('Login Page', () => {
     fireEvent.click(screen.getByText('第二团队'));
     fireEvent.click(screen.getByRole('button', { name: '立即登录' }));
 
-    await waitFor(() => {
-      expect(mocks.switchTenant).toHaveBeenCalledWith(11);
-    });
-    expect(mocks.saveAuthSession).toHaveBeenCalledWith({
-      currentTenantId: 11,
-    });
-    expect(mocks.fetchUserInfo).not.toHaveBeenCalled();
-    expect(mocks.queryCurrentPermissions).toHaveBeenCalledWith({
+    await waitFor(() => expect(mocks.queryAuthBootstrap).toHaveBeenLastCalledWith(11, {
       skipErrorHandler: true,
-    });
+    }));
+    expect(mocks.switchTenant).not.toHaveBeenCalled();
+    expect(mocks.setCurrentTenantId).toHaveBeenCalledWith(11);
+    expect(mocks.fetchUserInfo).not.toHaveBeenCalled();
+    expect(mocks.queryCurrentPermissions).not.toHaveBeenCalled();
     expect(mocks.setInitialState.mock.calls[0][0]({})).toMatchObject({
       currentTenantId: 11,
       currentUser: {
         name: '测试用户',
         phone: '13800000000',
       },
-      permissions: ['PROJECT:VIEW'],
+      tenantPermissions: ['PROJECT:VIEW'],
     });
     expect(mocks.replace).toHaveBeenCalledWith('/team/my');
   });
 
   it('waits for initial state to apply before navigating after team selection', async () => {
+    mocks.queryAuthBootstrap
+      .mockResolvedValueOnce({ data: multipleTenantBootstrap() })
+      .mockResolvedValueOnce({ data: multipleTenantBootstrap(true) });
     let resolveInitialState: (() => void) | undefined;
     mocks.setInitialState.mockImplementationOnce(
       () =>

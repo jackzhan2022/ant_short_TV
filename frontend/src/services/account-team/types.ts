@@ -14,6 +14,17 @@ export type UserProfile = {
   status: 'ACTIVE' | 'DISABLED';
 };
 
+export type LayoutCurrentUser = {
+  name?: string;
+  avatar?: string;
+  userid?: string;
+  email?: string;
+  phone?: string;
+  title?: string;
+  group?: string;
+  access?: string;
+};
+
 export type TenantType = 'COMPANY' | 'STUDIO' | 'PERSONAL' | 'OTHER';
 export type TenantStatus = 'ACTIVE' | 'DISABLED';
 export type MemberType = 'OWNER' | 'MEMBER';
@@ -41,9 +52,42 @@ export type TenantSummary = {
 };
 
 export type AuthSession = {
-  accessToken: string;
   user: UserProfile;
   tenants: TenantSummary[];
+  nextAction: 'CREATE_OR_JOIN_TEAM' | 'ENTER_WORKSPACE' | 'SELECT_TENANT';
+  expiresAt: string;
+};
+
+export type BootstrapSession = {
+  sessionId: string;
+  expiresAt: string;
+};
+
+export type PlatformAccess = {
+  roles: string[];
+  permissions: string[];
+};
+
+export type BootstrapTenantMembership = {
+  id: number;
+  memberType: MemberType;
+  status: MemberStatus;
+};
+
+export type SelectedTenantAccess = {
+  tenant: TenantSummary;
+  membership: BootstrapTenantMembership;
+  roles: string[];
+  permissions: string[];
+};
+
+export type AuthBootstrap = {
+  user: UserProfile;
+  session: BootstrapSession;
+  platform: PlatformAccess;
+  tenants: TenantSummary[];
+  selectedTenant?: SelectedTenantAccess | null;
+  unavailableSelectionReason?: string | null;
   nextAction: 'CREATE_OR_JOIN_TEAM' | 'ENTER_WORKSPACE' | 'SELECT_TENANT';
 };
 
@@ -71,13 +115,6 @@ export type TenantInvitation = {
   expiredAt: string;
   acceptedAt?: string | null;
   createdAt: string;
-};
-
-export type CurrentTenant = {
-  userId: number;
-  tenantId: number;
-  memberId: number;
-  memberType: MemberType;
 };
 
 export type TeamPointAccount = {
@@ -139,28 +176,6 @@ export type PermissionTreeNode = {
   children?: PermissionTreeNode[];
 };
 
-export type AuthPermissions = {
-  menus: string[];
-  permissions: string[];
-};
-
-export type OrganizationStatus = 'ACTIVE' | 'DISABLED';
-
-export type Organization = {
-  id: number;
-  tenantId: number;
-  parentId?: number | null;
-  name: string;
-  code: string;
-  level: number;
-  leaderId?: number | null;
-  sort: number;
-  status: OrganizationStatus;
-  createdAt: string;
-  updatedAt: string;
-  children?: Organization[];
-};
-
 export type ProjectStatus =
   | 'NOT_STARTED'
   | 'IN_PROGRESS'
@@ -168,15 +183,12 @@ export type ProjectStatus =
   | 'COMPLETED'
   | 'ARCHIVED';
 
-export type ProjectDataScope = 'ALL' | 'ORGANIZATION' | 'PROJECT';
 export type ProjectMemberStatus = 'ACTIVE' | 'REMOVED';
 export type ProjectRoleStatus = 'ACTIVE' | 'DISABLED';
 
 export type Project = {
   id: number;
   tenantId: number;
-  organizationId?: number | null;
-  organizationName?: string | null;
   name: string;
   code: string;
   description?: string | null;
@@ -194,6 +206,17 @@ export type Project = {
   visualStyle?: string | null;
   initialScriptContent?: string | null;
   memberCount: number;
+  accessSource: 'TENANT_WIDE' | 'PROJECT_MEMBERSHIP';
+  projectRoleCode?: string | null;
+  projectRoleName?: string | null;
+  effectivePermissions: string[];
+  capabilities: {
+    canView: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+    canManageMembers: boolean;
+    canManageRoles: boolean;
+  };
   createdAt: string;
   updatedAt: string;
 };
@@ -205,8 +228,6 @@ export type ProjectMember = {
   userId: number;
   nickname?: string | null;
   mobile?: string | null;
-  organizationId?: number | null;
-  organizationName?: string | null;
   roleId: number;
   roleName?: string | null;
   roleCode?: string | null;
@@ -223,7 +244,6 @@ export type ProjectRole = {
   description?: string | null;
   isSystem: boolean;
   status: ProjectRoleStatus;
-  dataScope: ProjectDataScope;
   createdAt: string;
   updatedAt: string;
 };

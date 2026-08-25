@@ -34,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ProjectService {
     private static final List<DefaultProjectRole> DEFAULT_ROLES = List.of(
-        new DefaultProjectRole("PROJECT_OWNER", "项目负责人", ProjectDataScope.ALL, List.of(
+        new DefaultProjectRole("PROJECT_OWNER", "项目负责人", List.of(
             "PROJECT:VIEW",
             "PROJECT:EDIT",
             "PROJECT_MEMBER:VIEW",
@@ -93,8 +93,8 @@ public class ProjectService {
             "EPISODE_VERSION:DELETE",
             "EPISODE_VERSION:SAVE_MATERIAL"
         )),
-        new DefaultProjectRole("WRITER", "编剧", ProjectDataScope.PROJECT, List.of("PROJECT:VIEW")),
-        new DefaultProjectRole("DIRECTOR", "导演", ProjectDataScope.PROJECT, List.of(
+        new DefaultProjectRole("WRITER", "编剧", List.of("PROJECT:VIEW")),
+        new DefaultProjectRole("DIRECTOR", "导演", List.of(
             "PROJECT:VIEW",
             "AI_VIDEO_TASK:VIEW",
             "AI_VIDEO_TASK:CREATE",
@@ -114,7 +114,7 @@ public class ProjectService {
             "EPISODE_VERSION:VIEW",
             "EPISODE_VERSION:SET_CURRENT"
         )),
-        new DefaultProjectRole("PRODUCER", "制片", ProjectDataScope.PROJECT, List.of(
+        new DefaultProjectRole("PRODUCER", "制片", List.of(
             "PROJECT:VIEW",
             "AI_VIDEO_TASK:VIEW",
             "AI_VIDEO_RESULT:SAVE",
@@ -130,7 +130,7 @@ public class ProjectService {
             "EPISODE_VERSION:DOWNLOAD",
             "EPISODE_VERSION:SAVE_MATERIAL"
         )),
-        new DefaultProjectRole("MEMBER", "项目成员", ProjectDataScope.PROJECT, List.of("PROJECT:VIEW"))
+        new DefaultProjectRole("MEMBER", "项目成员", List.of("PROJECT:VIEW"))
     );
 
     private final ProjectMapper projectMapper;
@@ -138,7 +138,6 @@ public class ProjectService {
     private final ProjectRoleMapper projectRoleMapper;
     private final ProjectRolePermissionMapper projectRolePermissionMapper;
     private final ProjectOperationLogMapper projectOperationLogMapper;
-    private final OrganizationMapper organizationMapper;
     private final TenantMemberMapper tenantMemberMapper;
     private final UserMapper userMapper;
     private final ScriptMapper scriptMapper;
@@ -148,6 +147,7 @@ public class ProjectService {
     private final RbacPermissionService rbacPermissionService;
     private final TenantContextResolver tenantContextResolver;
     private final OperationLogService operationLogService;
+    private final ProjectAccessResolver projectAccessResolver;
 
     public ProjectService(
         ProjectMapper projectMapper,
@@ -155,7 +155,6 @@ public class ProjectService {
         ProjectRoleMapper projectRoleMapper,
         ProjectRolePermissionMapper projectRolePermissionMapper,
         ProjectOperationLogMapper projectOperationLogMapper,
-        OrganizationMapper organizationMapper,
         TenantMemberMapper tenantMemberMapper,
         UserMapper userMapper,
         ScriptMapper scriptMapper,
@@ -164,14 +163,14 @@ public class ProjectService {
         PermissionMapper permissionMapper,
         RbacPermissionService rbacPermissionService,
         TenantContextResolver tenantContextResolver,
-        OperationLogService operationLogService
+        OperationLogService operationLogService,
+        ProjectAccessResolver projectAccessResolver
     ) {
         this.projectMapper = projectMapper;
         this.projectMemberMapper = projectMemberMapper;
         this.projectRoleMapper = projectRoleMapper;
         this.projectRolePermissionMapper = projectRolePermissionMapper;
         this.projectOperationLogMapper = projectOperationLogMapper;
-        this.organizationMapper = organizationMapper;
         this.tenantMemberMapper = tenantMemberMapper;
         this.userMapper = userMapper;
         this.scriptMapper = scriptMapper;
@@ -181,11 +180,11 @@ public class ProjectService {
         this.rbacPermissionService = rbacPermissionService;
         this.tenantContextResolver = tenantContextResolver;
         this.operationLogService = operationLogService;
+        this.projectAccessResolver = projectAccessResolver;
     }
 
     public List<ProjectResponse> list(Long tenantId) {
-        tenantContextResolver.requireActiveMember(tenantId);
-        return projectMapper.selectByTenantId(tenantId)
+        return projectAccessResolver.accessibleProjects(tenantId)
             .stream()
             .map(project -> toProjectResponse(project, tenantId))
             .toList();
@@ -195,7 +194,6 @@ public class ProjectService {
     public ProjectResponse create(Long tenantId, CreateProjectRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         validateTenantMember(tenantId, request.ownerId());
-        validateOrganization(tenantId, request.organizationId());
         String code = normalizeCode(request.code());
         if (projectMapper.selectByTenantIdAndCode(tenantId, code) != null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "项目编码已存在。");
@@ -204,7 +202,6 @@ public class ProjectService {
         LocalDateTime now = LocalDateTime.now();
         ProjectEntity project = new ProjectEntity();
         project.tenantId = tenantId;
-        project.organizationId = request.organizationId();
         project.name = validateName(request.name());
         project.code = code;
         project.description = request.description();
@@ -226,7 +223,7 @@ public class ProjectService {
         projectMapper.insert(project);
 
         Map<String, ProjectRoleEntity> defaultRoles = createDefaultRoles(tenantId, project.id, context.userId(), now);
-        addOwnerMember(tenantId, project.id, request.ownerId(), request.organizationId(), defaultRoles.get("PROJECT_OWNER").id, context.userId(), now);
+        addOwnerMember(tenantId, project.id, request.ownerId(), defaultRoles.get("PROJECT_OWNER").id, context.userId(), now);
         ScriptVersionEntity initialVersion = createInitialScriptIfNeeded(project, request.initialScriptContent(), context.userId(), now);
         if (initialVersion != null) {
             ScriptEntity initialScript = scriptMapper.selectById(initialVersion.getScriptId());
@@ -262,7 +259,6 @@ public class ProjectService {
     public ProjectResponse detail(Long tenantId, Long id) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProject(tenantId, id);
-        requireProjectAccess(context, project);
         return toProjectResponse(project, tenantId);
     }
 
@@ -271,8 +267,6 @@ public class ProjectService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProject(tenantId, id);
         validateWritable(project);
-        validateOrganization(tenantId, request.organizationId());
-        project.organizationId = request.organizationId();
         project.name = validateName(request.name());
         project.description = request.description();
         project.coverUrl = request.coverUrl();
@@ -329,7 +323,7 @@ public class ProjectService {
         Long previousOwnerId = project.ownerId;
         ProjectMemberEntity member = projectMemberMapper.selectByProjectIdAndUserId(tenantId, id, request.ownerId());
         if (member == null) {
-            addOwnerMember(tenantId, id, request.ownerId(), project.organizationId, ownerRole.id, context.userId(), LocalDateTime.now());
+            addOwnerMember(tenantId, id, request.ownerId(), ownerRole.id, context.userId(), LocalDateTime.now());
         } else {
             member.roleId = ownerRole.id;
             member.status = ProjectMemberStatus.ACTIVE.name();
@@ -366,7 +360,6 @@ public class ProjectService {
         ProjectEntity project = requireProject(tenantId, projectId);
         validateWritable(project);
         validateTenantMember(tenantId, request.userId());
-        validateOrganization(tenantId, request.organizationId());
         ProjectRoleEntity role = request.roleId() == null
             ? requireRoleByCode(tenantId, projectId, "MEMBER")
             : requireRole(tenantId, projectId, request.roleId());
@@ -379,7 +372,6 @@ public class ProjectService {
         member.tenantId = tenantId;
         member.projectId = projectId;
         member.userId = request.userId();
-        member.organizationId = request.organizationId();
         member.roleId = role.id;
         member.status = ProjectMemberStatus.ACTIVE.name();
         member.createdBy = context.userId();
@@ -447,7 +439,6 @@ public class ProjectService {
         role.description = request.description();
         role.isSystem = false;
         role.status = ProjectRoleStatus.ACTIVE.name();
-        role.dataScope = normalizeDataScope(request.dataScope()).name();
         role.createdBy = context.userId();
         role.createdAt = LocalDateTime.now();
         role.updatedAt = role.createdAt;
@@ -466,7 +457,6 @@ public class ProjectService {
         role.name = validateRoleName(request.name());
         role.description = request.description();
         role.status = request.status() == null ? role.status : validateProjectRoleStatus(request.status()).name();
-        role.dataScope = normalizeDataScope(request.dataScope()).name();
         role.updatedAt = LocalDateTime.now();
         projectRoleMapper.updateById(role);
         if (request.permissionCodes() != null) {
@@ -553,7 +543,6 @@ public class ProjectService {
             role.description = null;
             role.isSystem = true;
             role.status = ProjectRoleStatus.ACTIVE.name();
-            role.dataScope = defaultRole.dataScope().name();
             role.createdBy = createdBy;
             role.createdAt = now;
             role.updatedAt = now;
@@ -651,12 +640,11 @@ public class ProjectService {
         }
     }
 
-    private void addOwnerMember(Long tenantId, Long projectId, Long userId, Long organizationId, Long roleId, Long createdBy, LocalDateTime now) {
+    private void addOwnerMember(Long tenantId, Long projectId, Long userId, Long roleId, Long createdBy, LocalDateTime now) {
         ProjectMemberEntity member = new ProjectMemberEntity();
         member.tenantId = tenantId;
         member.projectId = projectId;
         member.userId = userId;
-        member.organizationId = organizationId;
         member.roleId = roleId;
         member.joinedAt = now;
         member.status = ProjectMemberStatus.ACTIVE.name();
@@ -698,16 +686,6 @@ public class ProjectService {
         return member;
     }
 
-    private void requireProjectAccess(TenantContext context, ProjectEntity project) {
-        if (rbacPermissionService.hasPermission(context, "PROJECT:VIEW")) {
-            return;
-        }
-        ProjectMemberEntity member = projectMemberMapper.selectActiveByProjectIdAndUserId(context.tenantId(), project.id, context.userId());
-        if (member == null) {
-            throw new BusinessException(ErrorCode.PROJECT_ACCESS_DENIED, "无权访问该项目。");
-        }
-    }
-
     private void validateWritable(ProjectEntity project) {
         if (ProjectStatus.ARCHIVED.name().equals(project.status)) {
             throw new BusinessException(ErrorCode.PROJECT_ARCHIVED, "归档项目不允许执行该操作。");
@@ -721,23 +699,12 @@ public class ProjectService {
         }
     }
 
-    private void validateOrganization(Long tenantId, Long organizationId) {
-        if (organizationId == null) {
-            return;
-        }
-        if (organizationMapper.selectByTenantIdAndId(tenantId, organizationId) == null) {
-            throw new BusinessException(ErrorCode.ORGANIZATION_NOT_FOUND, "组织不存在。");
-        }
-    }
-
     private ProjectResponse toProjectResponse(ProjectEntity project, Long tenantId) {
-        OrganizationEntity organization = project.organizationId == null ? null : organizationMapper.selectByTenantIdAndId(tenantId, project.organizationId);
+        ProjectAccessContext access = projectAccessResolver.requireView(tenantId, project.id);
         UserEntity owner = userMapper.selectById(project.ownerId);
         return new ProjectResponse(
             project.id,
             project.tenantId,
-            project.organizationId,
-            organization == null ? null : organization.name,
             project.name,
             project.code,
             project.description,
@@ -755,6 +722,11 @@ public class ProjectService {
             project.visualStyle,
             project.initialScriptContent,
             projectMemberMapper.countActiveByProjectId(tenantId, project.id),
+            access.source(),
+            access.projectRole() == null ? null : access.projectRole().code,
+            access.projectRole() == null ? null : access.projectRole().name,
+            access.effectivePermissions(),
+            access.capabilities(),
             project.createdAt,
             project.updatedAt
         );
@@ -762,7 +734,6 @@ public class ProjectService {
 
     private ProjectMemberResponse toMemberResponse(ProjectMemberEntity member, Long tenantId) {
         UserEntity user = userMapper.selectById(member.userId);
-        OrganizationEntity organization = member.organizationId == null ? null : organizationMapper.selectByTenantIdAndId(tenantId, member.organizationId);
         ProjectRoleEntity role = member.roleId == null ? null : projectRoleMapper.selectByTenantProjectAndId(tenantId, member.projectId, member.roleId);
         return new ProjectMemberResponse(
             member.id,
@@ -771,8 +742,6 @@ public class ProjectService {
             member.userId,
             user == null ? null : user.getNickname(),
             user == null ? null : user.getMobile(),
-            member.organizationId,
-            organization == null ? null : organization.name,
             member.roleId,
             role == null ? null : role.name,
             role == null ? null : role.code,
@@ -791,7 +760,6 @@ public class ProjectService {
             role.description,
             role.isSystem,
             role.status,
-            role.dataScope,
             role.createdAt,
             role.updatedAt
         );
@@ -900,17 +868,6 @@ public class ProjectService {
         return code;
     }
 
-    private ProjectDataScope normalizeDataScope(String rawDataScope) {
-        if (rawDataScope == null || rawDataScope.isBlank()) {
-            return ProjectDataScope.PROJECT;
-        }
-        try {
-            return ProjectDataScope.valueOf(rawDataScope);
-        } catch (Exception exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "项目数据范围不正确。");
-        }
-    }
-
     private ProjectStatus validateProjectStatus(String rawStatus) {
         try {
             return ProjectStatus.valueOf(rawStatus);
@@ -930,7 +887,6 @@ public class ProjectService {
     private record DefaultProjectRole(
         String code,
         String name,
-        ProjectDataScope dataScope,
         List<String> permissionCodes
     ) {
     }

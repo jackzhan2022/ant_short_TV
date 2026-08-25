@@ -16,7 +16,6 @@ public class ProjectRoleEntity {
     public String description;
     public Boolean isSystem;
     public String status;
-    public String dataScope;
     public Long createdBy;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;

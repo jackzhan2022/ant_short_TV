@@ -42,19 +42,19 @@ class TenantMemberControllerTest {
         Long memberId = addMember(tenantId, "13800000202");
 
         mockMvc.perform(get("/api/tenants/%d/members".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(2)));
 
         mockMvc.perform(delete("/api/tenants/%d/members/%d".formatted(tenantId, memberId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success", is(true)));
 
         assertThat(tenantMemberMapper.selectById(memberId).getStatus()).isEqualTo(MemberStatus.REMOVED.name());
 
         mockMvc.perform(get("/api/tenants/%d".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken)))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.errorCode", is("MEMBER_REMOVED")))
             .andExpect(jsonPath("$.errorMessage", is("你已不再是该创作团队成员。")));
@@ -68,12 +68,12 @@ class TenantMemberControllerTest {
         Long memberId = addMember(tenantId, "13800000204");
 
         mockMvc.perform(post("/api/tenants/%d/members/leave".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken)))
             .andExpect(status().isOk());
         assertThat(tenantMemberMapper.selectById(memberId).getStatus()).isEqualTo(MemberStatus.REMOVED.name());
 
         mockMvc.perform(post("/api/tenants/%d/members/leave".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.errorCode", is("OWNER_LEAVE_BLOCKED")))
             .andExpect(jsonPath("$.errorMessage", is("团队所有者不能直接退出，请先转让团队所有权。")));
@@ -87,7 +87,7 @@ class TenantMemberControllerTest {
         Long targetMemberId = addMember(tenantId, "13800000206");
 
         mockMvc.perform(post("/api/tenants/%d/transfer-owner".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"targetMemberId\":%d}".formatted(targetMemberId)))
             .andExpect(status().isOk())
@@ -105,12 +105,12 @@ class TenantMemberControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"成员管理测试"}

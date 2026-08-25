@@ -80,6 +80,7 @@ public class ReviewWorkbenchService {
     );
 
     private final TenantContextResolver tenantContextResolver;
+    private final ReviewAccessGuard reviewAccessGuard;
     private final ReviewProjectMapper projectMapper;
     private final ReviewScriptVersionMapper versionMapper;
     private final ReviewTaskMapper taskMapper;
@@ -97,6 +98,7 @@ public class ReviewWorkbenchService {
 
     public ReviewWorkbenchService(
         TenantContextResolver tenantContextResolver,
+        ReviewAccessGuard reviewAccessGuard,
         ReviewProjectMapper projectMapper,
         ReviewScriptVersionMapper versionMapper,
         ReviewTaskMapper taskMapper,
@@ -113,6 +115,7 @@ public class ReviewWorkbenchService {
         @Value("${review.export-root:storage/review-exports}") String exportRoot
     ) {
         this.tenantContextResolver = tenantContextResolver;
+        this.reviewAccessGuard = reviewAccessGuard;
         this.projectMapper = projectMapper;
         this.versionMapper = versionMapper;
         this.taskMapper = taskMapper;
@@ -142,6 +145,7 @@ public class ReviewWorkbenchService {
     public List<ReviewProjectSummaryResponse> listProjects(Long tenantId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         return projectMapper.selectActive(context.tenantId()).stream()
+            .filter(project -> reviewAccessGuard.canView(context, project))
             .map(project -> toProjectSummary(project, context.tenantId()))
             .toList();
     }
@@ -149,6 +153,7 @@ public class ReviewWorkbenchService {
     @Transactional
     public ReviewProjectDetailResponse importProject(
         Long tenantId,
+        Long mainProjectId,
         String name,
         MultipartFile file,
         String content
@@ -161,6 +166,7 @@ public class ReviewWorkbenchService {
         }
         ReviewProjectEntity project = new ReviewProjectEntity();
         project.setTenantId(context.tenantId());
+        project.setMainProjectId(mainProjectId);
         project.setName(blankToNull(name) == null ? inferProjectName(file, resolvedContent) : name.trim());
         project.setSourceFileName(file == null ? null : blankToNull(file.getOriginalFilename()));
         project.setSourceType(resolveSourceType(file));
@@ -169,6 +175,11 @@ public class ReviewWorkbenchService {
         project.setCreatedBy(context.userId());
         project.setCreatedAt(now);
         project.setUpdatedAt(now);
+        if (mainProjectId != null) {
+            project.setMainProjectId(null);
+            reviewAccessGuard.requireBinding(context, project, mainProjectId);
+            project.setMainProjectId(mainProjectId);
+        }
         projectMapper.insert(project);
 
         ReviewScriptVersionEntity version = createVersion(context, project.getId(), 1, "IMPORT", project.getSourceFileName(), resolvedContent, now);
@@ -179,7 +190,7 @@ public class ReviewWorkbenchService {
 
     public ReviewProjectDetailResponse detailProject(Long tenantId, Long projectId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        ReviewProjectEntity project = requireProject(context.tenantId(), projectId);
+        ReviewProjectEntity project = requireAccessibleProject(context, projectId, "PROJECT:VIEW");
         return new ReviewProjectDetailResponse(
             toProjectSummary(project, context.tenantId()),
             versionMapper.selectByProject(context.tenantId(), projectId).stream().map(this::toVersionResponse).toList(),
@@ -190,7 +201,7 @@ public class ReviewWorkbenchService {
     @Transactional
     public ReviewVersionResponse saveVersion(Long tenantId, Long projectId, SaveReviewVersionRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        ReviewProjectEntity project = requireProject(context.tenantId(), projectId);
+        ReviewProjectEntity project = requireAccessibleProject(context, projectId, "SCRIPT:EDIT");
         if (request.content() == null || request.content().isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "剧本内容不能为空。");
         }
@@ -215,7 +226,7 @@ public class ReviewWorkbenchService {
     @Transactional
     public ReviewTaskResponse createTask(Long tenantId, Long projectId, CreateReviewTaskRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        ReviewProjectEntity project = requireProject(context.tenantId(), projectId);
+        ReviewProjectEntity project = requireAccessibleProject(context, projectId, "AI_SERVICE:USE");
         List<String> dimensions = normalizeDimensions(request.selectedDimensions());
         if (dimensions.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择至少一个审核维度。");
@@ -260,6 +271,7 @@ public class ReviewWorkbenchService {
 
     public List<ReviewTaskResponse> listTasks(Long tenantId, Long projectId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireAccessibleProject(context, projectId, "PROJECT:VIEW");
         return listTasksForProject(context.tenantId(), projectId).stream()
             .map(task -> toTaskResponse(task, false))
             .toList();
@@ -268,6 +280,7 @@ public class ReviewWorkbenchService {
     public ReviewTaskResponse taskDetail(Long tenantId, Long taskId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewTaskEntity task = requireTask(context.tenantId(), taskId);
+        requireAccessibleProject(context, task.getProjectId(), "PROJECT:VIEW");
         return toTaskResponse(task, true);
     }
 
@@ -279,6 +292,7 @@ public class ReviewWorkbenchService {
     public ReviewTaskResponse cancelTask(Long tenantId, Long taskId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewTaskEntity task = requireTask(context.tenantId(), taskId);
+        requireAccessibleProject(context, task.getProjectId(), "AI_SERVICE:USE");
         if (!List.of("PENDING", "RUNNING").contains(task.getStatus())) {
             return toTaskResponse(task, true);
         }
@@ -295,6 +309,7 @@ public class ReviewWorkbenchService {
     public ReviewTaskResponse retryTask(Long tenantId, Long taskId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewTaskEntity task = requireTask(context.tenantId(), taskId);
+        requireAccessibleProject(context, task.getProjectId(), "AI_SERVICE:USE");
         if (!"FAILED".equals(task.getStatus())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "只有失败任务可以重试。");
         }
@@ -316,6 +331,7 @@ public class ReviewWorkbenchService {
     public ReviewTaskResponse updateTaskConfig(Long tenantId, Long taskId, UpdateReviewTaskRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewTaskEntity task = requireTask(context.tenantId(), taskId);
+        requireAccessibleProject(context, task.getProjectId(), "AI_SERVICE:USE");
         if ("RUNNING".equals(task.getStatus())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "任务运行中后不可修改配置。");
         }
@@ -354,6 +370,7 @@ public class ReviewWorkbenchService {
     public ReviewIssueResponse markIssueResolved(Long tenantId, Long issueId, MarkReviewIssueResolvedRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewIssueEntity issue = requireIssue(context.tenantId(), issueId);
+        requireAccessibleProject(context, issue.getProjectId(), "SCRIPT:EDIT");
         if (Boolean.TRUE.equals(issue.getManuallyResolved())) {
             return toIssueResponse(issue);
         }
@@ -385,6 +402,7 @@ public class ReviewWorkbenchService {
     public ReviewTaskResponse batchRepair(Long tenantId, Long taskId, BatchRepairReviewRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewTaskEntity task = requireTask(context.tenantId(), taskId);
+        requireAccessibleProject(context, task.getProjectId(), "SCRIPT:EDIT");
         ReviewIssueEntity targetIssue = null;
         if (request.selectedHitIds() != null && !request.selectedHitIds().isEmpty()) {
             targetIssue = issueMapper.selectById(request.selectedHitIds().get(0));
@@ -420,7 +438,7 @@ public class ReviewWorkbenchService {
     @Transactional
     public ReviewVersionResponse rollbackVersion(Long tenantId, Long projectId, RollbackReviewVersionRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        requireProject(context.tenantId(), projectId);
+        requireAccessibleProject(context, projectId, "SCRIPT:EDIT");
         ReviewScriptVersionEntity source = requireVersion(context.tenantId(), projectId, request.versionId());
         int nextVersionNo = nextVersionNo(context.tenantId(), projectId);
         ReviewScriptVersionEntity copy = createVersion(
@@ -442,7 +460,7 @@ public class ReviewWorkbenchService {
     @Transactional
     public ReviewExportRecordResponse exportReport(Long tenantId, Long projectId, ExportReviewReportRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        ReviewProjectEntity project = requireProject(context.tenantId(), projectId);
+        ReviewProjectEntity project = requireAccessibleProject(context, projectId, "PROJECT:VIEW");
         ReviewScriptVersionEntity version = requireVersion(context.tenantId(), projectId, request.versionId());
         ReviewTaskEntity task = taskMapper.selectOne(new LambdaQueryWrapper<ReviewTaskEntity>()
             .eq(ReviewTaskEntity::getTenantId, context.tenantId())
@@ -497,7 +515,7 @@ public class ReviewWorkbenchService {
 
     public ReviewVersionHistoryResponse versionHistory(Long tenantId, Long projectId, Long versionId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        ReviewProjectEntity project = requireProject(context.tenantId(), projectId);
+        ReviewProjectEntity project = requireAccessibleProject(context, projectId, "PROJECT:VIEW");
         ReviewScriptVersionEntity version = requireVersion(context.tenantId(), projectId, versionId);
         List<ReviewScriptVersionEntity> versions = versionMapper.selectByProject(context.tenantId(), projectId);
         return new ReviewVersionHistoryResponse(
@@ -585,6 +603,7 @@ public class ReviewWorkbenchService {
         if (record == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "导出文件不存在。");
         }
+        requireAccessibleProject(context, record.getProjectId(), "PROJECT:VIEW");
         Path target = exportRoot.resolve(safeFileName).normalize();
         if (!target.startsWith(exportRoot) || !Files.exists(target)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "导出文件不存在。");
@@ -953,6 +972,31 @@ public class ReviewWorkbenchService {
         return project;
     }
 
+    private ReviewProjectEntity requireAccessibleProject(
+        TenantContext context,
+        Long reviewProjectId,
+        String permissionCode
+    ) {
+        ReviewProjectEntity project = requireProject(context.tenantId(), reviewProjectId);
+        reviewAccessGuard.require(context, project, permissionCode);
+        return project;
+    }
+
+    @Transactional
+    public ReviewProjectDetailResponse bindProject(
+        Long tenantId,
+        Long reviewProjectId,
+        BindReviewProjectRequest request
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        ReviewProjectEntity project = requireProject(context.tenantId(), reviewProjectId);
+        reviewAccessGuard.requireBinding(context, project, request.mainProjectId());
+        project.setMainProjectId(request.mainProjectId());
+        project.setUpdatedAt(LocalDateTime.now());
+        projectMapper.updateById(project);
+        return detailProject(tenantId, reviewProjectId);
+    }
+
     private ReviewScriptVersionEntity requireVersion(Long tenantId, Long projectId, Long versionId) {
         ReviewScriptVersionEntity version = versionMapper.selectById(versionId);
         if (version == null || !tenantId.equals(version.getTenantId()) || !projectId.equals(version.getProjectId())) {
@@ -1134,6 +1178,8 @@ public class ReviewWorkbenchService {
             .orderByDesc(ReviewTaskEntity::getRoundNo));
         return new ReviewProjectSummaryResponse(
             project.getId(),
+            project.getMainProjectId(),
+            project.getMainProjectId() == null ? "PERSONAL_DRAFT" : "PROJECT",
             project.getName(),
             project.getSourceFileName(),
             project.getSourceType(),

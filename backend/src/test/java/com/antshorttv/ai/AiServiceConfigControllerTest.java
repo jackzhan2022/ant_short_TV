@@ -50,7 +50,7 @@ class AiServiceConfigControllerTest {
         Long configId = readLong(result, "$.data.id");
 
         mockMvc.perform(get("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[?(@.id == %d)]".formatted(configId), hasSize(1)))
             .andExpect(jsonPath("$.data[?(@.id == %d)].apiKey".formatted(configId), hasItem("sk-****1234")))
@@ -72,7 +72,7 @@ class AiServiceConfigControllerTest {
         Long secondId = readLong(second, "$.data.id");
 
         mockMvc.perform(get("/api/ai-service-configs")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[?(@.id == %d)].isDefault".formatted(firstId), hasItem(false)))
@@ -103,30 +103,30 @@ class AiServiceConfigControllerTest {
             );
 
             mockMvc.perform(put("/api/tenants/%d/ai-service-configs/%d/status".formatted(tenantId, configId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"enabled\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.enabled", is(false)));
 
             mockMvc.perform(put("/api/tenants/%d/ai-service-configs/%d/default".formatted(tenantId, configId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.isDefault", is(true)));
 
             mockMvc.perform(post("/api/tenants/%d/ai-service-configs/%d/test".formatted(tenantId, configId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status", is("SUCCESS")));
             assertThat(authorization.get()).isEqualTo("Bearer sk-test-1234");
 
             mockMvc.perform(delete("/api/tenants/%d/ai-service-configs/%d".formatted(tenantId, configId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", nullValue()));
 
             mockMvc.perform(get("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[?(@.id == %d)]".formatted(configId), hasSize(0)));
         } finally {
@@ -146,13 +146,13 @@ class AiServiceConfigControllerTest {
         );
 
         mockMvc.perform(get("/api/ai-service-configs")
-                .header(HttpHeaders.AUTHORIZATION, bearer(secondToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(secondToken))
                 .header("X-Tenant-Id", secondTenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[?(@.id == %d)].id".formatted(configId), hasItem(configId.intValue())));
 
         mockMvc.perform(put("/api/tenants/%d/ai-service-configs/%d/default".formatted(secondTenantId, configId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(secondToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(secondToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", is(configId.intValue())))
             .andExpect(jsonPath("$.data.isDefault", is(true)));
@@ -165,7 +165,7 @@ class AiServiceConfigControllerTest {
         String oversizedApiKey = "sk-" + "x".repeat(600);
 
         MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -209,7 +209,7 @@ class AiServiceConfigControllerTest {
         String endpoint
     ) throws Exception {
         return mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -239,12 +239,12 @@ class AiServiceConfigControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"AI服务测试"}

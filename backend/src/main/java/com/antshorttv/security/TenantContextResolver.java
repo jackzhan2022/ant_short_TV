@@ -16,14 +16,20 @@ public class TenantContextResolver {
 
     private final TenantMapper tenantMapper;
     private final TenantMemberMapper tenantMemberMapper;
+    private final CurrentPrincipal currentPrincipal;
 
-    public TenantContextResolver(TenantMapper tenantMapper, TenantMemberMapper tenantMemberMapper) {
+    public TenantContextResolver(
+        TenantMapper tenantMapper,
+        TenantMemberMapper tenantMemberMapper,
+        CurrentPrincipal currentPrincipal
+    ) {
         this.tenantMapper = tenantMapper;
         this.tenantMemberMapper = tenantMemberMapper;
+        this.currentPrincipal = currentPrincipal;
     }
 
     public TenantContext requireActiveMember(Long tenantId) {
-        CurrentUser currentUser = CurrentUserHolder.require();
+        var currentUser = currentPrincipal.require();
         TenantEntity tenant = tenantMapper.selectById(tenantId);
         if (tenant == null || tenant.getDeletedAt() != null) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该创作团队。");

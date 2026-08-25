@@ -25,7 +25,7 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      permissions: ['ROLE:VIEW'],
+      tenantPermissions: ['ROLE:VIEW'],
     };
 
     const result = access(initialState);
@@ -41,7 +41,7 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      permissions: [
+      tenantPermissions: [
         'AI_SERVICE:VIEW',
         'AI_SERVICE:CREATE',
         'AI_SERVICE:EDIT',
@@ -67,7 +67,7 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      permissions: [
+      platformPermissions: [
         'PLATFORM_AI_PROVIDER_VIEW',
         'PLATFORM_AI_PROVIDER_CREATE',
         'PLATFORM_AI_PROVIDER_EDIT',
@@ -77,9 +77,8 @@ describe('access', () => {
         'PLATFORM_AI_MODEL_CREATE',
         'PLATFORM_AI_MODEL_EDIT',
         'PLATFORM_AI_MODEL_ENABLE',
-        'PROJECT_AI_CONFIG_VIEW',
-        'PROJECT_AI_CONFIG_EDIT',
       ],
+      tenantPermissions: ['PROJECT_AI_CONFIG_VIEW', 'PROJECT_AI_CONFIG_EDIT'],
     };
 
     const result = access(initialState);
@@ -105,7 +104,7 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      permissions: ['PLATFORM_AI_PROVIDER_VIEW'],
+      platformPermissions: ['PLATFORM_AI_PROVIDER_VIEW'],
     };
 
     const result = access(initialState);
@@ -121,13 +120,47 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      permissions: [],
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      tenantPermissions: [],
     };
 
     const result = access(initialState);
 
     expect(result.canUseProjectCenter).toBe(true);
+    expect(result.canViewProjects).toBe(true);
+  });
+
+  it('does not grant tenant project navigation to a platform-only user', () => {
+    const result = access({
+      currentUser: { userid: '1', name: 'Platform Operator', access: 'user' },
+      platformPermissions: ['PLATFORM_AI_PROVIDER_VIEW'],
+      tenantPermissions: [],
+    });
+
     expect(result.canViewProjects).toBe(false);
+    expect(result.canViewPlatformAiProviders).toBe(true);
+  });
+
+  it('does not derive platform access from tenant permissions', () => {
+    const result = access({
+      currentUser: { userid: '1', name: 'Tenant Owner', access: 'user' },
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      tenantPermissions: ['PLATFORM_AI_PROVIDER_VIEW'],
+      platformPermissions: [],
+    });
+
+    expect(result.canViewPlatformAiProviders).toBe(false);
+  });
+
+  it('uses tenant PROJECT:CREATE only for the project creation entry', () => {
+    const result = access({
+      currentUser: { userid: '1', name: 'Creator', access: 'user' },
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      tenantPermissions: ['PROJECT:CREATE'],
+      platformPermissions: [],
+    });
+
+    expect(result.canCreateProject).toBe(true);
   });
 
   it('should allow authenticated users to view the public style library', () => {
@@ -138,7 +171,8 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      permissions: [],
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      tenantPermissions: [],
     };
 
     const result = access(initialState);

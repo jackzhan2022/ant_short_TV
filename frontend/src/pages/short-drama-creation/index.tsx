@@ -44,7 +44,6 @@ import {
   type InspirationCreationDetail,
   queryInspirationCreationDetail,
   queryInspirationCreations,
-  queryOrganizations,
   queryStyleLibrary,
   queryTenantMembers,
 } from './service';
@@ -129,17 +128,15 @@ const ShortDramaCreationPage = () => {
     let active = true;
     setGalleryLoading(true);
     Promise.all([
-      queryOrganizations(),
       queryTenantMembers(tenantId),
       queryStyleLibrary({}),
       queryInspirationCreations(),
     ])
-      .then(([orgResponse, memberResponse, styleResponse, inspirationResponse]) => {
+      .then(([memberResponse, styleResponse, inspirationResponse]) => {
         if (!active) {
           return;
         }
         const stylesData = styleResponse.data || [];
-        void orgResponse;
         setMembers(memberResponse.data || []);
         setStyleGallery(stylesData);
         setInspirationGallery(inspirationResponse.data || []);
@@ -248,7 +245,6 @@ const ShortDramaCreationPage = () => {
       const projectCode =
         projectForm.code?.trim().toUpperCase() || `SHORT_DRAMA_${Date.now()}`;
       const payload: ProjectFormValues = {
-        organizationId: projectForm.organizationId ?? null,
         name: projectName,
         code: projectCode,
         description: projectForm.description?.trim(),

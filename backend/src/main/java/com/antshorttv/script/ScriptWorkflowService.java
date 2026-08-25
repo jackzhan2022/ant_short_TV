@@ -9,12 +9,10 @@ import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.project.ProjectEntity;
-import com.antshorttv.project.ProjectMapper;
-import com.antshorttv.project.ProjectMemberEntity;
-import com.antshorttv.project.ProjectMemberMapper;
+import com.antshorttv.project.ProjectAccessResolver;
 import com.antshorttv.material.MaterialFileAccessService;
 import com.antshorttv.points.TeamPointService;
-import com.antshorttv.rbac.RbacPermissionService;
+import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,9 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ScriptWorkflowService {
 
-    private final ProjectMapper projectMapper;
-    private final ProjectMemberMapper projectMemberMapper;
-    private final RbacPermissionService rbacPermissionService;
+    private final ProjectAccessResolver projectAccessResolver;
+    private final ProjectPermissionGuard projectPermissionGuard;
     private final TenantContextResolver tenantContextResolver;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
@@ -55,9 +52,8 @@ public class ScriptWorkflowService {
     private final JdbcTemplate jdbcTemplate;
 
     public ScriptWorkflowService(
-        ProjectMapper projectMapper,
-        ProjectMemberMapper projectMemberMapper,
-        RbacPermissionService rbacPermissionService,
+        ProjectAccessResolver projectAccessResolver,
+        ProjectPermissionGuard projectPermissionGuard,
         TenantContextResolver tenantContextResolver,
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
@@ -74,9 +70,8 @@ public class ScriptWorkflowService {
         ScriptElementConfirmationService scriptElementConfirmationService,
         JdbcTemplate jdbcTemplate
     ) {
-        this.projectMapper = projectMapper;
-        this.projectMemberMapper = projectMemberMapper;
-        this.rbacPermissionService = rbacPermissionService;
+        this.projectAccessResolver = projectAccessResolver;
+        this.projectPermissionGuard = projectPermissionGuard;
         this.tenantContextResolver = tenantContextResolver;
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
@@ -527,24 +522,11 @@ public class ScriptWorkflowService {
     }
 
     private ProjectEntity requireProjectAccess(TenantContext context, Long projectId) {
-        ProjectEntity project = projectMapper.selectByTenantIdAndId(context.tenantId(), projectId);
-        if (project == null) {
-            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在。");
-        }
-        if (rbacPermissionService.hasPermission(context, "PROJECT:VIEW")) {
-            return project;
-        }
-        ProjectMemberEntity member = projectMemberMapper.selectActiveByProjectIdAndUserId(context.tenantId(), projectId, context.userId());
-        if (member == null) {
-            throw new BusinessException(ErrorCode.PROJECT_ACCESS_DENIED, "无权访问该项目。");
-        }
-        return project;
+        return projectAccessResolver.requireView(context.tenantId(), projectId).project();
     }
 
     private void requirePermission(TenantContext context, String permissionCode, Long projectId) {
-        if (!rbacPermissionService.hasPermission(context, permissionCode, projectId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权执行该操作。");
-        }
+        projectPermissionGuard.require(context.tenantId(), projectId, permissionCode);
     }
 
     private List<CharacterAssetResponse> characters(Long tenantId, Long projectId) {

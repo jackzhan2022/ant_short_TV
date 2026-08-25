@@ -14,19 +14,17 @@ import {
   ProFormTextArea,
   ProTable,
 } from '@ant-design/pro-components';
-import { history } from '@umijs/max';
+import { history, useAccess } from '@umijs/max';
 import { App, Button, Empty, Space, Tag } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type {
-  Organization,
   Project,
   ProjectStatus,
   TenantMember,
 } from '@/services/account-team/types';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import {
-  queryOrganizations,
   queryProjects,
   queryTenantMembers,
   updateProject,
@@ -49,25 +47,16 @@ const statusColor: Record<ProjectStatus, string> = {
   ARCHIVED: 'default',
 };
 
-const flattenOrganizations = (items: Organization[]): Organization[] =>
-  items.flatMap((item) => [item, ...flattenOrganizations(item.children || [])]);
-
 const ProjectEditor = ({
   project,
-  organizations,
   members,
   onDone,
 }: {
   project: Project;
-  organizations: Organization[];
   members: TenantMember[];
   onDone: () => void;
 }) => {
   const { message } = App.useApp();
-  const organizationOptions = organizations.map((item) => ({
-    label: `${'　'.repeat(Math.max(item.level - 1, 0))}${item.name}`,
-    value: item.id,
-  }));
   const memberOptions = members.map((member) => ({
     label: member.nickname || member.mobile || String(member.userId),
     value: member.userId,
@@ -83,7 +72,6 @@ const ProjectEditor = ({
       }
       modalProps={{ destroyOnHidden: true }}
       initialValues={{
-        organizationId: project?.organizationId,
         name: project?.name,
         code: project?.code,
         description: project?.description || undefined,
@@ -95,7 +83,6 @@ const ProjectEditor = ({
       onFinish={async (values) => {
         const payload = {
           ...values,
-          organizationId: values.organizationId || null,
           code: values.code?.trim().toUpperCase(),
         };
         await updateProject(project.id, payload);
@@ -108,12 +95,6 @@ const ProjectEditor = ({
         name="name"
         label="项目名称"
         rules={[{ required: true, message: '请输入项目名称' }]}
-      />
-      <ProFormSelect
-        name="organizationId"
-        label="所属组织"
-        allowClear
-        options={organizationOptions}
       />
       <ProFormSelect
         name="ownerId"
@@ -131,22 +112,15 @@ const ProjectEditor = ({
 
 const ProjectList = () => {
   const tenantId = getCurrentTenantId();
+  const access = useAccess();
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
-  const [organizationsTree, setOrganizationsTree] = useState<Organization[]>([]);
   const [members, setMembers] = useState<TenantMember[]>([]);
 
-  const organizations = useMemo(
-    () => flattenOrganizations(organizationsTree),
-    [organizationsTree],
-  );
-
   const loadOptions = async () => {
-    const [orgResponse, memberResponse] = await Promise.all([
-      queryOrganizations(),
-      tenantId ? queryTenantMembers(tenantId) : Promise.resolve({ data: [] }),
-    ]);
-    setOrganizationsTree(orgResponse.data);
+    const memberResponse = tenantId
+      ? await queryTenantMembers(tenantId)
+      : { data: [] };
     setMembers(memberResponse.data as TenantMember[]);
   };
 
@@ -169,14 +143,6 @@ const ProjectList = () => {
   const columns: ProColumns<Project>[] = [
     { title: '项目名称', dataIndex: 'name' },
     { title: '项目编码', dataIndex: 'code' },
-    {
-      title: '所属组织',
-      dataIndex: 'organizationId',
-      valueEnum: Object.fromEntries(
-        organizations.map((item) => [item.id, { text: item.name }]),
-      ),
-      renderText: (_, record) => record.organizationName || '-',
-    },
     { title: '负责人', dataIndex: 'ownerName', search: false },
     {
       title: '状态',
@@ -230,25 +196,24 @@ const ProjectList = () => {
           >
             进度
           </Button>
-          <ProjectEditor
-            project={record}
-            organizations={organizations}
-            members={members}
-            onDone={reload}
-          />
-          <Button
-            type="link"
-            disabled={record.status === 'ARCHIVED'}
-            onClick={async () => {
-              const nextStatus =
-                record.status === 'NOT_STARTED' ? 'IN_PROGRESS' : 'ARCHIVED';
-              await updateProjectStatus(record.id, nextStatus);
-              message.success('项目状态已更新');
-              reload();
-            }}
-          >
-            {record.status === 'NOT_STARTED' ? '启动' : '归档'}
-          </Button>
+          {record.capabilities.canEdit && (
+            <>
+              <ProjectEditor project={record} members={members} onDone={reload} />
+              <Button
+                type="link"
+                disabled={record.status === 'ARCHIVED'}
+                onClick={async () => {
+                  const nextStatus =
+                    record.status === 'NOT_STARTED' ? 'IN_PROGRESS' : 'ARCHIVED';
+                  await updateProjectStatus(record.id, nextStatus);
+                  message.success('项目状态已更新');
+                  reload();
+                }}
+              >
+                {record.status === 'NOT_STARTED' ? '启动' : '归档'}
+              </Button>
+            </>
+          )}
         </Space>
       ),
     },
@@ -265,16 +230,20 @@ const ProjectList = () => {
           const response = await queryProjects();
           return { data: response.data, success: response.success };
         }}
-        toolBarRender={() => [
-          <Button
-            key="create"
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => history.push('/short-drama-creation')}
-          >
-            创建项目
-          </Button>,
-        ]}
+        toolBarRender={() =>
+          access.canCreateProject
+            ? [
+                <Button
+                  key="create"
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => history.push('/short-drama-creation')}
+                >
+                  创建项目
+                </Button>,
+              ]
+            : []
+        }
       />
     </PageContainer>
   );

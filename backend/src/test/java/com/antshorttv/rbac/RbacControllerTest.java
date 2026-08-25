@@ -56,7 +56,7 @@ class RbacControllerTest {
         Long tenantId = createTenant(ownerToken, "RBAC初始化团队");
 
         mockMvc.perform(get("/api/tenants/%d/roles".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(3)))
             .andExpect(jsonPath("$.data[*].code", containsInAnyOrder("OWNER", "ADMIN", "MEMBER")))
@@ -64,7 +64,7 @@ class RbacControllerTest {
             .andExpect(jsonPath("$.data[0].memberCount", is(1)));
 
         mockMvc.perform(get("/api/tenants/%d/roles".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(3)));
     }
@@ -87,7 +87,7 @@ class RbacControllerTest {
         roleMapper.insert(deletedAdminRole);
 
         mockMvc.perform(get("/api/tenants/%d/roles".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[*].code", containsInAnyOrder("OWNER", "ADMIN", "MEMBER")));
 
@@ -108,7 +108,7 @@ class RbacControllerTest {
         Long projectRoleId = createRole(ownerToken, tenantId, "PROJECT_MANAGER", "项目管理员", List.of("PROJECT:VIEW", "PROJECT:EDIT"));
 
         mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenantId, memberId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"roleIds":[%d,%d]}
@@ -116,14 +116,14 @@ class RbacControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[*].code", containsInAnyOrder("SCRIPT_WRITER", "PROJECT_MANAGER")));
 
-        mockMvc.perform(get("/api/auth/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken))
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.permissions", hasItem("SCRIPT:VIEW")))
-            .andExpect(jsonPath("$.data.permissions", hasItem("SCRIPT:CREATE")))
-            .andExpect(jsonPath("$.data.permissions", hasItem("PROJECT:VIEW")))
-            .andExpect(jsonPath("$.data.permissions", hasItem("PROJECT:EDIT")));
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("SCRIPT:VIEW")))
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("SCRIPT:CREATE")))
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("PROJECT:VIEW")))
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("PROJECT:EDIT")));
     }
 
     @Test
@@ -135,25 +135,25 @@ class RbacControllerTest {
         Long roleId = createRole(ownerToken, tenantId, "SCRIPT_EDITOR", "剧本编辑", List.of("SCRIPT:EDIT"));
 
         mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenantId, memberId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"roleIds\":[%d]}".formatted(roleId)))
             .andExpect(status().isOk());
 
         mockMvc.perform(put("/api/tenants/%d/roles/%d/status".formatted(tenantId, roleId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"DISABLED\"}"))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/auth/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearer(memberToken))
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.permissions", hasSize(0)));
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasSize(0)));
 
         mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenantId, memberId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"roleIds\":[%d]}".formatted(roleId)))
             .andExpect(status().isConflict())
@@ -167,7 +167,7 @@ class RbacControllerTest {
         Long ownerRoleId = findRoleId(ownerToken, tenantId, "OWNER");
 
         mockMvc.perform(delete("/api/tenants/%d/roles/%d".formatted(tenantId, ownerRoleId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.errorCode", is("OWNER_ROLE_DELETE_BLOCKED")));
 
@@ -176,13 +176,13 @@ class RbacControllerTest {
         Long roleId = createRole(ownerToken, tenantId, "ASSIGNED_ROLE", "已分配角色", List.of("PROJECT:VIEW"));
 
         mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenantId, memberId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"roleIds\":[%d]}".formatted(roleId)))
             .andExpect(status().isOk());
 
         mockMvc.perform(delete("/api/tenants/%d/roles/%d".formatted(tenantId, roleId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.errorCode", is("ROLE_IN_USE")));
 
@@ -201,22 +201,23 @@ class RbacControllerTest {
         Long secondMemberId = addMember(secondTenantId, "13800009010");
 
         mockMvc.perform(get("/api/tenants/%d/roles/%d".formatted(firstTenantId, firstRoleId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(secondOwnerToken)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(secondOwnerToken)))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.errorCode", is("FORBIDDEN")));
 
         mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(firstTenantId, secondMemberId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(firstOwnerToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(firstOwnerToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"roleIds\":[%d]}".formatted(firstRoleId)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.errorCode", is("NOT_FOUND")));
 
-        mockMvc.perform(get("/api/auth/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearer(secondMemberToken))
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(secondMemberToken))
                 .header("X-Tenant-Id", firstTenantId))
-            .andExpect(status().isForbidden())
-            .andExpect(jsonPath("$.errorCode", is("FORBIDDEN")));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.selectedTenant").doesNotExist())
+            .andExpect(jsonPath("$.data.unavailableSelectionReason", is("TENANT_UNAVAILABLE")));
     }
 
     @Test
@@ -228,7 +229,7 @@ class RbacControllerTest {
         Long secondTenantId = createTenant(actorToken, "请求头租户");
 
         mockMvc.perform(post("/api/tenants/%d/roles".formatted(firstTenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(actorToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(actorToken))
                 .header("X-Tenant-Id", secondTenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -252,7 +253,7 @@ class RbacControllerTest {
             futures.add(executor.submit(() -> {
                 start.await(5, TimeUnit.SECONDS);
                 return mockMvc.perform(get("/api/tenants/%d/roles".formatted(tenantId))
-                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                        .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
                     .andReturn()
                     .getResponse()
                     .getStatus();
@@ -260,7 +261,7 @@ class RbacControllerTest {
             futures.add(executor.submit(() -> {
                 start.await(5, TimeUnit.SECONDS);
                 return mockMvc.perform(get("/api/tenants/%d/members/%d/roles".formatted(tenantId, memberId))
-                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                        .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
                     .andReturn()
                     .getResponse()
                     .getStatus();
@@ -276,7 +277,7 @@ class RbacControllerTest {
 
     private Long createRole(String token, Long tenantId, String code, String name, List<String> permissionCodes) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants/%d/roles".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"code":"%s","name":"%s","description":"测试角色","permissionCodes":%s}
@@ -290,7 +291,7 @@ class RbacControllerTest {
 
     private Long findRoleId(String token, Long tenantId, String code) throws Exception {
         MvcResult result = mockMvc.perform(get("/api/tenants/%d/roles".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
             .andReturn();
         List<Number> values = JsonPath.read(result.getResponse().getContentAsString(), "$.data[?(@.code=='%s')].id".formatted(code));
@@ -305,12 +306,12 @@ class RbacControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"RBAC测试"}
@@ -333,10 +334,6 @@ class RbacControllerTest {
         member.setUpdatedAt(LocalDateTime.now());
         tenantMemberMapper.insert(member);
         return member.getId();
-    }
-
-    private String bearer(String token) {
-        return "Bearer " + token;
     }
 
     private String toJsonArray(List<String> values) {

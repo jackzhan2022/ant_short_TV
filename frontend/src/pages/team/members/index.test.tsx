@@ -5,7 +5,7 @@ import TeamMembers from './index';
 const mocks = vi.hoisted(() => ({
   createInvitation: vi.fn(),
   getCurrentTenantId: vi.fn(),
-  queryCurrentTenant: vi.fn(),
+  memberType: 'OWNER',
   queryTenantMembers: vi.fn(),
   removeTenantMember: vi.fn(),
   success: vi.fn(),
@@ -55,9 +55,16 @@ vi.mock('@/services/account-team/auth', () => ({
   getCurrentTenantId: mocks.getCurrentTenantId,
 }));
 
+vi.mock('@umijs/max', () => ({
+  useModel: () => ({
+    initialState: {
+      selectedTenant: { membership: { memberType: mocks.memberType } },
+    },
+  }),
+}));
+
 vi.mock('./service', () => ({
   createInvitation: mocks.createInvitation,
-  queryCurrentTenant: mocks.queryCurrentTenant,
   queryTenantMembers: mocks.queryTenantMembers,
   removeTenantMember: mocks.removeTenantMember,
 }));
@@ -66,15 +73,7 @@ describe('TeamMembers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentTenantId.mockReturnValue(10);
-    mocks.queryCurrentTenant.mockResolvedValue({
-      success: true,
-      data: {
-        userId: 1,
-        tenantId: 10,
-        memberId: 100,
-        memberType: 'OWNER',
-      },
-    });
+    mocks.memberType = 'OWNER';
     mocks.queryTenantMembers.mockResolvedValue({ success: true, data: [] });
   });
 
@@ -102,21 +101,10 @@ describe('TeamMembers', () => {
   });
 
   it('hides owner-only invite action for normal members', async () => {
-    mocks.queryCurrentTenant.mockResolvedValue({
-      success: true,
-      data: {
-        userId: 1,
-        tenantId: 10,
-        memberId: 100,
-        memberType: 'MEMBER',
-      },
-    });
+    mocks.memberType = 'MEMBER';
 
     render(<TeamMembers />);
 
-    await waitFor(() => {
-      expect(mocks.queryCurrentTenant).toHaveBeenCalled();
-    });
     expect(
       screen.queryByRole('button', { name: '邀请成员' }),
     ).not.toBeInTheDocument();

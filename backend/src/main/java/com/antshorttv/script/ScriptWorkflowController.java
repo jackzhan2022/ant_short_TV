@@ -2,7 +2,7 @@ package com.antshorttv.script;
 
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
-import com.antshorttv.rbac.RequirePermission;
+import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,7 +25,7 @@ public class ScriptWorkflowController {
     }
 
     @GetMapping("/script-workspace")
-    @RequirePermission("PROJECT:VIEW")
+    @RequireProjectPermission("PROJECT:VIEW")
     public ApiResponse<ScriptWorkspaceResponse> workspace(
         @PathVariable Long projectId,
         HttpServletRequest request
@@ -34,7 +34,7 @@ public class ScriptWorkflowController {
     }
 
     @GetMapping("/script-analysis/current")
-    @RequirePermission("PROJECT:VIEW")
+    @RequireProjectPermission("PROJECT:VIEW")
     public ApiResponse<ScriptAnalysisTaskResponse> currentAnalysis(
         @PathVariable Long projectId,
         HttpServletRequest request
@@ -43,7 +43,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/script-analysis/current/retry/{stageCode}")
-    @RequirePermission("AI_SERVICE:USE")
+    @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScriptAnalysisTaskResponse> retryAnalysis(
         @PathVariable Long projectId,
         @PathVariable String stageCode,
@@ -54,7 +54,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/script-analysis/current/reanalyze")
-    @RequirePermission("AI_SERVICE:USE")
+    @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScriptAnalysisTaskResponse> reanalyze(
         @PathVariable Long projectId,
         HttpServletRequest request
@@ -63,7 +63,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/script-analysis/versions/{versionId}/reanalyze")
-    @RequirePermission("AI_SERVICE:USE")
+    @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScriptAnalysisTaskResponse> reanalyzeVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -73,7 +73,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/scripts/ai-generate")
-    @RequirePermission("AI_SERVICE:USE")
+    @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScriptWorkspaceResponse> generate(
         @PathVariable Long projectId,
         @Valid @RequestBody GenerateScriptRequest body,
@@ -83,7 +83,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/scripts/ai-rewrite")
-    @RequirePermission("AI_SERVICE:USE")
+    @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScriptWorkspaceResponse> rewrite(
         @PathVariable Long projectId,
         @Valid @RequestBody RewriteScriptRequest body,
@@ -93,7 +93,7 @@ public class ScriptWorkflowController {
     }
 
     @PutMapping("/scripts/current")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> saveCurrent(
         @PathVariable Long projectId,
         @Valid @RequestBody SaveScriptRequest body,
@@ -103,7 +103,7 @@ public class ScriptWorkflowController {
     }
 
     @PutMapping("/scripts/versions/{versionId}/apply")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> applyVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
@@ -113,7 +113,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/scripts/ai-extract-elements")
-    @RequirePermission("AI_SERVICE:USE")
+    @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScriptWorkspaceResponse> extractElements(
         @PathVariable Long projectId,
         @Valid @RequestBody ExtractScriptElementsRequest body,
@@ -123,7 +123,7 @@ public class ScriptWorkflowController {
     }
 
     @PutMapping("/script-elements/{elementType}/{elementId}")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> updateElement(
         @PathVariable Long projectId,
         @PathVariable String elementType,
@@ -135,7 +135,7 @@ public class ScriptWorkflowController {
     }
 
     @PutMapping("/script-elements/{elementType}/{elementId}/confirm")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> confirmElement(
         @PathVariable Long projectId,
         @PathVariable String elementType,
@@ -146,7 +146,7 @@ public class ScriptWorkflowController {
     }
 
     @DeleteMapping("/script-elements/{elementType}/{elementId}")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> deleteElement(
         @PathVariable Long projectId,
         @PathVariable String elementType,
@@ -157,7 +157,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/storyboards/ai-breakdown")
-    @RequirePermission("AI_SERVICE:USE")
+    @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScriptWorkspaceResponse> breakdownStoryboards(
         @PathVariable Long projectId,
         @Valid @RequestBody StoryboardBreakdownRequest body,
@@ -167,7 +167,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/storyboards")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> createStoryboard(
         @PathVariable Long projectId,
         @Valid @RequestBody SaveStoryboardRequest body,
@@ -177,7 +177,7 @@ public class ScriptWorkflowController {
     }
 
     @PutMapping("/storyboards/{storyboardId}")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> updateStoryboard(
         @PathVariable Long projectId,
         @PathVariable Long storyboardId,
@@ -188,7 +188,7 @@ public class ScriptWorkflowController {
     }
 
     @PutMapping("/storyboards/{storyboardId}/move")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> moveStoryboard(
         @PathVariable Long projectId,
         @PathVariable Long storyboardId,
@@ -199,7 +199,7 @@ public class ScriptWorkflowController {
     }
 
     @PutMapping("/storyboards/confirm")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> confirmStoryboards(
         @PathVariable Long projectId,
         HttpServletRequest request
@@ -208,7 +208,7 @@ public class ScriptWorkflowController {
     }
 
     @DeleteMapping("/storyboards/{storyboardId}")
-    @RequirePermission("SCRIPT:EDIT")
+    @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<ScriptWorkspaceResponse> deleteStoryboard(
         @PathVariable Long projectId,
         @PathVariable Long storyboardId,
@@ -218,7 +218,7 @@ public class ScriptWorkflowController {
     }
 
     @PostMapping("/prompts/ai-generate")
-    @RequirePermission("AI_SERVICE:USE")
+    @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScriptWorkspaceResponse> generatePrompts(
         @PathVariable Long projectId,
         @Valid @RequestBody GeneratePromptRequest body,

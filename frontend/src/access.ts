@@ -1,123 +1,129 @@
 /**
  * @see https://umijs.org/docs/max/access#access
  * */
+import type { LayoutCurrentUser } from '@/services/account-team/types';
+
 export default function access(
   initialState:
-    | { currentUser?: API.CurrentUser; permissions?: string[] }
+    | {
+        currentUser?: LayoutCurrentUser;
+        tenantPermissions?: string[];
+        platformPermissions?: string[];
+        selectedTenant?: { membership?: { status?: string } } | null;
+      }
     | undefined,
 ) {
   const { currentUser } = initialState ?? {};
-  const permissions = initialState?.permissions ?? [];
+  const tenantPermissions = initialState?.tenantPermissions ?? [];
+  const platformPermissions = initialState?.platformPermissions ?? [];
+  const hasActiveTenant =
+    Boolean(currentUser) && initialState?.selectedTenant?.membership?.status === 'ACTIVE';
   return {
     canAdmin: currentUser && currentUser.access === 'admin',
-    canManageRoles: currentUser && permissions.includes('ROLE:VIEW'),
-    canManageOrganizations:
-      currentUser && permissions.includes('ORGANIZATION:VIEW'),
-    canUseProjectCenter: Boolean(currentUser),
+    canManageRoles: currentUser && tenantPermissions.includes('ROLE:VIEW'),
+    canUseProjectCenter: hasActiveTenant,
     canViewStyleLibrary: Boolean(currentUser),
     canUseVideoScriptDecomposition:
       currentUser &&
-      permissions.includes('PROJECT:VIEW') &&
-      permissions.includes('AI_SERVICE:USE'),
-    canViewScriptReview:
-      currentUser &&
-      permissions.includes('PROJECT:VIEW') &&
-      permissions.includes('SCRIPT:EDIT'),
-    canViewProjects: currentUser && permissions.includes('PROJECT:VIEW'),
-    canViewAiServices: currentUser && permissions.includes('AI_SERVICE:VIEW'),
+      hasActiveTenant && tenantPermissions.includes('AI_SERVICE:USE'),
+    canViewScriptReview: hasActiveTenant,
+    canViewProjects: hasActiveTenant,
+    canCreateProject:
+      hasActiveTenant && tenantPermissions.includes('PROJECT:CREATE'),
+    canViewAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:VIEW'),
     canViewAiManagement:
       currentUser &&
-      (permissions.includes('AI_SERVICE:VIEW') ||
-        permissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
-        permissions.includes('PLATFORM_AI_MODEL_VIEW') ||
-        permissions.includes('PLATFORM_AI_AGENT_VIEW')),
-    canCreateAiServices: currentUser && permissions.includes('AI_SERVICE:CREATE'),
-    canEditAiServices: currentUser && permissions.includes('AI_SERVICE:EDIT'),
-    canDeleteAiServices: currentUser && permissions.includes('AI_SERVICE:DELETE'),
-    canTestAiServices: currentUser && permissions.includes('AI_SERVICE:TEST'),
+      (tenantPermissions.includes('AI_SERVICE:VIEW') ||
+        platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
+        platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||
+        platformPermissions.includes('PLATFORM_AI_AGENT_VIEW')),
+    canCreateAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:CREATE'),
+    canEditAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:EDIT'),
+    canDeleteAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:DELETE'),
+    canTestAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:TEST'),
     canViewPlatformAiProviders:
-      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
     canCreatePlatformAiProviders:
-      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_CREATE'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_CREATE'),
     canEditPlatformAiProviders:
-      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_EDIT'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_EDIT'),
     canEnablePlatformAiProviders:
-      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_ENABLE'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_ENABLE'),
     canTestPlatformAiProviders:
-      currentUser && permissions.includes('PLATFORM_AI_PROVIDER_TEST'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_TEST'),
     canViewPlatformAiModels:
-      currentUser && permissions.includes('PLATFORM_AI_MODEL_VIEW'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_MODEL_VIEW'),
     canCreatePlatformAiModels:
-      currentUser && permissions.includes('PLATFORM_AI_MODEL_CREATE'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_MODEL_CREATE'),
     canEditPlatformAiModels:
-      currentUser && permissions.includes('PLATFORM_AI_MODEL_EDIT'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_MODEL_EDIT'),
     canEnablePlatformAiModels:
-      currentUser && permissions.includes('PLATFORM_AI_MODEL_ENABLE'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_MODEL_ENABLE'),
     canViewBuiltInAiAgents:
-      currentUser && permissions.includes('PLATFORM_AI_AGENT_VIEW'),
+      currentUser && platformPermissions.includes('PLATFORM_AI_AGENT_VIEW'),
     canViewProjectAiConfig:
-      currentUser && permissions.includes('PROJECT_AI_CONFIG_VIEW'),
+      currentUser && tenantPermissions.includes('PROJECT_AI_CONFIG_VIEW'),
     canEditProjectAiConfig:
-      currentUser && permissions.includes('PROJECT_AI_CONFIG_EDIT'),
+      currentUser && tenantPermissions.includes('PROJECT_AI_CONFIG_EDIT'),
     canViewAiImageTasks:
-      currentUser && permissions.includes('AI_IMAGE_TASK:VIEW'),
+      currentUser && tenantPermissions.includes('AI_IMAGE_TASK:VIEW'),
     canCreateAiImageTasks:
-      currentUser && permissions.includes('AI_IMAGE_TASK:CREATE'),
+      currentUser && tenantPermissions.includes('AI_IMAGE_TASK:CREATE'),
     canAiGenerateScript:
       currentUser &&
-      permissions.includes('SCRIPT:AI_GENERATE') &&
-      permissions.includes('AI_SERVICE:USE'),
+      tenantPermissions.includes('SCRIPT:AI_GENERATE') &&
+      tenantPermissions.includes('AI_SERVICE:USE'),
     canAiRewriteScript:
       currentUser &&
-      permissions.includes('SCRIPT:AI_REWRITE') &&
-      permissions.includes('AI_SERVICE:USE'),
-    canViewElements: currentUser && permissions.includes('ELEMENT:VIEW'),
+      tenantPermissions.includes('SCRIPT:AI_REWRITE') &&
+      tenantPermissions.includes('AI_SERVICE:USE'),
+    canViewElements: currentUser && tenantPermissions.includes('ELEMENT:VIEW'),
     canAiExtractElements:
       currentUser &&
-      permissions.includes('ELEMENT:AI_EXTRACT') &&
-      permissions.includes('AI_SERVICE:USE'),
-    canEditElements: currentUser && permissions.includes('ELEMENT:EDIT'),
-    canViewStoryboards: currentUser && permissions.includes('STORYBOARD:VIEW'),
+      tenantPermissions.includes('ELEMENT:AI_EXTRACT') &&
+      tenantPermissions.includes('AI_SERVICE:USE'),
+    canEditElements: currentUser && tenantPermissions.includes('ELEMENT:EDIT'),
+    canViewStoryboards: currentUser && tenantPermissions.includes('STORYBOARD:VIEW'),
     canAiBreakdownStoryboards:
       currentUser &&
-      permissions.includes('STORYBOARD:AI_BREAKDOWN') &&
-      permissions.includes('AI_SERVICE:USE'),
-    canEditStoryboards: currentUser && permissions.includes('STORYBOARD:EDIT'),
+      tenantPermissions.includes('STORYBOARD:AI_BREAKDOWN') &&
+      tenantPermissions.includes('AI_SERVICE:USE'),
+    canEditStoryboards: currentUser && tenantPermissions.includes('STORYBOARD:EDIT'),
     canAiGeneratePrompts:
       currentUser &&
-      permissions.includes('PROMPT:AI_GENERATE') &&
-      permissions.includes('AI_SERVICE:USE'),
+      tenantPermissions.includes('PROMPT:AI_GENERATE') &&
+      tenantPermissions.includes('AI_SERVICE:USE'),
     canViewAiVideoTasks:
-      currentUser && permissions.includes('AI_VIDEO_TASK:VIEW'),
+      currentUser && tenantPermissions.includes('AI_VIDEO_TASK:VIEW'),
     canCreateAiVideoTasks:
-      currentUser && permissions.includes('AI_VIDEO_TASK:CREATE'),
+      currentUser && tenantPermissions.includes('AI_VIDEO_TASK:CREATE'),
     canCancelAiVideoTasks:
-      currentUser && permissions.includes('AI_VIDEO_TASK:CANCEL'),
+      currentUser && tenantPermissions.includes('AI_VIDEO_TASK:CANCEL'),
     canDeleteAiVideoTasks:
-      currentUser && permissions.includes('AI_VIDEO_TASK:DELETE'),
+      currentUser && tenantPermissions.includes('AI_VIDEO_TASK:DELETE'),
     canSaveAiVideoResults:
-      currentUser && permissions.includes('AI_VIDEO_RESULT:SAVE'),
+      currentUser && tenantPermissions.includes('AI_VIDEO_RESULT:SAVE'),
     canBindAiVideoResults:
-      currentUser && permissions.includes('AI_VIDEO_RESULT:BIND'),
+      currentUser && tenantPermissions.includes('AI_VIDEO_RESULT:BIND'),
     canDownloadAiVideoResults:
-      currentUser && permissions.includes('AI_VIDEO_RESULT:DOWNLOAD'),
+      currentUser && tenantPermissions.includes('AI_VIDEO_RESULT:DOWNLOAD'),
     canViewEpisodeComposeTasks:
-      currentUser && permissions.includes('EPISODE_COMPOSE:VIEW'),
+      currentUser && tenantPermissions.includes('EPISODE_COMPOSE:VIEW'),
     canCreateEpisodeComposeTasks:
-      currentUser && permissions.includes('EPISODE_COMPOSE:CREATE'),
+      currentUser && tenantPermissions.includes('EPISODE_COMPOSE:CREATE'),
     canCancelEpisodeComposeTasks:
-      currentUser && permissions.includes('EPISODE_COMPOSE:CANCEL'),
+      currentUser && tenantPermissions.includes('EPISODE_COMPOSE:CANCEL'),
     canDeleteEpisodeComposeTasks:
-      currentUser && permissions.includes('EPISODE_COMPOSE:DELETE'),
+      currentUser && tenantPermissions.includes('EPISODE_COMPOSE:DELETE'),
     canViewEpisodeVersions:
-      currentUser && permissions.includes('EPISODE_VERSION:VIEW'),
+      currentUser && tenantPermissions.includes('EPISODE_VERSION:VIEW'),
     canSetCurrentEpisodeVersion:
-      currentUser && permissions.includes('EPISODE_VERSION:SET_CURRENT'),
+      currentUser && tenantPermissions.includes('EPISODE_VERSION:SET_CURRENT'),
     canDownloadEpisodeVersions:
-      currentUser && permissions.includes('EPISODE_VERSION:DOWNLOAD'),
+      currentUser && tenantPermissions.includes('EPISODE_VERSION:DOWNLOAD'),
     canDeleteEpisodeVersions:
-      currentUser && permissions.includes('EPISODE_VERSION:DELETE'),
+      currentUser && tenantPermissions.includes('EPISODE_VERSION:DELETE'),
     canSaveEpisodeVersions:
-      currentUser && permissions.includes('EPISODE_VERSION:SAVE_MATERIAL'),
+      currentUser && tenantPermissions.includes('EPISODE_VERSION:SAVE_MATERIAL'),
   };
 }

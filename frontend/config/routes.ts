@@ -80,13 +80,6 @@ export default [
         component: './team/roles',
       },
       {
-        path: '/team/organizations',
-        name: 'organizations',
-        icon: 'apartment',
-        access: 'canManageOrganizations',
-        component: './team/organizations',
-      },
-      {
         path: '/team/invitations',
         name: 'invitations',
         icon: 'mail',
@@ -220,7 +213,6 @@ export default [
   {
     path: '/projects/:id/production-workbench',
     hideInMenu: true,
-    access: 'canViewProjects',
     layout: false,
     component: './projects/production-workbench',
     routes: [
@@ -231,7 +223,6 @@ export default [
       {
         path: '/projects/:id/production-workbench/ai-config',
         hideInMenu: true,
-        access: 'canViewProjectAiConfig',
         component: './projects/production-workbench/ai-config',
       },
       {

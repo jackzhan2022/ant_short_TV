@@ -16,6 +16,45 @@ class SchemaMigrationTest {
     private DataSource dataSource;
 
     @Test
+    void flywayCreatesRevocableSessionAndPlatformAuthorizationSchema() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+            from information_schema.tables
+            where lower(table_name) in (
+              'auth_session', 'platform_role', 'platform_permission',
+              'platform_role_permission', 'platform_user_role'
+            )
+            """, Integer.class);
+        Integer tokenVersionColumn = jdbc.queryForObject("""
+            select count(*)
+            from information_schema.columns
+            where lower(table_name) = 'app_user' and lower(column_name) = 'token_version'
+            """, Integer.class);
+        Integer sessionIndexes = jdbc.queryForObject("""
+            select count(distinct lower(index_name))
+            from information_schema.indexes
+            where lower(table_name) = 'auth_session'
+              and lower(index_name) in (
+                'idx_auth_session_user_status', 'idx_auth_session_expires_at'
+              )
+            """, Integer.class);
+        Integer tokenHashUniqueConstraint = jdbc.queryForObject("""
+            select count(*)
+            from information_schema.table_constraints
+            where lower(table_name) = 'auth_session'
+              and constraint_type = 'UNIQUE'
+              and lower(constraint_name) = 'uk_auth_session_token_hash'
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(5);
+        assertThat(tokenVersionColumn).isEqualTo(1);
+        assertThat(sessionIndexes).isEqualTo(2);
+        assertThat(tokenHashUniqueConstraint).isEqualTo(1);
+    }
+
+    @Test
     void flywayCreatesAccountTeamTables() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
@@ -25,13 +64,55 @@ class SchemaMigrationTest {
             where lower(table_name) in (
               'app_user', 'tenant', 'tenant_member', 'tenant_invitation', 'operation_log',
               'role', 'permission', 'role_permission', 'member_role',
-              'organization', 'organization_member', 'project', 'project_member',
+              'project', 'project_member',
               'project_role', 'project_role_permission', 'project_operation_log',
               'team_point_account', 'team_point_transaction'
             )
             """, Integer.class);
 
-        assertThat(tableCount).isEqualTo(18);
+        assertThat(tableCount).isEqualTo(16);
+    }
+
+    @Test
+    void flywayRemovesOrganizationStorageAndProjectDataScope() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer organizationTables = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+            from information_schema.tables
+            where lower(table_name) in ('organization', 'organization_member')
+            """, Integer.class);
+        Integer removedColumns = jdbc.queryForObject("""
+            select count(*)
+            from information_schema.columns
+            where (lower(table_name) = 'project' and lower(column_name) = 'organization_id')
+               or (lower(table_name) = 'project_member' and lower(column_name) = 'organization_id')
+               or (lower(table_name) = 'project_role' and lower(column_name) = 'data_scope')
+            """, Integer.class);
+
+        assertThat(organizationTables).isZero();
+        assertThat(removedColumns).isZero();
+    }
+
+    @Test
+    void flywayAddsOptionalMainProjectBindingToReviewDrafts() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer nullableBinding = jdbc.queryForObject("""
+            select case when is_nullable = 'YES' then 1 else 0 end
+            from information_schema.columns
+            where lower(table_name) = 'review_project'
+              and lower(column_name) = 'main_project_id'
+            """, Integer.class);
+        Integer bindingIndex = jdbc.queryForObject("""
+            select count(distinct lower(index_name))
+            from information_schema.indexes
+            where lower(table_name) = 'review_project'
+              and lower(index_name) = 'idx_review_project_tenant_main_project'
+            """, Integer.class);
+
+        assertThat(nullableBinding).isEqualTo(1);
+        assertThat(bindingIndex).isEqualTo(1);
     }
 
     @Test

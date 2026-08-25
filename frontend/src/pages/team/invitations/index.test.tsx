@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   acceptInvitation: vi.fn(),
   cancelInvitation: vi.fn(),
   getCurrentTenantId: vi.fn(),
-  queryCurrentTenant: vi.fn(),
+  memberType: 'OWNER',
   queryMyInvitations: vi.fn(),
   queryTenantInvitations: vi.fn(),
   rejectInvitation: vi.fn(),
@@ -42,10 +42,17 @@ vi.mock('@/services/account-team/auth', () => ({
   getCurrentTenantId: mocks.getCurrentTenantId,
 }));
 
+vi.mock('@umijs/max', () => ({
+  useModel: () => ({
+    initialState: {
+      selectedTenant: { membership: { memberType: mocks.memberType } },
+    },
+  }),
+}));
+
 vi.mock('./service', () => ({
   acceptInvitation: mocks.acceptInvitation,
   cancelInvitation: mocks.cancelInvitation,
-  queryCurrentTenant: mocks.queryCurrentTenant,
   queryMyInvitations: mocks.queryMyInvitations,
   queryTenantInvitations: mocks.queryTenantInvitations,
   rejectInvitation: mocks.rejectInvitation,
@@ -55,15 +62,7 @@ describe('TeamInvitations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentTenantId.mockReturnValue(10);
-    mocks.queryCurrentTenant.mockResolvedValue({
-      success: true,
-      data: {
-        userId: 1,
-        tenantId: 10,
-        memberId: 100,
-        memberType: 'OWNER',
-      },
-    });
+    mocks.memberType = 'OWNER';
     mocks.queryMyInvitations.mockResolvedValue({ success: true, data: [] });
     mocks.queryTenantInvitations.mockResolvedValue({ success: true, data: [] });
   });

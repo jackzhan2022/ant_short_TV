@@ -10,11 +10,7 @@ import com.antshorttv.material.VideoMaterialMapper;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
 import com.antshorttv.points.TeamPointService;
-import com.antshorttv.project.ProjectEntity;
-import com.antshorttv.project.ProjectMapper;
-import com.antshorttv.project.ProjectMemberEntity;
-import com.antshorttv.project.ProjectMemberMapper;
-import com.antshorttv.rbac.RbacPermissionService;
+import com.antshorttv.project.ProjectAccessResolver;
 import com.antshorttv.script.StoryboardEntity;
 import com.antshorttv.script.StoryboardMapper;
 import com.antshorttv.security.TenantContext;
@@ -52,8 +48,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ShotProductionService {
     private static final BigDecimal DEFAULT_NUMBER = BigDecimal.ONE;
 
-    private final ProjectMapper projectMapper;
-    private final ProjectMemberMapper projectMemberMapper;
+    private final ProjectAccessResolver projectAccessResolver;
     private final StoryboardMapper storyboardMapper;
     private final AiServiceConfigMapper aiServiceConfigMapper;
     private final AiVoiceTaskMapper aiVoiceTaskMapper;
@@ -67,7 +62,6 @@ public class ShotProductionService {
     private final EpisodeExportRecordMapper episodeExportRecordMapper;
     private final VideoMaterialMapper materialMapper;
     private final TenantContextResolver tenantContextResolver;
-    private final RbacPermissionService rbacPermissionService;
     private final OperationLogService operationLogService;
     private final ObjectMapper objectMapper;
     private final MaterialFileAccessService materialFileAccessService;
@@ -76,8 +70,7 @@ public class ShotProductionService {
     private final Path storageRoot;
 
     public ShotProductionService(
-        ProjectMapper projectMapper,
-        ProjectMemberMapper projectMemberMapper,
+        ProjectAccessResolver projectAccessResolver,
         StoryboardMapper storyboardMapper,
         AiServiceConfigMapper aiServiceConfigMapper,
         AiVoiceTaskMapper aiVoiceTaskMapper,
@@ -91,7 +84,6 @@ public class ShotProductionService {
         EpisodeExportRecordMapper episodeExportRecordMapper,
         VideoMaterialMapper materialMapper,
         TenantContextResolver tenantContextResolver,
-        RbacPermissionService rbacPermissionService,
         OperationLogService operationLogService,
         ObjectMapper objectMapper,
         MaterialFileAccessService materialFileAccessService,
@@ -99,8 +91,7 @@ public class ShotProductionService {
         ObjectStorageService objectStorageService,
         @Value("${ai.video.storage-root:storage}") String storageRoot
     ) {
-        this.projectMapper = projectMapper;
-        this.projectMemberMapper = projectMemberMapper;
+        this.projectAccessResolver = projectAccessResolver;
         this.storyboardMapper = storyboardMapper;
         this.aiServiceConfigMapper = aiServiceConfigMapper;
         this.aiVoiceTaskMapper = aiVoiceTaskMapper;
@@ -114,7 +105,6 @@ public class ShotProductionService {
         this.episodeExportRecordMapper = episodeExportRecordMapper;
         this.materialMapper = materialMapper;
         this.tenantContextResolver = tenantContextResolver;
-        this.rbacPermissionService = rbacPermissionService;
         this.operationLogService = operationLogService;
         this.objectMapper = objectMapper;
         this.materialFileAccessService = materialFileAccessService;
@@ -1121,19 +1111,7 @@ public class ShotProductionService {
     }
 
     private TenantContext requireContext(Long tenantId, Long projectId) {
-        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        ProjectEntity project = projectMapper.selectByTenantIdAndId(context.tenantId(), projectId);
-        if (project == null) {
-            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在。");
-        }
-        if (rbacPermissionService.hasPermission(context, "PROJECT:VIEW")) {
-            return context;
-        }
-        ProjectMemberEntity member = projectMemberMapper.selectActiveByProjectIdAndUserId(context.tenantId(), projectId, context.userId());
-        if (member == null) {
-            throw new BusinessException(ErrorCode.PROJECT_ACCESS_DENIED, "无权访问该项目。");
-        }
-        return context;
+        return projectAccessResolver.requireView(tenantId, projectId).tenant();
     }
 
     private AiServiceConfigEntity resolveVoiceService(Long tenantId, Long serviceConfigId) {

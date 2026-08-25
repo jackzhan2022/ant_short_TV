@@ -53,7 +53,7 @@ class AiImageTaskControllerTest {
         jdbcTemplate.update("delete from ai_service_config where service_type = 'IMAGE'");
 
         mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -72,7 +72,7 @@ class AiImageTaskControllerTest {
         createImageService(token, tenantId);
 
         mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -93,7 +93,7 @@ class AiImageTaskControllerTest {
         grantTeamPoints(tenantId, 5);
 
         MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -120,26 +120,26 @@ class AiImageTaskControllerTest {
         String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
 
         mockMvc.perform(get("/api/projects/%d/ai-image-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(1)))
             .andExpect(jsonPath("$.data[0].id", is(taskId.intValue())));
 
         mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/download".formatted(projectId, resultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.IMAGE_PNG));
 
         mockMvc.perform(post("/api/projects/%d/ai-image-results/%d/save-material".formatted(projectId, resultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.materialId", notNullValue()));
 
         mockMvc.perform(put("/api/projects/%d/ai-image-results/%d/selected".formatted(projectId, resultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.selected", is(true)));
@@ -161,18 +161,18 @@ class AiImageTaskControllerTest {
         org.assertj.core.api.Assertions.assertThat(callLogCount).isGreaterThanOrEqualTo(1);
 
         mockMvc.perform(delete("/api/projects/%d/ai-image-results/%d".formatted(projectId, resultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.errorCode", is("AI_IMAGE_RESULT_IN_USE")));
 
         mockMvc.perform(delete("/api/projects/%d/ai-image-results/%d?force=true".formatted(projectId, resultId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk());
 
         mockMvc.perform(delete("/api/projects/%d/ai-image-tasks/%d".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk());
     }
@@ -201,7 +201,7 @@ class AiImageTaskControllerTest {
         try {
             createImageService(token, tenantId, "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-image");
             MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""
@@ -238,7 +238,7 @@ class AiImageTaskControllerTest {
         grantTeamPoints(tenantId, 5);
 
         MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -257,14 +257,14 @@ class AiImageTaskControllerTest {
 
         waitForTaskStatus(token, tenantId, projectId, taskId, "RUNNING");
         mockMvc.perform(put("/api/projects/%d/ai-image-tasks/%d/cancel".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("CANCELED")));
         Thread.sleep(400);
 
         mockMvc.perform(get("/api/projects/%d/ai-image-tasks/%d".formatted(projectId, taskId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("CANCELED")))
@@ -279,7 +279,7 @@ class AiImageTaskControllerTest {
         MvcResult last = null;
         for (int i = 0; i < 20; i++) {
             last = mockMvc.perform(get("/api/projects/%d/ai-image-tasks/%d".formatted(projectId, taskId))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -298,7 +298,7 @@ class AiImageTaskControllerTest {
 
     private void createImageService(String token, Long tenantId, String baseUrl, String apiKey) throws Exception {
         mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -326,12 +326,12 @@ class AiImageTaskControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"图片任务测试"}
@@ -343,7 +343,7 @@ class AiImageTaskControllerTest {
 
     private Long createProject(String token, Long tenantId, Long ownerId, String name, String code) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/projects")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""

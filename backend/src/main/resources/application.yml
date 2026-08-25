@@ -29,6 +29,19 @@ spring:
 app:
   public-base-url: ${APP_PUBLIC_BASE_URL:}
 
+auth:
+  session:
+    token-pepper: ${AUTH_TOKEN_PEPPER}
+    ttl: ${AUTH_SESSION_TTL:7d}
+    activity-update-interval: ${AUTH_SESSION_ACTIVITY_INTERVAL:5m}
+    cleanup-interval: ${AUTH_SESSION_CLEANUP_INTERVAL:PT1H}
+    cleanup-retention: ${AUTH_SESSION_CLEANUP_RETENTION:30d}
+    cookie-name: ${AUTH_SESSION_COOKIE_NAME:ANT_SHORT_SESSION}
+    cookie-secure: ${AUTH_SESSION_COOKIE_SECURE:true}
+    cookie-same-site: ${AUTH_SESSION_COOKIE_SAME_SITE:Lax}
+  platform:
+    initial-admin-mobile: ${PLATFORM_INITIAL_ADMIN_MOBILE:}
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true

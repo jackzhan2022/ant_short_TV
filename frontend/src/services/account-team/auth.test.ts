@@ -2,7 +2,6 @@ import { request } from '@umijs/max';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearAuthSession,
-  getAccessToken,
   loginByMobile,
   saveAuthSession,
 } from './auth';
@@ -17,19 +16,20 @@ describe('account team auth service', () => {
     vi.clearAllMocks();
   });
 
-  it('saves and clears auth session', () => {
-    saveAuthSession({ accessToken: 'token-a', currentTenantId: 12 });
+  it('stores only the last validated tenant selection', () => {
+    localStorage.setItem('accessToken', 'legacy-token');
+    saveAuthSession({ currentTenantId: 12 });
 
-    expect(getAccessToken()).toBe('token-a');
+    expect(localStorage.getItem('accessToken')).toBe('legacy-token');
     expect(localStorage.getItem('currentTenantId')).toBe('12');
 
     clearAuthSession();
 
-    expect(getAccessToken()).toBeNull();
+    expect(localStorage.getItem('accessToken')).toBeNull();
     expect(localStorage.getItem('currentTenantId')).toBeNull();
   });
 
-  it('logs in by mobile and stores returned access token', async () => {
+  it('logs in by mobile without persisting a reusable credential', async () => {
     vi.mocked(request).mockResolvedValue({
       success: true,
       data: {
@@ -50,7 +50,6 @@ describe('account team auth service', () => {
       headers: { 'Content-Type': 'application/json' },
       data: { mobile: '13800000000', password: 'Password123' },
     });
-    expect(response.data.accessToken).toBe('token-b');
-    expect(getAccessToken()).toBe('token-b');
+    expect(localStorage.getItem('accessToken')).toBeNull();
   });
 });

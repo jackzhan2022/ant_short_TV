@@ -53,7 +53,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "归来后我执掌豪门", "SCRIPT_WORKFLOW_EMPTY");
 
         mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.projectId", is(projectId.intValue())))
@@ -70,7 +70,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "分集项目", "SCRIPT_EPISODES");
 
         mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -83,7 +83,7 @@ class ScriptWorkflowControllerTest {
             .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.episodes", hasSize(2)))
@@ -109,7 +109,7 @@ class ScriptWorkflowControllerTest {
         );
 
         MvcResult initial = mockMvc.perform(get("/api/projects/%d/script-analysis/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("PENDING")))
@@ -118,14 +118,14 @@ class ScriptWorkflowControllerTest {
         Long initialTaskId = readLong(initial, "$.data.id");
 
         mockMvc.perform(post("/api/projects/%d/script-analysis/current/reanalyze".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("PENDING")))
             .andExpect(jsonPath("$.data.stages", hasSize(4)));
 
         MvcResult current = mockMvc.perform(get("/api/projects/%d/script-analysis/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.stages", hasSize(4)))
@@ -149,7 +149,7 @@ class ScriptWorkflowControllerTest {
         );
 
         mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -166,7 +166,7 @@ class ScriptWorkflowControllerTest {
         assertThat(taskCount).isEqualTo(1);
 
         mockMvc.perform(get("/api/projects/%d/script-analysis/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", nullValue()));
@@ -253,7 +253,7 @@ class ScriptWorkflowControllerTest {
             """, taskId, stage1Id, "{\"logline\":\"主角回家\"}", "{\"logline\":\"主角回家\"}");
 
         mockMvc.perform(post("/api/projects/%d/script-analysis/current/retry/EPISODE_SPLITTING".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("PENDING")))
@@ -294,7 +294,7 @@ class ScriptWorkflowControllerTest {
         );
 
         mockMvc.perform(put("/api/projects/%d/script-elements/CHARACTER/%d/confirm".formatted(projectId, characterId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.characters[0].name", is("林晚")))
@@ -319,10 +319,10 @@ class ScriptWorkflowControllerTest {
         Long otherTenantId = createTenant(otherToken, "租户B");
 
         mockMvc.perform(get("/api/projects/%d/script-analysis/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(otherToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))
                 .header("X-Tenant-Id", otherTenantId))
-            .andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.errorCode", is("PROJECT_NOT_FOUND")));
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.errorCode", is("PROJECT_ACCESS_DENIED")));
     }
 
     @Test
@@ -333,7 +333,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "元数据项目", "SCRIPT_ANALYSIS_METADATA");
 
         mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -382,7 +382,7 @@ class ScriptWorkflowControllerTest {
             """, taskId, stageId, "{\"logline\":\"主角回家\"}", "{\"logline\":\"主角回家\"}", "req-metadata", 9901L, 1234L);
 
         mockMvc.perform(get("/api/projects/%d/script-analysis/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.stages[0].providerRequestId", is("req-metadata")))
@@ -401,7 +401,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "豪门逆袭", "SCRIPT_WORKFLOW_GENERATE");
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -420,7 +420,7 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.versions", hasSize(1)));
 
         mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.script.title", is("归来千金")))
@@ -440,7 +440,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(projectToken, projectTenantId, ownerId, "跨团队剧本", "SCRIPT_GLOBAL_AI_CONFIG");
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(projectToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(projectToken))
                 .header("X-Tenant-Id", projectTenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -465,7 +465,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "积分剧本", "SCRIPT_POINTS_CONSUME");
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -501,7 +501,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "无积分剧本", "SCRIPT_POINTS_REQUIRED");
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -525,7 +525,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "豪门元素", "SCRIPT_WORKFLOW_EXTRACT");
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -538,7 +538,7 @@ class ScriptWorkflowControllerTest {
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -549,7 +549,7 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.characters[0].name", is("主角")));
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -570,7 +570,7 @@ class ScriptWorkflowControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "全链路短剧", "SCRIPT_WORKFLOW_FULL");
 
         MvcResult generateResult = mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -582,7 +582,7 @@ class ScriptWorkflowControllerTest {
         Long versionId = readLong(generateResult, "$.data.versions[0].id");
 
         mockMvc.perform(post("/api/projects/%d/scripts/ai-rewrite".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -593,7 +593,7 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.versions[0].sourceType", is("AI_REWRITE")));
 
         mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -604,13 +604,13 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.script.status", is("CONFIRMED")));
 
         mockMvc.perform(put("/api/projects/%d/scripts/versions/%d/apply".formatted(projectId, versionId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.script.currentVersionId", is(versionId.intValue())));
 
         MvcResult extractResult = mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -624,7 +624,7 @@ class ScriptWorkflowControllerTest {
         Long characterId = readLong(extractResult, "$.data.characters[0].id");
 
         mockMvc.perform(put("/api/projects/%d/script-elements/CHARACTER/%d".formatted(projectId, characterId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -634,7 +634,7 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.characters[0].name", is("林晚")));
 
         mockMvc.perform(post("/api/projects/%d/storyboards/ai-breakdown".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -645,7 +645,7 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.storyboards[0].imagePrompt", Matchers.containsString("首帧")));
 
         MvcResult storyboardResult = mockMvc.perform(post("/api/projects/%d/storyboards".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -657,7 +657,7 @@ class ScriptWorkflowControllerTest {
         Long storyboardId = readLong(storyboardResult, "$.data.storyboards[3].id");
 
         mockMvc.perform(put("/api/projects/%d/storyboards/%d".formatted(projectId, storyboardId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -667,7 +667,7 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.storyboards[3].shotNo", is(10)));
 
         mockMvc.perform(post("/api/projects/%d/prompts/ai-generate".formatted(projectId))
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -693,12 +693,12 @@ class ScriptWorkflowControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
     private Long createTenant(String token, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"%s","type":"STUDIO","description":"剧本工作流测试"}
@@ -729,7 +729,7 @@ class ScriptWorkflowControllerTest {
             body.put("initialScriptContent", initialScriptContent);
         }
         MvcResult result = mockMvc.perform(post("/api/projects")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(body)))

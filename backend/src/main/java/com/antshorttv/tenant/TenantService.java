@@ -8,8 +8,7 @@ import com.antshorttv.member.TenantMemberEntity;
 import com.antshorttv.member.TenantMemberMapper;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.security.CurrentTenantStore;
-import com.antshorttv.security.CurrentUserHolder;
+import com.antshorttv.security.CurrentPrincipal;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,26 +28,26 @@ public class TenantService {
     private final TenantMapper tenantMapper;
     private final TenantMemberMapper tenantMemberMapper;
     private final TenantContextResolver tenantContextResolver;
-    private final CurrentTenantStore currentTenantStore;
+    private final CurrentPrincipal currentPrincipal;
     private final OperationLogService operationLogService;
 
     public TenantService(
         TenantMapper tenantMapper,
         TenantMemberMapper tenantMemberMapper,
         TenantContextResolver tenantContextResolver,
-        CurrentTenantStore currentTenantStore,
+        CurrentPrincipal currentPrincipal,
         OperationLogService operationLogService
     ) {
         this.tenantMapper = tenantMapper;
         this.tenantMemberMapper = tenantMemberMapper;
         this.tenantContextResolver = tenantContextResolver;
-        this.currentTenantStore = currentTenantStore;
+        this.currentPrincipal = currentPrincipal;
         this.operationLogService = operationLogService;
     }
 
     @Transactional
     public TenantSummaryResponse create(CreateTenantRequest request, HttpServletRequest servletRequest) {
-        Long userId = CurrentUserHolder.require().userId();
+        Long userId = currentPrincipal.require().userId();
         LocalDateTime now = LocalDateTime.now();
 
         TenantEntity tenant = new TenantEntity();
@@ -80,7 +79,7 @@ public class TenantService {
     }
 
     public List<TenantSummaryResponse> myTenants() {
-        Long userId = CurrentUserHolder.require().userId();
+        Long userId = currentPrincipal.require().userId();
         List<TenantSummaryResponse> responses = new ArrayList<>();
         for (TenantMemberEntity member : tenantMemberMapper.selectActiveByUserId(userId)) {
             TenantEntity tenant = tenantMapper.selectById(member.getTenantId());
@@ -121,35 +120,6 @@ public class TenantService {
         tenantMapper.updateById(tenant);
         operationLogService.record(context.userId(), tenantId, "UPDATE_TENANT_STATUS", tenantId, OperationResult.SUCCESS, servletRequest);
         return TenantSummaryResponse.from(tenant, context.memberType(), context.memberId());
-    }
-
-    public CurrentTenantResponse switchCurrent(SwitchTenantRequest request, HttpServletRequest servletRequest) {
-        TenantContext context = tenantContextResolver.requireActiveMember(request.tenantId());
-        currentTenantStore.put(context);
-        operationLogService.record(context.userId(), context.tenantId(), "SWITCH_TENANT", context.tenantId(), OperationResult.SUCCESS, servletRequest);
-        return new CurrentTenantResponse(context.userId(), context.tenantId(), context.memberId(), context.memberType());
-    }
-
-    public CurrentTenantResponse current(HttpServletRequest servletRequest) {
-        String tenantIdHeader = servletRequest.getHeader("X-Tenant-Id");
-        if (tenantIdHeader != null && !tenantIdHeader.isBlank()) {
-            TenantContext context = tenantContextResolver.requireActiveMember(parseTenantId(tenantIdHeader));
-            currentTenantStore.put(context);
-            return new CurrentTenantResponse(context.userId(), context.tenantId(), context.memberId(), context.memberType());
-        }
-
-        Long userId = CurrentUserHolder.require().userId();
-        TenantContext context = currentTenantStore.get(userId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "尚未选择当前创作团队。"));
-        return new CurrentTenantResponse(context.userId(), context.tenantId(), context.memberId(), context.memberType());
-    }
-
-    private Long parseTenantId(String tenantIdHeader) {
-        try {
-            return Long.valueOf(tenantIdHeader);
-        } catch (NumberFormatException exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前创作团队标识不正确。");
-        }
     }
 
     private String validateTenantName(String rawName) {

@@ -12,7 +12,6 @@ public class ProjectMemberEntity {
     public Long tenantId;
     public Long projectId;
     public Long userId;
-    public Long organizationId;
     public Long roleId;
     public LocalDateTime joinedAt;
     public String status;

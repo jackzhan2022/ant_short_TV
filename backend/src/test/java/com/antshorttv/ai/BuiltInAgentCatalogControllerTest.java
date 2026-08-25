@@ -7,12 +7,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -27,26 +25,22 @@ class BuiltInAgentCatalogControllerTest {
     @Test
     void catalogRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/platform/ai/agents"))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.errorCode", is("UNAUTHORIZED")));
     }
 
     @Test
     void listsBuiltInAgentsAndPreviewsWithoutProviderCall() throws Exception {
-        String token = registerUser("13800016001", "Agent Owner");
-        Long tenantId = createTenant(token, "Agent团队");
-        String auth = bearer(token);
+        String token = registerUser("13800000999", "Platform Admin");
 
         mockMvc.perform(get("/api/platform/ai/agents")
-                .header(HttpHeaders.AUTHORIZATION, auth)
-                .header("X-Tenant-Id", tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[*].code", hasItem("script-character-extract")))
             .andExpect(jsonPath("$.data[?(@.code == 'script-character-extract')].modelRouting", hasItem("PLATFORM_DEFAULT")));
 
         mockMvc.perform(post("/api/platform/ai/agents/script-character-extract/preview")
-                .header(HttpHeaders.AUTHORIZATION, auth)
-                .header("X-Tenant-Id", tenantId)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"variables":{"scriptTitle":"真假千金","scriptContent":"林晚回到老宅。"}}
@@ -65,23 +59,7 @@ class BuiltInAgentCatalogControllerTest {
                     """.formatted(mobile, nickname)))
             .andExpect(status().isOk())
             .andReturn();
-        return JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+        return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
     }
 
-    private Long createTenant(String token, String name) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/tenants")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"name":"%s","type":"STUDIO","description":"Agent测试"}
-                    """.formatted(name)))
-            .andExpect(status().isOk())
-            .andReturn();
-        Number value = JsonPath.read(result.getResponse().getContentAsString(), "$.data.id");
-        return value.longValue();
-    }
-
-    private String bearer(String token) {
-        return "Bearer " + token;
-    }
 }

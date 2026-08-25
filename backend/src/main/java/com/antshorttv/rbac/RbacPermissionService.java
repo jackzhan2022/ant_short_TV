@@ -7,6 +7,9 @@ import com.antshorttv.project.ProjectMemberEntity;
 import com.antshorttv.project.ProjectMemberMapper;
 import com.antshorttv.project.ProjectRolePermissionEntity;
 import com.antshorttv.project.ProjectRolePermissionMapper;
+import com.antshorttv.project.ProjectRoleEntity;
+import com.antshorttv.project.ProjectRoleMapper;
+import com.antshorttv.project.ProjectRoleStatus;
 import com.antshorttv.security.TenantContext;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,6 +29,7 @@ public class RbacPermissionService {
     private final ProjectMapper projectMapper;
     private final ProjectMemberMapper projectMemberMapper;
     private final ProjectRolePermissionMapper projectRolePermissionMapper;
+    private final ProjectRoleMapper projectRoleMapper;
 
     public RbacPermissionService(
         RoleMapper roleMapper,
@@ -34,7 +38,8 @@ public class RbacPermissionService {
         MemberRoleMapper memberRoleMapper,
         ProjectMapper projectMapper,
         ProjectMemberMapper projectMemberMapper,
-        ProjectRolePermissionMapper projectRolePermissionMapper
+        ProjectRolePermissionMapper projectRolePermissionMapper,
+        ProjectRoleMapper projectRoleMapper
     ) {
         this.roleMapper = roleMapper;
         this.permissionMapper = permissionMapper;
@@ -43,6 +48,7 @@ public class RbacPermissionService {
         this.projectMapper = projectMapper;
         this.projectMemberMapper = projectMemberMapper;
         this.projectRolePermissionMapper = projectRolePermissionMapper;
+        this.projectRoleMapper = projectRoleMapper;
     }
 
     public boolean hasPermission(TenantContext context, String permissionCode) {
@@ -53,15 +59,20 @@ public class RbacPermissionService {
         if (hasPermission(context, permissionCode)) {
             return true;
         }
-        if (projectId == null) {
-            return false;
+        return hasProjectPermission(context, projectId, permissionCode);
+    }
+
+    public boolean hasProjectPermission(TenantContext context, Long projectId, String permissionCode) {
+        return projectPermissionCodes(context, projectId).contains(permissionCode);
+    }
+
+    public Set<String> projectPermissionCodes(TenantContext context, Long projectId) {
+        if (context == null || projectId == null) {
+            return Set.of();
         }
         ProjectEntity project = projectMapper.selectByTenantIdAndId(context.tenantId(), projectId);
         if (project == null) {
-            return true;
-        }
-        if ("PROJECT:VIEW".equals(permissionCode)) {
-            return true;
+            return Set.of();
         }
         ProjectMemberEntity member = projectMemberMapper.selectActiveByProjectIdAndUserId(
             context.tenantId(),
@@ -69,7 +80,15 @@ public class RbacPermissionService {
             context.userId()
         );
         if (member == null || member.roleId == null) {
-            return false;
+            return Set.of();
+        }
+        ProjectRoleEntity role = projectRoleMapper.selectByTenantProjectAndId(
+            context.tenantId(),
+            projectId,
+            member.roleId
+        );
+        if (role == null || !ProjectRoleStatus.ACTIVE.name().equals(role.status)) {
+            return Set.of();
         }
         List<ProjectRolePermissionEntity> rolePermissions = projectRolePermissionMapper.selectByRoleIds(
             context.tenantId(),
@@ -81,11 +100,12 @@ public class RbacPermissionService {
             .distinct()
             .toList();
         if (permissionIds.isEmpty()) {
-            return false;
+            return Set.of();
         }
         return permissionMapper.selectBatchIds(permissionIds)
             .stream()
-            .anyMatch(permission -> permissionCode.equals(permission.getCode()));
+            .map(PermissionEntity::getCode)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public Set<String> permissionCodes(TenantContext context) {
@@ -124,6 +144,18 @@ public class RbacPermissionService {
         return permissionMapper.selectBatchIds(permissionIds)
             .stream()
             .map(PermissionEntity::getCode)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    public Set<String> roleCodes(TenantContext context) {
+        return memberRoleMapper.selectByMemberId(context.memberId()).stream()
+            .map(MemberRoleEntity::getRoleId)
+            .map(roleMapper::selectById)
+            .filter(role -> role != null
+                && context.tenantId().equals(role.getTenantId())
+                && role.getDeletedAt() == null
+                && RoleStatus.ACTIVE.name().equals(role.getStatus()))
+            .map(RoleEntity::getCode)
             .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }

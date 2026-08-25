@@ -4,8 +4,10 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.security.AccessTokenService;
-import com.antshorttv.security.CurrentUserHolder;
+import com.antshorttv.platform.PlatformAdminBootstrap;
+import com.antshorttv.authsession.AuthSessionService;
+import com.antshorttv.authsession.IssuedSession;
+import com.antshorttv.security.CurrentPrincipal;
 import com.antshorttv.member.TenantMemberEntity;
 import com.antshorttv.member.TenantMemberMapper;
 import com.antshorttv.tenant.TenantEntity;
@@ -30,8 +32,10 @@ public class AuthService {
     private final TenantMemberMapper tenantMemberMapper;
     private final PasswordEncoder passwordEncoder;
     private final VerificationCodeService verificationCodeService;
-    private final AccessTokenService accessTokenService;
+    private final AuthSessionService authSessionService;
+    private final CurrentPrincipal currentPrincipal;
     private final OperationLogService operationLogService;
+    private final PlatformAdminBootstrap platformAdminBootstrap;
 
     public AuthService(
         UserMapper userMapper,
@@ -39,20 +43,24 @@ public class AuthService {
         TenantMemberMapper tenantMemberMapper,
         PasswordEncoder passwordEncoder,
         VerificationCodeService verificationCodeService,
-        AccessTokenService accessTokenService,
-        OperationLogService operationLogService
+        AuthSessionService authSessionService,
+        CurrentPrincipal currentPrincipal,
+        OperationLogService operationLogService,
+        PlatformAdminBootstrap platformAdminBootstrap
     ) {
         this.userMapper = userMapper;
         this.tenantMapper = tenantMapper;
         this.tenantMemberMapper = tenantMemberMapper;
         this.passwordEncoder = passwordEncoder;
         this.verificationCodeService = verificationCodeService;
-        this.accessTokenService = accessTokenService;
+        this.authSessionService = authSessionService;
+        this.currentPrincipal = currentPrincipal;
         this.operationLogService = operationLogService;
+        this.platformAdminBootstrap = platformAdminBootstrap;
     }
 
     @Transactional
-    public AuthSessionResponse register(RegisterRequest request, HttpServletRequest servletRequest) {
+    public AuthResult register(RegisterRequest request, HttpServletRequest servletRequest) {
         verificationCodeService.verify(request.mobile(), request.verificationCode());
         if (userMapper.selectByMobile(request.mobile()) != null) {
             throw new BusinessException(ErrorCode.DUPLICATE_MOBILE, "该手机号已注册。");
@@ -67,13 +75,14 @@ public class AuthService {
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
         userMapper.insert(user);
+        platformAdminBootstrap.assignIfConfigured(user);
 
         operationLogService.record(user.getId(), null, "REGISTER", user.getId(), OperationResult.SUCCESS, servletRequest);
-        return sessionFor(user, "CREATE_OR_JOIN_TEAM");
+        return sessionFor(user, "CREATE_OR_JOIN_TEAM", servletRequest);
     }
 
     @Transactional
-    public AuthSessionResponse login(LoginByMobileRequest request, HttpServletRequest servletRequest) {
+    public AuthResult login(LoginByMobileRequest request, HttpServletRequest servletRequest) {
         UserEntity user = userMapper.selectByMobile(request.mobile());
         if (user == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS, "手机号或密码错误。");
@@ -85,35 +94,34 @@ public class AuthService {
         user.setLastLoginAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);
+        platformAdminBootstrap.assignIfConfigured(user);
         operationLogService.record(user.getId(), null, "LOGIN", user.getId(), OperationResult.SUCCESS, servletRequest);
-        return sessionFor(user, "CREATE_OR_JOIN_TEAM");
-    }
-
-    public UserProfileResponse currentUser() {
-        Long userId = CurrentUserHolder.require().userId();
-        UserEntity user = userMapper.selectById(userId);
-        if (user == null || user.getDeletedAt() != null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "请先登录。");
-        }
-        return UserProfileResponse.from(user);
+        return sessionFor(user, "CREATE_OR_JOIN_TEAM", servletRequest);
     }
 
     public void logout(HttpServletRequest servletRequest) {
-        CurrentUserHolder.get().ifPresent(user ->
-            operationLogService.record(user.userId(), null, "LOGOUT", user.userId(), OperationResult.SUCCESS, servletRequest));
+        currentPrincipal.get().ifPresent(user -> {
+            authSessionService.revokeCurrent(user.sessionId(), "LOGOUT");
+            operationLogService.record(user.userId(), null, "LOGOUT", user.userId(), OperationResult.SUCCESS, servletRequest);
+        });
     }
 
-    private AuthSessionResponse sessionFor(UserEntity user, String nextAction) {
+    private AuthResult sessionFor(UserEntity user, String nextAction, HttpServletRequest servletRequest) {
         List<TenantSummaryResponse> tenants = tenantMemberMapper.selectActiveByUserId(user.getId())
             .stream()
             .map(this::tenantSummary)
             .toList();
-        return new AuthSessionResponse(
-            accessTokenService.issue(user),
+        IssuedSession issuedSession = authSessionService.issue(
+            user,
+            servletRequest == null ? null : servletRequest.getRemoteAddr(),
+            servletRequest == null ? null : servletRequest.getHeader("User-Agent"));
+        AuthSessionResponse response = new AuthSessionResponse(
             UserProfileResponse.from(user),
             tenants,
-            nextActionFor(tenants, nextAction)
+            nextActionFor(tenants, nextAction),
+            issuedSession.expiresAt()
         );
+        return new AuthResult(response, issuedSession);
     }
 
     private TenantSummaryResponse tenantSummary(TenantMemberEntity member) {
