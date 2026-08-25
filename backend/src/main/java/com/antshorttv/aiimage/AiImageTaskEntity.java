@@ -27,6 +27,8 @@ public class AiImageTaskEntity {
     private String quality;
     private String seed;
     private Long aiCallLogId;
+    private Long executionId;
+    private String clientIdempotencyKey;
     private String status;
     private String errorMessage;
     private LocalDateTime startedAt;
@@ -74,6 +76,10 @@ public class AiImageTaskEntity {
     public void setSeed(String seed) { this.seed = seed; }
     public Long getAiCallLogId() { return aiCallLogId; }
     public void setAiCallLogId(Long aiCallLogId) { this.aiCallLogId = aiCallLogId; }
+    public Long getExecutionId() { return executionId; }
+    public void setExecutionId(Long executionId) { this.executionId = executionId; }
+    public String getClientIdempotencyKey() { return clientIdempotencyKey; }
+    public void setClientIdempotencyKey(String clientIdempotencyKey) { this.clientIdempotencyKey = clientIdempotencyKey; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public String getErrorMessage() { return errorMessage; }

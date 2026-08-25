@@ -18,6 +18,7 @@ public class ScriptAnalysisResultEntity {
     private String normalizedJson;
     private String providerRequestId;
     private Long aiCallLogId;
+    private Long executionId;
     private Long durationMs;
     private String errorCode;
     private String errorMessage;
@@ -45,6 +46,8 @@ public class ScriptAnalysisResultEntity {
     public void setProviderRequestId(String providerRequestId) { this.providerRequestId = providerRequestId; }
     public Long getAiCallLogId() { return aiCallLogId; }
     public void setAiCallLogId(Long aiCallLogId) { this.aiCallLogId = aiCallLogId; }
+    public Long getExecutionId() { return executionId; }
+    public void setExecutionId(Long executionId) { this.executionId = executionId; }
     public Long getDurationMs() { return durationMs; }
     public void setDurationMs(Long durationMs) { this.durationMs = durationMs; }
     public String getErrorCode() { return errorCode; }

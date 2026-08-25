@@ -6,11 +6,20 @@ const mocks = vi.hoisted(() => ({
   queryProject: vi.fn(),
   queryScriptWorkspace: vi.fn(),
   queryAiImageTasks: vi.fn(),
+  queryAiImageTask: vi.fn(),
+  createAiImageTask: vi.fn(),
+  regenerateAiImageTask: vi.fn(),
+  cancelAiImageTask: vi.fn(),
   queryAiVideoTasks: vi.fn(),
   createAiVideoTask: vi.fn(),
+  cancelAiVideoTask: vi.fn(),
+  regenerateAiVideoTask: vi.fn(),
   createStoryboard: vi.fn(),
   updateStoryboard: vi.fn(),
   deleteStoryboard: vi.fn(),
+  pollExecution: vi.fn(),
+  cancelExecution: vi.fn(),
+  retryExecution: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -24,11 +33,47 @@ vi.mock('@/services/account-team/project', () => ({
   queryProject: mocks.queryProject,
 }));
 
+vi.mock('@/services/ai-execution/task', () => ({
+  aiExecutionTaskService: {
+    poll: mocks.pollExecution,
+    cancel: mocks.cancelExecution,
+    retry: mocks.retryExecution,
+  },
+}));
+
+vi.mock('@/components/AiExecutionStatus', () => ({
+  default: ({ task, onCancel, onRetry }: any) => (
+    <span>
+      execution:{task.status}
+      {onCancel ? (
+        <button
+          type="button"
+          aria-label={`execution-cancel-${task.id}`}
+          onClick={onCancel}
+        />
+      ) : null}
+      {onRetry ? (
+        <button
+          type="button"
+          aria-label={`execution-retry-${task.id}`}
+          onClick={onRetry}
+        />
+      ) : null}
+    </span>
+  ),
+}));
+
 vi.mock('./service', () => ({
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   queryAiImageTasks: mocks.queryAiImageTasks,
+  queryAiImageTask: mocks.queryAiImageTask,
+  createAiImageTask: mocks.createAiImageTask,
+  regenerateAiImageTask: mocks.regenerateAiImageTask,
+  cancelAiImageTask: mocks.cancelAiImageTask,
   queryAiVideoTasks: mocks.queryAiVideoTasks,
   createAiVideoTask: mocks.createAiVideoTask,
+  cancelAiVideoTask: mocks.cancelAiVideoTask,
+  regenerateAiVideoTask: mocks.regenerateAiVideoTask,
   createStoryboard: mocks.createStoryboard,
   updateStoryboard: mocks.updateStoryboard,
   deleteStoryboard: mocks.deleteStoryboard,
@@ -345,7 +390,23 @@ const setupWorkspaceResponse = (
       },
     ],
   });
-  mocks.createAiVideoTask.mockResolvedValue({ data: { id: 9002 } });
+  mocks.createAiVideoTask.mockResolvedValue({
+    data: { id: 9002, storyboardId: 101, executionId: 7002, results: [] },
+  });
+  mocks.createAiImageTask.mockResolvedValue({
+    data: {
+      id: 1200,
+      projectId: 1,
+      taskType: 'STORYBOARD_FIRST_FRAME',
+      targetType: 'STORYBOARD',
+      targetId: 101,
+      prompt: '首帧提示词',
+      aspectRatio: '9:16',
+      imageCount: 1,
+      status: 'PENDING',
+      results: [],
+    },
+  });
   mocks.createStoryboard.mockImplementation((_projectId, values) =>
     Promise.resolve({
       data: {
@@ -398,6 +459,24 @@ const setupWorkspaceResponse = (
 describe('ProductionWorkbench script page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('currentTenantId', '1');
+    mocks.pollExecution.mockImplementation(
+      async (
+        _tenantId: number,
+        executionId: number,
+        onUpdate?: (task: any) => void,
+      ) => {
+        const task = { id: executionId, status: 'SUCCEEDED', progress: 100 };
+        onUpdate?.(task);
+        return task;
+      },
+    );
+    mocks.cancelAiVideoTask.mockResolvedValue({
+      data: { id: 9003, status: 'CANCELED' },
+    });
+    mocks.regenerateAiVideoTask.mockResolvedValue({
+      data: { id: 9004, executionId: 7004 },
+    });
     setupWorkspaceResponse();
   });
 
@@ -459,6 +538,96 @@ describe('ProductionWorkbench script page', () => {
         aspectRatio: '9:16',
         resolution: '720p',
       });
+      expect(mocks.pollExecution).toHaveBeenCalledWith(
+        1,
+        7002,
+        expect.any(Function),
+      );
+    });
+  });
+
+  it('recovers shared video execution polling after a page reload', async () => {
+    setupWorkspaceResponse({
+      videoTasks: [
+        {
+          id: 9003,
+          projectId: 1,
+          storyboardId: 101,
+          executionId: 7003,
+          status: 'GENERATING',
+          results: [],
+        },
+      ],
+    });
+
+    render(<ProductionWorkbench />);
+
+    await waitFor(() => {
+      expect(mocks.pollExecution).toHaveBeenCalledWith(
+        1,
+        7003,
+        expect.any(Function),
+      );
+    });
+  });
+
+  it('uses the video domain control to cancel a shared execution', async () => {
+    mocks.pollExecution.mockImplementation(
+      async (
+        _tenantId: number,
+        executionId: number,
+        onUpdate?: (task: any) => void,
+      ) => {
+        const task = { id: executionId, status: 'RUNNING', progress: 40 };
+        onUpdate?.(task);
+        return task;
+      },
+    );
+    setupWorkspaceResponse({
+      videoTasks: [
+        {
+          id: 9003,
+          projectId: 1,
+          storyboardId: 101,
+          executionId: 7003,
+          status: 'GENERATING',
+          results: [],
+        },
+      ],
+    });
+
+    render(<ProductionWorkbench />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'execution-cancel-7003' }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.cancelAiVideoTask).toHaveBeenCalledWith(1, 9003);
+    });
+  });
+
+  it('creates a durable storyboard image task from the first-frame action', async () => {
+    render(<ProductionWorkbench />);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole('button', { name: '生成首帧' }).length,
+      ).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: '生成首帧' })[0]);
+
+    await waitFor(() => {
+      expect(mocks.createAiImageTask).toHaveBeenCalledWith(1, {
+        taskType: 'STORYBOARD_FIRST_FRAME',
+        targetType: 'STORYBOARD',
+        targetId: 101,
+        prompt: expect.any(String),
+        aspectRatio: '9:16',
+        imageCount: 1,
+        quality: 'STANDARD',
+      });
+      expect(mocks.queryAiImageTasks).toHaveBeenCalledWith(1, undefined);
     });
   });
 

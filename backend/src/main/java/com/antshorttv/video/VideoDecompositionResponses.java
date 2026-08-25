@@ -41,6 +41,7 @@ record VideoDecompositionBatchResponse(
 
 record VideoDecompositionEpisodeResponse(
     Long id,
+    Long executionId,
     Long batchId,
     Long projectId,
     Integer episodeNo,
@@ -64,6 +65,7 @@ record VideoDecompositionEpisodeResponse(
     static VideoDecompositionEpisodeResponse from(VideoDecompositionEpisodeEntity entity) {
         return new VideoDecompositionEpisodeResponse(
             entity.getId(),
+            entity.getExecutionId(),
             entity.getBatchId(),
             entity.getProjectId(),
             entity.getEpisodeNo(),

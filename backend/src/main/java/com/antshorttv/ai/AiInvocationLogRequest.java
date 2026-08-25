@@ -12,8 +12,33 @@ public record AiInvocationLogRequest(
     String providerRequestId,
     Integer promptTokens,
     Integer completionTokens,
-    Integer totalTokens
+    Integer totalTokens,
+    String externalTaskId,
+    String transportOutcome,
+    String businessOutcome
 ) {
+    public AiInvocationLogRequest(
+        AiContext context,
+        AiModelRoute route,
+        AiCapability capability,
+        String requestSummary,
+        String responseSummary,
+        String status,
+        String errorMessage,
+        Long durationMs,
+        String providerRequestId,
+        Integer promptTokens,
+        Integer completionTokens,
+        Integer totalTokens
+    ) {
+        this(
+            context, route, capability, requestSummary, responseSummary, status, errorMessage,
+            durationMs, providerRequestId, promptTokens, completionTokens, totalTokens, null,
+            "FAILED".equals(status) ? "FAILED" : "SUCCEEDED",
+            "FAILED".equals(status) ? "NOT_REACHED" : "SUCCEEDED"
+        );
+    }
+
     public static AiInvocationLogRequest success(
         AiContext context,
         AiModelRoute route,
@@ -38,7 +63,25 @@ public record AiInvocationLogRequest(
             providerRequestId,
             promptTokens,
             completionTokens,
-            totalTokens
+            totalTokens,
+            null,
+            "SUCCEEDED",
+            "SUCCEEDED"
+        );
+    }
+
+    public static AiInvocationLogRequest accepted(
+        AiContext context,
+        AiModelRoute route,
+        AiCapability capability,
+        String requestSummary,
+        Long durationMs,
+        String providerRequestId,
+        String externalTaskId
+    ) {
+        return new AiInvocationLogRequest(
+            context, route, capability, requestSummary, null, "ACCEPTED", null, durationMs,
+            providerRequestId, null, null, null, externalTaskId, "SUCCEEDED", "PENDING"
         );
     }
 
@@ -62,7 +105,10 @@ public record AiInvocationLogRequest(
             null,
             null,
             null,
-            null
+            null,
+            null,
+            "FAILED",
+            "NOT_REACHED"
         );
     }
 }

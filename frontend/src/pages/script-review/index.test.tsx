@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   batchRepairReview: vi.fn(),
   rollbackReviewVersion: vi.fn(),
   exportReviewReport: vi.fn(),
+  pollExecution: vi.fn(),
 }));
 
 vi.mock('@ant-design/icons', () => ({
@@ -41,14 +42,18 @@ vi.mock('@umijs/max', () => ({
 
 vi.mock('antd', () => {
   const React = require('react');
-    const ListItem = Object.assign(
-      ({ children, actions = [], extra }: any) => (
+  const ListItem = Object.assign(
+    ({ children, actions = [], extra }: any) => (
+      <div>
+        <div>{children}</div>
         <div>
-          <div>{children}</div>
-          <div>{actions.map((action: any) => <span key={String(action)}>{action}</span>)}</div>
-          <div>{extra}</div>
+          {actions.map((action: any) => (
+            <span key={String(action)}>{action}</span>
+          ))}
         </div>
-      ),
+        <div>{extra}</div>
+      </div>
+    ),
     {
       Meta: ({ title, description }: any) => (
         <div>
@@ -60,7 +65,10 @@ vi.mock('antd', () => {
   );
   return {
     App: {
-      useApp: () => ({ message: mocks.message, modal: { confirm: mocks.confirm } }),
+      useApp: () => ({
+        message: mocks.message,
+        modal: { confirm: mocks.confirm },
+      }),
     },
     Button: ({ children, disabled, icon, loading, onClick, type }: any) => (
       <button disabled={disabled} onClick={onClick} type={type ?? 'button'}>
@@ -71,7 +79,10 @@ vi.mock('antd', () => {
     ),
     Card: ({ children, extra, title }: any) => (
       <section>
-        <header>{title}{extra}</header>
+        <header>
+          {title}
+          {extra}
+        </header>
         {children}
       </section>
     ),
@@ -103,13 +114,29 @@ vi.mock('antd', () => {
     Col: ({ children }: any) => <div>{children}</div>,
     Empty: ({ description }: any) => <div>{description}</div>,
     Input: Object.assign(
-      React.forwardRef(({ value, onChange, placeholder, disabled }: any, ref: any) => (
-        <input ref={ref} value={value} placeholder={placeholder} disabled={disabled} onChange={onChange} />
-      )),
+      React.forwardRef(
+        ({ value, onChange, placeholder, disabled }: any, ref: any) => (
+          <input
+            ref={ref}
+            value={value}
+            placeholder={placeholder}
+            disabled={disabled}
+            onChange={onChange}
+          />
+        ),
+      ),
       {
-        TextArea: React.forwardRef(({ value, onChange, placeholder, disabled }: any, ref: any) => (
-          <textarea ref={ref} value={value} placeholder={placeholder} disabled={disabled} onChange={onChange} />
-        )),
+        TextArea: React.forwardRef(
+          ({ value, onChange, placeholder, disabled }: any, ref: any) => (
+            <textarea
+              ref={ref}
+              value={value}
+              placeholder={placeholder}
+              disabled={disabled}
+              onChange={onChange}
+            />
+          ),
+        ),
       },
     ),
     List: Object.assign(
@@ -137,7 +164,8 @@ vi.mock('antd', () => {
               type="button"
               onClick={() => onChange?.({ target: { value: option.value } })}
             >
-              {option.label}{value === option.value ? '*' : ''}
+              {option.label}
+              {value === option.value ? '*' : ''}
             </button>
           ))}
         </div>
@@ -195,6 +223,18 @@ vi.mock('./service', () => ({
   saveReviewVersion: mocks.saveReviewVersion,
 }));
 
+vi.mock('@/services/ai-execution/task', () => ({
+  aiExecutionTaskService: { poll: mocks.pollExecution },
+}));
+
+vi.mock('@/components/AiExecutionStatus', () => ({
+  default: ({ task }: any) => (
+    <div>
+      execution-{task.id}-{task.status}
+    </div>
+  ),
+}));
+
 describe('ScriptReviewPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -223,8 +263,21 @@ describe('ScriptReviewPage', () => {
           latestRoundNo: 1,
         },
         versions: [
-          { id: 1, projectId: 1, versionNo: 1, sourceType: 'IMPORT', content: '第1集\n林晚说：别走。' },
-          { id: 2, projectId: 1, versionNo: 2, sourceType: 'MANUAL_EDIT', fileName: 'v2.md', content: '第1集\n林晚说：别走。\n周野说：我会回来。' },
+          {
+            id: 1,
+            projectId: 1,
+            versionNo: 1,
+            sourceType: 'IMPORT',
+            content: '第1集\n林晚说：别走。',
+          },
+          {
+            id: 2,
+            projectId: 1,
+            versionNo: 2,
+            sourceType: 'MANUAL_EDIT',
+            fileName: 'v2.md',
+            content: '第1集\n林晚说：别走。\n周野说：我会回来。',
+          },
         ],
         tasks: [
           {
@@ -263,8 +316,22 @@ describe('ScriptReviewPage', () => {
                 status: 'persists',
                 manuallyResolved: false,
                 hits: [
-                  { id: 101, hitNo: 1, anchorLabel: '台词', excerpt: '林晚说：别走。', selected: true, replacementText: '林晚说：别走。' },
-                  { id: 102, hitNo: 2, anchorLabel: '台词', excerpt: '周野说：我会回来。', selected: true, replacementText: '周野说：我会回来。' },
+                  {
+                    id: 101,
+                    hitNo: 1,
+                    anchorLabel: '台词',
+                    excerpt: '林晚说：别走。',
+                    selected: true,
+                    replacementText: '林晚说：别走。',
+                  },
+                  {
+                    id: 102,
+                    hitNo: 2,
+                    anchorLabel: '台词',
+                    excerpt: '周野说：我会回来。',
+                    selected: true,
+                    replacementText: '周野说：我会回来。',
+                  },
                 ],
               },
               {
@@ -303,10 +370,30 @@ describe('ScriptReviewPage', () => {
           versionCount: 2,
           latestRoundNo: 1,
         },
-        selectedVersion: { id: 2, projectId: 1, versionNo: 2, sourceType: 'MANUAL_EDIT', fileName: 'v2.md', content: '第1集\n林晚说：别走。\n周野说：我会回来。' },
+        selectedVersion: {
+          id: 2,
+          projectId: 1,
+          versionNo: 2,
+          sourceType: 'MANUAL_EDIT',
+          fileName: 'v2.md',
+          content: '第1集\n林晚说：别走。\n周野说：我会回来。',
+        },
         versions: [
-          { id: 1, projectId: 1, versionNo: 1, sourceType: 'IMPORT', content: '第1集\n林晚说：别走。' },
-          { id: 2, projectId: 1, versionNo: 2, sourceType: 'MANUAL_EDIT', fileName: 'v2.md', content: '第1集\n林晚说：别走。\n周野说：我会回来。' },
+          {
+            id: 1,
+            projectId: 1,
+            versionNo: 1,
+            sourceType: 'IMPORT',
+            content: '第1集\n林晚说：别走。',
+          },
+          {
+            id: 2,
+            projectId: 1,
+            versionNo: 2,
+            sourceType: 'MANUAL_EDIT',
+            fileName: 'v2.md',
+            content: '第1集\n林晚说：别走。\n周野说：我会回来。',
+          },
         ],
         diffLines: [
           {
@@ -315,9 +402,24 @@ describe('ScriptReviewPage', () => {
             addedLines: 1,
             removedLines: 0,
             lines: [
-              { type: 'UNCHANGED', lineNo: 1, beforeText: '第1集', afterText: '第1集' },
-              { type: 'UNCHANGED', lineNo: 2, beforeText: '林晚说：别走。', afterText: '林晚说：别走。' },
-              { type: 'ADDED', lineNo: 3, beforeText: null, afterText: '周野说：我会回来。' },
+              {
+                type: 'UNCHANGED',
+                lineNo: 1,
+                beforeText: '第1集',
+                afterText: '第1集',
+              },
+              {
+                type: 'UNCHANGED',
+                lineNo: 2,
+                beforeText: '林晚说：别走。',
+                afterText: '林晚说：别走。',
+              },
+              {
+                type: 'ADDED',
+                lineNo: 3,
+                beforeText: null,
+                afterText: '周野说：我会回来。',
+              },
             ],
           },
         ],
@@ -354,6 +456,16 @@ describe('ScriptReviewPage', () => {
     });
     mocks.batchRepairReview.mockResolvedValue({ data: {} });
     mocks.resolveReviewIssue.mockResolvedValue({ data: {} });
+    localStorage.setItem('currentTenantId', '10');
+    mocks.createReviewTask.mockResolvedValue({
+      data: { id: 701, businessId: 8, status: 'PENDING', progress: 0 },
+    });
+    mocks.pollExecution.mockResolvedValue({
+      id: 701,
+      businessId: 8,
+      status: 'SUCCEEDED',
+      progress: 100,
+    });
   });
 
   it('highlights issue hits in the editor and shows version history', async () => {
@@ -394,5 +506,25 @@ describe('ScriptReviewPage', () => {
     });
     expect(screen.getByText('已处理 (1)')).toBeInTheDocument();
     expect(screen.getByText('R1-02')).toBeInTheDocument();
+  });
+
+  it('follows the shared review execution and selects its domain task', async () => {
+    render(<ScriptReviewPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: '创建审核任务' }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.pollExecution).toHaveBeenCalledWith(
+        10,
+        701,
+        expect.any(Function),
+      );
+      expect(mocks.queryReviewProject.mock.calls.length).toBeGreaterThanOrEqual(
+        2,
+      );
+    });
+    expect(screen.getByText('execution-701-SUCCEEDED')).toBeInTheDocument();
   });
 });

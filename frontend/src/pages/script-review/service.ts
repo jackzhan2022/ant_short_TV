@@ -160,10 +160,13 @@ export const importReviewProject = async (
   if (name.trim()) data.append('name', name.trim());
   if (content.trim()) data.append('content', content);
   if (file) data.append('file', file);
-  return request<ApiResponse<ReviewProjectDetail>>('/api/script-review/projects', {
-    method: 'POST',
-    data,
-  });
+  return request<ApiResponse<ReviewProjectDetail>>(
+    '/api/script-review/projects',
+    {
+      method: 'POST',
+      data,
+    },
+  );
 };
 
 export const queryReviewProject = (projectId: number) =>
@@ -195,7 +198,7 @@ export const createReviewTask = (
     reviewScope?: Record<string, unknown>;
   },
 ) =>
-  request<ApiResponse<ReviewTask>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/script-review/projects/${projectId}/tasks`,
     {
       method: 'POST',
@@ -205,14 +208,20 @@ export const createReviewTask = (
   );
 
 export const cancelReviewTask = (taskId: number) =>
-  request<ApiResponse<ReviewTask>>(`/api/script-review/tasks/${taskId}/cancel`, {
-    method: 'POST',
-  });
+  request<ApiResponse<API.AiExecutionResponse>>(
+    `/api/script-review/tasks/${taskId}/cancel`,
+    {
+      method: 'POST',
+    },
+  );
 
 export const retryReviewTask = (taskId: number) =>
-  request<ApiResponse<ReviewTask>>(`/api/script-review/tasks/${taskId}/retry`, {
-    method: 'POST',
-  });
+  request<ApiResponse<API.AiExecutionResponse>>(
+    `/api/script-review/tasks/${taskId}/retry`,
+    {
+      method: 'POST',
+    },
+  );
 
 export const resolveReviewIssue = (issueId: number, note?: string) =>
   request<ApiResponse<ReviewIssue>>(
@@ -254,7 +263,10 @@ export const rollbackReviewVersion = (projectId: number, versionId: number) =>
     },
   );
 
-export const queryReviewVersionHistory = (projectId: number, versionId: number) =>
+export const queryReviewVersionHistory = (
+  projectId: number,
+  versionId: number,
+) =>
   request<ApiResponse<ReviewVersionHistory>>(
     `/api/script-review/projects/${projectId}/versions/${versionId}/history`,
   );
@@ -268,11 +280,14 @@ export const updateReviewTaskConfig = (
     reviewScope?: Record<string, unknown>;
   },
 ) =>
-  request<ApiResponse<ReviewTask>>(`/api/script-review/tasks/${taskId}/config`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    data: values,
-  });
+  request<ApiResponse<ReviewTask>>(
+    `/api/script-review/tasks/${taskId}/config`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
 
 export const exportReviewReport = (
   projectId: number,

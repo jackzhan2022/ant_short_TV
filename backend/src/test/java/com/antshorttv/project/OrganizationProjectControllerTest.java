@@ -104,8 +104,8 @@ class ProjectControllerTest {
                 .content("""
                     {"storyIdea":"落魄千金雨夜回归豪门","genre":"逆袭","episodeCount":3,"duration":60}
                     """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.script.content", containsString("落魄千金雨夜回归豪门")));
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.status", is("PENDING")));
 
         mockMvc.perform(delete("/api/projects/%d/members/%d".formatted(projectId, memberUserId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
@@ -395,6 +395,15 @@ class ProjectControllerTest {
               (tenant_id, provider, service_type, name, base_url, api_key_cipher, model, endpoint, priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
             values (?, 'OpenAI', 'TEXT', '默认文本服务', 'https://example.com/v1', 'cipher', 'gpt-4.1-mini', '/chat/completions', 100, true, true, 'SUCCESS', ?, now(), now())
             """, tenantId, userId);
+        Long configId = jdbcTemplate.queryForObject("select id from ai_service_config where tenant_id = ? and service_type = 'TEXT' and deleted_at is null order by id desc limit 1", Long.class, tenantId);
+        Long providerId = jdbcTemplate.queryForObject("select id from ai_provider where code = 'OpenAI' limit 1", Long.class);
+        String modelCode = "test-project-text-" + tenantId;
+        jdbcTemplate.update("update ai_model set is_default = false where service_type = 'TEXT'");
+        jdbcTemplate.update("delete from ai_model_capability where model_id in (select id from ai_model where code = ?)", modelCode);
+        jdbcTemplate.update("delete from ai_model where code = ?", modelCode);
+        jdbcTemplate.update("insert into ai_model (provider_id, code, name, model_code, service_type, status, is_default, sort, legacy_service_config_id, created_at, updated_at) values (?, ?, 'Test Project Text', 'gpt-4.1-mini', 'TEXT', 'ENABLED', true, 100, ?, now(), now())", providerId, modelCode, configId);
+        Long modelId = jdbcTemplate.queryForObject("select id from ai_model where code = ?", Long.class, modelCode);
+        jdbcTemplate.update("insert into ai_model_capability (model_id, capability, status, created_at, updated_at) values (?, 'TEXT_GENERATION', 'ENABLED', now(), now())", modelId);
     }
 
     private void grantTeamPoints(Long tenantId, int amount) {

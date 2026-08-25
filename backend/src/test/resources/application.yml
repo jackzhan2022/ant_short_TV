@@ -24,6 +24,9 @@ object-storage:
 
 ai:
   secret-key: test-ai-secret-key
+  execution:
+    dispatcher:
+      enabled: false
 
 auth:
   session:

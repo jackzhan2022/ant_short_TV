@@ -27,6 +27,7 @@ public class VideoDecompositionEpisodeEntity {
     private Long confirmedScriptVersionId;
     private String errorCode;
     private String errorMessage;
+    private Long executionId;
     private String executionToken;
     private String executionPhase;
     private Integer executionVersion;
@@ -74,6 +75,8 @@ public class VideoDecompositionEpisodeEntity {
     public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+    public Long getExecutionId() { return executionId; }
+    public void setExecutionId(Long executionId) { this.executionId = executionId; }
     public String getExecutionToken() { return executionToken; }
     public void setExecutionToken(String executionToken) { this.executionToken = executionToken; }
     public String getExecutionPhase() { return executionPhase; }

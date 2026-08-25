@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,6 +13,7 @@ import com.antshorttv.video.QwenVideoUnderstandingAdapter;
 import com.antshorttv.video.VideoUnderstandingRequest;
 import com.antshorttv.video.VideoUnderstandingResponse;
 import java.util.Map;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -143,6 +145,12 @@ class AiInvocationServiceTest {
                 .projectId(3L)
                 .modelId(501L)
                 .scene(AiBusinessScene.SCRIPT_GENERATE)
+                .executionId(91L)
+                .attemptId(92L)
+                .executionVersion(3)
+                .phase("SUBMIT")
+                .idempotencyKey("execution-91-v3-submit")
+                .traceId("trace-91")
                 .userPrompt("写一集")
                 .build()))
             .isInstanceOf(AiGatewayException.class)
@@ -150,13 +158,95 @@ class AiInvocationServiceTest {
                 AiGatewayException aiException = (AiGatewayException) exception;
                 assertThat(aiException.getErrorCode()).isEqualTo(ErrorCode.AI_RATE_LIMIT);
                 assertThat(aiException.getAiCallLogId()).isEqualTo(9003L);
+                assertThat(aiException.getExecutionId()).isEqualTo(91L);
+                assertThat(aiException.getAttemptId()).isEqualTo(92L);
+                assertThat(aiException.getExecutionVersion()).isEqualTo(3);
+                assertThat(aiException.getPhase()).isEqualTo("SUBMIT");
+                assertThat(aiException.getIdempotencyKey()).isEqualTo("execution-91-v3-submit");
+                assertThat(aiException.getTraceId()).isEqualTo("trace-91");
             });
 
         verify(logWriter).record(any(AiInvocationLogRequest.class));
     }
 
-    private AiModelRoute route(AiCapability capability) {
+    @Test
+    void submitsProviderWorkWithStableIdempotencyAndReturnsAcceptedCorrelation() {
         AiProviderAdapter adapter = mock(AiProviderAdapter.class);
+        AiModelRoute route = route(AiCapability.IMAGE, adapter);
+        when(router.route(701L, "IMAGE")).thenReturn(route);
+        doReturn(AiProviderExecutionOutcome.accepted(
+            "provider-request-accepted",
+            "external-task-1",
+            Duration.ofSeconds(4),
+            null
+        )).when(adapter).submit(any(), any(), any(), any());
+        when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9010L);
+
+        AiInvocationRequest request = correlatedImageRequest("SUBMIT", "execution-91-v3-submit");
+        AiInvocationResult<String> result = service.submit(request, "image-payload");
+
+        assertThat(result.providerExecutionState()).isEqualTo(AiProviderExecutionState.ACCEPTED);
+        assertThat(result.externalTaskId()).isEqualTo("external-task-1");
+        assertThat(result.reconciliationStatus()).isEqualTo(AiProviderReconciliationStatus.REQUIRED);
+        assertThat(result.executionId()).isEqualTo(91L);
+        assertThat(result.attemptId()).isEqualTo(92L);
+        assertThat(result.executionVersion()).isEqualTo(3);
+        assertThat(result.phase()).isEqualTo("SUBMIT");
+        assertThat(result.idempotencyKey()).isEqualTo("execution-91-v3-submit");
+        assertThat(result.traceId()).isEqualTo("trace-91");
+        assertThat(result.transportOutcome()).isEqualTo("SUCCEEDED");
+        assertThat(result.businessOutcome()).isEqualTo("PENDING");
+
+        ArgumentCaptor<AiProviderSubmissionRequest> captor = ArgumentCaptor.forClass(AiProviderSubmissionRequest.class);
+        verify(adapter).submit(any(), any(), any(), captor.capture());
+        assertThat(captor.getValue().idempotencyKey()).isEqualTo("execution-91-v3-submit");
+        assertThat(captor.getValue().executionId()).isEqualTo(91L);
+    }
+
+    @Test
+    void pollsProviderWorkWithStablePhaseKeyAndReturnsCompletedOutcome() {
+        AiProviderAdapter adapter = mock(AiProviderAdapter.class);
+        AiModelRoute route = route(AiCapability.IMAGE, adapter);
+        when(router.route(701L, "IMAGE")).thenReturn(route);
+        doReturn(AiProviderExecutionOutcome.completed("final-image", "provider-request-poll"))
+            .when(adapter).poll(any(), any(), any(), any());
+        when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9011L);
+
+        AiInvocationRequest request = correlatedImageRequest("POLL", "execution-91-v3-poll-1");
+        AiInvocationResult<String> result = service.poll(request, "external-task-1");
+
+        assertThat(result.providerExecutionState()).isEqualTo(AiProviderExecutionState.COMPLETED);
+        assertThat(result.response()).isEqualTo("final-image");
+        assertThat(result.businessOutcome()).isEqualTo("SUCCEEDED");
+        assertThat(result.phase()).isEqualTo("POLL");
+
+        ArgumentCaptor<AiProviderPollingRequest> captor = ArgumentCaptor.forClass(AiProviderPollingRequest.class);
+        verify(adapter).poll(any(), any(), any(), captor.capture());
+        assertThat(captor.getValue().externalTaskId()).isEqualTo("external-task-1");
+        assertThat(captor.getValue().idempotencyKey()).isEqualTo("execution-91-v3-poll-1");
+    }
+
+    private AiInvocationRequest correlatedImageRequest(String phase, String idempotencyKey) {
+        return AiInvocationRequest.image()
+            .tenantId(1L)
+            .userId(2L)
+            .projectId(3L)
+            .modelId(701L)
+            .businessSceneCode("image_generate")
+            .executionId(91L)
+            .attemptId(92L)
+            .executionVersion(3)
+            .phase(phase)
+            .idempotencyKey(idempotencyKey)
+            .traceId("trace-91")
+            .build();
+    }
+
+    private AiModelRoute route(AiCapability capability) {
+        return route(capability, mock(AiProviderAdapter.class));
+    }
+
+    private AiModelRoute route(AiCapability capability, AiProviderAdapter adapter) {
         AiModelEntity model = new AiModelEntity();
         model.setId(501L);
         model.setName(capability.name() + " Model");

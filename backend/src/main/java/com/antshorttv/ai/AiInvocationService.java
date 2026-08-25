@@ -51,7 +51,8 @@ public class AiInvocationService {
                 response.completionTokens(),
                 response.totalTokens()
             ));
-            return AiInvocationResult.text(effectiveRequest.businessSceneCode(), response, logId, route);
+            return AiInvocationResult.text(effectiveRequest.businessSceneCode(), response, logId, route)
+                .withCorrelation(effectiveRequest);
         } catch (Exception exception) {
             AiGatewayException normalized = errorMapper.normalize(exception, AiCapability.TEXT);
             throw recordFailure(effectiveRequest, route, AiCapability.TEXT, effectiveRequest.effectiveRequestSummary(), normalized, started);
@@ -95,7 +96,7 @@ public class AiInvocationService {
                 null,
                 null,
                 response.durationMs()
-            );
+            ).withCorrelation(request);
         } catch (Exception exception) {
             AiGatewayException normalized = errorMapper.normalize(exception, AiCapability.IMAGE);
             throw recordFailure(request, route, AiCapability.IMAGE, request.effectiveRequestSummary(), normalized, started);
@@ -139,15 +140,125 @@ public class AiInvocationService {
                 response.completionTokens(),
                 response.totalTokens(),
                 response.durationMs()
-            );
+            ).withCorrelation(request);
         } catch (Exception exception) {
             AiGatewayException normalized = errorMapper.normalize(exception, AiCapability.VIDEO_UNDERSTANDING);
             throw recordFailure(request, route, AiCapability.VIDEO_UNDERSTANDING, videoRequest.videoUrl(), normalized, started);
         }
     }
 
+    public <T> AiInvocationResult<T> submit(AiInvocationRequest request, Object payload) {
+        AiModelRoute route = aiModelRouter.route(request.modelId(), request.capability().modelServiceType());
+        long started = System.currentTimeMillis();
+        try {
+            AiProviderExecutionOutcome<T> outcome = route.adapter().submit(
+                route.provider(),
+                route.providerConfig(),
+                route.model(),
+                new AiProviderSubmissionRequest(
+                    request.capability(), payload, request.idempotencyKey(), request.executionId(),
+                    request.attemptId(), request.executionVersion(), request.phase()
+                )
+            );
+            return recordProviderOutcome(request, route, outcome, String.valueOf(payload), started);
+        } catch (Exception exception) {
+            AiGatewayException normalized = errorMapper.normalize(exception, request.capability());
+            throw recordFailure(request, route, request.capability(), String.valueOf(payload), normalized, started);
+        }
+    }
+
+    public <T> AiInvocationResult<T> poll(AiInvocationRequest request, String externalTaskId) {
+        AiModelRoute route = aiModelRouter.route(request.modelId(), request.capability().modelServiceType());
+        long started = System.currentTimeMillis();
+        try {
+            AiProviderExecutionOutcome<T> outcome = route.adapter().poll(
+                route.provider(),
+                route.providerConfig(),
+                route.model(),
+                new AiProviderPollingRequest(
+                    request.capability(), externalTaskId, request.idempotencyKey(), request.executionId(),
+                    request.attemptId(), request.executionVersion(), request.phase()
+                )
+            );
+            return recordProviderOutcome(request, route, outcome, externalTaskId, started);
+        } catch (Exception exception) {
+            AiGatewayException normalized = errorMapper.normalize(exception, request.capability());
+            throw recordFailure(request, route, request.capability(), externalTaskId, normalized, started);
+        }
+    }
+
+    public <T> AiInvocationResult<T> invokeProviderNative(
+        AiInvocationRequest request,
+        String requestSummary,
+        AiProviderOperation<T> operation
+    ) {
+        AiModelRoute route = aiModelRouter.route(request.modelId(), request.capability().modelServiceType());
+        long started = System.currentTimeMillis();
+        try {
+            return recordProviderOutcome(
+                request,
+                route,
+                operation.execute(route),
+                requestSummary,
+                started
+            );
+        } catch (Exception exception) {
+            AiGatewayException normalized = errorMapper.normalize(exception, request.capability());
+            throw recordFailure(request, route, request.capability(), requestSummary, normalized, started);
+        }
+    }
+
     public void markBusinessFailure(Long callLogId, ErrorCode errorCode, String errorMessage) {
         aiCallLogWriter.markBusinessFailure(callLogId, errorCode, errorMessage);
+    }
+
+    private <T> AiInvocationResult<T> recordProviderOutcome(
+        AiInvocationRequest request,
+        AiModelRoute route,
+        AiProviderExecutionOutcome<T> outcome,
+        String requestSummary,
+        long started
+    ) {
+        String responseSummary = outcome.outcome() == AiProviderExecutionState.ACCEPTED
+            ? "accepted externalTaskId=" + outcome.externalTaskId()
+            : String.valueOf(outcome.response());
+        if (outcome.outcome() == AiProviderExecutionState.ACCEPTED) {
+            Long logId = aiCallLogWriter.record(AiInvocationLogRequest.accepted(
+                request.toAiContext().withModelId(route.model().getId()),
+                route,
+                request.capability(),
+                requestSummary(request, requestSummary),
+                Math.max(1, System.currentTimeMillis() - started),
+                outcome.providerRequestId(),
+                outcome.externalTaskId()
+            ));
+            AiProviderReconciliationStatus reconciliationStatus = outcome.reconciliationStatus() == null
+                ? AiProviderReconciliationStatus.REQUIRED
+                : outcome.reconciliationStatus();
+            return AiInvocationResult.<T>accepted(
+                request.capability(), request.businessSceneCode(), logId, outcome.providerRequestId(),
+                outcome.externalTaskId(), route.model().getId(), route.provider().getId(),
+                route.provider().getCode(), outcome.pollAfter(), reconciliationStatus
+            ).withCorrelation(request);
+        }
+        Long logId = aiCallLogWriter.record(AiInvocationLogRequest.success(
+            request.toAiContext().withModelId(route.model().getId()),
+            route,
+            request.capability(),
+            requestSummary(request, requestSummary),
+            responseSummary,
+            Math.max(1, System.currentTimeMillis() - started),
+            outcome.providerRequestId(),
+            null,
+            null,
+            null
+        ));
+        return AiInvocationResult.success(
+            request.capability(), request.businessSceneCode(), outcome.response(), responseSummary,
+            logId, outcome.providerRequestId(), route.model().getId(), route.provider().getId(),
+            route.provider().getCode(), null, null, null,
+            Math.max(1, System.currentTimeMillis() - started)
+        ).withCorrelation(request);
     }
 
     private AiInvocationRequest withRenderedTextPrompt(AiInvocationRequest request) {
@@ -167,6 +278,11 @@ public class AiInvocationService {
             .scene(request.scene())
             .businessSceneCode(request.businessSceneCode())
             .traceId(request.traceId())
+            .executionId(request.executionId())
+            .attemptId(request.attemptId())
+            .executionVersion(request.executionVersion())
+            .phase(request.phase())
+            .idempotencyKey(request.idempotencyKey())
             .promptTemplateId(request.promptTemplateId())
             .templateVariables(request.templateVariables())
             .agentCode(request.agentCode())
@@ -197,7 +313,8 @@ public class AiInvocationService {
             exception.getErrorCode().name() + " " + exception.getMessage(),
             Math.max(1, System.currentTimeMillis() - started)
         ));
-        return new AiGatewayException(exception.getErrorCode(), exception.getMessage(), logId);
+        return new AiGatewayException(exception.getErrorCode(), exception.getMessage(), logId)
+            .withCorrelation(request);
     }
 
     private long elapsed(long started, Long providerDurationMs) {

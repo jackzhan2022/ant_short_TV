@@ -2,6 +2,7 @@ package com.antshorttv.script;
 
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
+import com.antshorttv.execution.AiExecutionResponse;
 import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 @RestController
 @RequestMapping("/api/projects/{projectId}")
@@ -44,52 +47,51 @@ public class ScriptWorkflowController {
 
     @PostMapping("/script-analysis/current/retry/{stageCode}")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<ScriptAnalysisTaskResponse> retryAnalysis(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> retryAnalysis(
         @PathVariable Long projectId,
         @PathVariable String stageCode,
         HttpServletRequest request
     ) {
-        var task = scriptWorkflowService.retryAnalysis(tenantId(request), projectId, stageCode);
-        return ApiResponse.success(task);
+        return accepted(scriptWorkflowService.retryAnalysis(tenantId(request), projectId, stageCode));
     }
 
     @PostMapping("/script-analysis/current/reanalyze")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<ScriptAnalysisTaskResponse> reanalyze(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> reanalyze(
         @PathVariable Long projectId,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.reanalyze(tenantId(request), projectId));
+        return accepted(scriptWorkflowService.reanalyze(tenantId(request), projectId));
     }
 
     @PostMapping("/script-analysis/versions/{versionId}/reanalyze")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<ScriptAnalysisTaskResponse> reanalyzeVersion(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> reanalyzeVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.reanalyzeVersion(tenantId(request), projectId, versionId));
+        return accepted(scriptWorkflowService.reanalyzeVersion(tenantId(request), projectId, versionId));
     }
 
     @PostMapping("/scripts/ai-generate")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<ScriptWorkspaceResponse> generate(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> generate(
         @PathVariable Long projectId,
         @Valid @RequestBody GenerateScriptRequest body,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.generate(tenantId(request), projectId, body, request));
+        return accepted(scriptWorkflowService.submitGenerate(tenantId(request), projectId, body, request));
     }
 
     @PostMapping("/scripts/ai-rewrite")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<ScriptWorkspaceResponse> rewrite(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> rewrite(
         @PathVariable Long projectId,
         @Valid @RequestBody RewriteScriptRequest body,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.rewrite(tenantId(request), projectId, body, request));
+        return accepted(scriptWorkflowService.submitRewrite(tenantId(request), projectId, body, request));
     }
 
     @PutMapping("/scripts/current")
@@ -114,12 +116,12 @@ public class ScriptWorkflowController {
 
     @PostMapping("/scripts/ai-extract-elements")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<ScriptWorkspaceResponse> extractElements(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> extractElements(
         @PathVariable Long projectId,
         @Valid @RequestBody ExtractScriptElementsRequest body,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.extractElements(tenantId(request), projectId, body, request));
+        return accepted(scriptWorkflowService.submitExtractElements(tenantId(request), projectId, body, request));
     }
 
     @PutMapping("/script-elements/{elementType}/{elementId}")
@@ -158,12 +160,12 @@ public class ScriptWorkflowController {
 
     @PostMapping("/storyboards/ai-breakdown")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<ScriptWorkspaceResponse> breakdownStoryboards(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> breakdownStoryboards(
         @PathVariable Long projectId,
         @Valid @RequestBody StoryboardBreakdownRequest body,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.breakdownStoryboards(tenantId(request), projectId, body, request));
+        return accepted(scriptWorkflowService.submitStoryboardBreakdown(tenantId(request), projectId, body, request));
     }
 
     @PostMapping("/storyboards")
@@ -219,12 +221,16 @@ public class ScriptWorkflowController {
 
     @PostMapping("/prompts/ai-generate")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<ScriptWorkspaceResponse> generatePrompts(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> generatePrompts(
         @PathVariable Long projectId,
         @Valid @RequestBody GeneratePromptRequest body,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.generatePrompts(tenantId(request), projectId, body, request));
+        return accepted(scriptWorkflowService.submitPromptGeneration(tenantId(request), projectId, body, request));
+    }
+
+    private ResponseEntity<ApiResponse<AiExecutionResponse>> accepted(AiExecutionResponse execution) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(execution));
     }
 
     private Long tenantId(HttpServletRequest request) {

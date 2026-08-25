@@ -14,9 +14,9 @@ export async function myInvitations(options?: { [key: string]: any }) {
 }
 
 /** 此处后端没有提供注释 GET /api/invitations/${param0} */
-export async function detail6(
+export async function detail7(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail6Params,
+  params: API.detail7Params,
   options?: { [key: string]: any }
 ) {
   const { token: param0, ...queryParams } = params;
@@ -48,9 +48,9 @@ export async function accept(
 }
 
 /** 此处后端没有提供注释 POST /api/invitations/${param0}/cancel */
-export async function cancel2(
+export async function cancel3(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.cancel2Params,
+  params: API.cancel3Params,
   options?: { [key: string]: any }
 ) {
   const { id: param0, ...queryParams } = params;

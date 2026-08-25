@@ -6,6 +6,7 @@ import java.util.List;
 
 record AiVideoTaskResponse(
     Long id,
+    Long executionId,
     Long projectId,
     Long storyboardId,
     Long serviceConfigId,
@@ -34,6 +35,7 @@ record AiVideoTaskResponse(
     static AiVideoTaskResponse from(AiVideoTaskEntity entity, List<AiVideoResultEntity> results) {
         return new AiVideoTaskResponse(
             entity.id,
+            entity.executionId,
             entity.projectId,
             entity.storyboardId,
             entity.serviceConfigId,

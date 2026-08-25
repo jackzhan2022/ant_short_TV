@@ -57,6 +57,42 @@ declare namespace API {
     createdAt?: string;
   };
 
+  type AiExecutionRegenerateRequest = {
+    clientIdempotencyKey: string;
+    traceId: string;
+  };
+
+  type AiExecutionResponse = {
+    id?: number;
+    tenantId?: number;
+    projectId?: number;
+    scene?: string;
+    businessType?: string;
+    businessId?: number;
+    status?: string;
+    phase?: string;
+    progress?: number;
+    executionVersion?: number;
+    sourceExecutionId?: number;
+    rootExecutionId?: number;
+    retryable?: boolean;
+    resultType?: string;
+    resultId?: number;
+    errorCode?: string;
+    errorMessage?: string;
+    usageCostStatus?: string;
+    providerCostSummaryJson?: string;
+    pointSettlementStatus?: string;
+    reservedPoints?: number;
+    settledPoints?: number;
+    releasedPoints?: number;
+    startedAt?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    completedAt?: string;
+    canceledAt?: string;
+  };
+
   type AiImageResultResponse = {
     id?: number;
     taskId?: number;
@@ -91,6 +127,8 @@ declare namespace API {
     style?: string;
     quality?: string;
     seed?: string;
+    executionId?: number;
+    execution?: AiExecutionResponse;
     status?: string;
     errorMessage?: string;
     startedAt?: string;
@@ -176,6 +214,7 @@ declare namespace API {
 
   type AiVideoTaskResponse = {
     id?: number;
+    executionId?: number;
     projectId?: number;
     storyboardId?: number;
     serviceConfigId?: number;
@@ -242,6 +281,13 @@ declare namespace API {
   type ApiResponseAiCallLogPageResponse = {
     success?: boolean;
     data?: AiCallLogPageResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseAiExecutionResponse = {
+    success?: boolean;
+    data?: AiExecutionResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -898,11 +944,16 @@ declare namespace API {
   };
 
   type cancel1Params = {
+    tenantId: number;
+    executionId: number;
+  };
+
+  type cancel2Params = {
     projectId: number;
     taskId: number;
   };
 
-  type cancel2Params = {
+  type cancel3Params = {
     id: number;
   };
 
@@ -1266,12 +1317,12 @@ declare namespace API {
   };
 
   type detail2Params = {
-    id: number;
+    tenantId: number;
+    executionId: number;
   };
 
   type detail3Params = {
-    projectId: number;
-    taskId: number;
+    id: number;
   };
 
   type detail4Params = {
@@ -1280,14 +1331,19 @@ declare namespace API {
   };
 
   type detail5Params = {
-    id: number;
+    projectId: number;
+    taskId: number;
   };
 
   type detail6Params = {
-    token: string;
+    id: number;
   };
 
   type detail7Params = {
+    token: string;
+  };
+
+  type detail8Params = {
     id: number;
   };
 
@@ -1821,6 +1877,11 @@ declare namespace API {
     taskId: number;
   };
 
+  type regenerate2Params = {
+    projectId: number;
+    taskId: number;
+  };
+
   type regenerateComposeTaskParams = {
     projectId: number;
     taskId: number;
@@ -1832,8 +1893,8 @@ declare namespace API {
   };
 
   type regenerateParams = {
-    projectId: number;
-    taskId: number;
+    tenantId: number;
+    executionId: number;
   };
 
   type regenerateVoiceTaskParams = {
@@ -1878,6 +1939,11 @@ declare namespace API {
   type resultsParams = {
     projectId: number;
     taskId: number;
+  };
+
+  type retry1Params = {
+    tenantId: number;
+    executionId: number;
   };
 
   type retryAnalysisParams = {
@@ -2767,6 +2833,7 @@ declare namespace API {
 
   type VideoDecompositionEpisodeResponse = {
     id?: number;
+    executionId?: number;
     batchId?: number;
     projectId?: number;
     episodeNo?: number;

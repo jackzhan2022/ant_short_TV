@@ -20,4 +20,11 @@ public interface AiImageTaskMapper extends BaseMapper<AiImageTaskEntity> {
         }
         return selectList(wrapper.orderByDesc(AiImageTaskEntity::getCreatedAt));
     }
+
+    default AiImageTaskEntity selectByIdempotency(Long tenantId, String idempotencyKey) {
+        return selectOne(new LambdaQueryWrapper<AiImageTaskEntity>()
+            .eq(AiImageTaskEntity::getTenantId, tenantId)
+            .eq(AiImageTaskEntity::getClientIdempotencyKey, idempotencyKey)
+            .isNull(AiImageTaskEntity::getDeletedAt));
+    }
 }

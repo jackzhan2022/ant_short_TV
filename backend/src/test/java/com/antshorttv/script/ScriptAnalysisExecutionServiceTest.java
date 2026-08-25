@@ -135,6 +135,23 @@ class ScriptAnalysisExecutionServiceTest {
     }
 
     @Test
+    void acceptsEpisodeContentThatCoversAHeadedSourceWithoutRepeatingHeadings() throws Exception {
+        JsonNode result = objectMapper.readTree("""
+            {"episodes":[
+              {"episodeNo":1,"content":"主角回到故乡。"},
+              {"episodeNo":2,"content":"新的冲突出现。"}
+            ]}
+            """);
+
+        invokeVoid(
+            "validateStageResult",
+            "EPISODE_SPLITTING",
+            result,
+            "第1集\n主角回到故乡。\n第2集\n新的冲突出现。"
+        );
+    }
+
+    @Test
     void normalizesRecognizedAssetsFromStructuredAnalysis() throws Exception {
         JsonNode parsed = objectMapper.readTree("""
             {

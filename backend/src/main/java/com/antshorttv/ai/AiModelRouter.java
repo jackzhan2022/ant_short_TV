@@ -15,6 +15,7 @@ public class AiModelRouter {
     private final AiProviderMapper aiProviderMapper;
     private final AiProviderConfigMapper aiProviderConfigMapper;
     private final AiServiceConfigMapper aiServiceConfigMapper;
+    private final AiModelCapabilityMapper aiModelCapabilityMapper;
     private final Map<String, AiProviderAdapter> adapters;
 
     public AiModelRouter(
@@ -22,17 +23,24 @@ public class AiModelRouter {
         AiProviderMapper aiProviderMapper,
         AiProviderConfigMapper aiProviderConfigMapper,
         AiServiceConfigMapper aiServiceConfigMapper,
+        AiModelCapabilityMapper aiModelCapabilityMapper,
         List<AiProviderAdapter> adapters
     ) {
         this.aiModelMapper = aiModelMapper;
         this.aiProviderMapper = aiProviderMapper;
         this.aiProviderConfigMapper = aiProviderConfigMapper;
         this.aiServiceConfigMapper = aiServiceConfigMapper;
+        this.aiModelCapabilityMapper = aiModelCapabilityMapper;
         this.adapters = adapters.stream().collect(Collectors.toMap(adapter -> adapter.providerCode().toUpperCase(Locale.ROOT), Function.identity()));
     }
 
     public AiModelRoute route(Long modelId, String serviceType) {
-        AiModelEntity model = modelId == null ? defaultModel(serviceType) : aiModelMapper.selectById(modelId);
+        return route(modelId, capabilityForServiceType(serviceType));
+    }
+
+    public AiModelRoute route(Long modelId, AiCapability capability) {
+        String serviceType = capability.modelServiceType();
+        AiModelEntity model = modelId == null ? defaultModel(capability) : aiModelMapper.selectById(modelId);
         if (model == null) {
             throw new AiGatewayException(ErrorCode.AI_MODEL_NOT_FOUND, "AI 模型不存在。");
         }
@@ -41,6 +49,9 @@ public class AiModelRouter {
         }
         if (!"ENABLED".equals(model.getStatus())) {
             throw new AiGatewayException(ErrorCode.AI_MODEL_DISABLED, "AI 模型已停用。");
+        }
+        if (!hasEnabledCapability(model.getId(), capability)) {
+            throw new AiGatewayException(ErrorCode.AI_MODEL_NOT_FOUND, "AI 模型未启用所需能力。");
         }
         AiProviderEntity provider = aiProviderMapper.selectById(model.getProviderId());
         if (provider == null) {
@@ -65,6 +76,15 @@ public class AiModelRouter {
         return new AiModelRoute(model, provider, config, adapter);
     }
 
+    private boolean hasEnabledCapability(Long modelId, AiCapability capability) {
+        String capabilityCode = capabilityCode(capability);
+        return aiModelCapabilityMapper.selectOne(new LambdaQueryWrapper<AiModelCapabilityEntity>()
+            .eq(AiModelCapabilityEntity::getModelId, modelId)
+            .eq(AiModelCapabilityEntity::getCapability, capabilityCode)
+            .eq(AiModelCapabilityEntity::getStatus, "ENABLED")
+            .last("limit 1")) != null;
+    }
+
     private AiProviderConfigEntity legacyConfig(AiModelEntity model) {
         if (model.getLegacyServiceConfigId() == null) {
             return null;
@@ -82,11 +102,14 @@ public class AiModelRouter {
         return config;
     }
 
-    private AiModelEntity defaultModel(String serviceType) {
+    private AiModelEntity defaultModel(AiCapability capability) {
+        String serviceType = capability.modelServiceType();
+        String capabilityCode = capabilityCode(capability);
         AiModelEntity model = aiModelMapper.selectOne(new LambdaQueryWrapper<AiModelEntity>()
             .eq(AiModelEntity::getServiceType, serviceType)
             .eq(AiModelEntity::getStatus, "ENABLED")
             .eq(AiModelEntity::getIsDefault, true)
+            .inSql(AiModelEntity::getId, "select model_id from ai_model_capability where capability = '" + capabilityCode + "' and status = 'ENABLED'")
             .orderByDesc(AiModelEntity::getSort)
             .last("limit 1"));
         if (model != null) {
@@ -95,8 +118,30 @@ public class AiModelRouter {
         return aiModelMapper.selectOne(new LambdaQueryWrapper<AiModelEntity>()
             .eq(AiModelEntity::getServiceType, serviceType)
             .eq(AiModelEntity::getStatus, "ENABLED")
+            .inSql(AiModelEntity::getId, "select model_id from ai_model_capability where capability = '" + capabilityCode + "' and status = 'ENABLED'")
             .orderByDesc(AiModelEntity::getSort)
             .orderByDesc(AiModelEntity::getId)
             .last("limit 1"));
+    }
+
+    private AiCapability capabilityForServiceType(String serviceType) {
+        return switch (serviceType) {
+            case "TEXT" -> AiCapability.TEXT;
+            case "IMAGE" -> AiCapability.IMAGE;
+            case "VIDEO_UNDERSTANDING" -> AiCapability.VIDEO_UNDERSTANDING;
+            case "VIDEO" -> AiCapability.VIDEO;
+            case "AUDIO", "VOICE" -> AiCapability.AUDIO;
+            default -> throw new AiGatewayException(ErrorCode.AI_MODEL_NOT_FOUND, "AI 模型类型不匹配。");
+        };
+    }
+
+    private String capabilityCode(AiCapability capability) {
+        return switch (capability) {
+            case TEXT -> "TEXT_GENERATION";
+            case IMAGE -> "IMAGE_GENERATION";
+            case VIDEO_UNDERSTANDING -> "VIDEO_UNDERSTANDING";
+            case VIDEO -> "VIDEO_GENERATION";
+            case AUDIO -> "AUDIO_GENERATION";
+        };
     }
 }

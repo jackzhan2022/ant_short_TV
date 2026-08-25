@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
+import com.antshorttv.execution.AiExecutionWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
 import java.util.LinkedHashMap;
@@ -44,6 +45,12 @@ class ScriptWorkflowControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private AiExecutionWorker aiExecutionWorker;
+
+    @Autowired
+    private ScriptAnalysisExecutionCoordinator scriptAnalysisExecutionCoordinator;
 
     @Test
     void returnsEmptyWorkspaceForProjectWithoutScript() throws Exception {
@@ -99,6 +106,8 @@ class ScriptWorkflowControllerTest {
         String token = registerUser("13800013021", "Analysis Owner");
         Long tenantId = createTenant(token, "分析任务团队");
         Long ownerId = userIdByMobile("13800013021");
+        createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 20);
         Long projectId = createProject(
             token,
             tenantId,
@@ -117,12 +126,57 @@ class ScriptWorkflowControllerTest {
             .andReturn();
         Long initialTaskId = readLong(initial, "$.data.id");
 
-        mockMvc.perform(post("/api/projects/%d/script-analysis/current/reanalyze".formatted(projectId))
+        MvcResult submitted = mockMvc.perform(post("/api/projects/%d/script-analysis/current/reanalyze".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.data.status", is("PENDING")))
-            .andExpect(jsonPath("$.data.stages", hasSize(4)));
+            .andExpect(jsonPath("$.data.businessType", is("SCRIPT_ANALYSIS_TASK")))
+            .andExpect(jsonPath("$.data.businessId").isNumber())
+            .andReturn();
+        Long executionId = readLong(submitted, "$.data.id");
+        Long analysisTaskId = readLong(submitted, "$.data.businessId");
+
+        aiExecutionWorker.run(executionId);
+
+        assertThat(jdbcTemplate.queryForMap(
+            "select status, error_code, error_message, "
+                + "(select count(*) from ai_execution_attempt where execution_id = ?) attempt_count "
+                + "from ai_execution_task where id = ?",
+            executionId,
+            executionId
+        )).containsEntry("STATUS", "SUCCEEDED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from script_analysis_task where id = ?", String.class, analysisTaskId
+        )).isEqualTo("COMPLETED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from script_analysis_result where task_id = ? and execution_id = ? and status = 'SUCCEEDED'",
+            Integer.class, analysisTaskId, executionId
+        )).isEqualTo(4);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_call_log where execution_id = ? and attempt_id is not null",
+            Integer.class, executionId
+        )).isEqualTo(4);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY:%'",
+            Integer.class, executionId
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(distinct attempt_id) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY:%'",
+            Integer.class, executionId
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(distinct idempotency_key) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY:%'",
+            Integer.class, executionId
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "select settled_points from ai_point_reservation where execution_id = ?",
+            java.math.BigDecimal.class, executionId
+        )).isEqualByComparingTo("4");
+        assertThat(jdbcTemplate.queryForObject(
+            "select released_points from ai_point_reservation where execution_id = ?",
+            java.math.BigDecimal.class, executionId
+        )).isEqualByComparingTo("1");
 
         MvcResult current = mockMvc.perform(get("/api/projects/%d/script-analysis/current".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -132,6 +186,46 @@ class ScriptWorkflowControllerTest {
             .andReturn();
         Long latestTaskId = readLong(current, "$.data.id");
         org.assertj.core.api.Assertions.assertThat(latestTaskId).isNotEqualTo(initialTaskId);
+    }
+
+    @Test
+    void automaticAnalysisWaitsForPointsAndResumesTheSameDomainTask() throws Exception {
+        String token = registerUser("13800013031", "Deferred Analysis Owner");
+        Long tenantId = createTenant(token, "延迟分析团队");
+        Long ownerId = userIdByMobile("13800013031");
+        createDefaultTextService(tenantId, ownerId);
+        Long projectId = createProject(
+            token, tenantId, ownerId, "零积分分析项目", "SCRIPT_ANALYSIS_DEFERRED",
+            "第1集\n主角回到故乡。"
+        );
+        Long taskId = jdbcTemplate.queryForObject(
+            "select id from script_analysis_task where tenant_id = ? and project_id = ?",
+            Long.class, tenantId, projectId
+        );
+
+        scriptAnalysisExecutionCoordinator.scheduleAutomaticAnalysis();
+
+        Map<String, Object> waiting = jdbcTemplate.queryForMap(
+            "select status, execution_id, error_code from script_analysis_task where id = ?", taskId
+        );
+        assertThat(waiting).containsEntry("STATUS", "PENDING");
+        assertThat(waiting.get("execution_id")).isNull();
+        assertThat(waiting.get("error_code")).isNotNull();
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_execution_task where business_type = 'SCRIPT_ANALYSIS_TASK' and business_id = ?",
+            Integer.class, taskId
+        )).isZero();
+
+        grantTeamPoints(tenantId, 10);
+        scriptAnalysisExecutionCoordinator.scheduleAutomaticAnalysis();
+
+        Long executionId = jdbcTemplate.queryForObject(
+            "select execution_id from script_analysis_task where id = ?", Long.class, taskId
+        );
+        assertThat(executionId).isNotNull();
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?", String.class, executionId
+        )).isEqualTo("RESERVED");
     }
 
     @Test
@@ -177,6 +271,8 @@ class ScriptWorkflowControllerTest {
         String token = registerUser("13800013024", "Retry Owner");
         Long tenantId = createTenant(token, "重试团队");
         Long ownerId = userIdByMobile("13800013024");
+        createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 10);
         Long projectId = createProject(
             token,
             tenantId,
@@ -255,16 +351,17 @@ class ScriptWorkflowControllerTest {
         mockMvc.perform(post("/api/projects/%d/script-analysis/current/retry/EPISODE_SPLITTING".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.data.status", is("PENDING")))
-            .andExpect(jsonPath("$.data.currentStage", is("EPISODE_SPLITTING")))
-            .andExpect(jsonPath("$.data.overallProgress", is(25)))
-            .andExpect(jsonPath("$.data.stages[0].status", is("SUCCEEDED")))
-            .andExpect(jsonPath("$.data.stages[0].resultJson", is("{\"logline\":\"主角回家\"}")))
-            .andExpect(jsonPath("$.data.stages[1].status", is("PENDING")))
-            .andExpect(jsonPath("$.data.stages[1].currentAction", is("正在智能拆分剧集")))
-            .andExpect(jsonPath("$.data.stages[2].status", is("PENDING")))
-            .andExpect(jsonPath("$.data.stages[3].status", is("PENDING")));
+            .andExpect(jsonPath("$.data.businessType", is("SCRIPT_ANALYSIS_TASK")))
+            .andExpect(jsonPath("$.data.businessId", is(taskId.intValue())));
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from script_analysis_stage where id = ?", String.class, stage1Id
+        )).isEqualTo("SUCCEEDED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select normalized_json from script_analysis_result where stage_id = ? order by id desc limit 1",
+            String.class, stage1Id
+        )).isEqualTo("{\"logline\":\"主角回家\"}");
     }
 
     @Test
@@ -400,24 +497,21 @@ class ScriptWorkflowControllerTest {
         Long ownerId = userIdByMobile("13800013002");
         Long projectId = createProject(token, tenantId, ownerId, "豪门逆袭", "SCRIPT_WORKFLOW_GENERATE");
 
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {
-                      "title":"归来千金",
-                      "storyIdea":"落魄千金重回豪门后发现当年的陷害另有隐情",
-                      "genre":"逆袭",
-                      "episodeCount":12,
-                      "duration":90,
-                      "styleRequirement":"强冲突"
-                    }
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.script.title", is("归来千金")))
-            .andExpect(jsonPath("$.data.script.content").value(org.hamcrest.Matchers.containsString("落魄千金重回豪门后发现当年的陷害另有隐情")))
-            .andExpect(jsonPath("$.data.versions", hasSize(1)));
+        Long executionId = submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-generate",
+            """
+                {
+                  "title":"归来千金",
+                  "storyIdea":"落魄千金重回豪门后发现当年的陷害另有隐情",
+                  "genre":"逆袭",
+                  "episodeCount":12,
+                  "duration":90,
+                  "styleRequirement":"强冲突"
+                }
+                """,
+            "generate-workspace-data"
+        );
+        assertExecutionSucceeded(executionId);
 
         mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -425,6 +519,186 @@ class ScriptWorkflowControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.script.title", is("归来千金")))
             .andExpect(jsonPath("$.data.versions[0].sourceType", is("AI_GENERATE")));
+    }
+
+    @Test
+    void acceptsIdempotentDurableScriptGeneration() throws Exception {
+        String token = registerUser("13800013028", "Async Script Owner");
+        Long tenantId = createTenant(token, "异步剧本团队");
+        Long ownerId = userIdByMobile("13800013028");
+        createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 5);
+        Long projectId = createProject(token, tenantId, ownerId, "异步剧本", "SCRIPT_ASYNC_GENERATE");
+        String body = """
+            {"title":"异步生成","storyIdea":"任务提交后由持久化执行器生成剧本","genre":"悬疑"}
+            """;
+
+        MvcResult first = mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "script-generate-contract")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.status", is("PENDING")))
+            .andExpect(jsonPath("$.data.businessType", is("SCRIPT_AI_OPERATION")))
+            .andReturn();
+        Long executionId = readLong(first, "$.data.id");
+
+        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "script-generate-contract")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.id", is(executionId.intValue())));
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from script_ai_operation where tenant_id = ? and idempotency_key = ?",
+            Integer.class,
+            tenantId,
+            "script-generate-contract"
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_execution_task where tenant_id = ? and client_idempotency_key = ?",
+            Integer.class,
+            tenantId,
+            "script-generate-contract"
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_point_reservation where execution_id = ?",
+            Integer.class,
+            executionId
+        )).isEqualTo(1);
+
+        aiExecutionWorker.run(executionId);
+
+        Map<String, Object> executionState = jdbcTemplate.queryForMap(
+            "select status, error_code, error_message, (select count(*) from ai_execution_attempt where execution_id = ?) attempt_count from ai_execution_task where id = ?",
+            executionId,
+            executionId
+        );
+        assertThat(executionState).containsEntry("STATUS", "SUCCEEDED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from script_ai_operation where execution_id = ?",
+            String.class,
+            executionId
+        )).isEqualTo("SUCCEEDED");
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.script.title", is("异步生成")))
+            .andExpect(jsonPath("$.data.versions[0].sourceType", is("AI_GENERATE")));
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?",
+            String.class,
+            executionId
+        )).isEqualTo("SETTLED");
+    }
+
+    @Test
+    void durableScriptOperationsPreserveExistingDomainResults() throws Exception {
+        String token = registerUser("13800013029", "Async Workflow Owner");
+        Long tenantId = createTenant(token, "异步剧本全链路团队");
+        Long ownerId = userIdByMobile("13800013029");
+        createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 20);
+        Long projectId = createProject(
+            token,
+            tenantId,
+            ownerId,
+            "异步全链路",
+            "SCRIPT_ASYNC_WORKFLOW",
+            "第1集\n主角在雨夜回到林家老宅门口，拿出股权协议。"
+        );
+
+        Long rewriteExecutionId = submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-rewrite",
+            "{\"rewriteType\":\"冲突增强\",\"requirement\":\"强化开场\",\"outputLength\":\"KEEP\"}",
+            "async-rewrite"
+        );
+        assertExecutionSucceeded(rewriteExecutionId);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from script_version where execution_id = ? and source_type = 'AI_REWRITE'",
+            Integer.class,
+            rewriteExecutionId
+        )).isEqualTo(1);
+
+        Long extractExecutionId = submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-extract-elements",
+            "{\"elementType\":\"ALL\"}",
+            "async-extract"
+        );
+        assertExecutionSucceeded(extractExecutionId);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from character_asset where tenant_id = ? and project_id = ? and deleted_at is null",
+            Integer.class,
+            tenantId,
+            projectId
+        )).isGreaterThan(0);
+
+        Long storyboardExecutionId = submitAndRun(
+            token, tenantId, projectId, "/storyboards/ai-breakdown",
+            "{\"scope\":\"FULL\"}",
+            "async-storyboard"
+        );
+        assertExecutionSucceeded(storyboardExecutionId);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from storyboard where tenant_id = ? and project_id = ? and deleted_at is null",
+            Integer.class,
+            tenantId,
+            projectId
+        )).isEqualTo(3);
+
+        Long promptExecutionId = submitAndRun(
+            token, tenantId, projectId, "/prompts/ai-generate",
+            "{\"targetType\":\"ALL\"}",
+            "async-prompts"
+        );
+        assertExecutionSucceeded(promptExecutionId);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from character_asset where tenant_id = ? and project_id = ? and prompt like '角色定妆提示词：%'",
+            Integer.class,
+            tenantId,
+            projectId
+        )).isGreaterThan(0);
+    }
+
+    private Long submitAndRun(
+        String token,
+        Long tenantId,
+        Long projectId,
+        String path,
+        String body,
+        String idempotencyKey
+    ) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/projects/%d%s".formatted(projectId, path))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.status", is("PENDING")))
+            .andReturn();
+        Long executionId = readLong(result, "$.data.id");
+        aiExecutionWorker.run(executionId);
+        return executionId;
+    }
+
+    private void assertExecutionSucceeded(Long executionId) {
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_execution_task where id = ?",
+            String.class,
+            executionId
+        )).isEqualTo("SUCCEEDED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from script_ai_operation where execution_id = ?",
+            String.class,
+            executionId
+        )).isEqualTo("SUCCEEDED");
     }
 
     @Test
@@ -439,17 +713,22 @@ class ScriptWorkflowControllerTest {
         Long ownerId = userIdByMobile("13800013013");
         Long projectId = createProject(projectToken, projectTenantId, ownerId, "跨团队剧本", "SCRIPT_GLOBAL_AI_CONFIG");
 
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+        Long executionId = submitAndRun(
+            projectToken, projectTenantId, projectId, "/scripts/ai-generate",
+            """
+                {
+                  "title":"全局服务剧本",
+                  "storyIdea":"团队未单独配置 AI 服务时仍可生成剧本",
+                  "genre":"逆袭"
+                }
+                """,
+            "global-service-generate"
+        );
+        assertExecutionSucceeded(executionId);
+
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(projectToken))
-                .header("X-Tenant-Id", projectTenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {
-                      "title":"全局服务剧本",
-                      "storyIdea":"团队未单独配置 AI 服务时仍可生成剧本",
-                      "genre":"逆袭"
-                    }
-                    """))
+                .header("X-Tenant-Id", projectTenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.script.title", is("全局服务剧本")))
             .andExpect(jsonPath("$.data.versions", hasSize(1)));
@@ -464,32 +743,32 @@ class ScriptWorkflowControllerTest {
         grantTeamPoints(tenantId, 2);
         Long projectId = createProject(token, tenantId, ownerId, "积分剧本", "SCRIPT_POINTS_CONSUME");
 
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {
-                      "title":"积分生成剧本",
-                      "storyIdea":"每次AI生成剧本都要扣减团队积分",
-                      "genre":"逆袭"
-                    }
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.script.title", is("积分生成剧本")));
+        Long executionId = submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-generate",
+            """
+                {
+                  "title":"积分生成剧本",
+                  "storyIdea":"每次AI生成剧本都要扣减团队积分",
+                  "genre":"逆袭"
+                }
+                """,
+            "point-script-generate"
+        );
+        assertExecutionSucceeded(executionId);
 
         Integer balance = jdbcTemplate.queryForObject(
             "select balance from team_point_account where tenant_id = ?",
             Integer.class,
             tenantId
         );
-        Integer consumeCount = jdbcTemplate.queryForObject(
-            "select count(*) from team_point_transaction where tenant_id = ? and transaction_type = 'AI_CONSUME' and business_scene = 'script_generate'",
+        Integer settledReservationCount = jdbcTemplate.queryForObject(
+            "select count(*) from ai_point_reservation where tenant_id = ? and execution_id = ? and status = 'SETTLED'",
             Integer.class,
-            tenantId
+            tenantId,
+            executionId
         );
         org.assertj.core.api.Assertions.assertThat(balance).isEqualTo(1);
-        org.assertj.core.api.Assertions.assertThat(consumeCount).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(settledReservationCount).isEqualTo(1);
     }
 
     @Test
@@ -524,37 +803,38 @@ class ScriptWorkflowControllerTest {
         Long ownerId = userIdByMobile("13800013003");
         Long projectId = createProject(token, tenantId, ownerId, "豪门元素", "SCRIPT_WORKFLOW_EXTRACT");
 
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {
-                      "title":"归来千金",
-                      "storyIdea":"落魄千金重回豪门，雨夜在林家老宅门口拿出股权协议",
-                      "genre":"逆袭"
-                    }
-                    """))
-            .andExpect(status().isOk());
+        submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-generate",
+            """
+                {
+                  "title":"归来千金",
+                  "storyIdea":"落魄千金重回豪门，雨夜在林家老宅门口拿出股权协议",
+                  "genre":"逆袭"
+                }
+                """,
+            "extract-source-generate"
+        );
 
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
+        submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-extract-elements",
+            "{\"elementType\":\"CHARACTER\"}",
+            "extract-characters"
+        );
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"elementType":"CHARACTER"}
-                    """))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.characters", hasSize(2)))
             .andExpect(jsonPath("$.data.characters[0].name", is("主角")));
 
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
+        submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-extract-elements",
+            "{\"elementType\":\"SCENE\"}",
+            "extract-scenes"
+        );
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"elementType":"SCENE"}
-                    """))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.scenes", hasSize(2)))
             .andExpect(jsonPath("$.data.scenes[0].name", is("林家老宅门口")));
@@ -569,25 +849,27 @@ class ScriptWorkflowControllerTest {
         grantTeamPoints(tenantId, 20);
         Long projectId = createProject(token, tenantId, ownerId, "全链路短剧", "SCRIPT_WORKFLOW_FULL");
 
-        MvcResult generateResult = mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
+        submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-generate",
+            "{\"storyIdea\":\"落魄千金雨夜回归豪门\",\"genre\":\"逆袭\",\"episodeCount\":12,\"duration\":90}",
+            "full-workflow-generate"
+        );
+        MvcResult generatedWorkspace = mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"storyIdea":"落魄千金雨夜回归豪门","genre":"逆袭","episodeCount":12,"duration":90}
-                    """))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.versions", hasSize(1)))
             .andReturn();
-        Long versionId = readLong(generateResult, "$.data.versions[0].id");
+        Long versionId = readLong(generatedWorkspace, "$.data.versions[0].id");
 
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-rewrite".formatted(projectId))
+        submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-rewrite",
+            "{\"rewriteType\":\"冲突增强\",\"requirement\":\"强化前三秒钩子\",\"outputLength\":\"KEEP\"}",
+            "full-workflow-rewrite"
+        );
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"rewriteType":"冲突增强","requirement":"强化前三秒钩子","outputLength":"KEEP"}
-                    """))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.versions", hasSize(2)))
             .andExpect(jsonPath("$.data.versions[0].sourceType", is("AI_REWRITE")));
@@ -609,13 +891,14 @@ class ScriptWorkflowControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.script.currentVersionId", is(versionId.intValue())));
 
-        MvcResult extractResult = mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
+        submitAndRun(
+            token, tenantId, projectId, "/scripts/ai-extract-elements",
+            "{\"elementType\":\"ALL\"}",
+            "full-workflow-extract"
+        );
+        MvcResult extractResult = mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"elementType":"ALL"}
-                    """))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.characters", hasSize(2)))
             .andExpect(jsonPath("$.data.scenes", hasSize(2)))
@@ -633,13 +916,14 @@ class ScriptWorkflowControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.characters[0].name", is("林晚")));
 
-        mockMvc.perform(post("/api/projects/%d/storyboards/ai-breakdown".formatted(projectId))
+        submitAndRun(
+            token, tenantId, projectId, "/storyboards/ai-breakdown",
+            "{\"scope\":\"FULL\"}",
+            "full-workflow-storyboard"
+        );
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"scope":"FULL"}
-                    """))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.storyboards", hasSize(3)))
             .andExpect(jsonPath("$.data.storyboards[0].imagePrompt", Matchers.containsString("首帧")));
@@ -666,13 +950,14 @@ class ScriptWorkflowControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.storyboards[3].shotNo", is(10)));
 
-        mockMvc.perform(post("/api/projects/%d/prompts/ai-generate".formatted(projectId))
+        submitAndRun(
+            token, tenantId, projectId, "/prompts/ai-generate",
+            "{\"targetType\":\"ALL\"}",
+            "full-workflow-prompts"
+        );
+        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"targetType":"ALL"}
-                    """))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.characters[0].prompt", Matchers.containsString("角色")))
             .andExpect(jsonPath("$.data.storyboards[0].videoPrompt", Matchers.containsString("竖屏短剧")));
@@ -771,6 +1056,29 @@ class ScriptWorkflowControllerTest {
               (tenant_id, provider, service_type, name, base_url, api_key_cipher, model, endpoint, priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
             values (?, 'OpenAI', 'TEXT', '默认文本服务', 'https://example.com/v1', 'cipher', 'gpt-4.1-mini', '/chat/completions', 100, true, true, 'SUCCESS', ?, now(), now())
             """, tenantId, userId);
+        Long configId = jdbcTemplate.queryForObject(
+            "select id from ai_service_config where tenant_id = ? and service_type = 'TEXT' and deleted_at is null order by id desc limit 1",
+            Long.class,
+            tenantId
+        );
+        Long providerId = jdbcTemplate.queryForObject(
+            "select id from ai_provider where code = 'OpenAI' limit 1", Long.class
+        );
+        String modelCode = "test-text-" + tenantId;
+        jdbcTemplate.update("update ai_model set is_default = false where service_type = 'TEXT'");
+        jdbcTemplate.update("delete from ai_model_capability where model_id in (select id from ai_model where code = ?)", modelCode);
+        jdbcTemplate.update("delete from ai_model where code = ?", modelCode);
+        jdbcTemplate.update("""
+            insert into ai_model
+              (provider_id, code, name, model_code, service_type, status, is_default, sort,
+               legacy_service_config_id, created_at, updated_at)
+            values (?, ?, 'Test Text Model', 'gpt-4.1-mini', 'TEXT', 'ENABLED', true, 100, ?, now(), now())
+            """, providerId, modelCode, configId);
+        Long modelId = jdbcTemplate.queryForObject("select id from ai_model where code = ?", Long.class, modelCode);
+        jdbcTemplate.update("""
+            insert into ai_model_capability (model_id, capability, status, created_at, updated_at)
+            values (?, 'TEXT_GENERATION', 'ENABLED', now(), now())
+            """, modelId);
     }
 
     private void grantTeamPoints(Long tenantId, int amount) {

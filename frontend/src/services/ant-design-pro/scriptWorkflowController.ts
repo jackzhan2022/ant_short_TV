@@ -10,7 +10,7 @@ export async function generatePrompts(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/prompts/ai-generate`,
     {
       method: "POST",
@@ -48,7 +48,7 @@ export async function reanalyze(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptAnalysisTaskResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/script-analysis/current/reanalyze`,
     {
       method: "POST",
@@ -65,7 +65,7 @@ export async function retryAnalysis(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, stageCode: param1, ...queryParams } = params;
-  return request<API.ApiResponseScriptAnalysisTaskResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/script-analysis/current/retry/${param1}`,
     {
       method: "POST",
@@ -82,7 +82,7 @@ export async function reanalyzeVersion(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, versionId: param1, ...queryParams } = params;
-  return request<API.ApiResponseScriptAnalysisTaskResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/script-analysis/versions/${param1}/reanalyze`,
     {
       method: "POST",
@@ -188,7 +188,7 @@ export async function extractElements(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/scripts/ai-extract-elements`,
     {
       method: "POST",
@@ -210,7 +210,7 @@ export async function generate(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/scripts/ai-generate`,
     {
       method: "POST",
@@ -232,7 +232,7 @@ export async function rewrite(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/scripts/ai-rewrite`,
     {
       method: "POST",
@@ -376,7 +376,7 @@ export async function breakdownStoryboards(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/storyboards/ai-breakdown`,
     {
       method: "POST",

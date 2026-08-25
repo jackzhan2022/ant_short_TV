@@ -10,6 +10,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,12 +44,13 @@ public class AiImageTaskController {
 
     @PostMapping("/ai-image-tasks")
     @RequireProjectPermission("AI_IMAGE_TASK:CREATE")
-    public ApiResponse<AiImageTaskResponse> create(
+    public ResponseEntity<ApiResponse<AiImageTaskResponse>> create(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateAiImageTaskRequest body,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(aiImageTaskService.create(tenantId(request), projectId, body, request));
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .body(ApiResponse.success(aiImageTaskService.create(tenantId(request), projectId, body, request)));
     }
 
     @GetMapping("/ai-image-tasks/{taskId}")
@@ -63,12 +65,13 @@ public class AiImageTaskController {
 
     @PostMapping("/ai-image-tasks/{taskId}/regenerate")
     @RequireProjectPermission("AI_IMAGE_TASK:CREATE")
-    public ApiResponse<AiImageTaskResponse> regenerate(
+    public ResponseEntity<ApiResponse<AiImageTaskResponse>> regenerate(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(aiImageTaskService.regenerate(tenantId(request), projectId, taskId, request));
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .body(ApiResponse.success(aiImageTaskService.regenerate(tenantId(request), projectId, taskId, request)));
     }
 
     @PutMapping("/ai-image-tasks/{taskId}/cancel")

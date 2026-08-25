@@ -203,7 +203,7 @@ export async function createTask(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseReviewTaskResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/script-review/projects/${param0}/tasks`,
     {
       method: "POST",
@@ -302,7 +302,7 @@ export async function cancelTask(
   options?: { [key: string]: any }
 ) {
   const { taskId: param0, ...queryParams } = params;
-  return request<API.ApiResponseReviewTaskResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/script-review/tasks/${param0}/cancel`,
     {
       method: "POST",
@@ -341,7 +341,7 @@ export async function retryTask(
   options?: { [key: string]: any }
 ) {
   const { taskId: param0, ...queryParams } = params;
-  return request<API.ApiResponseReviewTaskResponse>(
+  return request<API.ApiResponseAiExecutionResponse>(
     `/api/script-review/tasks/${param0}/retry`,
     {
       method: "POST",

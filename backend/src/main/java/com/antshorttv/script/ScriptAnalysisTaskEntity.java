@@ -21,6 +21,7 @@ public class ScriptAnalysisTaskEntity {
     private String errorCode;
     private String errorMessage;
     private String idempotencyKey;
+    private Long executionId;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -52,6 +53,8 @@ public class ScriptAnalysisTaskEntity {
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+    public Long getExecutionId() { return executionId; }
+    public void setExecutionId(Long executionId) { this.executionId = executionId; }
     public Long getCreatedBy() { return createdBy; }
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }

@@ -76,6 +76,32 @@ class VideoDecompositionExecutionServiceTest {
                  where task_id = ? and business_scene = 'video_script_draft'
                 """, Integer.class, episodeId);
             assertThat(draftLogs).isEqualTo(1);
+            Long executionId = jdbc.queryForObject(
+                "select execution_id from video_decomposition_episode where id = ?",
+                Long.class,
+                episodeId
+            );
+            assertThat(executionId).isNotNull();
+            assertThat(jdbc.queryForList(
+                "select phase from ai_execution_attempt where execution_id = ? order by id",
+                String.class,
+                executionId
+            )).containsExactly("VIDEO_ANALYSIS", "DRAFT_GENERATION");
+            assertThat(jdbc.queryForObject(
+                "select count(*) from ai_call_log where execution_id = ? and attempt_id is not null",
+                Integer.class,
+                executionId
+            )).isEqualTo(2);
+            assertThat(jdbc.queryForObject(
+                "select count(*) from video_decomposition_analysis where episode_id = ? and execution_id = ?",
+                Integer.class,
+                episodeId,
+                executionId
+            )).isEqualTo(1);
+            var execution = jdbc.queryForMap("select * from ai_execution_task where id = ?", executionId);
+            assertThat(execution.get("status")).isEqualTo("SUCCEEDED");
+            assertThat(execution.get("result_type")).isEqualTo("VIDEO_DECOMPOSITION_EPISODE");
+            assertThat(execution.get("result_id")).isEqualTo(episodeId);
             String understandingSummary = jdbc.queryForObject("""
                 select request_summary from ai_call_log
                  where task_id = ? and business_scene = 'video_understanding'
@@ -190,7 +216,9 @@ class VideoDecompositionExecutionServiceTest {
               (provider_id, code, name, model_code, service_type, status, is_default, sort, created_at, updated_at)
             values (?, 'qwen-video-understanding-execution', 'Qwen3.7 Plus', 'qwen3.7-plus', 'VIDEO_UNDERSTANDING', 'ENABLED', true, 100, now(), now())
             """, providerId);
-        return jdbc.queryForObject("select max(id) from ai_model where code = 'qwen-video-understanding-execution'", Long.class);
+        Long modelId = jdbc.queryForObject("select max(id) from ai_model where code = 'qwen-video-understanding-execution'", Long.class);
+        insertCapability(modelId, "VIDEO_UNDERSTANDING");
+        return modelId;
     }
 
     private Long prepareTextModel(String baseUrl) {
@@ -213,7 +241,17 @@ class VideoDecompositionExecutionServiceTest {
               (provider_id, code, name, model_code, service_type, status, is_default, sort, created_at, updated_at)
             values (?, 'qwen-text-draft-execution', 'Qwen Draft', 'qwen-plus', 'TEXT', 'ENABLED', true, 100, now(), now())
             """, providerId);
-        return jdbc.queryForObject("select max(id) from ai_model where code = 'qwen-text-draft-execution'", Long.class);
+        Long modelId = jdbc.queryForObject("select max(id) from ai_model where code = 'qwen-text-draft-execution'", Long.class);
+        insertCapability(modelId, "TEXT_GENERATION");
+        return modelId;
+    }
+
+    private void insertCapability(Long modelId, String capability) {
+        jdbc.update("""
+            insert into ai_model_capability
+              (model_id, capability, status, created_at, updated_at)
+            values (?, ?, 'ENABLED', now(), now())
+            """, modelId, capability);
     }
 
     private Long insertBatch(Long modelId) {

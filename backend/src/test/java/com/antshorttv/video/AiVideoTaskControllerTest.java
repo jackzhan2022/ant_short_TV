@@ -85,6 +85,7 @@ class AiVideoTaskControllerTest {
                     """.formatted(storyboardId, serviceConfigId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", notNullValue()))
+            .andExpect(jsonPath("$.data.executionId", notNullValue()))
             .andExpect(jsonPath("$.data.status", is("GENERATING")))
             .andExpect(jsonPath("$.data.externalTaskId", containsString("mock-video-")))
             .andReturn();
@@ -227,10 +228,15 @@ class AiVideoTaskControllerTest {
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
             .andExpect(jsonPath("$.data.results", hasSize(1)));
         Integer resultCount = jdbc.queryForObject("select count(*) from ai_video_result where task_id = ?", Integer.class, taskId);
-        Integer attemptCount = jdbc.queryForObject("select count(*) from ai_video_task_attempt where task_id = ?", Integer.class, taskId);
+        Integer attemptCount = jdbc.queryForObject("""
+            select count(*)
+              from ai_execution_attempt a
+              join ai_video_task t on t.execution_id = a.execution_id
+             where t.id = ?
+            """, Integer.class, taskId);
         var task = jdbc.queryForMap("select * from ai_video_task where id = ?", taskId);
         org.assertj.core.api.Assertions.assertThat(resultCount).isEqualTo(1);
-        org.assertj.core.api.Assertions.assertThat(attemptCount).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(attemptCount).isEqualTo(2);
         org.assertj.core.api.Assertions.assertThat(task.get("execution_token")).isNull();
     }
 
@@ -405,8 +411,220 @@ class AiVideoTaskControllerTest {
         }
     }
 
+    @Test
+    void retriesProviderPollingWithoutSubmittingTheVideoTwice() throws Exception {
+        AtomicInteger submissions = new AtomicInteger();
+        AtomicInteger queries = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/video/generations", exchange -> {
+            submissions.incrementAndGet();
+            writeJson(exchange, 200, "{\"externalTaskId\":\"retry-task\",\"status\":\"ACCEPTED\"}");
+        });
+        server.createContext("/video/tasks", exchange -> {
+            if (queries.incrementAndGet() == 1) {
+                writeJson(exchange, 503, "{\"message\":\"temporary\"}");
+                return;
+            }
+            writeJson(exchange, 200, """
+                {"status":"SUCCEEDED","videoUrl":"http://127.0.0.1:%d/generated.mp4"}
+                """.formatted(server.getAddress().getPort()));
+        });
+        server.createContext("/generated.mp4", exchange -> {
+            byte[] body = "video".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream output = exchange.getResponseBody()) {
+                output.write(body);
+            }
+        });
+        server.start();
+        try {
+            String token = registerUser("13800016011", "Polling Retry Owner");
+            Long tenantId = createTenant(token, "轮询重试团队");
+            Long ownerId = userIdByMobile("13800016011");
+            Long projectId = createProject(token, tenantId, ownerId, "轮询重试项目", "AI_VIDEO_POLL_RETRY");
+            Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            grantTeamPoints(tenantId, 1);
+            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "轮询失败后恢复");
+
+            pollVideoTask(token, tenantId, projectId, taskId);
+            pollVideoTask(token, tenantId, projectId, taskId)
+                .andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
+
+            assertThat(submissions.get()).isEqualTo(1);
+            assertThat(queries.get()).isEqualTo(2);
+            assertThat(jdbc.queryForObject(
+                """
+                    select count(*)
+                      from ai_execution_attempt a
+                      join ai_video_task t on t.execution_id = a.execution_id
+                     where t.id = ?
+                    """,
+                Integer.class,
+                taskId
+            )).isEqualTo(3);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void cancellationPreventsFurtherProviderPolling() throws Exception {
+        AtomicInteger queries = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/video/generations", exchange ->
+            writeJson(exchange, 200, "{\"externalTaskId\":\"cancel-task\",\"status\":\"ACCEPTED\"}"));
+        server.createContext("/video/tasks", exchange -> {
+            queries.incrementAndGet();
+            writeJson(exchange, 200, "{\"status\":\"RUNNING\"}");
+        });
+        server.start();
+        try {
+            String token = registerUser("13800016012", "Cancel Owner");
+            Long tenantId = createTenant(token, "取消视频团队");
+            Long ownerId = userIdByMobile("13800016012");
+            Long projectId = createProject(token, tenantId, ownerId, "取消视频项目", "AI_VIDEO_CANCEL");
+            Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            grantTeamPoints(tenantId, 1);
+            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "取消后不查询");
+
+            mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/cancel".formatted(projectId, taskId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status", is("CANCELED")));
+            aiVideoTaskService.pollDueTasks();
+
+            assertThat(queries.get()).isZero();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void recordsRetryAttemptsWhenCompletedVideoCannotBeDownloaded() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/video/generations", exchange ->
+            writeJson(exchange, 200, "{\"externalTaskId\":\"download-task\",\"status\":\"ACCEPTED\"}"));
+        server.createContext("/video/tasks", exchange -> writeJson(exchange, 200, """
+            {"status":"SUCCEEDED","videoUrl":"http://127.0.0.1:%d/missing.mp4"}
+            """.formatted(server.getAddress().getPort())));
+        server.createContext("/missing.mp4", exchange -> writeJson(exchange, 502, "{\"message\":\"missing\"}"));
+        server.start();
+        try {
+            String token = registerUser("13800016013", "Download Failure Owner");
+            Long tenantId = createTenant(token, "下载失败团队");
+            Long ownerId = userIdByMobile("13800016013");
+            Long projectId = createProject(token, tenantId, ownerId, "下载失败项目", "AI_VIDEO_DOWNLOAD_FAIL");
+            Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            grantTeamPoints(tenantId, 1);
+            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "下载失败重试");
+
+            pollVideoTask(token, tenantId, projectId, taskId);
+            pollVideoTask(token, tenantId, projectId, taskId);
+            pollVideoTask(token, tenantId, projectId, taskId)
+                .andExpect(jsonPath("$.data.status", is("FAILED")));
+
+            assertThat(jdbc.queryForObject(
+                """
+                    select count(*)
+                      from ai_execution_attempt a
+                      join ai_video_task t on t.execution_id = a.execution_id
+                     where t.id = ?
+                    """,
+                Integer.class,
+                taskId
+            )).isEqualTo(4);
+            assertThat(jdbc.queryForObject(
+                "select count(*) from ai_video_result where task_id = ?",
+                Integer.class,
+                taskId
+            )).isZero();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void correlatesSuccessfulVideoWithExecutionCallAndSettlement() throws Exception {
+        String token = registerUser("13800016014", "Settlement Owner");
+        Long tenantId = createTenant(token, "视频结算团队");
+        Long ownerId = userIdByMobile("13800016014");
+        Long projectId = createProject(token, tenantId, ownerId, "视频结算项目", "AI_VIDEO_SETTLEMENT");
+        Long serviceConfigId = createVideoService(token, tenantId);
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 2);
+        Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "视频结算关联");
+
+        pollVideoTask(token, tenantId, projectId, taskId);
+
+        Long executionId = jdbc.queryForObject(
+            "select execution_id from ai_video_task where id = ?",
+            Long.class,
+            taskId
+        );
+        assertThat(executionId).isNotNull();
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_call_log where execution_id = ?",
+            Integer.class,
+            executionId
+        )).isGreaterThan(0);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_execution_attempt where execution_id = ?",
+            Integer.class,
+            executionId
+        )).isEqualTo(2);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_call_log where execution_id = ? and attempt_id is not null",
+            Integer.class,
+            executionId
+        )).isEqualTo(2);
+        assertThat(jdbc.queryForList(
+            "select metric from ai_usage_line where execution_id = ? order by metric",
+            String.class,
+            executionId
+        )).containsExactly("CALL", "VIDEO_SECOND");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_usage_cost_line where execution_id = ?",
+            Integer.class,
+            executionId
+        )).isEqualTo(2);
+        assertThat(jdbc.queryForObject(
+            "select usage_cost_status from ai_execution_task where id = ?",
+            String.class,
+            executionId
+        )).isEqualTo("UNPRICED");
+        assertThat(jdbc.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?",
+            String.class,
+            executionId
+        )).isEqualTo("SETTLED");
+    }
+
     private Long createStoryboard(Long tenantId, Long projectId, Long createdBy) {
         return createStoryboardWithShot(tenantId, projectId, createdBy, 1);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions pollVideoTask(
+        String token,
+        Long tenantId,
+        Long projectId,
+        Long taskId
+    ) throws Exception {
+        return mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/poll".formatted(projectId, taskId))
+            .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+            .header("X-Tenant-Id", tenantId));
+    }
+
+    private void writeJson(HttpExchange exchange, int statusCode, String json) throws java.io.IOException {
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(statusCode, body.length);
+        try (OutputStream output = exchange.getResponseBody()) {
+            output.write(body);
+        }
     }
 
     private Long createStoryboardWithShot(Long tenantId, Long projectId, Long createdBy, int shotNo) {

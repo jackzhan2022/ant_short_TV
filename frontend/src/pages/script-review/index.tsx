@@ -10,6 +10,7 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
+import type { UploadFile } from 'antd';
 import {
   App,
   Button,
@@ -28,8 +29,14 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import type { UploadFile } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import AiExecutionStatus from '@/components/AiExecutionStatus';
+import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import type {
+  ReviewIssue,
+  ReviewProject,
+  ReviewProjectDetail,
+} from './service';
 import {
   batchRepairReview,
   cancelReviewTask,
@@ -43,11 +50,6 @@ import {
   retryReviewTask,
   rollbackReviewVersion,
   saveReviewVersion,
-} from './service';
-import type {
-  ReviewIssue,
-  ReviewProject,
-  ReviewProjectDetail,
 } from './service';
 
 const DIMENSIONS = [
@@ -84,7 +86,9 @@ const ScriptReviewPage = () => {
   const [content, setContent] = useState('');
   const [projectName, setProjectName] = useState('');
   const [uploadFile, setUploadFile] = useState<UploadFile>();
-  const [dimensions, setDimensions] = useState<string[]>(DIMENSIONS.slice(0, 3));
+  const [dimensions, setDimensions] = useState<string[]>(
+    DIMENSIONS.slice(0, 3),
+  );
   const [reviewMode, setReviewMode] = useState('QUICK');
   const [scopeType, setScopeType] = useState('ALL');
   const [hitSelections, setHitSelections] = useState<Record<number, number[]>>(
@@ -93,6 +97,8 @@ const ScriptReviewPage = () => {
   const [versionHistory, setVersionHistory] = useState<any>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [activeExecution, setActiveExecution] =
+    useState<API.AiExecutionResponse>();
   const editorRef = useRef<any>(null);
 
   const selectedTask = useMemo(
@@ -110,10 +116,15 @@ const ScriptReviewPage = () => {
 
   const resolveTextarea = () => {
     const current = editorRef.current;
-    return current?.resizableTextArea?.textArea ?? current?.input ?? current ?? null;
+    return (
+      current?.resizableTextArea?.textArea ?? current?.input ?? current ?? null
+    );
   };
 
-  const openIssueHit = (issue: ReviewIssue, hit: ReviewIssue['hits'][number]) => {
+  const openIssueHit = (
+    issue: ReviewIssue,
+    hit: ReviewIssue['hits'][number],
+  ) => {
     const target = hit.excerpt?.trim() || issue.excerpt?.trim();
     if (!target) return;
     const textarea = resolveTextarea();
@@ -145,15 +156,17 @@ const ScriptReviewPage = () => {
       const versionId =
         nextDetail.project.currentVersionId ?? nextDetail.versions[0]?.id;
       setSelectedVersionId(versionId);
-      const taskId =
-        nextDetail.project.lastTaskId ?? nextDetail.tasks[0]?.id;
+      const taskId = nextDetail.project.lastTaskId ?? nextDetail.tasks[0]?.id;
       setSelectedTaskId(taskId);
       setContent(
         nextDetail.versions.find((version) => version.id === versionId)
           ?.content ?? '',
       );
       if (versionId) {
-        const historyResponse = await queryReviewVersionHistory(projectId, versionId);
+        const historyResponse = await queryReviewVersionHistory(
+          projectId,
+          versionId,
+        );
         setVersionHistory(historyResponse.data);
       }
     } finally {
@@ -235,12 +248,27 @@ const ScriptReviewPage = () => {
         selectedDimensions: dimensions,
         reviewScopeType: scopeType,
       });
-      setSelectedTaskId(response.data?.id);
+      setSelectedTaskId(response.data?.businessId);
       message.success('审核任务已创建，后台会持续更新进度');
-      await loadProject(selectedProjectId);
+      await followReviewExecution(response.data);
     } finally {
       setSaving(false);
     }
+  };
+
+  const followReviewExecution = async (task?: API.AiExecutionResponse) => {
+    const tenantId = Number(localStorage.getItem('currentTenantId'));
+    if (!task?.id || !tenantId || !selectedProjectId) {
+      throw new Error('AI execution identity is missing');
+    }
+    setActiveExecution(task);
+    const terminal = await aiExecutionTaskService.poll(
+      tenantId,
+      task.id,
+      setActiveExecution,
+    );
+    setActiveExecution(terminal);
+    await loadProject(selectedProjectId);
   };
 
   const confirmResolve = (issue: ReviewIssue) => {
@@ -259,7 +287,8 @@ const ScriptReviewPage = () => {
 
   const applyRepair = (issue: ReviewIssue) => {
     if (!selectedTask) return;
-    const selectedHitIds = hitSelections[issue.id] ?? issue.hits.map((hit) => hit.id);
+    const selectedHitIds =
+      hitSelections[issue.id] ?? issue.hits.map((hit) => hit.id);
     if (selectedHitIds.length === 0) {
       message.warning('请先勾选至少一个命中片段');
       return;
@@ -269,7 +298,8 @@ const ScriptReviewPage = () => {
       content: (
         <Space vertical style={{ width: '100%' }}>
           <Typography.Text>
-            将命中片段中的「{issue.hits[0]?.excerpt ?? issue.excerpt}」全部替换为建议文本。
+            将命中片段中的「{issue.hits[0]?.excerpt ?? issue.excerpt}
+            」全部替换为建议文本。
           </Typography.Text>
           <Typography.Text type="secondary">
             当前仅支持基础批量修复，并会自动保存为新版本。
@@ -362,7 +392,9 @@ const ScriptReviewPage = () => {
                       cursor: 'pointer',
                       padding: '10px 8px',
                       background:
-                        project.id === selectedProjectId ? '#e6f4ff' : undefined,
+                        project.id === selectedProjectId
+                          ? '#e6f4ff'
+                          : undefined,
                     }}
                   >
                     <Space vertical size={0}>
@@ -395,8 +427,9 @@ const ScriptReviewPage = () => {
                       onChange={(versionId) => {
                         setSelectedVersionId(versionId);
                         setContent(
-                          detail.versions.find((version) => version.id === versionId)
-                            ?.content ?? '',
+                          detail.versions.find(
+                            (version) => version.id === versionId,
+                          )?.content ?? '',
                         );
                       }}
                       options={detail.versions.map((version) => ({
@@ -435,7 +468,8 @@ const ScriptReviewPage = () => {
                         onClick={() =>
                           modal.confirm({
                             title: '还原此版本？',
-                            content: '还原会创建一个新的版本，不会删除现有历史。',
+                            content:
+                              '还原会创建一个新的版本，不会删除现有历史。',
                             onOk: async () => {
                               if (!selectedProjectId || !selectedVersionId) {
                                 return;
@@ -459,13 +493,17 @@ const ScriptReviewPage = () => {
                       <Space vertical style={{ width: '100%' }}>
                         <Checkbox.Group
                           value={dimensions}
-                          onChange={(values) => setDimensions(values as string[])}
+                          onChange={(values) =>
+                            setDimensions(values as string[])
+                          }
                           disabled={taskLocked}
                           options={DIMENSIONS}
                         />
                         <Radio.Group
                           value={reviewMode}
-                          onChange={(event) => setReviewMode(event.target.value)}
+                          onChange={(event) =>
+                            setReviewMode(event.target.value)
+                          }
                           disabled={taskLocked}
                           optionType="button"
                           options={[
@@ -493,6 +531,14 @@ const ScriptReviewPage = () => {
                         </Button>
                       </Space>
                     </Card>
+                    {activeExecution ? (
+                      <div style={{ marginTop: 12 }}>
+                        <AiExecutionStatus
+                          task={activeExecution}
+                          busy={saving}
+                        />
+                      </div>
+                    ) : null}
                     {detail.tasks.map((task) => (
                       <Card
                         key={task.id}
@@ -500,7 +546,11 @@ const ScriptReviewPage = () => {
                         style={{ marginTop: 12, cursor: 'pointer' }}
                         onClick={() => setSelectedTaskId(task.id)}
                         title={`第 ${task.roundNo} 轮 · ${task.reviewMode}`}
-                        extra={<Tag color={statusColor(task.status)}>{task.status}</Tag>}
+                        extra={
+                          <Tag color={statusColor(task.status)}>
+                            {task.status}
+                          </Tag>
+                        }
                       >
                         <Progress percent={task.overallProgress} size="small" />
                         <Typography.Text type="secondary">
@@ -512,12 +562,9 @@ const ScriptReviewPage = () => {
                               <Button
                                 size="small"
                                 onClick={() => {
-                                  cancelReviewTask(task.id).then(() => {
-                                    if (selectedProjectId) {
-                                      return loadProject(selectedProjectId);
-                                    }
-                                    return undefined;
-                                  });
+                                  cancelReviewTask(task.id).then((response) =>
+                                    followReviewExecution(response.data),
+                                  );
                                 }}
                               >
                                 取消
@@ -527,12 +574,9 @@ const ScriptReviewPage = () => {
                               <Button
                                 size="small"
                                 onClick={() => {
-                                  retryReviewTask(task.id).then(() => {
-                                    if (selectedProjectId) {
-                                      return loadProject(selectedProjectId);
-                                    }
-                                    return undefined;
-                                  });
+                                  retryReviewTask(task.id).then((response) =>
+                                    followReviewExecution(response.data),
+                                  );
                                 }}
                               >
                                 重试
@@ -552,7 +596,8 @@ const ScriptReviewPage = () => {
                     <span>审核问题</span>
                     {selectedTask && (
                       <Tag color={statusColor(selectedTask.status)}>
-                        {selectedTask.summary?.overallConclusion ?? selectedTask.status}
+                        {selectedTask.summary?.overallConclusion ??
+                          selectedTask.status}
                       </Tag>
                     )}
                   </Space>
@@ -564,7 +609,8 @@ const ScriptReviewPage = () => {
                 ) : (
                   <Space vertical style={{ width: '100%' }}>
                     <Typography.Paragraph type="secondary">
-                      {selectedTask.summary?.summary || '问题会按维度聚合，支持多命中片段和人工处理。'}
+                      {selectedTask.summary?.summary ||
+                        '问题会按维度聚合，支持多命中片段和人工处理。'}
                     </Typography.Paragraph>
                     <List
                       dataSource={visibleIssues}
@@ -600,14 +646,19 @@ const ScriptReviewPage = () => {
                                 <Tag color={statusColor(issue.status)}>
                                   {issue.status}
                                 </Tag>
-                                <Typography.Text strong>{issue.title}</Typography.Text>
+                                <Typography.Text strong>
+                                  {issue.title}
+                                </Typography.Text>
                               </Space>
                             }
                             description={
                               <Space vertical size={4}>
-                                <Typography.Text>{issue.problem}</Typography.Text>
+                                <Typography.Text>
+                                  {issue.problem}
+                                </Typography.Text>
                                 <Typography.Text type="secondary">
-                                  原文：{issue.excerpt || '未提供片段'} · 命中 {issue.hits.length} 处
+                                  原文：{issue.excerpt || '未提供片段'} · 命中{' '}
+                                  {issue.hits.length} 处
                                 </Typography.Text>
                                 {issue.hits.length > 0 && (
                                   <Space vertical style={{ width: '100%' }}>
@@ -633,7 +684,9 @@ const ScriptReviewPage = () => {
                                           key={hit.id}
                                           size="small"
                                           type="link"
-                                          onClick={() => openIssueHit(issue, hit)}
+                                          onClick={() =>
+                                            openIssueHit(issue, hit)
+                                          }
                                         >
                                           定位命中 {hit.hitNo}
                                         </Button>
@@ -652,7 +705,10 @@ const ScriptReviewPage = () => {
                         </List.Item>
                       )}
                     />
-                    <Card size="small" title={`已处理 (${processedIssues.length})`}>
+                    <Card
+                      size="small"
+                      title={`已处理 (${processedIssues.length})`}
+                    >
                       <List
                         size="small"
                         dataSource={processedIssues}
@@ -674,10 +730,13 @@ const ScriptReviewPage = () => {
                       <Card size="small" title="版本历史">
                         <Space vertical style={{ width: '100%' }}>
                           <Typography.Text>
-                            当前版本 V{versionHistory.selectedVersion?.versionNo}
+                            当前版本 V
+                            {versionHistory.selectedVersion?.versionNo}
                           </Typography.Text>
                           <Typography.Text type="secondary">
-                            差异行数：+{versionHistory.diffLines?.[0]?.addedLines ?? 0} / -{versionHistory.diffLines?.[0]?.removedLines ?? 0}
+                            差异行数：+
+                            {versionHistory.diffLines?.[0]?.addedLines ?? 0} / -
+                            {versionHistory.diffLines?.[0]?.removedLines ?? 0}
                           </Typography.Text>
                           <List
                             size="small"
@@ -689,7 +748,8 @@ const ScriptReviewPage = () => {
                                     第 {item.roundNo} 轮 · {item.status}
                                   </Typography.Text>
                                   <Typography.Text type="secondary">
-                                    问题 {item.issueCount} · 已处理 {item.processedIssueCount}
+                                    问题 {item.issueCount} · 已处理{' '}
+                                    {item.processedIssueCount}
                                   </Typography.Text>
                                 </Space>
                               </List.Item>

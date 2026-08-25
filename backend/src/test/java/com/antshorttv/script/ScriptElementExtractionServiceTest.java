@@ -13,6 +13,7 @@ import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
+import com.antshorttv.execution.AiExecutionAttemptMapper;
 import com.antshorttv.points.TeamPointService;
 import com.antshorttv.security.TenantContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,7 +29,8 @@ class ScriptElementExtractionServiceTest {
         projectAiConfigService,
         aiInvocationService,
         teamPointService,
-        new ObjectMapper()
+        new ObjectMapper(),
+        mock(AiExecutionAttemptMapper.class)
     );
 
     @Test

@@ -10,7 +10,17 @@ import com.antshorttv.ai.AiProviderEntity;
 import com.antshorttv.ai.AiProviderMapper;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionCreateCommand;
+import com.antshorttv.execution.AiExecutionResponse;
+import com.antshorttv.execution.AiExecutionResponseMapper;
+import com.antshorttv.execution.AiExecutionService;
+import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.points.TeamPointService;
+import com.antshorttv.points.AiPointReservationEntity;
+import com.antshorttv.points.AiPointReservationMapper;
+import com.antshorttv.points.AiPointSettlementService;
+import com.antshorttv.points.AiSettlementOutcome;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.script.ScriptEpisodeParser;
@@ -54,7 +64,6 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -94,6 +103,10 @@ public class ReviewWorkbenchService {
     private final AiModelMapper aiModelMapper;
     private final AiProviderMapper aiProviderMapper;
     private final ObjectMapper objectMapper;
+    private final AiExecutionService executionService;
+    private final AiExecutionResponseMapper executionResponseMapper;
+    private final AiPointReservationMapper pointReservationMapper;
+    private final AiPointSettlementService pointSettlementService;
     private final Path exportRoot;
 
     public ReviewWorkbenchService(
@@ -112,6 +125,10 @@ public class ReviewWorkbenchService {
         AiModelMapper aiModelMapper,
         AiProviderMapper aiProviderMapper,
         ObjectMapper objectMapper,
+        AiExecutionService executionService,
+        AiExecutionResponseMapper executionResponseMapper,
+        AiPointReservationMapper pointReservationMapper,
+        AiPointSettlementService pointSettlementService,
         @Value("${review.export-root:storage/review-exports}") String exportRoot
     ) {
         this.tenantContextResolver = tenantContextResolver;
@@ -129,17 +146,11 @@ public class ReviewWorkbenchService {
         this.aiModelMapper = aiModelMapper;
         this.aiProviderMapper = aiProviderMapper;
         this.objectMapper = objectMapper;
+        this.executionService = executionService;
+        this.executionResponseMapper = executionResponseMapper;
+        this.pointReservationMapper = pointReservationMapper;
+        this.pointSettlementService = pointSettlementService;
         this.exportRoot = Path.of(exportRoot).toAbsolutePath().normalize();
-    }
-
-    @Scheduled(fixedDelayString = "${review.scheduler.fixed-delay-ms:8000}")
-    public void executePendingTasks() {
-        taskMapper.selectRunnable().forEach(task -> {
-            try {
-                executeTask(task.getId());
-            } catch (Exception ignored) {
-            }
-        });
     }
 
     public List<ReviewProjectSummaryResponse> listProjects(Long tenantId) {
@@ -224,7 +235,7 @@ public class ReviewWorkbenchService {
     }
 
     @Transactional
-    public ReviewTaskResponse createTask(Long tenantId, Long projectId, CreateReviewTaskRequest request) {
+    public AiExecutionResponse createTask(Long tenantId, Long projectId, CreateReviewTaskRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewProjectEntity project = requireAccessibleProject(context, projectId, "AI_SERVICE:USE");
         List<String> dimensions = normalizeDimensions(request.selectedDimensions());
@@ -240,7 +251,7 @@ public class ReviewWorkbenchService {
         String idempotencyKey = buildIdempotencyKey(projectId, version.getId(), reviewMode, scopeType, dimensions, scopeJson);
         ReviewTaskEntity existing = taskMapper.selectByIdempotencyKey(context.tenantId(), idempotencyKey);
         if (existing != null) {
-            return toTaskResponse(existing, true);
+            return executionResponseMapper.toResponse(executionService.requireTask(existing.getExecutionId()));
         }
         Integer roundNo = nextRoundNo(context.tenantId(), projectId);
         LocalDateTime now = LocalDateTime.now();
@@ -263,10 +274,24 @@ public class ReviewWorkbenchService {
         task.setUpdatedAt(now);
         taskMapper.insert(task);
 
+        Long modelId = resolveDefaultTextModelId(context.tenantId());
+        AiExecutionTaskEntity execution = executionService.createWithReservation(
+            new AiExecutionCreateCommand(
+                context.tenantId(), context.userId(), project.getMainProjectId(),
+                AiBusinessScene.SCRIPT_REVIEW.code(), "TEXT", "REVIEW_TASK", task.getId(),
+                modelId, "AI_REVIEW", idempotencyKey, "script-review-" + task.getId(), true,
+                "{\"reviewTaskId\":" + task.getId() + "}"
+            ),
+            Map.of(),
+            Map.of("reviewMode", reviewMode)
+        );
+        task.setExecutionId(execution.id);
+        taskMapper.updateById(task);
+
         project.setLastTaskId(task.getId());
         project.setUpdatedAt(now);
         projectMapper.updateById(project);
-        return toTaskResponse(task, true);
+        return executionResponseMapper.toResponse(execution);
     }
 
     public List<ReviewTaskResponse> listTasks(Long tenantId, Long projectId) {
@@ -289,12 +314,12 @@ public class ReviewWorkbenchService {
     }
 
     @Transactional
-    public ReviewTaskResponse cancelTask(Long tenantId, Long taskId) {
+    public AiExecutionResponse cancelTask(Long tenantId, Long taskId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewTaskEntity task = requireTask(context.tenantId(), taskId);
         requireAccessibleProject(context, task.getProjectId(), "AI_SERVICE:USE");
         if (!List.of("PENDING", "RUNNING").contains(task.getStatus())) {
-            return toTaskResponse(task, true);
+            return executionResponseMapper.toResponse(executionService.requireTask(task.getExecutionId()));
         }
         LocalDateTime now = LocalDateTime.now();
         task.setStatus("CANCELED");
@@ -302,11 +327,24 @@ public class ReviewWorkbenchService {
         task.setCanceledAt(now);
         task.setUpdatedAt(now);
         taskMapper.updateById(task);
-        return toTaskResponse(task, true);
+        AiExecutionTaskEntity execution = executionService.cancel(task.getExecutionId());
+        AiPointReservationEntity reservation = pointReservationMapper.selectByExecutionId(execution.id);
+        if (reservation != null && "RESERVED".equals(reservation.status)) {
+            reservation = pointSettlementService.finalizeOutcome(
+                reservation.id,
+                AiSettlementOutcome.PRE_CALL_CANCELED,
+                Map.of(),
+                null,
+                null,
+                "execution:%d:v%d:cancel".formatted(execution.id, execution.executionVersion)
+            );
+            executionService.updateSettlementSummary(reservation);
+        }
+        return executionResponseMapper.toResponse(executionService.requireTask(execution.id));
     }
 
     @Transactional
-    public ReviewTaskResponse retryTask(Long tenantId, Long taskId) {
+    public AiExecutionResponse retryTask(Long tenantId, Long taskId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewTaskEntity task = requireTask(context.tenantId(), taskId);
         requireAccessibleProject(context, task.getProjectId(), "AI_SERVICE:USE");
@@ -324,7 +362,11 @@ public class ReviewWorkbenchService {
         task.setCanceledAt(null);
         task.setUpdatedAt(now);
         taskMapper.updateById(task);
-        return toTaskResponse(task, true);
+        AiExecutionTaskEntity execution = executionService.requireTask(task.getExecutionId());
+        if ("FAILED".equals(execution.status) || "TIMED_OUT".equals(execution.status)) {
+            execution = executionService.retry(execution.id);
+        }
+        return executionResponseMapper.toResponse(execution);
     }
 
     @Transactional
@@ -528,11 +570,17 @@ public class ReviewWorkbenchService {
         );
     }
 
-    @Transactional
     public void executeTask(Long taskId) {
+        try {
+            executeTask(taskId, null);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    ReviewExecutionOutcome executeTask(Long taskId, AiExecutionContext executionContext) {
         ReviewTaskEntity task = taskMapper.selectById(taskId);
         if (task == null || List.of("COMPLETED", "CANCELED").contains(task.getStatus())) {
-            return;
+            return ReviewExecutionOutcome.empty();
         }
         try {
             ReviewScriptVersionEntity version = requireVersion(task.getTenantId(), task.getProjectId(), task.getScriptVersionId());
@@ -555,9 +603,12 @@ public class ReviewWorkbenchService {
             taskMapper.updateById(task);
 
             if ("CANCELED".equals(taskMapper.selectById(taskId).getStatus())) {
-                return;
+                return ReviewExecutionOutcome.empty();
             }
-            ReviewAiResult aiResult = invokeAiReview(task, version, globalIndex, scopedContent);
+            ReviewInvocationOutcome review = invokeAiReview(
+                task, version, globalIndex, scopedContent, executionContext
+            );
+            ReviewAiResult aiResult = review.result();
             task.setResultJson(aiResult.rawJson());
             task.setCurrentStage("MATCHING");
             task.setCurrentAction("正在匹配历史问题并生成轮次结果");
@@ -575,6 +626,7 @@ public class ReviewWorkbenchService {
                 task.setUpdatedAt(LocalDateTime.now());
                 taskMapper.updateById(task);
             }
+            return new ReviewExecutionOutcome(review.invocation());
         } catch (Exception exception) {
             ReviewTaskEntity failed = taskMapper.selectById(taskId);
             if (failed != null && !"CANCELED".equals(failed.getStatus())) {
@@ -586,6 +638,10 @@ public class ReviewWorkbenchService {
                 failed.setUpdatedAt(LocalDateTime.now());
                 taskMapper.updateById(failed);
             }
+            if (exception instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException(exception);
         }
     }
 
@@ -611,14 +667,17 @@ public class ReviewWorkbenchService {
         return new FileSystemResource(target);
     }
 
-    private ReviewAiResult invokeAiReview(
+    private ReviewInvocationOutcome invokeAiReview(
         ReviewTaskEntity task,
         ReviewScriptVersionEntity version,
         Map<String, Object> globalIndex,
-        String scopedContent
+        String scopedContent,
+        AiExecutionContext executionContext
     ) {
-        TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
-        teamPointService.consumeForAi(context, 1, AiBusinessScene.SCRIPT_REVIEW.pointScene(), task.getId(), "剧本审核");
+        if (executionContext == null) {
+            TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
+            teamPointService.consumeForAi(context, 1, AiBusinessScene.SCRIPT_REVIEW.pointScene(), task.getId(), "剧本审核");
+        }
         Long modelId = resolveDefaultTextModelId(task.getTenantId());
         List<ReviewIssueEntity> previousIssues = latestIssuesBefore(task.getTenantId(), task.getProjectId(), task.getRoundNo());
         Map<String, Object> variables = new LinkedHashMap<>();
@@ -629,8 +688,7 @@ public class ReviewWorkbenchService {
         variables.put("reviewScope", deserializeObject(task.getReviewScopeJson()));
         variables.put("previousIssues", previousIssues.stream().map(this::issueBrief).toList());
         variables.put("globalIndex", globalIndex);
-        AiInvocationResult<com.antshorttv.ai.AiTextResponse> invocation = aiInvocationService.invokeText(
-            AiInvocationRequest.text()
+        AiInvocationRequest.Builder request = AiInvocationRequest.text()
                 .tenantId(task.getTenantId())
                 .userId(task.getCreatedBy())
                 .projectId(task.getProjectId())
@@ -640,18 +698,27 @@ public class ReviewWorkbenchService {
                 .promptTemplateId(AiBusinessScene.SCRIPT_REVIEW.agentCode())
                 .templateVariables(variables)
                 .requestSummary("script-review:round-%d".formatted(task.getRoundNo()))
-                .traceId("script-review-%d".formatted(task.getId()))
-                .build()
-        );
+                .traceId("script-review-%d".formatted(task.getId()));
+        if (executionContext != null) {
+            request.executionId(executionContext.task().id)
+                .attemptId(executionContext.claim().attemptId())
+                .executionVersion(executionContext.task().executionVersion)
+                .phase("AI_REVIEW")
+                .idempotencyKey("execution:%d:v%d:AI_REVIEW".formatted(
+                    executionContext.task().id,
+                    executionContext.task().executionVersion
+                ));
+        }
+        AiInvocationResult<com.antshorttv.ai.AiTextResponse> invocation = aiInvocationService.invokeText(request.build());
         try {
-            return parseReviewResult(invocation.content());
+            return new ReviewInvocationOutcome(parseReviewResult(invocation.content()), invocation);
         } catch (RuntimeException exception) {
             aiInvocationService.markBusinessFailure(
                 invocation.aiCallLogId(),
                 exception instanceof BusinessException businessException ? businessException.getErrorCode() : ErrorCode.AI_RESPONSE_INVALID,
                 exception.getMessage()
             );
-            throw exception;
+            throw new ReviewInvocationException(exception, invocation);
         }
     }
 
@@ -1793,6 +1860,12 @@ public class ReviewWorkbenchService {
         String summary,
         List<ReviewDraftIssue> issues,
         String rawJson
+    ) {
+    }
+
+    private record ReviewInvocationOutcome(
+        ReviewAiResult result,
+        AiInvocationResult<com.antshorttv.ai.AiTextResponse> invocation
     ) {
     }
 

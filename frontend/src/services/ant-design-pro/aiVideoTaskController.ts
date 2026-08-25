@@ -112,9 +112,9 @@ export async function create5(
 }
 
 /** 此处后端没有提供注释 GET /api/projects/${param0}/ai-video-tasks/${param1} */
-export async function detail3(
+export async function detail4(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail3Params,
+  params: API.detail4Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;
@@ -146,9 +146,9 @@ export async function deleteTask(
 }
 
 /** 此处后端没有提供注释 POST /api/projects/${param0}/ai-video-tasks/${param1}/cancel */
-export async function cancel1(
+export async function cancel2(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.cancel1Params,
+  params: API.cancel2Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;
@@ -180,9 +180,9 @@ export async function poll(
 }
 
 /** 此处后端没有提供注释 POST /api/projects/${param0}/ai-video-tasks/${param1}/regenerate */
-export async function regenerate(
+export async function regenerate1(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.regenerateParams,
+  params: API.regenerate1Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;

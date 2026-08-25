@@ -106,8 +106,7 @@ public class ProjectAiConfigService {
         if (configured != null) {
             return configured;
         }
-        Long defaultModelId = defaultModelId(serviceType);
-        return defaultModelId == null ? legacyDefaultModelId(serviceType) : defaultModelId;
+        return defaultModelId(serviceType);
     }
 
     private List<ProjectModelOptionResponse> options(String serviceType) {
@@ -151,49 +150,6 @@ public class ProjectAiConfigService {
             .orderByDesc(AiModelEntity::getSort)
             .last("limit 1"));
         return model == null || !modelAvailable(model) ? null : model.getId();
-    }
-
-    private Long legacyDefaultModelId(String serviceType) {
-        AiServiceConfigEntity config = aiServiceConfigMapper.selectOne(new LambdaQueryWrapper<AiServiceConfigEntity>()
-            .eq(AiServiceConfigEntity::getServiceType, serviceType)
-            .eq(AiServiceConfigEntity::getIsDefault, true)
-            .eq(AiServiceConfigEntity::getEnabled, true)
-            .isNull(AiServiceConfigEntity::getDeletedAt)
-            .orderByDesc(AiServiceConfigEntity::getPriority)
-            .orderByDesc(AiServiceConfigEntity::getId)
-            .last("limit 1"));
-        if (config == null) {
-            return null;
-        }
-        AiModelEntity existing = aiModelMapper.selectOne(new LambdaQueryWrapper<AiModelEntity>()
-            .eq(AiModelEntity::getLegacyServiceConfigId, config.getId())
-            .last("limit 1"));
-        if (existing != null) {
-            return existing.getId();
-        }
-        AiProviderEntity provider = aiProviderMapper.selectOne(new LambdaQueryWrapper<AiProviderEntity>()
-            .eq(AiProviderEntity::getCode, config.getProvider())
-            .eq(AiProviderEntity::getStatus, "ENABLED")
-            .last("limit 1"));
-        if (provider == null) {
-            return null;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        AiModelEntity model = new AiModelEntity();
-        model.setProviderId(provider.getId());
-        model.setCode("%s_%s_%d".formatted(config.getProvider().replaceAll("[^A-Za-z0-9]", "_"), config.getServiceType(), config.getId()));
-        model.setName(config.getName());
-        model.setModelCode(config.getModel());
-        model.setServiceType(config.getServiceType());
-        model.setDescription(config.getRemark());
-        model.setStatus("ENABLED");
-        model.setIsDefault(false);
-        model.setSort(config.getPriority() == null ? 0 : config.getPriority());
-        model.setLegacyServiceConfigId(config.getId());
-        model.setCreatedAt(now);
-        model.setUpdatedAt(now);
-        aiModelMapper.insert(model);
-        return model.getId();
     }
 
     private boolean modelAvailable(AiModelEntity model) {

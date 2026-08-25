@@ -17,6 +17,7 @@ export type VideoDecompositionUpload = {
 
 export type VideoDecompositionEpisode = {
   id: number;
+  executionId?: number;
   batchId: number;
   projectId?: number | null;
   episodeNo: number;

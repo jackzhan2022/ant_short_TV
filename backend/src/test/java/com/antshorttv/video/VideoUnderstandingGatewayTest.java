@@ -95,6 +95,8 @@ class VideoUnderstandingGatewayTest {
               (provider_id, code, name, model_code, service_type, status, is_default, sort, created_at, updated_at)
             values (?, 'qwen-video-understanding', 'Qwen3.7 Plus', 'qwen3.7-plus', 'VIDEO_UNDERSTANDING', 'ENABLED', true, 100, now(), now())
             """, providerId);
-        return jdbc.queryForObject("select max(id) from ai_model where code = 'qwen-video-understanding'", Long.class);
+        Long modelId = jdbc.queryForObject("select max(id) from ai_model where code = 'qwen-video-understanding'", Long.class);
+        jdbc.update("insert into ai_model_capability (model_id, capability, status, created_at, updated_at) values (?, 'VIDEO_UNDERSTANDING', 'ENABLED', now(), now())", modelId);
+        return modelId;
     }
 }

@@ -311,6 +311,198 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void flywayCreatesUnifiedAiExecutionSchemaAndCorrelations() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+            from information_schema.tables
+            where lower(table_name) in ('ai_execution_task', 'ai_execution_attempt')
+            """, Integer.class);
+        Integer taskColumnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'ai_execution_task'
+              and lower(column_name) in (
+                'tenant_id', 'user_id', 'project_id', 'scene', 'capability',
+                'business_type', 'business_id', 'requested_model_id', 'resolved_model_id',
+                'status', 'phase', 'progress', 'execution_version', 'client_idempotency_key',
+                'trace_id', 'claim_token', 'claimed_at', 'heartbeat_at', 'claim_expires_at',
+                'retryable', 'result_type', 'result_id', 'error_code', 'error_message',
+                'usage_cost_status', 'point_settlement_status', 'created_at', 'updated_at'
+              )
+            """, Integer.class);
+        Integer attemptColumnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'ai_execution_attempt'
+              and lower(column_name) in (
+                'execution_id', 'execution_version', 'phase', 'attempt_no', 'status',
+                'idempotency_key', 'provider_contacted', 'provider_id', 'model_id',
+                'provider_request_id', 'external_task_id', 'ai_call_log_id',
+                'retryable', 'error_code', 'error_message', 'started_at', 'finished_at'
+              )
+            """, Integer.class);
+        Integer eligibilityIndexes = jdbc.queryForObject("""
+            select count(distinct lower(index_name))
+            from information_schema.indexes
+            where lower(table_name) = 'ai_execution_task'
+              and lower(index_name) in (
+                'idx_ai_execution_task_eligibility',
+                'idx_ai_execution_task_tenant_running'
+              )
+            """, Integer.class);
+        Integer uniqueConstraints = jdbc.queryForObject("""
+            select count(distinct lower(constraint_name))
+            from information_schema.table_constraints
+            where constraint_type = 'UNIQUE'
+              and (
+                (lower(table_name) = 'ai_execution_task'
+                  and lower(constraint_name) = 'uk_ai_execution_task_idempotency')
+                or
+                (lower(table_name) = 'ai_execution_attempt'
+                  and lower(constraint_name) = 'uk_ai_execution_attempt_idempotency')
+              )
+            """, Integer.class);
+        Integer correlationColumns = jdbc.queryForObject("""
+            select count(*)
+            from information_schema.columns
+            where (lower(table_name) = 'ai_call_log'
+                    and lower(column_name) in ('execution_id', 'attempt_id', 'execution_version', 'phase'))
+               or (lower(table_name) = 'ai_image_task' and lower(column_name) = 'execution_id')
+               or (lower(table_name) = 'ai_image_result' and lower(column_name) = 'execution_id')
+               or (lower(table_name) = 'ai_video_task' and lower(column_name) = 'execution_id')
+               or (lower(table_name) = 'ai_video_result' and lower(column_name) = 'execution_id')
+               or (lower(table_name) = 'script_analysis_task' and lower(column_name) = 'execution_id')
+               or (lower(table_name) = 'script_analysis_result' and lower(column_name) = 'execution_id')
+               or (lower(table_name) = 'review_task' and lower(column_name) = 'execution_id')
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(2);
+        assertThat(taskColumnCount).isEqualTo(28);
+        assertThat(attemptColumnCount).isEqualTo(17);
+        assertThat(eligibilityIndexes).isEqualTo(2);
+        assertThat(uniqueConstraints).isEqualTo(2);
+        assertThat(correlationColumns).isEqualTo(11);
+    }
+
+    @Test
+    void flywayCreatesDurableScriptAiOperationOwnership() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(*)
+            from information_schema.tables
+            where lower(table_name) = 'script_ai_operation'
+            """, Integer.class);
+        Integer columnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+            from information_schema.columns
+            where lower(table_name) = 'script_ai_operation'
+              and lower(column_name) in (
+                'tenant_id', 'project_id', 'operation_type', 'script_id',
+                'script_version_id', 'redacted_input_json', 'idempotency_key',
+                'status', 'execution_id', 'result_type', 'result_id',
+                'error_code', 'error_message', 'created_by', 'created_at',
+                'updated_at', 'completed_at'
+              )
+            """, Integer.class);
+        Integer indexCount = jdbc.queryForObject("""
+            select count(distinct lower(index_name))
+            from information_schema.indexes
+            where lower(table_name) = 'script_ai_operation'
+              and lower(index_name) in (
+                'idx_script_ai_operation_execution',
+                'idx_script_ai_operation_project'
+              )
+            """, Integer.class);
+        Integer uniqueConstraintCount = jdbc.queryForObject("""
+            select count(*)
+            from information_schema.table_constraints
+            where lower(table_name) = 'script_ai_operation'
+              and lower(constraint_name) = 'uk_script_ai_operation_idempotency'
+              and constraint_type = 'UNIQUE'
+            """, Integer.class);
+        Integer scriptVersionExecutionColumns = jdbc.queryForObject("""
+            select count(*)
+            from information_schema.columns
+            where lower(table_name) = 'script_version'
+              and lower(column_name) = 'execution_id'
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(1);
+        assertThat(columnCount).isEqualTo(17);
+        assertThat(indexCount).isEqualTo(2);
+        assertThat(uniqueConstraintCount).isEqualTo(1);
+        assertThat(scriptVersionExecutionColumns).isEqualTo(1);
+    }
+
+    @Test
+    void flywaySeedsFixedOnePointCompatibilityMetadata() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer compatibilitySceneCount = jdbc.queryForObject("""
+            select count(*)
+            from ai_execution_scene_compatibility
+            where enabled = true
+              and point_charge_mode = 'FIXED'
+              and point_amount = 1
+            """, Integer.class);
+        Integer legacySceneCount = jdbc.queryForObject("""
+            select count(*)
+            from ai_execution_scene_compatibility
+            where scene in (
+              'CHARACTER', 'SCENE', 'STORYBOARD_FIRST_FRAME',
+              'STORYBOARD_VIDEO_GENERATION', 'AI_VOICE_SYNTHESIS',
+              'script_generate', 'script_rewrite', 'script_global_understanding',
+              'script_episode_split', 'script_episode_summary',
+              'script_character_scene_recognition', 'character_extract', 'scene_extract',
+              'prop_extract', 'storyboard_breakdown', 'prompt_generate',
+              'video_understanding', 'video_script_draft', 'script_review'
+            )
+            """, Integer.class);
+
+        assertThat(compatibilitySceneCount).isEqualTo(19);
+        assertThat(legacySceneCount).isEqualTo(19);
+    }
+
+    @Test
+    void flywayCreatesReviewExecutionPolicyAndUniqueDomainLink() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer policyCount = jdbc.queryForObject("""
+            select count(*)
+              from ai_point_policy_version
+             where scene = 'script_review'
+               and capability = 'TEXT'
+               and version_no = 1
+               and status = 'PUBLISHED'
+               and charge_business_failure = true
+            """, Integer.class);
+        Integer fixedComponentCount = jdbc.queryForObject("""
+            select count(*)
+              from ai_point_policy_component component
+              join ai_point_policy_version policy on policy.id = component.policy_version_id
+             where policy.scene = 'script_review'
+               and policy.version_no = 1
+               and component.metric = 'FIXED_EXECUTION'
+               and component.unit_size = 1
+               and component.point_rate = 1
+            """, Integer.class);
+        Integer uniqueExecutionIndexCount = jdbc.queryForObject("""
+            select count(distinct lower(index_name))
+              from information_schema.indexes
+             where lower(table_name) = 'review_task'
+               and lower(index_name) = 'uk_review_task_execution'
+               and index_type_name = 'UNIQUE INDEX'
+            """, Integer.class);
+
+        assertThat(policyCount).isEqualTo(1);
+        assertThat(fixedComponentCount).isEqualTo(1);
+        assertThat(uniqueExecutionIndexCount).isEqualTo(1);
+    }
+
+    @Test
     void flywayCreatesAndSeedsPublicStyleLibrary() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
@@ -395,5 +587,25 @@ class SchemaMigrationTest {
 
         assertThat(batchProjectNullable).isEqualTo(1);
         assertThat(episodeProjectNullable).isEqualTo(1);
+    }
+
+    @Test
+    void flywayAddsExecutionRegenerationLineage() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer columnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name))
+              from information_schema.columns
+             where lower(table_name) = 'ai_execution_task'
+               and lower(column_name) in ('source_execution_id', 'root_execution_id')
+            """, Integer.class);
+        Integer indexCount = jdbc.queryForObject("""
+            select count(distinct lower(index_name))
+              from information_schema.indexes
+             where lower(table_name) = 'ai_execution_task'
+               and lower(index_name) = 'uk_ai_execution_task_root_version'
+            """, Integer.class);
+
+        assertThat(columnCount).isEqualTo(2);
+        assertThat(indexCount).isEqualTo(1);
     }
 }

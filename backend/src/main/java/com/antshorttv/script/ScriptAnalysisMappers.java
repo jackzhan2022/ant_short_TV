@@ -14,6 +14,14 @@ interface ScriptAnalysisTaskMapper extends BaseMapper<ScriptAnalysisTaskEntity> 
             .last("limit 10"));
     }
 
+    default List<ScriptAnalysisTaskEntity> selectRunnableWithoutExecution() {
+        return selectList(new LambdaQueryWrapper<ScriptAnalysisTaskEntity>()
+            .eq(ScriptAnalysisTaskEntity::getStatus, "PENDING")
+            .isNull(ScriptAnalysisTaskEntity::getExecutionId)
+            .orderByAsc(ScriptAnalysisTaskEntity::getCreatedAt)
+            .last("limit 10"));
+    }
+
     default ScriptAnalysisTaskEntity selectByIdempotencyKey(Long tenantId, String key) {
         return selectOne(new LambdaQueryWrapper<ScriptAnalysisTaskEntity>()
             .eq(ScriptAnalysisTaskEntity::getTenantId, tenantId)

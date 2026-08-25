@@ -19,4 +19,9 @@ public interface ScriptVersionMapper extends BaseMapper<ScriptVersionEntity> {
             .eq(ScriptVersionEntity::getTenantId, tenantId)
             .eq(ScriptVersionEntity::getScriptId, scriptId));
     }
+
+    default ScriptVersionEntity selectByExecutionId(Long executionId) {
+        return selectOne(new LambdaQueryWrapper<ScriptVersionEntity>()
+            .eq(ScriptVersionEntity::getExecutionId, executionId));
+    }
 }

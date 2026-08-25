@@ -114,8 +114,31 @@ public class PlatformAiManagementService {
         AiProviderEntity provider = requireProvider(id);
         AiProviderConfigEntity config = providerConfig(provider.getId());
         LocalDateTime now = LocalDateTime.now();
-        String status = config == null || !"ENABLED".equals(config.getStatus()) ? "FAILED" : "SUCCESS";
-        String message = "SUCCESS".equals(status) ? "服务配置可用。" : "服务配置不可用。";
+        String status = "FAILED";
+        String message;
+        if (config == null || !"ENABLED".equals(config.getStatus())) {
+            message = "服务配置不可用。";
+        } else {
+            try {
+                AiModelEntity model = aiModelMapper.selectList(new LambdaQueryWrapper<AiModelEntity>()
+                        .eq(AiModelEntity::getProviderId, provider.getId())
+                        .eq(AiModelEntity::getStatus, "ENABLED")
+                        .orderByDesc(AiModelEntity::getSort)
+                        .last("limit 1"))
+                    .stream()
+                    .filter(candidate -> capabilityMapper.selectList(new LambdaQueryWrapper<AiModelCapabilityEntity>()
+                        .eq(AiModelCapabilityEntity::getModelId, candidate.getId())
+                        .eq(AiModelCapabilityEntity::getStatus, "ENABLED")).stream().anyMatch(capability -> "TEXT_GENERATION".equals(capability.getCapability())))
+                    .findFirst()
+                    .orElseThrow(() -> new AiGatewayException(ErrorCode.AI_MODEL_NOT_FOUND, "服务商没有启用的模型能力。"));
+                AiModelRoute route = aiModelRouter.route(model.getId(), AiCapability.TEXT.modelServiceType());
+                route.adapter().text(provider, config, model, new AiTextRequest(null, "连接测试", 0.0, 8, null));
+                status = "SUCCESS";
+                message = "服务配置可用。";
+            } catch (Exception exception) {
+                message = exception.getMessage() == null ? "连接测试失败。" : exception.getMessage();
+            }
+        }
         if (config != null) {
             config.setLastTestStatus(status);
             config.setLastTestMessage(message);

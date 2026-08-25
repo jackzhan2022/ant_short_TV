@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
 import com.jayway.jsonpath.JsonPath;
+import com.antshorttv.execution.AiExecutionWorker;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -33,6 +34,9 @@ class ScriptElementExtractionControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private AiExecutionWorker aiExecutionWorker;
+
     @Test
     void savesElementsParsedFromAiExtractionOutput() throws Exception {
         String token = registerUser("13800013021", "Element Parser Owner");
@@ -51,13 +55,22 @@ class ScriptElementExtractionControllerTest {
                     """))
             .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
+        MvcResult extraction = mockMvc.perform(post("/api/projects/%d/scripts/ai-extract-elements".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"elementType":"ALL"}
                     """))
+            .andExpect(status().isAccepted())
+            .andReturn();
+        Long executionId = ((Number) JsonPath.read(extraction.getResponse().getContentAsString(), "$.data.id")).longValue();
+        aiExecutionWorker.run(executionId);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                "/api/projects/%d/script-workspace".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.characters", hasSize(1)))
             .andExpect(jsonPath("$.data.characters[0].name", is("林晚")))
@@ -134,6 +147,22 @@ class ScriptElementExtractionControllerTest {
               (tenant_id, provider, service_type, name, base_url, api_key_cipher, model, endpoint, priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
             values (?, 'OpenAI', 'TEXT', '默认文本服务', 'https://example.com/v1', 'cipher', 'gpt-4.1-mini', '/chat/completions', 100, true, true, 'SUCCESS', ?, now(), now())
             """, tenantId, userId);
+        Long configId = jdbcTemplate.queryForObject(
+            "select id from ai_service_config where tenant_id = ? and service_type = 'TEXT' and deleted_at is null order by id desc limit 1",
+            Long.class, tenantId);
+        Long providerId = jdbcTemplate.queryForObject("select id from ai_provider where code = 'OpenAI' limit 1", Long.class);
+        String modelCode = "test-extract-text-" + tenantId;
+        jdbcTemplate.update("update ai_model set is_default = false where service_type = 'TEXT'");
+        jdbcTemplate.update("delete from ai_model_capability where model_id in (select id from ai_model where code = ?)", modelCode);
+        jdbcTemplate.update("delete from ai_model where code = ?", modelCode);
+        jdbcTemplate.update("""
+            insert into ai_model
+              (provider_id, code, name, model_code, service_type, status, is_default, sort,
+               legacy_service_config_id, created_at, updated_at)
+            values (?, ?, 'Test Extract Text', 'gpt-4.1-mini', 'TEXT', 'ENABLED', true, 100, ?, now(), now())
+            """, providerId, modelCode, configId);
+        Long modelId = jdbcTemplate.queryForObject("select id from ai_model where code = ?", Long.class, modelCode);
+        jdbcTemplate.update("insert into ai_model_capability (model_id, capability, status, created_at, updated_at) values (?, 'TEXT_GENERATION', 'ENABLED', now(), now())", modelId);
     }
 
     private void grantTeamPoints(Long tenantId, int amount) {

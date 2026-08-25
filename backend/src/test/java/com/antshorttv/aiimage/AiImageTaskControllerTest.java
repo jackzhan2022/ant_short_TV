@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
+import com.antshorttv.execution.AiExecutionDispatcher;
 import com.jayway.jsonpath.JsonPath;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -31,7 +32,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@SpringBootTest
+@SpringBootTest(properties = "ai.execution.dispatcher.enabled=false")
 @AutoConfigureMockMvc
 class AiImageTaskControllerTest {
 
@@ -43,6 +44,120 @@ class AiImageTaskControllerTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private AiExecutionDispatcher executionDispatcher;
+
+    @Test
+    void createsOneDurableExecutionForDuplicateImageRequests() throws Exception {
+        String token = registerUser("13800014006", "Idempotent Image Creator");
+        Long tenantId = createTenant(token, "幂等图片团队");
+        Long ownerId = userIdByMobile("13800014006");
+        Long projectId = createProject(token, tenantId, ownerId, "幂等图片项目", "IMAGE_TASK_IDEMPOTENT");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        String body = """
+            {"taskType":"CHARACTER","targetType":"CHARACTER","targetId":1,"prompt":"角色立绘","aspectRatio":"3:4","imageCount":1}
+            """;
+
+        MvcResult first = createImageTask(token, tenantId, projectId, "image-create-duplicate", body);
+        MvcResult duplicate = createImageTask(token, tenantId, projectId, "image-create-duplicate", body);
+
+        Long taskId = readLong(first, "$.data.id");
+        Long executionId = readLong(first, "$.data.executionId");
+        org.assertj.core.api.Assertions.assertThat(readLong(duplicate, "$.data.id")).isEqualTo(taskId);
+        org.assertj.core.api.Assertions.assertThat(readLong(duplicate, "$.data.executionId")).isEqualTo(executionId);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_image_task where tenant_id = ? and client_idempotency_key = ?",
+            Integer.class,
+            tenantId,
+            "image-create-duplicate"
+        )).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(executionDispatcher.eligibleExecutionIds(
+            java.time.LocalDateTime.now().plusSeconds(1),
+            20
+        )).contains(executionId);
+    }
+
+    @Test
+    void releasesReservationWhenImageTaskIsCanceledBeforeProviderCall() throws Exception {
+        String token = registerUser("13800014007", "Pre-call Image Canceler");
+        Long tenantId = createTenant(token, "调用前取消团队");
+        Long ownerId = userIdByMobile("13800014007");
+        Long projectId = createProject(token, tenantId, ownerId, "调用前取消项目", "IMAGE_TASK_PRECALL_CANCEL");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        MvcResult created = createImageTask(token, tenantId, projectId, "image-precall-cancel", """
+            {"taskType":"CHARACTER","targetType":"CHARACTER","targetId":1,"prompt":"取消角色立绘","aspectRatio":"3:4","imageCount":1}
+            """);
+        Long taskId = readLong(created, "$.data.id");
+        Long executionId = readLong(created, "$.data.executionId");
+
+        mockMvc.perform(put("/api/projects/%d/ai-image-tasks/%d/cancel".formatted(projectId, taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.execution.status", is("CANCELED")));
+
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?",
+            String.class,
+            executionId
+        )).isEqualTo("RELEASED");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_call_log where execution_id = ?",
+            Integer.class,
+            executionId
+        )).isZero();
+    }
+
+    @Test
+    void regeneratesIntoNewDomainTaskAndNextExecutionVersion() throws Exception {
+        String token = registerUser("13800014008", "Image Regenerator");
+        Long tenantId = createTenant(token, "图片再生成团队");
+        Long ownerId = userIdByMobile("13800014008");
+        Long projectId = createProject(token, tenantId, ownerId, "图片再生成项目", "IMAGE_TASK_REGENERATE");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        MvcResult created = createImageTask(token, tenantId, projectId, "image-regenerate-source", """
+            {"taskType":"CHARACTER","targetType":"CHARACTER","targetId":1,"prompt":"角色立绘","aspectRatio":"3:4","imageCount":1}
+            """);
+        Long sourceTaskId = readLong(created, "$.data.id");
+        Long sourceExecutionId = readLong(created, "$.data.executionId");
+        waitForTaskSuccess(token, tenantId, projectId, sourceTaskId);
+
+        MvcResult regenerated = regenerateImageTask(
+            token, tenantId, projectId, sourceTaskId, "image-regenerate-v2"
+        );
+        MvcResult duplicate = regenerateImageTask(
+            token, tenantId, projectId, sourceTaskId, "image-regenerate-v2"
+        );
+        Long regeneratedTaskId = readLong(regenerated, "$.data.id");
+        Long regeneratedExecutionId = readLong(regenerated, "$.data.executionId");
+
+        org.assertj.core.api.Assertions.assertThat(regeneratedTaskId).isNotEqualTo(sourceTaskId);
+        org.assertj.core.api.Assertions.assertThat(readLong(duplicate, "$.data.id")).isEqualTo(regeneratedTaskId);
+        org.assertj.core.api.Assertions.assertThat(readLong(duplicate, "$.data.executionId")).isEqualTo(regeneratedExecutionId);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForMap("""
+            select execution_version, source_execution_id, root_execution_id
+              from ai_execution_task
+             where id = ?
+            """, regeneratedExecutionId))
+            .containsEntry("EXECUTION_VERSION", 2)
+            .containsEntry("SOURCE_EXECUTION_ID", sourceExecutionId)
+            .containsEntry("ROOT_EXECUTION_ID", sourceExecutionId);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_point_reservation where execution_id in (?, ?)",
+            Integer.class,
+            sourceExecutionId,
+            regeneratedExecutionId
+        )).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_image_result where task_id = ? and status = 'ACTIVE'",
+            Integer.class,
+            sourceTaskId
+        )).isEqualTo(1);
+    }
 
     @Test
     void rejectsTaskWhenTenantHasNoImageService() throws Exception {
@@ -109,7 +224,7 @@ class AiImageTaskControllerTest {
                       "quality":"HD"
                     }
                     """.formatted(storyboardId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.data.status", is("PENDING")))
             .andExpect(jsonPath("$.data.results", hasSize(0)))
             .andReturn();
@@ -214,7 +329,7 @@ class AiImageTaskControllerTest {
                           "imageCount":1
                         }
                         """.formatted(storyboardId)))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andReturn();
 
             Long taskId = readLong(created, "$.data.id");
@@ -222,6 +337,14 @@ class AiImageTaskControllerTest {
 
             String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
             org.assertj.core.api.Assertions.assertThat(imageUrl).isEqualTo("https://cdn.example.com/generated-first-frame.png");
+            Long executionId = readLong(completed, "$.data.executionId");
+            Long callLogExecutionId = jdbcTemplate.queryForObject("""
+                select log.execution_id
+                  from ai_image_task task
+                  join ai_call_log log on log.id = task.ai_call_log_id
+                 where task.id = ?
+                """, Long.class, taskId);
+            org.assertj.core.api.Assertions.assertThat(callLogExecutionId).isEqualTo(executionId);
         } finally {
             server.stop(0);
         }
@@ -251,7 +374,7 @@ class AiImageTaskControllerTest {
                       "imageCount":1
                     }
                     """.formatted(storyboardId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn();
         Long taskId = readLong(created, "$.data.id");
 
@@ -278,6 +401,7 @@ class AiImageTaskControllerTest {
     private MvcResult waitForTaskStatus(String token, Long tenantId, Long projectId, Long taskId, String expectedStatus) throws Exception {
         MvcResult last = null;
         for (int i = 0; i < 20; i++) {
+            executionDispatcher.dispatchOnce();
             last = mockMvc.perform(get("/api/projects/%d/ai-image-tasks/%d".formatted(projectId, taskId))
                     .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId))
@@ -290,6 +414,40 @@ class AiImageTaskControllerTest {
             Thread.sleep(50);
         }
         throw new AssertionError("图片任务未在预期时间内进入 %s：%s".formatted(expectedStatus, last.getResponse().getContentAsString()));
+    }
+
+    private MvcResult createImageTask(
+        String token,
+        Long tenantId,
+        Long projectId,
+        String idempotencyKey,
+        String body
+    ) throws Exception {
+        return mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.execution.status", is("PENDING")))
+            .andReturn();
+    }
+
+    private MvcResult regenerateImageTask(
+        String token,
+        Long tenantId,
+        Long projectId,
+        Long taskId,
+        String idempotencyKey
+    ) throws Exception {
+        return mockMvc.perform(post("/api/projects/%d/ai-image-tasks/%d/regenerate".formatted(projectId, taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", idempotencyKey))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.execution.status", is("PENDING")))
+            .andReturn();
     }
 
     private void createImageService(String token, Long tenantId) throws Exception {

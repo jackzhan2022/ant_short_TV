@@ -28,7 +28,10 @@ class AiCallLogWriterTest {
     void recordsSuccessAndBusinessFailureWithSharedMetadata() {
         AiModelRoute route = route();
         AiInvocationLogRequest request = new AiInvocationLogRequest(
-            new AiContext(701L, 702L, 703L, 704L, 801L, "video_understanding", "trace-logs"),
+            new AiContext(
+                701L, 702L, 703L, 704L, 801L, "video_understanding", "trace-logs",
+                705L, 706L, 2, "POLL", "execution-705-v2-poll"
+            ),
             route,
             AiCapability.VIDEO_UNDERSTANDING,
             "https://cdn.example.com/episode.mp4",
@@ -51,6 +54,13 @@ class AiCallLogWriterTest {
         assertThat(log.get("task_id")).isEqualTo(704L);
         assertThat(log.get("trace_id")).isEqualTo("trace-logs");
         assertThat(log.get("provider_request_id")).isEqualTo("provider-req-1");
+        assertThat(log.get("execution_id")).isEqualTo(705L);
+        assertThat(log.get("attempt_id")).isEqualTo(706L);
+        assertThat(log.get("execution_version")).isEqualTo(2);
+        assertThat(log.get("phase")).isEqualTo("POLL");
+        assertThat(log.get("idempotency_key")).isEqualTo("execution-705-v2-poll");
+        assertThat(log.get("transport_outcome")).isEqualTo("SUCCEEDED");
+        assertThat(log.get("business_outcome")).isEqualTo("FAILED");
         assertThat(log.get("total_tokens")).isEqualTo(15);
         assertThat(log.get("status")).isEqualTo("FAILED");
         assertThat((String) log.get("error_message")).contains("AI_RESPONSE_INVALID", "JSON 字段缺失");
@@ -78,6 +88,53 @@ class AiCallLogWriterTest {
 
         Integer count = jdbc.queryForObject("select count(*) from ai_call_log where id = ?", Integer.class, logId.get());
         assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void recordsAcceptedExternalWorkAsTransportSuccessAndBusinessPending() {
+        AiContext context = new AiContext(
+            721L, 722L, 723L, null, 801L, "image_generate", "trace-accepted",
+            725L, 726L, 1, "SUBMIT", "execution-725-v1-submit"
+        );
+
+        Long logId = writer.record(AiInvocationLogRequest.accepted(
+            context,
+            route(),
+            AiCapability.IMAGE,
+            "生成角色图",
+            120L,
+            "provider-request-accepted",
+            "external-task-accepted"
+        ));
+
+        Map<String, Object> log = jdbc.queryForMap("select * from ai_call_log where id = ?", logId);
+        assertThat(log.get("status")).isEqualTo("ACCEPTED");
+        assertThat(log.get("provider_request_id")).isEqualTo("provider-request-accepted");
+        assertThat(log.get("external_task_id")).isEqualTo("external-task-accepted");
+        assertThat(log.get("transport_outcome")).isEqualTo("SUCCEEDED");
+        assertThat(log.get("business_outcome")).isEqualTo("PENDING");
+    }
+
+    @Test
+    void redactsCredentialsFromRequestAndResponseSummaries() {
+        Long logId = writer.record(new AiInvocationLogRequest(
+            new AiContext(731L, 732L, 733L, null, 801L, "script_generate", "trace-redact"),
+            route(),
+            AiCapability.TEXT,
+            "Authorization: Bearer sk-live-secret api_key=another-secret",
+            "{\"apiKey\":\"secret-value\",\"text\":\"正常结果\"}",
+            "SUCCESS",
+            null,
+            10L,
+            null,
+            null,
+            null,
+            null
+        ));
+
+        Map<String, Object> log = jdbc.queryForMap("select request_summary, response_summary from ai_call_log where id = ?", logId);
+        assertThat((String) log.get("request_summary")).doesNotContain("sk-live-secret", "another-secret").contains("[REDACTED]");
+        assertThat((String) log.get("response_summary")).doesNotContain("secret-value").contains("[REDACTED]");
     }
 
     private AiModelRoute route() {

@@ -94,6 +94,7 @@ class VideoDecompositionControllerTest {
             .andExpect(jsonPath("$.data.totalEpisodes", is(2)))
             .andExpect(jsonPath("$.data.episodes", hasSize(2)))
             .andExpect(jsonPath("$.data.episodes[0].episodeNo", is(1)))
+            .andExpect(jsonPath("$.data.episodes[0].executionId", org.hamcrest.Matchers.notNullValue()))
             .andExpect(jsonPath("$.data.episodes[0].sourceFileName", is("episode-b.mp4")))
             .andExpect(jsonPath("$.data.episodes[1].episodeNo", is(2)))
             .andExpect(jsonPath("$.data.episodes[1].sourceFileName", is("episode-a.mp4")))

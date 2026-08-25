@@ -2,6 +2,7 @@ package com.antshorttv.review;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -21,6 +22,7 @@ import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiInvocationRequest;
 import com.antshorttv.ai.AiTextResponse;
+import com.antshorttv.execution.AiExecutionWorker;
 import com.antshorttv.points.TeamPointService;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,6 +52,9 @@ class ReviewWorkbenchControllerTest {
     @Autowired
     private ReviewWorkbenchService reviewWorkbenchService;
 
+    @Autowired
+    private AiExecutionWorker aiExecutionWorker;
+
     @MockBean
     private AiInvocationService aiInvocationService;
 
@@ -60,6 +65,8 @@ class ReviewWorkbenchControllerTest {
     void importsStandaloneScriptAndCreatesIdempotentReviewTask() throws Exception {
         String token = registerUser("13800017001", "Review Owner");
         Long tenantId = createTenant(token, "剧本审核团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
 
         MockMultipartFile name = new MockMultipartFile(
             "name",
@@ -99,19 +106,39 @@ class ReviewWorkbenchControllerTest {
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.data.status", is("PENDING")))
-            .andExpect(jsonPath("$.data.scriptVersionId", is(versionId.intValue())))
+            .andExpect(jsonPath("$.data.businessType", is("REVIEW_TASK")))
             .andReturn();
-        Long firstTaskId = readLong(firstTask, "$.data.id");
+        Long executionId = readLong(firstTask, "$.data.id");
+        Long firstTaskId = readLong(firstTask, "$.data.businessId");
 
         mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.id", is(firstTaskId.intValue())));
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.id", is(executionId.intValue())));
+
+        when(aiInvocationService.invokeText(any())).thenReturn(successfulReviewInvocation(880L));
+        aiExecutionWorker.run(executionId);
+        ArgumentCaptor<AiInvocationRequest> invocationRequest = ArgumentCaptor.forClass(AiInvocationRequest.class);
+        verify(aiInvocationService).invokeText(invocationRequest.capture());
+        assertThat(invocationRequest.getValue().executionId()).isEqualTo(executionId);
+        assertThat(invocationRequest.getValue().attemptId()).isNotNull();
+        assertThat(invocationRequest.getValue().phase()).isEqualTo("AI_REVIEW");
+        assertThat(invocationRequest.getValue().idempotencyKey()).contains("execution:" + executionId);
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from review_task where id = ?", String.class, firstTaskId
+        )).isEqualTo("COMPLETED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_execution_task where id = ?", String.class, executionId
+        )).isEqualTo("SUCCEEDED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select settled_points from ai_point_reservation where execution_id = ?",
+            java.math.BigDecimal.class, executionId
+        )).isEqualByComparingTo("1");
 
         mockMvc.perform(get("/api/script-review/projects/%d".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -146,6 +173,8 @@ class ReviewWorkbenchControllerTest {
     void rejectsEditingRunningTaskConfiguration() throws Exception {
         String token = registerUser("13800017002", "Review Runner");
         Long tenantId = createTenant(token, "剧本审核锁定团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "Episode 1\nA".getBytes()))
@@ -163,9 +192,9 @@ class ReviewWorkbenchControllerTest {
                 .content("""
                     {"versionId":%d,"reviewMode":"QUICK","selectedDimensions":["台词合理性"],"reviewScopeType":"ALL","reviewScope":{}}
                     """.formatted(versionId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn();
-        Long taskId = readLong(createdTask, "$.data.id");
+        Long taskId = readLong(createdTask, "$.data.businessId");
 
         jdbcTemplate.update("""
             update review_task
@@ -190,6 +219,8 @@ class ReviewWorkbenchControllerTest {
     void returnsVersionHistoryAndRoundMappingsForSelectedVersion() throws Exception {
         String token = registerUser("13800017003", "Review Historian");
         Long tenantId = createTenant(token, "剧本审核历史团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n林晚说：别走。".getBytes()))
@@ -218,9 +249,9 @@ class ReviewWorkbenchControllerTest {
                 .content("""
                     {"versionId":%d,"reviewMode":"QUICK","selectedDimensions":["台词合理性"],"reviewScopeType":"ALL","reviewScope":{}}
                     """.formatted(secondVersionId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn();
-        Long taskId = readLong(createdTask, "$.data.id");
+        Long taskId = readLong(createdTask, "$.data.businessId");
 
         jdbcTemplate.update("""
             update review_task
@@ -264,6 +295,8 @@ class ReviewWorkbenchControllerTest {
     void marksAiCallLogAsBusinessFailureWhenReviewOutputIsInvalidJson() throws Exception {
         String token = registerUser("13800017004", "Review Logger");
         Long tenantId = createTenant(token, "剧本审核日志团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n林晚说：别走。".getBytes()))
@@ -281,9 +314,9 @@ class ReviewWorkbenchControllerTest {
                 .content("""
                     {"versionId":%d,"reviewMode":"QUICK","selectedDimensions":["台词合理性"],"reviewScopeType":"ALL","reviewScope":{}}
                     """.formatted(versionId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn();
-        Long taskId = readLong(createdTask, "$.data.id");
+        Long taskId = readLong(createdTask, "$.data.businessId");
 
         seedTextModel();
         when(aiInvocationService.invokeText(any())).thenReturn(new AiInvocationResult<>(
@@ -311,9 +344,164 @@ class ReviewWorkbenchControllerTest {
     }
 
     @Test
+    void preservesFailedReviewInvocationEvidenceForSharedRetry() throws Exception {
+        String token = registerUser("13800017007", "Review Retry Evidence");
+        Long tenantId = createTenant(token, "审核失败证据团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
+        MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
+                .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n林晚说：别走。".getBytes()))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long projectId = readLong(imported, "$.data.project.id");
+        Long versionId = readLong(imported, "$.data.versions[0].id");
+        MvcResult submitted = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"versionId":%d,"reviewMode":"QUICK","selectedDimensions":["台词合理性"],"reviewScopeType":"ALL","reviewScope":{}}
+                    """.formatted(versionId)))
+            .andExpect(status().isAccepted())
+            .andReturn();
+        Long executionId = readLong(submitted, "$.data.id");
+        when(aiInvocationService.invokeText(any())).thenReturn(invalidReviewInvocation(881L));
+
+        aiExecutionWorker.run(executionId);
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_execution_task where id = ?", String.class, executionId
+        )).isEqualTo("PENDING");
+        assertThat(jdbcTemplate.queryForObject(
+            "select ai_call_log_id from ai_execution_attempt where execution_id = ?",
+            Long.class, executionId
+        )).isEqualTo(881L);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_usage_line where execution_id = ? and metric = 'CALL'",
+            Integer.class, executionId
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?",
+            String.class, executionId
+        )).isEqualTo("RESERVED");
+    }
+
+    @Test
+    void settlesReviewReservationAfterBusinessFailureExhaustsRetries() throws Exception {
+        String token = registerUser("13800017008", "Review Retry Exhaustion");
+        Long tenantId = createTenant(token, "审核重试耗尽团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
+        MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
+                .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n林晚说：别走。".getBytes()))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long projectId = readLong(imported, "$.data.project.id");
+        Long versionId = readLong(imported, "$.data.versions[0].id");
+        MvcResult submitted = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"versionId":%d,"reviewMode":"QUICK","selectedDimensions":["台词合理性"],"reviewScopeType":"ALL","reviewScope":{}}
+                    """.formatted(versionId)))
+            .andExpect(status().isAccepted())
+            .andReturn();
+        Long executionId = readLong(submitted, "$.data.id");
+        when(aiInvocationService.invokeText(any())).thenReturn(
+            invalidReviewInvocation(882L),
+            invalidReviewInvocation(883L),
+            invalidReviewInvocation(884L)
+        );
+
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            aiExecutionWorker.run(executionId);
+            if (attempt < 3) {
+                assertThat(jdbcTemplate.queryForObject(
+                    "select status from ai_point_reservation where execution_id = ?",
+                    String.class, executionId
+                )).isEqualTo("RESERVED");
+                jdbcTemplate.update("update ai_execution_task set next_run_at = null where id = ?", executionId);
+            }
+        }
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_execution_task where id = ?", String.class, executionId
+        )).isEqualTo("FAILED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_usage_line where execution_id = ? and metric = 'CALL'",
+            Integer.class, executionId
+        )).isEqualTo(3);
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?",
+            String.class, executionId
+        )).isEqualTo("SETTLED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select settled_points from ai_point_reservation where execution_id = ?",
+            java.math.BigDecimal.class, executionId
+        )).isEqualByComparingTo("1");
+    }
+
+    @Test
+    void releasesReviewReservationAfterProviderRejectionExhaustsRetries() throws Exception {
+        String token = registerUser("13800017009", "Review Provider Rejection");
+        Long tenantId = createTenant(token, "审核供应商拒绝团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
+        MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
+                .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n林晚说：别走。".getBytes()))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long projectId = readLong(imported, "$.data.project.id");
+        Long versionId = readLong(imported, "$.data.versions[0].id");
+        MvcResult submitted = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"versionId":%d,"reviewMode":"QUICK","selectedDimensions":["台词合理性"],"reviewScopeType":"ALL","reviewScope":{}}
+                    """.formatted(versionId)))
+            .andExpect(status().isAccepted())
+            .andReturn();
+        Long executionId = readLong(submitted, "$.data.id");
+        when(aiInvocationService.invokeText(any())).thenThrow(
+            new com.antshorttv.ai.AiGatewayException(com.antshorttv.common.ErrorCode.AI_PROVIDER_ERROR, "provider rejected"),
+            new com.antshorttv.ai.AiGatewayException(com.antshorttv.common.ErrorCode.AI_PROVIDER_ERROR, "provider rejected"),
+            new com.antshorttv.ai.AiGatewayException(com.antshorttv.common.ErrorCode.AI_PROVIDER_ERROR, "provider rejected")
+        );
+
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            aiExecutionWorker.run(executionId);
+            if (attempt < 3) {
+                jdbcTemplate.update("update ai_execution_task set next_run_at = null where id = ?", executionId);
+            }
+        }
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_execution_task where id = ?", String.class, executionId
+        )).isEqualTo("FAILED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?",
+            String.class, executionId
+        )).isEqualTo("RELEASED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select released_points from ai_point_reservation where execution_id = ?",
+            java.math.BigDecimal.class, executionId
+        )).isEqualByComparingTo("1");
+    }
+
+    @Test
     void supportsCancelRetryResolveAndRollbackLifecycle() throws Exception {
         String token = registerUser("13800017005", "Review Lifecycle");
         Long tenantId = createTenant(token, "剧本审核生命周期团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第1集\n第2集".getBytes()))
@@ -331,9 +519,9 @@ class ReviewWorkbenchControllerTest {
                 .content("""
                     {"versionId":%d,"reviewMode":"QUICK","selectedDimensions":["台词合理性"],"reviewScopeType":"ALL","reviewScope":{}}
                     """.formatted(versionId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn();
-        Long cancelTaskId = readLong(taskForCancel, "$.data.id");
+        Long cancelTaskId = readLong(taskForCancel, "$.data.businessId");
 
         mockMvc.perform(post("/api/script-review/tasks/%d/cancel".formatted(cancelTaskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -348,15 +536,17 @@ class ReviewWorkbenchControllerTest {
                 .content("""
                     {"versionId":%d,"reviewMode":"DEEP","selectedDimensions":["人物关系一致性"],"reviewScopeType":"ALL","reviewScope":{}}
                     """.formatted(versionId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn();
-        Long retryTaskId = readLong(taskForRetry, "$.data.id");
+        Long retryExecutionId = readLong(taskForRetry, "$.data.id");
+        Long retryTaskId = readLong(taskForRetry, "$.data.businessId");
         jdbcTemplate.update("update review_task set status = 'FAILED', error_code = 'AI_RESPONSE_INVALID', error_message = 'bad json' where id = ?", retryTaskId);
+        jdbcTemplate.update("update ai_execution_task set status = 'FAILED', error_code = 'AI_RESPONSE_INVALID', error_message = 'bad json' where id = ?", retryExecutionId);
 
         mockMvc.perform(post("/api/script-review/tasks/%d/retry".formatted(retryTaskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.data.status", is("PENDING")));
 
         jdbcTemplate.update("""
@@ -395,6 +585,7 @@ class ReviewWorkbenchControllerTest {
     void sendsSharedGlobalIndexForMultiEpisodeQuickAndDeepReviewRuns() throws Exception {
         String token = registerUser("13800017006", "Review Index");
         Long tenantId = createTenant(token, "剧本审核索引团队");
+        grantTeamPoints(tenantId, 10);
 
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "EP1\nA\n\nEP2\nB".getBytes()))
@@ -432,9 +623,9 @@ class ReviewWorkbenchControllerTest {
                 .content("""
                     {"versionId":%d,"reviewMode":"QUICK","selectedDimensions":["台词合理性"],"reviewScopeType":"ALL","reviewScope":{}}
                     """.formatted(versionId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn();
-        Long quickTaskId = readLong(quickTask, "$.data.id");
+        Long quickTaskId = readLong(quickTask, "$.data.businessId");
 
         MvcResult deepTask = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -443,9 +634,9 @@ class ReviewWorkbenchControllerTest {
                 .content("""
                     {"versionId":%d,"reviewMode":"DEEP","selectedDimensions":["人物关系一致性"],"reviewScopeType":"ALL","reviewScope":{}}
                     """.formatted(versionId)))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn();
-        Long deepTaskId = readLong(deepTask, "$.data.id");
+        Long deepTaskId = readLong(deepTask, "$.data.businessId");
 
         reviewWorkbenchService.executeTask(quickTaskId);
         reviewWorkbenchService.executeTask(deepTaskId);
@@ -472,6 +663,57 @@ class ReviewWorkbenchControllerTest {
             values
               (?, 'review-test-text-model', 'Review Test Text Model', 'review-test-text-model', 'TEXT', 'ENABLED', true, 999, now(), now())
             """, providerId);
+    }
+
+    private AiInvocationResult<AiTextResponse> successfulReviewInvocation(Long callLogId) {
+        String json = "{\"overallScore\":90,\"overallConclusion\":\"PASS\",\"summary\":\"ok\",\"issues\":[]}";
+        return new AiInvocationResult<>(
+            AiCapability.TEXT,
+            AiBusinessScene.SCRIPT_REVIEW.code(),
+            new AiTextResponse(json, "req-review", 0, 0, 0, 12L, java.util.Map.of()),
+            json,
+            callLogId,
+            "req-review",
+            1L,
+            1L,
+            "OpenAI",
+            0,
+            0,
+            0,
+            12L,
+            "SUCCESS",
+            null,
+            null
+        );
+    }
+
+    private AiInvocationResult<AiTextResponse> invalidReviewInvocation(Long callLogId) {
+        return new AiInvocationResult<>(
+            AiCapability.TEXT,
+            AiBusinessScene.SCRIPT_REVIEW.code(),
+            new AiTextResponse("not-json", "req-review-invalid", 0, 0, 0, 12L, java.util.Map.of()),
+            "not-json",
+            callLogId,
+            "req-review-invalid",
+            1L,
+            1L,
+            "OpenAI",
+            0,
+            0,
+            0,
+            12L,
+            "SUCCESS",
+            null,
+            null
+        );
+    }
+
+    private void grantTeamPoints(Long tenantId, int amount) {
+        jdbcTemplate.update("""
+            insert into team_point_account
+              (tenant_id, balance, total_granted, total_consumed, created_at, updated_at)
+            values (?, ?, ?, 0, now(), now())
+            """, tenantId, amount, amount);
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {
