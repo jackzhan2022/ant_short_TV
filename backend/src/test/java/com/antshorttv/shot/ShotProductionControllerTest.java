@@ -1,5 +1,6 @@
 package com.antshorttv.shot;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
@@ -157,7 +158,7 @@ class ShotProductionControllerTest {
     }
 
     @Test
-    void rejectsVoiceTaskWhenTeamPointsAreInsufficient() throws Exception {
+    void localVoicePlaceholderDoesNotConsumeAiPoints() throws Exception {
         String token = registerUser("13800017009", "Voice Point Owner");
         Long tenantId = createTenant(token, "语音积分团队");
         Long ownerId = userIdByMobile("13800017009");
@@ -181,8 +182,15 @@ class ShotProductionControllerTest {
                       "volume":1.0
                     }
                     """.formatted(storyboardId, serviceConfigId)))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
+
+        Integer pointTransactions = jdbc.queryForObject(
+            "select count(*) from team_point_transaction where tenant_id = ?",
+            Integer.class,
+            tenantId
+        );
+        assertEquals(0, pointTransactions);
     }
 
     @Test

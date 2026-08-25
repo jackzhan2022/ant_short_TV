@@ -16,6 +16,7 @@ import * as platformAiManagementController from "./platformAiManagementControlle
 import * as tenantMemberController from "./tenantMemberController";
 import * as teamPointController from "./teamPointController";
 import * as tenantInvitationController from "./tenantInvitationController";
+import * as aiExecutionController from "./aiExecutionController";
 import * as aiVideoTaskController from "./aiVideoTaskController";
 import * as builtInAgentCatalogController from "./builtInAgentCatalogController";
 import * as authController from "./authController";
@@ -39,6 +40,7 @@ export default {
   tenantMemberController,
   teamPointController,
   tenantInvitationController,
+  aiExecutionController,
   aiVideoTaskController,
   builtInAgentCatalogController,
   authController,

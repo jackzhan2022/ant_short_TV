@@ -248,6 +248,8 @@ export type AiImageTask = {
   createdBy: number;
   createdAt?: string;
   results: AiImageResult[];
+  executionId?: number;
+  execution?: API.AiExecutionResponse;
 };
 
 export type CreateAiImageTaskValues = {
@@ -274,13 +276,13 @@ export const retryScriptAnalysis = async (
   projectId: number,
   stageCode: string,
 ) =>
-  request<ApiResponse<ScriptAnalysisTask>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/script-analysis/current/retry/${stageCode}`,
     { method: 'POST' },
   );
 
 export const reanalyzeScript = async (projectId: number) =>
-  request<ApiResponse<ScriptAnalysisTask>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/script-analysis/current/reanalyze`,
     { method: 'POST' },
   );
@@ -289,7 +291,7 @@ export const reanalyzeScriptVersion = async (
   projectId: number,
   versionId: number,
 ) =>
-  request<ApiResponse<ScriptAnalysisTask>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/script-analysis/versions/${versionId}/reanalyze`,
     { method: 'POST' },
   );
@@ -298,7 +300,7 @@ export const generateScript = async (
   projectId: number,
   values: GenerateScriptValues,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/scripts/ai-generate`,
     {
       method: 'POST',
@@ -311,7 +313,7 @@ export const rewriteScript = async (
   projectId: number,
   values: RewriteScriptValues,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/scripts/ai-rewrite`,
     {
       method: 'POST',
@@ -333,7 +335,10 @@ export const saveCurrentScript = async (
     },
   );
 
-export const applyScriptVersion = async (projectId: number, versionId: number) =>
+export const applyScriptVersion = async (
+  projectId: number,
+  versionId: number,
+) =>
   request<ApiResponse<ScriptWorkspace>>(
     `/api/projects/${projectId}/scripts/versions/${versionId}/apply`,
     { method: 'PUT' },
@@ -343,7 +348,7 @@ export const extractScriptElements = async (
   projectId: number,
   values: { elementType: ScriptElementType },
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/scripts/ai-extract-elements`,
     {
       method: 'POST',
@@ -391,7 +396,7 @@ export const breakdownStoryboards = async (
   projectId: number,
   values: { scope: string; episodeNo?: number; selectedText?: string },
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/storyboards/ai-breakdown`,
     {
       method: 'POST',
@@ -404,11 +409,17 @@ export const createStoryboard = async (
   projectId: number,
   values: SaveStoryboardValues,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(`/api/projects/${projectId}/storyboards`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    data: values,
-  });
+  request<ApiResponse<ScriptWorkspace>>(
+    `/api/projects/${projectId}/storyboards`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': crypto.randomUUID(),
+      },
+      data: values,
+    },
+  );
 
 export const updateStoryboard = async (
   projectId: number,
@@ -457,7 +468,7 @@ export const generateWorkflowPrompts = async (
   projectId: number,
   values: { targetType: PromptTargetType; targetId?: number },
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/prompts/ai-generate`,
     {
       method: 'POST',
@@ -470,9 +481,12 @@ export const queryAiImageTasks = async (
   projectId: number,
   params?: { taskType?: string; status?: string },
 ) =>
-  request<ApiResponse<AiImageTask[]>>(`/api/projects/${projectId}/ai-image-tasks`, {
-    params,
-  });
+  request<ApiResponse<AiImageTask[]>>(
+    `/api/projects/${projectId}/ai-image-tasks`,
+    {
+      params,
+    },
+  );
 
 export const queryAiImageTask = async (projectId: number, taskId: number) =>
   request<ApiResponse<AiImageTask>>(
@@ -483,19 +497,23 @@ export const createAiImageTask = async (
   projectId: number,
   values: CreateAiImageTaskValues,
 ) =>
-  request<ApiResponse<AiImageTask>>(`/api/projects/${projectId}/ai-image-tasks`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    data: values,
-  });
+  request<ApiResponse<AiImageTask>>(
+    `/api/projects/${projectId}/ai-image-tasks`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
 
 export const regenerateAiImageTask = async (
   projectId: number,
   taskId: number,
+  idempotencyKey = crypto.randomUUID(),
 ) =>
   request<ApiResponse<AiImageTask>>(
     `/api/projects/${projectId}/ai-image-tasks/${taskId}/regenerate`,
-    { method: 'POST' },
+    { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey } },
   );
 
 export const cancelAiImageTask = async (projectId: number, taskId: number) =>
@@ -537,7 +555,10 @@ export const saveAiImageResultAsMaterial = async (
     { method: 'POST' },
   );
 
-export const selectAiImageResult = async (projectId: number, resultId: number) =>
+export const selectAiImageResult = async (
+  projectId: number,
+  resultId: number,
+) =>
   request<ApiResponse<AiImageResult>>(
     `/api/projects/${projectId}/ai-image-results/${resultId}/selected`,
     { method: 'PUT' },
@@ -571,6 +592,8 @@ export type AiVideoResult = {
 
 export type AiVideoTask = {
   id: number;
+  executionId?: number;
+  execution?: API.AiExecutionResponse;
   projectId: number;
   storyboardId: number;
   serviceConfigId: number;
@@ -929,11 +952,14 @@ export const createAiVoiceTask = async (
   projectId: number,
   values: CreateAiVoiceTaskValues,
 ) =>
-  request<ApiResponse<AiVoiceTask>>(`/api/projects/${projectId}/ai-voice-tasks`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    data: values,
-  });
+  request<ApiResponse<AiVoiceTask>>(
+    `/api/projects/${projectId}/ai-voice-tasks`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
 
 export const bindAiVoiceResultToStoryboard = async (
   projectId: number,

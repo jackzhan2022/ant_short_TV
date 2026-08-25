@@ -8,13 +8,15 @@ import {
 import { useParams } from '@umijs/max';
 import { App, Button, Empty, Flex, Input, Tag, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
+import AiExecutionStatus from '@/components/AiExecutionStatus';
+import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import {
+  type CharacterAsset,
   confirmScriptElement,
   deleteScriptElement,
   extractScriptElements,
-  queryScriptWorkspace,
-  type CharacterAsset,
   type PropAsset,
+  queryScriptWorkspace,
   type SceneAsset,
   type ScriptElementType,
   type ScriptWorkspace,
@@ -204,6 +206,8 @@ const ProductionWorkbenchSettings = () => {
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [processingAction, setProcessingAction] = useState<string>();
+  const [activeExecution, setActiveExecution] =
+    useState<API.AiExecutionResponse>();
 
   useEffect(() => {
     if (!projectId) {
@@ -265,7 +269,20 @@ const ProductionWorkbenchSettings = () => {
       const response = await extractScriptElements(projectId, {
         elementType: type,
       });
-      applyWorkspace(response.data, `${elementLabels[type]}已提取`);
+      if (!response.data?.id) {
+        throw new Error('AI execution identity is missing');
+      }
+      setActiveExecution(response.data);
+      const terminal = await aiExecutionTaskService.poll(
+        Number(localStorage.getItem('currentTenantId')),
+        response.data.id,
+        setActiveExecution,
+      );
+      setActiveExecution(terminal);
+      if (terminal.status === 'SUCCEEDED') {
+        const workspaceResponse = await queryScriptWorkspace(projectId);
+        applyWorkspace(workspaceResponse.data, `${elementLabels[type]}已提取`);
+      }
     } catch {
       message.error('AI提取失败');
     } finally {
@@ -346,7 +363,11 @@ const ProductionWorkbenchSettings = () => {
       }}
     >
       <div style={{ maxWidth: 1500, margin: '0 auto' }}>
-        <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
+        <Flex
+          justify="space-between"
+          align="center"
+          style={{ marginBottom: 16 }}
+        >
           <div>
             <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
               设定资产
@@ -365,9 +386,18 @@ const ProductionWorkbenchSettings = () => {
           />
         </Flex>
 
+        {activeExecution ? (
+          <div style={{ background: '#fff', padding: 16, marginBottom: 16 }}>
+            <AiExecutionStatus task={activeExecution} />
+          </div>
+        ) : null}
+
         <div style={{ display: 'grid', gap: 18 }}>
           {assetSections.map((section) => {
-            const items = filterAssets(section.type, assetsByType[section.type]);
+            const items = filterAssets(
+              section.type,
+              assetsByType[section.type],
+            );
             return (
               <section
                 key={section.type}
@@ -396,8 +426,12 @@ const ProductionWorkbenchSettings = () => {
                   <Flex gap={8}>
                     <Button
                       icon={<CheckOutlined />}
-                      disabled={!items.some((item) => item.status !== 'CONFIRMED')}
-                      loading={processingAction === `confirm-all-${section.type}`}
+                      disabled={
+                        !items.some((item) => item.status !== 'CONFIRMED')
+                      }
+                      loading={
+                        processingAction === `confirm-all-${section.type}`
+                      }
                       onClick={() => confirmAssets(section.type, items)}
                     >
                       批量确认
@@ -434,7 +468,9 @@ const ProductionWorkbenchSettings = () => {
                   </div>
                 ) : (
                   <div style={{ padding: '34px 0' }}>
-                    <Empty description={`暂无${elementLabels[section.type]}设定`} />
+                    <Empty
+                      description={`暂无${elementLabels[section.type]}设定`}
+                    />
                   </div>
                 )}
               </section>

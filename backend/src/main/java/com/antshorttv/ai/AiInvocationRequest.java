@@ -14,6 +14,11 @@ public record AiInvocationRequest(
     AiBusinessScene scene,
     String businessSceneCode,
     String traceId,
+    Long executionId,
+    Long attemptId,
+    Integer executionVersion,
+    String phase,
+    String idempotencyKey,
     AiTextRequest textRequest,
     AiImageRequest imageRequest,
     Object videoRequest,
@@ -34,8 +39,15 @@ public record AiInvocationRequest(
         return new Builder(AiCapability.VIDEO_UNDERSTANDING);
     }
 
+    public static Builder capability(AiCapability capability) {
+        return new Builder(capability);
+    }
+
     public AiContext toAiContext() {
-        return new AiContext(tenantId, userId, projectId, taskId, modelId, businessSceneCode, traceId);
+        return new AiContext(
+            tenantId, userId, projectId, taskId, modelId, businessSceneCode, traceId,
+            executionId, attemptId, executionVersion, phase, idempotencyKey
+        );
     }
 
     public String effectiveRequestSummary() {
@@ -61,6 +73,11 @@ public record AiInvocationRequest(
         private AiBusinessScene scene;
         private String businessSceneCode;
         private String traceId;
+        private Long executionId;
+        private Long attemptId;
+        private Integer executionVersion;
+        private String phase;
+        private String idempotencyKey;
         private AiTextRequest textRequest;
         private AiImageRequest imageRequest;
         private Object videoRequest;
@@ -121,6 +138,31 @@ public record AiInvocationRequest(
 
         public Builder traceId(String traceId) {
             this.traceId = traceId;
+            return this;
+        }
+
+        public Builder executionId(Long executionId) {
+            this.executionId = executionId;
+            return this;
+        }
+
+        public Builder attemptId(Long attemptId) {
+            this.attemptId = attemptId;
+            return this;
+        }
+
+        public Builder executionVersion(Integer executionVersion) {
+            this.executionVersion = executionVersion;
+            return this;
+        }
+
+        public Builder phase(String phase) {
+            this.phase = phase;
+            return this;
+        }
+
+        public Builder idempotencyKey(String idempotencyKey) {
+            this.idempotencyKey = idempotencyKey;
             return this;
         }
 
@@ -185,6 +227,11 @@ public record AiInvocationRequest(
                 scene,
                 sceneCode,
                 traceId,
+                executionId,
+                attemptId,
+                executionVersion,
+                phase,
+                idempotencyKey,
                 textRequest,
                 imageRequest,
                 videoRequest,

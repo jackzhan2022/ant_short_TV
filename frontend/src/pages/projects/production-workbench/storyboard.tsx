@@ -16,6 +16,8 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
+import AiExecutionStatus from '@/components/AiExecutionStatus';
+import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import type {
   AiImageTask,
   AiVideoTask,
@@ -27,12 +29,18 @@ import type {
   StoryboardShot,
 } from './service';
 import {
+  cancelAiImageTask,
+  cancelAiVideoTask,
+  createAiImageTask,
   createAiVideoTask,
   createStoryboard,
   deleteStoryboard,
+  queryAiImageTask,
   queryAiImageTasks,
   queryAiVideoTasks,
   queryScriptWorkspace,
+  regenerateAiImageTask,
+  regenerateAiVideoTask,
   updateStoryboard,
 } from './service';
 
@@ -324,6 +332,11 @@ const StoryboardCard = ({
   model,
   onDraftChange,
   onGenerate,
+  onCancelVideo,
+  onRetryVideo,
+  onGenerateImage,
+  onRegenerateImage,
+  onCancelImage,
   onSaveScript,
   onUpdateStoryboard,
   onAddStoryboard,
@@ -344,6 +357,11 @@ const StoryboardCard = ({
     values: Partial<StoryboardDraft[number]>,
   ) => void;
   onGenerate: (storyboard: StoryboardShot) => void;
+  onCancelVideo: (task: AiVideoTask) => void;
+  onRetryVideo: (task: AiVideoTask) => void;
+  onGenerateImage: (storyboard: StoryboardShot) => void;
+  onRegenerateImage: (task: AiImageTask) => void;
+  onCancelImage: (task: AiImageTask) => void;
   onSaveScript: (storyboard: StoryboardShot) => void;
   onUpdateStoryboard: (
     storyboard: StoryboardShot,
@@ -364,6 +382,14 @@ const StoryboardCard = ({
     item.firstFrameUrl ||
     undefined;
   const propImage = thumbnailFor(imageTasks, 'PROP', prop?.id);
+  const imageTask = imageTasks
+    .filter(
+      (task) => task.targetType === 'STORYBOARD' && task.targetId === item.id,
+    )
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+  const videoTask = videoTasks
+    .filter((task) => task.storyboardId === item.id)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
 
   return (
     <article
@@ -486,6 +512,24 @@ const StoryboardCard = ({
           <Typography.Text strong style={{ fontSize: 15 }}>
             分镜信息
           </Typography.Text>
+          <Flex align="center" gap={8} style={{ marginTop: 14 }}>
+            <Button
+              size="small"
+              onClick={() => onGenerateImage(item)}
+              disabled={['PENDING', 'RUNNING'].includes(
+                imageTask?.execution?.status || '',
+              )}
+            >
+              生成首帧
+            </Button>
+            {imageTask?.execution ? (
+              <AiExecutionStatus
+                task={imageTask.execution}
+                onCancel={() => onCancelImage(imageTask)}
+                onRetry={() => onRegenerateImage(imageTask)}
+              />
+            ) : null}
+          </Flex>
           <div style={{ marginTop: 22, color: '#1f2937', fontSize: 14 }}>
             剧本原文
           </div>
@@ -697,6 +741,9 @@ const StoryboardCard = ({
                 type="primary"
                 onClick={() => onGenerate(item)}
                 aria-label={`生成分镜${index + 1}视频`}
+                disabled={['PENDING', 'RUNNING'].includes(
+                  videoTask?.execution?.status || '',
+                )}
                 style={{
                   width: 92,
                   background: '#5b50ff',
@@ -707,6 +754,15 @@ const StoryboardCard = ({
                 ✦ 1,135
               </Button>
             </Flex>
+            {videoTask?.execution ? (
+              <div style={{ marginTop: 10 }}>
+                <AiExecutionStatus
+                  task={videoTask.execution}
+                  onCancel={() => onCancelVideo(videoTask)}
+                  onRetry={() => onRetryVideo(videoTask)}
+                />
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -878,42 +934,47 @@ const ProductionWorkbenchStoryboard = () => {
       queryAiImageTasks(projectId, undefined).catch(() => ({ data: [] })),
       queryAiVideoTasks(projectId, undefined).catch(() => ({ data: [] })),
     ])
-      .then(
-        ([
-          workspaceResponse,
-          imageTaskResponse,
-          videoTaskResponse,
-        ]) => {
-          if (!active) {
-            return;
-          }
-          const nextWorkspace = {
-            projectId,
-            script: workspaceResponse.data?.script || null,
-            versions: workspaceResponse.data?.versions || [],
-            characters: workspaceResponse.data?.characters || [],
-            scenes: workspaceResponse.data?.scenes || [],
-            props: workspaceResponse.data?.props || [],
-            storyboards: workspaceResponse.data?.storyboards || [],
-          };
-          setWorkspace(nextWorkspace);
-          setImageTasks(imageTaskResponse.data || []);
-          setVideoTasks(videoTaskResponse.data || []);
-          const firstEpisode = nextWorkspace.storyboards[0]?.episodeNo || 1;
-          setActiveEpisode(firstEpisode);
-          setDrafts(
-            Object.fromEntries(
-              nextWorkspace.storyboards.map((item) => [
-                item.id,
-                {
-                  scriptText: getStoryboardScriptText(item),
-                  videoPrompt: getStoryboardPrompt(item),
-                },
-              ]),
-            ),
+      .then(([workspaceResponse, imageTaskResponse, videoTaskResponse]) => {
+        if (!active) {
+          return;
+        }
+        const nextWorkspace = {
+          projectId,
+          script: workspaceResponse.data?.script || null,
+          versions: workspaceResponse.data?.versions || [],
+          characters: workspaceResponse.data?.characters || [],
+          scenes: workspaceResponse.data?.scenes || [],
+          props: workspaceResponse.data?.props || [],
+          storyboards: workspaceResponse.data?.storyboards || [],
+        };
+        setWorkspace(nextWorkspace);
+        setImageTasks(imageTaskResponse.data || []);
+        const nextVideoTasks = videoTaskResponse.data || [];
+        setVideoTasks(nextVideoTasks);
+        for (const task of nextVideoTasks.filter(
+          (item) =>
+            item.executionId &&
+            !successStatuses.includes(item.status) &&
+            !['FAILED', 'CANCELED'].includes(item.status),
+        )) {
+          void followVideoExecution(task).catch(() =>
+            message.error('视频任务状态刷新失败'),
           );
-        },
-      )
+        }
+        const firstEpisode = nextWorkspace.storyboards[0]?.episodeNo || 1;
+        setActiveEpisode(firstEpisode);
+        setDrafts(
+          Object.fromEntries(
+            nextWorkspace.storyboards.map((item) => [
+              item.id,
+              {
+                scriptText: getStoryboardScriptText(item),
+                videoPrompt: getStoryboardPrompt(item),
+              },
+            ]),
+          ),
+        );
+      })
       .catch(() => {
         if (active) {
           message.error('分镜页面加载失败');
@@ -956,7 +1017,118 @@ const ProductionWorkbenchStoryboard = () => {
 
   const reloadVideoTasks = async () => {
     const response = await queryAiVideoTasks(projectId, undefined);
-    setVideoTasks(response.data || []);
+    setVideoTasks((previous) =>
+      (response.data || []).map((task) => ({
+        ...task,
+        execution: previous.find((item) => item.id === task.id)?.execution,
+      })),
+    );
+  };
+
+  const reloadImageTasks = async () => {
+    const response = await queryAiImageTasks(projectId, undefined);
+    setImageTasks(response.data || []);
+  };
+
+  const currentTenantId = () => Number(localStorage.getItem('currentTenantId'));
+
+  const followImageExecution = async (task: AiImageTask) => {
+    if (!task.executionId || !currentTenantId()) {
+      await reloadImageTasks();
+      return;
+    }
+    await aiExecutionTaskService.poll(
+      currentTenantId(),
+      task.executionId,
+      async () => {
+        const response = await queryAiImageTask(projectId, task.id);
+        if (response.data) {
+          setImageTasks((previous) => [
+            ...previous.filter((item) => item.id !== response.data?.id),
+            response.data,
+          ]);
+        }
+      },
+    );
+    await reloadImageTasks();
+  };
+
+  const followVideoExecution = async (task: AiVideoTask) => {
+    const tenantId = currentTenantId();
+    if (!task.executionId || !tenantId) {
+      await reloadVideoTasks();
+      return;
+    }
+    await aiExecutionTaskService.poll(
+      tenantId,
+      task.executionId,
+      (execution) => {
+        setVideoTasks((previous) =>
+          previous.map((item) =>
+            item.id === task.id ? { ...item, execution } : item,
+          ),
+        );
+      },
+    );
+    await reloadVideoTasks();
+  };
+
+  const generateImage = async (storyboard: StoryboardShot) => {
+    try {
+      const response = await createAiImageTask(projectId, {
+        taskType: 'STORYBOARD_FIRST_FRAME',
+        targetType: 'STORYBOARD',
+        targetId: storyboard.id,
+        prompt: storyboard.imagePrompt || storyboard.visualDescription,
+        aspectRatio: '9:16',
+        imageCount: 1,
+        quality: 'STANDARD',
+      });
+      if (response.data) {
+        setImageTasks((previous) => [
+          ...previous,
+          response.data as AiImageTask,
+        ]);
+        void followImageExecution(response.data as AiImageTask).catch(() =>
+          message.error('首帧任务状态刷新失败'),
+        );
+      }
+      message.success('首帧任务已创建');
+    } catch {
+      message.error('首帧任务创建失败');
+    }
+  };
+
+  const regenerateImage = async (task: AiImageTask) => {
+    try {
+      const response = await regenerateAiImageTask(projectId, task.id);
+      if (response.data) {
+        setImageTasks((previous) => [
+          ...previous,
+          response.data as AiImageTask,
+        ]);
+        void followImageExecution(response.data as AiImageTask).catch(() =>
+          message.error('再生成任务状态刷新失败'),
+        );
+      }
+      message.success('再生成任务已创建');
+    } catch {
+      message.error('再生成任务创建失败');
+    }
+  };
+
+  const cancelImage = async (task: AiImageTask) => {
+    try {
+      const response = await cancelAiImageTask(projectId, task.id);
+      if (response.data) {
+        setImageTasks((previous) => [
+          ...previous.filter((item) => item.id !== response.data?.id),
+          response.data,
+        ]);
+      }
+    } catch {
+      message.error('首帧任务取消失败');
+    }
   };
 
   const syncStoryboardsFromResponse = (
@@ -970,7 +1142,7 @@ const ProductionWorkbenchStoryboard = () => {
   const createVideoTaskForStoryboard = async (storyboard: StoryboardShot) => {
     const prompt =
       drafts[storyboard.id]?.videoPrompt || getStoryboardPrompt(storyboard);
-    await createAiVideoTask(projectId, {
+    const response = await createAiVideoTask(projectId, {
       storyboardId: storyboard.id,
       prompt,
       firstFrameUrl: storyboard.firstFrameUrl || undefined,
@@ -978,13 +1150,19 @@ const ProductionWorkbenchStoryboard = () => {
       aspectRatio: '9:16',
       resolution: '720p',
     });
+    return response.data as AiVideoTask | undefined;
   };
 
   const generateVideo = async (storyboard: StoryboardShot) => {
     try {
-      await createVideoTaskForStoryboard(storyboard);
+      const task = await createVideoTaskForStoryboard(storyboard);
+      if (task) {
+        setVideoTasks((previous) => [...previous, task]);
+        void followVideoExecution(task).catch(() =>
+          message.error('视频任务状态刷新失败'),
+        );
+      }
       message.success('视频任务已创建');
-      await reloadVideoTasks();
     } catch {
       message.error('视频任务创建失败');
     }
@@ -992,13 +1170,44 @@ const ProductionWorkbenchStoryboard = () => {
 
   const batchGenerateVideo = async () => {
     try {
-      await Promise.all(
+      const tasks = await Promise.all(
         visibleStoryboards.map((item) => createVideoTaskForStoryboard(item)),
       );
+      for (const task of tasks.filter((item): item is AiVideoTask =>
+        Boolean(item),
+      )) {
+        setVideoTasks((previous) => [...previous, task]);
+        void followVideoExecution(task).catch(() =>
+          message.error('视频任务状态刷新失败'),
+        );
+      }
       message.success('批量视频任务已创建');
-      await reloadVideoTasks();
     } catch {
       message.error('批量生成视频失败');
+    }
+  };
+
+  const cancelVideo = async (task: AiVideoTask) => {
+    try {
+      await cancelAiVideoTask(projectId, task.id);
+      await reloadVideoTasks();
+    } catch {
+      message.error('视频任务取消失败');
+    }
+  };
+
+  const retryVideo = async (task: AiVideoTask) => {
+    try {
+      const response = await regenerateAiVideoTask(projectId, task.id);
+      if (response.data) {
+        const nextTask = response.data as AiVideoTask;
+        setVideoTasks((previous) => [...previous, nextTask]);
+        void followVideoExecution(nextTask).catch(() =>
+          message.error('视频任务状态刷新失败'),
+        );
+      }
+    } catch {
+      message.error('视频任务重试失败');
     }
   };
 
@@ -1155,135 +1364,138 @@ const ProductionWorkbenchStoryboard = () => {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr' }}>
-          <aside
+      <aside
+        style={{
+          minHeight: 'calc(100vh - 68px)',
+          borderRight: '1px solid #e5eaf3',
+          background: '#fff',
+          paddingTop: 24,
+        }}
+      >
+        <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: 17 }}>
+          集数
+        </div>
+        <div style={{ position: 'relative', display: 'grid', gap: 10 }}>
+          <span
             style={{
-              minHeight: 'calc(100vh - 68px)',
-              borderRight: '1px solid #e5eaf3',
-              background: '#fff',
-              paddingTop: 24,
+              position: 'absolute',
+              left: 61,
+              top: 38,
+              bottom: 8,
+              width: 5,
+              borderRadius: 4,
+              background: '#75e0aa',
+            }}
+          />
+          {episodeNumbers.map((episode) => (
+            <button
+              key={episode}
+              type="button"
+              onClick={() => setActiveEpisode(episode)}
+              style={{
+                width: 36,
+                height: 36,
+                margin: '0 auto',
+                borderRadius: 6,
+                border:
+                  episode === activeEpisode
+                    ? '1px solid #5454ff'
+                    : '1px solid #dfe5f1',
+                background: episode === activeEpisode ? '#5454ff' : '#fff',
+                color: episode === activeEpisode ? '#fff' : '#1f2937',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {episode}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <div style={{ padding: '16px 28px 34px' }}>
+        <Flex justify="space-between" align="center">
+          <Button style={{ height: 32, fontWeight: 700 }}>分镜表</Button>
+          <Flex gap={10}>
+            <Select
+              aria-label="视频生成模型"
+              value={selectedModel}
+              onChange={setSelectedModel}
+              options={[
+                {
+                  label: 'Doubao-Seedance-2.5',
+                  value: 'Doubao-Seedance-2.5',
+                },
+              ]}
+              style={{ width: 202 }}
+            />
+            <Button icon={<BarsOutlined />} onClick={batchGenerateVideo}>
+              批量生成视频
+            </Button>
+          </Flex>
+        </Flex>
+
+        <section style={{ marginTop: 18, paddingLeft: 2 }}>
+          <Typography.Title level={4} style={{ margin: 0, fontSize: 16 }}>
+            第{activeEpisode}集{' '}
+            {episodeTitles[activeEpisode] || `第${activeEpisode}集`}
+          </Typography.Title>
+          <Typography.Paragraph
+            style={{
+              margin: '14px 0 18px',
+              color: '#536079',
+              fontSize: 14,
             }}
           >
-            <div
-              style={{ textAlign: 'center', fontWeight: 700, marginBottom: 17 }}
-            >
-              集数
-            </div>
-            <div style={{ position: 'relative', display: 'grid', gap: 10 }}>
-              <span
-                style={{
-                  position: 'absolute',
-                  left: 61,
-                  top: 38,
-                  bottom: 8,
-                  width: 5,
-                  borderRadius: 4,
-                  background: '#75e0aa',
-                }}
+            {episodeSummaries[activeEpisode] ||
+              '本集分镜内容已按镜头拆解，可继续编辑提示词并生成视频。'}
+            <Button type="link" size="small" style={{ paddingInline: 8 }}>
+              详情
+            </Button>
+          </Typography.Paragraph>
+        </section>
+
+        {visibleStoryboards.length ? (
+          <div style={{ display: 'grid', gap: 16 }}>
+            {visibleStoryboards.map((item, index) => (
+              <StoryboardCard
+                key={item.id}
+                item={item}
+                index={index}
+                characters={characters}
+                scenes={scenes}
+                props={props}
+                imageTasks={imageTasks}
+                videoTasks={videoTasks}
+                draft={
+                  drafts[item.id] || {
+                    scriptText: getStoryboardScriptText(item),
+                    videoPrompt: getStoryboardPrompt(item),
+                  }
+                }
+                model={selectedModel}
+                onDraftChange={updateDraft}
+                onGenerate={generateVideo}
+                onCancelVideo={cancelVideo}
+                onRetryVideo={retryVideo}
+                onGenerateImage={generateImage}
+                onRegenerateImage={regenerateImage}
+                onCancelImage={cancelImage}
+                onSaveScript={saveStoryboardScript}
+                onUpdateStoryboard={saveStoryboardFields}
+                onAddStoryboard={addStoryboardAfter}
+                onCopyStoryboard={copyStoryboard}
+                onDelete={removeStoryboard}
               />
-              {episodeNumbers.map((episode) => (
-                <button
-                  key={episode}
-                  type="button"
-                  onClick={() => setActiveEpisode(episode)}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    margin: '0 auto',
-                    borderRadius: 6,
-                    border:
-                      episode === activeEpisode
-                        ? '1px solid #5454ff'
-                        : '1px solid #dfe5f1',
-                    background: episode === activeEpisode ? '#5454ff' : '#fff',
-                    color: episode === activeEpisode ? '#fff' : '#1f2937',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {episode}
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <div style={{ padding: '16px 28px 34px' }}>
-            <Flex justify="space-between" align="center">
-              <Button style={{ height: 32, fontWeight: 700 }}>分镜表</Button>
-              <Flex gap={10}>
-                <Select
-                  aria-label="视频生成模型"
-                  value={selectedModel}
-                  onChange={setSelectedModel}
-                  options={[
-                    {
-                      label: 'Doubao-Seedance-2.5',
-                      value: 'Doubao-Seedance-2.5',
-                    },
-                  ]}
-                  style={{ width: 202 }}
-                />
-                <Button icon={<BarsOutlined />} onClick={batchGenerateVideo}>
-                  批量生成视频
-                </Button>
-              </Flex>
-            </Flex>
-
-            <section style={{ marginTop: 18, paddingLeft: 2 }}>
-              <Typography.Title level={4} style={{ margin: 0, fontSize: 16 }}>
-                第{activeEpisode}集{' '}
-                {episodeTitles[activeEpisode] || `第${activeEpisode}集`}
-              </Typography.Title>
-              <Typography.Paragraph
-                style={{
-                  margin: '14px 0 18px',
-                  color: '#536079',
-                  fontSize: 14,
-                }}
-              >
-                {episodeSummaries[activeEpisode] ||
-                  '本集分镜内容已按镜头拆解，可继续编辑提示词并生成视频。'}
-                <Button type="link" size="small" style={{ paddingInline: 8 }}>
-                  详情
-                </Button>
-              </Typography.Paragraph>
-            </section>
-
-            {visibleStoryboards.length ? (
-              <div style={{ display: 'grid', gap: 16 }}>
-                {visibleStoryboards.map((item, index) => (
-                  <StoryboardCard
-                    key={item.id}
-                    item={item}
-                    index={index}
-                    characters={characters}
-                    scenes={scenes}
-                    props={props}
-                    imageTasks={imageTasks}
-                    videoTasks={videoTasks}
-                    draft={
-                      drafts[item.id] || {
-                        scriptText: getStoryboardScriptText(item),
-                        videoPrompt: getStoryboardPrompt(item),
-                      }
-                    }
-                    model={selectedModel}
-                    onDraftChange={updateDraft}
-                    onGenerate={generateVideo}
-                    onSaveScript={saveStoryboardScript}
-                    onUpdateStoryboard={saveStoryboardFields}
-                    onAddStoryboard={addStoryboardAfter}
-                    onCopyStoryboard={copyStoryboard}
-                    onDelete={removeStoryboard}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div style={{ paddingTop: 100 }}>
-                <Empty description="暂无分镜，请先完成剧本分镜拆解" />
-              </div>
-            )}
+            ))}
           </div>
-        </div>
+        ) : (
+          <div style={{ paddingTop: 100 }}>
+            <Empty description="暂无分镜，请先完成剧本分镜拆解" />
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

@@ -10,6 +10,7 @@ public enum AiBusinessScene {
     CHARACTER_EXTRACT("character_extract", "AI提取角色", AiCapability.TEXT, "script.element.character.extract", "script-character-extract"),
     SCENE_EXTRACT("scene_extract", "AI提取场景", AiCapability.TEXT, "script.element.scene.extract", "script-scene-extract"),
     PROP_EXTRACT("prop_extract", "AI提取道具", AiCapability.TEXT, "script.element.prop.extract", "script-prop-extract"),
+    SCRIPT_ELEMENT_EXTRACT("script_element_extract", "AI提取全部剧本元素", AiCapability.TEXT, null),
     STORYBOARD_BREAKDOWN("storyboard_breakdown", "AI拆解分镜", AiCapability.TEXT, null),
     PROMPT_GENERATE("prompt_generate", "AI生成提示词", AiCapability.TEXT, null),
     VIDEO_UNDERSTANDING("video_understanding", "视频理解", AiCapability.VIDEO_UNDERSTANDING, "video.understanding.analysis", "video-understanding"),

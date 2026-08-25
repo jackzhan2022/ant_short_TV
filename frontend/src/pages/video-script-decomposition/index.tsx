@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
+import type { UploadFile, UploadProps } from 'antd';
 import {
   App,
   Button,
@@ -22,8 +23,8 @@ import {
   Form,
   Input,
   InputNumber,
-  Progress,
   Modal,
+  Progress,
   Row,
   Space,
   Steps,
@@ -31,22 +32,23 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import type { UploadFile, UploadProps } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  confirmVideoDecompositionDraft,
-  createVideoDecompositionBatch,
-  queryVideoDecompositionEpisode,
-  queryVideoDecompositionBatches,
-  retryVideoDecompositionEpisode,
-  updateVideoDecompositionDraft,
-  uploadEpisodeVideo,
-} from './service';
+import AiExecutionStatus from '@/components/AiExecutionStatus';
+import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import type {
   VideoDecompositionBatch,
   VideoDecompositionEpisode,
   VideoDecompositionEpisodeDetail,
   VideoDecompositionUpload,
+} from './service';
+import {
+  confirmVideoDecompositionDraft,
+  createVideoDecompositionBatch,
+  queryVideoDecompositionBatches,
+  queryVideoDecompositionEpisode,
+  retryVideoDecompositionEpisode,
+  updateVideoDecompositionDraft,
+  uploadEpisodeVideo,
 } from './service';
 
 type EpisodeUpload = {
@@ -60,7 +62,11 @@ type EpisodeUpload = {
 };
 
 const MAX_VIDEO_SIZE = 1024 * 1024 * 1024;
-const SUPPORTED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
+const SUPPORTED_VIDEO_TYPES = [
+  'video/mp4',
+  'video/quicktime',
+  'video/x-msvideo',
+];
 
 const padTimePart = (value: number) => String(value).padStart(2, '0');
 
@@ -68,7 +74,8 @@ export const buildDefaultVideoDecompositionBatchName = (date = new Date()) =>
   `拆剧批次-${date.getFullYear()}${padTimePart(date.getMonth() + 1)}${padTimePart(date.getDate())}-${padTimePart(date.getHours())}${padTimePart(date.getMinutes())}${padTimePart(date.getSeconds())}`;
 
 export const canCreateVideoDecompositionBatch = (episodes: EpisodeUpload[]) =>
-  episodes.length > 0 && episodes.every((episode) => Boolean(episode.storagePath));
+  episodes.length > 0 &&
+  episodes.every((episode) => Boolean(episode.storagePath));
 
 const formatFileSize = (size: number) => {
   if (size >= 1024 * 1024 * 1024) {
@@ -119,13 +126,17 @@ const episodeStatusColor = (status: string) => {
 const VideoScriptDecompositionPage = () => {
   const { message } = App.useApp();
   const [files, setFiles] = useState<UploadFile[]>([]);
-  const [batchName, setBatchName] = useState(() => buildDefaultVideoDecompositionBatchName());
+  const [batchName, setBatchName] = useState(() =>
+    buildDefaultVideoDecompositionBatchName(),
+  );
   const [modelId, setModelId] = useState<number>();
   const [batches, setBatches] = useState<VideoDecompositionBatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<number>();
   const [detail, setDetail] = useState<VideoDecompositionEpisodeDetail>();
   const [detailLoading, setDetailLoading] = useState(false);
+  const [activeExecution, setActiveExecution] =
+    useState<API.AiExecutionResponse>();
   const [draftContent, setDraftContent] = useState('');
   const [draftSaving, setDraftSaving] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -146,9 +157,24 @@ const VideoScriptDecompositionPage = () => {
       const response = await queryVideoDecompositionEpisode(episodeId);
       setDetail(response.data);
       setDraftContent(response.data?.draftContent ?? '');
+      return response.data;
     } finally {
       setDetailLoading(false);
     }
+  };
+
+  const followEpisodeExecution = async (episode: VideoDecompositionEpisode) => {
+    const tenantId = Number(localStorage.getItem('currentTenantId'));
+    if (!episode.executionId || !tenantId) {
+      return;
+    }
+    await aiExecutionTaskService.poll(
+      tenantId,
+      episode.executionId,
+      setActiveExecution,
+    );
+    await loadEpisodeDetail(episode.id);
+    await loadBatches();
   };
 
   useEffect(() => {
@@ -202,7 +228,13 @@ const VideoScriptDecompositionPage = () => {
 
   const openEpisode = async (episode: VideoDecompositionEpisode) => {
     setSelectedEpisodeId(episode.id);
-    await loadEpisodeDetail(episode.id);
+    setActiveExecution(undefined);
+    const nextDetail = await loadEpisodeDetail(episode.id);
+    if (nextDetail?.episode.executionId) {
+      void followEpisodeExecution(nextDetail.episode).catch(() =>
+        message.error('拆剧任务状态刷新失败'),
+      );
+    }
   };
 
   const saveDraft = async () => {
@@ -369,7 +401,9 @@ const VideoScriptDecompositionPage = () => {
               title: '集数',
               dataIndex: 'episodeNo',
               width: 88,
-              render: (_, record) => <Tag color="blue">第 {record.episodeNo} 集</Tag>,
+              render: (_, record) => (
+                <Tag color="blue">第 {record.episodeNo} 集</Tag>
+              ),
             },
             {
               title: '视频文件',
@@ -441,7 +475,8 @@ const VideoScriptDecompositionPage = () => {
                 setLoading(true);
                 try {
                   const resolvedBatchName =
-                    batchName.trim() || buildDefaultVideoDecompositionBatchName();
+                    batchName.trim() ||
+                    buildDefaultVideoDecompositionBatchName();
                   await createVideoDecompositionBatch({
                     name: resolvedBatchName,
                     modelId,
@@ -536,6 +571,7 @@ const VideoScriptDecompositionPage = () => {
           onClose={() => {
             setSelectedEpisodeId(undefined);
             setDetail(undefined);
+            setActiveExecution(undefined);
             setDraftContent('');
           }}
           extra={
@@ -579,7 +615,10 @@ const VideoScriptDecompositionPage = () => {
                 <Button
                   type="primary"
                   icon={<CheckCircleOutlined />}
-                  disabled={!draftContent.trim() || detail.episode.status === 'CONFIRMED'}
+                  disabled={
+                    !draftContent.trim() ||
+                    detail.episode.status === 'CONFIRMED'
+                  }
                   onClick={confirmDraft}
                 >
                   确认导入
@@ -601,6 +640,9 @@ const VideoScriptDecompositionPage = () => {
         >
           {detail ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {activeExecution ? (
+                <AiExecutionStatus task={activeExecution} />
+              ) : null}
               <Descriptions
                 bordered
                 size="small"
@@ -669,7 +711,10 @@ const VideoScriptDecompositionPage = () => {
                     {tryFormatJson(detail.normalizedJson)}
                   </Typography.Paragraph>
                 ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无解析结果" />
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="暂无解析结果"
+                  />
                 )}
               </div>
 
@@ -687,7 +732,10 @@ const VideoScriptDecompositionPage = () => {
                     {detail.rawResponse}
                   </Typography.Paragraph>
                 ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无原始响应" />
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="暂无原始响应"
+                  />
                 )}
               </div>
 
@@ -711,7 +759,11 @@ const VideoScriptDecompositionPage = () => {
                       </Tag>
                     ),
                   },
-                  { title: '请求 ID', dataIndex: 'providerRequestId', ellipsis: true },
+                  {
+                    title: '请求 ID',
+                    dataIndex: 'providerRequestId',
+                    ellipsis: true,
+                  },
                   { title: '错误', dataIndex: 'errorMessage', ellipsis: true },
                 ]}
               />
@@ -720,7 +772,11 @@ const VideoScriptDecompositionPage = () => {
         </Drawer>
 
         <Modal
-          title={detail ? `确认导入第 ${detail.episode.episodeNo} 集剧本？` : '确认导入剧本'}
+          title={
+            detail
+              ? `确认导入第 ${detail.episode.episodeNo} 集剧本？`
+              : '确认导入剧本'
+          }
           open={confirmVisible}
           okText="确认导入"
           cancelText="取消"
@@ -731,7 +787,8 @@ const VideoScriptDecompositionPage = () => {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Typography.Paragraph style={{ marginBottom: 0 }}>
-              确认后会创建一个来源为 VIDEO_IMPORT 的剧本版本，不会静默覆盖当前剧本内容。
+              确认后会创建一个来源为 VIDEO_IMPORT
+              的剧本版本，不会静默覆盖当前剧本内容。
             </Typography.Paragraph>
             <InputNumber
               min={1}

@@ -10,6 +10,7 @@ public class VideoDecompositionAttemptEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long episodeId;
+    private Long executionId;
     private Integer attemptNo;
     private String phase;
     private String status;
@@ -26,6 +27,8 @@ public class VideoDecompositionAttemptEntity {
     public void setId(Long id) { this.id = id; }
     public Long getEpisodeId() { return episodeId; }
     public void setEpisodeId(Long episodeId) { this.episodeId = episodeId; }
+    public Long getExecutionId() { return executionId; }
+    public void setExecutionId(Long executionId) { this.executionId = executionId; }
     public Integer getAttemptNo() { return attemptNo; }
     public void setAttemptNo(Integer attemptNo) { this.attemptNo = attemptNo; }
     public String getPhase() { return phase; }

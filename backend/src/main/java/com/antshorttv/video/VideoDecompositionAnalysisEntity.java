@@ -10,6 +10,7 @@ public class VideoDecompositionAnalysisEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long episodeId;
+    private Long executionId;
     private String schemaVersion;
     private String status;
     private String rawResponse;
@@ -22,6 +23,8 @@ public class VideoDecompositionAnalysisEntity {
     public void setId(Long id) { this.id = id; }
     public Long getEpisodeId() { return episodeId; }
     public void setEpisodeId(Long episodeId) { this.episodeId = episodeId; }
+    public Long getExecutionId() { return executionId; }
+    public void setExecutionId(Long executionId) { this.executionId = executionId; }
     public String getSchemaVersion() { return schemaVersion; }
     public void setSchemaVersion(String schemaVersion) { this.schemaVersion = schemaVersion; }
     public String getStatus() { return status; }

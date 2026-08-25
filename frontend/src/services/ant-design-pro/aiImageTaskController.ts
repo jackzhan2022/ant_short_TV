@@ -114,9 +114,9 @@ export async function create6(
 }
 
 /** 此处后端没有提供注释 GET /api/projects/${param0}/ai-image-tasks/${param1} */
-export async function detail4(
+export async function detail5(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail4Params,
+  params: API.detail5Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;
@@ -165,9 +165,9 @@ export async function cancel(
 }
 
 /** 此处后端没有提供注释 POST /api/projects/${param0}/ai-image-tasks/${param1}/regenerate */
-export async function regenerate1(
+export async function regenerate2(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.regenerate1Params,
+  params: API.regenerate2Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;

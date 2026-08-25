@@ -174,6 +174,13 @@ export default [
         component: './ai-service-management/logs',
       },
       {
+        path: '/ai-service-management/operations',
+        name: 'operations',
+        icon: 'dashboard',
+        access: 'canViewPlatformAiProviders',
+        component: './ai-service-management/operations',
+      },
+      {
         path: '/ai-service-management/agents',
         name: 'agents',
         icon: 'robot',

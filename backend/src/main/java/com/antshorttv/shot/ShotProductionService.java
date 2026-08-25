@@ -9,7 +9,6 @@ import com.antshorttv.material.VideoMaterialEntity;
 import com.antshorttv.material.VideoMaterialMapper;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.points.TeamPointService;
 import com.antshorttv.project.ProjectAccessResolver;
 import com.antshorttv.script.StoryboardEntity;
 import com.antshorttv.script.StoryboardMapper;
@@ -65,7 +64,6 @@ public class ShotProductionService {
     private final OperationLogService operationLogService;
     private final ObjectMapper objectMapper;
     private final MaterialFileAccessService materialFileAccessService;
-    private final TeamPointService teamPointService;
     private final ObjectStorageService objectStorageService;
     private final Path storageRoot;
 
@@ -87,7 +85,6 @@ public class ShotProductionService {
         OperationLogService operationLogService,
         ObjectMapper objectMapper,
         MaterialFileAccessService materialFileAccessService,
-        TeamPointService teamPointService,
         ObjectStorageService objectStorageService,
         @Value("${ai.video.storage-root:storage}") String storageRoot
     ) {
@@ -108,7 +105,6 @@ public class ShotProductionService {
         this.operationLogService = operationLogService;
         this.objectMapper = objectMapper;
         this.materialFileAccessService = materialFileAccessService;
-        this.teamPointService = teamPointService;
         this.objectStorageService = objectStorageService;
         this.storageRoot = Path.of(storageRoot);
     }
@@ -231,7 +227,6 @@ public class ShotProductionService {
         TenantContext context = requireContext(tenantId, projectId);
         StoryboardEntity storyboard = requireStoryboard(tenantId, projectId, request.storyboardId());
         AiServiceConfigEntity serviceConfig = resolveVoiceService(tenantId, request.serviceConfigId());
-        teamPointService.consumeForAi(context, 1, "AI_VOICE_SYNTHESIS", null, "AI 配音生成消耗积分");
         LocalDateTime now = LocalDateTime.now();
 
         AiVoiceTaskEntity task = new AiVoiceTaskEntity();
@@ -255,7 +250,7 @@ public class ShotProductionService {
         task.updatedAt = now;
         aiVoiceTaskMapper.insert(task);
 
-        AiVoiceResultEntity result = createVoiceResult(task, estimateDuration(task.textContent), now);
+        AiVoiceResultEntity result = createLocalPlaceholderVoiceResult(task, estimateDuration(task.textContent), now);
         task.status = ShotTaskStatus.SUCCEEDED.name();
         task.completedAt = now;
         task.updatedAt = now;
@@ -766,7 +761,7 @@ public class ShotProductionService {
         recordOperation(context, "DELETE_SHOT_COMPOSE_RESULT", result.id, request);
     }
 
-    private AiVoiceResultEntity createVoiceResult(AiVoiceTaskEntity task, BigDecimal duration, LocalDateTime now) {
+    private AiVoiceResultEntity createLocalPlaceholderVoiceResult(AiVoiceTaskEntity task, BigDecimal duration, LocalDateTime now) {
         AiVoiceResultEntity result = new AiVoiceResultEntity();
         result.tenantId = task.tenantId;
         result.projectId = task.projectId;

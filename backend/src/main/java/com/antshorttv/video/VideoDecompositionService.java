@@ -2,6 +2,10 @@ package com.antshorttv.video;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.execution.AiExecutionCreateCommand;
+import com.antshorttv.execution.AiExecutionService;
+import com.antshorttv.execution.AiExecutionTaskEntity;
+import com.antshorttv.execution.AiExecutionTaskMapper;
 import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.script.ScriptEntity;
 import com.antshorttv.script.ScriptMapper;
@@ -11,6 +15,7 @@ import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.storage.ObjectStorageService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -43,6 +48,8 @@ public class VideoDecompositionService {
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final ObjectStorageService objectStorageService;
+    private final AiExecutionService executionService;
+    private final AiExecutionTaskMapper executionTaskMapper;
     private final Path storageRoot;
 
     public VideoDecompositionService(
@@ -55,6 +62,8 @@ public class VideoDecompositionService {
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
         ObjectStorageService objectStorageService,
+        AiExecutionService executionService,
+        AiExecutionTaskMapper executionTaskMapper,
         @Value("${ai.video.storage-root:storage}") String storageRoot
     ) {
         this.tenantContextResolver = tenantContextResolver;
@@ -66,6 +75,8 @@ public class VideoDecompositionService {
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
         this.objectStorageService = objectStorageService;
+        this.executionService = executionService;
+        this.executionTaskMapper = executionTaskMapper;
         this.storageRoot = Path.of(storageRoot).toAbsolutePath().normalize();
     }
 
@@ -167,6 +178,7 @@ public class VideoDecompositionService {
             episode.setCreatedAt(now);
             episode.setUpdatedAt(now);
             episodeMapper.insert(episode);
+            createExecutionHeader(episode, batch.getModelId());
             createAttempt(episode.getId(), 1, "VIDEO_ANALYSIS", "PENDING", now);
         }
 
@@ -337,13 +349,42 @@ public class VideoDecompositionService {
     }
 
     private void createAttempt(Long episodeId, int attemptNo, String phase, String status, LocalDateTime now) {
+        VideoDecompositionEpisodeEntity episode = episodeMapper.selectById(episodeId);
         VideoDecompositionAttemptEntity attempt = new VideoDecompositionAttemptEntity();
         attempt.setEpisodeId(episodeId);
+        attempt.setExecutionId(episode == null ? null : episode.getExecutionId());
         attempt.setAttemptNo(attemptNo);
         attempt.setPhase(phase);
         attempt.setStatus(status);
         attempt.setStartedAt(now);
         attemptMapper.insert(attempt);
+    }
+
+    private void createExecutionHeader(VideoDecompositionEpisodeEntity episode, Long modelId) {
+        AiExecutionTaskEntity execution = executionService.create(new AiExecutionCreateCommand(
+            episode.getTenantId(),
+            episode.getCreatedBy(),
+            episode.getProjectId(),
+            "video_decomposition",
+            "VIDEO_UNDERSTANDING",
+            "VIDEO_DECOMPOSITION_EPISODE",
+            episode.getId(),
+            modelId,
+            "VIDEO_ANALYSIS",
+            "video-decomposition:%d".formatted(episode.getId()),
+            UUID.randomUUID().toString(),
+            true,
+            "{\"episodeId\":%d}".formatted(episode.getId())
+        ));
+        episode.setExecutionId(execution.id);
+        episodeMapper.updateById(episode);
+        executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("status", "RUNNING")
+            .set("started_at", LocalDateTime.now())
+            .set("progress", 5)
+            .set("next_run_at", null)
+            .set("updated_at", LocalDateTime.now())
+            .eq("id", execution.id));
     }
 
     private void recalculateBatch(Long tenantId, Long batchId) {

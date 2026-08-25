@@ -6,9 +6,18 @@ import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
+import com.antshorttv.execution.AiExecutionResponse;
+import com.antshorttv.execution.AiExecutionAttemptEntity;
+import com.antshorttv.execution.AiExecutionAttemptMapper;
+import com.antshorttv.execution.AiExecutionClaimLostException;
+import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionStatus;
+import com.antshorttv.execution.AiExecutionTaskEntity;
+import com.antshorttv.execution.AiExecutionTaskMapper;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.project.ProjectEntity;
+import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.project.ProjectAccessResolver;
 import com.antshorttv.material.MaterialFileAccessService;
 import com.antshorttv.points.TeamPointService;
@@ -24,17 +33,21 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 @Service
 public class ScriptWorkflowService {
 
     private final ProjectAccessResolver projectAccessResolver;
     private final ProjectPermissionGuard projectPermissionGuard;
+    private final ProjectMapper projectMapper;
     private final TenantContextResolver tenantContextResolver;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
@@ -42,6 +55,7 @@ public class ScriptWorkflowService {
     private final ScriptAnalysisStageMapper scriptAnalysisStageMapper;
     private final ScriptAnalysisResultMapper scriptAnalysisResultMapper;
     private final ScriptAnalysisTaskService scriptAnalysisTaskService;
+    private final ScriptAnalysisExecutionCoordinator scriptAnalysisExecutionCoordinator;
     private final ProjectAiConfigService projectAiConfigService;
     private final AiInvocationService aiInvocationService;
     private final MaterialFileAccessService materialFileAccessService;
@@ -49,11 +63,16 @@ public class ScriptWorkflowService {
     private final ScriptElementExtractionService scriptElementExtractionService;
     private final ScriptElementDraftService scriptElementDraftService;
     private final ScriptElementConfirmationService scriptElementConfirmationService;
+    private final ScriptAiOperationService scriptAiOperationService;
+    private final AiExecutionAttemptMapper executionAttemptMapper;
+    private final AiExecutionTaskMapper executionTaskMapper;
+    private final TransactionTemplate transactionTemplate;
     private final JdbcTemplate jdbcTemplate;
 
     public ScriptWorkflowService(
         ProjectAccessResolver projectAccessResolver,
         ProjectPermissionGuard projectPermissionGuard,
+        ProjectMapper projectMapper,
         TenantContextResolver tenantContextResolver,
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
@@ -61,6 +80,7 @@ public class ScriptWorkflowService {
         ScriptAnalysisStageMapper scriptAnalysisStageMapper,
         ScriptAnalysisResultMapper scriptAnalysisResultMapper,
         ScriptAnalysisTaskService scriptAnalysisTaskService,
+        ScriptAnalysisExecutionCoordinator scriptAnalysisExecutionCoordinator,
         ProjectAiConfigService projectAiConfigService,
         AiInvocationService aiInvocationService,
         MaterialFileAccessService materialFileAccessService,
@@ -68,10 +88,15 @@ public class ScriptWorkflowService {
         ScriptElementExtractionService scriptElementExtractionService,
         ScriptElementDraftService scriptElementDraftService,
         ScriptElementConfirmationService scriptElementConfirmationService,
+        ScriptAiOperationService scriptAiOperationService,
+        AiExecutionAttemptMapper executionAttemptMapper,
+        AiExecutionTaskMapper executionTaskMapper,
+        PlatformTransactionManager transactionManager,
         JdbcTemplate jdbcTemplate
     ) {
         this.projectAccessResolver = projectAccessResolver;
         this.projectPermissionGuard = projectPermissionGuard;
+        this.projectMapper = projectMapper;
         this.tenantContextResolver = tenantContextResolver;
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
@@ -79,6 +104,7 @@ public class ScriptWorkflowService {
         this.scriptAnalysisStageMapper = scriptAnalysisStageMapper;
         this.scriptAnalysisResultMapper = scriptAnalysisResultMapper;
         this.scriptAnalysisTaskService = scriptAnalysisTaskService;
+        this.scriptAnalysisExecutionCoordinator = scriptAnalysisExecutionCoordinator;
         this.projectAiConfigService = projectAiConfigService;
         this.aiInvocationService = aiInvocationService;
         this.materialFileAccessService = materialFileAccessService;
@@ -86,7 +112,404 @@ public class ScriptWorkflowService {
         this.scriptElementExtractionService = scriptElementExtractionService;
         this.scriptElementDraftService = scriptElementDraftService;
         this.scriptElementConfirmationService = scriptElementConfirmationService;
+        this.scriptAiOperationService = scriptAiOperationService;
+        this.executionAttemptMapper = executionAttemptMapper;
+        this.executionTaskMapper = executionTaskMapper;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public ScriptAiOperationExecutionResult executeGenerateOperation(
+        ScriptAiOperationEntity operation,
+        GenerateScriptRequest request,
+        AiExecutionContext executionContext
+    ) {
+        ScriptVersionEntity completed = scriptVersionMapper.selectByExecutionId(executionContext.task().id);
+        if (completed != null) {
+            return new ScriptAiOperationExecutionResult("SCRIPT_VERSION", completed.getId(), List.of());
+        }
+        ProjectEntity project = projectMapper.selectByTenantIdAndId(operation.tenantId, operation.projectId);
+        if (project == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "项目不存在。");
+        }
+        String title = resolveTitle(project, request);
+        AiInvocationResult<AiTextResponse> invocation = invokeTextForExecution(
+            executionContext,
+            AiBusinessScene.SCRIPT_GENERATE,
+            request.storyIdea(),
+            buildScriptContent(title, request)
+        );
+        ScriptVersionEntity version = transactionTemplate.execute(status -> {
+            requireActiveExecutionClaim(executionContext);
+            ScriptVersionEntity raced = scriptVersionMapper.selectByExecutionId(executionContext.task().id);
+            if (raced != null) {
+                return raced;
+            }
+            LocalDateTime now = LocalDateTime.now();
+            ScriptEntity script = scriptMapper.selectCurrentByProject(operation.tenantId, operation.projectId);
+            if (script == null) {
+                script = new ScriptEntity();
+                script.setTenantId(operation.tenantId);
+                script.setProjectId(operation.projectId);
+                script.setCreatedBy(operation.createdBy);
+                script.setCreatedAt(now);
+            }
+            script.setTitle(title);
+            script.setSourceType("AI_GENERATE");
+            script.setContent(invocation.content());
+            script.setStatus("DRAFT");
+            script.setUpdatedAt(now);
+            if (script.getId() == null) {
+                scriptMapper.insert(script);
+            } else {
+                scriptMapper.updateById(script);
+            }
+
+            ScriptVersionEntity created = new ScriptVersionEntity();
+            created.setTenantId(operation.tenantId);
+            created.setProjectId(operation.projectId);
+            created.setScriptId(script.getId());
+            created.setVersionNo(scriptVersionMapper.countByScript(operation.tenantId, script.getId()).intValue() + 1);
+            created.setSourceType("AI_GENERATE");
+            created.setInputSummary(request.storyIdea());
+            created.setContent(invocation.content());
+            created.setAiCallLogId(invocation.aiCallLogId());
+            created.setExecutionId(executionContext.task().id);
+            created.setStatus("DRAFT");
+            created.setCreatedBy(operation.createdBy);
+            created.setCreatedAt(now);
+            scriptVersionMapper.insert(created);
+            script.setCurrentVersionId(created.getId());
+            scriptMapper.updateById(script);
+            markOperationResult(operation, "SCRIPT_VERSION", created.getId());
+            return created;
+        });
+        return new ScriptAiOperationExecutionResult("SCRIPT_VERSION", version.getId(), List.of(invocation));
+    }
+
+    public ScriptAiOperationExecutionResult executeRewriteOperation(
+        ScriptAiOperationEntity operation,
+        RewriteScriptRequest request,
+        AiExecutionContext executionContext
+    ) {
+        if (operation.resultId != null) {
+            return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
+        }
+        ScriptEntity script = scriptMapper.selectById(operation.scriptId);
+        if (script == null || !operation.tenantId.equals(script.getTenantId())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "剧本不存在。");
+        }
+        String requirement = blankToNull(request.requirement());
+        AiInvocationResult<AiTextResponse> invocation = invokeAgentTextForExecution(
+            executionContext,
+            AiBusinessScene.SCRIPT_REWRITE,
+            request.rewriteType().trim(),
+            Map.of(
+                "scriptContent", script.getContent(),
+                "rewriteRequirement", requirement == null ? "保持原剧情核心" : requirement
+            )
+        );
+        ScriptVersionEntity version = transactionTemplate.execute(status -> {
+            requireActiveExecutionClaim(executionContext);
+            ScriptVersionEntity raced = scriptVersionMapper.selectByExecutionId(executionContext.task().id);
+            if (raced != null) {
+                return raced;
+            }
+            LocalDateTime now = LocalDateTime.now();
+            script.setSourceType("AI_REWRITE");
+            script.setContent(invocation.content());
+            script.setStatus("DRAFT");
+            script.setUpdatedAt(now);
+            scriptMapper.updateById(script);
+            TenantContext owner = new TenantContext(operation.createdBy, operation.tenantId, null, null);
+            ScriptVersionEntity created = createVersion(
+                owner,
+                operation.projectId,
+                script.getId(),
+                "AI_REWRITE",
+                request.rewriteType().trim(),
+                invocation.content(),
+                invocation.aiCallLogId(),
+                now
+            );
+            created.setExecutionId(executionContext.task().id);
+            scriptVersionMapper.updateById(created);
+            script.setCurrentVersionId(created.getId());
+            scriptMapper.updateById(script);
+            markOperationResult(operation, "SCRIPT_VERSION", created.getId());
+            return created;
+        });
+        return new ScriptAiOperationExecutionResult("SCRIPT_VERSION", version.getId(), List.of(invocation));
+    }
+
+    public ScriptAiOperationExecutionResult executeStoryboardOperation(
+        ScriptAiOperationEntity operation,
+        StoryboardBreakdownRequest request,
+        AiExecutionContext executionContext
+    ) {
+        if (operation.resultId != null) {
+            return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
+        }
+        ScriptEntity script = scriptMapper.selectById(operation.scriptId);
+        if (script == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "剧本不存在。");
+        }
+        AiInvocationResult<AiTextResponse> invocation = invokeTextForExecution(
+            executionContext,
+            AiBusinessScene.STORYBOARD_BREAKDOWN,
+            script.getTitle(),
+            "拆解分镜成功"
+        );
+        transactionTemplate.executeWithoutResult(status -> {
+            requireActiveExecutionClaim(executionContext);
+            jdbcTemplate.update("""
+                update storyboard set deleted_at = now(), updated_at = now()
+                 where tenant_id = ? and project_id = ? and status = 'DRAFT' and deleted_at is null
+                """, operation.tenantId, operation.projectId);
+            insertStoryboard(operation.tenantId, operation.projectId, script.getId(), operation.createdBy, 1, 1, "场景一", "远景", "雨夜中，林家老宅大门外亮起冷光，主角拖着行李箱出现。", "主角", "主角停在门前，抬头看向门匾。", "三年前你们把我赶出去，今天我回来。", "林家老宅门口", "行李箱", "压抑、回归", 5, "首帧：雨夜豪门老宅门口，主角拖行李箱，冷色电影感", "竖屏短剧镜头，雨水落下，镜头缓慢推进", "DRAFT");
+            insertStoryboard(operation.tenantId, operation.projectId, script.getId(), operation.createdBy, 1, 2, "场景二", "中景", "宴会厅内笑声戛然而止，宾客同时回头。", "主角、旧日熟人", "旧日熟人后退半步，表情震惊。", "这不可能，她怎么会回来？", "宴会厅", "香槟杯", "震惊、反转", 6, "首帧：豪门宴会厅众人回头，主角站在入口", "竖屏短剧镜头，人群视线聚焦，轻微推拉", "DRAFT");
+            insertStoryboard(operation.tenantId, operation.projectId, script.getId(), operation.createdBy, 1, 3, "场景二", "特写", "旧股权协议末页的签名被主角按在灯光下。", "主角", "主角将协议推到桌面中央。", "属于我的，我一分都不会让。", "宴会厅", "旧股权协议", "强冲突、悬念", 4, "首帧：旧股权协议签名特写，手指压住纸张", "竖屏短剧镜头，特写切入，灯光扫过签名", "DRAFT");
+            markOperationResult(operation, "STORYBOARD_SET", script.getId());
+        });
+        return new ScriptAiOperationExecutionResult("STORYBOARD_SET", script.getId(), List.of(invocation));
+    }
+
+    public ScriptAiOperationExecutionResult executeElementExtractionOperation(
+        ScriptAiOperationEntity operation,
+        ExtractScriptElementsRequest request,
+        AiExecutionContext executionContext
+    ) {
+        if (operation.resultId != null) {
+            return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
+        }
+        ScriptEntity script = scriptMapper.selectById(operation.scriptId);
+        if (script == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "剧本不存在。");
+        }
+        ScriptElementType elementType = ScriptElementType.from(request.elementType());
+        TenantContext owner = new TenantContext(operation.createdBy, operation.tenantId, null, null);
+        ScriptElementExtractionExecutionResult extraction = scriptElementExtractionService.extractWithExecution(
+            owner,
+            operation.projectId,
+            script,
+            elementType,
+            executionContext
+        );
+        transactionTemplate.executeWithoutResult(status -> {
+            requireActiveExecutionClaim(executionContext);
+            scriptElementDraftService.replaceDrafts(
+                operation.tenantId,
+                operation.projectId,
+                operation.createdBy,
+                extraction.result()
+            );
+            markOperationResult(operation, "SCRIPT_ELEMENTS", script.getId());
+        });
+        return new ScriptAiOperationExecutionResult(
+            "SCRIPT_ELEMENTS",
+            script.getId(),
+            extraction.invocations()
+        );
+    }
+
+    public ScriptAiOperationExecutionResult executePromptOperation(
+        ScriptAiOperationEntity operation,
+        GeneratePromptRequest request,
+        AiExecutionContext executionContext
+    ) {
+        if (operation.resultId != null) {
+            return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
+        }
+        String targetType = normalizePromptTarget(request.targetType());
+        AiInvocationResult<AiTextResponse> invocation = invokeTextForExecution(
+            executionContext,
+            AiBusinessScene.PROMPT_GENERATE,
+            targetType,
+            "生成提示词成功"
+        );
+        transactionTemplate.executeWithoutResult(status -> {
+            requireActiveExecutionClaim(executionContext);
+            applyGeneratedPrompts(operation.tenantId, operation.projectId, targetType);
+            markOperationResult(operation, "SCRIPT_PROMPTS", operation.projectId);
+        });
+        return new ScriptAiOperationExecutionResult("SCRIPT_PROMPTS", operation.projectId, List.of(invocation));
+    }
+
+    private AiInvocationResult<AiTextResponse> invokeAgentTextForExecution(
+        AiExecutionContext context,
+        AiBusinessScene scene,
+        String requestSummary,
+        Map<String, Object> variables
+    ) {
+        AiExecutionTaskEntity execution = context.task();
+        AiExecutionAttemptEntity attempt = executionAttemptMapper.selectById(context.claim().attemptId());
+        return aiInvocationService.invokeText(AiInvocationRequest.text()
+            .tenantId(execution.tenantId)
+            .userId(execution.userId)
+            .projectId(execution.projectId)
+            .taskId(execution.businessId)
+            .modelId(execution.requestedModelId)
+            .scene(scene)
+            .traceId(execution.traceId)
+            .executionId(execution.id)
+            .attemptId(context.claim().attemptId())
+            .executionVersion(execution.executionVersion)
+            .phase(context.claim().phase())
+            .idempotencyKey(attempt.idempotencyKey)
+            .requestSummary(requestSummary)
+            .promptTemplateId(scene.agentCode())
+            .templateVariables(variables)
+            .build());
+    }
+
+    private void markOperationResult(ScriptAiOperationEntity operation, String resultType, Long resultId) {
+        operation.resultType = resultType;
+        operation.resultId = resultId;
+        operation.updatedAt = LocalDateTime.now();
+        scriptAiOperationService.updateResult(operation);
+    }
+
+    private AiInvocationResult<AiTextResponse> invokeTextForExecution(
+        AiExecutionContext context,
+        AiBusinessScene scene,
+        String requestSummary,
+        String prompt
+    ) {
+        AiExecutionTaskEntity execution = context.task();
+        AiExecutionAttemptEntity attempt = executionAttemptMapper.selectById(context.claim().attemptId());
+        return aiInvocationService.invokeText(AiInvocationRequest.text()
+            .tenantId(execution.tenantId)
+            .userId(execution.userId)
+            .projectId(execution.projectId)
+            .taskId(execution.businessId)
+            .modelId(execution.requestedModelId)
+            .scene(scene)
+            .traceId(execution.traceId)
+            .executionId(execution.id)
+            .attemptId(context.claim().attemptId())
+            .executionVersion(execution.executionVersion)
+            .phase(context.claim().phase())
+            .idempotencyKey(attempt.idempotencyKey)
+            .requestSummary(requestSummary)
+            .userPrompt(prompt)
+            .build());
+    }
+
+    private void requireActiveExecutionClaim(AiExecutionContext context) {
+        AiExecutionTaskEntity latest = executionTaskMapper.selectById(context.task().id);
+        if (latest == null
+            || !AiExecutionStatus.RUNNING.name().equals(latest.status)
+            || !context.claim().claimToken().equals(latest.claimToken)) {
+            throw new AiExecutionClaimLostException(context.task().id);
+        }
+    }
+
+    public AiExecutionResponse submitGenerate(
+        Long tenantId,
+        Long projectId,
+        GenerateScriptRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "SCRIPT:AI_GENERATE", projectId);
+        return submitOperation(context, projectId, AiBusinessScene.SCRIPT_GENERATE, "SCRIPT_GENERATE", null, null, request, servletRequest);
+    }
+
+    public AiExecutionResponse submitRewrite(
+        Long tenantId,
+        Long projectId,
+        RewriteScriptRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "SCRIPT:AI_REWRITE", projectId);
+        ScriptEntity script = requireScript(tenantId, projectId);
+        return submitOperation(context, projectId, AiBusinessScene.SCRIPT_REWRITE, "SCRIPT_REWRITE", script.getId(), script.getCurrentVersionId(), request, servletRequest);
+    }
+
+    public AiExecutionResponse submitExtractElements(
+        Long tenantId,
+        Long projectId,
+        ExtractScriptElementsRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:AI_EXTRACT", projectId);
+        ScriptEntity script = requireScript(tenantId, projectId);
+        ScriptElementType elementType = ScriptElementType.from(request.elementType());
+        AiBusinessScene scene = switch (elementType) {
+            case CHARACTER -> AiBusinessScene.CHARACTER_EXTRACT;
+            case SCENE -> AiBusinessScene.SCENE_EXTRACT;
+            case PROP -> AiBusinessScene.PROP_EXTRACT;
+            case ALL -> AiBusinessScene.SCRIPT_ELEMENT_EXTRACT;
+        };
+        return submitOperation(context, projectId, scene, "ELEMENT_EXTRACT", script.getId(), script.getCurrentVersionId(), request, servletRequest);
+    }
+
+    public AiExecutionResponse submitStoryboardBreakdown(
+        Long tenantId,
+        Long projectId,
+        StoryboardBreakdownRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "STORYBOARD:AI_BREAKDOWN", projectId);
+        ScriptEntity script = requireScript(tenantId, projectId);
+        return submitOperation(context, projectId, AiBusinessScene.STORYBOARD_BREAKDOWN, "STORYBOARD_BREAKDOWN", script.getId(), script.getCurrentVersionId(), request, servletRequest);
+    }
+
+    public AiExecutionResponse submitPromptGeneration(
+        Long tenantId,
+        Long projectId,
+        GeneratePromptRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "PROMPT:AI_GENERATE", projectId);
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
+        return submitOperation(
+            context,
+            projectId,
+            AiBusinessScene.PROMPT_GENERATE,
+            "PROMPT_GENERATE",
+            script == null ? null : script.getId(),
+            script == null ? null : script.getCurrentVersionId(),
+            request,
+            servletRequest
+        );
+    }
+
+    private AiExecutionResponse submitOperation(
+        TenantContext context,
+        Long projectId,
+        AiBusinessScene scene,
+        String operationType,
+        Long scriptId,
+        Long scriptVersionId,
+        Object input,
+        HttpServletRequest request
+    ) {
+        return scriptAiOperationService.submit(
+            context,
+            projectId,
+            scene,
+            operationType,
+            scriptId,
+            scriptVersionId,
+            input,
+            requestHeaderOrUuid(request, "Idempotency-Key"),
+            requestHeaderOrUuid(request, "X-Trace-Id")
+        );
+    }
+
+    private String requestHeaderOrUuid(HttpServletRequest request, String name) {
+        String value = request.getHeader(name);
+        return value == null || value.isBlank() ? UUID.randomUUID().toString() : value.trim();
     }
 
     public ScriptWorkspaceResponse workspace(Long tenantId, Long projectId) {
@@ -120,16 +543,16 @@ public class ScriptWorkflowService {
     }
 
     @Transactional
-    public ScriptAnalysisTaskResponse retryAnalysis(Long tenantId, Long projectId, String stageCode) {
+    public AiExecutionResponse retryAnalysis(Long tenantId, Long projectId, String stageCode) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "AI_SERVICE:USE", projectId);
         ScriptAnalysisTaskEntity task = scriptAnalysisTaskService.retryStage(tenantId, projectId, stageCode);
-        return analysisResponse(task);
+        return scriptAnalysisExecutionCoordinator.retry(task);
     }
 
     @Transactional
-    public ScriptAnalysisTaskResponse reanalyze(Long tenantId, Long projectId) {
+    public AiExecutionResponse reanalyze(Long tenantId, Long projectId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "AI_SERVICE:USE", projectId);
@@ -141,14 +564,14 @@ public class ScriptWorkflowService {
     }
 
     @Transactional
-    public ScriptAnalysisTaskResponse reanalyzeVersion(Long tenantId, Long projectId, Long versionId) {
+    public AiExecutionResponse reanalyzeVersion(Long tenantId, Long projectId, Long versionId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "AI_SERVICE:USE", projectId);
         return reanalyzeVersion(tenantId, projectId, versionId, context);
     }
 
-    private ScriptAnalysisTaskResponse reanalyzeVersion(
+    private AiExecutionResponse reanalyzeVersion(
         Long tenantId,
         Long projectId,
         Long versionId,
@@ -173,7 +596,7 @@ public class ScriptWorkflowService {
         if (task == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前剧本内容为空，无法重新分析。");
         }
-        return analysisResponse(task);
+        return scriptAnalysisExecutionCoordinator.submitManual(task);
     }
 
     private ScriptAnalysisTaskResponse analysis(Long tenantId, Long projectId, ScriptEntity script) {
@@ -487,6 +910,12 @@ public class ScriptWorkflowService {
         requireProjectAccess(context, projectId);
         requirePermission(context, "PROMPT:AI_GENERATE", projectId);
         String targetType = normalizePromptTarget(request.targetType());
+        applyGeneratedPrompts(tenantId, projectId, targetType);
+        callTextInvocation(context, projectId, AiBusinessScene.PROMPT_GENERATE, targetType, "生成提示词成功");
+        return workspace(tenantId, projectId);
+    }
+
+    private void applyGeneratedPrompts(Long tenantId, Long projectId, String targetType) {
         if ("ALL".equals(targetType) || "CHARACTER".equals(targetType)) {
             jdbcTemplate.update("""
                 update character_asset
@@ -517,8 +946,6 @@ public class ScriptWorkflowService {
                  where tenant_id = ? and project_id = ? and deleted_at is null
                 """, tenantId, projectId);
         }
-        callTextInvocation(context, projectId, AiBusinessScene.PROMPT_GENERATE, targetType, "生成提示词成功");
-        return workspace(tenantId, projectId);
     }
 
     private ProjectEntity requireProjectAccess(TenantContext context, Long projectId) {

@@ -1,8 +1,10 @@
+import { ReloadOutlined } from '@ant-design/icons';
+import { useParams } from '@umijs/max';
 import {
   App,
   Button,
-  Descriptions,
   Collapse,
+  Descriptions,
   Flex,
   Input,
   Progress,
@@ -10,16 +12,16 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from '@umijs/max';
+import AiExecutionStatus from '@/components/AiExecutionStatus';
+import { queryProject } from '@/services/account-team/project';
+import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import {
   queryScriptWorkspace,
   reanalyzeScript,
   retryScriptAnalysis,
   type ScriptWorkspace,
 } from './service';
-import { queryProject } from '@/services/account-team/project';
 
 type EpisodeBlock = {
   episodeNo: number;
@@ -28,6 +30,7 @@ type EpisodeBlock = {
 };
 
 type ProjectLite = {
+  tenantId?: number;
   aspectRatio?: string | null;
   fileFormat?: string | null;
   scriptType?: string | null;
@@ -127,13 +130,16 @@ const renderResultSummary = (stageCode: string, resultJson?: string | null) => {
             }}
           >
             <div style={{ fontWeight: 700, color: '#111827' }}>
-              第{episode.episodeNo || '-'}集 {episode.title ? `· ${episode.title}` : ''}
+              第{episode.episodeNo || '-'}集{' '}
+              {episode.title ? `· ${episode.title}` : ''}
             </div>
             {stageCode === 'EPISODE_SPLITTING' ? (
               <>
                 <div>概要：{episode.summary || '-'}</div>
                 <div>收尾：{episode.endingHook || '-'}</div>
-                <div style={{ color: '#6b7280' }}>正文：{episode.content || '-'}</div>
+                <div style={{ color: '#6b7280' }}>
+                  正文：{episode.content || '-'}
+                </div>
               </>
             ) : (
               <>
@@ -149,14 +155,34 @@ const renderResultSummary = (stageCode: string, resultJson?: string | null) => {
   }
 
   if (stageCode === 'CHARACTER_SCENE_RECOGNITION') {
-    const characters = Array.isArray(parsed.characters) ? parsed.characters : [];
+    const characters = Array.isArray(parsed.characters)
+      ? parsed.characters
+      : [];
     const scenes = Array.isArray(parsed.scenes) ? parsed.scenes : [];
     const props = Array.isArray(parsed.props) ? parsed.props : [];
     return (
       <div style={{ display: 'grid', gap: 8, fontSize: 12 }}>
-        <div>角色：{characters.map((item: any) => item.name).filter(Boolean).join(' / ') || '-'}</div>
-        <div>场景：{scenes.map((item: any) => item.name).filter(Boolean).join(' / ') || '-'}</div>
-        <div>道具：{props.map((item: any) => item.name).filter(Boolean).join(' / ') || '-'}</div>
+        <div>
+          角色：
+          {characters
+            .map((item: any) => item.name)
+            .filter(Boolean)
+            .join(' / ') || '-'}
+        </div>
+        <div>
+          场景：
+          {scenes
+            .map((item: any) => item.name)
+            .filter(Boolean)
+            .join(' / ') || '-'}
+        </div>
+        <div>
+          道具：
+          {props
+            .map((item: any) => item.name)
+            .filter(Boolean)
+            .join(' / ') || '-'}
+        </div>
       </div>
     );
   }
@@ -191,7 +217,10 @@ const collectOutline = (workspace: ScriptWorkspace) => {
       new Map(
         workspace.storyboards
           .slice()
-          .sort((left, right) => left.episodeNo - right.episodeNo || left.shotNo - right.shotNo)
+          .sort(
+            (left, right) =>
+              left.episodeNo - right.episodeNo || left.shotNo - right.shotNo,
+          )
           .map((item) => [
             item.episodeNo,
             `第${item.episodeNo}集 · ${item.visualDescription || item.dialogue || '待补全'}`,
@@ -247,6 +276,9 @@ const ProductionWorkbenchScript = () => {
   const [project, setProject] = useState<ProjectLite>();
   const [loading, setLoading] = useState(false);
   const [currentEpisodeNo, setCurrentEpisodeNo] = useState(1);
+  const [activeExecution, setActiveExecution] =
+    useState<API.AiExecutionResponse>();
+  const [executionBusy, setExecutionBusy] = useState(false);
 
   useEffect(() => {
     if (!projectId) {
@@ -310,16 +342,65 @@ const ProductionWorkbenchScript = () => {
     }
   }, [message, workspace?.analysis?.errorMessage, workspace?.analysis?.status]);
 
-  const outline = useMemo(() => collectOutline(workspace || { projectId, script: null, versions: [], characters: [], scenes: [], props: [], storyboards: [] }), [projectId, workspace]);
-  const episodeBlocks = useMemo(() => getEpisodeBlocks(workspace || { projectId, script: null, versions: [], characters: [], scenes: [], props: [], storyboards: [] }), [projectId, workspace]);
-  const activeEpisode = episodeBlocks.find((item) => item.episodeNo === currentEpisodeNo) || episodeBlocks[0];
+  const outline = useMemo(
+    () =>
+      collectOutline(
+        workspace || {
+          projectId,
+          script: null,
+          versions: [],
+          characters: [],
+          scenes: [],
+          props: [],
+          storyboards: [],
+        },
+      ),
+    [projectId, workspace],
+  );
+  const episodeBlocks = useMemo(
+    () =>
+      getEpisodeBlocks(
+        workspace || {
+          projectId,
+          script: null,
+          versions: [],
+          characters: [],
+          scenes: [],
+          props: [],
+          storyboards: [],
+        },
+      ),
+    [projectId, workspace],
+  );
+  const activeEpisode =
+    episodeBlocks.find((item) => item.episodeNo === currentEpisodeNo) ||
+    episodeBlocks[0];
   const script = workspace?.script;
   const analysis = workspace?.analysis;
+  const tenantId =
+    project?.tenantId ?? Number(localStorage.getItem('currentTenantId'));
+  const refreshWorkspace = async () => {
+    const response = await queryScriptWorkspace(projectId);
+    setWorkspace(response.data);
+  };
+  const followExecution = async (task?: API.AiExecutionResponse) => {
+    if (!task?.id || !tenantId) {
+      throw new Error('AI execution identity is missing');
+    }
+    setActiveExecution(task);
+    const terminal = await aiExecutionTaskService.poll(
+      tenantId,
+      task.id,
+      setActiveExecution,
+    );
+    setActiveExecution(terminal);
+    await refreshWorkspace();
+    return terminal;
+  };
   const retryAnalysis = async (stageCode: string) => {
     try {
-      await retryScriptAnalysis(projectId, stageCode);
-      const response = await queryScriptWorkspace(projectId);
-      setWorkspace(response.data);
+      const response = await retryScriptAnalysis(projectId, stageCode);
+      await followExecution(response.data);
       message.success('已重新加入分析队列');
     } catch {
       message.error('分析重试失败');
@@ -327,9 +408,8 @@ const ProductionWorkbenchScript = () => {
   };
   const reanalyzeCurrent = async () => {
     try {
-      await reanalyzeScript(projectId);
-      const response = await queryScriptWorkspace(projectId);
-      setWorkspace(response.data);
+      const response = await reanalyzeScript(projectId);
+      await followExecution(response.data);
       message.success('已重新发起分析');
     } catch {
       message.error('重新分析失败');
@@ -350,13 +430,19 @@ const ProductionWorkbenchScript = () => {
       }}
     >
       <div style={{ maxWidth: 1500, margin: '0 auto' }}>
-        <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+        <Flex
+          justify="space-between"
+          align="center"
+          style={{ marginBottom: 12 }}
+        >
           <div>
             <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
               线上剧本内容
             </Typography.Title>
             <Typography.Text type="secondary">
-              {loading ? '正在加载剧本内容...' : '剧本信息、正文、大纲与分集剧情'}
+              {loading
+                ? '正在加载剧本内容...'
+                : '剧本信息、正文、大纲与分集剧情'}
             </Typography.Text>
           </div>
           <Flex gap={8}>
@@ -400,7 +486,9 @@ const ProductionWorkbenchScript = () => {
                   {analysis.currentAction || '分析任务已创建'}
                 </Typography.Text>
               </div>
-              <Typography.Text strong>{analysis.overallProgress}%</Typography.Text>
+              <Typography.Text strong>
+                {analysis.overallProgress}%
+              </Typography.Text>
             </Flex>
             <Progress
               percent={analysis.overallProgress}
@@ -446,10 +534,16 @@ const ProductionWorkbenchScript = () => {
                   </Typography.Text>
                   {stage.resultJson ? (
                     <div style={{ marginTop: 8 }}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {analysisStageDescriptions[stage.stageCode] || '阶段结果'}
+                      <Typography.Text
+                        type="secondary"
+                        style={{ fontSize: 12 }}
+                      >
+                        {analysisStageDescriptions[stage.stageCode] ||
+                          '阶段结果'}
                       </Typography.Text>
-                      <div style={{ marginTop: 6 }}>{renderResultSummary(stage.stageCode, stage.resultJson)}</div>
+                      <div style={{ marginTop: 6 }}>
+                        {renderResultSummary(stage.stageCode, stage.resultJson)}
+                      </div>
                       <Descriptions
                         size="small"
                         column={1}
@@ -463,17 +557,24 @@ const ProductionWorkbenchScript = () => {
                           {
                             key: 'call',
                             label: '调用',
-                            children: stage.aiCallLogId ? `#${stage.aiCallLogId}` : '-',
+                            children: stage.aiCallLogId
+                              ? `#${stage.aiCallLogId}`
+                              : '-',
                           },
                           {
                             key: 'cost',
                             label: '耗时',
-                            children: stage.durationMs ? `${Math.round(stage.durationMs / 1000)}s` : '-',
+                            children: stage.durationMs
+                              ? `${Math.round(stage.durationMs / 1000)}s`
+                              : '-',
                           },
                           {
                             key: 'resultError',
                             label: '结果错误',
-                            children: stage.resultErrorMessage || stage.resultErrorCode || '-',
+                            children:
+                              stage.resultErrorMessage ||
+                              stage.resultErrorCode ||
+                              '-',
                           },
                         ]}
                       />
@@ -529,6 +630,41 @@ const ProductionWorkbenchScript = () => {
           </section>
         ) : null}
 
+        {activeExecution ? (
+          <section
+            aria-label="AI执行状态"
+            style={{
+              background: '#fff',
+              border: '1px solid #e6ebf5',
+              borderRadius: 8,
+              padding: 18,
+              marginBottom: 14,
+            }}
+          >
+            <AiExecutionStatus
+              task={activeExecution}
+              busy={executionBusy}
+              onCancel={() => {
+                if (!activeExecution.id || !tenantId) return;
+                setExecutionBusy(true);
+                aiExecutionTaskService
+                  .cancel(tenantId, activeExecution.id)
+                  .then(setActiveExecution)
+                  .then(refreshWorkspace)
+                  .finally(() => setExecutionBusy(false));
+              }}
+              onRetry={() => {
+                if (!activeExecution.id || !tenantId) return;
+                setExecutionBusy(true);
+                aiExecutionTaskService
+                  .retry(tenantId, activeExecution.id)
+                  .then(followExecution)
+                  .finally(() => setExecutionBusy(false));
+              }}
+            />
+          </section>
+        ) : null}
+
         <section
           style={{
             background: '#fff',
@@ -548,9 +684,7 @@ const ProductionWorkbenchScript = () => {
           >
             <div style={metricStyle}>
               <span style={labelStyle}>剧本名称</span>
-              <div style={valueStyle}>
-                {script?.title || '未命名剧本'}
-              </div>
+              <div style={valueStyle}>{script?.title || '未命名剧本'}</div>
             </div>
             <div style={metricStyle}>
               <span style={labelStyle}>剧本类型</span>
@@ -567,14 +701,14 @@ const ProductionWorkbenchScript = () => {
             <div style={metricStyle}>
               <span style={labelStyle}>解析力度</span>
               <div style={valueStyle}>
-                {breakdownStrengthText[project?.breakdownStrength || ''] ||
-                  '-'}
+                {breakdownStrengthText[project?.breakdownStrength || ''] || '-'}
               </div>
             </div>
           </div>
 
           <div style={{ marginTop: 10, color: '#7a849a', fontSize: 12 }}>
-            当前版本 {script?.currentVersionId ? `#${script.currentVersionId}` : '-'}
+            当前版本{' '}
+            {script?.currentVersionId ? `#${script.currentVersionId}` : '-'}
           </div>
 
           <div

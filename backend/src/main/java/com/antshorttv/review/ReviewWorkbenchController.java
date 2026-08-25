@@ -2,6 +2,7 @@ package com.antshorttv.review;
 
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
+import com.antshorttv.execution.AiExecutionResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -82,12 +83,13 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/projects/{projectId}/tasks")
-    public ApiResponse<ReviewTaskResponse> createTask(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> createTask(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateReviewTaskRequest body,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(reviewWorkbenchService.createTask(tenantId(request), projectId, body));
+        return ResponseEntity.status(202)
+            .body(ApiResponse.success(reviewWorkbenchService.createTask(tenantId(request), projectId, body)));
     }
 
     @GetMapping("/projects/{projectId}/tasks")
@@ -116,7 +118,7 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/tasks/{taskId}/cancel")
-    public ApiResponse<ReviewTaskResponse> cancelTask(
+    public ApiResponse<AiExecutionResponse> cancelTask(
         @PathVariable Long taskId,
         HttpServletRequest request
     ) {
@@ -124,11 +126,12 @@ public class ReviewWorkbenchController {
     }
 
     @PostMapping("/tasks/{taskId}/retry")
-    public ApiResponse<ReviewTaskResponse> retryTask(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> retryTask(
         @PathVariable Long taskId,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(reviewWorkbenchService.retryTask(tenantId(request), taskId));
+        return ResponseEntity.status(202)
+            .body(ApiResponse.success(reviewWorkbenchService.retryTask(tenantId(request), taskId)));
     }
 
     @PostMapping("/tasks/{taskId}/batch-repair")

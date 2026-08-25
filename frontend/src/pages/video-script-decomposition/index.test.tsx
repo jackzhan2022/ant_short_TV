@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import VideoScriptDecompositionPage, {
   buildDefaultVideoDecompositionBatchName,
@@ -13,10 +19,19 @@ const mocks = vi.hoisted(() => ({
   retryVideoDecompositionEpisode: vi.fn(),
   updateVideoDecompositionDraft: vi.fn(),
   confirmVideoDecompositionDraft: vi.fn(),
+  pollExecution: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
   history: { push: mocks.historyPush },
+}));
+
+vi.mock('@/services/ai-execution/task', () => ({
+  aiExecutionTaskService: { poll: mocks.pollExecution },
+}));
+
+vi.mock('@/components/AiExecutionStatus', () => ({
+  default: ({ task }: any) => <span>execution:{task.status}</span>,
 }));
 
 vi.mock('@ant-design/icons', () => ({
@@ -105,7 +120,10 @@ vi.mock('antd', () => ({
   Steps: ({ items = [], current }: any) => (
     <ol>
       {items.map((item: any, index: number) => (
-        <li key={item.title} aria-current={index === current ? 'step' : undefined}>
+        <li
+          key={item.title}
+          aria-current={index === current ? 'step' : undefined}
+        >
           {item.title}
         </li>
       ))}
@@ -132,14 +150,21 @@ vi.mock('@ant-design/pro-components', () => ({
       {children}
     </main>
   ),
-  ProTable: ({ columns = [], dataSource = [], headerTitle, toolBarRender }: any) => (
+  ProTable: ({
+    columns = [],
+    dataSource = [],
+    headerTitle,
+    toolBarRender,
+  }: any) => (
     <section>
       <h2>{headerTitle}</h2>
       <div>{toolBarRender?.()}</div>
       {dataSource.map((record: any) => (
         <div key={record.id ?? record.uid}>
           {columns.map((column: any, index: number) => {
-            const value = column.dataIndex ? record[column.dataIndex] : undefined;
+            const value = column.dataIndex
+              ? record[column.dataIndex]
+              : undefined;
             return (
               <div key={column.key ?? column.dataIndex ?? index}>
                 {column.render
@@ -187,7 +212,8 @@ describe('VideoScriptDecompositionPage', () => {
               projectId: null,
               episodeNo: 1,
               sourceFileName: 'episode-1.mp4',
-              storagePath: '/materials/1/video-decomposition/20260823/episode-1.mp4',
+              storagePath:
+                '/materials/1/video-decomposition/20260823/episode-1.mp4',
               fileSize: 2048,
               status: 'PENDING_REVIEW',
               draftStatus: 'PENDING_REVIEW',
@@ -205,7 +231,8 @@ describe('VideoScriptDecompositionPage', () => {
           projectId: null,
           episodeNo: 1,
           sourceFileName: 'episode-1.mp4',
-          storagePath: '/materials/1/video-decomposition/20260823/episode-1.mp4',
+          storagePath:
+            '/materials/1/video-decomposition/20260823/episode-1.mp4',
           fileSize: 2048,
           status: 'PENDING_REVIEW',
           analysisVersion: 1,
@@ -224,28 +251,80 @@ describe('VideoScriptDecompositionPage', () => {
       return { data: {} };
     });
     mocks.confirmVideoDecompositionDraft.mockResolvedValue({ data: {} });
+    localStorage.setItem('currentTenantId', '1');
+    mocks.pollExecution.mockImplementation(
+      async (
+        _tenantId: number,
+        _executionId: number,
+        onUpdate?: (task: any) => void,
+      ) => {
+        const task = { id: 901, status: 'SUCCEEDED', progress: 100 };
+        onUpdate?.(task);
+        return task;
+      },
+    );
+  });
+
+  it('follows the shared execution when an episode detail is opened', async () => {
+    mocks.queryVideoDecompositionEpisode.mockResolvedValue({
+      data: {
+        episode: {
+          id: 88,
+          batchId: 9,
+          episodeNo: 1,
+          executionId: 901,
+          status: 'ANALYZING',
+          draftVersion: 0,
+        },
+        attempts: [],
+      },
+    });
+
+    render(<VideoScriptDecompositionPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /第 1 集/ }));
+
+    await waitFor(() => {
+      expect(mocks.pollExecution).toHaveBeenCalledWith(
+        1,
+        901,
+        expect.any(Function),
+      );
+    });
   });
 
   it('opens episode detail, saves draft, and confirms import explicitly', async () => {
     render(<VideoScriptDecompositionPage />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /第 1 集 · PENDING_REVIEW/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /第 1 集 · PENDING_REVIEW/ }),
+    );
 
     expect(await screen.findByText('第 1 集拆剧详情')).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText('等待草稿生成后可在此审核和编辑'), {
-      target: { value: '审核后草稿' },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText('等待草稿生成后可在此审核和编辑'),
+      {
+        target: { value: '审核后草稿' },
+      },
+    );
     fireEvent.click(screen.getByRole('button', { name: '保存草稿' }));
 
     await waitFor(() => {
-      expect(mocks.updateVideoDecompositionDraft).toHaveBeenCalledWith(88, '审核后草稿', 2);
+      expect(mocks.updateVideoDecompositionDraft).toHaveBeenCalledWith(
+        88,
+        '审核后草稿',
+        2,
+      );
     });
 
     fireEvent.click(screen.getByRole('button', { name: '确认导入' }));
-    const dialog = (await screen.findByText('确认导入第 1 集剧本？')).closest('section');
+    const dialog = (await screen.findByText('确认导入第 1 集剧本？')).closest(
+      'section',
+    );
     expect(dialog).toBeTruthy();
     fireEvent.change(
-      within(dialog as HTMLElement).getByPlaceholderText('请输入要导入的项目 ID'),
+      within(dialog as HTMLElement).getByPlaceholderText(
+        '请输入要导入的项目 ID',
+      ),
       { target: { value: '101' } },
     );
     fireEvent.click(
@@ -264,9 +343,9 @@ describe('VideoScriptDecompositionPage', () => {
   });
 
   it('uses a generated batch name and allows submission when uploads are ready', () => {
-    expect(buildDefaultVideoDecompositionBatchName(new Date('2026-08-24T01:23:45'))).toBe(
-      '拆剧批次-20260824-012345',
-    );
+    expect(
+      buildDefaultVideoDecompositionBatchName(new Date('2026-08-24T01:23:45')),
+    ).toBe('拆剧批次-20260824-012345');
     expect(
       canCreateVideoDecompositionBatch([
         {
@@ -275,7 +354,8 @@ describe('VideoScriptDecompositionPage', () => {
           fileName: 'episode-1.mp4',
           size: 2048,
           status: 'READY',
-          storagePath: '/materials/1/video-decomposition/20260824/episode-1.mp4',
+          storagePath:
+            '/materials/1/video-decomposition/20260824/episode-1.mp4',
         },
       ]),
     ).toBe(true);

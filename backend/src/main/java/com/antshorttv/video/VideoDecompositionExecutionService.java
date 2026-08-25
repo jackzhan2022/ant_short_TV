@@ -10,11 +10,20 @@ import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.ai.PromptTemplateRenderer;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.execution.AiExecutionAttemptEntity;
+import com.antshorttv.execution.AiExecutionAttemptMapper;
+import com.antshorttv.execution.AiExecutionCreateCommand;
+import com.antshorttv.execution.AiExecutionService;
+import com.antshorttv.execution.AiExecutionTaskEntity;
+import com.antshorttv.execution.AiExecutionTaskMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +41,9 @@ public class VideoDecompositionExecutionService {
     private final PromptTemplateRenderer promptTemplateRenderer;
     private final JdbcTemplate jdbcTemplate;
     private final AiTaskExecutionSupport executionSupport;
+    private final AiExecutionService executionService;
+    private final AiExecutionTaskMapper executionTaskMapper;
+    private final AiExecutionAttemptMapper executionAttemptMapper;
 
     public VideoDecompositionExecutionService(
         VideoDecompositionBatchMapper batchMapper,
@@ -44,7 +56,10 @@ public class VideoDecompositionExecutionService {
         ProjectAiConfigService projectAiConfigService,
         PromptTemplateRenderer promptTemplateRenderer,
         JdbcTemplate jdbcTemplate,
-        AiTaskExecutionSupport executionSupport
+        AiTaskExecutionSupport executionSupport,
+        AiExecutionService executionService,
+        AiExecutionTaskMapper executionTaskMapper,
+        AiExecutionAttemptMapper executionAttemptMapper
     ) {
         this.batchMapper = batchMapper;
         this.episodeMapper = episodeMapper;
@@ -57,6 +72,9 @@ public class VideoDecompositionExecutionService {
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.jdbcTemplate = jdbcTemplate;
         this.executionSupport = executionSupport;
+        this.executionService = executionService;
+        this.executionTaskMapper = executionTaskMapper;
+        this.executionAttemptMapper = executionAttemptMapper;
     }
 
     @Transactional
@@ -69,6 +87,11 @@ public class VideoDecompositionExecutionService {
         if (batch == null) {
             return;
         }
+        if (!List.of("PENDING_ANALYSIS", "ANALYZING", "PENDING_DRAFT", "DRAFT_GENERATING")
+            .contains(episode.getStatus())) {
+            return;
+        }
+        ensureExecutionHeader(episode, batch);
         if ("PENDING_ANALYSIS".equals(episode.getStatus())) {
             AiTaskExecutionSupport.ClaimResult claim = executionSupport.claimVideoDecompositionEpisode(
                 episodeId,
@@ -106,6 +129,7 @@ public class VideoDecompositionExecutionService {
             return;
         }
         VideoDecompositionAttemptEntity attempt = currentAttempt(episodeId, "VIDEO_ANALYSIS");
+        AiExecutionAttemptEntity sharedAttempt = startSharedAttempt(episode, attempt, "VIDEO_ANALYSIS");
         LocalDateTime now = LocalDateTime.now();
         markRunning(episode, attempt, now);
 
@@ -120,7 +144,12 @@ public class VideoDecompositionExecutionService {
                 .taskId(episode.getId())
                 .modelId(batch.getModelId())
                 .scene(AiBusinessScene.VIDEO_UNDERSTANDING)
-                .traceId("video-decomposition-%d".formatted(episode.getId()))
+                .traceId(executionService.requireTask(episode.getExecutionId()).traceId)
+                .executionId(episode.getExecutionId())
+                .attemptId(sharedAttempt.id)
+                .executionVersion(sharedAttempt.executionVersion)
+                .phase(sharedAttempt.phase)
+                .idempotencyKey(sharedAttempt.idempotencyKey)
                 .videoRequest(new VideoUnderstandingRequest(videoUrl, structuredPrompt(episode)))
                 .build());
             rawResponse = callResult.content();
@@ -133,6 +162,8 @@ public class VideoDecompositionExecutionService {
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
             markAttempt(attempt, "SUCCEEDED", callResult.response().providerRequestId(), callResult.aiCallLogId(), null, null);
+            finishSharedAttempt(sharedAttempt, callResult, "SUCCEEDED", false, null, null);
+            updateExecution(episode, "RUNNING", "DRAFT_GENERATION", 60, null, null);
             prepareDraftExecution(episode);
             executeDraftGeneration(episode, analysis.normalizedJson());
         } catch (VideoAnalysisParseException exception) {
@@ -152,6 +183,7 @@ public class VideoDecompositionExecutionService {
 
     private void executeDraftGeneration(VideoDecompositionEpisodeEntity episode, String normalizedJson) {
         VideoDecompositionAttemptEntity attempt = currentAttempt(episode.getId(), "DRAFT_GENERATION");
+        AiExecutionAttemptEntity sharedAttempt = startSharedAttempt(episode, attempt, "DRAFT_GENERATION");
         LocalDateTime now = LocalDateTime.now();
         episode.setStatus("DRAFT_GENERATING");
         episode.setDraftStatus("GENERATING");
@@ -181,7 +213,12 @@ public class VideoDecompositionExecutionService {
                 .taskId(episode.getId())
                 .modelId(textModelId)
                 .scene(AiBusinessScene.VIDEO_SCRIPT_DRAFT)
-                .traceId("video-script-draft-%d-v%d".formatted(episode.getId(), episode.getAnalysisVersion()))
+                .traceId(executionService.requireTask(episode.getExecutionId()).traceId)
+                .executionId(episode.getExecutionId())
+                .attemptId(sharedAttempt.id)
+                .executionVersion(sharedAttempt.executionVersion)
+                .phase(sharedAttempt.phase)
+                .idempotencyKey(sharedAttempt.idempotencyKey)
                 .textRequest(new AiTextRequest(
                     "你是短剧编剧，请根据结构化视频拆解结果输出可直接审核的中文分集剧本。",
                     draftPrompt(episode, normalizedJson),
@@ -201,6 +238,8 @@ public class VideoDecompositionExecutionService {
             episodeMapper.updateById(episode);
             clearExecutionColumns(episode.getId(), false);
             markAttempt(attempt, "SUCCEEDED", invocation.providerRequestId(), invocation.aiCallLogId(), null, null);
+            finishSharedAttempt(sharedAttempt, invocation, "SUCCEEDED", false, null, null);
+            updateExecution(episode, "SUCCEEDED", "DRAFT_GENERATION", 100, "VIDEO_DECOMPOSITION_EPISODE", episode.getId());
         } catch (AiGatewayException exception) {
             failDraft(episode, attempt, exception.getErrorCode().name(), exception.getMessage(), exception.getAiCallLogId());
         } catch (Exception exception) {
@@ -268,6 +307,14 @@ public class VideoDecompositionExecutionService {
             errorCode,
             errorMessage
         );
+        finishLatestSharedFailure(
+            episode,
+            "VIDEO_ANALYSIS",
+            callResult == null ? fallbackCallLogId : callResult.aiCallLogId(),
+            errorCode,
+            errorMessage
+        );
+        updateExecution(episode, "FAILED", "VIDEO_ANALYSIS", 100, null, null);
     }
 
     private void markAttempt(
@@ -297,6 +344,7 @@ public class VideoDecompositionExecutionService {
     ) {
         VideoDecompositionAnalysisEntity entity = new VideoDecompositionAnalysisEntity();
         entity.setEpisodeId(episode.getId());
+        entity.setExecutionId(episode.getExecutionId());
         entity.setSchemaVersion("v1");
         entity.setStatus(status);
         entity.setRawResponse(rawResponse);
@@ -335,6 +383,8 @@ public class VideoDecompositionExecutionService {
              where id = ?
             """, errorCode, errorMessage, episode.getId());
         markAttempt(attempt, "FAILED", null, callLogId, errorCode, errorMessage);
+        finishLatestSharedFailure(episode, "DRAFT_GENERATION", callLogId, errorCode, errorMessage);
+        updateExecution(episode, "FAILED", "DRAFT_GENERATION", 100, null, null);
     }
 
     private VideoDecompositionAttemptEntity currentAttempt(Long episodeId, String phase) {
@@ -348,6 +398,8 @@ public class VideoDecompositionExecutionService {
         }
         attempt = new VideoDecompositionAttemptEntity();
         attempt.setEpisodeId(episodeId);
+        VideoDecompositionEpisodeEntity episode = episodeMapper.selectById(episodeId);
+        attempt.setExecutionId(episode == null ? null : episode.getExecutionId());
         attempt.setAttemptNo(1);
         attempt.setPhase(phase);
         attempt.setStatus("PENDING");
@@ -422,6 +474,141 @@ public class VideoDecompositionExecutionService {
                    retryable = ?
              where id = ?
             """, retryable, episodeId);
+    }
+
+    private void ensureExecutionHeader(
+        VideoDecompositionEpisodeEntity episode,
+        VideoDecompositionBatchEntity batch
+    ) {
+        if (episode.getExecutionId() == null) {
+            AiExecutionTaskEntity execution = executionService.create(new AiExecutionCreateCommand(
+                episode.getTenantId(),
+                episode.getCreatedBy(),
+                episode.getProjectId(),
+                "video_decomposition",
+                "VIDEO_UNDERSTANDING",
+                "VIDEO_DECOMPOSITION_EPISODE",
+                episode.getId(),
+                batch.getModelId(),
+                "VIDEO_ANALYSIS",
+                "video-decomposition:%d".formatted(episode.getId()),
+                UUID.randomUUID().toString(),
+                true,
+                "{\"episodeId\":%d}".formatted(episode.getId())
+            ));
+            episode.setExecutionId(execution.id);
+            episodeMapper.updateById(episode);
+        }
+        updateExecution(episode, "RUNNING", episode.getExecutionPhase() == null ? "VIDEO_ANALYSIS" : episode.getExecutionPhase(), 5, null, null);
+    }
+
+    private AiExecutionAttemptEntity startSharedAttempt(
+        VideoDecompositionEpisodeEntity episode,
+        VideoDecompositionAttemptEntity domainAttempt,
+        String phase
+    ) {
+        AiExecutionTaskEntity execution = executionService.requireTask(episode.getExecutionId());
+        Long count = executionAttemptMapper.selectCount(new QueryWrapper<AiExecutionAttemptEntity>()
+            .eq("execution_id", execution.id)
+            .eq("execution_version", execution.executionVersion)
+            .eq("phase", phase));
+        int attemptNo = count.intValue() + 1;
+        AiExecutionAttemptEntity attempt = new AiExecutionAttemptEntity();
+        attempt.executionId = execution.id;
+        attempt.executionVersion = execution.executionVersion;
+        attempt.phase = phase;
+        attempt.attemptNo = attemptNo;
+        attempt.status = "STARTED";
+        attempt.idempotencyKey = "execution:%d:v%d:%s:%d".formatted(
+            execution.id, execution.executionVersion, phase, attemptNo
+        );
+        attempt.providerContacted = false;
+        attempt.retryable = false;
+        attempt.retryCount = Math.max(0, attemptNo - 1);
+        attempt.startedAt = LocalDateTime.now();
+        executionAttemptMapper.insert(attempt);
+        domainAttempt.setExecutionId(execution.id);
+        domainAttempt.setIdempotencyKey(attempt.idempotencyKey);
+        attemptMapper.updateById(domainAttempt);
+        return attempt;
+    }
+
+    private void finishSharedAttempt(
+        AiExecutionAttemptEntity attempt,
+        AiInvocationResult<?> invocation,
+        String status,
+        boolean retryable,
+        String errorCode,
+        String errorMessage
+    ) {
+        executionAttemptMapper.update(null, new UpdateWrapper<AiExecutionAttemptEntity>()
+            .set("status", status)
+            .set("provider_contacted", true)
+            .set("provider_contacted_at", LocalDateTime.now())
+            .set("provider_id", invocation.providerId())
+            .set("model_id", invocation.resolvedModelId())
+            .set("provider_request_id", invocation.providerRequestId())
+            .set("ai_call_log_id", invocation.aiCallLogId())
+            .set("transport_outcome", invocation.transportOutcome())
+            .set("business_outcome", invocation.businessOutcome())
+            .set("retryable", retryable)
+            .set("error_code", errorCode)
+            .set("error_message", errorMessage)
+            .set("finished_at", LocalDateTime.now())
+            .eq("id", attempt.id));
+    }
+
+    private void finishLatestSharedFailure(
+        VideoDecompositionEpisodeEntity episode,
+        String phase,
+        Long callLogId,
+        String errorCode,
+        String errorMessage
+    ) {
+        AiExecutionAttemptEntity attempt = executionAttemptMapper.selectOne(
+            new QueryWrapper<AiExecutionAttemptEntity>()
+                .eq("execution_id", episode.getExecutionId())
+                .eq("phase", phase)
+                .eq("status", "STARTED")
+                .orderByDesc("id")
+                .last("limit 1")
+        );
+        if (attempt == null) return;
+        executionAttemptMapper.update(null, new UpdateWrapper<AiExecutionAttemptEntity>()
+            .set("status", "FAILED")
+            .set("provider_contacted", callLogId != null)
+            .set("ai_call_log_id", callLogId)
+            .set("transport_outcome", "FAILED")
+            .set("business_outcome", "FAILED")
+            .set("retryable", true)
+            .set("error_code", errorCode)
+            .set("error_message", errorMessage)
+            .set("finished_at", LocalDateTime.now())
+            .eq("id", attempt.id));
+    }
+
+    private void updateExecution(
+        VideoDecompositionEpisodeEntity episode,
+        String status,
+        String phase,
+        int progress,
+        String resultType,
+        Long resultId
+    ) {
+        UpdateWrapper<AiExecutionTaskEntity> update = new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("status", status)
+            .set("phase", phase)
+            .set("progress", progress)
+            .set("retryable", "FAILED".equals(status))
+            .set("claim_token", null)
+            .set("claim_expires_at", null)
+            .set("next_run_at", null)
+            .set("updated_at", LocalDateTime.now())
+            .eq("id", episode.getExecutionId());
+        if ("RUNNING".equals(status)) update.set("started_at", LocalDateTime.now());
+        if ("SUCCEEDED".equals(status) || "FAILED".equals(status)) update.set("completed_at", LocalDateTime.now());
+        if (resultType != null) update.set("result_type", resultType).set("result_id", resultId);
+        executionTaskMapper.update(null, update);
     }
 
     private int safeVersion(Integer version) {

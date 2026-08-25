@@ -1,6 +1,7 @@
 package com.antshorttv.ai;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
@@ -15,6 +16,12 @@ public class AiVideoCallLogEntity {
     private Long taskId;
     private Long modelId;
     private Long providerId;
+    private Long executionId;
+    private Long attemptId;
+    private Integer executionVersion;
+    @TableField("phase")
+    private String executionPhase;
+    private String idempotencyKey;
     private String provider;
     private String serviceType;
     private String model;
@@ -69,6 +76,16 @@ public class AiVideoCallLogEntity {
     public void setModelId(Long modelId) { this.modelId = modelId; }
     public Long getProviderId() { return providerId; }
     public void setProviderId(Long providerId) { this.providerId = providerId; }
+    public Long getExecutionId() { return executionId; }
+    public void setExecutionId(Long executionId) { this.executionId = executionId; }
+    public Long getAttemptId() { return attemptId; }
+    public void setAttemptId(Long attemptId) { this.attemptId = attemptId; }
+    public Integer getExecutionVersion() { return executionVersion; }
+    public void setExecutionVersion(Integer executionVersion) { this.executionVersion = executionVersion; }
+    public String getExecutionPhase() { return executionPhase; }
+    public void setExecutionPhase(String executionPhase) { this.executionPhase = executionPhase; }
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 
     public String getProvider() {
         return provider;

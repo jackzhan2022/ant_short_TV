@@ -1,5 +1,6 @@
 package com.antshorttv.aiimage;
 
+import com.antshorttv.execution.AiExecutionResponse;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -21,6 +22,8 @@ record AiImageTaskResponse(
     String style,
     String quality,
     String seed,
+    Long executionId,
+    AiExecutionResponse execution,
     String status,
     String errorMessage,
     LocalDateTime startedAt,
@@ -48,6 +51,8 @@ record AiImageTaskResponse(
             entity.getStyle(),
             entity.getQuality(),
             entity.getSeed(),
+            entity.getExecutionId(),
+            null,
             entity.getStatus(),
             entity.getErrorMessage(),
             entity.getStartedAt(),
@@ -55,6 +60,15 @@ record AiImageTaskResponse(
             entity.getCreatedBy(),
             entity.getCreatedAt(),
             results.stream().map(AiImageResultResponse::from).toList()
+        );
+    }
+
+    AiImageTaskResponse withExecution(AiExecutionResponse value) {
+        return new AiImageTaskResponse(
+            id, projectId, taskType, targetType, targetId, serviceConfigId, modelId,
+            providerCode, model, prompt, negativePrompt, referenceImages, aspectRatio,
+            imageCount, style, quality, seed, executionId, value, status, errorMessage,
+            startedAt, completedAt, createdBy, createdAt, results
         );
     }
 }

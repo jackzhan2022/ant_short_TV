@@ -12,6 +12,7 @@ public class AiImageResultEntity {
     private Long tenantId;
     private Long projectId;
     private Long taskId;
+    private Long executionId;
     private String targetType;
     private Long targetId;
     private String imageUrl;
@@ -34,6 +35,8 @@ public class AiImageResultEntity {
     public void setProjectId(Long projectId) { this.projectId = projectId; }
     public Long getTaskId() { return taskId; }
     public void setTaskId(Long taskId) { this.taskId = taskId; }
+    public Long getExecutionId() { return executionId; }
+    public void setExecutionId(Long executionId) { this.executionId = executionId; }
     public String getTargetType() { return targetType; }
     public void setTargetType(String targetType) { this.targetType = targetType; }
     public Long getTargetId() { return targetId; }

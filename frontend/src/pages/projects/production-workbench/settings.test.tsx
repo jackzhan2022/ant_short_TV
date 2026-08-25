@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   extractScriptElements: vi.fn(),
   queryScriptWorkspace: vi.fn(),
   updateScriptElement: vi.fn(),
+  pollExecution: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -20,6 +21,18 @@ vi.mock('./service', () => ({
   extractScriptElements: mocks.extractScriptElements,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   updateScriptElement: mocks.updateScriptElement,
+}));
+
+vi.mock('@/services/ai-execution/task', () => ({
+  aiExecutionTaskService: { poll: mocks.pollExecution },
+}));
+
+vi.mock('@/components/AiExecutionStatus', () => ({
+  default: ({ task }: any) => (
+    <div>
+      execution-{task.id}-{task.status}
+    </div>
+  ),
 }));
 
 vi.mock('@ant-design/icons', () => ({
@@ -45,11 +58,7 @@ vi.mock('antd', () => ({
   Flex: ({ children }: any) => <div>{children}</div>,
   Input: Object.assign(
     ({ value, onChange, ...props }: any) => (
-      <input
-        value={value}
-        onChange={(event) => onChange?.(event)}
-        {...props}
-      />
+      <input value={value} onChange={(event) => onChange?.(event)} {...props} />
     ),
     {
       TextArea: ({ value, onChange, ...props }: any) => (
@@ -114,7 +123,16 @@ describe('ProductionWorkbenchSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.queryScriptWorkspace.mockResolvedValue({ data: workspace });
-    mocks.extractScriptElements.mockResolvedValue({ data: workspace });
+    localStorage.setItem('currentTenantId', '10');
+    mocks.extractScriptElements.mockResolvedValue({
+      data: { id: 601, businessId: 41, status: 'PENDING', progress: 0 },
+    });
+    mocks.pollExecution.mockResolvedValue({
+      id: 601,
+      businessId: 41,
+      status: 'SUCCEEDED',
+      progress: 100,
+    });
     mocks.confirmScriptElement.mockResolvedValue({ data: workspace });
     mocks.deleteScriptElement.mockResolvedValue({ data: workspace });
     mocks.updateScriptElement.mockResolvedValue({ data: workspace });
@@ -153,6 +171,15 @@ describe('ProductionWorkbenchSettings', () => {
         'CHARACTER',
         1,
       );
+      expect(mocks.pollExecution).toHaveBeenCalledWith(
+        10,
+        601,
+        expect.any(Function),
+      );
+      expect(
+        mocks.queryScriptWorkspace.mock.calls.length,
+      ).toBeGreaterThanOrEqual(2);
     });
+    expect(screen.getByText('execution-601-SUCCEEDED')).toBeInTheDocument();
   });
 });

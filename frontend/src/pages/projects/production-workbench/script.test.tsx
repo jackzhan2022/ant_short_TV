@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchScript from './script';
 
@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   queryProject: vi.fn(),
   retryScriptAnalysis: vi.fn(),
   reanalyzeScript: vi.fn(),
+  pollExecution: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -17,7 +18,9 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
   },
-  Button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+  Button: ({ children, ...props }: any) => (
+    <button {...props}>{children}</button>
+  ),
   Collapse: ({ items }: any) => (
     <div>
       {items?.map((item: any) => (
@@ -42,7 +45,9 @@ vi.mock('antd', () => ({
   Input: Object.assign(
     ({ value, ...props }: any) => <textarea value={value} {...props} />,
     {
-      TextArea: ({ value, ...props }: any) => <textarea value={value} {...props} />,
+      TextArea: ({ value, ...props }: any) => (
+        <textarea value={value} {...props} />
+      ),
     },
   ),
   Progress: ({ percent }: any) => <div>{percent}%</div>,
@@ -59,6 +64,18 @@ vi.mock('./service', () => ({
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   retryScriptAnalysis: mocks.retryScriptAnalysis,
   reanalyzeScript: mocks.reanalyzeScript,
+}));
+
+vi.mock('@/services/ai-execution/task', () => ({
+  aiExecutionTaskService: { poll: mocks.pollExecution },
+}));
+
+vi.mock('@/components/AiExecutionStatus', () => ({
+  default: ({ task }: any) => (
+    <div>
+      execution-{task.id}-{task.status}
+    </div>
+  ),
 }));
 
 vi.mock('@/services/account-team/project', () => ({
@@ -146,6 +163,15 @@ describe('ProductionWorkbenchScript', () => {
         analysis: null,
       },
     });
+    mocks.reanalyzeScript.mockResolvedValue({
+      data: { id: 501, businessId: 99, status: 'PENDING', progress: 0 },
+    });
+    mocks.pollExecution.mockResolvedValue({
+      id: 501,
+      businessId: 99,
+      status: 'SUCCEEDED',
+      progress: 100,
+    });
   });
 
   it('renders the restored script page without a character list', async () => {
@@ -156,8 +182,12 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('大纲')).toBeInTheDocument();
     expect(screen.getByText('分集剧情')).toBeInTheDocument();
     expect(screen.getByText('当前集剧情正文')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '第1集 致命捉迷藏' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '第2集 夜色警报' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '第1集 致命捉迷藏' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '第2集 夜色警报' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('人物列表')).not.toBeInTheDocument();
     expect(screen.queryByText('人物小传')).not.toBeInTheDocument();
 
@@ -190,9 +220,15 @@ describe('ProductionWorkbenchScript', () => {
 
     render(<ProductionWorkbenchScript />);
 
-    expect(await screen.findByRole('button', { name: '第1集' })).toBeInTheDocument();
-    expect(screen.getAllByDisplayValue('一段没有集标题的剧本。').length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: '第2集' })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: '第1集' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByDisplayValue('一段没有集标题的剧本。').length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole('button', { name: '第2集' }),
+    ).not.toBeInTheDocument();
   });
 
   it('renders four analysis stages with percentages and intermediate result access', async () => {
@@ -286,5 +322,54 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('第1集 · 第一集')).toBeInTheDocument();
     expect(screen.getAllByText('100%').length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('45%').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('follows shared execution and refreshes the analysis workspace after reanalysis', async () => {
+    const completedWorkspace = {
+      projectId: 1,
+      script: {
+        id: 11,
+        projectId: 1,
+        title: '分析剧本',
+        sourceType: 'MANUAL_EDIT',
+        content: '一段剧本。',
+        status: 'DRAFT',
+        currentVersionId: 7,
+      },
+      versions: [],
+      characters: [],
+      scenes: [],
+      props: [],
+      storyboards: [],
+      episodes: [{ episodeNo: 1, title: '第1集', content: '一段剧本。' }],
+      analysis: {
+        id: 99,
+        scriptVersionId: 7,
+        status: 'COMPLETED',
+        currentStage: null,
+        overallProgress: 100,
+        currentAction: '分析已完成',
+        stages: [],
+      },
+    };
+    mocks.queryScriptWorkspace.mockResolvedValue({ data: completedWorkspace });
+
+    render(<ProductionWorkbenchScript />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: '重新分析当前版本' }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.pollExecution).toHaveBeenCalledWith(
+        10,
+        501,
+        expect.any(Function),
+      );
+      expect(
+        mocks.queryScriptWorkspace.mock.calls.length,
+      ).toBeGreaterThanOrEqual(2);
+    });
+    expect(screen.getByText('execution-501-SUCCEEDED')).toBeInTheDocument();
   });
 });

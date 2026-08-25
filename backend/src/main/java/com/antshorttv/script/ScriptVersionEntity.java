@@ -18,6 +18,7 @@ public class ScriptVersionEntity {
     private String inputSummary;
     private String content;
     private Long aiCallLogId;
+    private Long executionId;
     private String status;
     private Long createdBy;
     private LocalDateTime createdAt;
@@ -92,6 +93,14 @@ public class ScriptVersionEntity {
 
     public void setAiCallLogId(Long aiCallLogId) {
         this.aiCallLogId = aiCallLogId;
+    }
+
+    public Long getExecutionId() {
+        return executionId;
+    }
+
+    public void setExecutionId(Long executionId) {
+        this.executionId = executionId;
     }
 
     public String getStatus() {

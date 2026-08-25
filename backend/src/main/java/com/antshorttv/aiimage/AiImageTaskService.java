@@ -11,7 +11,16 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.points.TeamPointService;
+import com.antshorttv.accounting.AiUsageMetric;
+import com.antshorttv.execution.AiExecutionCreateCommand;
+import com.antshorttv.execution.AiExecutionResponseMapper;
+import com.antshorttv.execution.AiExecutionService;
+import com.antshorttv.execution.AiExecutionStatus;
+import com.antshorttv.execution.AiExecutionTaskEntity;
+import com.antshorttv.points.AiPointReservationEntity;
+import com.antshorttv.points.AiPointReservationMapper;
+import com.antshorttv.points.AiPointSettlementService;
+import com.antshorttv.points.AiSettlementOutcome;
 import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.security.TenantContext;
@@ -19,13 +28,14 @@ import com.antshorttv.security.TenantContextResolver;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.Map;
+import java.util.UUID;
 import java.util.List;
 import org.springframework.core.io.Resource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class AiImageTaskService {
@@ -42,11 +52,13 @@ public class AiImageTaskService {
     private final AiImageTaskMapper taskMapper;
     private final AiImageResultMapper resultMapper;
     private final MaterialMapper materialMapper;
-    private final AiImageTaskExecutionService executionService;
+    private final AiExecutionService executionService;
+    private final AiExecutionResponseMapper executionResponseMapper;
+    private final AiPointSettlementService pointSettlementService;
+    private final AiPointReservationMapper pointReservationMapper;
     private final AiImageStorageService storageService;
     private final JdbcTemplate jdbcTemplate;
     private final OperationLogService operationLogService;
-    private final TeamPointService teamPointService;
 
     public AiImageTaskService(
         TenantContextResolver tenantContextResolver,
@@ -58,11 +70,13 @@ public class AiImageTaskService {
         AiImageTaskMapper taskMapper,
         AiImageResultMapper resultMapper,
         MaterialMapper materialMapper,
-        AiImageTaskExecutionService executionService,
+        AiExecutionService executionService,
+        AiExecutionResponseMapper executionResponseMapper,
+        AiPointSettlementService pointSettlementService,
+        AiPointReservationMapper pointReservationMapper,
         AiImageStorageService storageService,
         JdbcTemplate jdbcTemplate,
-        OperationLogService operationLogService,
-        TeamPointService teamPointService
+        OperationLogService operationLogService
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.projectMapper = projectMapper;
@@ -74,10 +88,12 @@ public class AiImageTaskService {
         this.resultMapper = resultMapper;
         this.materialMapper = materialMapper;
         this.executionService = executionService;
+        this.executionResponseMapper = executionResponseMapper;
+        this.pointSettlementService = pointSettlementService;
+        this.pointReservationMapper = pointReservationMapper;
         this.storageService = storageService;
         this.jdbcTemplate = jdbcTemplate;
         this.operationLogService = operationLogService;
-        this.teamPointService = teamPointService;
     }
 
     public List<AiImageTaskResponse> list(Long tenantId, Long projectId, String taskType, String status) {
@@ -97,8 +113,12 @@ public class AiImageTaskService {
     public AiImageTaskResponse create(Long tenantId, Long projectId, CreateAiImageTaskRequest request, HttpServletRequest servletRequest) {
         TenantContext context = requireProject(tenantId, projectId);
         validateRequest(request);
+        String idempotencyKey = requestKey(servletRequest);
+        AiImageTaskEntity existing = taskMapper.selectByIdempotency(tenantId, idempotencyKey);
+        if (existing != null) {
+            return toResponse(existing);
+        }
         ResolvedImageModel resolved = resolveImageModel(tenantId, projectId, request.serviceConfigId());
-        teamPointService.consumeForAi(context, 1, request.taskType().trim(), null, "AI 图片生成消耗积分");
         String taskType = request.taskType().trim();
         LocalDateTime now = LocalDateTime.now();
 
@@ -121,38 +141,86 @@ public class AiImageTaskService {
         task.setQuality(blankToNull(request.quality()) == null ? "STANDARD" : request.quality().trim());
         task.setSeed(blankToNull(request.seed()));
         task.setStatus(AiImageTaskStatus.PENDING.name());
+        task.setClientIdempotencyKey(idempotencyKey);
         task.setCreatedBy(context.userId());
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
         taskMapper.insert(task);
 
+        AiExecutionTaskEntity execution = executionService.createWithReservation(
+            new AiExecutionCreateCommand(
+                tenantId,
+                context.userId(),
+                projectId,
+                "ai_image_generate",
+                "IMAGE",
+                "AI_IMAGE_TASK",
+                task.getId(),
+                resolved.modelId(),
+                "SUBMIT",
+                idempotencyKey,
+                traceId(servletRequest),
+                true,
+                null
+            ),
+            Map.of(AiUsageMetric.IMAGE, BigDecimal.valueOf(request.imageCount())),
+            imageDimensions(task)
+        );
+        task.setExecutionId(execution.id);
+        taskMapper.updateById(task);
+
         operationLogService.record(context.userId(), tenantId, "CREATE_AI_IMAGE_TASK", task.getId(), OperationResult.SUCCESS, servletRequest);
-        executeAfterCommit(task.getId());
         return toResponse(task);
     }
 
     @Transactional
     public AiImageTaskResponse regenerate(Long tenantId, Long projectId, Long taskId, HttpServletRequest servletRequest) {
+        TenantContext context = requireProject(tenantId, projectId);
         AiImageTaskEntity source = requireTask(tenantId, projectId, taskId);
-        return create(
-            tenantId,
-            projectId,
-            new CreateAiImageTaskRequest(
-                source.getTaskType(),
-                source.getTargetType(),
-                source.getTargetId(),
-                source.getServiceConfigId(),
-                source.getPrompt(),
-                source.getNegativePrompt(),
-                ReferenceImagesCodec.decode(source.getReferenceImages()),
-                source.getAspectRatio(),
-                source.getImageCount(),
-                source.getStyle(),
-                source.getQuality(),
-                source.getSeed()
-            ),
-            servletRequest
+        String idempotencyKey = requestKey(servletRequest);
+        AiImageTaskEntity existing = taskMapper.selectByIdempotency(tenantId, idempotencyKey);
+        if (existing != null) {
+            return toResponse(existing);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        AiImageTaskEntity task = new AiImageTaskEntity();
+        task.setTenantId(source.getTenantId());
+        task.setProjectId(source.getProjectId());
+        task.setTaskType(source.getTaskType());
+        task.setTargetType(source.getTargetType());
+        task.setTargetId(source.getTargetId());
+        task.setServiceConfigId(source.getServiceConfigId());
+        task.setModelId(source.getModelId());
+        task.setProviderCode(source.getProviderCode());
+        task.setModel(source.getModel());
+        task.setPrompt(source.getPrompt());
+        task.setNegativePrompt(source.getNegativePrompt());
+        task.setReferenceImages(source.getReferenceImages());
+        task.setAspectRatio(source.getAspectRatio());
+        task.setImageCount(source.getImageCount());
+        task.setStyle(source.getStyle());
+        task.setQuality(source.getQuality());
+        task.setSeed(source.getSeed());
+        task.setStatus(AiImageTaskStatus.PENDING.name());
+        task.setClientIdempotencyKey(idempotencyKey);
+        task.setCreatedBy(context.userId());
+        task.setCreatedAt(now);
+        task.setUpdatedAt(now);
+        taskMapper.insert(task);
+
+        AiExecutionTaskEntity execution = executionService.regenerateWithReservation(
+            source.getExecutionId(),
+            task.getId(),
+            idempotencyKey,
+            traceId(servletRequest),
+            Map.of(AiUsageMetric.IMAGE, BigDecimal.valueOf(task.getImageCount())),
+            imageDimensions(task)
         );
+        task.setExecutionId(execution.id);
+        taskMapper.updateById(task);
+
+        operationLogService.record(context.userId(), tenantId, "REGENERATE_AI_IMAGE_TASK", task.getId(), OperationResult.SUCCESS, servletRequest);
+        return toResponse(task);
     }
 
     @Transactional
@@ -161,6 +229,23 @@ public class AiImageTaskService {
         AiImageTaskEntity task = requireTask(tenantId, projectId, taskId);
         if (!List.of(AiImageTaskStatus.PENDING.name(), AiImageTaskStatus.RUNNING.name()).contains(task.getStatus())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前任务状态不可取消。");
+        }
+        AiExecutionTaskEntity execution = executionService.requireTask(task.getExecutionId());
+        boolean beforeProviderCall = AiExecutionStatus.PENDING.name().equals(execution.status);
+        execution = executionService.cancel(execution.id);
+        if (beforeProviderCall) {
+            AiPointReservationEntity reservation = pointReservationMapper.selectByExecutionId(execution.id);
+            if (reservation != null) {
+                AiPointReservationEntity released = pointSettlementService.finalizeOutcome(
+                    reservation.id,
+                    AiSettlementOutcome.PRE_CALL_CANCELED,
+                    Map.of(),
+                    null,
+                    null,
+                    "execution:%d:v%d:cancel".formatted(execution.id, execution.executionVersion)
+                );
+                executionService.updateSettlementSummary(released);
+            }
         }
         task.setStatus(AiImageTaskStatus.CANCELED.name());
         task.setCompletedAt(LocalDateTime.now());
@@ -244,19 +329,6 @@ public class AiImageTaskService {
         result.setUpdatedAt(LocalDateTime.now());
         resultMapper.updateById(result);
         operationLogService.record(context.userId(), tenantId, "DELETE_AI_IMAGE_RESULT", result.getId(), OperationResult.SUCCESS, servletRequest);
-    }
-
-    private void executeAfterCommit(Long taskId) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    executionService.execute(taskId);
-                }
-            });
-            return;
-        }
-        executionService.execute(taskId);
     }
 
     private void bindSelectedResult(AiImageResultEntity result) {
@@ -412,7 +484,27 @@ public class AiImageTaskService {
     }
 
     private AiImageTaskResponse toResponse(AiImageTaskEntity task) {
-        return AiImageTaskResponse.from(task, resultMapper.selectActiveByTask(task.getId()));
+        AiImageTaskResponse response = AiImageTaskResponse.from(task, resultMapper.selectActiveByTask(task.getId()));
+        return task.getExecutionId() == null
+            ? response
+            : response.withExecution(executionResponseMapper.toResponse(executionService.requireTask(task.getExecutionId())));
+    }
+
+    private String requestKey(HttpServletRequest request) {
+        String value = request.getHeader("Idempotency-Key");
+        return value == null || value.isBlank() ? UUID.randomUUID().toString() : value.trim();
+    }
+
+    private String traceId(HttpServletRequest request) {
+        String value = request.getHeader("X-Trace-Id");
+        return value == null || value.isBlank() ? UUID.randomUUID().toString() : value.trim();
+    }
+
+    private Map<String, String> imageDimensions(AiImageTaskEntity task) {
+        return Map.of(
+            "aspectRatio", task.getAspectRatio(),
+            "quality", task.getQuality()
+        );
     }
 
     private String blankToNull(String value) {

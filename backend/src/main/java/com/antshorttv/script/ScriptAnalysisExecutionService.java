@@ -2,9 +2,12 @@ package com.antshorttv.script;
 
 import com.antshorttv.ai.AiBusinessScene;
 import com.antshorttv.ai.AiInvocationRequest;
+import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiInvocationService;
+import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
+import com.antshorttv.execution.AiExecutionContext;
 import com.antshorttv.points.TeamPointService;
 import com.antshorttv.security.TenantContext;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import org.springframework.scheduling.annotation.Scheduled;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,27 +64,20 @@ public class ScriptAnalysisExecutionService {
         this.objectMapper = objectMapper;
     }
 
-    @Scheduled(fixedDelayString = "${ai.script-analysis.scheduler.fixed-delay-ms:8000}")
-    public void executePendingTasks() {
-        taskMapper.selectRunnable().forEach(task -> {
-            try {
-                executeTask(task.getId());
-            } catch (Exception ignored) {
-                // The task row is updated to FAILED by executeTask.
-            }
-        });
+    public void executeTask(Long taskId) {
+        executeTask(taskId, null);
     }
 
-    @Transactional
-    public void executeTask(Long taskId) {
+    public ScriptAnalysisExecutionOutcome executeTask(Long taskId, AiExecutionContext executionContext) {
+        InvocationTracker tracker = new InvocationTracker();
         ScriptAnalysisTaskEntity task = taskMapper.selectById(taskId);
         if (task == null || "COMPLETED".equals(task.getStatus())) {
-            return;
+            return new ScriptAnalysisExecutionOutcome(List.of());
         }
         ScriptVersionEntity version = versionMapper.selectById(task.getScriptVersionId());
         if (version == null || !task.getScriptVersionId().equals(version.getId())) {
             failTask(task, "SCRIPT_VERSION_NOT_FOUND", "分析绑定的剧本版本不存在。");
-            return;
+            return new ScriptAnalysisExecutionOutcome(List.of());
         }
 
         task.setStatus("RUNNING");
@@ -91,9 +87,9 @@ public class ScriptAnalysisExecutionService {
             if ("SUCCEEDED".equals(stage.getStatus())) {
                 continue;
             }
-            executeStage(task, stage, version);
+            executeStage(task, stage, version, executionContext, tracker);
             if ("FAILED".equals(stage.getStatus())) {
-                return;
+                throw new IllegalStateException(task.getErrorMessage() == null ? "Script analysis failed." : task.getErrorMessage());
             }
         }
         task.setStatus("COMPLETED");
@@ -103,12 +99,15 @@ public class ScriptAnalysisExecutionService {
         task.setCompletedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);
+        return new ScriptAnalysisExecutionOutcome(List.copyOf(tracker.calls));
     }
 
     private void executeStage(
         ScriptAnalysisTaskEntity task,
         ScriptAnalysisStageEntity stage,
-        ScriptVersionEntity version
+        ScriptVersionEntity version,
+        AiExecutionContext executionContext,
+        InvocationTracker tracker
     ) {
         if (!isCurrentVersion(task)) {
             failStaleStage(task, stage);
@@ -134,17 +133,17 @@ public class ScriptAnalysisExecutionService {
         Long durationMs = null;
         try {
             if ("EPISODE_SPLITTING".equals(stage.getStageCode())) {
-                normalizedJson = splitEpisodes(task, version);
+                normalizedJson = splitEpisodes(task, version, executionContext, tracker);
                 rawResponse = normalizedJson;
             } else if ("EPISODE_SUMMARY".equals(stage.getStageCode())) {
-                SummaryCall call = summarizeEpisodes(task, version);
+                SummaryCall call = summarizeEpisodes(task, version, executionContext, tracker);
                 rawResponse = call.rawResponse();
                 normalizedJson = call.normalizedJson();
                 callLogId = call.callLogId();
                 requestId = call.requestId();
                 durationMs = call.durationMs();
             } else {
-                AiCall call = invoke(task, version, stage.getStageCode());
+                AiCall call = invoke(task, version, stage.getStageCode(), executionContext, tracker);
                 rawResponse = call.rawResponse();
                 normalizedJson = normalizeJson(rawResponse);
                 callLogId = call.callLogId();
@@ -221,6 +220,15 @@ public class ScriptAnalysisExecutionService {
     }
 
     private SummaryCall summarizeEpisodes(ScriptAnalysisTaskEntity task, ScriptVersionEntity version) {
+        return summarizeEpisodes(task, version, null, new InvocationTracker());
+    }
+
+    private SummaryCall summarizeEpisodes(
+        ScriptAnalysisTaskEntity task,
+        ScriptVersionEntity version,
+        AiExecutionContext executionContext,
+        InvocationTracker tracker
+    ) {
         JsonNode episodesNode;
         try {
             ScriptAnalysisResultEntity splitResult = latestSucceededResult(task, "EPISODE_SPLITTING");
@@ -241,7 +249,9 @@ public class ScriptAnalysisExecutionService {
             Semaphore semaphore = new Semaphore(maxConcurrency);
             List<CompletableFuture<EpisodeSummaryCall>> futures = new ArrayList<>();
             for (JsonNode episode : episodesNode) {
-                futures.add(CompletableFuture.supplyAsync(() -> summarizeEpisode(task, version, episode, semaphore), executor));
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> summarizeEpisode(task, version, episode, semaphore, executionContext, tracker), executor
+                ));
             }
             List<EpisodeSummaryCall> calls = futures.stream().map(CompletableFuture::join).sorted(Comparator.comparingInt(EpisodeSummaryCall::episodeNo)).toList();
             ArrayNode episodes = objectMapper.createArrayNode();
@@ -281,7 +291,9 @@ public class ScriptAnalysisExecutionService {
         ScriptAnalysisTaskEntity task,
         ScriptVersionEntity version,
         JsonNode episode,
-        Semaphore semaphore
+        Semaphore semaphore,
+        AiExecutionContext executionContext,
+        InvocationTracker tracker
     ) {
         boolean acquired = false;
         try {
@@ -291,7 +303,7 @@ public class ScriptAnalysisExecutionService {
             if (episodeNo <= 0) {
                 throw new BusinessException(com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID, "概要提炼集号不合法。");
             }
-            AiCall call = invokeEpisodeSummary(task, version, episode);
+            AiCall call = invokeEpisodeSummary(task, version, episode, executionContext, tracker);
             return new EpisodeSummaryCall(episodeNo, call.rawResponse(), normalizeJson(call.rawResponse()), call.callLogId(), call.requestId(), call.durationMs());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -306,12 +318,17 @@ public class ScriptAnalysisExecutionService {
     private AiCall invokeEpisodeSummary(
         ScriptAnalysisTaskEntity task,
         ScriptVersionEntity version,
-        JsonNode episode
+        JsonNode episode,
+        AiExecutionContext executionContext,
+        InvocationTracker tracker
     ) {
-        TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
-        teamPointService.consumeForAi(context, 1, AiBusinessScene.SCRIPT_EPISODE_SUMMARY.pointScene(), task.getId(), "剧本分析阶段");
+        if (executionContext == null) {
+            TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
+            teamPointService.consumeForAi(context, 1, AiBusinessScene.SCRIPT_EPISODE_SUMMARY.pointScene(), task.getId(), "剧本分析阶段");
+        }
         Long modelId = projectAiConfigService.resolveModelId(task.getTenantId(), task.getProjectId(), "TEXT");
-        var invocation = aiInvocationService.invokeText(AiInvocationRequest.text()
+        int episodeNo = episode.path("episodeNo").asInt(0);
+        AiInvocationRequest.Builder builder = AiInvocationRequest.text()
             .tenantId(task.getTenantId())
             .userId(task.getCreatedBy())
             .projectId(task.getProjectId())
@@ -324,8 +341,10 @@ public class ScriptAnalysisExecutionService {
                 objectMapper.createArrayNode().add(episode)
             ))
             .requestSummary("script-analysis:EPISODE_SUMMARY")
-            .traceId("script-analysis-%d-summary-%d".formatted(task.getId(), episode.path("episodeNo").asInt(0)))
-            .build());
+            .traceId("script-analysis-%d-summary-%d".formatted(task.getId(), episodeNo));
+        applyExecutionIdentity(builder, executionContext, "EPISODE_SUMMARY:" + episodeNo);
+        var invocation = aiInvocationService.invokeText(builder.build());
+        tracker.record(invocation);
         return new AiCall(invocation.content(), invocation.aiCallLogId(), invocation.providerRequestId(), invocation.durationMs());
     }
 
@@ -406,11 +425,20 @@ public class ScriptAnalysisExecutionService {
     }
 
     private String splitEpisodes(ScriptAnalysisTaskEntity task, ScriptVersionEntity version) {
+        return splitEpisodes(task, version, null, new InvocationTracker());
+    }
+
+    private String splitEpisodes(
+        ScriptAnalysisTaskEntity task,
+        ScriptVersionEntity version,
+        AiExecutionContext executionContext,
+        InvocationTracker tracker
+    ) {
         List<ScriptEpisodeResponse> parsed = ScriptEpisodeParser.parse(version.getContent());
         if (parsed.size() > 1 || hasEpisodeHeading(version.getContent())) {
             return episodesJson(parsed);
         }
-        AiCall call = invoke(task, version, "EPISODE_SPLITTING");
+        AiCall call = invoke(task, version, "EPISODE_SPLITTING", executionContext, tracker);
         return normalizeJson(call.rawResponse());
     }
 
@@ -438,7 +466,9 @@ public class ScriptAnalysisExecutionService {
     private AiCall invoke(
         ScriptAnalysisTaskEntity task,
         ScriptVersionEntity version,
-        String stageCode
+        String stageCode,
+        AiExecutionContext executionContext,
+        InvocationTracker tracker
     ) {
         AiBusinessScene scene = switch (stageCode) {
             case "GLOBAL_UNDERSTANDING" -> AiBusinessScene.SCRIPT_GLOBAL_UNDERSTANDING;
@@ -447,11 +477,13 @@ public class ScriptAnalysisExecutionService {
             case "CHARACTER_SCENE_RECOGNITION" -> AiBusinessScene.SCRIPT_CHARACTER_SCENE_RECOGNITION;
             default -> throw new IllegalArgumentException("未知分析阶段：" + stageCode);
         };
-        TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
-        teamPointService.consumeForAi(context, 1, scene.pointScene(), task.getId(), "剧本分析阶段");
+        if (executionContext == null) {
+            TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
+            teamPointService.consumeForAi(context, 1, scene.pointScene(), task.getId(), "剧本分析阶段");
+        }
         Long modelId = projectAiConfigService.resolveModelId(task.getTenantId(), task.getProjectId(), "TEXT");
         Map<String, Object> variables = stageVariables(task, version, stageCode);
-        var invocation = aiInvocationService.invokeText(AiInvocationRequest.text()
+        AiInvocationRequest.Builder builder = AiInvocationRequest.text()
             .tenantId(task.getTenantId())
             .userId(task.getCreatedBy())
             .projectId(task.getProjectId())
@@ -461,9 +493,30 @@ public class ScriptAnalysisExecutionService {
             .promptTemplateId(scene.agentCode())
             .templateVariables(variables)
             .requestSummary("script-analysis:" + stageCode)
-            .traceId("script-analysis-%d-%s".formatted(task.getId(), stageCode))
-            .build());
+            .traceId("script-analysis-%d-%s".formatted(task.getId(), stageCode));
+        applyExecutionIdentity(builder, executionContext, stageCode);
+        var invocation = aiInvocationService.invokeText(builder.build());
+        tracker.record(invocation);
         return new AiCall(invocation.content(), invocation.aiCallLogId(), invocation.providerRequestId(), invocation.durationMs());
+    }
+
+    private void applyExecutionIdentity(
+        AiInvocationRequest.Builder builder,
+        AiExecutionContext executionContext,
+        String phase
+    ) {
+        if (executionContext == null) {
+            return;
+        }
+        builder.executionId(executionContext.task().id)
+            .attemptId(executionContext.claim().attemptId())
+            .executionVersion(executionContext.task().executionVersion)
+            .phase(phase)
+            .idempotencyKey("execution:%d:v%d:%s".formatted(
+                executionContext.task().id,
+                executionContext.task().executionVersion,
+                phase
+            ));
     }
 
     private Map<String, Object> stageVariables(
@@ -537,7 +590,10 @@ public class ScriptAnalysisExecutionService {
                 previousContent = content;
                 expectedNo++;
             }
-            String source = scriptContent == null ? "" : scriptContent.replaceAll("\\s+", "");
+            String source = ScriptEpisodeParser.parse(scriptContent).stream()
+                .map(ScriptEpisodeResponse::content)
+                .collect(java.util.stream.Collectors.joining())
+                .replaceAll("\\s+", "");
             String combined = "";
             for (JsonNode episode : episodes) {
                 combined += episode.path("content").asText("").replaceAll("\\s+", "");
@@ -602,6 +658,7 @@ public class ScriptAnalysisExecutionService {
         result.setNormalizedJson(normalizedJson);
         result.setProviderRequestId(requestId);
         result.setAiCallLogId(callLogId);
+        result.setExecutionId(task.getExecutionId());
         result.setDurationMs(durationMs);
         result.setErrorCode(errorCode);
         result.setErrorMessage(errorMessage);
@@ -645,5 +702,16 @@ public class ScriptAnalysisExecutionService {
     }
 
     private record EpisodeSummaryCall(int episodeNo, String rawResponse, String normalizedJson, Long callLogId, String requestId, Long durationMs) {
+    }
+
+    private static final class InvocationTracker {
+        private final List<ScriptAnalysisCallEvidence> calls = new CopyOnWriteArrayList<>();
+
+        private void record(AiInvocationResult<AiTextResponse> invocation) {
+            calls.add(new ScriptAnalysisCallEvidence(
+                invocation.aiCallLogId(), invocation.resolvedModelId(), invocation.providerId(),
+                invocation.providerRequestId(), invocation.transportOutcome(), invocation.businessOutcome()
+            ));
+        }
     }
 }

@@ -64,6 +64,15 @@ object-storage:
 
 ai:
   secret-key: ${AI_SECRET_KEY:}
+  execution:
+    dispatcher:
+      enabled: ${AI_EXECUTION_DISPATCHER_ENABLED:true}
+      batch-size: ${AI_EXECUTION_DISPATCHER_BATCH_SIZE:20}
+      fixed-delay-ms: ${AI_EXECUTION_DISPATCHER_FIXED_DELAY_MS:5000}
+    claim-timeout: ${AI_EXECUTION_CLAIM_TIMEOUT:PT10M}
+    max-concurrent-per-tenant: ${AI_EXECUTION_MAX_CONCURRENT_PER_TENANT:5}
+    worker-threads: ${AI_EXECUTION_WORKER_THREADS:4}
+    queue-capacity: ${AI_EXECUTION_QUEUE_CAPACITY:100}
   video:
     storage-root: ${AI_VIDEO_STORAGE_ROOT:storage}
     max-concurrent-per-tenant: ${AI_VIDEO_MAX_CONCURRENT_PER_TENANT:3}
