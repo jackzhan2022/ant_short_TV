@@ -3,6 +3,10 @@ declare namespace API {
     token: string;
   };
 
+  type accountingDetailParams = {
+    executionId: number;
+  };
+
   type accountParams = {
     tenantId: number;
   };
@@ -35,11 +39,9 @@ declare namespace API {
     id?: number;
     tenantId?: number;
     userId?: number;
-    serviceConfigId?: number;
     taskId?: number;
     modelId?: number;
     providerId?: number;
-    serviceConfigName?: string;
     provider?: string;
     serviceType?: string;
     model?: string;
@@ -115,7 +117,6 @@ declare namespace API {
     taskType?: string;
     targetType?: string;
     targetId?: number;
-    serviceConfigId?: number;
     modelId?: number;
     providerCode?: string;
     model?: string;
@@ -136,57 +137,6 @@ declare namespace API {
     createdBy?: number;
     createdAt?: string;
     results?: AiImageResultResponse[];
-  };
-
-  type AiProviderResponse = {
-    id?: number;
-    name?: string;
-    code?: string;
-    supportedTypes?: string;
-    defaultBaseUrl?: string;
-    recommendedModels?: string;
-    description?: string;
-    status?: string;
-  };
-
-  type AiServiceConfigRequest = {
-    name: string;
-    serviceType: string;
-    provider: string;
-    baseUrl: string;
-    apiKey?: string;
-    model: string;
-    endpoint?: string;
-    queryEndpoint?: string;
-    priority: number;
-    isDefault?: boolean;
-    enabled?: boolean;
-    remark?: string;
-  };
-
-  type AiServiceConfigResponse = {
-    id?: number;
-    tenantId?: number;
-    name?: string;
-    provider?: string;
-    serviceType?: string;
-    baseUrl?: string;
-    apiKey?: string;
-    model?: string;
-    endpoint?: string;
-    queryEndpoint?: string;
-    priority?: number;
-    isDefault?: boolean;
-    enabled?: boolean;
-    lastTestStatus?: string;
-    lastTestMessage?: string;
-    lastTestAt?: string;
-    remark?: string;
-    updatedAt?: string;
-  };
-
-  type AiServiceStatusRequest = {
-    enabled: boolean;
   };
 
   type AiServiceTestResponse = {
@@ -217,7 +167,7 @@ declare namespace API {
     executionId?: number;
     projectId?: number;
     storyboardId?: number;
-    serviceConfigId?: number;
+    modelId?: number;
     providerCode?: string;
     model?: string;
     prompt?: string;
@@ -260,7 +210,6 @@ declare namespace API {
     id?: number;
     projectId?: number;
     storyboardId?: number;
-    serviceConfigId?: number;
     providerCode?: string;
     model?: string;
     voiceType?: string;
@@ -302,13 +251,6 @@ declare namespace API {
   type ApiResponseAiImageTaskResponse = {
     success?: boolean;
     data?: AiImageTaskResponse;
-    errorCode?: string;
-    errorMessage?: string;
-  };
-
-  type ApiResponseAiServiceConfigResponse = {
-    success?: boolean;
-    data?: AiServiceConfigResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -407,20 +349,6 @@ declare namespace API {
   type ApiResponseListAiImageTaskResponse = {
     success?: boolean;
     data?: AiImageTaskResponse[];
-    errorCode?: string;
-    errorMessage?: string;
-  };
-
-  type ApiResponseListAiProviderResponse = {
-    success?: boolean;
-    data?: AiProviderResponse[];
-    errorCode?: string;
-    errorMessage?: string;
-  };
-
-  type ApiResponseListAiServiceConfigResponse = {
-    success?: boolean;
-    data?: AiServiceConfigResponse[];
     errorCode?: string;
     errorMessage?: string;
   };
@@ -628,6 +556,27 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseModelPriceVersionResponse = {
+    success?: boolean;
+    data?: ModelPriceVersionResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponsePlatformAiAccountingDetailResponse = {
+    success?: boolean;
+    data?: PlatformAiAccountingDetailResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponsePlatformAiOperationsOverview = {
+    success?: boolean;
+    data?: PlatformAiOperationsOverview;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponsePlatformModelResponse = {
     success?: boolean;
     data?: PlatformModelResponse;
@@ -638,6 +587,13 @@ declare namespace API {
   type ApiResponsePlatformProviderResponse = {
     success?: boolean;
     data?: PlatformProviderResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponsePointPolicyVersionResponse = {
+    success?: boolean;
+    data?: PointPolicyVersionResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -1040,15 +996,11 @@ declare namespace API {
     tenantId: number;
   };
 
-  type create3Params = {
-    tenantId: number;
-  };
-
-  type create5Params = {
+  type create4Params = {
     projectId: number;
   };
 
-  type create6Params = {
+  type create5Params = {
     projectId: number;
   };
 
@@ -1056,7 +1008,7 @@ declare namespace API {
     taskType: string;
     targetType: string;
     targetId: number;
-    serviceConfigId?: number;
+    modelId?: number;
     prompt: string;
     negativePrompt?: string;
     referenceImages?: string[];
@@ -1069,7 +1021,7 @@ declare namespace API {
 
   type CreateAiVideoTaskRequest = {
     storyboardId: number;
-    serviceConfigId?: number;
+    modelId?: number;
     prompt: string;
     negativePrompt?: string;
     firstFrameImageId?: number;
@@ -1086,7 +1038,6 @@ declare namespace API {
 
   type CreateAiVoiceTaskRequest = {
     storyboardId: number;
-    serviceConfigId?: number;
     voiceType: string;
     speakerName?: string;
     voiceId: string;
@@ -1222,11 +1173,6 @@ declare namespace API {
   };
 
   type delete1Params = {
-    projectId: number;
-    taskId: number;
-  };
-
-  type delete2Params = {
     id: number;
   };
 
@@ -1254,10 +1200,6 @@ declare namespace API {
   type deleteEpisodeVideoVersionParams = {
     projectId: number;
     versionId: number;
-  };
-
-  type deleteGlobalParams = {
-    id: number;
   };
 
   type deleteResult1Params = {
@@ -1297,8 +1239,8 @@ declare namespace API {
   };
 
   type deleteUsingDELETEParams = {
-    tenantId: number;
-    id: number;
+    projectId: number;
+    taskId: number;
   };
 
   type deleteVoiceResultParams = {
@@ -1589,10 +1531,6 @@ declare namespace API {
 
   type list2Params = {
     tenantId: number;
-  };
-
-  type list3Params = {
-    tenantId: number;
     current?: number;
     pageSize?: number;
     serviceType?: string;
@@ -1600,18 +1538,18 @@ declare namespace API {
     businessScene?: string;
   };
 
-  type list4Params = {
+  type list3Params = {
     category?: string;
     keyword?: string;
   };
 
-  type list6Params = {
+  type list5Params = {
     projectId: number;
     status?: string;
     storyboardId?: number;
   };
 
-  type list7Params = {
+  type list6Params = {
     projectId: number;
     taskType?: string;
     status?: string;
@@ -1641,6 +1579,34 @@ declare namespace API {
 
   type membersParams = {
     id: number;
+  };
+
+  type ModelPriceComponentRequest = {
+    metric: string;
+    unitSize: number;
+    unitPrice: number;
+    currency: string;
+    dimensions?: Record<string, any>;
+  };
+
+  type ModelPriceComponentResponse = {
+    id?: number;
+    metric?: string;
+    unitSize?: number;
+    unitPrice?: number;
+    currency?: string;
+  };
+
+  type ModelPriceVersionResponse = {
+    id?: number;
+    modelId?: number;
+    versionNo?: number;
+    status?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    publishedAt?: string;
+    createdBy?: number;
+    components?: ModelPriceComponentResponse[];
   };
 
   type modelsParams = {
@@ -1675,6 +1641,24 @@ declare namespace API {
   type PlatformAccessResponse = {
     roles?: string[];
     permissions?: string[];
+  };
+
+  type PlatformAiAccountingDetailResponse = {
+    execution?: AiExecutionResponse;
+    usageLines?: UsageLineResponse[];
+    costLines?: UsageCostLineResponse[];
+    settlement?: PointSettlementDetailResponse;
+  };
+
+  type PlatformAiOperationsOverview = {
+    expiredClaims?: number;
+    retryExhausted?: number;
+    unpricedUsage?: number;
+    incompleteUsage?: number;
+    settlementReview?: number;
+    totalProviderCost?: number;
+    totalSettledPoints?: number;
+    providerFailureRates?: ProviderFailureRate[];
   };
 
   type PlatformModelRequest = {
@@ -1731,6 +1715,68 @@ declare namespace API {
     lastTestMessage?: string;
     lastTestAt?: string;
     updatedAt?: string;
+  };
+
+  type PointLedgerResponse = {
+    id?: number;
+    attemptId?: number;
+    aiCallLogId?: number;
+    policyVersionId?: number;
+    entryType?: string;
+    amount?: number;
+    availableBalanceAfter?: number;
+    reservedBalanceAfter?: number;
+    createdAt?: string;
+  };
+
+  type PointPolicyComponentRequest = {
+    metric: string;
+    unitSize: number;
+    pointRate: number;
+    dimensions?: Record<string, any>;
+  };
+
+  type PointPolicyComponentResponse = {
+    id?: number;
+    metric?: string;
+    unitSize?: number;
+    pointRate?: number;
+  };
+
+  type PointPolicyVersionResponse = {
+    id?: number;
+    scene?: string;
+    modelId?: number;
+    capability?: string;
+    versionNo?: number;
+    status?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    chargeProviderRejection?: boolean;
+    chargeProviderBilledFailure?: boolean;
+    chargeTimeout?: boolean;
+    chargeBusinessFailure?: boolean;
+    publishedAt?: string;
+    components?: PointPolicyComponentResponse[];
+  };
+
+  type PointReservationResponse = {
+    id?: number;
+    policyVersionId?: number;
+    status?: string;
+    reservedPoints?: number;
+    settledPoints?: number;
+    releasedPoints?: number;
+    refundedPoints?: number;
+    createdAt?: string;
+    settledAt?: string;
+    releasedAt?: string;
+    refundedAt?: string;
+  };
+
+  type PointSettlementDetailResponse = {
+    reservation?: PointReservationResponse;
+    ledger?: PointLedgerResponse[];
   };
 
   type pollParams = {
@@ -1855,6 +1901,38 @@ declare namespace API {
     prompt?: string;
     status?: string;
     mergeTargetId?: number;
+  };
+
+  type ProviderFailureRate = {
+    provider?: string;
+    total?: number;
+    failed?: number;
+    failureRate?: number;
+  };
+
+  type publishModelPriceParams = {
+    modelId: number;
+  };
+
+  type PublishModelPriceRequest = {
+    versionNo: number;
+    effectiveFrom: string;
+    effectiveTo?: string;
+    components: ModelPriceComponentRequest[];
+  };
+
+  type PublishPointPolicyRequest = {
+    scene: string;
+    modelId?: number;
+    capability?: string;
+    versionNo: number;
+    effectiveFrom: string;
+    effectiveTo?: string;
+    chargeProviderRejection?: boolean;
+    chargeProviderBilledFailure?: boolean;
+    chargeTimeout?: boolean;
+    chargeBusinessFailure?: boolean;
+    components: PointPolicyComponentRequest[];
   };
 
   type readParams = {
@@ -2340,15 +2418,6 @@ declare namespace API {
     versionId: number;
   };
 
-  type setDefaultGlobalParams = {
-    id: number;
-  };
-
-  type setDefaultParams = {
-    tenantId: number;
-    id: number;
-  };
-
   type ShotComposeResultResponse = {
     id?: number;
     taskId?: number;
@@ -2541,15 +2610,6 @@ declare namespace API {
     memberId?: number;
   };
 
-  type testGlobalParams = {
-    id: number;
-  };
-
-  type testParams = {
-    tenantId: number;
-    id: number;
-  };
-
   type testProviderParams = {
     id: number;
   };
@@ -2572,10 +2632,6 @@ declare namespace API {
     id: number;
   };
 
-  type update2Params = {
-    id: number;
-  };
-
   type updateDraftParams = {
     episodeId: number;
   };
@@ -2584,10 +2640,6 @@ declare namespace API {
     projectId: number;
     elementType: string;
     elementId: number;
-  };
-
-  type updateGlobalParams = {
-    id: number;
   };
 
   type updateMemberRoleParams = {
@@ -2613,7 +2665,6 @@ declare namespace API {
   };
 
   type updateParams = {
-    tenantId: number;
     id: number;
   };
 
@@ -2720,19 +2771,10 @@ declare namespace API {
   };
 
   type updateStatus1Params = {
-    tenantId: number;
     id: number;
   };
 
   type updateStatus2Params = {
-    id: number;
-  };
-
-  type updateStatus3Params = {
-    id: number;
-  };
-
-  type updateStatusGlobalParams = {
     id: number;
   };
 
@@ -2776,6 +2818,35 @@ declare namespace API {
   type UpdateVideoDecompositionDraftRequest = {
     draftContent: string;
     expectedDraftVersion?: number;
+  };
+
+  type UsageCostLineResponse = {
+    id?: number;
+    usageLineId?: number;
+    priceVersionId?: number;
+    priceComponentId?: number;
+    metric?: string;
+    quantity?: number;
+    unitSize?: number;
+    unitPrice?: number;
+    currency?: string;
+    rawCost?: number;
+    roundedCost?: number;
+    pricingStatus?: string;
+    adjustmentOfCostLineId?: number;
+  };
+
+  type UsageLineResponse = {
+    id?: number;
+    attemptId?: number;
+    aiCallLogId?: number;
+    modelId?: number;
+    metric?: string;
+    quantity?: number;
+    unit?: string;
+    source?: string;
+    observedAt?: string;
+    adjustmentOfUsageLineId?: number;
   };
 
   type UserProfileResponse = {

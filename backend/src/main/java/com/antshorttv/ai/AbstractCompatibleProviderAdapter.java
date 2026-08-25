@@ -12,12 +12,15 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 
 abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
     protected final AiSecretCodec aiSecretCodec;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    @Value("${ai.testing.mock-provider-enabled:false}")
+    private boolean mockProviderEnabled;
 
     AbstractCompatibleProviderAdapter(AiSecretCodec aiSecretCodec, ObjectMapper objectMapper) {
         this.aiSecretCodec = aiSecretCodec;
@@ -37,8 +40,9 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         if (config.getApiKeyCipher() == null || config.getApiKeyCipher().isBlank()) {
             throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
         }
+        String apiKey = apiKey(config);
         try {
-            JsonNode root = postJson(config, chatCompletionsUri(config), chatPayload(model, request), apiKey(config));
+            JsonNode root = postJson(config, chatCompletionsUri(config), chatPayload(model, request), apiKey);
             String content = root.path("choices").path(0).path("message").path("content").asText(null);
             if (content == null || content.isBlank()) {
                 content = root.path("choices").path(0).path("text").asText("");
@@ -70,8 +74,9 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         if (config.getApiKeyCipher() == null || config.getApiKeyCipher().isBlank()) {
             throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
         }
+        String apiKey = apiKey(config);
         try {
-            JsonNode root = postJson(config, imagesUri(config), imagePayload(model, request), apiKey(config));
+            JsonNode root = postJson(config, imagesUri(config), imagePayload(model, request), apiKey);
             List<String> imageUrls = new ArrayList<>();
             for (JsonNode item : root.path("data")) {
                 String url = item.path("url").asText(null);
@@ -93,6 +98,9 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
     }
 
     protected boolean shouldUseLocalMock(AiProviderConfigEntity config) {
+        if (!mockProviderEnabled) {
+            return false;
+        }
         String baseUrl = config.getBaseUrl();
         if (baseUrl == null || baseUrl.isBlank() || baseUrl.startsWith("mock://") || baseUrl.contains("example.com")) {
             return true;

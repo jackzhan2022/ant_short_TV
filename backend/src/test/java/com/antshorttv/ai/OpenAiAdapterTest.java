@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class OpenAiAdapterTest {
 
@@ -192,7 +193,20 @@ class OpenAiAdapterTest {
     }
 
     @Test
+    void doesNotUseLocalMockWithoutExplicitTestSwitch() {
+        assertThatThrownBy(() -> adapter.text(
+            provider(),
+            config("mock://local", "test-key"),
+            model("deepseek-v4-pro", "TEXT"),
+            new AiTextRequest(null, "prompt", 0.2, 32, null)
+        ))
+            .isInstanceOf(AiGatewayException.class)
+            .hasMessageContaining("AI 文本调用失败");
+    }
+
+    @Test
     void returnsStructuredJsonForLocalExtractionMock() throws Exception {
+        ReflectionTestUtils.setField(adapter, "mockProviderEnabled", true);
         AiTextResponse response = adapter.text(
             provider(),
             config("mock://local", "test-key"),

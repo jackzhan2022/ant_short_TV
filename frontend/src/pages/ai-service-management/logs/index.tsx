@@ -64,14 +64,6 @@ const AiCallLogsPage = () => {
       ),
     },
     {
-      title: '服务配置',
-      dataIndex: 'serviceConfigName',
-      search: false,
-      ellipsis: true,
-      width: 180,
-      renderText: (value, record) => value || `#${record.serviceConfigId ?? '-'}`,
-    },
-    {
       title: '服务商',
       dataIndex: 'provider',
       search: false,

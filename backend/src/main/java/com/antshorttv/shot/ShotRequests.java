@@ -10,7 +10,6 @@ import java.util.Map;
 
 record CreateAiVoiceTaskRequest(
     @NotNull Long storyboardId,
-    Long serviceConfigId,
     @NotBlank String voiceType,
     String speakerName,
     @NotBlank String voiceId,

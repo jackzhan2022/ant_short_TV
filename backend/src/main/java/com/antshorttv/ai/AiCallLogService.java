@@ -51,11 +51,9 @@ public class AiCallLogService {
                   l.id,
                   l.tenant_id,
                   l.user_id,
-                  l.service_config_id,
                   l.task_id,
                   l.model_id,
                   l.provider_id,
-                  c.name as service_config_name,
                   l.provider,
                   l.service_type,
                   l.model,
@@ -72,9 +70,6 @@ public class AiCallLogService {
                   l.total_tokens,
                   l.created_at
                 from ai_call_log l
-                left join ai_service_config c
-                  on c.id = l.service_config_id
-                 and c.tenant_id = l.tenant_id
                 %s
                 order by l.created_at desc, l.id desc
                 limit ? offset ?
@@ -83,11 +78,9 @@ public class AiCallLogService {
                 rs.getLong("id"),
                 rs.getLong("tenant_id"),
                 rs.getLong("user_id"),
-                rs.getObject("service_config_id", Long.class),
                 rs.getObject("task_id", Long.class),
                 rs.getObject("model_id", Long.class),
                 rs.getObject("provider_id", Long.class),
-                rs.getString("service_config_name"),
                 rs.getString("provider"),
                 rs.getString("service_type"),
                 rs.getString("model"),

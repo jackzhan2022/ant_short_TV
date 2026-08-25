@@ -6,8 +6,9 @@ export interface AiCallLog {
   id: number;
   tenantId: number;
   userId: number;
-  serviceConfigId?: number;
-  serviceConfigName?: string;
+  taskId?: number;
+  modelId?: number;
+  providerId?: number;
   provider?: string;
   serviceType: AiCallLogServiceType;
   model?: string;

@@ -43,7 +43,7 @@ public class AiImageTaskController {
     }
 
     @PostMapping("/ai-image-tasks")
-    @RequireProjectPermission("AI_IMAGE_TASK:CREATE")
+    @RequireProjectPermission({"AI_IMAGE_TASK:CREATE", "AI_SERVICE:USE"})
     public ResponseEntity<ApiResponse<AiImageTaskResponse>> create(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateAiImageTaskRequest body,
@@ -64,7 +64,7 @@ public class AiImageTaskController {
     }
 
     @PostMapping("/ai-image-tasks/{taskId}/regenerate")
-    @RequireProjectPermission("AI_IMAGE_TASK:CREATE")
+    @RequireProjectPermission({"AI_IMAGE_TASK:CREATE", "AI_SERVICE:USE"})
     public ResponseEntity<ApiResponse<AiImageTaskResponse>> regenerate(
         @PathVariable Long projectId,
         @PathVariable Long taskId,

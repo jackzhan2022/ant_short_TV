@@ -73,9 +73,9 @@ export async function selectResult(
 }
 
 /** 此处后端没有提供注释 GET /api/projects/${param0}/ai-image-tasks */
-export async function list7(
+export async function list6(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list7Params,
+  params: API.list6Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
@@ -92,9 +92,9 @@ export async function list7(
 }
 
 /** 此处后端没有提供注释 POST /api/projects/${param0}/ai-image-tasks */
-export async function create6(
+export async function create5(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.create6Params,
+  params: API.create5Params,
   body: API.CreateAiImageTaskRequest,
   options?: { [key: string]: any }
 ) {
@@ -131,9 +131,9 @@ export async function detail5(
 }
 
 /** 此处后端没有提供注释 DELETE /api/projects/${param0}/ai-image-tasks/${param1} */
-export async function delete1(
+export async function deleteUsingDelete(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.delete1Params,
+  params: API.deleteUsingDELETEParams,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;

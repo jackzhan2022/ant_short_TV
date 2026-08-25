@@ -103,47 +103,53 @@ const AssetCard = ({
 }) => (
   <article
     style={{
-      minHeight: 168,
-      border: '1px solid #e8edf6',
-      borderRadius: 8,
+      minHeight: 252,
+      border: '1px solid #e5e9f3',
+      borderRadius: 10,
       background: '#fff',
-      boxShadow: '0 10px 24px rgba(26, 39, 76, 0.04)',
+      boxShadow: '0 8px 20px rgba(26, 39, 76, 0.05)',
       overflow: 'hidden',
     }}
   >
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns: '88px 1fr',
-        minHeight: 168,
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 252,
       }}
     >
       <div
         style={{
           display: 'grid',
-          placeItems: 'center',
+          placeItems: 'end start',
+          minHeight: 112,
+          padding: '16px 18px',
           background:
             type === 'CHARACTER'
-              ? 'linear-gradient(180deg, #fff8dd 0%, #e6eefb 100%)'
+              ? 'linear-gradient(135deg, #fff7d9 0%, #e9efff 100%)'
               : type === 'SCENE'
-                ? 'linear-gradient(180deg, #dceafa 0%, #f8fbff 100%)'
-                : 'linear-gradient(180deg, #f7f3ff 0%, #eef7f1 100%)',
-          color: '#4f5cff',
-          fontSize: 24,
+                ? 'linear-gradient(135deg, #dceafa 0%, #f8fbff 100%)'
+                : 'linear-gradient(135deg, #f4edff 0%, #eaf7f1 100%)',
+          color: '#5252ff',
+          fontSize: 34,
           fontWeight: 700,
         }}
       >
         {item.name.slice(0, 1)}
       </div>
-      <div style={{ padding: '14px 16px 13px' }}>
+      <div style={{ padding: '13px 16px 14px' }}>
         <Flex justify="space-between" align="flex-start" gap={12}>
           <div>
-            <Typography.Text strong style={{ fontSize: 15 }}>
+            <Typography.Text strong style={{ fontSize: 15, color: '#111827' }}>
               {item.name}
             </Typography.Text>
             <div style={{ marginTop: 7 }}>
-              <Tag>{elementLabels[type]}</Tag>
-              {getSummary(type, item) && <Tag>{getSummary(type, item)}</Tag>}
+              <Tag color="blue">{elementLabels[type]}</Tag>
+              {getSummary(type, item) && (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {getSummary(type, item)}
+                </Typography.Text>
+              )}
             </div>
           </div>
           <Flex gap={4}>
@@ -173,20 +179,25 @@ const AssetCard = ({
         </Flex>
         <Typography.Paragraph
           style={{
-            margin: '12px 0 0',
+            margin: '10px 0 0',
             color: '#48546b',
             fontSize: 13,
             lineHeight: '22px',
+            height: 44,
+            overflow: 'hidden',
           }}
         >
           {getDescription(type, item) || '暂无设定描述'}
         </Typography.Paragraph>
         <div
           style={{
-            marginTop: 10,
+            marginTop: 6,
             color: '#7a849a',
             fontSize: 12,
             lineHeight: '20px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
           {item.prompt || '暂无提示词'}
@@ -205,6 +216,7 @@ const ProductionWorkbenchSettings = () => {
   );
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
+  const [activeType, setActiveType] = useState<ElementType>('CHARACTER');
   const [processingAction, setProcessingAction] = useState<string>();
   const [activeExecution, setActiveExecution] =
     useState<API.AiExecutionResponse>();
@@ -362,121 +374,138 @@ const ProductionWorkbenchSettings = () => {
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ maxWidth: 1500, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1540, margin: '0 auto' }}>
         <Flex
           justify="space-between"
           align="center"
-          style={{ marginBottom: 16 }}
+          style={{ marginBottom: 18 }}
         >
           <div>
             <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
               设定资产
             </Typography.Title>
             <Typography.Text type="secondary">
-              {loading ? '正在加载设定内容...' : '角色、场景、道具统一管理'}
+              {loading ? '正在加载设定内容...' : '角色、场景、道具统一管理，确认后进入分镜'}
             </Typography.Text>
           </div>
-          <Input
-            aria-label="搜索设定资产"
-            prefix={<SearchOutlined />}
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="搜索名称、类型、提示词"
-            style={{ width: 280, height: 34, borderRadius: 8 }}
-          />
+          <div style={{ color: '#667085', fontSize: 13 }}>
+            共 {workspace.characters.length + workspace.scenes.length + workspace.props.length} 项设定
+          </div>
         </Flex>
 
         {activeExecution ? (
-          <div style={{ background: '#fff', padding: 16, marginBottom: 16 }}>
+          <div
+            style={{
+              background: '#f5f7ff',
+              border: '1px solid #e1e5ff',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: 16,
+            }}
+          >
             <AiExecutionStatus task={activeExecution} />
           </div>
         ) : null}
 
-        <div style={{ display: 'grid', gap: 18 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            borderBottom: '1px solid #e5e9f3',
+            marginBottom: 16,
+          }}
+        >
           {assetSections.map((section) => {
-            const items = filterAssets(
-              section.type,
-              assetsByType[section.type],
-            );
+            const count = assetsByType[section.type].length;
+            const completed = assetsByType[section.type].filter(
+              (item) => item.status === 'CONFIRMED',
+            ).length;
+            const active = activeType === section.type;
             return (
-              <section
+              <button
                 key={section.type}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveType(section.type)}
                 style={{
-                  border: '1px solid #e6ebf5',
-                  borderRadius: 8,
-                  background: '#fbfcff',
-                  padding: 18,
+                  border: 0,
+                  borderBottom: active ? '2px solid #5252ff' : '2px solid transparent',
+                  background: 'transparent',
+                  color: active ? '#3434d6' : '#667085',
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  fontWeight: active ? 600 : 400,
                 }}
               >
-                <Flex justify="space-between" align="center">
-                  <div>
-                    <Typography.Text strong style={{ fontSize: 16 }}>
-                      {section.title}
-                    </Typography.Text>
-                    <span
-                      style={{
-                        marginLeft: 10,
-                        color: '#7a849a',
-                        fontSize: 13,
-                      }}
-                    >
-                      {items.length}项
-                    </span>
-                  </div>
-                  <Flex gap={8}>
-                    <Button
-                      icon={<CheckOutlined />}
-                      disabled={
-                        !items.some((item) => item.status !== 'CONFIRMED')
-                      }
-                      loading={
-                        processingAction === `confirm-all-${section.type}`
-                      }
-                      onClick={() => confirmAssets(section.type, items)}
-                    >
-                      批量确认
-                    </Button>
-                    <Button
-                      icon={<RobotOutlined />}
-                      loading={processingAction === `extract-${section.type}`}
-                      onClick={() => extractAssets(section.type)}
-                    >
-                      AI提取{elementLabels[section.type]}
-                    </Button>
-                  </Flex>
-                </Flex>
-                {items.length ? (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns:
-                        'repeat(auto-fill, minmax(360px, 1fr))',
-                      gap: 14,
-                      marginTop: 14,
-                    }}
-                  >
-                    {items.map((item) => (
-                      <AssetCard
-                        key={`${section.type}-${item.id}`}
-                        item={item}
-                        type={section.type}
-                        onConfirm={confirmAsset}
-                        onDelete={deleteAsset}
-                        onSave={saveAsset}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ padding: '34px 0' }}>
-                    <Empty
-                      description={`暂无${elementLabels[section.type]}设定`}
-                    />
-                  </div>
-                )}
-              </section>
+                {elementLabels[section.type]}
+                <span style={{ marginLeft: 6, fontSize: 12, color: active ? '#5252ff' : '#98a2b3' }}>
+                  {completed}/{count}
+                </span>
+              </button>
             );
           })}
         </div>
+
+        {(() => {
+          const section = assetSections.find((item) => item.type === activeType) ?? assetSections[0];
+          const items = filterAssets(section.type, assetsByType[section.type]);
+          return (
+            <section>
+              <Flex justify="space-between" align="center" style={{ marginBottom: 14 }}>
+                <div>
+                  <Typography.Text strong style={{ fontSize: 16 }}>{section.title}</Typography.Text>
+                  <span style={{ marginLeft: 10, color: '#7a849a', fontSize: 13 }}>{items.length} 项</span>
+                </div>
+                <Flex gap={8}>
+                  <Input
+                    aria-label="搜索设定资产"
+                    prefix={<SearchOutlined />}
+                    value={keyword}
+                    onChange={(event) => setKeyword(event.target.value)}
+                    placeholder="搜索名称、类型、提示词"
+                    style={{ width: 250, height: 34, borderRadius: 8 }}
+                  />
+                  <Button
+                    icon={<CheckOutlined />}
+                    disabled={!items.some((item) => item.status !== 'CONFIRMED')}
+                    loading={processingAction === `confirm-all-${section.type}`}
+                    onClick={() => confirmAssets(section.type, items)}
+                  >
+                    批量确认
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<RobotOutlined />}
+                    loading={processingAction === `extract-${section.type}`}
+                    onClick={() => extractAssets(section.type)}
+                  >
+                    AI提取{elementLabels[section.type]}
+                  </Button>
+                </Flex>
+              </Flex>
+              {items.length ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                  {items.map((item) => (
+                    <AssetCard
+                      key={`${section.type}-${item.id}`}
+                      item={item}
+                      type={section.type}
+                      onConfirm={confirmAsset}
+                      onDelete={deleteAsset}
+                      onSave={saveAsset}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '56px 0', background: '#fff', border: '1px dashed #d9e0ed', borderRadius: 10 }}>
+                  <Empty description={`暂无${elementLabels[section.type]}设定`} />
+                </div>
+              )}
+            </section>
+          );
+        })()}
       </div>
     </div>
   );

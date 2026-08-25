@@ -36,7 +36,7 @@ public class AiVideoTaskController {
     }
 
     @PostMapping("/ai-video-tasks")
-    @RequireProjectPermission("AI_VIDEO_TASK:CREATE")
+    @RequireProjectPermission({"AI_VIDEO_TASK:CREATE", "AI_SERVICE:USE"})
     public ApiResponse<AiVideoTaskResponse> create(
         @PathVariable Long projectId,
         @Valid @RequestBody CreateAiVideoTaskRequest body,
@@ -76,7 +76,7 @@ public class AiVideoTaskController {
     }
 
     @PostMapping("/ai-video-tasks/{taskId}/regenerate")
-    @RequireProjectPermission("AI_VIDEO_TASK:CREATE")
+    @RequireProjectPermission({"AI_VIDEO_TASK:CREATE", "AI_SERVICE:USE"})
     public ApiResponse<AiVideoTaskResponse> regenerate(
         @PathVariable Long projectId,
         @PathVariable Long taskId,

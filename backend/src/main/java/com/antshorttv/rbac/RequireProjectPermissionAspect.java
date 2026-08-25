@@ -41,11 +41,10 @@ public class RequireProjectPermissionAspect {
         if (projectId == null || request == null) {
             throw invalidContext();
         }
-        projectPermissionGuard.require(
-            TenantRequestSupport.tenantId(request),
-            projectId,
-            requirePermission.value()
-        );
+        Long tenantId = TenantRequestSupport.tenantId(request);
+        for (String permission : requirePermission.value()) {
+            projectPermissionGuard.require(tenantId, projectId, permission);
+        }
     }
 
     private BusinessException invalidContext() {

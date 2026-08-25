@@ -1,7 +1,5 @@
 package com.antshorttv.shot;
 
-import com.antshorttv.ai.AiServiceConfigEntity;
-import com.antshorttv.ai.AiServiceConfigMapper;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.material.MaterialFileAccessService;
@@ -49,7 +47,6 @@ public class ShotProductionService {
 
     private final ProjectAccessResolver projectAccessResolver;
     private final StoryboardMapper storyboardMapper;
-    private final AiServiceConfigMapper aiServiceConfigMapper;
     private final AiVoiceTaskMapper aiVoiceTaskMapper;
     private final AiVoiceResultMapper aiVoiceResultMapper;
     private final StoryboardSubtitleMapper subtitleMapper;
@@ -70,7 +67,6 @@ public class ShotProductionService {
     public ShotProductionService(
         ProjectAccessResolver projectAccessResolver,
         StoryboardMapper storyboardMapper,
-        AiServiceConfigMapper aiServiceConfigMapper,
         AiVoiceTaskMapper aiVoiceTaskMapper,
         AiVoiceResultMapper aiVoiceResultMapper,
         StoryboardSubtitleMapper subtitleMapper,
@@ -90,7 +86,6 @@ public class ShotProductionService {
     ) {
         this.projectAccessResolver = projectAccessResolver;
         this.storyboardMapper = storyboardMapper;
-        this.aiServiceConfigMapper = aiServiceConfigMapper;
         this.aiVoiceTaskMapper = aiVoiceTaskMapper;
         this.aiVoiceResultMapper = aiVoiceResultMapper;
         this.subtitleMapper = subtitleMapper;
@@ -143,7 +138,6 @@ public class ShotProductionService {
         AiVoiceTaskEntity source = requireVoiceTask(tenantId, projectId, taskId);
         CreateAiVoiceTaskRequest body = new CreateAiVoiceTaskRequest(
             source.storyboardId,
-            source.serviceConfigId,
             source.voiceType,
             source.speakerName,
             source.voiceId,
@@ -226,16 +220,14 @@ public class ShotProductionService {
     public AiVoiceTaskResponse createVoiceTask(Long tenantId, Long projectId, CreateAiVoiceTaskRequest request, HttpServletRequest servletRequest) {
         TenantContext context = requireContext(tenantId, projectId);
         StoryboardEntity storyboard = requireStoryboard(tenantId, projectId, request.storyboardId());
-        AiServiceConfigEntity serviceConfig = resolveVoiceService(tenantId, request.serviceConfigId());
         LocalDateTime now = LocalDateTime.now();
 
         AiVoiceTaskEntity task = new AiVoiceTaskEntity();
         task.tenantId = tenantId;
         task.projectId = projectId;
         task.storyboardId = storyboard.id;
-        task.serviceConfigId = serviceConfig.getId();
-        task.providerCode = serviceConfig.getProvider();
-        task.model = serviceConfig.getModel();
+        task.providerCode = "LOCAL";
+        task.model = "PLACEHOLDER";
         task.voiceType = request.voiceType().trim();
         task.speakerName = blankToNull(request.speakerName());
         task.voiceId = request.voiceId().trim();
@@ -1107,29 +1099,6 @@ public class ShotProductionService {
 
     private TenantContext requireContext(Long tenantId, Long projectId) {
         return projectAccessResolver.requireView(tenantId, projectId).tenant();
-    }
-
-    private AiServiceConfigEntity resolveVoiceService(Long tenantId, Long serviceConfigId) {
-        QueryWrapper<AiServiceConfigEntity> base = new QueryWrapper<AiServiceConfigEntity>()
-            .eq("service_type", "VOICE")
-            .eq("enabled", true)
-            .isNull("deleted_at");
-        if (serviceConfigId != null) {
-            AiServiceConfigEntity selected = aiServiceConfigMapper.selectOne(base.clone().eq("id", serviceConfigId).last("limit 1"));
-            if (selected == null) {
-                throw new BusinessException(ErrorCode.AI_VOICE_SERVICE_UNAVAILABLE, "当前语音服务不可用。");
-            }
-            return selected;
-        }
-        AiServiceConfigEntity defaultConfig = aiServiceConfigMapper.selectOne(base.clone().eq("is_default", true).last("limit 1"));
-        if (defaultConfig != null) {
-            return defaultConfig;
-        }
-        AiServiceConfigEntity fallback = aiServiceConfigMapper.selectOne(base.orderByDesc("priority").orderByDesc("id").last("limit 1"));
-        if (fallback == null) {
-            throw new BusinessException(ErrorCode.AI_VOICE_SERVICE_UNAVAILABLE, "未配置可用语音服务。");
-        }
-        return fallback;
     }
 
     private StoryboardEntity requireStoryboard(Long tenantId, Long projectId, Long storyboardId) {

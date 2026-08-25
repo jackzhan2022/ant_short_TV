@@ -13,7 +13,6 @@ public class AiVoiceTaskEntity {
     public Long tenantId;
     public Long projectId;
     public Long storyboardId;
-    public Long serviceConfigId;
     public String providerCode;
     public String model;
     public String voiceType;

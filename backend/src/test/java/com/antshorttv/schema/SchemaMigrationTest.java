@@ -1,7 +1,6 @@
 package com.antshorttv.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -116,7 +115,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    void flywayCreatesAiServiceTablesAndProviders() {
+    void flywayKeepsPlatformAiTablesAndRemovesLegacyConfigurationTables() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
         Integer tableCount = jdbc.queryForObject("""
@@ -132,32 +131,29 @@ class SchemaMigrationTest {
             where code in ('OpenAI', 'Gemini', '火山', 'MiniMax')
             """, Integer.class);
 
-        assertThat(tableCount).isEqualTo(4);
+        assertThat(tableCount).isEqualTo(2);
         assertThat(providerCount).isEqualTo(4);
     }
 
     @Test
-    void aiServiceConfigKeepsOneActiveDefaultPerServiceTypeGlobally() {
+    void flywayLeavesOnlyModelBasedWorkflowColumns() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
-        jdbc.update("delete from ai_service_config");
-        jdbc.update("""
-            insert into ai_service_config
-              (tenant_id, provider, service_type, name, base_url, api_key_cipher, model,
-               priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
-            values
-              (100, 'OpenAI', 'TEXT', 'OpenAI 默认', 'https://example.com', 'cipher-1',
-               'model-a', 100, true, true, 'UNTESTED', 1, now(), now())
-            """);
+        Integer modelColumns = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where lower(column_name) = 'model_id'
+               and lower(table_name) in ('ai_image_task', 'ai_video_task')
+            """, Integer.class);
+        Integer legacyColumns = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where lower(column_name) in ('service_config_id', 'legacy_service_config_id')
+               and lower(table_name) in ('ai_image_task', 'ai_video_task', 'ai_voice_task', 'ai_call_log', 'ai_model')
+            """, Integer.class);
 
-        assertThatThrownBy(() -> jdbc.update("""
-            insert into ai_service_config
-              (tenant_id, provider, service_type, name, base_url, api_key_cipher, model,
-               priority, is_default, enabled, last_test_status, created_by, created_at, updated_at)
-            values
-              (101, 'Gemini', 'TEXT', 'Gemini 默认', 'https://example.com', 'cipher-2',
-               'model-b', 90, true, true, 'UNTESTED', 1, now(), now())
-            """)).isInstanceOf(Exception.class);
+        assertThat(modelColumns).isEqualTo(2);
+        assertThat(legacyColumns).isZero();
     }
 
     @Test

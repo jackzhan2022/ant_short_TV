@@ -188,7 +188,7 @@ class AiTaskExecutionSupportTest {
     private Long insertAiVideoTask() {
         jdbc.update("""
             insert into ai_video_task
-              (tenant_id, project_id, storyboard_id, service_config_id, provider_code, model, prompt,
+              (tenant_id, project_id, storyboard_id, model_id, provider_code, model, prompt,
                first_frame_url, duration_seconds, aspect_ratio, status, request_hash, poll_retry_count,
                created_by, created_at, updated_at, next_poll_at)
             values

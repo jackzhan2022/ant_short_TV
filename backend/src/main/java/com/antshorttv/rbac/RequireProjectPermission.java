@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RequireProjectPermission {
-    String value();
+    String[] value();
 
     String projectIdParameter() default "projectId";
 }

@@ -24,6 +24,8 @@ object-storage:
 
 ai:
   secret-key: test-ai-secret-key
+  testing:
+    mock-provider-enabled: true
   execution:
     dispatcher:
       enabled: false

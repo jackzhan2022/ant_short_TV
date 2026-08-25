@@ -146,10 +146,9 @@ class PlatformAiAccountingControllerTest {
         jdbc.update("""
             insert into ai_model
               (provider_id, code, name, model_code, service_type, description,
-               status, is_default, sort, config_json, legacy_service_config_id,
-               created_at, updated_at)
+               status, is_default, sort, config_json, created_at, updated_at)
             values (?, ?, 'Accounting Test', 'accounting-test', 'TEXT', null,
-                    'ENABLED', false, 0, null, null, now(), now())
+                    'ENABLED', false, 0, null, now(), now())
             """, providerId, code);
         return jdbc.queryForObject("select id from ai_model where code = ?", Long.class, code);
     }

@@ -141,7 +141,6 @@ class AiCallLogWriterTest {
         AiModelEntity model = new AiModelEntity();
         model.setId(801L);
         model.setName("Qwen3.7 Plus");
-        model.setLegacyServiceConfigId(901L);
         AiProviderEntity provider = new AiProviderEntity();
         provider.setId(802L);
         provider.setCode("阿里云百炼");

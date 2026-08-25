@@ -30,17 +30,14 @@ export default function access(
     canViewProjects: hasActiveTenant,
     canCreateProject:
       hasActiveTenant && tenantPermissions.includes('PROJECT:CREATE'),
-    canViewAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:VIEW'),
+    canViewAiCallLogs:
+      currentUser && tenantPermissions.includes('AI_CALL_LOG:VIEW'),
     canViewAiManagement:
       currentUser &&
-      (tenantPermissions.includes('AI_SERVICE:VIEW') ||
+      (tenantPermissions.includes('AI_CALL_LOG:VIEW') ||
         platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_AGENT_VIEW')),
-    canCreateAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:CREATE'),
-    canEditAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:EDIT'),
-    canDeleteAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:DELETE'),
-    canTestAiServices: currentUser && tenantPermissions.includes('AI_SERVICE:TEST'),
     canViewPlatformAiProviders:
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
     canCreatePlatformAiProviders:
@@ -68,7 +65,9 @@ export default function access(
     canViewAiImageTasks:
       currentUser && tenantPermissions.includes('AI_IMAGE_TASK:VIEW'),
     canCreateAiImageTasks:
-      currentUser && tenantPermissions.includes('AI_IMAGE_TASK:CREATE'),
+      currentUser &&
+      tenantPermissions.includes('AI_IMAGE_TASK:CREATE') &&
+      tenantPermissions.includes('AI_SERVICE:USE'),
     canAiGenerateScript:
       currentUser &&
       tenantPermissions.includes('SCRIPT:AI_GENERATE') &&
@@ -96,7 +95,9 @@ export default function access(
     canViewAiVideoTasks:
       currentUser && tenantPermissions.includes('AI_VIDEO_TASK:VIEW'),
     canCreateAiVideoTasks:
-      currentUser && tenantPermissions.includes('AI_VIDEO_TASK:CREATE'),
+      currentUser &&
+      tenantPermissions.includes('AI_VIDEO_TASK:CREATE') &&
+      tenantPermissions.includes('AI_SERVICE:USE'),
     canCancelAiVideoTasks:
       currentUser && tenantPermissions.includes('AI_VIDEO_TASK:CANCEL'),
     canDeleteAiVideoTasks:

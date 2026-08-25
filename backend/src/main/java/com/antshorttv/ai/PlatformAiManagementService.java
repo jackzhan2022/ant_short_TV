@@ -223,44 +223,6 @@ public class PlatformAiManagementService {
         return modelResponse(model);
     }
 
-    void syncLegacyConfig(AiServiceConfigEntity config) {
-        AiProviderEntity provider = aiProviderMapper.selectOne(new LambdaQueryWrapper<AiProviderEntity>()
-            .eq(AiProviderEntity::getCode, config.getProvider())
-            .last("limit 1"));
-        if (provider == null) {
-            return;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        upsertProviderConfig(provider, null, config.getBaseUrl(), provider.getStatus(), now, config.getApiKeyCipher());
-        AiModelEntity model = aiModelMapper.selectOne(new LambdaQueryWrapper<AiModelEntity>()
-            .eq(AiModelEntity::getLegacyServiceConfigId, config.getId())
-            .last("limit 1"));
-        if (model == null) {
-            model = new AiModelEntity();
-            model.setCreatedAt(now);
-            model.setCode("%s_%s_%d".formatted(safeCode(config.getProvider()), config.getServiceType(), config.getId()));
-            model.setLegacyServiceConfigId(config.getId());
-        }
-        model.setProviderId(provider.getId());
-        model.setName(config.getName());
-        model.setModelCode(config.getModel());
-        model.setServiceType(config.getServiceType());
-        model.setDescription(config.getRemark());
-        model.setStatus(Boolean.TRUE.equals(config.getEnabled()) ? "ENABLED" : "DISABLED");
-        model.setIsDefault(Boolean.TRUE.equals(config.getIsDefault()));
-        model.setSort(config.getPriority() == null ? 0 : config.getPriority());
-        model.setUpdatedAt(now);
-        if (Boolean.TRUE.equals(model.getIsDefault())) {
-            clearModelDefault(model.getServiceType(), model.getId());
-        }
-        if (model.getId() == null) {
-            aiModelMapper.insert(model);
-        } else {
-            aiModelMapper.updateById(model);
-        }
-        ensureDefaultCapability(model, now);
-    }
-
     private PlatformProviderResponse providerResponse(AiProviderEntity provider) {
         AiProviderConfigEntity config = providerConfig(provider.getId());
         String masked = config == null || config.getApiKeyCipher() == null ? null : aiSecretCodec.mask(config.getApiKeyCipher());
@@ -418,7 +380,4 @@ public class PlatformAiManagementService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private String safeCode(String value) {
-        return value == null ? "MODEL" : value.replaceAll("[^A-Za-z0-9]", "_").toUpperCase();
-    }
 }

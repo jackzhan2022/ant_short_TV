@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 
 record CreateAiVideoTaskRequest(
     @NotNull Long storyboardId,
-    Long serviceConfigId,
+    Long modelId,
     @NotBlank @Size(max = 3000) String prompt,
     @Size(max = 1000) String negativePrompt,
     Long firstFrameImageId,

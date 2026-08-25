@@ -30,7 +30,10 @@ class AiModelRouterTest {
             Long.class
         );
         jdbcTemplate.update("update ai_provider set status = 'ENABLED' where id = ?", providerId);
-        jdbcTemplate.update("update ai_provider_config set status = 'ENABLED' where provider_id = ?", providerId);
+        jdbcTemplate.update(
+            "update ai_provider_config set api_key_cipher = 'test-cipher', status = 'ENABLED' where provider_id = ?",
+            providerId
+        );
     }
 
     @Test
@@ -65,6 +68,68 @@ class AiModelRouterTest {
 
         assertThat(route.model().getId()).isEqualTo(availableId);
         assertThat(route.model().getId()).isNotEqualTo(unavailableId);
+    }
+
+    @Test
+    void rejectsProviderConfigurationWithoutCredentials() {
+        Long modelId = insertModel("ROUTER_MISSING_CREDENTIALS", "TEXT", false, 992);
+        insertCapability(modelId, "TEXT_GENERATION", "ENABLED");
+        jdbcTemplate.update(
+            "update ai_provider_config set api_key_cipher = null, status = 'ENABLED' where provider_id = ?",
+            providerId
+        );
+
+        assertThatThrownBy(() -> router.route(modelId, "TEXT"))
+            .isInstanceOf(AiGatewayException.class)
+            .extracting(exception -> ((AiGatewayException) exception).getErrorCode())
+            .isEqualTo(ErrorCode.AI_PROVIDER_DISABLED);
+    }
+
+    @Test
+    void invalidExplicitModelDoesNotFallBackToDefault() {
+        Long defaultId = insertModel("ROUTER_VALID_DEFAULT", "TEXT", true, 993);
+        insertCapability(defaultId, "TEXT_GENERATION", "ENABLED");
+
+        assertThatThrownBy(() -> router.route(Long.MAX_VALUE, "TEXT"))
+            .isInstanceOf(AiGatewayException.class)
+            .extracting(exception -> ((AiGatewayException) exception).getErrorCode())
+            .isEqualTo(ErrorCode.AI_MODEL_NOT_FOUND);
+    }
+
+    @Test
+    void routesExplicitEnabledCompatibleModel() {
+        Long modelId = insertModel("ROUTER_EXPLICIT_MODEL", "IMAGE", false, 994);
+        insertCapability(modelId, "IMAGE_GENERATION", "ENABLED");
+        jdbcTemplate.update(
+            "update ai_provider_config set api_key_cipher = 'test-cipher', status = 'ENABLED' where provider_id = ?",
+            providerId
+        );
+
+        assertThat(router.route(modelId, "IMAGE").model().getId()).isEqualTo(modelId);
+    }
+
+    @Test
+    void rejectsDisabledExplicitModel() {
+        Long modelId = insertModel("ROUTER_DISABLED_MODEL", "TEXT", false, 995);
+        insertCapability(modelId, "TEXT_GENERATION", "ENABLED");
+        jdbcTemplate.update("update ai_model set status = 'DISABLED' where id = ?", modelId);
+
+        assertThatThrownBy(() -> router.route(modelId, "TEXT"))
+            .isInstanceOf(AiGatewayException.class)
+            .extracting(exception -> ((AiGatewayException) exception).getErrorCode())
+            .isEqualTo(ErrorCode.AI_MODEL_DISABLED);
+    }
+
+    @Test
+    void rejectsModelOwnedByDisabledProvider() {
+        Long modelId = insertModel("ROUTER_DISABLED_PROVIDER", "TEXT", false, 996);
+        insertCapability(modelId, "TEXT_GENERATION", "ENABLED");
+        jdbcTemplate.update("update ai_provider set status = 'DISABLED' where id = ?", providerId);
+
+        assertThatThrownBy(() -> router.route(modelId, "TEXT"))
+            .isInstanceOf(AiGatewayException.class)
+            .extracting(exception -> ((AiGatewayException) exception).getErrorCode())
+            .isEqualTo(ErrorCode.AI_PROVIDER_DISABLED);
     }
 
     private Long insertModel(String code, String serviceType, boolean isDefault, int sort) {

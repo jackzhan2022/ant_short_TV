@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.antshorttv.ai.AiSecretCodec;
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
 import com.jayway.jsonpath.JsonPath;
@@ -55,13 +56,16 @@ class AiVideoTaskControllerTest {
     @Autowired
     private AiVideoTaskService aiVideoTaskService;
 
+    @Autowired
+    private AiSecretCodec aiSecretCodec;
+
     @Test
     void createsCompletesSavesBindsAndProtectsStoryboardVideoResult() throws Exception {
         String token = registerUser("13800016001", "Video Owner");
         Long tenantId = createTenant(token, "视频生成团队");
         Long ownerId = userIdByMobile("13800016001");
         Long projectId = createProject(token, tenantId, ownerId, "分镜视频项目", "AI_VIDEO_TASK_FLOW");
-        Long serviceConfigId = createVideoService(token, tenantId);
+        Long modelId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 5);
 
@@ -72,7 +76,7 @@ class AiVideoTaskControllerTest {
                 .content("""
                     {
                       "storyboardId":%d,
-                      "serviceConfigId":%d,
+                      "modelId":%d,
                       "prompt":"雨夜中女主缓慢推门进入，镜头轻微推近，情绪紧张",
                       "negativePrompt":"画面扭曲，人物畸形",
                       "firstFrameUrl":"https://cdn.example.com/first-frame.jpg",
@@ -82,7 +86,7 @@ class AiVideoTaskControllerTest {
                       "cameraMovement":"PUSH_IN",
                       "motionStrength":"MEDIUM"
                     }
-                    """.formatted(storyboardId, serviceConfigId)))
+                    """.formatted(storyboardId, modelId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", notNullValue()))
             .andExpect(jsonPath("$.data.executionId", notNullValue()))
@@ -149,12 +153,12 @@ class AiVideoTaskControllerTest {
         Long tenantId = createTenant(token, "幂等视频团队");
         Long ownerId = userIdByMobile("13800016004");
         Long projectId = createProject(token, tenantId, ownerId, "幂等视频项目", "AI_VIDEO_IDEMPOTENT");
-        Long serviceConfigId = createVideoService(token, tenantId);
+        Long modelId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 1);
 
-        Long firstTaskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "同一条视频提示词");
-        Long secondTaskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "同一条视频提示词");
+        Long firstTaskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "同一条视频提示词");
+        Long secondTaskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "同一条视频提示词");
 
         assert firstTaskId.equals(secondTaskId);
         Integer taskCount = jdbc.queryForObject(
@@ -174,17 +178,17 @@ class AiVideoTaskControllerTest {
         Long tenantId = createTenant(token, "并发视频团队");
         Long ownerId = userIdByMobile("13800016005");
         Long projectId = createProject(token, tenantId, ownerId, "并发视频项目", "AI_VIDEO_CONCURRENCY");
-        Long serviceConfigId = createVideoService(token, tenantId);
+        Long modelId = createVideoService(token, tenantId);
         Long firstStoryboardId = createStoryboard(tenantId, projectId, ownerId);
         Long secondStoryboardId = createStoryboardWithShot(tenantId, projectId, ownerId, 2);
         grantTeamPoints(tenantId, 1);
-        createVideoTask(token, tenantId, projectId, firstStoryboardId, serviceConfigId, "第一条视频提示词");
+        createVideoTask(token, tenantId, projectId, firstStoryboardId, modelId, "第一条视频提示词");
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(videoTaskPayload(secondStoryboardId, serviceConfigId, "第二条视频提示词")))
+                .content(videoTaskPayload(secondStoryboardId, modelId, "第二条视频提示词")))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.errorCode", is("AI_VIDEO_CONCURRENCY_LIMIT_EXCEEDED")));
     }
@@ -195,14 +199,14 @@ class AiVideoTaskControllerTest {
         Long tenantId = createTenant(token, "视频积分团队");
         Long ownerId = userIdByMobile("13800016008");
         Long projectId = createProject(token, tenantId, ownerId, "视频积分项目", "AI_VIDEO_NO_POINTS");
-        Long serviceConfigId = createVideoService(token, tenantId);
+        Long modelId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(videoTaskPayload(storyboardId, serviceConfigId, "积分不足的视频提示词")))
+                .content(videoTaskPayload(storyboardId, modelId, "积分不足的视频提示词")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
     }
@@ -213,10 +217,10 @@ class AiVideoTaskControllerTest {
         Long tenantId = createTenant(token, "轮询视频团队");
         Long ownerId = userIdByMobile("13800016006");
         Long projectId = createProject(token, tenantId, ownerId, "轮询视频项目", "AI_VIDEO_POLLING");
-        Long serviceConfigId = createVideoService(token, tenantId);
+        Long modelId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 1);
-        Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "后台轮询视频提示词");
+        Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "后台轮询视频提示词");
 
         aiVideoTaskService.pollDueTasks();
         aiVideoTaskService.pollDueTasks();
@@ -246,10 +250,10 @@ class AiVideoTaskControllerTest {
         Long tenantId = createTenant(token, "超时视频团队");
         Long ownerId = userIdByMobile("13800016007");
         Long projectId = createProject(token, tenantId, ownerId, "超时视频项目", "AI_VIDEO_TIMEOUT");
-        Long serviceConfigId = createVideoService(token, tenantId);
+        Long modelId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 1);
-        Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "超时视频提示词");
+        Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "超时视频提示词");
         jdbc.update("""
             update ai_video_task
             set submitted_at = dateadd('minute', -25, now()),
@@ -299,8 +303,6 @@ class AiVideoTaskControllerTest {
         Long ownerId = userIdByMobile("13800016003");
         Long projectId = createProject(token, tenantId, ownerId, "无服务项目", "AI_VIDEO_NO_SERVICE");
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
-        jdbc.update("delete from ai_service_config where service_type = 'VIDEO'");
-
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
@@ -313,8 +315,8 @@ class AiVideoTaskControllerTest {
                       "aspectRatio":"9:16"
                     }
                     """.formatted(storyboardId)))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errorCode", is("AI_VIDEO_SERVICE_UNAVAILABLE")));
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.errorCode", is("AI_MODEL_NOT_FOUND")));
     }
 
     @Test
@@ -323,7 +325,7 @@ class AiVideoTaskControllerTest {
         Long tenantId = createTenant(token, "解密失败团队");
         Long ownerId = userIdByMobile("13800016009");
         Long projectId = createProject(token, tenantId, ownerId, "解密失败项目", "AI_VIDEO_DECRYPT");
-        Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:0/v1");
+        Long modelId = createVideoService(token, tenantId, "http://127.0.0.1:0/v1");
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 1);
 
@@ -333,10 +335,10 @@ class AiVideoTaskControllerTest {
         server.start();
         int port = server.getAddress().getPort();
         jdbc.update(
-            "update ai_service_config set base_url = ?, api_key_cipher = ? where id = ?",
+            "update ai_provider_config set base_url = ?, api_key_cipher = ? where provider_id = (select provider_id from ai_model where id = ?)",
             "http://127.0.0.1:" + port + "/v1",
             "not-a-valid-cipher",
-            serviceConfigId
+            modelId
         );
 
         try {
@@ -344,7 +346,7 @@ class AiVideoTaskControllerTest {
                     .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(videoTaskPayload(storyboardId, serviceConfigId, "密钥坏掉的视频提示词")))
+                    .content(videoTaskPayload(storyboardId, modelId, "密钥坏掉的视频提示词")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status", is("FAILED")))
                 .andExpect(jsonPath("$.data.errorMessage", containsString("AI 服务密钥解密失败")));
@@ -373,11 +375,11 @@ class AiVideoTaskControllerTest {
             Long tenantId = createTenant(token, "坏密钥视频团队");
             Long ownerId = userIdByMobile("13800016010");
             Long projectId = createProject(token, tenantId, ownerId, "坏密钥视频项目", "AI_VIDEO_BROKEN_KEY");
-            Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            Long modelId = createVideoService(token, tenantId, "http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
             jdbc.update(
-                "update ai_service_config set api_key_cipher = ? where id = ?",
+                "update ai_provider_config set api_key_cipher = ? where provider_id = (select provider_id from ai_model where id = ?)",
                 new com.antshorttv.ai.AiSecretCodec("other-secret").encrypt("sk-real-qwen"),
-                serviceConfigId
+                modelId
             );
             Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
             grantTeamPoints(tenantId, 5);
@@ -389,7 +391,7 @@ class AiVideoTaskControllerTest {
                     .content("""
                         {
                           "storyboardId":%d,
-                          "serviceConfigId":%d,
+                          "modelId":%d,
                           "prompt":"雨夜中女主缓慢推门进入",
                           "firstFrameUrl":"https://cdn.example.com/first-frame.jpg",
                           "durationSeconds":5,
@@ -398,7 +400,7 @@ class AiVideoTaskControllerTest {
                           "cameraMovement":"PUSH_IN",
                           "motionStrength":"MEDIUM"
                         }
-                        """.formatted(storyboardId, serviceConfigId)))
+                      """.formatted(storyboardId, modelId)))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -442,10 +444,10 @@ class AiVideoTaskControllerTest {
             Long tenantId = createTenant(token, "轮询重试团队");
             Long ownerId = userIdByMobile("13800016011");
             Long projectId = createProject(token, tenantId, ownerId, "轮询重试项目", "AI_VIDEO_POLL_RETRY");
-            Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
+            Long modelId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
             Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
             grantTeamPoints(tenantId, 1);
-            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "轮询失败后恢复");
+            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "轮询失败后恢复");
 
             pollVideoTask(token, tenantId, projectId, taskId);
             pollVideoTask(token, tenantId, projectId, taskId)
@@ -484,10 +486,10 @@ class AiVideoTaskControllerTest {
             Long tenantId = createTenant(token, "取消视频团队");
             Long ownerId = userIdByMobile("13800016012");
             Long projectId = createProject(token, tenantId, ownerId, "取消视频项目", "AI_VIDEO_CANCEL");
-            Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
+            Long modelId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
             Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
             grantTeamPoints(tenantId, 1);
-            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "取消后不查询");
+            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "取消后不查询");
 
             mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/cancel".formatted(projectId, taskId))
                     .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -517,10 +519,10 @@ class AiVideoTaskControllerTest {
             Long tenantId = createTenant(token, "下载失败团队");
             Long ownerId = userIdByMobile("13800016013");
             Long projectId = createProject(token, tenantId, ownerId, "下载失败项目", "AI_VIDEO_DOWNLOAD_FAIL");
-            Long serviceConfigId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
+            Long modelId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
             Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
             grantTeamPoints(tenantId, 1);
-            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "下载失败重试");
+            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "下载失败重试");
 
             pollVideoTask(token, tenantId, projectId, taskId);
             pollVideoTask(token, tenantId, projectId, taskId);
@@ -553,10 +555,10 @@ class AiVideoTaskControllerTest {
         Long tenantId = createTenant(token, "视频结算团队");
         Long ownerId = userIdByMobile("13800016014");
         Long projectId = createProject(token, tenantId, ownerId, "视频结算项目", "AI_VIDEO_SETTLEMENT");
-        Long serviceConfigId = createVideoService(token, tenantId);
+        Long modelId = createVideoService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 2);
-        Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, serviceConfigId, "视频结算关联");
+        Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "视频结算关联");
 
         pollVideoTask(token, tenantId, projectId, taskId);
 
@@ -660,28 +662,47 @@ class AiVideoTaskControllerTest {
     }
 
     private Long createVideoService(String token, Long tenantId, String baseUrl) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {
-                      "name":"默认视频服务",
-                      "serviceType":"VIDEO",
-                      "provider":"火山",
-                      "baseUrl":"%s",
-                      "apiKey":"sk-test-1234",
-                      "model":"seedance-test",
-                      "endpoint":"/video/generations",
-                      "queryEndpoint":"/video/tasks",
-                      "priority":100,
-                      "isDefault":true,
-                      "enabled":true,
-                      "remark":"测试视频服务"
-                    }
-                    """.formatted(baseUrl)))
-            .andExpect(status().isOk())
-            .andReturn();
-        return readLong(result, "$.data.id");
+        Long providerId = jdbc.queryForObject(
+            "select id from ai_provider where code = '火山'",
+            Long.class
+        );
+        jdbc.update("update ai_provider set status = 'ENABLED' where id = ?", providerId);
+        jdbc.update(
+            "update ai_provider_config set api_key_cipher = ?, base_url = ?, status = 'ENABLED' where provider_id = ?",
+            aiSecretCodec.encrypt("sk-test-1234"),
+            baseUrl,
+            providerId
+        );
+        Long modelId = jdbc.query(
+            "select id from ai_model where code = 'TEST_VOLCENGINE_VIDEO'",
+            rs -> rs.next() ? rs.getLong(1) : null
+        );
+        if (modelId == null) {
+            jdbc.update(
+                """
+                    insert into ai_model
+                      (provider_id, code, name, model_code, service_type, status, is_default, sort, config_json, created_at, updated_at)
+                    values (?, 'TEST_VOLCENGINE_VIDEO', '测试视频模型', 'seedance-test', 'VIDEO', 'ENABLED', true, 100,
+                      '{"submitEndpoint":"/video/generations","queryEndpoint":"/video/tasks"}', now(), now())
+                    """,
+                providerId
+            );
+            modelId = jdbc.queryForObject(
+                "select id from ai_model where code = 'TEST_VOLCENGINE_VIDEO'",
+                Long.class
+            );
+            jdbc.update(
+                """
+                    insert into ai_model_capability
+                      (model_id, capability, status, created_at, updated_at)
+                    values (?, 'VIDEO_GENERATION', 'ENABLED', now(), now())
+                    """,
+                modelId
+            );
+        } else {
+            jdbc.update("update ai_model set status = 'ENABLED', is_default = true where id = ?", modelId);
+        }
+        return modelId;
     }
 
     private Long createVideoTask(
@@ -689,14 +710,14 @@ class AiVideoTaskControllerTest {
         Long tenantId,
         Long projectId,
         Long storyboardId,
-        Long serviceConfigId,
+        Long modelId,
         String prompt
     ) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(videoTaskPayload(storyboardId, serviceConfigId, prompt)))
+                .content(videoTaskPayload(storyboardId, modelId, prompt)))
             .andExpect(status().isOk())
             .andReturn();
         return readLong(result, "$.data.id");
@@ -710,11 +731,11 @@ class AiVideoTaskControllerTest {
             """, tenantId, amount, amount);
     }
 
-    private String videoTaskPayload(Long storyboardId, Long serviceConfigId, String prompt) {
+    private String videoTaskPayload(Long storyboardId, Long modelId, String prompt) {
         return """
             {
               "storyboardId":%d,
-              "serviceConfigId":%d,
+              "modelId":%d,
               "prompt":"%s",
               "firstFrameUrl":"https://cdn.example.com/first-frame.jpg",
               "durationSeconds":5,
@@ -723,7 +744,7 @@ class AiVideoTaskControllerTest {
               "cameraMovement":"PUSH_IN",
               "motionStrength":"MEDIUM"
             }
-            """.formatted(storyboardId, serviceConfigId, prompt);
+            """.formatted(storyboardId, modelId, prompt);
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

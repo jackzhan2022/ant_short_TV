@@ -2,8 +2,9 @@ package com.antshorttv.video;
 
 import com.antshorttv.ai.AiProviderExecutionOutcome;
 import com.antshorttv.ai.AiProviderReconciliationStatus;
+import com.antshorttv.ai.AiModelEntity;
+import com.antshorttv.ai.AiProviderConfigEntity;
 import com.antshorttv.ai.AiSecretCodec;
-import com.antshorttv.ai.AiServiceConfigEntity;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
@@ -27,11 +28,12 @@ public class AiVideoProviderAdapter {
     }
 
     public AiProviderExecutionOutcome<VideoResult> submit(
-        AiServiceConfigEntity config,
+        AiProviderConfigEntity providerConfig,
+        AiModelEntity model,
         AiVideoTaskEntity task,
         String idempotencyKey
     ) throws Exception {
-        String endpoint = requireEndpoint(config.getEndpoint(), "视频服务未配置提交接口。");
+        String endpoint = modelEndpoint(model, "submitEndpoint", "/video/generations");
         String payload = objectMapper.writeValueAsString(Map.of(
             "model", task.model,
             "prompt", task.prompt,
@@ -44,7 +46,7 @@ public class AiVideoProviderAdapter {
             "motionStrength", task.motionStrength == null ? "MEDIUM" : task.motionStrength,
             "randomSeed", task.randomSeed == null ? "" : task.randomSeed
         ));
-        JsonNode body = sendJson(config, endpoint, payload, idempotencyKey);
+        JsonNode body = sendJson(providerConfig, endpoint, payload, idempotencyKey);
         String externalTaskId = firstText(body, "externalTaskId", "external_task_id", "taskId", "task_id", "id");
         if (externalTaskId == null) {
             throw new IllegalStateException("服务商未返回任务 ID。");
@@ -58,13 +60,14 @@ public class AiVideoProviderAdapter {
     }
 
     public AiProviderExecutionOutcome<VideoResult> poll(
-        AiServiceConfigEntity config,
+        AiProviderConfigEntity providerConfig,
+        AiModelEntity model,
         String externalTaskId,
         String idempotencyKey
     ) throws Exception {
-        String endpoint = requireEndpoint(config.getQueryEndpoint(), "视频服务未配置查询接口。");
+        String endpoint = modelEndpoint(model, "queryEndpoint", "/video/tasks");
         JsonNode body = sendJson(
-            config,
+            providerConfig,
             endpoint,
             objectMapper.writeValueAsString(Map.of("externalTaskId", externalTaskId)),
             idempotencyKey
@@ -108,14 +111,14 @@ public class AiVideoProviderAdapter {
     }
 
     private JsonNode sendJson(
-        AiServiceConfigEntity config,
+        AiProviderConfigEntity providerConfig,
         String endpoint,
         String payload,
         String idempotencyKey
     ) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(buildUri(config.getBaseUrl(), endpoint))
+        HttpRequest request = HttpRequest.newBuilder(buildUri(providerConfig.getBaseUrl(), endpoint))
             .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer " + secretCodec.requireDecrypted(config.getApiKeyCipher()))
+            .header("Authorization", "Bearer " + secretCodec.requireDecrypted(providerConfig.getApiKeyCipher()))
             .header("Idempotency-Key", idempotencyKey)
             .POST(HttpRequest.BodyPublishers.ofString(payload))
             .build();
@@ -132,11 +135,12 @@ public class AiVideoProviderAdapter {
         return URI.create(base + path);
     }
 
-    private String requireEndpoint(String value, String message) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException(message);
+    private String modelEndpoint(AiModelEntity model, String field, String defaultEndpoint) throws Exception {
+        if (model.getConfigJson() == null || model.getConfigJson().isBlank()) {
+            return defaultEndpoint;
         }
-        return value.trim();
+        JsonNode value = objectMapper.readTree(model.getConfigJson()).get(field);
+        return value == null || value.asText().isBlank() ? defaultEndpoint : value.asText().trim();
     }
 
     private String firstText(JsonNode node, String... fields) {

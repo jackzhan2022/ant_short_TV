@@ -143,7 +143,7 @@ export default [
     routes: [
       {
         path: '/ai-service-management',
-        redirect: '/ai-service-management/services',
+        component: './ai-service-management',
       },
       {
         path: '/ai-service-management/providers',
@@ -160,17 +160,10 @@ export default [
         component: './ai-service-management/models',
       },
       {
-        path: '/ai-service-management/services',
-        name: 'services',
-        icon: 'setting',
-        access: 'canViewAiServices',
-        component: './ai-service-management/services',
-      },
-      {
         path: '/ai-service-management/logs',
         name: 'logs',
         icon: 'profile',
-        access: 'canViewAiServices',
+        access: 'canViewAiCallLogs',
         component: './ai-service-management/logs',
       },
       {

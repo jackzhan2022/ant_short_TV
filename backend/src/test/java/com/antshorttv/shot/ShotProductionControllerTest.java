@@ -52,7 +52,6 @@ class ShotProductionControllerTest {
         Long tenantId = createTenant(token, "五期制作团队");
         Long ownerId = userIdByMobile("13800017001");
         Long projectId = createProject(token, tenantId, ownerId, "五期项目", "SHOT_PHASE_5");
-        Long serviceConfigId = createVoiceService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 1);
 
@@ -63,7 +62,6 @@ class ShotProductionControllerTest {
                 .content("""
                     {
                       "storyboardId":%d,
-                      "serviceConfigId":%d,
                       "voiceType":"DIALOGUE",
                       "speakerName":"女主",
                       "voiceId":"female-cn-01",
@@ -72,7 +70,7 @@ class ShotProductionControllerTest {
                       "pitch":1.0,
                       "volume":1.0
                     }
-                    """.formatted(storyboardId, serviceConfigId)))
+                    """.formatted(storyboardId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
             .andExpect(jsonPath("$.data.results", hasSize(1)))
@@ -163,7 +161,6 @@ class ShotProductionControllerTest {
         Long tenantId = createTenant(token, "语音积分团队");
         Long ownerId = userIdByMobile("13800017009");
         Long projectId = createProject(token, tenantId, ownerId, "语音积分项目", "VOICE_NO_POINTS");
-        Long serviceConfigId = createVoiceService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
 
         mockMvc.perform(post("/api/projects/%d/ai-voice-tasks".formatted(projectId))
@@ -173,7 +170,6 @@ class ShotProductionControllerTest {
                 .content("""
                     {
                       "storyboardId":%d,
-                      "serviceConfigId":%d,
                       "voiceType":"NARRATION",
                       "voiceId":"default-cn-voice",
                       "textContent":"积分不足的旁白。",
@@ -181,7 +177,7 @@ class ShotProductionControllerTest {
                       "pitch":1.0,
                       "volume":1.0
                     }
-                    """.formatted(storyboardId, serviceConfigId)))
+                    """.formatted(storyboardId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
 
@@ -191,6 +187,10 @@ class ShotProductionControllerTest {
             tenantId
         );
         assertEquals(0, pointTransactions);
+        assertEquals(0, jdbc.queryForObject("select count(*) from ai_call_log where tenant_id = ?", Integer.class, tenantId));
+        assertEquals(0, jdbc.queryForObject("select count(*) from ai_usage_line where tenant_id = ?", Integer.class, tenantId));
+        assertEquals(0, jdbc.queryForObject("select count(*) from ai_usage_cost_line where tenant_id = ?", Integer.class, tenantId));
+        assertEquals(0, jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id = ?", Integer.class, tenantId));
     }
 
     @Test
@@ -218,7 +218,6 @@ class ShotProductionControllerTest {
         Long tenantId = createTenant(token, "字幕编辑团队");
         Long ownerId = userIdByMobile("13800017004");
         Long projectId = createProject(token, tenantId, ownerId, "字幕编辑项目", "SHOT_SUBTITLE");
-        Long serviceConfigId = createVoiceService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 1);
 
@@ -229,7 +228,6 @@ class ShotProductionControllerTest {
                 .content("""
                     {
                       "storyboardId":%d,
-                      "serviceConfigId":%d,
                       "voiceType":"NARRATION",
                       "voiceId":"default-cn-voice",
                       "textContent":"字幕编辑示例。",
@@ -237,7 +235,7 @@ class ShotProductionControllerTest {
                       "pitch":1.0,
                       "volume":1.0
                     }
-                    """.formatted(storyboardId, serviceConfigId)))
+                    """.formatted(storyboardId)))
             .andExpect(status().isOk())
             .andReturn();
         Long voiceResultId = readLong(voiceResult, "$.data.results[0].id");
@@ -288,7 +286,6 @@ class ShotProductionControllerTest {
         Long tenantId = createTenant(token, "五期管理团队");
         Long ownerId = userIdByMobile("13800017003");
         Long projectId = createProject(token, tenantId, ownerId, "五期管理项目", "SHOT_MANAGE");
-        Long serviceConfigId = createVoiceService(token, tenantId);
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 3);
 
@@ -299,7 +296,6 @@ class ShotProductionControllerTest {
                 .content("""
                     {
                       "storyboardId":%d,
-                      "serviceConfigId":%d,
                       "voiceType":"NARRATION",
                       "voiceId":"default-cn-voice",
                       "textContent":"第一句旁白。",
@@ -307,13 +303,13 @@ class ShotProductionControllerTest {
                       "pitch":1.0,
                       "volume":1.0
                     }
-                    """.formatted(storyboardId, serviceConfigId)))
+                    """.formatted(storyboardId)))
             .andExpect(status().isOk())
             .andReturn();
         Long voiceTaskId = readLong(voiceTask, "$.data.id");
         Long voiceResultId = readLong(voiceTask, "$.data.results[0].id");
 
-        Long pendingVoiceTaskId = insertPendingVoiceTask(tenantId, projectId, storyboardId, serviceConfigId, ownerId);
+        Long pendingVoiceTaskId = insertPendingVoiceTask(tenantId, projectId, storyboardId, ownerId);
         mockMvc.perform(post("/api/projects/%d/ai-voice-tasks/%d/cancel".formatted(projectId, pendingVoiceTaskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
@@ -677,46 +673,21 @@ class ShotProductionControllerTest {
         return storyboardId;
     }
 
-    private Long createVoiceService(String token, Long tenantId) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {
-                      "name":"默认语音服务",
-                      "serviceType":"VOICE",
-                      "provider":"MiniMax",
-                      "baseUrl":"mock://voice",
-                      "apiKey":"sk-test-voice",
-                      "model":"speech-2.6-hd",
-                      "endpoint":"/voice/synthesis",
-                      "priority":100,
-                      "isDefault":true,
-                      "enabled":true,
-                      "remark":"测试语音服务"
-                    }
-                    """))
-            .andExpect(status().isOk())
-            .andReturn();
-        return readLong(result, "$.data.id");
-    }
-
     private Long insertPendingVoiceTask(
         Long tenantId,
         Long projectId,
         Long storyboardId,
-        Long serviceConfigId,
         Long createdBy
     ) {
         jdbc.update("""
             insert into ai_voice_task
-              (tenant_id, project_id, storyboard_id, service_config_id, provider_code, model,
+              (tenant_id, project_id, storyboard_id, provider_code, model,
                voice_type, speaker_name, voice_id, text_content, speed, pitch, volume,
                status, started_at, created_by, created_at, updated_at)
             values
-              (?, ?, ?, ?, 'MiniMax', 'speech-2.6-hd', 'NARRATION', '旁白', 'default-cn-voice',
+              (?, ?, ?, 'LOCAL', 'PLACEHOLDER', 'NARRATION', '旁白', 'default-cn-voice',
                '待取消任务', 1.0, 1.0, 1.0, 'PENDING', now(), ?, now(), now())
-            """, tenantId, projectId, storyboardId, serviceConfigId, createdBy);
+            """, tenantId, projectId, storyboardId, createdBy);
         return jdbc.queryForObject(
             "select max(id) from ai_voice_task where tenant_id = ? and project_id = ?",
             Long.class,

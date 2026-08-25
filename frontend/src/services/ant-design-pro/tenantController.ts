@@ -35,9 +35,9 @@ export async function detail3(
 }
 
 /** 此处后端没有提供注释 PUT /api/tenants/${param0} */
-export async function update1(
+export async function update(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.update1Params,
+  params: API.updateParams,
   body: API.UpdateTenantRequest,
   options?: { [key: string]: any }
 ) {
@@ -57,9 +57,9 @@ export async function update1(
 }
 
 /** 此处后端没有提供注释 PUT /api/tenants/${param0}/status */
-export async function updateStatus2(
+export async function updateStatus1(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.updateStatus2Params,
+  params: API.updateStatus1Params,
   body: API.UpdateTenantStatusRequest,
   options?: { [key: string]: any }
 ) {

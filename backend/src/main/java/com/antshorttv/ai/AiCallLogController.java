@@ -19,7 +19,7 @@ public class AiCallLogController {
     }
 
     @GetMapping("/tenants/{tenantId}/ai-call-logs")
-    @RequirePermission("AI_SERVICE:VIEW")
+    @RequirePermission("AI_CALL_LOG:VIEW")
     public ApiResponse<AiCallLogPageResponse> list(
         @PathVariable Long tenantId,
         @RequestParam(defaultValue = "1") Integer current,

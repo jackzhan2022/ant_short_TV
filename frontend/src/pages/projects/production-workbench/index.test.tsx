@@ -50,6 +50,7 @@ vi.mock('antd', () => ({
 
 vi.mock('@ant-design/icons', () => ({
   ArrowLeftOutlined: () => <span>back</span>,
+  ArrowRightOutlined: () => <span>next</span>,
   BookOutlined: () => <span>book</span>,
   EditOutlined: () => <span>edit</span>,
   RobotOutlined: () => <span>robot</span>,
@@ -84,6 +85,7 @@ describe('ProductionWorkbench shell', () => {
 
     expect(await screen.findByText('最危险的捉迷藏')).toBeInTheDocument();
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /进入下一步/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设定' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI 模型' })).toBeInTheDocument();
     expect(await screen.findByText((_, element) => element?.textContent === '✦ 88')).toBeInTheDocument();
@@ -106,6 +108,16 @@ describe('ProductionWorkbench shell', () => {
 
     expect(mocks.historyPush).toHaveBeenCalledWith(
       '/projects/1/production-workbench/ai-config',
+    );
+  });
+
+  it('navigates from settings to storyboard with the next-step action', async () => {
+    render(<ProductionWorkbench />);
+
+    fireEvent.click(screen.getByRole('button', { name: /进入下一步/ }));
+
+    expect(mocks.historyPush).toHaveBeenCalledWith(
+      '/projects/1/production-workbench/storyboard',
     );
   });
 

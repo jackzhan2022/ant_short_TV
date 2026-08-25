@@ -6,12 +6,22 @@ AI calls should enter business code through `AiInvocationService` instead of eac
 
 The contract keeps provider adapters focused on transport and keeps workflow services focused on business state changes.
 
+Platform Provider configurations, Models, and Model Capabilities are the only configuration authority. Tenant users can invoke permitted workflows, but they cannot provide credentials or create, edit, enable, or test Providers and Models.
+
 ## Core Types
 
 - `AiCapability`: typed model-routing capability. Current values include `TEXT`, `IMAGE`, `VIDEO_UNDERSTANDING`, `VIDEO`, and `AUDIO`.
 - `AiBusinessScene`: stable business scene registry. Each scene owns its log code, display name, default capability, prompt template id when available, and point-consumption scene code.
 - `AiInvocationRequest`: carries tenant/user/project/task ids, model override, scene, trace id, request payload, request summary, prompt template id, and template variables.
 - `AiInvocationResult`: returns response payload, content summary, `aiCallLogId`, provider request id, resolved model/provider metadata, token usage, duration, and outcome status.
+
+## Model Selection and Routing
+
+Provider-backed image and video contracts accept an optional platform `modelId`. The application resolves the explicit Model first, then the project's configured Model for the required service type, and finally the enabled platform default. An explicit missing, disabled, Provider-disabled, or capability-incompatible Model fails without falling back.
+
+The resolved Model is persisted on both the domain task and shared execution. `AiModelRouter` validates the Model, capability, Provider, enabled Provider configuration, and usable credentials before `AiInvocationService` contacts the registered adapter. Business services must not read credentials or build provider requests directly.
+
+The current shot voice placeholder is local-only. It accepts no Model or configuration identifier and creates no AI invocation log, usage cost, point reservation, or settlement record.
 
 ## Prompt Templates
 
@@ -81,3 +91,5 @@ New AI workflows should:
 4. Invoke AI through `AiInvocationService`.
 5. Persist `AiInvocationResult.aiCallLogId()` and `providerRequestId()` on business attempts/results.
 6. Mark business parsing failure through `AiInvocationService.markBusinessFailure(...)`.
+
+Provider-backed workflows must expose `modelId`, not a credential/configuration record identifier. Local-only workflows must remain outside this contract until a real provider adapter and execution handler exist.

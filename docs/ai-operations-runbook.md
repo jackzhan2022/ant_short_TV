@@ -6,7 +6,9 @@ Every production AI request creates an `ai_execution_task` before provider conta
 
 ## Provider configuration
 
-Routing requires an enabled provider, enabled provider configuration, enabled model, and an enabled `ai_model_capability` row matching the requested capability. Platform provider testing performs a real text connectivity request using an enabled text-capability model. It must never use `mock://`, example endpoints, or test credentials as a connectivity result.
+Routing requires an enabled Provider, enabled Provider configuration with usable credentials, enabled Model, and an enabled `ai_model_capability` row matching the requested capability. Only platform administrators manage these records. Tenant permissions authorize use or tenant-scoped log inspection, never credential or Model management.
+
+Migration V48 clears all Provider credential ciphertext, connectivity state, and disables Provider configurations. After deployment, a platform administrator must re-enter each required credential and base URL, run the real connectivity test, enable the Provider configuration, and verify compatible Models and capability rows are enabled. Provider-backed requests must remain fail-closed until this sequence is complete. Connectivity testing must never treat `mock://`, example endpoints, or test credentials as success.
 
 ## Pricing and points
 
@@ -18,4 +20,4 @@ Cancellation before provider contact releases the reservation. Infrastructure re
 
 ## Security and retirement
 
-Call-log request, response, and error summaries redact bearer credentials, API keys, secrets, and passwords before persistence. APIs expose masked provider credentials only. New reads do not create `ai_model` rows from legacy `ai_service_config`; migrate remaining legacy records ahead of removing compatibility routes, old gateways, and direct provider HTTP.
+Call-log request, response, and error summaries redact bearer credentials, API keys, secrets, and passwords before persistence. APIs expose masked Provider credentials only. The retired tenant configuration API, UI, permissions, tables, legacy Model linkage, and credential fallback must remain absent. Image and video operations route by platform `modelId`; the current local voice placeholder has no Model, Provider call, call log, usage cost, or point settlement.

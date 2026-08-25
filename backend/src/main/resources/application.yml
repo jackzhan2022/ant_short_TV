@@ -64,6 +64,8 @@ object-storage:
 
 ai:
   secret-key: ${AI_SECRET_KEY:}
+  testing:
+    mock-provider-enabled: ${AI_TESTING_MOCK_PROVIDER_ENABLED:false}
   execution:
     dispatcher:
       enabled: ${AI_EXECUTION_DISPATCHER_ENABLED:true}

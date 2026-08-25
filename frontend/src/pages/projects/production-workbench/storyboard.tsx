@@ -1,8 +1,15 @@
 import {
+  AppstoreOutlined,
   BarsOutlined,
   CloseOutlined,
   CopyOutlined,
+  ExpandOutlined,
+  HolderOutlined,
+  InfoCircleOutlined,
+  MoreOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useParams } from '@umijs/max';
 import {
@@ -394,33 +401,34 @@ const StoryboardCard = ({
   return (
     <article
       style={{
-        border: '1px solid #e7ebf5',
-        borderRadius: 18,
+        border: '1px solid #e4e9f2',
+        borderRadius: 12,
         background: '#fff',
         overflow: 'hidden',
+        boxShadow: '0 2px 10px rgba(27, 39, 74, 0.04)',
       }}
     >
       <div
         style={{
-          height: 49,
-          borderBottom: '1px solid #eef2f8',
+          minHeight: 52,
+          borderBottom: '1px solid #edf0f6',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 20px 0 14px',
+          padding: '0 18px 0 16px',
         }}
       >
         <Flex align="center" gap={10}>
-          <span style={{ color: '#111827', letterSpacing: 1 }}>⁝⁝</span>
+          <HolderOutlined style={{ color: '#8a93a8', fontSize: 15 }} />
           <Typography.Text strong>分镜{index + 1}</Typography.Text>
           <span
             style={{
               height: 16,
               borderRadius: 4,
               background: '#eef1ff',
-              color: '#4957ff',
+              color: '#5454ff',
               fontSize: 10,
-              padding: '0 3px',
+              padding: '0 4px',
               lineHeight: '16px',
             }}
           >
@@ -433,7 +441,7 @@ const StoryboardCard = ({
               height: 32,
               borderRadius: 8,
               background: '#f7f8ff',
-              border: '1px solid #e7ebff',
+              border: '1px solid #e4e7fa',
               padding: '0 14px',
             }}
           >
@@ -469,7 +477,7 @@ const StoryboardCard = ({
             <span>首尾帧生视频</span>
           </Flex>
         </Flex>
-        <Flex gap={18} style={{ color: '#7f88a6', fontSize: 17 }}>
+        <Flex gap={4} style={{ color: '#7f88a6', fontSize: 16 }}>
           <Button
             type="text"
             size="small"
@@ -497,15 +505,16 @@ const StoryboardCard = ({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '400px minmax(520px, 1fr) 520px',
-          gap: 22,
-          padding: '16px 24px 24px',
+          gridTemplateColumns:
+            'minmax(340px, 0.9fr) minmax(480px, 1.25fr) minmax(360px, 0.95fr)',
+          gap: 20,
+          padding: '18px 20px 22px',
         }}
       >
         <section
           style={{
-            borderRight: '1px solid #eef2f7',
-            paddingRight: 22,
+            borderRight: '1px solid #edf0f6',
+            paddingRight: 20,
             minHeight: 520,
           }}
         >
@@ -569,8 +578,10 @@ const StoryboardCard = ({
                   onUpdateStoryboard(item, { characters: value || '' })
                 }
               />
-              <Button style={{ width: 118 }}>▶ 自定义音色</Button>
-              <Button style={{ width: 38 }}>...</Button>
+              <Button icon={<PlayCircleOutlined />} style={{ width: 118 }}>
+                自定义音色
+              </Button>
+              <Button aria-label="更多角色操作" icon={<MoreOutlined />} />
             </Flex>
           </div>
 
@@ -624,7 +635,7 @@ const StoryboardCard = ({
                   onUpdateStoryboard(item, { scene: value || '' })
                 }
               />
-              <Button style={{ width: 38 }}>...</Button>
+              <Button aria-label="更多场景操作" icon={<MoreOutlined />} />
             </Flex>
           </div>
 
@@ -666,7 +677,7 @@ const StoryboardCard = ({
                   onUpdateStoryboard(item, { props: value || '' })
                 }
               />
-              <Button style={{ width: 38 }}>...</Button>
+              <Button aria-label="更多道具操作" icon={<MoreOutlined />} />
             </Flex>
           </div>
         </section>
@@ -689,7 +700,7 @@ const StoryboardCard = ({
                 fontWeight: 600,
               }}
             >
-              <span>◎</span>
+              <ThunderboltOutlined />
               <span>3D导演台</span>
               <span style={{ color: '#6956ff', fontSize: 12 }}>Beta</span>
             </span>
@@ -708,8 +719,8 @@ const StoryboardCard = ({
               gap={10}
               style={{ color: '#b5bdcc', marginBottom: 12 }}
             >
-              <Button style={{ width: 38 }}>+</Button>
-              <Button style={{ width: 38 }}>▧</Button>
+              <Button aria-label="添加提示词引用" icon={<PlusOutlined />} />
+              <Button aria-label="复制提示词" icon={<AppstoreOutlined />} />
               <span>
                 使用 @
                 引用角色、场景、道具、音色及参考素材，编辑更灵活，分镜更精准
@@ -731,7 +742,9 @@ const StoryboardCard = ({
               style={{ marginTop: 9 }}
             >
               <Flex gap={6}>
-                <Button size="small">✦ {model}</Button>
+                <Button size="small" icon={<ThunderboltOutlined />}>
+                  {model}
+                </Button>
                 <Button size="small">
                   ◷ {item.durationSeconds || 5}s | 1个 | 720p | mp4
                 </Button>
@@ -751,7 +764,7 @@ const StoryboardCard = ({
                   fontWeight: 700,
                 }}
               >
-                ✦ 1,135
+                <ThunderboltOutlined /> 1,135
               </Button>
             </Flex>
             {videoTask?.execution ? (
@@ -770,7 +783,7 @@ const StoryboardCard = ({
           style={{
             position: 'relative',
             minHeight: 500,
-            background: '#f8faff',
+            background: '#f7f9fd',
             borderRadius: 10,
             overflow: 'hidden',
           }}
@@ -783,7 +796,7 @@ const StoryboardCard = ({
               zIndex: 2,
               height: 30,
               borderRadius: 8,
-              background: '#111827',
+              background: '#171c27',
               color: '#fff',
               display: 'flex',
               alignItems: 'center',
@@ -792,11 +805,11 @@ const StoryboardCard = ({
               fontSize: 12,
             }}
           >
-            <span>▣</span>
-            <span>↔</span>
-            <span>▤</span>
-            <span>T</span>
-            <span>ⓘ</span>
+            <AppstoreOutlined />
+            <ExpandOutlined />
+            <BarsOutlined />
+            <span style={{ fontSize: 12, fontWeight: 700 }}>T</span>
+            <InfoCircleOutlined />
           </div>
           <div
             style={{
@@ -844,7 +857,7 @@ const StoryboardCard = ({
                       fontSize: 24,
                     }}
                   >
-                    ▶
+                    <PlayCircleOutlined />
                   </span>
                 </>
               )}
@@ -1363,13 +1376,20 @@ const ProductionWorkbenchStoryboard = () => {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr' }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '64px minmax(0, 1fr)',
+        minHeight: 'calc(100vh - 68px)',
+        background: '#f8f9fc',
+      }}
+    >
       <aside
         style={{
           minHeight: 'calc(100vh - 68px)',
-          borderRight: '1px solid #e5eaf3',
+          borderRight: '1px solid #e4e9f2',
           background: '#fff',
-          paddingTop: 24,
+          paddingTop: 20,
         }}
       >
         <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: 17 }}>
@@ -1413,7 +1433,7 @@ const ProductionWorkbenchStoryboard = () => {
         </div>
       </aside>
 
-      <div style={{ padding: '16px 28px 34px' }}>
+      <div style={{ minWidth: 0, padding: '16px 24px 34px' }}>
         <Flex justify="space-between" align="center">
           <Button style={{ height: 32, fontWeight: 700 }}>分镜表</Button>
           <Flex gap={10}>

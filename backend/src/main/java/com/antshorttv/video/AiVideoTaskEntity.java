@@ -13,7 +13,7 @@ public class AiVideoTaskEntity {
     public Long tenantId;
     public Long projectId;
     public Long storyboardId;
-    public Long serviceConfigId;
+    public Long modelId;
     public String providerCode;
     public String model;
     public String prompt;

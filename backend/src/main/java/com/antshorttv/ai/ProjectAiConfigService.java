@@ -21,8 +21,7 @@ public class ProjectAiConfigService {
     private final ProjectMapper projectMapper;
     private final ProjectAiConfigMapper projectAiConfigMapper;
     private final AiModelMapper aiModelMapper;
-    private final AiProviderMapper aiProviderMapper;
-    private final AiServiceConfigMapper aiServiceConfigMapper;
+    private final AiModelRouter aiModelRouter;
     private final OperationLogService operationLogService;
 
     public ProjectAiConfigService(
@@ -30,16 +29,14 @@ public class ProjectAiConfigService {
         ProjectMapper projectMapper,
         ProjectAiConfigMapper projectAiConfigMapper,
         AiModelMapper aiModelMapper,
-        AiProviderMapper aiProviderMapper,
-        AiServiceConfigMapper aiServiceConfigMapper,
+        AiModelRouter aiModelRouter,
         OperationLogService operationLogService
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.projectMapper = projectMapper;
         this.projectAiConfigMapper = projectAiConfigMapper;
         this.aiModelMapper = aiModelMapper;
-        this.aiProviderMapper = aiProviderMapper;
-        this.aiServiceConfigMapper = aiServiceConfigMapper;
+        this.aiModelRouter = aiModelRouter;
         this.operationLogService = operationLogService;
     }
 
@@ -125,21 +122,7 @@ public class ProjectAiConfigService {
         if (modelId == null) {
             return;
         }
-        AiModelEntity model = aiModelMapper.selectById(modelId);
-        if (model == null || !serviceType.equals(model.getServiceType())) {
-            throw new BusinessException(ErrorCode.AI_MODEL_NOT_FOUND, "AI 模型不存在。");
-        }
-        if (!"ENABLED".equals(model.getStatus())) {
-            throw new BusinessException(ErrorCode.AI_MODEL_DISABLED, "AI 模型已停用。");
-        }
-        if (!providerEnabled(model)) {
-            throw new BusinessException(ErrorCode.AI_PROVIDER_DISABLED, "AI 服务商已停用。");
-        }
-    }
-
-    private boolean providerEnabled(AiModelEntity model) {
-        AiProviderEntity provider = aiProviderMapper.selectById(model.getProviderId());
-        return provider != null && "ENABLED".equals(provider.getStatus());
+        aiModelRouter.route(modelId, serviceType);
     }
 
     private Long defaultModelId(String serviceType) {
@@ -153,14 +136,12 @@ public class ProjectAiConfigService {
     }
 
     private boolean modelAvailable(AiModelEntity model) {
-        if (!providerEnabled(model)) {
+        try {
+            aiModelRouter.route(model.getId(), model.getServiceType());
+            return true;
+        } catch (AiGatewayException exception) {
             return false;
         }
-        if (model.getLegacyServiceConfigId() == null) {
-            return true;
-        }
-        AiServiceConfigEntity config = aiServiceConfigMapper.selectById(model.getLegacyServiceConfigId());
-        return config != null && config.getDeletedAt() == null && Boolean.TRUE.equals(config.getEnabled());
     }
 
     private ProjectEntity requireProject(TenantContext context, Long projectId) {

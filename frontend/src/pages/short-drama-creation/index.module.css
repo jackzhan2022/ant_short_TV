@@ -8,45 +8,49 @@
 
 .creationShell {
   min-height: 100vh;
-  padding: 132px 0 72px;
-  background:
-    radial-gradient(circle at 22% 8%, rgba(218, 239, 246, 0.62), transparent 29%),
-    radial-gradient(circle at 76% 22%, rgba(238, 232, 255, 0.72), transparent 31%),
-    radial-gradient(circle at 50% 60%, rgba(226, 244, 240, 0.42), transparent 34%),
-    linear-gradient(180deg, #ffffff 0%, #fbfcff 45%, #ffffff 100%);
+  padding: 64px 32px 72px;
+  background: #f3f4f6;
 }
 
 .heroTitle {
-  margin: 0 0 48px;
+  margin: 0 0 30px;
   text-align: center;
-  color: #050505;
-  font-size: 40px;
-  font-weight: 800;
-  line-height: 1.18;
+  color: #111318;
+  font-size: 34px;
+  font-weight: 750;
+  line-height: 1.25;
   letter-spacing: 0;
 }
 
 .heroTitle span {
-  color: #7435ff;
+  background: linear-gradient(90deg, #3a5cff 0%, #8109ff 100%);
+  background-clip: text;
+  color: transparent;
 }
 
 .scriptPanel {
   position: relative;
-  width: 76vw;
-  max-width: 1540px;
-  min-width: 980px;
+  width: min(100%, 1120px);
   margin: 0 auto;
   overflow: hidden;
-  border: 1px solid #8a5cff;
-  border-radius: 18px;
+  border: 1px solid #e0e1e6;
+  border-radius: 12px;
   background: #fff;
+  box-shadow: 0 10px 30px rgba(33, 36, 50, 0.06);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.scriptPanel:focus-within {
+  border-color: #8b72ff;
+  box-shadow: 0 12px 34px rgba(82, 65, 180, 0.1);
 }
 
 .regionTabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  height: 68px;
-  background: #eef0fb;
+  height: 52px;
+  border-bottom: 1px solid #eaebef;
+  background: #eceef9;
 }
 
 .regionTab,
@@ -57,42 +61,34 @@
   gap: 12px;
   border: 0;
   background: transparent;
-  color: #4b4b50;
-  font-size: 18px;
-  font-weight: 600;
+  color: #555964;
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
+  transition: color 0.18s ease, background-color 0.18s ease;
 }
 
 .regionTabActive {
   position: relative;
   background: #fff;
-}
-
-.regionTabActive::after {
-  position: absolute;
-  top: 0;
-  right: -34px;
-  width: 68px;
-  height: 68px;
-  border-bottom-left-radius: 26px;
-  background: #fff;
-  content: '';
+  color: #4b28d4;
+  font-weight: 650;
 }
 
 .scriptInputWrap {
   position: relative;
-  min-height: 272px;
+  min-height: 226px;
   background: #fff;
 }
 
 .scriptTextarea {
-  height: 272px;
-  padding: 28px 28px 76px;
+  height: 226px;
+  padding: 24px 24px 70px;
   border: 0;
   background: #fff;
   resize: none;
   color: #191919;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.7;
   box-shadow: none;
 }
@@ -103,11 +99,11 @@
 
 .uploadButton {
   position: absolute;
-  bottom: 16px;
-  left: 18px;
-  width: 50px;
-  min-width: 50px;
-  height: 50px;
+  bottom: 14px;
+  left: 16px;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
   padding: 0;
   border-radius: 50%;
   aspect-ratio: 1;
@@ -116,7 +112,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 18px;
   overflow: hidden;
 }
 
@@ -132,22 +128,22 @@
 
 .magicButton {
   position: absolute;
-  bottom: 16px;
-  height: 48px;
-  right: 18px;
+  bottom: 14px;
+  height: 42px;
+  right: 16px;
   width: auto;
-  min-width: 118px;
-  padding: 0 22px;
+  min-width: 112px;
+  padding: 0 20px;
   border: 0;
-  border-radius: 24px;
-  background: linear-gradient(135deg, #b87cff, #7a1cff);
-  box-shadow: 0 12px 28px rgba(122, 28, 255, 0.22);
+  border-radius: 21px;
+  background: linear-gradient(90deg, #7252f2 0%, #7e0cff 100%);
+  box-shadow: 0 8px 20px rgba(103, 56, 224, 0.2);
   font-size: 15px;
   font-weight: 700;
 }
 
 .uploadHint {
-  margin-top: 18px;
+  margin-top: 14px;
   color: #9aa0aa;
   font-size: 14px;
 }
@@ -167,37 +163,37 @@
 }
 
 .inspirationSection {
-  width: calc(100vw - 128px);
-  max-width: 1680px;
-  min-width: 980px;
-  margin: 104px auto 0;
-  padding: 0 24px 18px;
+  width: min(100%, 1440px);
+  margin: 52px auto 0;
+  padding: 0 0 18px;
 }
 
 .sectionTitle {
   display: block;
-  margin-bottom: 24px;
-  color: #111;
-  font-size: 20px;
-  font-weight: 800;
+  margin-bottom: 16px;
+  color: #17191f;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .inspirationGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(220px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .inspirationCard {
   position: relative;
-  height: 226px;
+  aspect-ratio: 16 / 9;
+  height: auto;
   overflow: hidden;
-  border: 0;
-  border-radius: 9px;
+  border: 1px solid rgba(224, 225, 230, 0.9);
+  border-radius: 10px;
   padding: 0;
   background: #eef0f5;
   cursor: pointer;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px rgba(26, 29, 40, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .inspirationCard img {
@@ -214,7 +210,12 @@
 }
 
 .inspirationCard:hover img {
-  transform: scale(1.035);
+  transform: scale(1.06);
+}
+
+.inspirationCard:hover {
+  border-color: rgba(126, 12, 255, 0.24);
+  box-shadow: 0 10px 24px rgba(31, 34, 46, 0.1);
 }
 
 .inspirationOverlay {
@@ -527,8 +528,7 @@
 @media (max-width: 1100px) {
   .scriptPanel,
   .inspirationSection {
-    width: calc(100vw - 36px);
-    min-width: 0;
+    width: 100%;
     padding-right: 0;
     padding-left: 0;
   }
@@ -544,17 +544,17 @@
 
 @media (max-width: 720px) {
   .creationShell {
-    padding: 72px 18px 48px;
+    padding: 42px 18px 48px;
   }
 
   .heroTitle {
-    margin-bottom: 36px;
-    font-size: 30px;
+    margin-bottom: 24px;
+    font-size: 28px;
   }
 
   .regionTab,
   .regionTabActive {
-    font-size: 16px;
+    font-size: 14px;
   }
 
   .inspirationGrid,

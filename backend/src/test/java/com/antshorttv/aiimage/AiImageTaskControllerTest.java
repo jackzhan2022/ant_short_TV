@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
+import com.antshorttv.ai.AiSecretCodec;
 import com.antshorttv.execution.AiExecutionDispatcher;
 import com.jayway.jsonpath.JsonPath;
 import com.sun.net.httpserver.HttpServer;
@@ -47,6 +48,9 @@ class AiImageTaskControllerTest {
 
     @Autowired
     private AiExecutionDispatcher executionDispatcher;
+
+    @Autowired
+    private AiSecretCodec aiSecretCodec;
 
     @Test
     void createsOneDurableExecutionForDuplicateImageRequests() throws Exception {
@@ -160,22 +164,20 @@ class AiImageTaskControllerTest {
     }
 
     @Test
-    void rejectsTaskWhenTenantHasNoImageService() throws Exception {
+    void rejectsTaskWhenExplicitImageModelDoesNotExist() throws Exception {
         String token = registerUser("13800014001", "Image Owner");
         Long tenantId = createTenant(token, "图片生成团队");
         Long ownerId = userIdByMobile("13800014001");
         Long projectId = createProject(token, tenantId, ownerId, "图片生成项目", "IMAGE_TASK_NO_SERVICE");
-        jdbcTemplate.update("delete from ai_service_config where service_type = 'IMAGE'");
-
         mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"taskType":"CHARACTER","targetType":"CHARACTER","targetId":1,"prompt":"赛博短剧女主角色立绘","aspectRatio":"3:4","imageCount":1}
+                    {"taskType":"CHARACTER","targetType":"CHARACTER","targetId":1,"modelId":9999999,"prompt":"赛博短剧女主角色立绘","aspectRatio":"3:4","imageCount":1}
                     """))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errorCode", is("AI_IMAGE_SERVICE_UNAVAILABLE")));
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.errorCode", is("AI_MODEL_NOT_FOUND")));
     }
 
     @Test
@@ -455,25 +457,84 @@ class AiImageTaskControllerTest {
     }
 
     private void createImageService(String token, Long tenantId, String baseUrl, String apiKey) throws Exception {
-        mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
+        Long providerId = jdbcTemplate.queryForObject(
+            "select id from ai_provider where code = 'OpenAI'",
+            Long.class
+        );
+        jdbcTemplate.update("update ai_provider set status = 'ENABLED' where id = ?", providerId);
+        jdbcTemplate.update(
+            "update ai_provider_config set api_key_cipher = ?, base_url = ?, status = 'ENABLED' where provider_id = ?",
+            aiSecretCodec.encrypt(apiKey),
+            baseUrl,
+            providerId
+        );
+        Long modelId = jdbcTemplate.query(
+            "select id from ai_model where code = 'TEST_OPENAI_IMAGE'",
+            rs -> rs.next() ? rs.getLong(1) : null
+        );
+        if (modelId == null) {
+            jdbcTemplate.update(
+                """
+                    insert into ai_model
+                      (provider_id, code, name, model_code, service_type, status, is_default, sort, created_at, updated_at)
+                    values (?, 'TEST_OPENAI_IMAGE', '测试图片模型', 'local-image-model', 'IMAGE', 'ENABLED', true, 100, now(), now())
+                    """,
+                providerId
+            );
+            modelId = jdbcTemplate.queryForObject(
+                "select id from ai_model where code = 'TEST_OPENAI_IMAGE'",
+                Long.class
+            );
+            jdbcTemplate.update(
+                """
+                    insert into ai_model_capability
+                      (model_id, capability, status, created_at, updated_at)
+                    values (?, 'IMAGE_GENERATION', 'ENABLED', now(), now())
+                    """,
+                modelId
+            );
+        } else {
+            jdbcTemplate.update("update ai_model set status = 'ENABLED', is_default = true where id = ?", modelId);
+        }
+    }
+
+    @Test
+    void rejectsRegenerationWhenSourceModelHasBeenDisabledWithoutCreatingTask() throws Exception {
+        String token = registerUser("13800014009", "Disabled Model Regenerator");
+        Long tenantId = createTenant(token, "停用模型再生成团队");
+        Long ownerId = userIdByMobile("13800014009");
+        Long projectId = createProject(token, tenantId, ownerId, "停用模型再生成项目", "IMAGE_REGENERATE_DISABLED_MODEL");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        MvcResult created = createImageTask(token, tenantId, projectId, "disabled-model-source", """
+            {"taskType":"CHARACTER","targetType":"CHARACTER","targetId":1,"prompt":"角色立绘","aspectRatio":"3:4","imageCount":1}
+            """);
+        Long sourceTaskId = readLong(created, "$.data.id");
+        waitForTaskSuccess(token, tenantId, projectId, sourceTaskId);
+        Long modelId = jdbcTemplate.queryForObject(
+            "select model_id from ai_image_task where id = ?",
+            Long.class,
+            sourceTaskId
+        );
+        jdbcTemplate.update("update ai_model set status = 'DISABLED' where id = ?", modelId);
+        Integer taskCountBefore = jdbcTemplate.queryForObject(
+            "select count(*) from ai_image_task where tenant_id = ?",
+            Integer.class,
+            tenantId
+        );
+
+        mockMvc.perform(post("/api/projects/%d/ai-image-tasks/%d/regenerate".formatted(projectId, sourceTaskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {
-                      "name":"默认图片服务",
-                      "serviceType":"IMAGE",
-                      "provider":"OpenAI",
-                      "baseUrl":"%s",
-                      "apiKey":"%s",
-                      "model":"local-image-model",
-                      "endpoint":"/images/generations",
-                      "priority":100,
-                      "isDefault":true,
-                      "enabled":true
-                    }
-                    """.formatted(baseUrl, apiKey)))
-            .andExpect(status().isOk());
+                .header("Idempotency-Key", "disabled-model-regeneration"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("AI_MODEL_DISABLED")));
+
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_image_task where tenant_id = ?",
+            Integer.class,
+            tenantId
+        )).isEqualTo(taskCountBefore);
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

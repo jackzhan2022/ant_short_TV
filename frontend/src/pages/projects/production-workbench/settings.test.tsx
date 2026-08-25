@@ -142,12 +142,12 @@ describe('ProductionWorkbenchSettings', () => {
     render(<ProductionWorkbenchSettings />);
 
     expect(await screen.findByText('设定资产')).toBeInTheDocument();
-    expect(screen.getByText('角色设定')).toBeInTheDocument();
-    expect(screen.getByText('场景设定')).toBeInTheDocument();
-    expect(screen.getByText('道具设定')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /角色/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /场景/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /道具/ })).toBeInTheDocument();
     expect(screen.getByText('斌斌')).toBeInTheDocument();
-    expect(screen.getByText('地下停车场')).toBeInTheDocument();
-    expect(screen.getByText('灰色轿车后备箱')).toBeInTheDocument();
+    expect(screen.queryByText('地下停车场')).not.toBeInTheDocument();
+    expect(screen.queryByText('灰色轿车后备箱')).not.toBeInTheDocument();
     expect(screen.queryByText('AI图片生产')).not.toBeInTheDocument();
 
     await waitFor(() => {

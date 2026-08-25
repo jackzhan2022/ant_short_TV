@@ -71,9 +71,9 @@ export async function saveMaterial(
 }
 
 /** 此处后端没有提供注释 GET /api/projects/${param0}/ai-video-tasks */
-export async function list6(
+export async function list5(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list6Params,
+  params: API.list5Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
@@ -90,9 +90,9 @@ export async function list6(
 }
 
 /** 此处后端没有提供注释 POST /api/projects/${param0}/ai-video-tasks */
-export async function create5(
+export async function create4(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.create5Params,
+  params: API.create4Params,
   body: API.CreateAiVideoTaskRequest,
   options?: { [key: string]: any }
 ) {

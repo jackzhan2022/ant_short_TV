@@ -1,5 +1,6 @@
 import {
   ArrowLeftOutlined,
+  ArrowRightOutlined,
   BookOutlined,
   EditOutlined,
   RobotOutlined,
@@ -108,6 +109,8 @@ const ProductionWorkbench = () => {
     );
     return matched?.key || 'storyboard';
   }, [location.pathname]);
+
+  const nextStep = activeStep === 'script' ? 'settings' : activeStep === 'settings' ? 'storyboard' : undefined;
 
   if (!projectId) {
     return null;
@@ -269,12 +272,37 @@ const ProductionWorkbench = () => {
           maxWidth: 1880,
           minWidth: 1100,
           boxSizing: 'border-box',
-          padding: 0,
+          padding: '0 0 72px',
           minHeight: 'calc(100vh - 100px)',
         }}
       >
         <Outlet />
       </main>
+
+      {nextStep ? (
+        <Button
+          type="primary"
+          icon={<ArrowRightOutlined />}
+          onClick={() =>
+            history.push(
+              `/projects/${projectId}/production-workbench/${stepPaths[nextStep]}`,
+            )
+          }
+          style={{
+            position: 'fixed',
+            right: 28,
+            bottom: 46,
+            zIndex: 20,
+            height: 44,
+            paddingInline: 20,
+            borderRadius: 22,
+            background: '#111111',
+            boxShadow: '0 10px 24px rgba(17, 17, 17, 0.22)',
+          }}
+        >
+          进入下一步
+        </Button>
+      ) : null}
 
       <div
         style={{

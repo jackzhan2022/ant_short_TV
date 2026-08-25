@@ -13,7 +13,7 @@ public interface AiVideoTaskMapper extends BaseMapper<AiVideoTaskEntity> {
         "tenant_id",
         "project_id",
         "storyboard_id",
-        "service_config_id",
+        "model_id",
         "provider_code",
         "model",
         "prompt",

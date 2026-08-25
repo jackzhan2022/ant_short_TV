@@ -32,11 +32,10 @@ class AiCallLogControllerTest {
     void listsTenantScopedAiCallLogsWithFiltersAndPagination() throws Exception {
         String token = registerUser("13800015001", "Call Log Owner");
         Long tenantId = createTenant(token, "AI调用日志团队");
-        Long configId = createConfig(token, tenantId);
 
-        insertCallLog(tenantId, 1L, configId, "OpenAI", "TEXT", "test-model", "chatbot", "你好", "你好，我可以帮你。", "SUCCESS", null, 128);
-        insertCallLog(tenantId, 1L, configId, "OpenAI", "IMAGE", "test-model", "image_generate", "生成海报", null, "FAILED", "模型不可用", 240);
-        insertCallLog(tenantId + 999, 1L, configId, "OpenAI", "TEXT", "test-model", "chatbot", "其他团队", "不应返回", "SUCCESS", null, 99);
+        insertCallLog(tenantId, 1L, "OpenAI", "TEXT", "test-model", "chatbot", "你好", "你好，我可以帮你。", "SUCCESS", null, 128);
+        insertCallLog(tenantId, 1L, "OpenAI", "IMAGE", "test-model", "image_generate", "生成海报", null, "FAILED", "模型不可用", 240);
+        insertCallLog(tenantId + 999, 1L, "OpenAI", "TEXT", "test-model", "chatbot", "其他团队", "不应返回", "SUCCESS", null, 99);
 
         mockMvc.perform(get("/api/tenants/%d/ai-call-logs".formatted(tenantId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -50,40 +49,17 @@ class AiCallLogControllerTest {
             .andExpect(jsonPath("$.data.current", is(1)))
             .andExpect(jsonPath("$.data.pageSize", is(10)))
             .andExpect(jsonPath("$.data.records", hasSize(1)))
-            .andExpect(jsonPath("$.data.records[0].serviceConfigName", is("OpenAI 文本服务")))
+            .andExpect(jsonPath("$.data.records[0].provider", is("OpenAI")))
+            .andExpect(jsonPath("$.data.records[0].model", is("test-model")))
             .andExpect(jsonPath("$.data.records[0].businessScene", is("chatbot")))
             .andExpect(jsonPath("$.data.records[0].requestSummary", is("你好")))
             .andExpect(jsonPath("$.data.records[0].responseSummary", is("你好，我可以帮你。")))
             .andExpect(jsonPath("$.data.records[0].status", is("SUCCESS")));
     }
 
-    private Long createConfig(String token, Long tenantId) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/tenants/%d/ai-service-configs".formatted(tenantId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {
-                      "name":"OpenAI 文本服务",
-                      "serviceType":"TEXT",
-                      "provider":"OpenAI",
-                      "baseUrl":"https://example.com/v1",
-                      "apiKey":"sk-test-1234",
-                      "model":"test-model",
-                      "endpoint":"/chat/completions",
-                      "priority":100,
-                      "isDefault":true,
-                      "enabled":true
-                    }
-                    """))
-            .andExpect(status().isOk())
-            .andReturn();
-        return readLong(result, "$.data.id");
-    }
-
     private void insertCallLog(
         Long tenantId,
         Long userId,
-        Long configId,
         String provider,
         String serviceType,
         String model,
@@ -96,9 +72,9 @@ class AiCallLogControllerTest {
     ) {
         jdbcTemplate.update("""
             insert into ai_call_log
-              (tenant_id, user_id, service_config_id, provider, service_type, model, business_scene, request_summary, response_summary, status, error_message, duration_ms, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
-            """, tenantId, userId, configId, provider, serviceType, model, businessScene, requestSummary, responseSummary, status, errorMessage, durationMs);
+              (tenant_id, user_id, provider, service_type, model, business_scene, request_summary, response_summary, status, error_message, duration_ms, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+            """, tenantId, userId, provider, serviceType, model, businessScene, requestSummary, responseSummary, status, errorMessage, durationMs);
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

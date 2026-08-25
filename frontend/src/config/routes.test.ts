@@ -61,3 +61,39 @@ describe('built-in Agent catalog route', () => {
     });
   });
 });
+
+describe('platform-only AI configuration routes', () => {
+  it('does not expose the legacy Service Config page', () => {
+    const parent = routes.find(
+      (item) => item.path === '/ai-service-management',
+    );
+
+    expect(
+      parent?.routes?.find(
+        (item) => item.path === '/ai-service-management/services',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('keeps Provider and Model pages behind platform permissions', () => {
+    const parent = routes.find(
+      (item) => item.path === '/ai-service-management',
+    );
+
+    expect(
+      parent?.routes?.find(
+        (item) => item.path === '/ai-service-management/providers',
+      ),
+    ).toMatchObject({ access: 'canViewPlatformAiProviders' });
+    expect(
+      parent?.routes?.find(
+        (item) => item.path === '/ai-service-management/models',
+      ),
+    ).toMatchObject({ access: 'canViewPlatformAiModels' });
+    expect(
+      parent?.routes?.find(
+        (item) => item.path === '/ai-service-management/logs',
+      ),
+    ).toMatchObject({ access: 'canViewAiCallLogs' });
+  });
+});

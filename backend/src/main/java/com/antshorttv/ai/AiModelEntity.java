@@ -19,7 +19,6 @@ public class AiModelEntity {
     private Boolean isDefault;
     private Integer sort;
     private String configJson;
-    private Long legacyServiceConfigId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -45,8 +44,6 @@ public class AiModelEntity {
     public void setSort(Integer sort) { this.sort = sort; }
     public String getConfigJson() { return configJson; }
     public void setConfigJson(String configJson) { this.configJson = configJson; }
-    public Long getLegacyServiceConfigId() { return legacyServiceConfigId; }
-    public void setLegacyServiceConfigId(Long legacyServiceConfigId) { this.legacyServiceConfigId = legacyServiceConfigId; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

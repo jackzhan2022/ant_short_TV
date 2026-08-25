@@ -3,7 +3,7 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/projects */
-export async function list5(options?: { [key: string]: any }) {
+export async function list4(options?: { [key: string]: any }) {
   return request<API.ApiResponseListProjectResponse>("/api/projects", {
     method: "GET",
     ...(options || {}),
@@ -11,7 +11,7 @@ export async function list5(options?: { [key: string]: any }) {
 }
 
 /** 此处后端没有提供注释 POST /api/projects */
-export async function create4(
+export async function create3(
   body: API.CreateProjectRequest,
   options?: { [key: string]: any }
 ) {
@@ -40,9 +40,9 @@ export async function detail6(
 }
 
 /** 此处后端没有提供注释 PUT /api/projects/${param0} */
-export async function update2(
+export async function update1(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.update2Params,
+  params: API.update1Params,
   body: API.UpdateProjectRequest,
   options?: { [key: string]: any }
 ) {
@@ -59,9 +59,9 @@ export async function update2(
 }
 
 /** 此处后端没有提供注释 DELETE /api/projects/${param0} */
-export async function delete2(
+export async function delete1(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.delete2Params,
+  params: API.delete1Params,
   options?: { [key: string]: any }
 ) {
   const { id: param0, ...queryParams } = params;
@@ -290,9 +290,9 @@ export async function updateRolePermissions1(
 }
 
 /** 此处后端没有提供注释 PUT /api/projects/${param0}/status */
-export async function updateStatus3(
+export async function updateStatus2(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.updateStatus3Params,
+  params: API.updateStatus2Params,
   body: API.UpdateProjectStatusRequest,
   options?: { [key: string]: any }
 ) {

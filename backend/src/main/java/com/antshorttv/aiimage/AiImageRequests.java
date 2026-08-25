@@ -11,7 +11,7 @@ record CreateAiImageTaskRequest(
     @NotBlank String taskType,
     @NotBlank String targetType,
     @NotNull Long targetId,
-    Long serviceConfigId,
+    Long modelId,
     @NotBlank @Size(max = 3000) String prompt,
     @Size(max = 1000) String negativePrompt,
     List<String> referenceImages,

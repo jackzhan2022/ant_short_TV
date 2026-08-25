@@ -116,13 +116,14 @@ public class AiExecutionService {
     public AiExecutionTaskEntity regenerateWithReservation(
         Long sourceId,
         Long businessId,
+        Long requestedModelId,
         String clientIdempotencyKey,
         String traceId,
         Map<AiUsageMetric, BigDecimal> authorizedUsage,
         Map<String, String> dimensions
     ) {
         AiExecutionTaskEntity source = requireTask(sourceId);
-        AiExecutionTaskEntity task = createRegeneration(source, businessId, clientIdempotencyKey, traceId);
+        AiExecutionTaskEntity task = createRegeneration(source, businessId, requestedModelId, clientIdempotencyKey, traceId);
         AiPointReservationEntity reservation = pointSettlementService.reserve(new AiPointReservationCommand(
             task.tenantId,
             task.userId,
@@ -151,6 +152,16 @@ public class AiExecutionService {
         String clientIdempotencyKey,
         String traceId
     ) {
+        return createRegeneration(source, businessId, source.requestedModelId, clientIdempotencyKey, traceId);
+    }
+
+    private AiExecutionTaskEntity createRegeneration(
+        AiExecutionTaskEntity source,
+        Long businessId,
+        Long requestedModelId,
+        String clientIdempotencyKey,
+        String traceId
+    ) {
         if (!AiExecutionStatus.SUCCEEDED.name().equals(source.status)) {
             throw invalidStatus("Only a succeeded execution can be regenerated.");
         }
@@ -175,7 +186,7 @@ public class AiExecutionService {
         task.capability = source.capability;
         task.businessType = source.businessType;
         task.businessId = businessId;
-        task.requestedModelId = source.requestedModelId;
+        task.requestedModelId = requestedModelId;
         task.redactedInputJson = source.redactedInputJson;
         task.status = AiExecutionStatus.PENDING.name();
         task.phase = source.phase;

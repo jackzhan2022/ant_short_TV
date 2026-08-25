@@ -9,10 +9,9 @@ import com.antshorttv.ai.AiCapability;
 import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.ai.AiInvocationRequest;
 import com.antshorttv.ai.AiInvocationResult;
-import com.antshorttv.ai.AiModelEntity;
-import com.antshorttv.ai.AiModelMapper;
-import com.antshorttv.ai.AiServiceConfigEntity;
-import com.antshorttv.ai.AiServiceConfigMapper;
+import com.antshorttv.ai.AiModelRoute;
+import com.antshorttv.ai.AiModelRouter;
+import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.execution.AiExecutionCreateCommand;
@@ -68,7 +67,6 @@ public class AiVideoTaskService {
 
     private final ProjectAccessResolver projectAccessResolver;
     private final StoryboardMapper storyboardMapper;
-    private final AiServiceConfigMapper aiServiceConfigMapper;
     private final AiVideoTaskMapper aiVideoTaskMapper;
     private final AiVideoResultMapper aiVideoResultMapper;
     private final VideoMaterialMapper materialMapper;
@@ -80,7 +78,8 @@ public class AiVideoTaskService {
     private final AiTaskExecutionSupport executionSupport;
     private final AiVideoProviderAdapter providerAdapter;
     private final com.antshorttv.ai.AiInvocationService invocationService;
-    private final AiModelMapper aiModelMapper;
+    private final ProjectAiConfigService projectAiConfigService;
+    private final AiModelRouter aiModelRouter;
     private final AiExecutionService executionService;
     private final AiExecutionTaskMapper executionTaskMapper;
     private final AiExecutionAttemptMapper executionAttemptMapper;
@@ -93,11 +92,11 @@ public class AiVideoTaskService {
     private final int pollRetryLimit;
     private final int dueTaskBatchSize;
     private final Path storageRoot;
+    private final boolean mockProviderEnabled;
 
     public AiVideoTaskService(
         ProjectAccessResolver projectAccessResolver,
         StoryboardMapper storyboardMapper,
-        AiServiceConfigMapper aiServiceConfigMapper,
         AiVideoTaskMapper aiVideoTaskMapper,
         AiVideoResultMapper aiVideoResultMapper,
         VideoMaterialMapper materialMapper,
@@ -109,7 +108,8 @@ public class AiVideoTaskService {
         AiTaskExecutionSupport executionSupport,
         AiVideoProviderAdapter providerAdapter,
         com.antshorttv.ai.AiInvocationService invocationService,
-        AiModelMapper aiModelMapper,
+        ProjectAiConfigService projectAiConfigService,
+        AiModelRouter aiModelRouter,
         AiExecutionService executionService,
         AiExecutionTaskMapper executionTaskMapper,
         AiExecutionAttemptMapper executionAttemptMapper,
@@ -121,11 +121,11 @@ public class AiVideoTaskService {
         @Value("${ai.video.task-timeout-minutes:20}") int taskTimeoutMinutes,
         @Value("${ai.video.poll-retry-limit:3}") int pollRetryLimit,
         @Value("${ai.video.due-task-batch-size:20}") int dueTaskBatchSize,
-        @Value("${ai.video.storage-root:storage}") String storageRoot
+        @Value("${ai.video.storage-root:storage}") String storageRoot,
+        @Value("${ai.testing.mock-provider-enabled:false}") boolean mockProviderEnabled
     ) {
         this.projectAccessResolver = projectAccessResolver;
         this.storyboardMapper = storyboardMapper;
-        this.aiServiceConfigMapper = aiServiceConfigMapper;
         this.aiVideoTaskMapper = aiVideoTaskMapper;
         this.aiVideoResultMapper = aiVideoResultMapper;
         this.materialMapper = materialMapper;
@@ -137,7 +137,8 @@ public class AiVideoTaskService {
         this.executionSupport = executionSupport;
         this.providerAdapter = providerAdapter;
         this.invocationService = invocationService;
-        this.aiModelMapper = aiModelMapper;
+        this.projectAiConfigService = projectAiConfigService;
+        this.aiModelRouter = aiModelRouter;
         this.executionService = executionService;
         this.executionTaskMapper = executionTaskMapper;
         this.executionAttemptMapper = executionAttemptMapper;
@@ -150,6 +151,7 @@ public class AiVideoTaskService {
         this.pollRetryLimit = pollRetryLimit;
         this.dueTaskBatchSize = dueTaskBatchSize;
         this.storageRoot = Path.of(storageRoot);
+        this.mockProviderEnabled = mockProviderEnabled;
     }
 
     public List<AiVideoTaskResponse> list(Long tenantId, Long projectId, String status, Long storyboardId) {
@@ -180,8 +182,8 @@ public class AiVideoTaskService {
         validateCreateRequest(request);
         StoryboardEntity storyboard = requireStoryboard(tenantId, projectId, request.storyboardId());
         String firstFrameUrl = resolveFirstFrameUrl(storyboard, request);
-        AiServiceConfigEntity serviceConfig = resolveVideoService(tenantId, request.serviceConfigId());
-        String requestHash = requestHash(request, serviceConfig.getId(), firstFrameUrl);
+        AiModelRoute route = resolveVideoModel(tenantId, projectId, request.modelId());
+        String requestHash = requestHash(request, route.model().getId(), firstFrameUrl);
         AiVideoTaskEntity duplicate = aiVideoTaskMapper.selectActiveDuplicate(tenantId, projectId, requestHash);
         if (duplicate != null) {
             return response(duplicate);
@@ -195,9 +197,9 @@ public class AiVideoTaskService {
         task.tenantId = tenantId;
         task.projectId = projectId;
         task.storyboardId = storyboard.id;
-        task.serviceConfigId = serviceConfig.getId();
-        task.providerCode = serviceConfig.getProvider();
-        task.model = serviceConfig.getModel();
+        task.modelId = route.model().getId();
+        task.providerCode = route.provider().getCode();
+        task.model = route.model().getModelCode();
         task.prompt = request.prompt().trim();
         task.negativePrompt = blankToNull(request.negativePrompt());
         task.firstFrameImageId = request.firstFrameImageId() == null ? storyboard.firstFrameImageId : request.firstFrameImageId();
@@ -228,7 +230,7 @@ public class AiVideoTaskService {
                 "VIDEO",
                 "AI_VIDEO_TASK",
                 task.id,
-                null,
+                task.modelId,
                 "VIDEO_SUBMIT",
                 requestHash,
                 UUID.randomUUID().toString(),
@@ -242,7 +244,7 @@ public class AiVideoTaskService {
         aiVideoTaskMapper.updateById(task);
         markExecutionRunning(task);
 
-        submitTask(task, serviceConfig);
+        submitTask(task);
         aiVideoTaskMapper.updateById(task);
         recordOperation(context, projectId, "CREATE_AI_VIDEO_TASK", task.id, servletRequest);
         recordProjectLog(context, projectId, "AI_VIDEO_TASK_CREATE", "AI_VIDEO_TASK", task.id, null, task.status, servletRequest);
@@ -290,7 +292,7 @@ public class AiVideoTaskService {
         AiVideoTaskEntity source = requireTask(tenantId, projectId, taskId);
         CreateAiVideoTaskRequest request = new CreateAiVideoTaskRequest(
             source.storyboardId,
-            source.serviceConfigId,
+            source.modelId,
             source.prompt,
             source.negativePrompt,
             source.firstFrameImageId,
@@ -443,31 +445,14 @@ public class AiVideoTaskService {
         return firstFrameUrl;
     }
 
-    private AiServiceConfigEntity resolveVideoService(Long tenantId, Long serviceConfigId) {
-        QueryWrapper<AiServiceConfigEntity> query = new QueryWrapper<AiServiceConfigEntity>()
-            .eq("service_type", "VIDEO")
-            .eq("enabled", true)
-            .isNull("deleted_at");
-        if (serviceConfigId != null) {
-            query.eq("id", serviceConfigId);
-            AiServiceConfigEntity specified = aiServiceConfigMapper.selectOne(query);
-            if (specified == null) {
-                throw new BusinessException(ErrorCode.AI_VIDEO_SERVICE_UNAVAILABLE, "当前视频服务不可用。");
-            }
-            return specified;
-        }
-        AiServiceConfigEntity defaultConfig = aiServiceConfigMapper.selectOne(query.clone().eq("is_default", true).last("limit 1"));
-        if (defaultConfig != null) {
-            return defaultConfig;
-        }
-        AiServiceConfigEntity fallback = aiServiceConfigMapper.selectOne(query.orderByDesc("priority").orderByDesc("id").last("limit 1"));
-        if (fallback == null) {
-            throw new BusinessException(ErrorCode.AI_VIDEO_SERVICE_UNAVAILABLE, "未配置可用视频服务。");
-        }
-        return fallback;
+    private AiModelRoute resolveVideoModel(Long tenantId, Long projectId, Long requestedModelId) {
+        Long modelId = requestedModelId == null
+            ? projectAiConfigService.resolveModelId(tenantId, projectId, "VIDEO")
+            : requestedModelId;
+        return aiModelRouter.route(modelId, AiCapability.VIDEO);
     }
 
-    private void submitTask(AiVideoTaskEntity task, AiServiceConfigEntity serviceConfig) {
+    private void submitTask(AiVideoTaskEntity task) {
         LocalDateTime now = LocalDateTime.now();
         task.status = AiVideoTaskStatus.SUBMITTING.name();
         task.updatedAt = now;
@@ -477,14 +462,14 @@ public class AiVideoTaskService {
             AiInvocationResult<AiVideoProviderAdapter.VideoResult> invocation = invocationService.invokeProviderNative(
                 invocationRequest(task, attempt),
                 "taskId=%d,storyboardId=%d".formatted(task.id, task.storyboardId),
-                route -> shouldUseLocalMock(serviceConfig)
+                route -> shouldUseLocalMock(route.providerConfig())
                     ? com.antshorttv.ai.AiProviderExecutionOutcome.accepted(
                         "mock-submit-" + task.id,
                         "mock-video-" + UUID.randomUUID(),
                         Duration.ofSeconds(10),
                         com.antshorttv.ai.AiProviderReconciliationStatus.NOT_REQUIRED
                     )
-                    : providerAdapter.submit(serviceConfig, task, attempt.idempotencyKey)
+                    : providerAdapter.submit(route.providerConfig(), route.model(), task, attempt.idempotencyKey)
             );
             finishExecutionAttempt(attempt, invocation, "SUCCEEDED", false, null, null);
             task.externalTaskId = invocation.externalTaskId();
@@ -607,19 +592,15 @@ public class AiVideoTaskService {
         AiVideoTaskEntity task,
         AiExecutionAttemptEntity attempt
     ) {
-        AiServiceConfigEntity serviceConfig = aiServiceConfigMapper.selectById(task.serviceConfigId);
-        if (serviceConfig == null || serviceConfig.getDeletedAt() != null || !Boolean.TRUE.equals(serviceConfig.getEnabled())) {
-            throw new AiGatewayException(ErrorCode.AI_VIDEO_SERVICE_UNAVAILABLE, "当前视频服务不可用。");
-        }
         return invocationService.invokeProviderNative(
             invocationRequest(task, attempt),
             "externalTaskId=" + task.externalTaskId,
-            route -> task.externalTaskId == null || task.externalTaskId.startsWith("mock-video-")
+            route -> mockProviderEnabled && (task.externalTaskId == null || task.externalTaskId.startsWith("mock-video-"))
                 ? com.antshorttv.ai.AiProviderExecutionOutcome.completed(
                     new AiVideoProviderAdapter.VideoResult("SUCCEEDED", null, null),
                     "mock-query-" + task.id
                 )
-                : providerAdapter.poll(serviceConfig, task.externalTaskId, attempt.idempotencyKey)
+                : providerAdapter.poll(route.providerConfig(), route.model(), task.externalTaskId, attempt.idempotencyKey)
         );
     }
 
@@ -679,9 +660,9 @@ public class AiVideoTaskService {
         };
     }
 
-    private String requestHash(CreateAiVideoTaskRequest request, Long serviceConfigId, String firstFrameUrl) {
+    private String requestHash(CreateAiVideoTaskRequest request, Long modelId, String firstFrameUrl) {
         String source = String.join("|",
-            String.valueOf(serviceConfigId),
+            String.valueOf(modelId),
             String.valueOf(request.storyboardId()),
             normalizeHashPart(request.prompt()),
             normalizeHashPart(request.negativePrompt()),
@@ -706,8 +687,11 @@ public class AiVideoTaskService {
         return value == null ? "" : value.trim();
     }
 
-    private boolean shouldUseLocalMock(AiServiceConfigEntity serviceConfig) {
-        String baseUrl = blankToNull(serviceConfig.getBaseUrl());
+    private boolean shouldUseLocalMock(com.antshorttv.ai.AiProviderConfigEntity providerConfig) {
+        if (!mockProviderEnabled) {
+            return false;
+        }
+        String baseUrl = blankToNull(providerConfig.getBaseUrl());
         return baseUrl == null || baseUrl.startsWith("mock://") || baseUrl.contains("example.com");
     }
 
@@ -775,15 +759,12 @@ public class AiVideoTaskService {
 
     private AiInvocationRequest invocationRequest(AiVideoTaskEntity task, AiExecutionAttemptEntity attempt) {
         AiExecutionTaskEntity execution = executionTaskMapper.selectById(task.executionId);
-        AiModelEntity model = aiModelMapper.selectOne(new QueryWrapper<AiModelEntity>()
-            .eq("legacy_service_config_id", task.serviceConfigId)
-            .last("limit 1"));
         return AiInvocationRequest.capability(AiCapability.VIDEO)
             .tenantId(task.tenantId)
             .userId(task.createdBy)
             .projectId(task.projectId)
             .taskId(task.id)
-            .modelId(model == null ? execution.requestedModelId : model.getId())
+            .modelId(task.modelId)
             .businessSceneCode("ai_video_generate")
             .traceId(execution.traceId)
             .executionId(task.executionId)

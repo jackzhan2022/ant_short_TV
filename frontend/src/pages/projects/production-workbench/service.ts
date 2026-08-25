@@ -230,7 +230,7 @@ export type AiImageTask = {
   taskType: string;
   targetType: string;
   targetId: number;
-  serviceConfigId: number;
+  modelId: number;
   providerCode: string;
   model: string;
   prompt: string;
@@ -256,7 +256,7 @@ export type CreateAiImageTaskValues = {
   taskType: string;
   targetType: string;
   targetId: number;
-  serviceConfigId?: number;
+  modelId?: number;
   prompt: string;
   negativePrompt?: string;
   referenceImages?: string[];
@@ -596,7 +596,7 @@ export type AiVideoTask = {
   execution?: API.AiExecutionResponse;
   projectId: number;
   storyboardId: number;
-  serviceConfigId: number;
+  modelId: number;
   providerCode: string;
   model: string;
   prompt: string;
@@ -620,7 +620,7 @@ export type AiVideoTask = {
 
 export type CreateAiVideoTaskValues = {
   storyboardId: number;
-  serviceConfigId?: number;
+  modelId?: number;
   prompt: string;
   negativePrompt?: string;
   firstFrameUrl?: string;
@@ -742,7 +742,6 @@ export type AiVoiceTask = {
   id: number;
   projectId: number;
   storyboardId: number;
-  serviceConfigId?: number | null;
   providerCode?: string | null;
   model?: string | null;
   voiceType: string;
@@ -762,7 +761,6 @@ export type AiVoiceTask = {
 
 export type CreateAiVoiceTaskValues = {
   storyboardId: number;
-  serviceConfigId?: number;
   voiceType: string;
   speakerName?: string;
   voiceId: string;

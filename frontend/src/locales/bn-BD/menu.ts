@@ -50,7 +50,6 @@ export default {
   'menu.editor.mind': 'মাইন্ড এডিটর',
   'menu.editor.koni': 'কোনি সম্পাদক',
   'menu.ai-service-management': 'AI Services',
-  'menu.ai-service-management.services': 'Service Configs',
   'menu.ai-service-management.logs': 'Call Logs',
   'menu.style-library': 'স্টাইল লাইব্রেরি',
 };

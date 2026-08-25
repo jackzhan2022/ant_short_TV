@@ -33,7 +33,7 @@ describe('access', () => {
     expect(result.canManageRoles).toBe(true);
   });
 
-  it('should expose AI service permissions from current tenant permissions', () => {
+  it('separates tenant call-log access from platform configuration', () => {
     const initialState = {
       currentUser: {
         userid: '1',
@@ -41,22 +41,15 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      tenantPermissions: [
-        'AI_SERVICE:VIEW',
-        'AI_SERVICE:CREATE',
-        'AI_SERVICE:EDIT',
-        'AI_SERVICE:DELETE',
-        'AI_SERVICE:TEST',
-      ],
+      tenantPermissions: ['AI_CALL_LOG:VIEW'],
     };
 
     const result = access(initialState);
 
-    expect(result.canViewAiServices).toBe(true);
-    expect(result.canCreateAiServices).toBe(true);
-    expect(result.canEditAiServices).toBe(true);
-    expect(result.canDeleteAiServices).toBe(true);
-    expect(result.canTestAiServices).toBe(true);
+    expect(result.canViewAiCallLogs).toBe(true);
+    expect(result.canViewPlatformAiProviders).toBe(false);
+    expect(result.canViewPlatformAiModels).toBe(false);
+    expect(result.canViewAiManagement).toBe(true);
   });
 
   it('should expose platform AI and project AI config permissions', () => {
@@ -96,7 +89,7 @@ describe('access', () => {
     expect(result.canEditProjectAiConfig).toBe(true);
   });
 
-  it('should expose the combined AI management entry for legacy and platform permissions', () => {
+  it('should expose the AI management entry for platform permissions', () => {
     const initialState = {
       currentUser: {
         userid: '1',
@@ -128,6 +121,22 @@ describe('access', () => {
 
     expect(result.canUseProjectCenter).toBe(true);
     expect(result.canViewProjects).toBe(true);
+  });
+
+  it('requires AI usage permission for provider-backed task creation', () => {
+    const withoutUsage = access({
+      currentUser: { userid: '1', name: 'Workflow Creator', access: 'user' },
+      tenantPermissions: ['AI_IMAGE_TASK:CREATE', 'AI_VIDEO_TASK:CREATE'],
+    });
+    const withUsage = access({
+      currentUser: { userid: '1', name: 'AI Creator', access: 'user' },
+      tenantPermissions: ['AI_IMAGE_TASK:CREATE', 'AI_VIDEO_TASK:CREATE', 'AI_SERVICE:USE'],
+    });
+
+    expect(withoutUsage.canCreateAiImageTasks).toBe(false);
+    expect(withoutUsage.canCreateAiVideoTasks).toBe(false);
+    expect(withUsage.canCreateAiImageTasks).toBe(true);
+    expect(withUsage.canCreateAiVideoTasks).toBe(true);
   });
 
   it('does not grant tenant project navigation to a platform-only user', () => {

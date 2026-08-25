@@ -10,7 +10,6 @@ record AiImageTaskResponse(
     String taskType,
     String targetType,
     Long targetId,
-    Long serviceConfigId,
     Long modelId,
     String providerCode,
     String model,
@@ -39,7 +38,6 @@ record AiImageTaskResponse(
             entity.getTaskType(),
             entity.getTargetType(),
             entity.getTargetId(),
-            entity.getServiceConfigId(),
             entity.getModelId(),
             entity.getProviderCode(),
             entity.getModel(),
@@ -65,7 +63,7 @@ record AiImageTaskResponse(
 
     AiImageTaskResponse withExecution(AiExecutionResponse value) {
         return new AiImageTaskResponse(
-            id, projectId, taskType, targetType, targetId, serviceConfigId, modelId,
+            id, projectId, taskType, targetType, targetId, modelId,
             providerCode, model, prompt, negativePrompt, referenceImages, aspectRatio,
             imageCount, style, quality, seed, executionId, value, status, errorMessage,
             startedAt, completedAt, createdBy, createdAt, results

@@ -84,6 +84,7 @@ vi.mock('./ShotProductionWorkspace', () => ({
 }));
 
 vi.mock('@ant-design/icons', () => ({
+  AppstoreOutlined: () => <span>appstore</span>,
   ArrowLeftOutlined: () => <span>back</span>,
   AudioOutlined: () => <span>audio</span>,
   BarsOutlined: () => <span>bars</span>,
@@ -92,7 +93,10 @@ vi.mock('@ant-design/icons', () => ({
   CloseOutlined: () => <span>close</span>,
   CopyOutlined: () => <span>copy</span>,
   EditOutlined: () => <span>edit</span>,
+  ExpandOutlined: () => <span>expand</span>,
   FileTextOutlined: () => <span>file</span>,
+  HolderOutlined: () => <span>holder</span>,
+  InfoCircleOutlined: () => <span>info</span>,
   BookOutlined: () => <span>book</span>,
   MoreOutlined: () => <span>more</span>,
   PictureOutlined: () => <span>image</span>,
@@ -102,6 +106,7 @@ vi.mock('@ant-design/icons', () => ({
   SoundOutlined: () => <span>sound</span>,
   SplitCellsOutlined: () => <span>split</span>,
   PlayCircleOutlined: () => <span>play</span>,
+  ThunderboltOutlined: () => <span>thunderbolt</span>,
   UploadOutlined: () => <span>upload</span>,
   VideoCameraOutlined: () => <span>video</span>,
 }));
@@ -336,7 +341,7 @@ const setupWorkspaceResponse = (
         taskType: 'CHARACTER',
         targetType: 'CHARACTER',
         targetId: 1,
-        serviceConfigId: 1,
+        modelId: 1,
         providerCode: 'mock',
         model: 'mock',
         prompt: 'child',
@@ -366,7 +371,7 @@ const setupWorkspaceResponse = (
         id: 9001,
         projectId: 1,
         storyboardId: 101,
-        serviceConfigId: 1,
+        modelId: 1,
         providerCode: 'doubao',
         model: 'Doubao-Seedance-2.5',
         prompt: '画风：写实都市。',
