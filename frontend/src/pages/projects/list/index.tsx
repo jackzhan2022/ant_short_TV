@@ -1,10 +1,10 @@
 import {
   EditOutlined,
   FolderOpenOutlined,
+  MoreOutlined,
   PlusOutlined,
   ProfileOutlined,
 } from '@ant-design/icons';
-import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
   ModalForm,
   PageContainer,
@@ -12,11 +12,11 @@ import {
   ProFormSelect,
   ProFormText,
   ProFormTextArea,
-  ProTable,
 } from '@ant-design/pro-components';
 import { history, useAccess } from '@umijs/max';
-import { App, Button, Empty, Space, Tag } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { App, Button, Empty, Tag } from 'antd';
+import { useEffect, useState } from 'react';
+import styles from './index.module.css';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type {
   Project,
@@ -110,12 +110,115 @@ const ProjectEditor = ({
   );
 };
 
+const formatCreatedAt = (createdAt?: string | null) => {
+  if (!createdAt) return '创建时间未知';
+  return `创建于 ${createdAt.slice(0, 10)}`;
+};
+
+const ProjectCard = ({
+  project,
+  members,
+  onDone,
+}: {
+  project: Project;
+  members: TenantMember[];
+  onDone: () => void;
+}) => {
+  const { message } = App.useApp();
+  const openProject = () =>
+    history.push(`/projects/${project.id}/production-workbench/script`);
+
+  return (
+    <article className={styles.card}>
+      <button className={styles.coverButton} type="button" onClick={openProject}>
+        {project.coverUrl ? (
+          <img
+            className={styles.cover}
+            src={project.coverUrl}
+            alt={`${project.name}封面`}
+          />
+        ) : (
+          <div
+            className={styles.coverPlaceholder}
+            role="img"
+            aria-label={`${project.name}封面`}
+          >
+            <span>{project.name.slice(0, 1)}</span>
+          </div>
+        )}
+      </button>
+      <div className={styles.cardBody}>
+        <div className={styles.cardHeading}>
+          <button className={styles.titleButton} type="button" onClick={openProject}>
+            {project.name}
+          </button>
+          <details className={styles.moreMenu}>
+            <summary aria-label={`${project.name}更多操作`}>
+              <MoreOutlined />
+            </summary>
+            <div className={styles.menuPanel}>
+              {project.capabilities.canEdit && (
+                <>
+                  <ProjectEditor project={project} members={members} onDone={onDone} />
+                  <Button
+                    type="text"
+                    disabled={project.status === 'ARCHIVED'}
+                    onClick={async () => {
+                      const nextStatus =
+                        project.status === 'NOT_STARTED' ? 'IN_PROGRESS' : 'ARCHIVED';
+                      await updateProjectStatus(project.id, nextStatus);
+                      message.success('项目状态已更新');
+                      onDone();
+                    }}
+                  >
+                    {project.status === 'NOT_STARTED' ? '启动' : '归档'}
+                  </Button>
+                </>
+              )}
+              <span className={styles.projectCode}>{project.code}</span>
+            </div>
+          </details>
+        </div>
+        <div className={styles.cardTags}>
+          <Tag color={statusColor[project.status]}>{statusText[project.status]}</Tag>
+          <span className={styles.projectType}>短剧项目</span>
+        </div>
+        <div className={styles.metadata}>
+          <span>{formatCreatedAt(project.createdAt)}</span>
+          <span>{project.memberCount} 位成员</span>
+        </div>
+        {project.ownerName && (
+          <div className={styles.owner}>负责人：{project.ownerName}</div>
+        )}
+        <div className={styles.actions}>
+          <Button
+            type="link"
+            icon={<FolderOpenOutlined />}
+            onClick={openProject}
+          >
+            进入
+          </Button>
+          <Button
+            type="link"
+            icon={<ProfileOutlined />}
+            onClick={() =>
+              history.push(`/projects/${project.id}/production-workbench`)
+            }
+          >
+            进度
+          </Button>
+        </div>
+      </div>
+    </article>
+  );
+};
+
 const ProjectList = () => {
   const tenantId = getCurrentTenantId();
   const access = useAccess();
-  const actionRef = useRef<ActionType | null>(null);
-  const { message } = App.useApp();
   const [members, setMembers] = useState<TenantMember[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const loadOptions = async () => {
     const memberResponse = tenantId
@@ -130,6 +233,20 @@ const ProjectList = () => {
     }
   }, [tenantId]);
 
+  const loadProjects = async () => {
+    setLoading(true);
+    try {
+      const response = await queryProjects();
+      setProjects(response.data);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tenantId) loadProjects();
+  }, [tenantId]);
+
   if (!tenantId) {
     return (
       <PageContainer>
@@ -138,113 +255,39 @@ const ProjectList = () => {
     );
   }
 
-  const reload = () => actionRef.current?.reload();
-
-  const columns: ProColumns<Project>[] = [
-    { title: '项目名称', dataIndex: 'name' },
-    { title: '项目编码', dataIndex: 'code' },
-    { title: '负责人', dataIndex: 'ownerName', search: false },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      valueEnum: {
-        NOT_STARTED: { text: '未开始', status: 'Default' },
-        IN_PROGRESS: { text: '进行中', status: 'Processing' },
-        PAUSED: { text: '已暂停', status: 'Warning' },
-        COMPLETED: { text: '已完成', status: 'Success' },
-        ARCHIVED: { text: '已归档', status: 'Default' },
-      },
-      render: (_, record) => (
-        <Tag color={statusColor[record.status]}>{statusText[record.status]}</Tag>
-      ),
-    },
-    {
-      title: '成员数',
-      dataIndex: 'memberCount',
-      search: false,
-      align: 'right',
-      width: 90,
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      valueType: 'dateTime',
-      search: false,
-    },
-    {
-      title: '操作',
-      valueType: 'option',
-      render: (_, record) => (
-        <Space>
-          <Button
-            type="link"
-            icon={<FolderOpenOutlined />}
-            onClick={() =>
-              history.push(
-                `/projects/${record.id}/production-workbench/script`,
-              )
-            }
-          >
-            进入
-          </Button>
-          <Button
-            type="link"
-            icon={<ProfileOutlined />}
-            onClick={() =>
-              history.push(`/projects/${record.id}/production-workbench`)
-            }
-          >
-            进度
-          </Button>
-          {record.capabilities.canEdit && (
-            <>
-              <ProjectEditor project={record} members={members} onDone={reload} />
-              <Button
-                type="link"
-                disabled={record.status === 'ARCHIVED'}
-                onClick={async () => {
-                  const nextStatus =
-                    record.status === 'NOT_STARTED' ? 'IN_PROGRESS' : 'ARCHIVED';
-                  await updateProjectStatus(record.id, nextStatus);
-                  message.success('项目状态已更新');
-                  reload();
-                }}
-              >
-                {record.status === 'NOT_STARTED' ? '启动' : '归档'}
-              </Button>
-            </>
-          )}
-        </Space>
-      ),
-    },
-  ];
-
   return (
     <PageContainer>
-      <ProTable<Project>
-        actionRef={actionRef}
-        rowKey="id"
-        headerTitle="项目列表"
-        columns={columns}
-        request={async () => {
-          const response = await queryProjects();
-          return { data: response.data, success: response.success };
-        }}
-        toolBarRender={() =>
-          access.canCreateProject
-            ? [
-                <Button
-                  key="create"
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => history.push('/short-drama-creation')}
-                >
-                  创建项目
-                </Button>,
-              ]
-            : []
-        }
-      />
+      <div className={styles.toolbar}>
+        <div>
+          <h1 className={styles.title}>项目列表</h1>
+          <span className={styles.count}>共 {projects.length} 个项目</span>
+        </div>
+        {access.canCreateProject && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => history.push('/short-drama-creation')}
+          >
+            创建项目
+          </Button>
+        )}
+      </div>
+      {loading ? (
+        <div className={styles.loading}>加载项目中...</div>
+      ) : projects.length ? (
+        <div className={styles.grid}>
+          {projects.map((project) => (
+            <ProjectCard
+              key={project.id}
+              project={project}
+              members={members}
+              onDone={loadProjects}
+            />
+          ))}
+        </div>
+      ) : (
+        <Empty description="暂无项目" />
+      )}
     </PageContainer>
   );
 };

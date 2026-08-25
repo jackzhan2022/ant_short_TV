@@ -31,6 +31,7 @@ vi.mock('./service', () => ({
 vi.mock('@ant-design/icons', () => ({
   EditOutlined: () => <span data-testid="edit-icon" />,
   FolderOpenOutlined: () => <span data-testid="folder-icon" />,
+  MoreOutlined: () => <span data-testid="more-icon" />,
   PlusOutlined: () => <span data-testid="plus-icon" />,
   ProfileOutlined: () => <span data-testid="progress-icon" />,
 }));
@@ -124,6 +125,43 @@ describe('ProjectList', () => {
     expect(mocks.historyPush).toHaveBeenCalledWith(
       '/projects/1/production-workbench/script',
     );
+  });
+
+  it('renders project cards with cover, status, owner and creation metadata', async () => {
+    mocks.queryProjects.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 3,
+          name: '卡片项目',
+          code: 'CARD_PROJECT',
+          coverUrl: 'https://example.com/card.jpg',
+          ownerName: '张编剧',
+          status: 'COMPLETED',
+          memberCount: 4,
+          createdAt: '2026-08-25T12:29:45Z',
+          capabilities: {
+            canView: true,
+            canEdit: false,
+            canDelete: false,
+            canManageMembers: false,
+            canManageRoles: false,
+          },
+        },
+      ],
+    });
+
+    render(<ProjectList />);
+
+    expect(await screen.findByText('卡片项目')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '卡片项目封面' })).toHaveAttribute(
+      'src',
+      'https://example.com/card.jpg',
+    );
+    expect(screen.getByText('已完成')).toBeInTheDocument();
+    expect(screen.getByText('负责人：张编剧')).toBeInTheDocument();
+    expect(screen.getByText(/2026-08-25/)).toBeInTheDocument();
+    expect(screen.getByText('4 位成员')).toBeInTheDocument();
   });
 
   it('opens the independent production workbench from project progress', async () => {
