@@ -2,6 +2,7 @@ package com.antshorttv.script;
 
 import com.antshorttv.ai.AiBusinessScene;
 import com.antshorttv.ai.ProjectAiConfigService;
+import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.execution.AiExecutionCreateCommand;
 import com.antshorttv.execution.AiExecutionResponse;
 import com.antshorttv.execution.AiExecutionResponseMapper;
@@ -10,6 +11,7 @@ import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.security.TenantContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -88,7 +90,7 @@ class ScriptAiOperationService {
                 true,
                 operation.redactedInputJson
             ),
-            Map.of(),
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
             Map.of("operationType", operationType)
         );
         operation.executionId = execution.id;

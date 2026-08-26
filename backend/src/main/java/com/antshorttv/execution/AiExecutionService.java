@@ -2,6 +2,8 @@ package com.antshorttv.execution;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.antshorttv.accounting.AiUsageMetric;
+import com.antshorttv.accounting.AiModelBillingResolver;
+import com.antshorttv.accounting.ModelBillingSnapshot;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.points.AiPointReservationCommand;
@@ -19,13 +21,16 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 public class AiExecutionService {
     private final AiExecutionTaskMapper taskMapper;
     private final AiPointSettlementService pointSettlementService;
+    private final AiModelBillingResolver billingResolver;
 
     public AiExecutionService(
         AiExecutionTaskMapper taskMapper,
-        AiPointSettlementService pointSettlementService
+        AiPointSettlementService pointSettlementService,
+        AiModelBillingResolver billingResolver
     ) {
         this.taskMapper = taskMapper;
         this.pointSettlementService = pointSettlementService;
+        this.billingResolver = billingResolver;
     }
 
     @Transactional
@@ -34,7 +39,13 @@ public class AiExecutionService {
         Map<AiUsageMetric, BigDecimal> authorizedUsage,
         Map<String, String> dimensions
     ) {
+        ModelBillingSnapshot billing = billingResolver.requireComplete(
+            command.requestedModelId(), authorizedUsage.keySet(), dimensions, LocalDateTime.now());
         AiExecutionTaskEntity task = create(command);
+        taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("cost_price_version_id", billing.costVersionId())
+            .set("point_price_version_id", billing.pointVersionId())
+            .eq("id", task.id));
         AiPointReservationEntity reservation = pointSettlementService.reserve(new AiPointReservationCommand(
             task.tenantId,
             task.userId,
@@ -47,6 +58,7 @@ public class AiExecutionService {
             task.capability,
             authorizedUsage,
             dimensions,
+            billing.pointVersionId(),
             "execution:%d:v%d:reserve".formatted(task.id, task.executionVersion)
         ));
         taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
@@ -123,7 +135,13 @@ public class AiExecutionService {
         Map<String, String> dimensions
     ) {
         AiExecutionTaskEntity source = requireTask(sourceId);
+        ModelBillingSnapshot billing = billingResolver.requireComplete(
+            requestedModelId, authorizedUsage.keySet(), dimensions, LocalDateTime.now());
         AiExecutionTaskEntity task = createRegeneration(source, businessId, requestedModelId, clientIdempotencyKey, traceId);
+        taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("cost_price_version_id", billing.costVersionId())
+            .set("point_price_version_id", billing.pointVersionId())
+            .eq("id", task.id));
         AiPointReservationEntity reservation = pointSettlementService.reserve(new AiPointReservationCommand(
             task.tenantId,
             task.userId,
@@ -136,6 +154,7 @@ public class AiExecutionService {
             task.capability,
             authorizedUsage,
             dimensions,
+            billing.pointVersionId(),
             "execution:%d:v%d:reserve".formatted(task.id, task.executionVersion)
         ));
         taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()

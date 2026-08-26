@@ -53,6 +53,7 @@ export default {
   'menu.ai-service-management': 'AI Services',
   'menu.ai-service-management.providers': 'Platform Providers',
   'menu.ai-service-management.models': 'Platform Models',
+  'menu.ai-service-management.billing': 'Model Billing',
   'menu.ai-service-management.logs': 'Call Logs',
   'menu.ai-service-management.agents': 'Agents & Skills',
   'menu.video-script-decomposition': 'Video Script Decomposition',

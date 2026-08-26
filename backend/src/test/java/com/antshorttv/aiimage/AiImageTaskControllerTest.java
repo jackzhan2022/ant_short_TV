@@ -496,6 +496,9 @@ class AiImageTaskControllerTest {
         } else {
             jdbcTemplate.update("update ai_model set status = 'ENABLED', is_default = true where id = ?", modelId);
         }
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbcTemplate, modelId, "IMAGE", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE
+        );
     }
 
     @Test

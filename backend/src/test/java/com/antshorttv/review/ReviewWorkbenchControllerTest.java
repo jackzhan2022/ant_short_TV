@@ -663,6 +663,12 @@ class ReviewWorkbenchControllerTest {
             values
               (?, 'review-test-text-model', 'Review Test Text Model', 'review-test-text-model', 'TEXT', 'ENABLED', true, 999, now(), now())
             """, providerId);
+        Long modelId = jdbcTemplate.queryForObject(
+            "select id from ai_model where code = 'review-test-text-model'", Long.class
+        );
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbcTemplate, modelId, "CALL", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE
+        );
     }
 
     private AiInvocationResult<AiTextResponse> successfulReviewInvocation(Long callLogId) {

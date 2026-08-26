@@ -702,6 +702,9 @@ class AiVideoTaskControllerTest {
         } else {
             jdbc.update("update ai_model set status = 'ENABLED', is_default = true where id = ?", modelId);
         }
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbc, modelId, "VIDEO_SECOND", java.math.BigDecimal.valueOf(5), java.math.BigDecimal.ONE
+        );
         return modelId;
     }
 

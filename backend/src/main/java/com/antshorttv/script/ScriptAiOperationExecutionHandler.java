@@ -1,5 +1,6 @@
 package com.antshorttv.script;
 
+import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiTextResponse;
@@ -18,6 +19,7 @@ import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.AiSettlementOutcome;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -92,7 +94,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             ScriptAiOperationExecutionResult result = executeOperation(operation, context);
             markAttempt(context, result.lastInvocation());
             markSucceeded(operation, result);
-            settle(context, result.lastInvocation(), AiSettlementOutcome.SUCCESS);
+            settle(context, result.lastInvocation(), AiSettlementOutcome.SUCCESS, result.invocations().size());
             return new AiExecutionHandlerResult(result.resultType(), result.resultId());
         } catch (AiExecutionClaimLostException exception) {
             markCanceled(operation);
@@ -100,9 +102,14 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         } catch (RuntimeException exception) {
             Long callLogId = exception instanceof AiGatewayException gateway ? gateway.getAiCallLogId() : null;
             markFailed(operation, exception);
-            settle(context, null, callLogId == null
-                ? AiSettlementOutcome.PROVIDER_REJECTION
-                : AiSettlementOutcome.PROVIDER_BILLED_FAILURE);
+            settle(
+                context,
+                null,
+                callLogId == null
+                    ? AiSettlementOutcome.PROVIDER_REJECTION
+                    : AiSettlementOutcome.PROVIDER_BILLED_FAILURE,
+                callLogId == null ? 0 : 1
+            );
             throw exception;
         }
     }
@@ -179,7 +186,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
     private void settle(
         AiExecutionContext context,
         AiInvocationResult<AiTextResponse> invocation,
-        AiSettlementOutcome outcome
+        AiSettlementOutcome outcome,
+        int providerCallCount
     ) {
         AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(context.task().id);
         if (reservation == null || !"RESERVED".equals(reservation.status)) {
@@ -188,7 +196,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         AiPointReservationEntity settled = settlementService.finalizeOutcome(
             reservation.id,
             outcome,
-            Map.of(),
+            Map.of(AiUsageMetric.CALL, BigDecimal.valueOf(providerCallCount)),
             context.claim().attemptId(),
             invocation == null ? null : invocation.aiCallLogId(),
             "execution:%d:v%d:%s".formatted(

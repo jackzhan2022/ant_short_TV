@@ -9,6 +9,8 @@ const AiServiceManagementIndex = () => {
       history.replace('/ai-service-management/providers');
     } else if (access.canViewPlatformAiModels) {
       history.replace('/ai-service-management/models');
+    } else if (access.canViewModelBilling) {
+      history.replace('/ai-service-management/billing');
     } else if (access.canViewBuiltInAiAgents) {
       history.replace('/ai-service-management/agents');
     } else if (access.canViewAiCallLogs) {

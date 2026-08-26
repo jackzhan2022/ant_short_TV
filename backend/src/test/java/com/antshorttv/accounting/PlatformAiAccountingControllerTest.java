@@ -44,7 +44,7 @@ class PlatformAiAccountingControllerTest {
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.errorCode", is("FORBIDDEN")));
 
-        mockMvc.perform(post("/api/platform/ai/point-policy-versions")
+        mockMvc.perform(post("/api/platform/ai/models/1/point-price-versions")
                 .with(SessionTestSupport.authenticated(user.token()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(pointPolicyRequest()))
@@ -76,26 +76,27 @@ class PlatformAiAccountingControllerTest {
         Long priceVersionId = ((Number) JsonPath.read(
             priceResult.getResponse().getContentAsString(), "$.data.id")).longValue();
 
-        MvcResult policyResult = mockMvc.perform(post("/api/platform/ai/point-policy-versions")
+        MvcResult policyResult = mockMvc.perform(post(
+                "/api/platform/ai/models/{modelId}/point-price-versions", modelId)
                 .with(SessionTestSupport.authenticated(admin.token()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(pointPolicyRequest()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", notNullValue()))
-            .andExpect(jsonPath("$.data.scene", is("script_generate")))
+            .andExpect(jsonPath("$.data.modelId", is(modelId.intValue())))
+            .andExpect(jsonPath("$.data.versionNo", is(1)))
             .andExpect(jsonPath("$.data.status", is("PUBLISHED")))
             .andExpect(jsonPath("$.data.components", hasSize(2)))
             .andReturn();
         Long policyVersionId = ((Number) JsonPath.read(
             policyResult.getResponse().getContentAsString(), "$.data.id")).longValue();
 
-        mockMvc.perform(post("/api/platform/ai/point-policy-versions")
+        mockMvc.perform(get("/api/platform/ai/models/{modelId}/billing", modelId)
                 .with(SessionTestSupport.authenticated(admin.token()))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(modelSpecificPointPolicyRequest(modelId)))
+                .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.modelId", is(modelId.intValue())))
-            .andExpect(jsonPath("$.data.versionNo", is(3)));
+            .andExpect(jsonPath("$.data.costPrices", hasSize(1)))
+            .andExpect(jsonPath("$.data.pointPrices", hasSize(1)));
 
         Long executionId = createAccountingDetail(
             admin.userId(), modelId, priceVersionId, policyVersionId);
@@ -107,6 +108,9 @@ class PlatformAiAccountingControllerTest {
             .andExpect(jsonPath("$.data.execution.usageCostStatus", is("PRICED")))
             .andExpect(jsonPath("$.data.usageLines[0].metric", is("CALL")))
             .andExpect(jsonPath("$.data.costLines[0].currency", is("USD")))
+            .andExpect(jsonPath("$.data.billingEvidence.costPriceVersionId", is(priceVersionId.intValue())))
+            .andExpect(jsonPath("$.data.billingEvidence.pointPriceVersionId", is(policyVersionId.intValue())))
+            .andExpect(jsonPath("$.data.billingEvidence.pointComponents[0].id", notNullValue()))
             .andExpect(jsonPath("$.data.settlement.reservation.status", is("SETTLED")))
             .andExpect(jsonPath("$.data.settlement.ledger", hasSize(1)))
             .andReturn();
@@ -117,6 +121,33 @@ class PlatformAiAccountingControllerTest {
             .doesNotContain("stored-prompt-secret")
             .doesNotContain("authorizedUsageJson")
             .doesNotContain("redactedInputJson");
+    }
+
+    @Test
+    void crossModelCostPriceRevocationDoesNotMutateTheVersion() throws Exception {
+        Registration admin = registerUser();
+        grantPlatformAdmin(admin.userId());
+        Long ownerModelId = createModel(admin.userId());
+        Long otherModelId = createModel(admin.userId() + 100000L);
+        MvcResult result = mockMvc.perform(post(
+                "/api/platform/ai/models/{modelId}/price-versions", ownerModelId)
+                .with(SessionTestSupport.authenticated(admin.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(modelPriceRequest()))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long versionId = ((Number) JsonPath.read(
+            result.getResponse().getContentAsString(), "$.data.id")).longValue();
+
+        mockMvc.perform(post(
+                "/api/platform/ai/models/{modelId}/cost-price-versions/{versionId}/revoke",
+                otherModelId, versionId)
+                .with(SessionTestSupport.authenticated(admin.token())))
+            .andExpect(status().isBadRequest());
+
+        assertThat(jdbc.queryForObject(
+            "select status from ai_model_price_version where id = ?", String.class, versionId
+        )).isEqualTo("PUBLISHED");
     }
 
     private Registration registerUser() throws Exception {
@@ -168,12 +199,13 @@ class PlatformAiAccountingControllerTest {
                progress, execution_version, client_idempotency_key, trace_id, priority,
                retryable, usage_cost_status, provider_cost_summary_json,
                point_settlement_status, reserved_points, settled_points, released_points,
-               created_at, updated_at, completed_at)
+               cost_price_version_id, point_price_version_id, created_at, updated_at, completed_at)
             values (?, ?, null, 'script_generate', 'TEXT_GENERATION', 'SCRIPT_AI_OPERATION', 91,
                     ?, ?, '{"prompt":"stored-prompt-secret"}', 'SUCCEEDED', 'COMPLETED',
                     100, 1, ?, ?, 100, false, 'PRICED', '{"USD":0.01}',
-                    'SETTLED', 2, 1, 1, now(), now(), now())
-            """, tenantId, userId, modelId, modelId, clientKey, "trace-" + userId);
+                    'SETTLED', 2, 1, 1, ?, ?, now(), now(), now())
+            """, tenantId, userId, modelId, modelId, clientKey, "trace-" + userId,
+            priceVersionId, policyVersionId);
         Long executionId = jdbc.queryForObject(
             "select id from ai_execution_task where tenant_id = ? and client_idempotency_key = ?",
             Long.class, tenantId, clientKey);
@@ -201,10 +233,10 @@ class PlatformAiAccountingControllerTest {
         jdbc.update("""
             insert into ai_point_reservation
               (tenant_id, user_id, execution_id, execution_version, business_type, business_id,
-               scene, policy_version_id, status, authorized_usage_json, dimensions_json,
+               scene, policy_version_id, point_price_version_id, status, authorized_usage_json, dimensions_json,
                reserved_points, settled_points, released_points, refunded_points,
                idempotency_key, created_at, settled_at, updated_at)
-            values (?, ?, ?, 1, 'SCRIPT_AI_OPERATION', 91, 'script_generate', ?, 'SETTLED',
+            values (?, ?, ?, 1, 'SCRIPT_AI_OPERATION', 91, 'script_generate', null, ?, 'SETTLED',
                     '{"apiKey":"stored-provider-secret"}', '{}', 2, 1, 1, 0,
                     ?, now(), now(), now())
             """, tenantId, userId, executionId, policyVersionId, "reservation-" + userId);
@@ -224,7 +256,6 @@ class PlatformAiAccountingControllerTest {
         LocalDateTime effectiveFrom = LocalDateTime.now().plusDays(1).withNano(0);
         return """
             {
-              "versionNo": 1,
               "effectiveFrom": "%s",
               "components": [
                 {"metric":"CALL","unitSize":1,"unitPrice":0.01,"currency":"USD","dimensions":{}},
@@ -238,34 +269,13 @@ class PlatformAiAccountingControllerTest {
         LocalDateTime effectiveFrom = LocalDateTime.now().plusDays(1).withNano(0);
         return """
             {
-              "scene":"script_generate",
-              "versionNo":2,
               "effectiveFrom":"%s",
-              "chargeProviderRejection":false,
-              "chargeProviderBilledFailure":true,
-              "chargeTimeout":true,
-              "chargeBusinessFailure":true,
               "components":[
-                {"metric":"FIXED_EXECUTION","unitSize":1,"pointRate":1,"dimensions":{}},
+                {"metric":"CALL","unitSize":1,"pointRate":1,"dimensions":{}},
                 {"metric":"INPUT_TOKEN","unitSize":1000,"pointRate":0.5,"dimensions":{}}
               ]
             }
             """.formatted(effectiveFrom);
-    }
-
-    private String modelSpecificPointPolicyRequest(Long modelId) {
-        LocalDateTime effectiveFrom = LocalDateTime.now().plusDays(1).withNano(0);
-        return """
-            {
-              "scene":"script_generate",
-              "modelId":%d,
-              "versionNo":3,
-              "effectiveFrom":"%s",
-              "components":[
-                {"metric":"FIXED_EXECUTION","unitSize":1,"pointRate":2,"dimensions":{}}
-              ]
-            }
-            """.formatted(modelId, effectiveFrom);
     }
 
     private record Registration(Long userId, String token) {

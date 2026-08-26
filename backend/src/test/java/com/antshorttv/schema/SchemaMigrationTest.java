@@ -15,6 +15,46 @@ class SchemaMigrationTest {
     private DataSource dataSource;
 
     @Test
+    void flywayCreatesModelPointPricingAndFrozenExecutionReferences() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+              from information_schema.tables
+             where lower(table_name) in (
+               'ai_model_point_price_version', 'ai_model_point_price_component'
+             )
+            """, Integer.class);
+        Integer frozenReferenceColumns = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where (lower(table_name) = 'ai_execution_task'
+                    and lower(column_name) in ('cost_price_version_id', 'point_price_version_id'))
+                or (lower(table_name) = 'ai_point_reservation'
+                    and lower(column_name) = 'point_price_version_id')
+            """, Integer.class);
+        Integer nullableLegacyPolicy = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where lower(table_name) = 'ai_point_reservation'
+               and lower(column_name) = 'policy_version_id'
+               and is_nullable = 'YES'
+            """, Integer.class);
+        Integer versionUniqueConstraint = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.table_constraints
+             where lower(table_name) = 'ai_model_point_price_version'
+               and lower(constraint_name) = 'uk_ai_model_point_price_version'
+               and constraint_type = 'UNIQUE'
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(2);
+        assertThat(frozenReferenceColumns).isEqualTo(3);
+        assertThat(nullableLegacyPolicy).isEqualTo(1);
+        assertThat(versionUniqueConstraint).isEqualTo(1);
+    }
+
+    @Test
     void flywayCreatesRevocableSessionAndPlatformAuthorizationSchema() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 

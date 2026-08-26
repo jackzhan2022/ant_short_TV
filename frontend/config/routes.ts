@@ -160,6 +160,13 @@ export default [
         component: './ai-service-management/models',
       },
       {
+        path: '/ai-service-management/billing',
+        name: 'billing',
+        icon: 'dollar',
+        access: 'canViewModelBilling',
+        component: './ai-service-management/billing',
+      },
+      {
         path: '/ai-service-management/logs',
         name: 'logs',
         icon: 'profile',

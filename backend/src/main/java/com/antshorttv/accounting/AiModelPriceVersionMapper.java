@@ -24,4 +24,9 @@ public interface AiModelPriceVersionMapper extends BaseMapper<AiModelPriceVersio
             .eq("status", "PUBLISHED")
             .orderByAsc("effective_from"));
     }
+
+    default List<AiModelPriceVersionEntity> selectByModel(Long modelId) {
+        return selectList(new QueryWrapper<AiModelPriceVersionEntity>()
+            .eq("model_id", modelId).orderByAsc("version_no"));
+    }
 }

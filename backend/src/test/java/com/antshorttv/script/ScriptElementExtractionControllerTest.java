@@ -148,6 +148,34 @@ class ScriptElementExtractionControllerTest {
             """, providerId, modelCode);
         Long modelId = jdbcTemplate.queryForObject("select id from ai_model where code = ?", Long.class, modelCode);
         jdbcTemplate.update("insert into ai_model_capability (model_id, capability, status, created_at, updated_at) values (?, 'TEXT_GENERATION', 'ENABLED', now(), now())", modelId);
+        jdbcTemplate.update("""
+            insert into ai_model_price_version
+              (model_id, version_no, status, effective_from, published_at, created_at)
+            values (?, 1, 'PUBLISHED', dateadd('hour', -1, now()), now(), now())
+            """, modelId);
+        Long costVersionId = jdbcTemplate.queryForObject(
+            "select max(id) from ai_model_price_version where model_id = ?", Long.class, modelId
+        );
+        jdbcTemplate.update("""
+            insert into ai_model_price_component
+              (price_version_id, metric, unit_size, unit_price, currency,
+               dimensions_json, dimensions_key, created_at)
+            values (?, 'CALL', 1, 0.1, 'USD', '{}', '', now())
+            """, costVersionId);
+        jdbcTemplate.update("""
+            insert into ai_model_point_price_version
+              (model_id, version_no, status, effective_from, published_at, created_at)
+            values (?, 1, 'PUBLISHED', dateadd('hour', -1, now()), now(), now())
+            """, modelId);
+        Long pointVersionId = jdbcTemplate.queryForObject(
+            "select max(id) from ai_model_point_price_version where model_id = ?", Long.class, modelId
+        );
+        jdbcTemplate.update("""
+            insert into ai_model_point_price_component
+              (price_version_id, metric, unit_size, point_rate,
+               dimensions_json, dimensions_key, created_at)
+            values (?, 'CALL', 1, 1, '{}', '', now())
+            """, pointVersionId);
     }
 
     private void grantTeamPoints(Long tenantId, int amount) {

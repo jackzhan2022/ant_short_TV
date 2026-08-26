@@ -2,6 +2,8 @@ package com.antshorttv.points;
 
 import com.antshorttv.accounting.AiAccountingJson;
 import com.antshorttv.accounting.AiUsageMetric;
+import com.antshorttv.accounting.AiModelPointPriceComponentEntity;
+import com.antshorttv.accounting.AiModelPointPriceComponentMapper;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,6 +28,7 @@ public class AiPointSettlementService {
     private final AiPointLedgerMapper ledgerMapper;
     private final PointAccountingService accountingService;
     private final ObjectMapper objectMapper;
+    private final AiModelPointPriceComponentMapper modelPointPriceComponentMapper;
 
     public AiPointSettlementService(
         JdbcTemplate jdbc,
@@ -34,7 +37,8 @@ public class AiPointSettlementService {
         AiPointReservationMapper reservationMapper,
         AiPointLedgerMapper ledgerMapper,
         PointAccountingService accountingService,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        AiModelPointPriceComponentMapper modelPointPriceComponentMapper
     ) {
         this.jdbc = jdbc;
         this.policyVersionMapper = policyVersionMapper;
@@ -43,6 +47,7 @@ public class AiPointSettlementService {
         this.ledgerMapper = ledgerMapper;
         this.accountingService = accountingService;
         this.objectMapper = objectMapper;
+        this.modelPointPriceComponentMapper = modelPointPriceComponentMapper;
     }
 
     @Transactional
@@ -57,8 +62,10 @@ public class AiPointSettlementService {
             }
             return existing;
         }
-        AiPointPolicyVersionEntity policy = resolvePolicy(command);
-        BigDecimal required = calculate(policy.id, command.authorizedUsage(), command.dimensions());
+        AiPointPolicyVersionEntity policy = command.pointPriceVersionId() == null ? resolvePolicy(command) : null;
+        BigDecimal required = command.pointPriceVersionId() == null
+            ? calculate(policy.id, command.authorizedUsage(), command.dimensions())
+            : calculateModelPointPrice(command.pointPriceVersionId(), command.authorizedUsage(), command.dimensions());
         accountingService.ensureAccount(command.tenantId());
         int updated = accountingService.reserveFunds(command.tenantId(), required);
         if (updated == 0) {
@@ -77,7 +84,8 @@ public class AiPointSettlementService {
         reservation.businessType = command.businessType();
         reservation.businessId = command.businessId();
         reservation.scene = command.scene();
-        reservation.policyVersionId = policy.id;
+        reservation.policyVersionId = policy == null ? null : policy.id;
+        reservation.pointPriceVersionId = command.pointPriceVersionId();
         reservation.status = "RESERVED";
         reservation.authorizedUsageJson = writeJson(command.authorizedUsage());
         reservation.dimensionsJson = AiAccountingJson.write(command.dimensions());
@@ -105,11 +113,12 @@ public class AiPointSettlementService {
         if ("SETTLED".equals(reservation.status) || "REFUNDED".equals(reservation.status)) {
             return reservation;
         }
-        BigDecimal actual = calculate(
-            reservation.policyVersionId,
-            actualUsage == null ? Map.of() : actualUsage,
-            AiAccountingJson.read(reservation.dimensionsJson)
-        );
+        BigDecimal actual = reservation.pointPriceVersionId == null
+            ? calculate(reservation.policyVersionId, actualUsage == null ? Map.of() : actualUsage,
+                AiAccountingJson.read(reservation.dimensionsJson))
+            : calculateModelPointPrice(reservation.pointPriceVersionId,
+                actualUsage == null ? Map.of() : actualUsage,
+                AiAccountingJson.read(reservation.dimensionsJson));
         BigDecimal overage = actual.subtract(reservation.reservedPoints).max(BigDecimal.ZERO);
         if (overage.signum() > 0 && !incrementalReserve(reservation, overage, idempotencyKey)) {
             reservation.status = "SETTLEMENT_REVIEW_REQUIRED";
@@ -201,13 +210,15 @@ public class AiPointSettlementService {
         if (outcome == AiSettlementOutcome.PRE_CALL_CANCELED) {
             return release(reservation, attemptId, callLogId, idempotencyKey);
         }
-        AiPointPolicyVersionEntity policy = policyVersionMapper.selectById(reservation.policyVersionId);
+        AiPointPolicyVersionEntity policy = reservation.policyVersionId == null
+            ? null : policyVersionMapper.selectById(reservation.policyVersionId);
         boolean charge = switch (outcome) {
             case SUCCESS -> true;
-            case PROVIDER_REJECTION -> Boolean.TRUE.equals(policy.chargeProviderRejection);
-            case PROVIDER_BILLED_FAILURE -> Boolean.TRUE.equals(policy.chargeProviderBilledFailure);
-            case TIMED_OUT -> Boolean.TRUE.equals(policy.chargeTimeout);
-            case BUSINESS_FAILURE -> Boolean.TRUE.equals(policy.chargeBusinessFailure);
+            case PROVIDER_REJECTION -> policy != null && Boolean.TRUE.equals(policy.chargeProviderRejection);
+            case PROVIDER_BILLED_FAILURE, TIMED_OUT, BUSINESS_FAILURE -> policy == null
+                || (outcome == AiSettlementOutcome.PROVIDER_BILLED_FAILURE && Boolean.TRUE.equals(policy.chargeProviderBilledFailure))
+                || (outcome == AiSettlementOutcome.TIMED_OUT && Boolean.TRUE.equals(policy.chargeTimeout))
+                || (outcome == AiSettlementOutcome.BUSINESS_FAILURE && Boolean.TRUE.equals(policy.chargeBusinessFailure));
             case PRE_CALL_CANCELED -> false;
         };
         return charge
@@ -279,6 +290,27 @@ public class AiPointSettlementService {
             .map(component -> componentPoints(component, usage))
             .reduce(BigDecimal.ZERO, BigDecimal::add)
             .setScale(POINT_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal calculateModelPointPrice(
+        Long priceVersionId,
+        Map<AiUsageMetric, BigDecimal> usage,
+        Map<String, String> dimensions
+    ) {
+        return modelPointPriceComponentMapper.selectByVersion(priceVersionId).stream()
+            .filter(component -> AiAccountingJson.read(component.dimensionsJson).entrySet().stream()
+                .allMatch(entry -> entry.getValue().equals(dimensions.get(entry.getKey()))))
+            .map(component -> modelComponentPoints(component, usage))
+            .reduce(BigDecimal.ZERO, BigDecimal::add)
+            .setScale(POINT_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal modelComponentPoints(
+        AiModelPointPriceComponentEntity component,
+        Map<AiUsageMetric, BigDecimal> usage
+    ) {
+        BigDecimal quantity = usage.getOrDefault(AiUsageMetric.valueOf(component.metric), BigDecimal.ZERO);
+        return quantity.divide(component.unitSize, 12, RoundingMode.HALF_UP).multiply(component.pointRate);
     }
 
     private BigDecimal componentPoints(

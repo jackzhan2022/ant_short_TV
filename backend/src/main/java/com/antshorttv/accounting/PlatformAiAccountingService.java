@@ -31,6 +31,7 @@ public class PlatformAiAccountingService {
     private final AiUsageCostLineMapper usageCostLineMapper;
     private final AiPointReservationMapper reservationMapper;
     private final AiPointLedgerMapper ledgerMapper;
+    private final AiModelPointPriceService modelPointPriceService;
     private final CurrentPrincipal currentPrincipal;
 
     public PlatformAiAccountingService(
@@ -45,6 +46,7 @@ public class PlatformAiAccountingService {
         AiUsageCostLineMapper usageCostLineMapper,
         AiPointReservationMapper reservationMapper,
         AiPointLedgerMapper ledgerMapper,
+        AiModelPointPriceService modelPointPriceService,
         CurrentPrincipal currentPrincipal
     ) {
         this.modelMapper = modelMapper;
@@ -58,6 +60,7 @@ public class PlatformAiAccountingService {
         this.usageCostLineMapper = usageCostLineMapper;
         this.reservationMapper = reservationMapper;
         this.ledgerMapper = ledgerMapper;
+        this.modelPointPriceService = modelPointPriceService;
         this.currentPrincipal = currentPrincipal;
     }
 
@@ -70,7 +73,6 @@ public class PlatformAiAccountingService {
         }
         AiModelPriceVersionEntity version = new AiModelPriceVersionEntity();
         version.modelId = modelId;
-        version.versionNo = request.versionNo();
         version.effectiveFrom = request.effectiveFrom();
         version.effectiveTo = request.effectiveTo();
         version.createdBy = currentPrincipal.require().userId();
@@ -84,29 +86,53 @@ public class PlatformAiAccountingService {
         );
     }
 
-    public PointPolicyVersionResponse publishPointPolicy(PublishPointPolicyRequest request) {
-        if (request.modelId() != null && modelMapper.selectById(request.modelId()) == null) {
+    public ModelPointPriceVersionResponse publishModelPointPrice(
+        Long modelId,
+        PublishModelPointPriceRequest request
+    ) {
+        if (modelMapper.selectById(modelId) == null) {
             throw new BusinessException(ErrorCode.AI_MODEL_NOT_FOUND, "AI模型不存在。");
         }
-        AiPointPolicyVersionEntity version = new AiPointPolicyVersionEntity();
-        version.scene = request.scene().trim();
-        version.modelId = request.modelId();
-        version.capability = blankToNull(request.capability());
-        version.versionNo = request.versionNo();
-        version.effectiveFrom = request.effectiveFrom();
-        version.effectiveTo = request.effectiveTo();
-        version.chargeProviderRejection = Boolean.TRUE.equals(request.chargeProviderRejection());
-        version.chargeProviderBilledFailure = !Boolean.FALSE.equals(request.chargeProviderBilledFailure());
-        version.chargeTimeout = !Boolean.FALSE.equals(request.chargeTimeout());
-        version.chargeBusinessFailure = !Boolean.FALSE.equals(request.chargeBusinessFailure());
-        List<AiPointPolicyComponentEntity> components = request.components().stream()
-            .map(this::pointPolicyComponent)
+        List<AiModelPointPriceComponentEntity> components = request.components().stream()
+            .map(this::modelPointPriceComponent)
             .toList();
-        pointPolicyService.publish(version, components);
-        return PointPolicyVersionResponse.from(
-            version,
-            pointPolicyComponentMapper.selectByPolicyVersion(version.id)
+        AiModelPointPriceVersionEntity version = modelPointPriceService.publish(
+            modelId, request.effectiveFrom(), request.effectiveTo(), components,
+            currentPrincipal.require().userId()
         );
+        return ModelPointPriceVersionResponse.from(version, modelPointPriceService.components(version.id));
+    }
+
+    public ModelBillingHistoryResponse billingHistory(Long modelId) {
+        if (modelMapper.selectById(modelId) == null) {
+            throw new BusinessException(ErrorCode.AI_MODEL_NOT_FOUND, "AI模型不存在。");
+        }
+        return new ModelBillingHistoryResponse(
+            modelId,
+            modelPriceService.list(modelId).stream().map(version -> ModelPriceVersionResponse.from(
+                version, modelPriceComponentMapper.selectByVersion(version.id))).toList(),
+            modelPointPriceService.list(modelId).stream().map(version -> ModelPointPriceVersionResponse.from(
+                version, modelPointPriceService.components(version.id))).toList()
+        );
+    }
+
+    public ModelPriceVersionResponse revokeCostPrice(Long modelId, Long versionId) {
+        AiModelPriceVersionEntity version = modelPriceService.require(versionId);
+        if (!modelId.equals(version.modelId)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "成本价版本不属于指定模型。");
+        }
+        version = modelPriceService.revoke(versionId, LocalDateTime.now());
+        return ModelPriceVersionResponse.from(version, modelPriceComponentMapper.selectByVersion(version.id));
+    }
+
+    public ModelPointPriceVersionResponse revokePointPrice(Long modelId, Long versionId) {
+        AiModelPointPriceVersionEntity version = modelPointPriceService.require(versionId);
+        if (!modelId.equals(version.modelId)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "积分价版本不属于指定模型。");
+        }
+        modelPointPriceService.revoke(versionId, LocalDateTime.now());
+        return ModelPointPriceVersionResponse.from(
+            modelPointPriceService.require(versionId), modelPointPriceService.components(versionId));
     }
 
     public PlatformAiAccountingDetailResponse accountingDetail(Long executionId) {
@@ -121,6 +147,16 @@ public class PlatformAiAccountingService {
             usageCostLineMapper.selectByExecutionId(executionId).stream()
                 .map(UsageCostLineResponse::from)
                 .toList(),
+            new BillingEvidenceResponse(
+                execution.costPriceVersionId,
+                execution.pointPriceVersionId,
+                execution.pointPriceVersionId == null ? List.of() : modelPointPriceService
+                    .components(execution.pointPriceVersionId).stream()
+                    .map(component -> new PointPolicyComponentResponse(
+                        component.id, component.metric, component.unitSize, component.pointRate
+                    ))
+                    .toList()
+            ),
             new PointSettlementDetailResponse(
                 PointReservationResponse.from(reservation),
                 ledgerMapper.selectByExecutionId(executionId).stream().map(PointLedgerResponse::from).toList()
@@ -147,6 +183,15 @@ public class PlatformAiAccountingService {
         component.dimensionsJson = AiAccountingJson.write(request.dimensions());
         component.dimensionsKey = AiAccountingJson.canonicalKey(request.dimensions());
         component.createdAt = LocalDateTime.now();
+        return component;
+    }
+
+    private AiModelPointPriceComponentEntity modelPointPriceComponent(PointPolicyComponentRequest request) {
+        AiModelPointPriceComponentEntity component = new AiModelPointPriceComponentEntity();
+        component.metric = request.metric().trim();
+        component.unitSize = request.unitSize();
+        component.pointRate = request.pointRate();
+        component.dimensions = request.dimensions();
         return component;
     }
 

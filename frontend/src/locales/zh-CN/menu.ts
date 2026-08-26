@@ -54,6 +54,7 @@ export default {
   'menu.operations': 'AI运维',
   'menu.ai-service-management.providers': '平台 Provider',
   'menu.ai-service-management.models': '平台 Model',
+  'menu.ai-service-management.billing': '模型计费',
   'menu.ai-service-management.logs': '调用日志',
   'menu.ai-service-management.agents': 'Agent 与 Skill',
   'menu.video-script-decomposition': '视频拆剧',

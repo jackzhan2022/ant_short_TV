@@ -139,6 +139,16 @@ declare namespace API {
     results?: AiImageResultResponse[];
   };
 
+  type AiPointReconciliation = {
+    tenantId?: number;
+    accountAvailable?: number;
+    ledgerAvailable?: number;
+    accountReserved?: number;
+    ledgerReserved?: number;
+    reservationReserved?: number;
+    matches?: boolean;
+  };
+
   type AiServiceTestResponse = {
     status?: string;
     message?: string;
@@ -251,6 +261,13 @@ declare namespace API {
   type ApiResponseAiImageTaskResponse = {
     success?: boolean;
     data?: AiImageTaskResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseAiPointReconciliation = {
+    success?: boolean;
+    data?: AiPointReconciliation;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -556,6 +573,20 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseModelBillingHistoryResponse = {
+    success?: boolean;
+    data?: ModelBillingHistoryResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseModelPointPriceVersionResponse = {
+    success?: boolean;
+    data?: ModelPointPriceVersionResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseModelPriceVersionResponse = {
     success?: boolean;
     data?: ModelPriceVersionResponse;
@@ -587,13 +618,6 @@ declare namespace API {
   type ApiResponsePlatformProviderResponse = {
     success?: boolean;
     data?: PlatformProviderResponse;
-    errorCode?: string;
-    errorMessage?: string;
-  };
-
-  type ApiResponsePointPolicyVersionResponse = {
-    success?: boolean;
-    data?: PointPolicyVersionResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -813,6 +837,16 @@ declare namespace API {
     insertionText?: string;
     deletionText?: string;
     selectedHitIds?: number[];
+  };
+
+  type BillingEvidenceResponse = {
+    costPriceVersionId?: number;
+    pointPriceVersionId?: number;
+    pointComponents?: PointPolicyComponentResponse[];
+  };
+
+  type billingHistoryParams = {
+    modelId: number;
   };
 
   type bindComposeResultParams = {
@@ -1581,6 +1615,24 @@ declare namespace API {
     id: number;
   };
 
+  type ModelBillingHistoryResponse = {
+    modelId?: number;
+    costPrices?: ModelPriceVersionResponse[];
+    pointPrices?: ModelPointPriceVersionResponse[];
+  };
+
+  type ModelPointPriceVersionResponse = {
+    id?: number;
+    modelId?: number;
+    versionNo?: number;
+    status?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    publishedAt?: string;
+    createdBy?: number;
+    components?: PointPolicyComponentResponse[];
+  };
+
   type ModelPriceComponentRequest = {
     metric: string;
     unitSize: number;
@@ -1647,6 +1699,7 @@ declare namespace API {
     execution?: AiExecutionResponse;
     usageLines?: UsageLineResponse[];
     costLines?: UsageCostLineResponse[];
+    billingEvidence?: BillingEvidenceResponse;
     settlement?: PointSettlementDetailResponse;
   };
 
@@ -1743,26 +1796,10 @@ declare namespace API {
     pointRate?: number;
   };
 
-  type PointPolicyVersionResponse = {
-    id?: number;
-    scene?: string;
-    modelId?: number;
-    capability?: string;
-    versionNo?: number;
-    status?: string;
-    effectiveFrom?: string;
-    effectiveTo?: string;
-    chargeProviderRejection?: boolean;
-    chargeProviderBilledFailure?: boolean;
-    chargeTimeout?: boolean;
-    chargeBusinessFailure?: boolean;
-    publishedAt?: string;
-    components?: PointPolicyComponentResponse[];
-  };
-
   type PointReservationResponse = {
     id?: number;
     policyVersionId?: number;
+    pointPriceVersionId?: number;
     status?: string;
     reservedPoints?: number;
     settledPoints?: number;
@@ -1910,29 +1947,24 @@ declare namespace API {
     failureRate?: number;
   };
 
+  type PublishModelPointPriceRequest = {
+    effectiveFrom: string;
+    effectiveTo?: string;
+    components: PointPolicyComponentRequest[];
+  };
+
   type publishModelPriceParams = {
     modelId: number;
   };
 
   type PublishModelPriceRequest = {
-    versionNo: number;
     effectiveFrom: string;
     effectiveTo?: string;
     components: ModelPriceComponentRequest[];
   };
 
-  type PublishPointPolicyRequest = {
-    scene: string;
-    modelId?: number;
-    capability?: string;
-    versionNo: number;
-    effectiveFrom: string;
-    effectiveTo?: string;
-    chargeProviderRejection?: boolean;
-    chargeProviderBilledFailure?: boolean;
-    chargeTimeout?: boolean;
-    chargeBusinessFailure?: boolean;
-    components: PointPolicyComponentRequest[];
+  type publishPointPriceParams = {
+    modelId: number;
   };
 
   type readParams = {
@@ -1948,6 +1980,10 @@ declare namespace API {
   type reanalyzeVersionParams = {
     projectId: number;
     versionId: number;
+  };
+
+  type reconciliationParams = {
+    tenantId: number;
   };
 
   type regenerate1Params = {
@@ -2196,6 +2232,16 @@ declare namespace API {
     fileName?: string;
     content?: string;
     createdAt?: string;
+  };
+
+  type revokeCostPriceParams = {
+    modelId: number;
+    versionId: number;
+  };
+
+  type revokePointPriceParams = {
+    modelId: number;
+    versionId: number;
   };
 
   type rewriteParams = {

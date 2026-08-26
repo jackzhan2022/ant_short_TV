@@ -5,8 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.antshorttv.accounting.AiUsageMetric;
+import com.antshorttv.accounting.ModelBillingMissingException;
+import com.antshorttv.points.AiPointReservationEntity;
+import com.antshorttv.points.AiPointReservationMapper;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -25,6 +31,25 @@ class AiExecutionCoreServiceTest {
 
     @Autowired
     private AiExecutionAttemptMapper attemptMapper;
+
+    @Autowired
+    private AiPointReservationMapper reservationMapper;
+
+    @Test
+    void missingDualPriceRejectsBeforeTaskAndReservationCreation() {
+        AiExecutionCreateCommand command = new AiExecutionCreateCommand(
+            8601L, 8602L, null, "TEST_BILLING", "TEXT", "TEST_RESOURCE", 8603L,
+            999901L, "SUBMIT", "missing-dual-price", "trace-missing-dual-price", true, null
+        );
+
+        assertThatThrownBy(() -> executionService.createWithReservation(
+            command, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of()
+        )).isInstanceOf(ModelBillingMissingException.class);
+        assertThat(taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
+            .eq("client_idempotency_key", "missing-dual-price"))).isZero();
+        assertThat(reservationMapper.selectCount(new QueryWrapper<AiPointReservationEntity>()
+            .eq("idempotency_key", "execution:missing-dual-price"))).isZero();
+    }
 
     @Test
     void creationIsIdempotentForTenantSceneAndClientKey() {

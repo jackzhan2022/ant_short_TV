@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 
 record PublishModelPriceRequest(
-    @NotNull @Positive Integer versionNo,
     @NotNull LocalDateTime effectiveFrom,
     LocalDateTime effectiveTo,
     @NotEmpty List<@Valid ModelPriceComponentRequest> components
@@ -28,17 +27,9 @@ record ModelPriceComponentRequest(
 ) {
 }
 
-record PublishPointPolicyRequest(
-    @NotBlank String scene,
-    Long modelId,
-    String capability,
-    @NotNull @Positive Integer versionNo,
+record PublishModelPointPriceRequest(
     @NotNull LocalDateTime effectiveFrom,
     LocalDateTime effectiveTo,
-    Boolean chargeProviderRejection,
-    Boolean chargeProviderBilledFailure,
-    Boolean chargeTimeout,
-    Boolean chargeBusinessFailure,
     @NotEmpty List<@Valid PointPolicyComponentRequest> components
 ) {
 }

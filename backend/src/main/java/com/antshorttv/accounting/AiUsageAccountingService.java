@@ -4,12 +4,15 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.antshorttv.execution.AiExecutionTaskEntity;
+import com.antshorttv.execution.AiExecutionTaskMapper;
 
 @Service
 public class AiUsageAccountingService {
@@ -20,19 +23,22 @@ public class AiUsageAccountingService {
     private final AiModelPriceComponentMapper priceComponentMapper;
     private final AiModelPriceVersionMapper priceVersionMapper;
     private final AiModelPriceResolver priceResolver;
+    private final AiExecutionTaskMapper executionTaskMapper;
 
     public AiUsageAccountingService(
         AiUsageLineMapper usageLineMapper,
         AiUsageCostLineMapper costLineMapper,
         AiModelPriceComponentMapper priceComponentMapper,
         AiModelPriceVersionMapper priceVersionMapper,
-        AiModelPriceResolver priceResolver
+        AiModelPriceResolver priceResolver,
+        AiExecutionTaskMapper executionTaskMapper
     ) {
         this.usageLineMapper = usageLineMapper;
         this.costLineMapper = costLineMapper;
         this.priceComponentMapper = priceComponentMapper;
         this.priceVersionMapper = priceVersionMapper;
         this.priceResolver = priceResolver;
+        this.executionTaskMapper = executionTaskMapper;
     }
 
     @Transactional
@@ -155,12 +161,32 @@ public class AiUsageAccountingService {
                 return new AiResolvedPrice(version, component);
             }
         }
+        AiExecutionTaskEntity execution = executionTaskMapper.selectById(usageLine.executionId);
+        if (execution != null && execution.costPriceVersionId != null) {
+            AiModelPriceVersionEntity version = priceVersionMapper.selectById(execution.costPriceVersionId);
+            AiModelPriceComponentEntity component = priceComponentMapper
+                .selectByVersionAndMetric(execution.costPriceVersionId, usageLine.metric)
+                .stream()
+                .filter(candidate -> matches(
+                    AiAccountingJson.read(candidate.dimensionsJson),
+                    AiAccountingJson.read(usageLine.dimensionsJson)
+                ))
+                .max(Comparator.comparingInt(candidate ->
+                    AiAccountingJson.read(candidate.dimensionsJson).size()))
+                .orElse(null);
+            return version == null || component == null ? null : new AiResolvedPrice(version, component);
+        }
         return priceResolver.resolve(
             usageLine.modelId,
             AiUsageMetric.valueOf(usageLine.metric),
             AiAccountingJson.read(usageLine.dimensionsJson),
             usageLine.observedAt
         );
+    }
+
+    private boolean matches(Map<String, String> priceDimensions, Map<String, String> usageDimensions) {
+        return priceDimensions.entrySet().stream()
+            .allMatch(entry -> entry.getValue().equals(usageDimensions.get(entry.getKey())));
     }
 
     private AiUsageCostLineEntity baseCost(AiUsageLineEntity usageLine) {

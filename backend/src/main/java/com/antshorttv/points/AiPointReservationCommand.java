@@ -16,8 +16,27 @@ public record AiPointReservationCommand(
     String capability,
     Map<AiUsageMetric, BigDecimal> authorizedUsage,
     Map<String, String> dimensions,
+    Long pointPriceVersionId,
     String idempotencyKey
 ) {
+    public AiPointReservationCommand(
+        Long tenantId,
+        Long userId,
+        Long executionId,
+        int executionVersion,
+        String scene,
+        String businessType,
+        Long businessId,
+        Long modelId,
+        String capability,
+        Map<AiUsageMetric, BigDecimal> authorizedUsage,
+        Map<String, String> dimensions,
+        String idempotencyKey
+    ) {
+        this(tenantId, userId, executionId, executionVersion, scene, businessType, businessId,
+            modelId, capability, authorizedUsage, dimensions, null, idempotencyKey);
+    }
+
     public AiPointReservationCommand(
         Long tenantId,
         Long userId,
@@ -32,7 +51,7 @@ public record AiPointReservationCommand(
     ) {
         this(
             tenantId, userId, executionId, executionVersion, scene, businessType, businessId,
-            null, null, authorizedUsage, dimensions, idempotencyKey
+            null, null, authorizedUsage, dimensions, null, idempotencyKey
         );
     }
 

@@ -28,12 +28,35 @@ public class PlatformAiAccountingController {
         return ApiResponse.success(service.publishModelPrice(modelId, request));
     }
 
-    @PostMapping("/point-policy-versions")
-    @RequirePlatformPermission("PLATFORM_AI_POINT_POLICY_PUBLISH")
-    public ApiResponse<PointPolicyVersionResponse> publishPointPolicy(
-        @Valid @RequestBody PublishPointPolicyRequest request
+    @GetMapping("/models/{modelId}/billing")
+    @RequirePlatformPermission("PLATFORM_AI_ACCOUNTING_VIEW")
+    public ApiResponse<ModelBillingHistoryResponse> billingHistory(@PathVariable Long modelId) {
+        return ApiResponse.success(service.billingHistory(modelId));
+    }
+
+    @PostMapping("/models/{modelId}/point-price-versions")
+    @RequirePlatformPermission("PLATFORM_AI_POINT_PRICE_PUBLISH")
+    public ApiResponse<ModelPointPriceVersionResponse> publishPointPrice(
+        @PathVariable Long modelId,
+        @Valid @RequestBody PublishModelPointPriceRequest request
     ) {
-        return ApiResponse.success(service.publishPointPolicy(request));
+        return ApiResponse.success(service.publishModelPointPrice(modelId, request));
+    }
+
+    @PostMapping("/models/{modelId}/cost-price-versions/{versionId}/revoke")
+    @RequirePlatformPermission("PLATFORM_AI_PRICE_PUBLISH")
+    public ApiResponse<ModelPriceVersionResponse> revokeCostPrice(
+        @PathVariable Long modelId, @PathVariable Long versionId
+    ) {
+        return ApiResponse.success(service.revokeCostPrice(modelId, versionId));
+    }
+
+    @PostMapping("/models/{modelId}/point-price-versions/{versionId}/revoke")
+    @RequirePlatformPermission("PLATFORM_AI_POINT_PRICE_PUBLISH")
+    public ApiResponse<ModelPointPriceVersionResponse> revokePointPrice(
+        @PathVariable Long modelId, @PathVariable Long versionId
+    ) {
+        return ApiResponse.success(service.revokePointPrice(modelId, versionId));
     }
 
     @GetMapping("/executions/{executionId}/accounting")

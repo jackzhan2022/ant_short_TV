@@ -37,6 +37,7 @@ export default function access(
       (tenantPermissions.includes('AI_CALL_LOG:VIEW') ||
         platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||
+        platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_AGENT_VIEW')),
     canViewPlatformAiProviders:
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
@@ -50,6 +51,12 @@ export default function access(
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_TEST'),
     canViewPlatformAiModels:
       currentUser && platformPermissions.includes('PLATFORM_AI_MODEL_VIEW'),
+    canViewModelBilling:
+      currentUser && platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW'),
+    canPublishModelBilling:
+      currentUser &&
+      platformPermissions.includes('PLATFORM_AI_PRICE_PUBLISH') &&
+      platformPermissions.includes('PLATFORM_AI_POINT_PRICE_PUBLISH'),
     canCreatePlatformAiModels:
       currentUser && platformPermissions.includes('PLATFORM_AI_MODEL_CREATE'),
     canEditPlatformAiModels:

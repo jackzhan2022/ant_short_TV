@@ -1,5 +1,6 @@
 package com.antshorttv.review;
 
+import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.ai.AiBusinessScene;
 import com.antshorttv.ai.AiInvocationRequest;
 import com.antshorttv.ai.AiInvocationResult;
@@ -33,6 +34,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.servlet.http.HttpServletRequest;
+import java.math.BigDecimal;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -282,7 +284,7 @@ public class ReviewWorkbenchService {
                 modelId, "AI_REVIEW", idempotencyKey, "script-review-" + task.getId(), true,
                 "{\"reviewTaskId\":" + task.getId() + "}"
             ),
-            Map.of(),
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
             Map.of("reviewMode", reviewMode)
         );
         task.setExecutionId(execution.id);

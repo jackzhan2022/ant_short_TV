@@ -111,11 +111,51 @@ record PointPolicyComponentResponse(
     }
 }
 
+record ModelPointPriceVersionResponse(
+    Long id,
+    Long modelId,
+    Integer versionNo,
+    String status,
+    LocalDateTime effectiveFrom,
+    LocalDateTime effectiveTo,
+    LocalDateTime publishedAt,
+    Long createdBy,
+    List<PointPolicyComponentResponse> components
+) {
+    static ModelPointPriceVersionResponse from(
+        AiModelPointPriceVersionEntity version,
+        List<AiModelPointPriceComponentEntity> components
+    ) {
+        return new ModelPointPriceVersionResponse(
+            version.id, version.modelId, version.versionNo, version.status,
+            version.effectiveFrom, version.effectiveTo, version.publishedAt, version.createdBy,
+            components.stream().map(component -> new PointPolicyComponentResponse(
+                component.id, component.metric, component.unitSize, component.pointRate
+            )).toList()
+        );
+    }
+}
+
+record ModelBillingHistoryResponse(
+    Long modelId,
+    List<ModelPriceVersionResponse> costPrices,
+    List<ModelPointPriceVersionResponse> pointPrices
+) {
+}
+
 record PlatformAiAccountingDetailResponse(
     AiExecutionResponse execution,
     List<UsageLineResponse> usageLines,
     List<UsageCostLineResponse> costLines,
+    BillingEvidenceResponse billingEvidence,
     PointSettlementDetailResponse settlement
+) {
+}
+
+record BillingEvidenceResponse(
+    Long costPriceVersionId,
+    Long pointPriceVersionId,
+    List<PointPolicyComponentResponse> pointComponents
 ) {
 }
 
@@ -190,6 +230,7 @@ record PointSettlementDetailResponse(
 record PointReservationResponse(
     Long id,
     Long policyVersionId,
+    Long pointPriceVersionId,
     String status,
     BigDecimal reservedPoints,
     BigDecimal settledPoints,
@@ -207,6 +248,7 @@ record PointReservationResponse(
         return new PointReservationResponse(
             reservation.id,
             reservation.policyVersionId,
+            reservation.pointPriceVersionId,
             reservation.status,
             reservation.reservedPoints,
             reservation.settledPoints,

@@ -1062,6 +1062,9 @@ class ScriptWorkflowControllerTest {
             insert into ai_model_capability (model_id, capability, status, created_at, updated_at)
             values (?, 'TEXT_GENERATION', 'ENABLED', now(), now())
             """, modelId);
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbcTemplate, modelId, "CALL", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE
+        );
     }
 
     private void grantTeamPoints(Long tenantId, int amount) {

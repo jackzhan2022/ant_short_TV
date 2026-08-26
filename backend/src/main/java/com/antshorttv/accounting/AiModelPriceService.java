@@ -25,6 +25,10 @@ public class AiModelPriceService {
     ) {
         validateCandidate(candidate, components);
         List<AiModelPriceVersionEntity> existingVersions = versionMapper.selectPublishedByModel(candidate.modelId);
+        if (candidate.versionNo == null) {
+            candidate.versionNo = versionMapper.selectByModel(candidate.modelId).stream()
+                .mapToInt(version -> version.versionNo).max().orElse(0) + 1;
+        }
         closeCurrentVersionForFuturePublication(candidate, existingVersions);
         if (existingVersions.stream().anyMatch(existing -> overlaps(existing, candidate))) {
             throw new IllegalArgumentException("Model price effective interval overlap.");
@@ -39,6 +43,29 @@ public class AiModelPriceService {
             componentMapper.insert(component);
         }
         return candidate;
+    }
+
+    @Transactional
+    public AiModelPriceVersionEntity revoke(Long versionId, LocalDateTime at) {
+        AiModelPriceVersionEntity version = require(versionId);
+        if (!"PUBLISHED".equals(version.status) || !at.isBefore(version.effectiveFrom)) {
+            throw new IllegalArgumentException("Only future model cost price versions can be revoked.");
+        }
+        version.status = "REVOKED";
+        versionMapper.updateById(version);
+        return version;
+    }
+
+    public AiModelPriceVersionEntity require(Long versionId) {
+        AiModelPriceVersionEntity version = versionMapper.selectById(versionId);
+        if (version == null) {
+            throw new IllegalArgumentException("Model cost price version not found.");
+        }
+        return version;
+    }
+
+    public List<AiModelPriceVersionEntity> list(Long modelId) {
+        return versionMapper.selectByModel(modelId);
     }
 
     private void closeCurrentVersionForFuturePublication(
@@ -69,8 +96,7 @@ public class AiModelPriceService {
         AiModelPriceVersionEntity candidate,
         List<AiModelPriceComponentEntity> components
     ) {
-        if (candidate == null || candidate.modelId == null || candidate.versionNo == null
-            || candidate.effectiveFrom == null) {
+        if (candidate == null || candidate.modelId == null || candidate.effectiveFrom == null) {
             throw new IllegalArgumentException("Model price version fields are required.");
         }
         if (candidate.effectiveTo != null && !candidate.effectiveTo.isAfter(candidate.effectiveFrom)) {

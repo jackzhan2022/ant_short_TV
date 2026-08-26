@@ -43,6 +43,10 @@ class AiPointSettlementServiceTest {
     void clean() {
         jdbc.update("delete from point_ledger");
         jdbc.update("delete from ai_point_reservation");
+        jdbc.update("delete from ai_model_point_price_component");
+        jdbc.update("delete from ai_model_point_price_version");
+        jdbc.update("delete from ai_model_price_component");
+        jdbc.update("delete from ai_model_price_version");
         jdbc.update("delete from ai_point_policy_component");
         jdbc.update("delete from ai_point_policy_version");
         jdbc.update("delete from team_point_account");
@@ -190,20 +194,22 @@ class AiPointSettlementServiceTest {
     @Test
     void createsExecutionAndReservationAtomically() {
         account(206L, "1");
-        fixedPolicy("script_generate", "2");
+        modelBilling(9001L, "2");
         AiExecutionCreateCommand insufficient = executionCommand(206L, "atomic-insufficient");
 
-        assertThatThrownBy(() -> executionService.createWithReservation(insufficient, Map.of(), Map.of()))
+        assertThatThrownBy(() -> executionService.createWithReservation(
+            insufficient, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of()
+        ))
             .isInstanceOf(BusinessException.class);
         assertThat(executionTaskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
             .eq("tenant_id", 206L)
             .eq("client_idempotency_key", "atomic-insufficient"))).isZero();
 
         account(207L, "3");
-        jdbc.update("update ai_point_policy_version set scene = 'unused' where scene = 'script_generate'");
-        fixedPolicy("script_generate", "2");
         AiExecutionTaskEntity task = executionService.createWithReservation(
-            executionCommand(207L, "atomic-success"), Map.of(), Map.of()
+            executionCommand(207L, "atomic-success"),
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
+            Map.of()
         );
 
         assertThat(task.reservedPoints).isEqualByComparingTo("2");
@@ -256,8 +262,40 @@ class AiPointSettlementServiceTest {
     private AiExecutionCreateCommand executionCommand(Long tenantId, String key) {
         return new AiExecutionCreateCommand(
             tenantId, 2L, 3L, "script_generate", "TEXT", "SCRIPT_OPERATION", 4L,
-            null, "SUBMIT", key, "trace-" + key, false, null
+            9001L, "SUBMIT", key, "trace-" + key, false, null
         );
+    }
+
+    private void modelBilling(Long modelId, String points) {
+        jdbc.update("""
+            insert into ai_model_price_version
+              (model_id, version_no, status, effective_from, published_at, created_at)
+            values (?, 1, 'PUBLISHED', dateadd('hour', -1, now()), now(), now())
+            """, modelId);
+        Long costVersionId = jdbc.queryForObject(
+            "select max(id) from ai_model_price_version where model_id = ?", Long.class, modelId
+        );
+        jdbc.update("""
+            insert into ai_model_price_component
+              (price_version_id, metric, unit_size, unit_price, currency,
+               dimensions_json, dimensions_key, created_at)
+            values (?, 'CALL', 1, 0.1, 'USD', '{}', '', now())
+            """, costVersionId);
+
+        jdbc.update("""
+            insert into ai_model_point_price_version
+              (model_id, version_no, status, effective_from, published_at, created_at)
+            values (?, 1, 'PUBLISHED', dateadd('hour', -1, now()), now(), now())
+            """, modelId);
+        Long pointVersionId = jdbc.queryForObject(
+            "select max(id) from ai_model_point_price_version where model_id = ?", Long.class, modelId
+        );
+        jdbc.update("""
+            insert into ai_model_point_price_component
+              (price_version_id, metric, unit_size, point_rate,
+               dimensions_json, dimensions_key, created_at)
+            values (?, 'CALL', 1, ?, '{}', '', now())
+            """, pointVersionId, new BigDecimal(points));
     }
 
     private void account(Long tenantId, String balance) {

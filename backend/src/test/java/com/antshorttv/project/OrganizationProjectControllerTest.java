@@ -392,6 +392,9 @@ class ProjectControllerTest {
         jdbcTemplate.update("insert into ai_model (provider_id, code, name, model_code, service_type, status, is_default, sort, created_at, updated_at) values (?, ?, 'Test Project Text', 'gpt-4.1-mini', 'TEXT', 'ENABLED', true, 100, now(), now())", providerId, modelCode);
         Long modelId = jdbcTemplate.queryForObject("select id from ai_model where code = ?", Long.class, modelCode);
         jdbcTemplate.update("insert into ai_model_capability (model_id, capability, status, created_at, updated_at) values (?, 'TEXT_GENERATION', 'ENABLED', now(), now())", modelId);
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbcTemplate, modelId, "CALL", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE
+        );
     }
 
     private void grantTeamPoints(Long tenantId, int amount) {

@@ -22,6 +22,7 @@ import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.AiSettlementOutcome;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -167,7 +168,7 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         AiPointReservationEntity settled = settlementService.finalizeOutcome(
             reservation.id,
             AiSettlementOutcome.SUCCESS,
-            Map.of(),
+            callUsage(invocation != null),
             context.claim().attemptId(),
             invocation == null ? null : invocation.aiCallLogId(),
             "execution:%d:v%d:success".formatted(context.task().id, context.task().executionVersion)
@@ -191,11 +192,15 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         AiPointReservationEntity settled = settlementService.finalizeOutcome(
             reservation.id,
             outcome,
-            Map.of(),
+            callUsage(callLogId != null),
             context.claim().attemptId(),
             callLogId,
             "execution:%d:v%d:failure".formatted(context.task().id, context.task().executionVersion)
         );
         executionService.updateSettlementSummary(settled);
+    }
+
+    private Map<AiUsageMetric, BigDecimal> callUsage(boolean providerContacted) {
+        return Map.of(AiUsageMetric.CALL, providerContacted ? BigDecimal.ONE : BigDecimal.ZERO);
     }
 }
