@@ -1,9 +1,9 @@
 delete from role_permission
 where permission_id in (
-  select id from permission where code like 'PLATFORM\_%' escape '\'
+  select id from permission where code like 'PLATFORM\_%' escape '\\'
 );
 
-delete from permission where code like 'PLATFORM\_%' escape '\';
+delete from permission where code like 'PLATFORM\_%' escape '\\';
 
 insert into permission (code, name, type, resource, action, created_at, updated_at) values
   ('PROJECT:VIEW_ALL', 'View all tenant projects', 'PAGE', 'PROJECT', 'VIEW_ALL', current_timestamp, current_timestamp),
