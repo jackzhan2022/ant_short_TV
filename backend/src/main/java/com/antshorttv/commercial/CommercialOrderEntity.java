@@ -1,0 +1,3 @@
+package com.antshorttv.commercial;
+import com.baomidou.mybatisplus.annotation.*; import java.math.BigDecimal; import java.time.LocalDateTime;
+@TableName("commercial_order") public class CommercialOrderEntity { @TableId(type=IdType.AUTO) public Long id; public Long tenantId; public Long userId; public Long packageVersionId; public String packageSnapshotJson; public String merchantOrderNo; public BigDecimal amount; public String currency; public String status; public LocalDateTime expiresAt; public LocalDateTime paidAt; public LocalDateTime completedAt; public LocalDateTime createdAt; public LocalDateTime updatedAt; }

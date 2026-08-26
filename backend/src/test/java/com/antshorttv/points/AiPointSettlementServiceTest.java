@@ -246,6 +246,20 @@ class AiPointSettlementServiceTest {
     }
 
     @Test
+    void freezesActiveMembershipDiscountWhenCreatingExecution() {
+        account(209L, "10");
+        modelBilling(9001L, "2");
+        activeCommercialDiscount(209L, "0.50");
+
+        AiExecutionTaskEntity task = executionService.createWithReservation(
+            executionCommand(209L, "discounted-execution"),
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
+            Map.of());
+
+        assertThat(task.reservedPoints).isEqualByComparingTo("1.00000000");
+    }
+
+    @Test
     void appliesVersionedFailureSettlementPolicy() {
         account(208L, "10");
         fixedPolicy("script_generate", "2");
@@ -332,6 +346,36 @@ class AiPointSettlementServiceTest {
                total_reserved, total_released, total_refunded, version, created_at, updated_at)
             values (?, ?, 0, ?, 0, 0, 0, 0, 0, now(), now())
             """, tenantId, new BigDecimal(balance), new BigDecimal(balance));
+    }
+
+    private void activeCommercialDiscount(Long tenantId, String rate) {
+        jdbc.update("""
+            insert into commercial_package
+              (code, package_type, status, created_at, updated_at)
+            values (?, 'SUBSCRIPTION', 'ACTIVE', now(), now())
+            """, "DISCOUNT_" + tenantId);
+        Long packageId = jdbc.queryForObject(
+            "select max(id) from commercial_package where code=?", Long.class, "DISCOUNT_" + tenantId);
+        jdbc.update("""
+            insert into commercial_package_version
+              (package_id, version_no, name, billing_period, period_months, price, currency,
+               effective_from, status, created_at)
+            values (?, 1, 'Discount', 'MONTH', 1, 1, 'CNY', dateadd('day', -1, now()), 'PUBLISHED', now())
+            """, packageId);
+        Long versionId = jdbc.queryForObject(
+            "select max(id) from commercial_package_version where package_id=?", Long.class, packageId);
+        jdbc.update("""
+            insert into commercial_entitlement
+              (package_version_id, entitlement_type, numeric_value, created_at)
+            values (?, 'GLOBAL_DISCOUNT', ?, now())
+            """, versionId, new BigDecimal(rate));
+        jdbc.update("""
+            insert into team_subscription
+              (tenant_id, package_version_id, source_order_id, status, starts_at, ends_at,
+               snapshot_json, created_at, updated_at)
+            values (?, ?, 999999, 'ACTIVE', dateadd('day', -1, now()), dateadd('day', 1, now()),
+                    '{}', now(), now())
+            """, tenantId, versionId);
     }
 
     private void fixedPolicy(String scene, String points) {

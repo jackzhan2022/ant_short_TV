@@ -44,6 +44,7 @@ final class RbacPermissions {
         new RbacPermissionDefinition("STORYBOARD:EDIT", "编辑分镜", PermissionType.BUTTON, "STORYBOARD", "EDIT"),
         new RbacPermissionDefinition("PROMPT:AI_GENERATE", "AI生成提示词", PermissionType.BUTTON, "PROMPT", "AI_GENERATE"),
         new RbacPermissionDefinition("AI_SERVICE:USE", "使用AI服务", PermissionType.BUTTON, "AI_SERVICE", "USE"),
+        new RbacPermissionDefinition("BILLING:MANAGE", "管理团队套餐与订单", PermissionType.PAGE, "BILLING", "MANAGE"),
         new RbacPermissionDefinition("AI_CALL_LOG:VIEW", "查看AI调用日志", PermissionType.PAGE, "AI_CALL_LOG", "VIEW"),
         new RbacPermissionDefinition("PROJECT_AI_CONFIG_VIEW", "查看项目AI模型配置", PermissionType.PAGE, "PROJECT_AI_CONFIG", "VIEW"),
         new RbacPermissionDefinition("PROJECT_AI_CONFIG_EDIT", "编辑项目AI模型配置", PermissionType.BUTTON, "PROJECT_AI_CONFIG", "EDIT"),

@@ -19,6 +19,7 @@ public class AiPointReservationEntity {
     public String scene;
     public Long policyVersionId;
     public Long pointPriceVersionId;
+    public BigDecimal discountRate;
     public String status;
     public String authorizedUsageJson;
     public String dimensionsJson;

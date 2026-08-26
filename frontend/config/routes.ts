@@ -99,6 +99,13 @@ export default [
     ],
   },
   {
+    path: '/recharge',
+    name: 'recharge',
+    layout: false,
+    access: 'canManageBilling',
+    component: './commercial',
+  },
+  {
     name: 'exception',
     icon: 'warning',
     path: '/exception',

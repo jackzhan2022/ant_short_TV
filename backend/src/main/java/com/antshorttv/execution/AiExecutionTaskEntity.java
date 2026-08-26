@@ -21,6 +21,11 @@ public class AiExecutionTaskEntity {
     public Long resolvedModelId;
     public Long costPriceVersionId;
     public Long pointPriceVersionId;
+    public Long commercialSubscriptionId;
+    public Long commercialPackageVersionId;
+    public BigDecimal preDiscountPoints;
+    public BigDecimal discountRate;
+    public BigDecimal finalPoints;
     public String redactedInputJson;
     public String status;
     public String phase;

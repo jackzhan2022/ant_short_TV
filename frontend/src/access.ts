@@ -39,6 +39,8 @@ export default function access(
         platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_AGENT_VIEW')),
+    canManageBilling:
+      currentUser && tenantPermissions.includes('BILLING:MANAGE'),
     canViewPlatformAiProviders:
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
     canCreatePlatformAiProviders:

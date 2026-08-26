@@ -69,6 +69,7 @@ public class AiPointSettlementService {
         AiPointPolicyVersionEntity policy = null;
         BigDecimal required = calculateModelPointPrice(
             command.pointPriceVersionId(), command.authorizedUsage(), command.dimensions());
+        required = required.multiply(command.discountRate()).setScale(8, RoundingMode.HALF_UP);
         accountingService.ensureAccount(command.tenantId());
         int updated = accountingService.reserveFunds(command.tenantId(), required);
         if (updated == 0) {
@@ -89,6 +90,7 @@ public class AiPointSettlementService {
         reservation.scene = command.scene();
         reservation.policyVersionId = policy == null ? null : policy.id;
         reservation.pointPriceVersionId = command.pointPriceVersionId();
+        reservation.discountRate = command.discountRate();
         reservation.status = "RESERVED";
         reservation.authorizedUsageJson = writeJson(command.authorizedUsage());
         reservation.dimensionsJson = AiAccountingJson.write(command.dimensions());
@@ -121,7 +123,7 @@ public class AiPointSettlementService {
                 AiAccountingJson.read(reservation.dimensionsJson))
             : calculateModelPointPrice(reservation.pointPriceVersionId,
                 actualUsage == null ? Map.of() : actualUsage,
-                AiAccountingJson.read(reservation.dimensionsJson));
+                AiAccountingJson.read(reservation.dimensionsJson)).multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate).setScale(8, RoundingMode.HALF_UP);
         BigDecimal overage = actual.subtract(reservation.reservedPoints).max(BigDecimal.ZERO);
         if (overage.signum() > 0 && !incrementalReserve(reservation, overage, idempotencyKey)) {
             reservation.status = "SETTLEMENT_REVIEW_REQUIRED";
@@ -297,6 +299,10 @@ public class AiPointSettlementService {
             .map(component -> modelComponentPoints(component, usage))
             .reduce(BigDecimal.ZERO, BigDecimal::add)
             .setScale(POINT_SCALE, RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal calculateModelPoints(Long priceVersionId, Map<AiUsageMetric, BigDecimal> usage, Map<String, String> dimensions) {
+        return calculateModelPointPrice(priceVersionId, usage, dimensions);
     }
 
     private BigDecimal modelComponentPoints(

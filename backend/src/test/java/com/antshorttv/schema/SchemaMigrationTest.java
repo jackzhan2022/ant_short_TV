@@ -666,4 +666,46 @@ class SchemaMigrationTest {
         assertThat(tableCount).isEqualTo(1);
         assertThat(keyColumns).isEqualTo(3);
     }
+
+    @Test
+    void flywayCreatesCommercialPackageAndSubscriptionSchema() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer tableCount = jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) in (
+               'commercial_package', 'commercial_package_version', 'commercial_entitlement',
+               'commercial_order', 'commercial_payment', 'team_subscription',
+               'commercial_entitlement_grant', 'commercial_payment_event',
+               'commercial_audit'
+             )
+            """, Integer.class);
+        Integer uniqueConstraintCount = jdbc.queryForObject("""
+            select count(*) from information_schema.table_constraints
+             where constraint_type = 'UNIQUE'
+               and lower(constraint_name) in (
+                 'uk_commercial_order_merchant_no',
+                 'uk_commercial_payment_provider_trade_no',
+                 'uk_commercial_grant_subscription_period'
+               )
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(9);
+        assertThat(uniqueConstraintCount).isEqualTo(3);
+    }
+
+    @Test
+    void flywaySeedsCommercialPermissions() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer platformPermissionCount = jdbc.queryForObject("""
+            select count(*) from platform_permission
+             where code in ('PLATFORM_COMMERCIAL_PACKAGE_EDIT',
+                            'PLATFORM_COMMERCIAL_ORDER_VIEW',
+                            'PLATFORM_COMMERCIAL_SUBSCRIPTION_ADJUST')
+            """, Integer.class);
+        Integer billingPermissionCount = jdbc.queryForObject("""
+            select count(*) from permission where code = 'BILLING:MANAGE'
+            """, Integer.class);
+        assertThat(platformPermissionCount).isEqualTo(3);
+        assertThat(billingPermissionCount).isEqualTo(1);
+    }
 }

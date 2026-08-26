@@ -17,8 +17,19 @@ public record AiPointReservationCommand(
     Map<AiUsageMetric, BigDecimal> authorizedUsage,
     Map<String, String> dimensions,
     Long pointPriceVersionId,
+    BigDecimal discountRate,
     String idempotencyKey
 ) {
+    public AiPointReservationCommand(
+        Long tenantId, Long userId, Long executionId, int executionVersion,
+        String scene, String businessType, Long businessId, Long modelId,
+        String capability, Map<AiUsageMetric, BigDecimal> authorizedUsage,
+        Map<String, String> dimensions, Long pointPriceVersionId, String idempotencyKey
+    ) {
+        this(tenantId, userId, executionId, executionVersion, scene, businessType, businessId,
+            modelId, capability, authorizedUsage, dimensions, pointPriceVersionId, BigDecimal.ONE, idempotencyKey);
+    }
+
     public AiPointReservationCommand(
         Long tenantId,
         Long userId,
@@ -34,7 +45,7 @@ public record AiPointReservationCommand(
         String idempotencyKey
     ) {
         this(tenantId, userId, executionId, executionVersion, scene, businessType, businessId,
-            modelId, capability, authorizedUsage, dimensions, null, idempotencyKey);
+            modelId, capability, authorizedUsage, dimensions, null, BigDecimal.ONE, idempotencyKey);
     }
 
     public AiPointReservationCommand(
@@ -51,12 +62,13 @@ public record AiPointReservationCommand(
     ) {
         this(
             tenantId, userId, executionId, executionVersion, scene, businessType, businessId,
-            null, null, authorizedUsage, dimensions, null, idempotencyKey
+            null, null, authorizedUsage, dimensions, null, BigDecimal.ONE, idempotencyKey
         );
     }
 
     public AiPointReservationCommand {
         authorizedUsage = authorizedUsage == null ? Map.of() : Map.copyOf(authorizedUsage);
         dimensions = dimensions == null ? Map.of() : Map.copyOf(dimensions);
+        discountRate = discountRate == null ? BigDecimal.ONE : discountRate;
     }
 }

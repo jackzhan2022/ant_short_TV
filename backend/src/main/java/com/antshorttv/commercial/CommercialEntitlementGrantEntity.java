@@ -1,0 +1,3 @@
+package com.antshorttv.commercial;
+import com.baomidou.mybatisplus.annotation.*; import java.math.BigDecimal; import java.time.LocalDateTime;
+@TableName("commercial_entitlement_grant") public class CommercialEntitlementGrantEntity { @TableId(type=IdType.AUTO) public Long id; public Long tenantId; public Long orderId; public Long subscriptionId; public Integer periodNo; public String entitlementType; public BigDecimal amount; public String status; public String idempotencyKey; public LocalDateTime grantedAt; public String errorMessage; public LocalDateTime createdAt; public LocalDateTime updatedAt; }
