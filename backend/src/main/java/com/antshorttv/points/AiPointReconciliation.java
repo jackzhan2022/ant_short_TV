@@ -8,6 +8,7 @@ public record AiPointReconciliation(
     BigDecimal ledgerAvailable,
     BigDecimal accountReserved,
     BigDecimal ledgerReserved,
+    BigDecimal reservationReserved,
     boolean matches
 ) {
 }

@@ -41,7 +41,7 @@ class AiPointSettlementServiceTest {
 
     @BeforeEach
     void clean() {
-        jdbc.update("delete from ai_point_ledger");
+        jdbc.update("delete from point_ledger");
         jdbc.update("delete from ai_point_reservation");
         jdbc.update("delete from ai_point_policy_component");
         jdbc.update("delete from ai_point_policy_version");
@@ -111,14 +111,14 @@ class AiPointSettlementServiceTest {
         assertThat(accountValue(202L, "balance")).isEqualByComparingTo("7");
         assertThat(accountValue(202L, "reserved_balance")).isZero();
         assertThat(jdbc.queryForObject(
-            "select count(*) from ai_point_ledger where reservation_id = ? and entry_type = 'SETTLE'",
+            "select count(*) from point_ledger where reservation_id = ? and entry_type = 'SETTLE'",
             Integer.class,
             reservation.id
         )).isEqualTo(1);
         Map<String, Object> ledger = jdbc.queryForMap("""
             select execution_id, execution_version, business_type, business_id,
                    attempt_id, ai_call_log_id, policy_version_id, idempotency_key
-              from ai_point_ledger
+              from point_ledger
              where reservation_id = ? and entry_type = 'SETTLE'
             """, reservation.id);
         assertThat(ledger.get("execution_id")).isEqualTo(2101L);

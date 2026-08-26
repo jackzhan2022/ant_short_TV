@@ -323,8 +323,7 @@ public class ScriptAnalysisExecutionService {
         InvocationTracker tracker
     ) {
         if (executionContext == null) {
-            TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
-            teamPointService.consumeForAi(context, 1, AiBusinessScene.SCRIPT_EPISODE_SUMMARY.pointScene(), task.getId(), "剧本分析阶段");
+            throw new BusinessException(com.antshorttv.common.ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
         }
         Long modelId = projectAiConfigService.resolveModelId(task.getTenantId(), task.getProjectId(), "TEXT");
         int episodeNo = episode.path("episodeNo").asInt(0);
@@ -478,8 +477,7 @@ public class ScriptAnalysisExecutionService {
             default -> throw new IllegalArgumentException("未知分析阶段：" + stageCode);
         };
         if (executionContext == null) {
-            TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
-            teamPointService.consumeForAi(context, 1, scene.pointScene(), task.getId(), "剧本分析阶段");
+            throw new BusinessException(com.antshorttv.common.ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
         }
         Long modelId = projectAiConfigService.resolveModelId(task.getTenantId(), task.getProjectId(), "TEXT");
         Map<String, Object> variables = stageVariables(task, version, stageCode);

@@ -1,5 +1,7 @@
 ## Why
 
+> Point reservation and settlement are superseded by the focused `unify-point-ledger` change. This change remains authoritative for execution, usage, provider-cost, and dispatch behavior only.
+
 AI workflows currently mix synchronous request-thread calls, in-process asynchronous execution, scheduler-driven tasks, provider-native asynchronous jobs, legacy gateway paths, and manually written call logs. Point consumption is a separate fixed one-point operation, while provider cost is always recorded as zero, so the platform cannot reliably prevent duplicate calls, reconcile a business task with its provider cost and point transaction, or support per-call, per-image, per-token, and per-second billing.
 
 ## What Changes

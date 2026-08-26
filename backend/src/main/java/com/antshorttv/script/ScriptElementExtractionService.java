@@ -169,7 +169,7 @@ class ScriptElementExtractionService {
         List<AiInvocationResult<AiTextResponse>> invocations
     ) {
         if (executionContext == null) {
-            teamPointService.consumeForAi(context, 1, scene.pointScene(), null, "AI 调用消耗积分");
+            throw new BusinessException(ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
         }
         Long modelId = executionContext == null
             ? projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT")

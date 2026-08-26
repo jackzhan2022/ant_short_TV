@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@TableName("ai_point_ledger")
+@TableName("point_ledger")
 public class AiPointLedgerEntity {
     @TableId(type = IdType.AUTO)
     public Long id;
@@ -25,5 +25,6 @@ public class AiPointLedgerEntity {
     public BigDecimal availableBalanceAfter;
     public BigDecimal reservedBalanceAfter;
     public String idempotencyKey;
+    public String description;
     public LocalDateTime createdAt;
 }

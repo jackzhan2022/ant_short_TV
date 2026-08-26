@@ -316,7 +316,7 @@ class ReviewWorkbenchControllerTest {
                     """.formatted(versionId)))
             .andExpect(status().isAccepted())
             .andReturn();
-        Long taskId = readLong(createdTask, "$.data.businessId");
+        Long executionId = readLong(createdTask, "$.data.id");
 
         seedTextModel();
         when(aiInvocationService.invokeText(any())).thenReturn(new AiInvocationResult<>(
@@ -338,7 +338,7 @@ class ReviewWorkbenchControllerTest {
             null
         ));
 
-        reviewWorkbenchService.executeTask(taskId);
+        aiExecutionWorker.run(executionId);
 
         verify(aiInvocationService).markBusinessFailure(777L, com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID, "剧本审核结果不是有效 JSON。");
     }
@@ -625,7 +625,7 @@ class ReviewWorkbenchControllerTest {
                     """.formatted(versionId)))
             .andExpect(status().isAccepted())
             .andReturn();
-        Long quickTaskId = readLong(quickTask, "$.data.businessId");
+        Long quickExecutionId = readLong(quickTask, "$.data.id");
 
         MvcResult deepTask = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -636,10 +636,10 @@ class ReviewWorkbenchControllerTest {
                     """.formatted(versionId)))
             .andExpect(status().isAccepted())
             .andReturn();
-        Long deepTaskId = readLong(deepTask, "$.data.businessId");
+        Long deepExecutionId = readLong(deepTask, "$.data.id");
 
-        reviewWorkbenchService.executeTask(quickTaskId);
-        reviewWorkbenchService.executeTask(deepTaskId);
+        aiExecutionWorker.run(quickExecutionId);
+        aiExecutionWorker.run(deepExecutionId);
 
         ArgumentCaptor<AiInvocationRequest> captor = ArgumentCaptor.forClass(AiInvocationRequest.class);
         verify(aiInvocationService, times(2)).invokeText(captor.capture());

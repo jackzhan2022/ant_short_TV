@@ -15,6 +15,9 @@ import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
+import com.antshorttv.execution.AiExecutionClaim;
+import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.points.TeamPointService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -102,7 +105,6 @@ class ScriptAnalysisExecutionServiceTest {
         ScriptAnalysisTaskEntity task = task(1L, 2L, 3L);
         ScriptVersionEntity version = version(4L, "一段没有标题的长正文，系统需要智能拆分。");
         when(projectAiConfigService.resolveModelId(2L, 3L, "TEXT")).thenReturn(7L);
-        when(teamPointService.consumeForAi(any(), anyInt(), any(), any(), any())).thenReturn(1L);
         when(aiInvocationService.invokeText(any())).thenAnswer(invocation -> {
             String raw = """
                 {"episodes":[{"episodeNo":1,"title":"第1集","content":"智能拆分正文"}]}
@@ -115,7 +117,7 @@ class ScriptAnalysisExecutionServiceTest {
             );
         });
 
-        String json = invokeString("splitEpisodes", task, version);
+        String json = invokeWithExecution("splitEpisodes", task, version);
 
         JsonNode root = objectMapper.readTree(json);
         assertThat(root.path("episodes")).hasSize(1);
@@ -187,7 +189,6 @@ class ScriptAnalysisExecutionServiceTest {
         when(stageMapper.selectByTask(9L)).thenReturn(List.of(splitStage));
         when(resultMapper.selectLatestByStage(21L)).thenReturn(splitResult);
         when(projectAiConfigService.resolveModelId(2L, 3L, "TEXT")).thenReturn(7L);
-        when(teamPointService.consumeForAi(any(), anyInt(), any(), any(), any())).thenReturn(1L);
         when(aiInvocationService.invokeText(any())).thenAnswer(invocation -> {
             AiInvocationRequest request = invocation.getArgument(0);
             Object episodesVariable = request.templateVariables().get("episodes");
@@ -207,7 +208,7 @@ class ScriptAnalysisExecutionServiceTest {
             );
         });
 
-        Object summaryCall = invoke("summarizeEpisodes", task, version);
+        Object summaryCall = invokeWithExecution("summarizeEpisodes", task, version);
         Method normalizedJsonMethod = summaryCall.getClass().getDeclaredMethod("normalizedJson");
         normalizedJsonMethod.setAccessible(true);
         String normalizedJson = (String) normalizedJsonMethod.invoke(summaryCall);
@@ -239,6 +240,25 @@ class ScriptAnalysisExecutionServiceTest {
 
     private String invokeString(String methodName, Object... args) throws Exception {
         return invoke(methodName, args);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T invokeWithExecution(String methodName, Object... args) throws Exception {
+        Class<?> trackerType = Class.forName(ScriptAnalysisExecutionService.class.getName() + "$InvocationTracker");
+        var trackerConstructor = trackerType.getDeclaredConstructor();
+        trackerConstructor.setAccessible(true);
+        Object tracker = trackerConstructor.newInstance();
+        AiExecutionTaskEntity execution = new AiExecutionTaskEntity();
+        execution.id = 1001L;
+        execution.executionVersion = 1;
+        AiExecutionContext context = new AiExecutionContext(
+            execution,
+            new AiExecutionClaim(execution.id, 2001L, "claim-token", 1, methodName)
+        );
+        Object[] invocationArgs = java.util.Arrays.copyOf(args, args.length + 2);
+        invocationArgs[args.length] = context;
+        invocationArgs[args.length + 1] = tracker;
+        return (T) invoke(methodName, invocationArgs);
     }
 
     private void invokeVoid(String methodName, Object... args) throws Exception {

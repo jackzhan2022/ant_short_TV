@@ -65,11 +65,16 @@ class SchemaMigrationTest {
               'role', 'permission', 'role_permission', 'member_role',
               'project', 'project_member',
               'project_role', 'project_role_permission', 'project_operation_log',
-              'team_point_account', 'team_point_transaction'
+              'team_point_account', 'point_ledger'
             )
             """, Integer.class);
 
         assertThat(tableCount).isEqualTo(16);
+        Integer legacyPointTables = jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) in ('team_point_transaction', 'ai_point_ledger')
+            """, Integer.class);
+        assertThat(legacyPointTables).isZero();
     }
 
     @Test

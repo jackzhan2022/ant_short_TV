@@ -182,7 +182,7 @@ class ShotProductionControllerTest {
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
 
         Integer pointTransactions = jdbc.queryForObject(
-            "select count(*) from team_point_transaction where tenant_id = ?",
+            "select count(*) from point_ledger where tenant_id = ?",
             Integer.class,
             tenantId
         );

@@ -14,6 +14,10 @@ import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.execution.AiExecutionAttemptMapper;
+import com.antshorttv.execution.AiExecutionAttemptEntity;
+import com.antshorttv.execution.AiExecutionClaim;
+import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.points.TeamPointService;
 import com.antshorttv.security.TenantContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,12 +29,13 @@ class ScriptElementExtractionServiceTest {
     private final ProjectAiConfigService projectAiConfigService = mock(ProjectAiConfigService.class);
     private final AiInvocationService aiInvocationService = mock(AiInvocationService.class);
     private final TeamPointService teamPointService = mock(TeamPointService.class);
+    private final AiExecutionAttemptMapper attemptMapper = mock(AiExecutionAttemptMapper.class);
     private final ScriptElementExtractionService extractionService = new ScriptElementExtractionService(
         projectAiConfigService,
         aiInvocationService,
         teamPointService,
         new ObjectMapper(),
-        mock(AiExecutionAttemptMapper.class)
+        attemptMapper
     );
 
     @Test
@@ -38,8 +43,10 @@ class ScriptElementExtractionServiceTest {
         TenantContext context = new TenantContext(301L, 201L, 401L, "OWNER");
         ScriptEntity script = script("AI解析短剧", "林晚在天台拿出录音笔，证明反派篡改遗嘱。");
         when(projectAiConfigService.resolveModelId(201L, 101L, "TEXT")).thenReturn(501L);
-        when(teamPointService.consumeForAi(any(TenantContext.class), anyInt(), any(String.class), any(), any(String.class)))
-            .thenReturn(1L);
+        AiExecutionContext executionContext = executionContext();
+        AiExecutionAttemptEntity attempt = new AiExecutionAttemptEntity();
+        attempt.idempotencyKey = "execution:1001:v1";
+        when(attemptMapper.selectById(2001L)).thenReturn(attempt);
         when(aiInvocationService.invokeText(any(AiInvocationRequest.class))).thenAnswer(invocation -> {
             AiInvocationRequest aiRequest = invocation.getArgument(0);
             String content = switch (aiRequest.businessSceneCode()) {
@@ -58,7 +65,9 @@ class ScriptElementExtractionServiceTest {
             return AiInvocationResult.text(aiRequest.businessSceneCode(), response, 1L, null);
         });
 
-        ScriptElementExtractionResult result = extractionService.extract(context, 101L, script, ScriptElementType.ALL);
+        ScriptElementExtractionResult result = extractionService.extractWithExecution(
+            context, 101L, script, ScriptElementType.ALL, executionContext
+        ).result();
 
         assertThat(result.characters()).extracting(ScriptElementExtractionResult.CharacterElement::name)
             .containsExactly("林晚");
@@ -83,5 +92,15 @@ class ScriptElementExtractionServiceTest {
         script.setTitle(title);
         script.setContent(content);
         return script;
+    }
+
+    private AiExecutionContext executionContext() {
+        AiExecutionTaskEntity task = new AiExecutionTaskEntity();
+        task.id = 1001L;
+        task.businessId = 101L;
+        task.requestedModelId = 501L;
+        task.executionVersion = 1;
+        task.traceId = "script-elements-test";
+        return new AiExecutionContext(task, new AiExecutionClaim(task.id, 2001L, "claim-token", 1, "EXTRACT"));
     }
 }

@@ -92,6 +92,38 @@ class TeamPointControllerTest {
             .andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
     }
 
+    @Test
+    void exposesTenantScopedReconciliation() throws Exception {
+        String token = registerUser("13800019004", "积分对账");
+        Long tenantId = createTenant(token, "对账团队");
+        mockMvc.perform(get("/api/tenants/%d/points/reconciliation".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.tenantId", is(tenantId.intValue())))
+            .andExpect(jsonPath("$.data.matches", is(true)));
+    }
+
+    @Test
+    void adjustmentIsIdempotentAndRejectsConflictingReuse() throws Exception {
+        String token = registerUser("13800019005", "积分幂等");
+        Long tenantId = createTenant(token, "幂等团队");
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("Idempotency-Key", "grant-once")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"amount\":50,\"description\":\"一次充值\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.balance", is(50)));
+        }
+        mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("Idempotency-Key", "grant-once")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":60,\"description\":\"冲突充值\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
     private String registerUser(String mobile, String nickname) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)

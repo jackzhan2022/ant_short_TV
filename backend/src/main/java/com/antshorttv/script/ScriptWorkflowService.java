@@ -1063,7 +1063,7 @@ public class ScriptWorkflowService {
         String requestSummary,
         String fallbackContent
     ) {
-        teamPointService.consumeForAi(context, 1, scene.pointScene(), null, "AI 调用消耗积分");
+        requireExecutionReservation();
         Long modelId = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
         return aiInvocationService.invokeText(AiInvocationRequest.text()
             .tenantId(context.tenantId())
@@ -1083,7 +1083,7 @@ public class ScriptWorkflowService {
         String requestSummary,
         Map<String, Object> variables
     ) {
-        teamPointService.consumeForAi(context, 1, scene.pointScene(), null, "AI 调用消耗积分");
+        requireExecutionReservation();
         Long modelId = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
         return aiInvocationService.invokeText(AiInvocationRequest.text()
             .tenantId(context.tenantId())
@@ -1095,6 +1095,10 @@ public class ScriptWorkflowService {
             .promptTemplateId(scene.agentCode())
             .templateVariables(variables)
             .build());
+    }
+
+    private void requireExecutionReservation() {
+        throw new BusinessException(ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
     }
 
     private ScriptVersionEntity createVersion(TenantContext context, Long projectId, Long scriptId, String sourceType, String inputSummary, String content, Long callLogId, LocalDateTime now) {

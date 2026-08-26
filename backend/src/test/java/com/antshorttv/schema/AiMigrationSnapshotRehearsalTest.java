@@ -17,7 +17,7 @@ class AiMigrationSnapshotRehearsalTest {
     Path tempDir;
 
     @Test
-    void preservesLegacyHistoryAndRestoresThePreMigrationSnapshot() {
+    void preservesAccountSnapshotAndDropsLegacyPointTablesAtCutover() {
         DataSource source = dataSource("ai_migration_source");
         migrate(source, "34");
         JdbcTemplate sourceJdbc = new JdbcTemplate(source);
@@ -27,11 +27,12 @@ class AiMigrationSnapshotRehearsalTest {
         sourceJdbc.execute("SCRIPT TO '" + sqlPath(snapshot) + "'");
 
         migrate(source, null);
-        assertLegacyHistory(sourceJdbc);
+        assertThat(sourceJdbc.queryForObject("select balance from team_point_account where tenant_id = 101", Integer.class)).isEqualTo(90);
+        assertThat(sourceJdbc.queryForObject("select count(*) from information_schema.tables where lower(table_name) in ('team_point_transaction', 'ai_point_ledger')", Integer.class)).isZero();
         assertThat(sourceJdbc.queryForObject(
                 "select count(*) from flyway_schema_history where success = true and version is not null",
                 Integer.class))
-            .isEqualTo(47);
+            .isEqualTo(48);
 
         DataSource restored = dataSource("ai_migration_restored");
         JdbcTemplate restoredJdbc = new JdbcTemplate(restored);

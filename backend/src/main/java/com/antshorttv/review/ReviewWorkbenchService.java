@@ -675,8 +675,7 @@ public class ReviewWorkbenchService {
         AiExecutionContext executionContext
     ) {
         if (executionContext == null) {
-            TenantContext context = new TenantContext(task.getCreatedBy(), task.getTenantId(), null, null);
-            teamPointService.consumeForAi(context, 1, AiBusinessScene.SCRIPT_REVIEW.pointScene(), task.getId(), "剧本审核");
+            throw new BusinessException(ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
         }
         Long modelId = resolveDefaultTextModelId(task.getTenantId());
         List<ReviewIssueEntity> previousIssues = latestIssuesBefore(task.getTenantId(), task.getProjectId(), task.getRoundNo());

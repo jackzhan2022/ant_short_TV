@@ -211,7 +211,7 @@ class PlatformAiAccountingControllerTest {
         Long reservationId = jdbc.queryForObject(
             "select id from ai_point_reservation where execution_id = ?", Long.class, executionId);
         jdbc.update("""
-            insert into ai_point_ledger
+            insert into point_ledger
               (tenant_id, user_id, execution_id, execution_version, business_type, business_id,
                reservation_id, policy_version_id, entry_type, amount,
                available_balance_after, reserved_balance_after, idempotency_key, created_at)

@@ -24,6 +24,7 @@ public class AiPointSettlementService {
     private final AiPointPolicyComponentMapper policyComponentMapper;
     private final AiPointReservationMapper reservationMapper;
     private final AiPointLedgerMapper ledgerMapper;
+    private final PointAccountingService accountingService;
     private final ObjectMapper objectMapper;
 
     public AiPointSettlementService(
@@ -32,6 +33,7 @@ public class AiPointSettlementService {
         AiPointPolicyComponentMapper policyComponentMapper,
         AiPointReservationMapper reservationMapper,
         AiPointLedgerMapper ledgerMapper,
+        PointAccountingService accountingService,
         ObjectMapper objectMapper
     ) {
         this.jdbc = jdbc;
@@ -39,6 +41,7 @@ public class AiPointSettlementService {
         this.policyComponentMapper = policyComponentMapper;
         this.reservationMapper = reservationMapper;
         this.ledgerMapper = ledgerMapper;
+        this.accountingService = accountingService;
         this.objectMapper = objectMapper;
     }
 
@@ -48,20 +51,16 @@ public class AiPointSettlementService {
             command.tenantId(), command.idempotencyKey()
         );
         if (existing != null) {
+            if (!existing.executionId.equals(command.executionId())
+                || !existing.executionVersion.equals(command.executionVersion())) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "积分预占幂等键已用于其他执行。");
+            }
             return existing;
         }
         AiPointPolicyVersionEntity policy = resolvePolicy(command);
         BigDecimal required = calculate(policy.id, command.authorizedUsage(), command.dimensions());
-        int updated = jdbc.update("""
-            update team_point_account
-               set balance = balance - ?,
-                   reserved_balance = reserved_balance + ?,
-                   total_reserved = total_reserved + ?,
-                   version = version + 1,
-                   updated_at = now()
-             where tenant_id = ?
-               and balance >= ?
-            """, required, required, required, command.tenantId(), required);
+        accountingService.ensureAccount(command.tenantId());
+        int updated = accountingService.reserveFunds(command.tenantId(), required);
         if (updated == 0) {
             throw new BusinessException(
                 ErrorCode.TEAM_POINTS_INSUFFICIENT,
@@ -122,16 +121,7 @@ public class AiPointSettlementService {
 
         BigDecimal totalReserved = reservation.reservedPoints;
         BigDecimal released = totalReserved.subtract(actual);
-        jdbc.update("""
-            update team_point_account
-               set reserved_balance = reserved_balance - ?,
-                   balance = balance + ?,
-                   total_consumed = total_consumed + ?,
-                   total_released = total_released + ?,
-                   version = version + 1,
-                   updated_at = now()
-             where tenant_id = ?
-            """, totalReserved, released, actual, released, reservation.tenantId);
+        accountingService.settleFunds(reservation.tenantId, totalReserved, released, actual);
         reservation.status = "SETTLED";
         reservation.settledPoints = actual;
         reservation.releasedPoints = released;
@@ -168,15 +158,7 @@ public class AiPointSettlementService {
         BigDecimal releasable = reservation.reservedPoints
             .subtract(reservation.settledPoints)
             .subtract(reservation.releasedPoints);
-        jdbc.update("""
-            update team_point_account
-               set reserved_balance = reserved_balance - ?,
-                   balance = balance + ?,
-                   total_released = total_released + ?,
-                   version = version + 1,
-                   updated_at = now()
-             where tenant_id = ?
-            """, releasable, releasable, releasable, reservation.tenantId);
+        accountingService.releaseFunds(reservation.tenantId, releasable);
         reservation.status = "RELEASED";
         reservation.releasedPoints = reservation.releasedPoints.add(releasable);
         reservation.releasedAt = LocalDateTime.now();
@@ -196,14 +178,7 @@ public class AiPointSettlementService {
             throw new IllegalStateException("Only settled points can be refunded.");
         }
         BigDecimal refundable = reservation.settledPoints.subtract(reservation.refundedPoints);
-        jdbc.update("""
-            update team_point_account
-               set balance = balance + ?,
-                   total_refunded = total_refunded + ?,
-                   version = version + 1,
-                   updated_at = now()
-             where tenant_id = ?
-            """, refundable, refundable, reservation.tenantId);
+        accountingService.refundFunds(reservation.tenantId, refundable);
         reservation.status = "REFUNDED";
         reservation.refundedPoints = reservation.refundedPoints.add(refundable);
         reservation.refundedAt = LocalDateTime.now();
@@ -241,6 +216,7 @@ public class AiPointSettlementService {
     }
 
     public AiPointReconciliation reconcile(Long tenantId) {
+        accountingService.ensureAccount(tenantId);
         Map<String, Object> account = jdbc.queryForMap(
             "select balance, reserved_balance from team_point_account where tenant_id = ?",
             tenantId
@@ -250,13 +226,21 @@ public class AiPointSettlementService {
         AiPointLedgerEntity latest = ledgerMapper.selectLatest(tenantId);
         BigDecimal ledgerAvailable = latest == null ? available : latest.availableBalanceAfter;
         BigDecimal ledgerReserved = latest == null ? reserved : latest.reservedBalanceAfter;
+        BigDecimal reservationReserved = jdbc.queryForObject("""
+            select coalesce(sum(reserved_points - settled_points - released_points), 0)
+              from ai_point_reservation
+             where tenant_id = ? and status in ('RESERVED', 'SETTLEMENT_REVIEW_REQUIRED')
+            """, BigDecimal.class, tenantId);
         return new AiPointReconciliation(
             tenantId,
             available,
             ledgerAvailable,
             reserved,
             ledgerReserved,
-            available.compareTo(ledgerAvailable) == 0 && reserved.compareTo(ledgerReserved) == 0
+            reservationReserved,
+            available.compareTo(ledgerAvailable) == 0
+                && reserved.compareTo(ledgerReserved) == 0
+                && reserved.compareTo(reservationReserved) == 0
         );
     }
 
@@ -265,16 +249,7 @@ public class AiPointSettlementService {
         BigDecimal overage,
         String idempotencyKey
     ) {
-        int updated = jdbc.update("""
-            update team_point_account
-               set balance = balance - ?,
-                   reserved_balance = reserved_balance + ?,
-                   total_reserved = total_reserved + ?,
-                   version = version + 1,
-                   updated_at = now()
-             where tenant_id = ?
-               and balance >= ?
-            """, overage, overage, overage, reservation.tenantId, overage);
+        int updated = accountingService.incrementReserveFunds(reservation.tenantId, overage);
         if (updated == 0) {
             return false;
         }
@@ -333,10 +308,6 @@ public class AiPointSettlementService {
         Long callLogId,
         String idempotencyKey
     ) {
-        Map<String, Object> account = jdbc.queryForMap(
-            "select balance, reserved_balance from team_point_account where tenant_id = ?",
-            reservation.tenantId
-        );
         AiPointLedgerEntity ledger = new AiPointLedgerEntity();
         ledger.tenantId = reservation.tenantId;
         ledger.userId = reservation.userId;
@@ -350,11 +321,9 @@ public class AiPointSettlementService {
         ledger.policyVersionId = reservation.policyVersionId;
         ledger.entryType = entryType;
         ledger.amount = amount;
-        ledger.availableBalanceAfter = decimal(account.get("balance"));
-        ledger.reservedBalanceAfter = decimal(account.get("reserved_balance"));
         ledger.idempotencyKey = idempotencyKey;
         ledger.createdAt = LocalDateTime.now();
-        ledgerMapper.insert(ledger);
+        accountingService.append(ledger);
     }
 
     private AiPointReservationEntity requireReservation(Long reservationId) {
