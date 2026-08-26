@@ -9,13 +9,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class AiModelPriceService {
     private final AiModelPriceVersionMapper versionMapper;
     private final AiModelPriceComponentMapper componentMapper;
+    private final AiModelPriceVersionAllocator versionAllocator;
 
     public AiModelPriceService(
         AiModelPriceVersionMapper versionMapper,
-        AiModelPriceComponentMapper componentMapper
+        AiModelPriceComponentMapper componentMapper,
+        AiModelPriceVersionAllocator versionAllocator
     ) {
         this.versionMapper = versionMapper;
         this.componentMapper = componentMapper;
+        this.versionAllocator = versionAllocator;
     }
 
     @Transactional
@@ -25,10 +28,7 @@ public class AiModelPriceService {
     ) {
         validateCandidate(candidate, components);
         List<AiModelPriceVersionEntity> existingVersions = versionMapper.selectPublishedByModel(candidate.modelId);
-        if (candidate.versionNo == null) {
-            candidate.versionNo = versionMapper.selectByModel(candidate.modelId).stream()
-                .mapToInt(version -> version.versionNo).max().orElse(0) + 1;
-        }
+        candidate.versionNo = versionAllocator.next(candidate.modelId, "COST");
         closeCurrentVersionForFuturePublication(candidate, existingVersions);
         if (existingVersions.stream().anyMatch(existing -> overlaps(existing, candidate))) {
             throw new IllegalArgumentException("Model price effective interval overlap.");

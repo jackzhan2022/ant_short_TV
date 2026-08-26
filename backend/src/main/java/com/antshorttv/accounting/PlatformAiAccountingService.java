@@ -7,10 +7,6 @@ import com.antshorttv.execution.AiExecutionResponseMapper;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
 import com.antshorttv.points.AiPointLedgerMapper;
-import com.antshorttv.points.AiPointPolicyComponentEntity;
-import com.antshorttv.points.AiPointPolicyComponentMapper;
-import com.antshorttv.points.AiPointPolicyService;
-import com.antshorttv.points.AiPointPolicyVersionEntity;
 import com.antshorttv.points.AiPointReservationEntity;
 import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.security.CurrentPrincipal;
@@ -23,8 +19,6 @@ public class PlatformAiAccountingService {
     private final AiModelMapper modelMapper;
     private final AiModelPriceService modelPriceService;
     private final AiModelPriceComponentMapper modelPriceComponentMapper;
-    private final AiPointPolicyService pointPolicyService;
-    private final AiPointPolicyComponentMapper pointPolicyComponentMapper;
     private final AiExecutionTaskMapper executionTaskMapper;
     private final AiExecutionResponseMapper executionResponseMapper;
     private final AiUsageLineMapper usageLineMapper;
@@ -38,8 +32,6 @@ public class PlatformAiAccountingService {
         AiModelMapper modelMapper,
         AiModelPriceService modelPriceService,
         AiModelPriceComponentMapper modelPriceComponentMapper,
-        AiPointPolicyService pointPolicyService,
-        AiPointPolicyComponentMapper pointPolicyComponentMapper,
         AiExecutionTaskMapper executionTaskMapper,
         AiExecutionResponseMapper executionResponseMapper,
         AiUsageLineMapper usageLineMapper,
@@ -52,8 +44,6 @@ public class PlatformAiAccountingService {
         this.modelMapper = modelMapper;
         this.modelPriceService = modelPriceService;
         this.modelPriceComponentMapper = modelPriceComponentMapper;
-        this.pointPolicyService = pointPolicyService;
-        this.pointPolicyComponentMapper = pointPolicyComponentMapper;
         this.executionTaskMapper = executionTaskMapper;
         this.executionResponseMapper = executionResponseMapper;
         this.usageLineMapper = usageLineMapper;
@@ -172,17 +162,6 @@ public class PlatformAiAccountingService {
         component.currency = request.currency().trim().toUpperCase();
         component.dimensionsJson = AiAccountingJson.write(request.dimensions());
         component.dimensionsKey = AiAccountingJson.canonicalKey(request.dimensions());
-        return component;
-    }
-
-    private AiPointPolicyComponentEntity pointPolicyComponent(PointPolicyComponentRequest request) {
-        AiPointPolicyComponentEntity component = new AiPointPolicyComponentEntity();
-        component.metric = request.metric().trim();
-        component.unitSize = request.unitSize();
-        component.pointRate = request.pointRate();
-        component.dimensionsJson = AiAccountingJson.write(request.dimensions());
-        component.dimensionsKey = AiAccountingJson.canonicalKey(request.dimensions());
-        component.createdAt = LocalDateTime.now();
         return component;
     }
 

@@ -62,10 +62,13 @@ public class AiPointSettlementService {
             }
             return existing;
         }
-        AiPointPolicyVersionEntity policy = command.pointPriceVersionId() == null ? resolvePolicy(command) : null;
-        BigDecimal required = command.pointPriceVersionId() == null
-            ? calculate(policy.id, command.authorizedUsage(), command.dimensions())
-            : calculateModelPointPrice(command.pointPriceVersionId(), command.authorizedUsage(), command.dimensions());
+        if (command.pointPriceVersionId() == null) {
+            throw new com.antshorttv.accounting.ModelBillingMissingException(
+                "New point reservations require a frozen model point price version.");
+        }
+        AiPointPolicyVersionEntity policy = null;
+        BigDecimal required = calculateModelPointPrice(
+            command.pointPriceVersionId(), command.authorizedUsage(), command.dimensions());
         accountingService.ensureAccount(command.tenantId());
         int updated = accountingService.reserveFunds(command.tenantId(), required);
         if (updated == 0) {
@@ -269,15 +272,6 @@ public class AiPointSettlementService {
         reservationMapper.updateById(reservation);
         recordLedger(reservation, "INCREMENTAL_RESERVE", overage, null, null, idempotencyKey + ":incremental");
         return true;
-    }
-
-    private AiPointPolicyVersionEntity resolvePolicy(AiPointReservationCommand command) {
-        return policyVersionMapper.selectEffective(command.scene(), LocalDateTime.now()).stream()
-            .filter(policy -> policy.modelId == null || policy.modelId.equals(command.modelId()))
-            .filter(policy -> policy.capability == null || policy.capability.equals(command.capability()))
-            .max(Comparator.comparingInt(policy ->
-                (policy.modelId == null ? 0 : 2) + (policy.capability == null ? 0 : 1)))
-            .orElseThrow(() -> new IllegalStateException("No effective point policy for scene " + command.scene()));
     }
 
     private BigDecimal calculate(

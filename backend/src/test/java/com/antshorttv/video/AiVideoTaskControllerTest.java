@@ -212,6 +212,53 @@ class AiVideoTaskControllerTest {
     }
 
     @Test
+    void rejectsVideoTaskBeforeProviderWhenCallBillingIsMissing() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/video/generations", exchange -> {
+            calls.incrementAndGet();
+            writeJson(exchange, 200, "{\"externalTaskId\":\"unexpected\",\"status\":\"ACCEPTED\"}");
+        });
+        server.start();
+        try {
+            String token = registerUser("13800016015", "Missing Video Billing Owner");
+            Long tenantId = createTenant(token, "视频缺价团队");
+            Long ownerId = userIdByMobile("13800016015");
+            Long projectId = createProject(token, tenantId, ownerId, "视频缺价项目", "AI_VIDEO_MISSING_CALL_PRICE");
+            Long modelId = createVideoService(
+                token, tenantId, "http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            grantTeamPoints(tenantId, 5);
+            jdbc.update("""
+                delete from ai_model_price_component
+                 where price_version_id in (select id from ai_model_price_version where model_id = ?)
+                   and metric = 'CALL'
+                """, modelId);
+            jdbc.update("""
+                delete from ai_model_point_price_component
+                 where price_version_id in (select id from ai_model_point_price_version where model_id = ?)
+                   and metric = 'CALL'
+                """, modelId);
+
+            mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(videoTaskPayload(storyboardId, modelId, "缺少调用价格")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode", is("AI_MODEL_BILLING_MISSING")));
+
+            assertThat(calls.get()).isZero();
+            assertThat(jdbc.queryForObject(
+                "select count(*) from ai_video_task where tenant_id = ?", Integer.class, tenantId)).isZero();
+            assertThat(jdbc.queryForObject(
+                "select count(*) from ai_point_reservation where tenant_id = ?", Integer.class, tenantId)).isZero();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void backgroundPollingCompletesDueGeneratingTasks() throws Exception {
         String token = registerUser("13800016006", "Polling Owner");
         Long tenantId = createTenant(token, "轮询视频团队");
@@ -239,9 +286,20 @@ class AiVideoTaskControllerTest {
              where t.id = ?
             """, Integer.class, taskId);
         var task = jdbc.queryForMap("select * from ai_video_task where id = ?", taskId);
+        Long executionId = ((Number) task.get("execution_id")).longValue();
         org.assertj.core.api.Assertions.assertThat(resultCount).isEqualTo(1);
         org.assertj.core.api.Assertions.assertThat(attemptCount).isEqualTo(2);
         org.assertj.core.api.Assertions.assertThat(task.get("execution_token")).isNull();
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+            "select count(*) from ai_usage_cost_line where execution_id = ?",
+            Integer.class,
+            executionId
+        )).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+            "select count(*) from point_ledger where execution_id = ? and entry_type = 'SETTLE'",
+            Integer.class,
+            executionId
+        )).isEqualTo(1);
     }
 
     @Test
@@ -262,6 +320,7 @@ class AiVideoTaskControllerTest {
             """, taskId);
 
         aiVideoTaskService.pollDueTasks();
+        aiVideoTaskService.pollDueTasks();
 
         mockMvc.perform(get("/api/projects/%d/ai-video-tasks/%d".formatted(projectId, taskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -269,6 +328,18 @@ class AiVideoTaskControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("FAILED")))
             .andExpect(jsonPath("$.data.errorMessage", containsString("超时")));
+        Long executionId = jdbc.queryForObject(
+            "select execution_id from ai_video_task where id = ?", Long.class, taskId);
+        assertThat(jdbc.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?",
+            String.class,
+            executionId
+        )).isEqualTo("SETTLED");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from point_ledger where execution_id = ? and entry_type = 'SETTLE'",
+            Integer.class,
+            executionId
+        )).isEqualTo(1);
     }
 
     @Test
@@ -593,11 +664,18 @@ class AiVideoTaskControllerTest {
             Integer.class,
             executionId
         )).isEqualTo(2);
+        var billing = jdbc.queryForMap("""
+            select cost_price_version_id, point_price_version_id, usage_cost_status
+              from ai_execution_task where id = ?
+            """, executionId);
+        assertThat(billing.get("cost_price_version_id")).isNotNull();
+        assertThat(billing.get("point_price_version_id")).isNotNull();
+        assertThat(billing.get("usage_cost_status")).isEqualTo("PRICED");
         assertThat(jdbc.queryForObject(
-            "select usage_cost_status from ai_execution_task where id = ?",
-            String.class,
+            "select count(*) from ai_usage_cost_line where execution_id = ? and pricing_status = 'PRICED'",
+            Integer.class,
             executionId
-        )).isEqualTo("UNPRICED");
+        )).isEqualTo(2);
         assertThat(jdbc.queryForObject(
             "select status from ai_point_reservation where execution_id = ?",
             String.class,
@@ -704,6 +782,9 @@ class AiVideoTaskControllerTest {
         }
         com.antshorttv.support.ModelBillingTestSupport.publish(
             jdbc, modelId, "VIDEO_SECOND", java.math.BigDecimal.valueOf(5), java.math.BigDecimal.ONE
+        );
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbc, modelId, "CALL", java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO
         );
         return modelId;
     }

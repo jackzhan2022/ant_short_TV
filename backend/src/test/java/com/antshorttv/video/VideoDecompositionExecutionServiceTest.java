@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.antshorttv.ai.AiSecretCodec;
 import com.sun.net.httpserver.HttpServer;
+import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -56,7 +57,10 @@ class VideoDecompositionExecutionServiceTest {
         try {
             String baseUrl = "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort());
             Long modelId = prepareModel(baseUrl);
-            prepareTextModel(baseUrl);
+            Long textModelId = prepareTextModel(baseUrl);
+            prepareBilling(modelId);
+            prepareBilling(textModelId);
+            preparePointAccount();
             Long batchId = insertBatch(modelId);
             Long episodeId = insertEpisode(batchId);
 
@@ -76,32 +80,79 @@ class VideoDecompositionExecutionServiceTest {
                  where task_id = ? and business_scene = 'video_script_draft'
                 """, Integer.class, episodeId);
             assertThat(draftLogs).isEqualTo(1);
-            Long executionId = jdbc.queryForObject(
+            Long draftExecutionId = jdbc.queryForObject(
                 "select execution_id from video_decomposition_episode where id = ?",
                 Long.class,
                 episodeId
             );
-            assertThat(executionId).isNotNull();
+            Long analysisExecutionId = jdbc.queryForObject(
+                "select execution_id from video_decomposition_analysis where episode_id = ?",
+                Long.class,
+                episodeId
+            );
+            assertThat(draftExecutionId).isNotNull().isNotEqualTo(analysisExecutionId);
             assertThat(jdbc.queryForList(
                 "select phase from ai_execution_attempt where execution_id = ? order by id",
                 String.class,
-                executionId
-            )).containsExactly("VIDEO_ANALYSIS", "DRAFT_GENERATION");
+                analysisExecutionId
+            )).containsExactly("VIDEO_ANALYSIS");
+            assertThat(jdbc.queryForList(
+                "select phase from ai_execution_attempt where execution_id = ? order by id",
+                String.class,
+                draftExecutionId
+            )).containsExactly("DRAFT_GENERATION");
             assertThat(jdbc.queryForObject(
-                "select count(*) from ai_call_log where execution_id = ? and attempt_id is not null",
+                "select count(*) from ai_call_log where execution_id in (?, ?) and attempt_id is not null",
                 Integer.class,
-                executionId
+                analysisExecutionId,
+                draftExecutionId
             )).isEqualTo(2);
             assertThat(jdbc.queryForObject(
                 "select count(*) from video_decomposition_analysis where episode_id = ? and execution_id = ?",
                 Integer.class,
                 episodeId,
-                executionId
+                analysisExecutionId
             )).isEqualTo(1);
-            var execution = jdbc.queryForMap("select * from ai_execution_task where id = ?", executionId);
-            assertThat(execution.get("status")).isEqualTo("SUCCEEDED");
-            assertThat(execution.get("result_type")).isEqualTo("VIDEO_DECOMPOSITION_EPISODE");
-            assertThat(execution.get("result_id")).isEqualTo(episodeId);
+            var analysisExecution = jdbc.queryForMap(
+                "select * from ai_execution_task where id = ?", analysisExecutionId);
+            var draftExecution = jdbc.queryForMap(
+                "select * from ai_execution_task where id = ?", draftExecutionId);
+            assertThat(analysisExecution.get("status")).isEqualTo("SUCCEEDED");
+            assertThat(analysisExecution.get("requested_model_id")).isEqualTo(modelId);
+            assertThat(analysisExecution.get("cost_price_version_id")).isNotNull();
+            assertThat(analysisExecution.get("point_price_version_id")).isNotNull();
+            assertThat(analysisExecution.get("usage_cost_status")).isEqualTo("PRICED");
+            assertThat(analysisExecution.get("point_settlement_status")).isEqualTo("SETTLED");
+            assertThat(draftExecution.get("status")).isEqualTo("SUCCEEDED");
+            assertThat(draftExecution.get("requested_model_id")).isEqualTo(textModelId);
+            assertThat(draftExecution.get("cost_price_version_id")).isNotNull();
+            assertThat(draftExecution.get("point_price_version_id")).isNotNull();
+            assertThat(draftExecution.get("usage_cost_status")).isEqualTo("PRICED");
+            assertThat(draftExecution.get("point_settlement_status")).isEqualTo("SETTLED");
+            assertThat(draftExecution.get("result_type")).isEqualTo("VIDEO_DECOMPOSITION_EPISODE");
+            assertThat(draftExecution.get("result_id")).isEqualTo(episodeId);
+            assertThat(jdbc.queryForObject(
+                "select count(*) from ai_point_reservation where execution_id in (?, ?) and status = 'SETTLED'",
+                Integer.class, analysisExecutionId, draftExecutionId)).isEqualTo(2);
+            assertThat(jdbc.queryForObject(
+                "select count(*) from ai_usage_cost_line where execution_id in (?, ?)",
+                Integer.class, analysisExecutionId, draftExecutionId)).isEqualTo(2);
+            assertThat(jdbc.queryForObject("""
+                select count(*)
+                  from ai_usage_cost_line cost
+                  join ai_execution_task execution on execution.id = cost.execution_id
+                 where execution.id in (?, ?)
+                   and cost.price_version_id = execution.cost_price_version_id
+                   and cost.pricing_status = 'PRICED'
+                """, Integer.class, analysisExecutionId, draftExecutionId)).isEqualTo(2);
+            assertThat(jdbc.queryForObject("""
+                select count(*)
+                  from ai_point_reservation reservation
+                  join ai_execution_task execution on execution.id = reservation.execution_id
+                 where execution.id in (?, ?)
+                   and reservation.point_price_version_id = execution.point_price_version_id
+                   and reservation.status = 'SETTLED'
+                """, Integer.class, analysisExecutionId, draftExecutionId)).isEqualTo(2);
             String understandingSummary = jdbc.queryForObject("""
                 select request_summary from ai_call_log
                  where task_id = ? and business_scene = 'video_understanding'
@@ -139,6 +190,8 @@ class VideoDecompositionExecutionServiceTest {
 
         try {
             Long modelId = prepareModel("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()));
+            prepareBilling(modelId);
+            preparePointAccount();
             Long batchId = insertBatch(modelId);
             Long episodeId = insertEpisode(batchId);
 
@@ -172,6 +225,8 @@ class VideoDecompositionExecutionServiceTest {
 
         try {
             Long modelId = prepareModel("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()));
+            prepareBilling(modelId);
+            preparePointAccount();
             Long batchId = insertBatch(modelId);
             Long episodeId = insertEpisode(batchId);
 
@@ -252,6 +307,24 @@ class VideoDecompositionExecutionServiceTest {
               (model_id, capability, status, created_at, updated_at)
             values (?, ?, 'ENABLED', now(), now())
             """, modelId, capability);
+    }
+
+    private void prepareBilling(Long modelId) {
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbc, modelId, "CALL", BigDecimal.ONE, BigDecimal.ONE);
+    }
+
+    private void preparePointAccount() {
+        Integer count = jdbc.queryForObject(
+            "select count(*) from team_point_account where tenant_id = 501", Integer.class);
+        if (count == 0) {
+            jdbc.update("""
+                insert into team_point_account
+                  (tenant_id, balance, reserved_balance, total_granted, total_consumed,
+                   total_reserved, total_released, total_refunded, version, created_at, updated_at)
+                values (501, 1000, 0, 1000, 0, 0, 0, 0, 0, now(), now())
+                """);
+        }
     }
 
     private Long insertBatch(Long modelId) {

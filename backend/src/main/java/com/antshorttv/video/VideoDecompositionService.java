@@ -1,5 +1,6 @@
 package com.antshorttv.video;
 
+import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.execution.AiExecutionCreateCommand;
@@ -24,6 +25,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -361,7 +363,7 @@ public class VideoDecompositionService {
     }
 
     private void createExecutionHeader(VideoDecompositionEpisodeEntity episode, Long modelId) {
-        AiExecutionTaskEntity execution = executionService.create(new AiExecutionCreateCommand(
+        AiExecutionTaskEntity execution = executionService.createWithReservation(new AiExecutionCreateCommand(
             episode.getTenantId(),
             episode.getCreatedBy(),
             episode.getProjectId(),
@@ -375,7 +377,7 @@ public class VideoDecompositionService {
             UUID.randomUUID().toString(),
             true,
             "{\"episodeId\":%d}".formatted(episode.getId())
-        ));
+        ), Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of());
         episode.setExecutionId(execution.id);
         episodeMapper.updateById(episode);
         executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()

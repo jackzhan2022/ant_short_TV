@@ -2,7 +2,9 @@ package com.antshorttv.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
@@ -32,7 +34,7 @@ class AiMigrationSnapshotRehearsalTest {
         assertThat(sourceJdbc.queryForObject(
                 "select count(*) from flyway_schema_history where success = true and version is not null",
                 Integer.class))
-            .isEqualTo(49);
+            .isEqualTo(50);
 
         DataSource restored = dataSource("ai_migration_restored");
         JdbcTemplate restoredJdbc = new JdbcTemplate(restored);
@@ -45,6 +47,49 @@ class AiMigrationSnapshotRehearsalTest {
             .isEqualTo("34");
         assertThat(restoredJdbc.queryForObject(
                 "select count(*) from information_schema.tables where lower(table_name) = 'ai_execution_task'",
+                Integer.class))
+            .isZero();
+    }
+
+    @Test
+    void preservesSettledAccountingHistoryWhenAddingModelPointPricing() {
+        DataSource source = dataSource("model_billing_history");
+        migrate(source, "50");
+        JdbcTemplate jdbc = new JdbcTemplate(source);
+        seedSettledAccountingHistory(jdbc);
+
+        Map<String, Object> costBefore = jdbc.queryForMap(
+            "select * from ai_usage_cost_line where id = 9201");
+        Map<String, Object> reservationBefore = jdbc.queryForMap(
+            "select * from ai_point_reservation where id = 9301");
+        Map<String, Object> ledgerBefore = jdbc.queryForMap(
+            "select * from point_ledger where id = 9401");
+
+        migrate(source, null);
+
+        Map<String, Object> costAfter = jdbc.queryForMap(
+            "select * from ai_usage_cost_line where id = 9201");
+        Map<String, Object> reservationAfter = jdbc.queryForMap(
+            "select * from ai_point_reservation where id = 9301");
+        Map<String, Object> ledgerAfter = jdbc.queryForMap(
+            "select * from point_ledger where id = 9401");
+
+        assertThat(costAfter).containsAllEntriesOf(costBefore);
+        assertThat(reservationAfter).containsAllEntriesOf(reservationBefore);
+        assertThat(ledgerAfter).containsAllEntriesOf(ledgerBefore);
+        assertThat(reservationAfter.get("policy_version_id")).isEqualTo(9001L);
+        assertThat(reservationAfter.get("point_price_version_id")).isNull();
+        assertThat(jdbc.queryForMap("select * from ai_execution_task where id = 9001"))
+            .containsEntry("cost_price_version_id", null)
+            .containsEntry("point_price_version_id", null);
+        assertThat(jdbc.queryForObject(
+                "select last_version_no from ai_model_price_version_sequence "
+                    + "where model_id = 8801 and price_type = 'COST'",
+                Integer.class))
+            .isEqualTo(7);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from ai_model_price_version_sequence "
+                    + "where model_id = 8801 and price_type = 'POINT'",
                 Integer.class))
             .isZero();
     }
@@ -85,6 +130,80 @@ class AiMigrationSnapshotRehearsalTest {
                business_scene, business_id, description, created_at)
             values (101, 201, 'AI_CONSUME', -1, 90,
                     'script_generate', 301, 'legacy point history', current_timestamp)
+            """);
+    }
+
+    private static void seedSettledAccountingHistory(JdbcTemplate jdbc) {
+        jdbc.update("""
+            insert into ai_execution_task
+              (id, tenant_id, user_id, scene, capability, business_type, business_id,
+               requested_model_id, resolved_model_id, status, phase, progress,
+               execution_version, client_idempotency_key, trace_id, priority, retryable,
+               usage_cost_status, point_settlement_status, reserved_points, settled_points,
+               released_points, created_at, updated_at, completed_at)
+            values (9001, 8101, 8201, 'legacy_scene', 'TEXT_GENERATION', 'LEGACY_TASK', 8301,
+                    8801, 8801, 'SUCCEEDED', 'COMPLETED', 100,
+                    1, 'legacy-execution-9001', 'legacy-trace-9001', 100, false,
+                    'PRICED', 'SETTLED', 3, 2, 1, timestamp '2026-01-01 00:00:00',
+                    timestamp '2026-01-01 00:05:00', timestamp '2026-01-01 00:05:00')
+            """);
+        jdbc.update("""
+            insert into ai_model_price_version
+              (id, model_id, version_no, status, effective_from, published_at, created_at)
+            values (9101, 8801, 7, 'PUBLISHED', timestamp '2025-12-01 00:00:00',
+                    timestamp '2025-11-01 00:00:00', timestamp '2025-11-01 00:00:00')
+            """);
+        jdbc.update("""
+            insert into ai_model_price_component
+              (id, price_version_id, metric, unit_size, unit_price, currency,
+               dimensions_json, dimensions_key, created_at)
+            values (9102, 9101, 'CALL', 1, 0.125, 'USD', '{}', '',
+                    timestamp '2025-11-01 00:00:00')
+            """);
+        jdbc.update("""
+            insert into ai_usage_line
+              (id, tenant_id, execution_id, model_id, metric, quantity, unit, source,
+               dimensions_json, dimensions_key, observed_at, created_at)
+            values (9200, 8101, 9001, 8801, 'CALL', 1, 'call', 'PROVIDER_REPORTED',
+                    '{}', '', timestamp '2026-01-01 00:04:00', timestamp '2026-01-01 00:04:00')
+            """);
+        jdbc.update("""
+            insert into ai_usage_cost_line
+              (id, tenant_id, execution_id, usage_line_id, price_version_id,
+               price_component_id, model_id, metric, quantity, unit_size, unit_price,
+               currency, raw_cost, rounded_cost, pricing_status, created_at)
+            values (9201, 8101, 9001, 9200, 9101, 9102, 8801, 'CALL', 1, 1, 0.125,
+                    'USD', 0.125, 0.125, 'PRICED', timestamp '2026-01-01 00:04:00')
+            """);
+        jdbc.update("""
+            insert into ai_point_policy_version
+              (id, scene, model_id, capability, version_no, status, effective_from,
+               charge_provider_rejection, charge_provider_billed_failure, charge_timeout,
+               charge_business_failure, created_at, published_at)
+            values (9001, 'legacy_scene', 8801, 'TEXT_GENERATION', 3, 'PUBLISHED',
+                    timestamp '2025-12-01 00:00:00', false, true, true, true,
+                    timestamp '2025-11-01 00:00:00', timestamp '2025-11-01 00:00:00')
+            """);
+        jdbc.update("""
+            insert into ai_point_reservation
+              (id, tenant_id, user_id, execution_id, execution_version, business_type,
+               business_id, scene, policy_version_id, status, authorized_usage_json,
+               dimensions_json, reserved_points, settled_points, released_points,
+               refunded_points, idempotency_key, created_at, settled_at, updated_at)
+            values (9301, 8101, 8201, 9001, 1, 'LEGACY_TASK', 8301, 'legacy_scene',
+                    9001, 'SETTLED', '{"CALL":1}', '{}', 3, 2, 1, 0,
+                    'legacy-reservation-9301', timestamp '2026-01-01 00:00:00',
+                    timestamp '2026-01-01 00:05:00', timestamp '2026-01-01 00:05:00')
+            """);
+        jdbc.update("""
+            insert into point_ledger
+              (id, tenant_id, user_id, execution_id, execution_version, business_type,
+               business_id, reservation_id, policy_version_id, entry_type, amount,
+               available_balance_after, reserved_balance_after, idempotency_key,
+               description, created_at)
+            values (9401, 8101, 8201, 9001, 1, 'LEGACY_TASK', 8301, 9301, 9001,
+                    'SETTLE', 2, 98, 0, 'legacy-ledger-9401', 'settled before model pricing',
+                    timestamp '2026-01-01 00:05:00')
             """);
     }
 

@@ -29,6 +29,7 @@ class AiModelBillingResolverTest {
         jdbc.update("delete from ai_model_point_price_version");
         jdbc.update("delete from ai_model_price_component");
         jdbc.update("delete from ai_model_price_version");
+        jdbc.update("delete from ai_model_price_version_sequence");
     }
 
     @Test

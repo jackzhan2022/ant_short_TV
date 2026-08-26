@@ -14,6 +14,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,6 +27,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest
 class AiPointSettlementServiceTest {
+
+    private final Map<String, Long> pointVersions = new HashMap<>();
 
     @Autowired
     private AiPointSettlementService service;
@@ -47,9 +50,24 @@ class AiPointSettlementServiceTest {
         jdbc.update("delete from ai_model_point_price_version");
         jdbc.update("delete from ai_model_price_component");
         jdbc.update("delete from ai_model_price_version");
+        jdbc.update("delete from ai_model_price_version_sequence");
         jdbc.update("delete from ai_point_policy_component");
         jdbc.update("delete from ai_point_policy_version");
         jdbc.update("delete from team_point_account");
+        pointVersions.clear();
+    }
+
+    @Test
+    void rejectsNewReservationsWithoutFrozenModelPointPrice() {
+        account(200L, "10");
+        AiPointReservationCommand legacy = new AiPointReservationCommand(
+            200L, 2L, 2001L, 1, "script_generate", "SCRIPT_OPERATION", 2001L,
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of(), "legacy-reserve"
+        );
+
+        assertThatThrownBy(() -> service.reserve(legacy))
+            .isInstanceOf(com.antshorttv.accounting.ModelBillingMissingException.class);
+        assertThat(reservationCount(200L)).isZero();
     }
 
     @Test
@@ -92,7 +110,9 @@ class AiPointSettlementServiceTest {
         usagePolicy("video_generate", AiUsageMetric.VIDEO_SECOND, "1", "1");
         AiPointReservationEntity reservation = service.reserve(new AiPointReservationCommand(
             202L, 2L, 2101L, 1, "video_generate", "AI_VIDEO_TASK", 91L,
-            Map.of(AiUsageMetric.VIDEO_SECOND, new BigDecimal("5")), Map.of(), "reserve-2101"
+            modelId("video_generate"), "VIDEO",
+            Map.of(AiUsageMetric.VIDEO_SECOND, new BigDecimal("5")), Map.of(),
+            pointVersions.get("video_generate"), "reserve-2101"
         ));
 
         AiPointReservationEntity settled = service.settle(
@@ -129,7 +149,7 @@ class AiPointSettlementServiceTest {
         assertThat(ledger.get("business_type")).isEqualTo("AI_VIDEO_TASK");
         assertThat(ledger.get("attempt_id")).isEqualTo(3101L);
         assertThat(ledger.get("ai_call_log_id")).isEqualTo(4101L);
-        assertThat(ledger.get("policy_version_id")).isNotNull();
+        assertThat(ledger.get("policy_version_id")).isNull();
         assertThat(ledger.get("idempotency_key")).isEqualTo("settle-2101:settle");
     }
 
@@ -142,7 +162,7 @@ class AiPointSettlementServiceTest {
         assertThat(accountValue(203L, "balance")).isEqualByComparingTo("10");
 
         AiPointReservationEntity settled = service.reserve(command(203L, 2202L, "reserve-2202"));
-        service.settle(settled.id, Map.of(), 3202L, 4202L, "settle-2202");
+        service.settle(settled.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 3202L, 4202L, "settle-2202");
         service.refund(settled.id, "refund-2202");
 
         assertThat(accountValue(203L, "balance")).isEqualByComparingTo("10");
@@ -155,7 +175,9 @@ class AiPointSettlementServiceTest {
         usagePolicy("image_generate", AiUsageMetric.IMAGE, "1", "1");
         AiPointReservationEntity enough = service.reserve(new AiPointReservationCommand(
             204L, 2L, 2301L, 1, "image_generate", "AI_IMAGE_TASK", 93L,
-            Map.of(AiUsageMetric.IMAGE, new BigDecimal("2")), Map.of(), "reserve-2301"
+            modelId("image_generate"), "IMAGE",
+            Map.of(AiUsageMetric.IMAGE, new BigDecimal("2")), Map.of(),
+            pointVersions.get("image_generate"), "reserve-2301"
         ));
         AiPointReservationEntity settled = service.settle(
             enough.id, Map.of(AiUsageMetric.IMAGE, new BigDecimal("4")), 3301L, 4301L, "settle-2301"
@@ -165,7 +187,9 @@ class AiPointSettlementServiceTest {
 
         AiPointReservationEntity insufficient = service.reserve(new AiPointReservationCommand(
             204L, 2L, 2302L, 1, "image_generate", "AI_IMAGE_TASK", 94L,
-            Map.of(AiUsageMetric.IMAGE, BigDecimal.ONE), Map.of(), "reserve-2302"
+            modelId("image_generate"), "IMAGE",
+            Map.of(AiUsageMetric.IMAGE, BigDecimal.ONE), Map.of(),
+            pointVersions.get("image_generate"), "reserve-2302"
         ));
         AiPointReservationEntity review = service.settle(
             insufficient.id, Map.of(AiUsageMetric.IMAGE, new BigDecimal("3")), 3302L, 4302L, "settle-2302"
@@ -238,7 +262,8 @@ class AiPointSettlementServiceTest {
 
         AiPointReservationEntity businessFailure = service.reserve(command(208L, 2503L, "reserve-2503"));
         assertThat(service.finalizeOutcome(
-            businessFailure.id, AiSettlementOutcome.BUSINESS_FAILURE, Map.of(), 3503L, 4503L, "outcome-2503"
+            businessFailure.id, AiSettlementOutcome.BUSINESS_FAILURE,
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 3503L, 4503L, "outcome-2503"
         ).status).isEqualTo("SETTLED");
         assertThat(accountValue(208L, "balance")).isEqualByComparingTo("8");
     }
@@ -255,7 +280,9 @@ class AiPointSettlementServiceTest {
     private AiPointReservationCommand command(Long tenantId, Long executionId, String key) {
         return new AiPointReservationCommand(
             tenantId, 2L, executionId, 1, "script_generate", "SCRIPT_OPERATION", executionId,
-            Map.of(), Map.of(), key
+            modelId("script_generate"), "TEXT",
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of(),
+            pointVersions.get("script_generate"), key
         );
     }
 
@@ -308,36 +335,38 @@ class AiPointSettlementServiceTest {
     }
 
     private void fixedPolicy(String scene, String points) {
-        Long policyId = policy(scene);
+        Long priceVersionId = pointPrice(scene);
         jdbc.update("""
-            insert into ai_point_policy_component
-              (policy_version_id, metric, unit_size, point_rate, dimensions_json, dimensions_key, created_at)
-            values (?, 'FIXED_EXECUTION', 1, ?, '{}', '', now())
-            """, policyId, new BigDecimal(points));
+            insert into ai_model_point_price_component
+              (price_version_id, metric, unit_size, point_rate, dimensions_json, dimensions_key, created_at)
+            values (?, 'CALL', 1, ?, '{}', '', now())
+            """, priceVersionId, new BigDecimal(points));
     }
 
     private void usagePolicy(String scene, AiUsageMetric metric, String unitSize, String rate) {
-        Long policyId = policy(scene);
+        Long priceVersionId = pointPrice(scene);
         jdbc.update("""
-            insert into ai_point_policy_component
-              (policy_version_id, metric, unit_size, point_rate, dimensions_json, dimensions_key, created_at)
+            insert into ai_model_point_price_component
+              (price_version_id, metric, unit_size, point_rate, dimensions_json, dimensions_key, created_at)
             values (?, ?, ?, ?, '{}', '', now())
-            """, policyId, metric.name(), new BigDecimal(unitSize), new BigDecimal(rate));
+            """, priceVersionId, metric.name(), new BigDecimal(unitSize), new BigDecimal(rate));
     }
 
-    private Long policy(String scene) {
+    private Long pointPrice(String scene) {
         jdbc.update("""
-            insert into ai_point_policy_version
-              (scene, version_no, status, effective_from, charge_provider_rejection,
-               charge_provider_billed_failure, charge_timeout, charge_business_failure,
-               created_at, published_at)
-            values (?, 1, 'PUBLISHED', ?, false, true, true, true, now(), now())
-            """, scene, LocalDateTime.of(2026, 1, 1, 0, 0));
-        return jdbc.queryForObject(
-            "select id from ai_point_policy_version where scene = ?",
-            Long.class,
-            scene
-        );
+            insert into ai_model_point_price_version
+              (model_id, version_no, status, effective_from, created_at, published_at)
+            values (?, 1, 'PUBLISHED', ?, now(), now())
+            """, modelId(scene), LocalDateTime.of(2026, 1, 1, 0, 0));
+        Long id = jdbc.queryForObject(
+            "select id from ai_model_point_price_version where model_id = ?",
+            Long.class, modelId(scene));
+        pointVersions.put(scene, id);
+        return id;
+    }
+
+    private Long modelId(String scene) {
+        return 700_000L + Integer.toUnsignedLong(scene.hashCode());
     }
 
     private BigDecimal accountValue(Long tenantId, String column) {
@@ -346,5 +375,10 @@ class AiPointSettlementServiceTest {
             BigDecimal.class,
             tenantId
         );
+    }
+
+    private int reservationCount(Long tenantId) {
+        return jdbc.queryForObject(
+            "select count(*) from ai_point_reservation where tenant_id = ?", Integer.class, tenantId);
     }
 }

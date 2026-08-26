@@ -237,7 +237,10 @@ public class AiVideoTaskService {
                 true,
                 "{\"storyboardId\":%d}".formatted(task.storyboardId)
             ),
-            Map.of(AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(task.durationSeconds)),
+            Map.of(
+                AiUsageMetric.CALL, BigDecimal.ONE,
+                AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(task.durationSeconds)
+            ),
             Map.of("resolution", task.resolution, "aspectRatio", task.aspectRatio)
         );
         task.executionId = execution.id;
@@ -891,7 +894,10 @@ public class AiVideoTaskService {
                 reservation.id,
                 outcome,
                 outcome == AiSettlementOutcome.SUCCESS
-                    ? Map.of(AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(task.durationSeconds))
+                    ? Map.of(
+                        AiUsageMetric.CALL, BigDecimal.ONE,
+                        AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(task.durationSeconds)
+                    )
                     : Map.of(),
                 attemptId,
                 callLogId,

@@ -1,5 +1,9 @@
 package com.antshorttv.script;
 
+import com.antshorttv.accounting.AiExecutionCostSummary;
+import com.antshorttv.accounting.AiUsageAccountingService;
+import com.antshorttv.accounting.AiUsageCommand;
+import com.antshorttv.accounting.AiUsageContext;
 import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.ai.AiInvocationResult;
@@ -13,6 +17,7 @@ import com.antshorttv.execution.AiExecutionHandlerResult;
 import com.antshorttv.execution.AiExecutionRetryPolicy;
 import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.execution.AiExecutionTaskEntity;
+import com.antshorttv.execution.AiExecutionTaskMapper;
 import com.antshorttv.points.AiPointReservationEntity;
 import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
@@ -24,6 +29,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -34,6 +40,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
     private final AiPointReservationMapper reservationMapper;
     private final AiPointSettlementService settlementService;
     private final AiExecutionService executionService;
+    private final AiUsageAccountingService usageAccountingService;
+    private final AiExecutionTaskMapper executionTaskMapper;
     private final ObjectMapper objectMapper;
 
     public ScriptAiOperationExecutionHandler(
@@ -43,6 +51,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         AiPointReservationMapper reservationMapper,
         AiPointSettlementService settlementService,
         AiExecutionService executionService,
+        AiUsageAccountingService usageAccountingService,
+        AiExecutionTaskMapper executionTaskMapper,
         ObjectMapper objectMapper
     ) {
         this.operationMapper = operationMapper;
@@ -51,6 +61,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         this.reservationMapper = reservationMapper;
         this.settlementService = settlementService;
         this.executionService = executionService;
+        this.usageAccountingService = usageAccountingService;
+        this.executionTaskMapper = executionTaskMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -94,6 +106,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             ScriptAiOperationExecutionResult result = executeOperation(operation, context);
             markAttempt(context, result.lastInvocation());
             markSucceeded(operation, result);
+            recordUsageAndCost(context, result.invocations());
             settle(context, result.lastInvocation(), AiSettlementOutcome.SUCCESS, result.invocations().size());
             return new AiExecutionHandlerResult(result.resultType(), result.resultId());
         } catch (AiExecutionClaimLostException exception) {
@@ -181,6 +194,43 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             .set("transport_outcome", invocation.transportOutcome())
             .set("business_outcome", invocation.businessOutcome())
             .eq("id", context.claim().attemptId()));
+    }
+
+    private void recordUsageAndCost(
+        AiExecutionContext context,
+        List<AiInvocationResult<AiTextResponse>> invocations
+    ) {
+        if (invocations.isEmpty()) {
+            return;
+        }
+        LocalDateTime observedAt = LocalDateTime.now();
+        for (AiInvocationResult<AiTextResponse> invocation : invocations) {
+            usageAccountingService.record(AiUsageCommand.requestDerived(
+                new AiUsageContext(
+                    context.task().tenantId,
+                    context.task().id,
+                    context.claim().attemptId(),
+                    invocation.aiCallLogId(),
+                    invocation.resolvedModelId()
+                ),
+                AiUsageMetric.CALL,
+                "1",
+                Map.of(),
+                observedAt
+            ));
+        }
+        AiExecutionCostSummary cost = usageAccountingService.priceExecution(
+            context.task().id,
+            Set.of(AiUsageMetric.CALL)
+        );
+        try {
+            executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+                .set("usage_cost_status", cost.status().name())
+                .set("provider_cost_summary_json", objectMapper.writeValueAsString(cost.totalsByCurrency()))
+                .eq("id", context.task().id));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to persist script operation cost summary.", exception);
+        }
     }
 
     private void settle(

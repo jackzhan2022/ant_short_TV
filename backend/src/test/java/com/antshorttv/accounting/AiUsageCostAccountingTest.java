@@ -44,6 +44,7 @@ class AiUsageCostAccountingTest {
         jdbc.update("delete from ai_execution_task where id = 1907");
         jdbc.update("delete from ai_model_price_component");
         jdbc.update("delete from ai_model_price_version");
+        jdbc.update("delete from ai_model_price_version_sequence");
     }
 
     @Test

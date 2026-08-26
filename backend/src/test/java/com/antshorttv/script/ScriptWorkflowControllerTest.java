@@ -769,6 +769,23 @@ class ScriptWorkflowControllerTest {
         );
         org.assertj.core.api.Assertions.assertThat(balance).isEqualTo(1);
         org.assertj.core.api.Assertions.assertThat(settledReservationCount).isEqualTo(1);
+        var billing = jdbcTemplate.queryForMap("""
+            select cost_price_version_id, point_price_version_id, usage_cost_status
+              from ai_execution_task where id = ?
+            """, executionId);
+        org.assertj.core.api.Assertions.assertThat(billing.get("cost_price_version_id")).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(billing.get("point_price_version_id")).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(billing.get("usage_cost_status")).isEqualTo("PRICED");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForList(
+            "select metric from ai_usage_line where execution_id = ? order by id",
+            String.class,
+            executionId
+        )).containsExactly("CALL");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_usage_cost_line where execution_id = ? and pricing_status = 'PRICED'",
+            Integer.class,
+            executionId
+        )).isEqualTo(1);
     }
 
     @Test

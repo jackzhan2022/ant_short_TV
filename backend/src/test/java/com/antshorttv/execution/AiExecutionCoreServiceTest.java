@@ -16,6 +16,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest
 class AiExecutionCoreServiceTest {
@@ -35,6 +36,9 @@ class AiExecutionCoreServiceTest {
     @Autowired
     private AiPointReservationMapper reservationMapper;
 
+    @Autowired
+    private JdbcTemplate jdbc;
+
     @Test
     void missingDualPriceRejectsBeforeTaskAndReservationCreation() {
         AiExecutionCreateCommand command = new AiExecutionCreateCommand(
@@ -49,6 +53,96 @@ class AiExecutionCoreServiceTest {
             .eq("client_idempotency_key", "missing-dual-price"))).isZero();
         assertThat(reservationMapper.selectCount(new QueryWrapper<AiPointReservationEntity>()
             .eq("idempotency_key", "execution:missing-dual-price"))).isZero();
+    }
+
+    @Test
+    void incompleteOrRevokedBillingRejectsBeforeAnyExecutionArtifacts() {
+        long tenantId = 8611L;
+        long modelId = 999911L;
+        account(tenantId, "20");
+        Long costVersionId = costPrice(modelId, 1, "PUBLISHED", null);
+
+        assertPreflightRejected(tenantId, modelId, "missing-point-price");
+
+        Long pointVersionId = pointPrice(modelId, 1, "PUBLISHED", null, "2");
+        jdbc.update("update ai_model_price_version set status = 'REVOKED' where id = ?", costVersionId);
+        assertPreflightRejected(tenantId, modelId, "revoked-cost-price");
+
+        jdbc.update("update ai_model_price_version set status = 'PUBLISHED' where id = ?", costVersionId);
+        jdbc.update("update ai_model_point_price_version set status = 'REVOKED' where id = ?", pointVersionId);
+        assertPreflightRejected(tenantId, modelId, "revoked-point-price");
+
+        jdbc.update("update ai_model_point_price_version set status = 'PUBLISHED' where id = ?", pointVersionId);
+        assertThatThrownBy(() -> executionService.createWithReservation(
+            billingCommand(tenantId, modelId, "unsupported-metric"),
+            Map.of(AiUsageMetric.IMAGE, BigDecimal.ONE),
+            Map.of()
+        )).isInstanceOf(ModelBillingMissingException.class);
+        assertThat(taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
+            .eq("tenant_id", tenantId).eq("client_idempotency_key", "unsupported-metric"))).isZero();
+
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_call_log where execution_id in (select id from ai_execution_task where tenant_id = ?)",
+            Integer.class,
+            tenantId
+        )).isZero();
+    }
+
+    @Test
+    void idempotentReplayAndRetryPreserveFrozenPricesWhileRegenerationResolvesCurrentVersions() {
+        long tenantId = 8612L;
+        long modelId = 999912L;
+        account(tenantId, "20");
+        Long originalCostId = costPrice(modelId, 1, "PUBLISHED", null);
+        Long originalPointId = pointPrice(modelId, 1, "PUBLISHED", null, "2");
+        AiExecutionCreateCommand command = billingCommand(tenantId, modelId, "frozen-billing-original");
+
+        AiExecutionTaskEntity original = executionService.createWithReservation(
+            command, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of()
+        );
+        jdbc.update("update ai_model_point_price_version set status = 'REVOKED' where id = ?", originalPointId);
+
+        AiExecutionTaskEntity replay = executionService.createWithReservation(
+            command, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of()
+        );
+        assertThat(replay.id).isEqualTo(original.id);
+        assertThat(replay.costPriceVersionId).isEqualTo(originalCostId);
+        assertThat(replay.pointPriceVersionId).isEqualTo(originalPointId);
+        assertThat(reservationMapper.selectCount(new QueryWrapper<AiPointReservationEntity>()
+            .eq("execution_id", original.id))).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from point_ledger where execution_id = ? and entry_type = 'RESERVE'",
+            Integer.class,
+            original.id
+        )).isEqualTo(1);
+
+        jdbc.update("update ai_execution_task set status = 'FAILED' where id = ?", original.id);
+        AiExecutionTaskEntity retried = executionService.retry(original.id);
+        assertThat(retried.costPriceVersionId).isEqualTo(originalCostId);
+        assertThat(retried.pointPriceVersionId).isEqualTo(originalPointId);
+
+        jdbc.update("update ai_execution_task set status = 'SUCCEEDED' where id = ?", original.id);
+        LocalDateTime replacementFrom = LocalDateTime.now().minusSeconds(1);
+        jdbc.update("update ai_model_price_version set effective_to = ? where id = ?", replacementFrom, originalCostId);
+        Long replacementCostId = costPrice(modelId, 2, "PUBLISHED", replacementFrom);
+        Long replacementPointId = pointPrice(modelId, 2, "PUBLISHED", replacementFrom, "3");
+
+        AiExecutionTaskEntity regenerated = executionService.regenerateWithReservation(
+            original.id,
+            original.businessId,
+            modelId,
+            "frozen-billing-regenerated",
+            "trace-frozen-billing-regenerated",
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
+            Map.of()
+        );
+        assertThat(regenerated.executionVersion).isEqualTo(2);
+        assertThat(regenerated.costPriceVersionId).isEqualTo(replacementCostId);
+        assertThat(regenerated.pointPriceVersionId).isEqualTo(replacementPointId);
+        assertThat(taskMapper.selectById(original.id).costPriceVersionId).isEqualTo(originalCostId);
+        assertThat(taskMapper.selectById(original.id).pointPriceVersionId).isEqualTo(originalPointId);
+        assertThat(reservationMapper.selectCount(new QueryWrapper<AiPointReservationEntity>()
+            .in("execution_id", original.id, regenerated.id))).isEqualTo(2);
     }
 
     @Test
@@ -158,5 +252,80 @@ class AiExecutionCoreServiceTest {
             retryable,
             null
         );
+    }
+
+    private void assertPreflightRejected(long tenantId, long modelId, String key) {
+        assertThatThrownBy(() -> executionService.createWithReservation(
+            billingCommand(tenantId, modelId, key),
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
+            Map.of()
+        )).isInstanceOf(ModelBillingMissingException.class);
+        assertThat(taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
+            .eq("tenant_id", tenantId).eq("client_idempotency_key", key))).isZero();
+        assertThat(reservationMapper.selectCount(new QueryWrapper<AiPointReservationEntity>()
+            .like("idempotency_key", key))).isZero();
+    }
+
+    private AiExecutionCreateCommand billingCommand(long tenantId, long modelId, String key) {
+        return new AiExecutionCreateCommand(
+            tenantId, tenantId + 1, null, "TEST_BILLING", "TEXT", "TEST_RESOURCE", tenantId + 2,
+            modelId, "SUBMIT", key, "trace-" + key, true, null
+        );
+    }
+
+    private void account(long tenantId, String balance) {
+        jdbc.update("delete from team_point_account where tenant_id = ?", tenantId);
+        jdbc.update("""
+            insert into team_point_account
+              (tenant_id, balance, reserved_balance, total_granted, total_consumed,
+               total_reserved, total_released, total_refunded, version, created_at, updated_at)
+            values (?, ?, 0, ?, 0, 0, 0, 0, 0, now(), now())
+            """, tenantId, new BigDecimal(balance), new BigDecimal(balance));
+    }
+
+    private Long costPrice(long modelId, int versionNo, String status, LocalDateTime effectiveFrom) {
+        jdbc.update("""
+            insert into ai_model_price_version
+              (model_id, version_no, status, effective_from, published_at, created_at)
+            values (?, ?, ?, ?, now(), now())
+            """, modelId, versionNo, status,
+            effectiveFrom == null ? LocalDateTime.now().minusHours(1) : effectiveFrom);
+        Long id = jdbc.queryForObject(
+            "select id from ai_model_price_version where model_id = ? and version_no = ?",
+            Long.class, modelId, versionNo
+        );
+        jdbc.update("""
+            insert into ai_model_price_component
+              (price_version_id, metric, unit_size, unit_price, currency,
+               dimensions_json, dimensions_key, created_at)
+            values (?, 'CALL', 1, 0.1, 'USD', '{}', '', now())
+            """, id);
+        return id;
+    }
+
+    private Long pointPrice(
+        long modelId,
+        int versionNo,
+        String status,
+        LocalDateTime effectiveFrom,
+        String rate
+    ) {
+        jdbc.update("""
+            insert into ai_model_point_price_version
+              (model_id, version_no, status, effective_from, published_at, created_at)
+            values (?, ?, ?, ?, now(), now())
+            """, modelId, versionNo, status,
+            effectiveFrom == null ? LocalDateTime.now().minusHours(1) : effectiveFrom);
+        Long id = jdbc.queryForObject(
+            "select id from ai_model_point_price_version where model_id = ? and version_no = ?",
+            Long.class, modelId, versionNo
+        );
+        jdbc.update("""
+            insert into ai_model_point_price_component
+              (price_version_id, metric, unit_size, point_rate,
+               dimensions_json, dimensions_key, created_at)
+            values (?, 'CALL', 1, ?, '{}', '', now())
+            """, id, new BigDecimal(rate));
+        return id;
     }
 }

@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
 import com.jayway.jsonpath.JsonPath;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -62,6 +63,9 @@ class VideoDecompositionControllerTest {
         String token = registerUser(mobile, "Decomposition Owner");
         Long tenantId = createTenant(token, "拆剧团队");
         Long ownerId = userIdByMobile(mobile);
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbc, 10L, "CALL", BigDecimal.ONE, BigDecimal.ONE);
+        fundPointAccount(tenantId);
 
         MvcResult result = mockMvc.perform(post("/api/video-script-decomposition/batches")
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -300,6 +304,21 @@ class VideoDecompositionControllerTest {
     private Long userIdByMobile(String mobile) {
         UserEntity user = userMapper.selectByMobile(mobile);
         return user.getId();
+    }
+
+    private void fundPointAccount(Long tenantId) {
+        int updated = jdbc.update(
+            "update team_point_account set balance = 100, reserved_balance = 0, updated_at = now() where tenant_id = ?",
+            tenantId
+        );
+        if (updated == 0) {
+            jdbc.update("""
+                insert into team_point_account
+                  (tenant_id, balance, reserved_balance, total_granted, total_consumed,
+                   total_reserved, total_released, total_refunded, version, created_at, updated_at)
+                values (?, 100, 0, 100, 0, 0, 0, 0, 0, now(), now())
+                """, tenantId);
+        }
     }
 
     private Long readLong(MvcResult result, String path) throws Exception {

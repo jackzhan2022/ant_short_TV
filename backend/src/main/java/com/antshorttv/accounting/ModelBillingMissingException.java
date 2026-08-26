@@ -1,7 +1,10 @@
 package com.antshorttv.accounting;
 
-public class ModelBillingMissingException extends IllegalStateException {
+import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
+
+public class ModelBillingMissingException extends BusinessException {
     public ModelBillingMissingException(String message) {
-        super(message);
+        super(ErrorCode.AI_MODEL_BILLING_MISSING, message);
     }
 }

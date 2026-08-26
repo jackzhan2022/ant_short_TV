@@ -113,6 +113,16 @@ class AiImageTaskControllerTest {
             Integer.class,
             executionId
         )).isZero();
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from point_ledger where execution_id = ? and entry_type = 'RELEASE'",
+            Integer.class,
+            executionId
+        )).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_usage_cost_line where execution_id = ?",
+            Integer.class,
+            executionId
+        )).isZero();
     }
 
     @Test
@@ -197,6 +207,52 @@ class AiImageTaskControllerTest {
                     """))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
+    }
+
+    @Test
+    void rejectsImageTaskBeforeExecutionWhenCallBillingIsMissing() throws Exception {
+        String token = registerUser("13800014010", "Missing Image Billing Owner");
+        Long tenantId = createTenant(token, "图片缺价团队");
+        Long ownerId = userIdByMobile("13800014010");
+        Long projectId = createProject(token, tenantId, ownerId, "图片缺价项目", "IMAGE_TASK_MISSING_CALL_PRICE");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        Long modelId = jdbcTemplate.queryForObject(
+            "select id from ai_model where code = 'TEST_OPENAI_IMAGE'", Long.class);
+        jdbcTemplate.update("""
+            delete from ai_model_price_component
+             where price_version_id in (select id from ai_model_price_version where model_id = ?)
+               and metric = 'CALL'
+            """, modelId);
+        jdbcTemplate.update("""
+            delete from ai_model_point_price_component
+             where price_version_id in (select id from ai_model_point_price_version where model_id = ?)
+               and metric = 'CALL'
+            """, modelId);
+
+        mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "image-missing-call-price")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"taskType":"CHARACTER","targetType":"CHARACTER","targetId":1,
+                     "prompt":"缺少调用价格","aspectRatio":"3:4","imageCount":1}
+                    """))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.errorCode", is("AI_MODEL_BILLING_MISSING")));
+
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_image_task where tenant_id = ? and client_idempotency_key = ?",
+            Integer.class,
+            tenantId,
+            "image-missing-call-price"
+        )).isZero();
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_point_reservation where tenant_id = ?",
+            Integer.class,
+            tenantId
+        )).isZero();
     }
 
     @Test
@@ -347,6 +403,18 @@ class AiImageTaskControllerTest {
                  where task.id = ?
                 """, Long.class, taskId);
             org.assertj.core.api.Assertions.assertThat(callLogExecutionId).isEqualTo(executionId);
+            var billing = jdbcTemplate.queryForMap("""
+                select cost_price_version_id, point_price_version_id, usage_cost_status
+                  from ai_execution_task where id = ?
+                """, executionId);
+            org.assertj.core.api.Assertions.assertThat(billing.get("cost_price_version_id")).isNotNull();
+            org.assertj.core.api.Assertions.assertThat(billing.get("point_price_version_id")).isNotNull();
+            org.assertj.core.api.Assertions.assertThat(billing.get("usage_cost_status")).isEqualTo("PRICED");
+            org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForList(
+                "select metric from ai_usage_cost_line where execution_id = ? and pricing_status = 'PRICED' order by metric",
+                String.class,
+                executionId
+            )).containsExactly("CALL", "IMAGE");
         } finally {
             server.stop(0);
         }
@@ -498,6 +566,9 @@ class AiImageTaskControllerTest {
         }
         com.antshorttv.support.ModelBillingTestSupport.publish(
             jdbcTemplate, modelId, "IMAGE", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE
+        );
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbcTemplate, modelId, "CALL", java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO
         );
     }
 

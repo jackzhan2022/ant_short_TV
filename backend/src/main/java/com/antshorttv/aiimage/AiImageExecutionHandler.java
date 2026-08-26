@@ -189,7 +189,10 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         AiPointReservationEntity settled = pointSettlementService.finalizeOutcome(
             reservation.id,
             AiSettlementOutcome.SUCCESS,
-            Map.of(AiUsageMetric.IMAGE, BigDecimal.valueOf(imageCount)),
+            Map.of(
+                AiUsageMetric.CALL, BigDecimal.ONE,
+                AiUsageMetric.IMAGE, BigDecimal.valueOf(imageCount)
+            ),
             context.claim().attemptId(),
             result.aiCallLogId(),
             "execution:%d:v%d:success".formatted(context.task().id, context.task().executionVersion)

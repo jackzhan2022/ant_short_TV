@@ -39,6 +39,11 @@ public class AiExecutionService {
         Map<AiUsageMetric, BigDecimal> authorizedUsage,
         Map<String, String> dimensions
     ) {
+        AiExecutionTaskEntity existing = findByIdempotency(
+            command.tenantId(), command.scene(), command.clientIdempotencyKey());
+        if (existing != null) {
+            return existing;
+        }
         ModelBillingSnapshot billing = billingResolver.requireComplete(
             command.requestedModelId(), authorizedUsage.keySet(), dimensions, LocalDateTime.now());
         AiExecutionTaskEntity task = create(command);
@@ -135,6 +140,11 @@ public class AiExecutionService {
         Map<String, String> dimensions
     ) {
         AiExecutionTaskEntity source = requireTask(sourceId);
+        AiExecutionTaskEntity existing = findByIdempotency(
+            source.tenantId, source.scene, clientIdempotencyKey);
+        if (existing != null) {
+            return existing;
+        }
         ModelBillingSnapshot billing = billingResolver.requireComplete(
             requestedModelId, authorizedUsage.keySet(), dimensions, LocalDateTime.now());
         AiExecutionTaskEntity task = createRegeneration(source, businessId, requestedModelId, clientIdempotencyKey, traceId);

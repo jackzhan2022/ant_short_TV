@@ -152,7 +152,10 @@ public class AiImageTaskService {
                 true,
                 null
             ),
-            Map.of(AiUsageMetric.IMAGE, BigDecimal.valueOf(request.imageCount())),
+            Map.of(
+                AiUsageMetric.CALL, BigDecimal.ONE,
+                AiUsageMetric.IMAGE, BigDecimal.valueOf(request.imageCount())
+            ),
             imageDimensions(task)
         );
         task.setExecutionId(execution.id);
@@ -203,7 +206,10 @@ public class AiImageTaskService {
             resolved.modelId(),
             idempotencyKey,
             traceId(servletRequest),
-            Map.of(AiUsageMetric.IMAGE, BigDecimal.valueOf(task.getImageCount())),
+            Map.of(
+                AiUsageMetric.CALL, BigDecimal.ONE,
+                AiUsageMetric.IMAGE, BigDecimal.valueOf(task.getImageCount())
+            ),
             imageDimensions(task)
         );
         task.setExecutionId(execution.id);

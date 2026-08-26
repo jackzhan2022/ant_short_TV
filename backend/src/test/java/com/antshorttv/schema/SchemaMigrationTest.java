@@ -649,4 +649,21 @@ class SchemaMigrationTest {
         assertThat(columnCount).isEqualTo(2);
         assertThat(indexCount).isEqualTo(1);
     }
+
+    @Test
+    void flywayCreatesIndependentModelPriceVersionSequences() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer tableCount = jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) = 'ai_model_price_version_sequence'
+            """, Integer.class);
+        Integer keyColumns = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'ai_model_price_version_sequence'
+               and lower(column_name) in ('model_id', 'price_type', 'last_version_no')
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(1);
+        assertThat(keyColumns).isEqualTo(3);
+    }
 }

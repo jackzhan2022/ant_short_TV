@@ -10,13 +10,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class AiModelPointPriceService {
     private final AiModelPointPriceVersionMapper versionMapper;
     private final AiModelPointPriceComponentMapper componentMapper;
+    private final AiModelPriceVersionAllocator versionAllocator;
 
     public AiModelPointPriceService(
         AiModelPointPriceVersionMapper versionMapper,
-        AiModelPointPriceComponentMapper componentMapper
+        AiModelPointPriceComponentMapper componentMapper,
+        AiModelPriceVersionAllocator versionAllocator
     ) {
         this.versionMapper = versionMapper;
         this.componentMapper = componentMapper;
+        this.versionAllocator = versionAllocator;
     }
 
     @Transactional
@@ -33,7 +36,7 @@ public class AiModelPointPriceService {
             .filter(version -> !"REVOKED".equals(version.status)).toList();
         AiModelPointPriceVersionEntity candidate = new AiModelPointPriceVersionEntity();
         candidate.modelId = modelId;
-        candidate.versionNo = allVersions.stream().mapToInt(v -> v.versionNo).max().orElse(0) + 1;
+        candidate.versionNo = versionAllocator.next(modelId, "POINT");
         candidate.status = "PUBLISHED";
         candidate.effectiveFrom = effectiveFrom;
         candidate.effectiveTo = effectiveTo;
