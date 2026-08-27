@@ -25,4 +25,4 @@
 
 - [x] 5.1 Run the SDK configuration, Native payment adapter, notification verifier, commercial payment lifecycle, and controller permission test suites.
 - [x] 5.2 Run backend compilation plus the relevant schema and commercial regression suites, then verify the diff contains no secret values or obsolete platform-certificate references.
-- [ ] 5.3 With valid merchant credentials and a resolvable public HTTPS callback, start with sales disabled, verify automatic certificate initialization, and complete one low-value Native payment with exactly one payment event and entitlement grant.
+- [x] 5.3 With valid merchant credentials and a resolvable public HTTPS callback, start with sales disabled, verify automatic certificate initialization, and complete one low-value Native payment with exactly one payment event and entitlement grant.

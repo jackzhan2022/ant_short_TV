@@ -1,23 +1,25 @@
-## ADDED Requirements
+# script-episode-parsing Specification
 
+## Purpose
+
+TBD - created by archiving an earlier change. Update Purpose after archive.
+## Requirements
 ### Requirement: Script workspace exposes parsed episodes
-The script workspace endpoint SHALL return an `episodes` collection derived from the current script content. Each episode SHALL include an episode number, a display title, and the episode body content, while preserving all existing workspace fields.
+The script workspace endpoint SHALL return an `episodes` collection derived from the current script content or the latest valid intelligent analysis for the current script version. Each episode SHALL include an episode number, a display title, and the episode body content, while preserving all existing workspace fields.
 
 #### Scenario: Parse numbered Chinese episode headings
 - **WHEN** the script contains standalone headings such as `第1集` or `第12集：雨夜重逢`
 - **THEN** the workspace returns one episode for each heading with the corresponding number, title, and text until the next heading
 
-#### Scenario: Parse Chinese numeral headings
-- **WHEN** the script contains standalone headings such as `第一集` or `第十二集 决战`
-- **THEN** the workspace returns episodes with numeric episode numbers 1 and 12 and preserves any heading title
+#### Scenario: Use intelligent splitting for unstructured content
+- **WHEN** the script has no reliable episode headings and a valid intelligent split result exists for the current version
+- **THEN** the workspace returns the AI-generated episode boundaries and content
+- **AND** preserves the analysis result for review
 
-#### Scenario: Parse English episode headings
-- **WHEN** the script contains standalone headings such as `EP01` or `EP01: Opening`
-- **THEN** the workspace returns an episode numbered 1 with the matching display title and body
-
-#### Scenario: Support heading separators and whitespace
-- **WHEN** a supported heading uses spaces, a Chinese colon, an English colon, or no title separator
-- **THEN** the parser recognizes it as the same episode heading format
+#### Scenario: Fall back while intelligent splitting is pending
+- **WHEN** the script has no reliable episode headings and intelligent splitting is pending or failed
+- **THEN** the workspace returns the deterministic one-episode fallback
+- **AND** exposes the intelligent splitting status separately
 
 ### Requirement: Parsed episodes preserve usable content
 The parser SHALL assign all script text after an episode heading to that episode until the next recognized heading, and SHALL preserve text before the first heading in the first episode.
@@ -31,11 +33,12 @@ The parser SHALL assign all script text after an episode heading to that episode
 - **THEN** the heading line is used for metadata and is not duplicated in the episode body content
 
 ### Requirement: Unstructured scripts have a safe fallback
-When no supported episode heading is found, the workspace SHALL return exactly one episode containing the complete non-empty script content.
+When no supported episode heading or valid intelligent split result is available, the workspace SHALL return exactly one episode containing the complete non-empty script content.
 
 #### Scenario: Free-form script without episode headings
-- **WHEN** the script contains content but no recognized episode heading
-- **THEN** the workspace returns one episode numbered 1 and does not create empty placeholder episodes
+- **WHEN** the script contains content but no recognized episode heading and no valid intelligent split result
+- **THEN** the workspace returns one episode numbered 1
+- **AND** does not create empty placeholder episodes
 
 #### Scenario: Empty or missing script
 - **WHEN** the current project has no script or the script content is blank

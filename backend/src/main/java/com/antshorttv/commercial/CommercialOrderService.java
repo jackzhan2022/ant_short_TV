@@ -1,6 +1,8 @@
 package com.antshorttv.commercial;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.List;
@@ -24,10 +26,12 @@ public class CommercialOrderService {
         CommercialPackageVersionEntity version = versionMapper.selectById(command.packageVersionId());
         if (version == null || !"PUBLISHED".equals(version.status)) throw new IllegalArgumentException("Package version is not for sale");
         LocalDateTime now = LocalDateTime.now();
-        CommercialOrderEntity order = new CommercialOrderEntity(); order.tenantId = command.tenantId(); order.userId = command.userId(); order.packageVersionId = version.id; order.packageSnapshotJson = "{\"name\":\"" + version.name.replace("\"", "\\\"") + "\",\"versionNo\":" + version.versionNo + "}"; order.merchantOrderNo = "COM" + UUID.randomUUID().toString().replace("-", ""); order.amount = version.price; order.currency = version.currency; order.status = "PENDING_PAYMENT"; order.expiresAt = now.plusMinutes(30); order.createdAt = now; order.updatedAt = now; orderMapper.insert(order);
+        CommercialOrderEntity order = new CommercialOrderEntity(); order.tenantId = command.tenantId(); order.userId = command.userId(); order.packageVersionId = version.id; order.packageSnapshotJson = "{\"name\":\"" + version.name.replace("\"", "\\\"") + "\",\"versionNo\":" + version.versionNo + "}"; order.merchantOrderNo = generateMerchantOrderNo(); order.amount = version.price; order.currency = version.currency; order.status = "PENDING_PAYMENT"; order.expiresAt = now.plusMinutes(30); order.createdAt = now; order.updatedAt = now; orderMapper.insert(order);
         CommercialPaymentEntity payment = new CommercialPaymentEntity(); payment.orderId = order.id; payment.provider = "WECHAT_NATIVE"; payment.amount = version.price; payment.status = "PENDING"; payment.createdAt = now; payment.updatedAt = now; paymentMapper.insert(payment);
         if (wechatPayProperties.isEnabled()) {
-            WechatNativeOrder nativeOrder = wechatPayClient.createNativeOrder(new WechatNativeOrderRequest(order.merchantOrderNo, version.name, order.amount, order.currency));
+            WechatNativeOrder nativeOrder;
+            try { nativeOrder = wechatPayClient.createNativeOrder(new WechatNativeOrderRequest(order.merchantOrderNo, version.name, order.amount, order.currency)); }
+            catch (IllegalStateException exception) { throw new BusinessException(ErrorCode.VALIDATION_ERROR, "微信支付订单创建失败，请稍后重试。"); }
             payment.prepayId = nativeOrder.prepayId(); payment.codeUrl = nativeOrder.codeUrl(); payment.updatedAt = LocalDateTime.now(); paymentMapper.updateById(payment);
         }
         return new CommercialOrderResponse(order.id, order.merchantOrderNo, order.amount, order.currency, order.status, order.expiresAt, payment.codeUrl);
@@ -42,6 +46,7 @@ public class CommercialOrderService {
         CommercialPaymentEntity payment = paymentMapper.selectOne(new QueryWrapper<CommercialPaymentEntity>().eq("order_id", order.id));
         return new CommercialOrderResponse(order.id, order.merchantOrderNo, order.amount, order.currency, order.status, order.expiresAt, payment == null ? null : payment.codeUrl);
     }
+    private String generateMerchantOrderNo() { return "COM" + UUID.randomUUID().toString().replace("-", "").substring(0, 29); }
 }
 
 record CommercialOrderCommand(Long tenantId, Long userId, Long packageVersionId) {}

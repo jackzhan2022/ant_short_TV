@@ -37,5 +37,5 @@
 - [x] 5.1 Add backend unit and controller tests for batch creation, validation, URL failures, structured parsing, provider failures, retries, progress, confirmation, and version conflicts.
 - [x] 5.2 Add adapter integration tests using a local HTTP server for Qwen request formatting, response parsing, request IDs, and error handling.
 - [x] 5.3 Add frontend tests for ordered uploads, progress rendering, failed-episode retry, draft review, and explicit confirmation flows.
-- [ ] 5.4 Run Flyway/schema tests, backend test suite, frontend type/lint/tests, and targeted manual verification with a configured Alibaba Bailian test model.
+- [x] 5.4 Run Flyway/schema tests, backend test suite, frontend type/lint/tests, and targeted manual verification with a configured Alibaba Bailian test model.
 - [x] 5.5 Document provider setup, required object-storage URL access, supported video limits, status meanings, and operational troubleshooting for parsing failures.

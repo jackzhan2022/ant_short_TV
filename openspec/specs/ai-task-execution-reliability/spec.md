@@ -102,3 +102,32 @@ The system SHALL make execution accounting details available to authorized platf
 - **WHEN** an authorized platform administrator opens a settled execution's accounting detail
 - **THEN** the system SHALL return the usage metrics, cost currency and amount, settled points, corresponding price version identifiers, component identifiers, and settlement status
 
+### Requirement: Direct video screenplay uses one billable execution stage
+
+For a new video decomposition episode that produces a valid direct screenplay, the system SHALL create, settle, and expose one video-understanding execution stage only. It SHALL not create a text draft-generation execution, reservation, usage record, or provider call for that episode.
+
+#### Scenario: Direct screenplay analysis succeeds
+
+- **WHEN** a new video decomposition episode completes video understanding with a valid `script`
+- **THEN** the video-understanding execution is settled as successful and no `DRAFT_GENERATION` execution attempt or `video_script_draft` call log exists for that episode
+
+#### Scenario: Historical draft-generation task runs after deployment
+
+- **WHEN** an episode already in `PENDING_DRAFT` is processed after deployment
+- **THEN** its legacy draft-generation execution and settlement behavior remain available
+
+### Requirement: AI attempts use unified invocation outcomes
+The system SHALL link asynchronous AI task attempts to unified invocation outcomes, including AI call log id, provider request id, normalized error code, and business outcome.
+
+#### Scenario: Async invocation succeeds
+- **WHEN** an asynchronous AI task phase completes through the unified invocation contract
+- **THEN** the execution attempt records the returned AI call log id and provider request id
+
+#### Scenario: Provider call fails during async invocation
+- **WHEN** an asynchronous AI task phase fails due to a provider-level invocation error
+- **THEN** the execution attempt records the normalized error code and remains linked to the failed AI call log when one was created
+
+#### Scenario: Business parsing fails during async invocation
+- **WHEN** an asynchronous AI task receives a provider success but business parsing fails
+- **THEN** the execution attempt is marked failed with `AI_RESPONSE_INVALID` and remains linked to the AI call log for the real provider call
+

@@ -60,4 +60,18 @@ class BuiltInAgentRegistryTest {
                 AiBusinessScene.SCRIPT_REVIEW
             );
     }
+
+    @Test
+    void rendersVideoUnderstandingAsDirectProfessionalScreenplayJson() {
+        String prompt = registry.render("video-understanding", Map.of("episodeNo", 6));
+
+        assertThat(prompt).contains(
+            "资深的影视编剧与多模态视频分析专家",
+            "场景标头",
+            "人物对白与字幕",
+            "结尾钩子：",
+            "{\"script\":\"完整剧本文本\"}"
+        );
+        assertThat(prompt).doesNotContain("characters、scenes、props、timeline、dialogue、actions、emotions 七个数组字段");
+    }
 }

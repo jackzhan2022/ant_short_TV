@@ -10,6 +10,7 @@ import {
 } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
 import { App, Button, Drawer, Empty, Popconfirm, Space, Table, Tag, Typography } from 'antd';
+import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import {
   createCommercialPackageDraft,
@@ -26,6 +27,18 @@ const entitlementOptions = [
   { label: '一次性积分', value: 'ONE_TIME_POINTS' },
   { label: '周期积分', value: 'PERIODIC_POINTS' },
   { label: '全局折扣', value: 'GLOBAL_DISCOUNT' },
+];
+const billingPeriodOptions = [
+  { label: '月', value: 'MONTH' },
+  { label: '季', value: 'QUARTER' },
+  { label: '半年', value: 'HALF_YEAR' },
+  { label: '年', value: 'YEAR' },
+];
+const periodMonthOptions = [
+  { label: '1 个月', value: 1 },
+  { label: '3 个月', value: 3 },
+  { label: '6 个月', value: 6 },
+  { label: '12 个月', value: 12 },
 ];
 
 const CommercialPackageManagementPage = () => {
@@ -61,16 +74,21 @@ const CommercialPackageManagementPage = () => {
       {access.canEditCommercialPackages && <ModalForm<CommercialPackageDraft>
         title="创建套餐草稿"
         trigger={<Button type="primary" icon={<PlusOutlined />}>创建草稿</Button>}
-        initialValues={{ currency: 'CNY', entitlements: [{ type: 'ONE_TIME_POINTS' }] }}
+        initialValues={{
+          currency: 'CNY',
+          effectiveFrom: dayjs(),
+          billingPeriod: 'MONTH',
+          periodMonths: 1,
+          entitlements: [{ type: 'ONE_TIME_POINTS' }],
+        }}
         modalProps={{ destroyOnHidden: true }}
         onFinish={createDraft}
       >
-        <ProFormText name="code" label="套餐编码" rules={[{ required: true }]} />
         <ProFormSelect name="packageType" label="套餐类型" options={[{ label: '积分包', value: 'POINT_PACKAGE' }, { label: '会员订阅', value: 'SUBSCRIPTION' }]} rules={[{ required: true }]} />
         <ProFormText name="name" label="名称" rules={[{ required: true }]} />
         <ProFormText name="description" label="说明" />
-        <ProFormText name="billingPeriod" label="计费周期" />
-        <ProFormDigit name="periodMonths" label="周期月数" min={1} />
+        <ProFormSelect name="billingPeriod" label="计费周期" options={billingPeriodOptions} />
+        <ProFormSelect name="periodMonths" label="周期月数" options={periodMonthOptions} />
         <ProFormDigit name="price" label="售价" min={0} rules={[{ required: true }]} />
         <ProFormDigit name="listPrice" label="划线价" min={0} />
         <ProFormText name="currency" label="币种" rules={[{ required: true }]} />

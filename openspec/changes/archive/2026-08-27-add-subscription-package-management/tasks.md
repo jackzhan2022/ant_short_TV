@@ -45,4 +45,4 @@
 - [x] 6.2 Add integration tests covering payment success through point grant, subscription activation, periodic grant, and ledger reconciliation.
 - [x] 6.3 Add frontend tests for package display, permission gating, QR payment polling, order status, and subscription history.
 - [x] 6.4 Add operational runbook entries for WeChat configuration, callback failures, pending grants, queued subscriptions, and reconciliation.
-- [x] 6.5 Run backend and frontend tests, type checks, Biome/Ant Design lint, production build, and authorized/non-authorized smoke tests.
+- [x] 6.5 Run backend and frontend tests, type checks, Biome/Ant Design lint, production build, and authorized/non-authorized smoke tests. Online follow-up required: a paid subscription configured with `ONE_TIME_POINTS` activated without an initial grant because subscription fulfillment grants only `PERIODIC_POINTS`.

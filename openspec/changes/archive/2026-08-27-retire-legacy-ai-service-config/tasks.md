@@ -59,4 +59,4 @@
 - [x] 9.2 Run targeted backend tests for routing, platform management, image, video, voice, logs, RBAC, execution, accounting, and migration rehearsal, then run the complete backend test suite.
 - [x] 9.3 Run frontend unit tests, `npm run tsc`, `npm run lint`, `npx antd lint ./src`, and `npm run build` from `frontend`.
 - [x] 9.4 Run repository and schema scans proving production code and final schema contain no `AiServiceConfig`, `ai_service_config`, `serviceConfigId`, `service_config_id`, `legacyServiceConfigId`, or `legacy_service_config_id`, excluding immutable historical migrations and archived documentation where explicitly allowed.
-- [ ] 9.5 Start the application against the migrated development database, reconfigure one Provider and compatible Models through platform APIs/UI, and smoke-test permitted image and video execution plus local voice placeholder and tenant-scoped call-log access.
+- [x] 9.5 Start the application against the migrated development database, reconfigure one Provider and compatible Models through platform APIs/UI, and smoke-test permitted image and video execution plus local voice placeholder and tenant-scoped call-log access.

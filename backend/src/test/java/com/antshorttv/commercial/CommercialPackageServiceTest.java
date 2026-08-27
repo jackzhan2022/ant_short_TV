@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
+import com.antshorttv.common.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -79,14 +80,14 @@ class CommercialPackageServiceTest {
             "BAD", "SUBSCRIPTION", "错误套餐", null, "MONTH", 1,
             BigDecimal.TEN, null, "CNY", LocalDateTime.now(), null,
             List.of(new CommercialEntitlementInput("FREE_GENERATIONS", BigDecimal.ONE)), 2L
-        ))).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Unsupported entitlement");
+        ))).isInstanceOf(BusinessException.class)
+            .hasMessageContaining("不支持的权益类型");
 
         assertThatThrownBy(() -> service.createDraft(new CommercialPackageDraftCommand(
             "BAD_PERIOD", "SUBSCRIPTION", "错误周期", null, "MONTH", 0,
             BigDecimal.TEN, null, "CNY", LocalDateTime.now(), null,
             List.of(new CommercialEntitlementInput("PERIODIC_POINTS", BigDecimal.ONE)), 2L
-        ))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("period");
+        ))).isInstanceOf(BusinessException.class).hasMessageContaining("周期月数");
     }
 
     @Test
@@ -100,6 +101,7 @@ class CommercialPackageServiceTest {
         CommercialOrderResponse order = orderService.create(new CommercialOrderCommand(11L, 22L, draft.versionId()));
         assertThat(order.status()).isEqualTo("PENDING_PAYMENT");
         assertThat(order.merchantOrderNo()).startsWith("COM");
+        assertThat(order.merchantOrderNo()).hasSizeLessThanOrEqualTo(32);
         assertThat(order.codeUrl()).isEqualTo("weixin://wxpay/test-code");
         assertThat(jdbc.queryForObject(
             "select code_url from commercial_payment where order_id=?", String.class, order.id()))
@@ -122,6 +124,17 @@ class CommercialPackageServiceTest {
         orchestrator.confirmPaid(first.id(), "WX-OK", new BigDecimal("30.00"), LocalDateTime.now());
         BigDecimal balance = jdbc.queryForObject("select balance from team_point_account where tenant_id=41", BigDecimal.class);
         assertThat(balance).isEqualByComparingTo("300");
+    }
+
+    @Test
+    void generatesPackageCodeWhenCodeIsMissing() {
+        CommercialPackageVersionResponse draft = service.createDraft(new CommercialPackageDraftCommand(
+            null, "POINT_PACKAGE", "自动编码套餐", null, null, null,
+            BigDecimal.ONE, null, "CNY", LocalDateTime.now(), null,
+            List.of(new CommercialEntitlementInput("ONE_TIME_POINTS", BigDecimal.ONE)), 9L
+        ));
+        assertThat(jdbc.queryForObject("select code from commercial_package where id=?", String.class, draft.packageId()))
+            .matches("PKG-[A-Z0-9]{12}");
     }
 
     @Test

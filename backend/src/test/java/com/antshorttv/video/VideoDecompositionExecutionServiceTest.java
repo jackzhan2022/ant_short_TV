@@ -81,26 +81,18 @@ class VideoDecompositionExecutionServiceTest {
     }
 
     @Test
-    void generatesDraftAfterStructuredAnalysisSucceeds() throws Exception {
+    void storesDirectScreenplayWithoutDraftGenerationCall() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
-            int callNo = calls.incrementAndGet();
-            String json = callNo == 1
-                ? """
-                    {
-                      "id":"qwen-analysis-success",
-                      "choices":[{"message":{"content":"{\\"characters\\":[],\\"scenes\\":[],\\"props\\":[],\\"timeline\\":[],\\"dialogue\\":[],\\"actions\\":[],\\"emotions\\":[]}"}}],
-                      "usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}
-                    }
-                    """
-                : """
-                    {
-                      "id":"qwen-draft-success",
-                      "choices":[{"message":{"content":"第 1 集\\n场景一：客厅。\\n人物对白：你好。"}}],
-                      "usage":{"prompt_tokens":11,"completion_tokens":13,"total_tokens":24}
-                    }
-                    """;
+            calls.incrementAndGet();
+            String json = """
+                {
+                  "id":"qwen-analysis-success",
+                  "choices":[{"message":{"content":"{\\"script\\":\\"第1集：[天台对峙]\\\\n场景：夜 外 天台\\\\n结尾钩子：林晚握紧录音笔。\\"}"}}],
+                  "usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}
+                }
+                """;
             byte[] body = json.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
@@ -112,56 +104,43 @@ class VideoDecompositionExecutionServiceTest {
         try {
             String baseUrl = "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort());
             Long modelId = prepareModel(baseUrl);
-            Long textModelId = prepareTextModel(baseUrl);
             prepareBilling(modelId);
-            prepareBilling(textModelId);
             preparePointAccount();
             Long batchId = insertBatch(modelId);
             Long episodeId = insertEpisode(batchId);
 
             executionService.executeEpisode(episodeId);
-            executionService.executeEpisode(episodeId);
 
             var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
             assertThat(episode.get("status")).as("episode row: %s", episode).isEqualTo("PENDING_REVIEW");
             assertThat(episode.get("draft_status")).isEqualTo("PENDING_REVIEW");
-            assertThat((String) episode.get("draft_content")).contains("第 1 集");
+            assertThat((String) episode.get("draft_content")).contains("第1集：[天台对峙]");
             assertThat(episode.get("draft_version")).isEqualTo(1);
-            assertThat(calls.get()).isEqualTo(2);
+            assertThat(calls.get()).isEqualTo(1);
             assertThat(episode.get("execution_token")).isNull();
             assertThat(episode.get("retryable")).isEqualTo(false);
             Integer draftLogs = jdbc.queryForObject("""
                 select count(*) from ai_call_log
                  where task_id = ? and business_scene = 'video_script_draft'
                 """, Integer.class, episodeId);
-            assertThat(draftLogs).isEqualTo(1);
-            Long draftExecutionId = jdbc.queryForObject(
-                "select execution_id from video_decomposition_episode where id = ?",
-                Long.class,
-                episodeId
-            );
+            assertThat(draftLogs).isZero();
+            Long episodeExecutionId = jdbc.queryForObject("select execution_id from video_decomposition_episode where id = ?", Long.class, episodeId);
             Long analysisExecutionId = jdbc.queryForObject(
                 "select execution_id from video_decomposition_analysis where episode_id = ?",
                 Long.class,
                 episodeId
             );
-            assertThat(draftExecutionId).isNotNull().isNotEqualTo(analysisExecutionId);
+            assertThat(episodeExecutionId).isEqualTo(analysisExecutionId);
             assertThat(jdbc.queryForList(
                 "select phase from ai_execution_attempt where execution_id = ? order by id",
                 String.class,
                 analysisExecutionId
             )).containsExactly("VIDEO_ANALYSIS");
-            assertThat(jdbc.queryForList(
-                "select phase from ai_execution_attempt where execution_id = ? order by id",
-                String.class,
-                draftExecutionId
-            )).containsExactly("DRAFT_GENERATION");
             assertThat(jdbc.queryForObject(
-                "select count(*) from ai_call_log where execution_id in (?, ?) and attempt_id is not null",
+                "select count(*) from ai_call_log where execution_id = ? and attempt_id is not null",
                 Integer.class,
-                analysisExecutionId,
-                draftExecutionId
-            )).isEqualTo(2);
+                analysisExecutionId
+            )).isEqualTo(1);
             assertThat(jdbc.queryForObject(
                 "select count(*) from video_decomposition_analysis where episode_id = ? and execution_id = ?",
                 Integer.class,
@@ -170,56 +149,88 @@ class VideoDecompositionExecutionServiceTest {
             )).isEqualTo(1);
             var analysisExecution = jdbc.queryForMap(
                 "select * from ai_execution_task where id = ?", analysisExecutionId);
-            var draftExecution = jdbc.queryForMap(
-                "select * from ai_execution_task where id = ?", draftExecutionId);
             assertThat(analysisExecution.get("status")).isEqualTo("SUCCEEDED");
             assertThat(analysisExecution.get("requested_model_id")).isEqualTo(modelId);
             assertThat(analysisExecution.get("cost_price_version_id")).isNotNull();
             assertThat(analysisExecution.get("point_price_version_id")).isNotNull();
             assertThat(analysisExecution.get("usage_cost_status")).isEqualTo("PRICED");
             assertThat(analysisExecution.get("point_settlement_status")).isEqualTo("SETTLED");
-            assertThat(draftExecution.get("status")).isEqualTo("SUCCEEDED");
-            assertThat(draftExecution.get("requested_model_id")).isEqualTo(textModelId);
-            assertThat(draftExecution.get("cost_price_version_id")).isNotNull();
-            assertThat(draftExecution.get("point_price_version_id")).isNotNull();
-            assertThat(draftExecution.get("usage_cost_status")).isEqualTo("PRICED");
-            assertThat(draftExecution.get("point_settlement_status")).isEqualTo("SETTLED");
-            assertThat(draftExecution.get("result_type")).isEqualTo("VIDEO_DECOMPOSITION_EPISODE");
-            assertThat(draftExecution.get("result_id")).isEqualTo(episodeId);
+            assertThat(analysisExecution.get("result_type")).isEqualTo("VIDEO_DECOMPOSITION_EPISODE");
+            assertThat(analysisExecution.get("result_id")).isEqualTo(episodeId);
             assertThat(jdbc.queryForObject(
-                "select count(*) from ai_point_reservation where execution_id in (?, ?) and status = 'SETTLED'",
-                Integer.class, analysisExecutionId, draftExecutionId)).isEqualTo(2);
+                "select count(*) from ai_point_reservation where execution_id = ? and status = 'SETTLED'",
+                Integer.class, analysisExecutionId)).isEqualTo(1);
             assertThat(jdbc.queryForObject(
-                "select count(*) from ai_usage_cost_line where execution_id in (?, ?)",
-                Integer.class, analysisExecutionId, draftExecutionId)).isEqualTo(2);
+                "select count(*) from ai_usage_cost_line where execution_id = ?",
+                Integer.class, analysisExecutionId)).isEqualTo(1);
             assertThat(jdbc.queryForObject("""
                 select count(*)
                   from ai_usage_cost_line cost
                   join ai_execution_task execution on execution.id = cost.execution_id
-                 where execution.id in (?, ?)
+                 where execution.id = ?
                    and cost.price_version_id = execution.cost_price_version_id
                    and cost.pricing_status = 'PRICED'
-                """, Integer.class, analysisExecutionId, draftExecutionId)).isEqualTo(2);
+                """, Integer.class, analysisExecutionId)).isEqualTo(1);
             assertThat(jdbc.queryForObject("""
                 select count(*)
                   from ai_point_reservation reservation
                   join ai_execution_task execution on execution.id = reservation.execution_id
-                 where execution.id in (?, ?)
+                 where execution.id = ?
                    and reservation.point_price_version_id = execution.point_price_version_id
                    and reservation.status = 'SETTLED'
-                """, Integer.class, analysisExecutionId, draftExecutionId)).isEqualTo(2);
+                """, Integer.class, analysisExecutionId)).isEqualTo(1);
             String understandingSummary = jdbc.queryForObject("""
                 select request_summary from ai_call_log
                  where task_id = ? and business_scene = 'video_understanding'
                 order by id desc limit 1
                 """, String.class, episodeId);
-            String draftSummary = jdbc.queryForObject("""
-                select request_summary from ai_call_log
-                 where task_id = ? and business_scene = 'video_script_draft'
-                order by id desc limit 1
-                """, String.class, episodeId);
             assertThat(understandingSummary).startsWith("[Agent:video-understanding]");
-            assertThat(draftSummary).startsWith("[Agent:video-script-draft]");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void completesHistoricalPendingDraftWithLegacyGenerationPath() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = """
+                {
+                  "id":"qwen-legacy-draft-success",
+                  "choices":[{"message":{"content":"第1集：历史草稿"}}],
+                  "usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            String baseUrl = "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort());
+            Long videoModelId = prepareModel(baseUrl);
+            Long textModelId = prepareTextModel(baseUrl);
+            prepareBilling(videoModelId);
+            prepareBilling(textModelId);
+            preparePointAccount();
+            Long batchId = insertBatch(videoModelId);
+            Long episodeId = insertEpisode(batchId);
+            Long draftExecutionId = aiExecutionService.createWithReservation(new AiExecutionCreateCommand(
+                501L, 701L, 601L, "video_decomposition_draft_generation", "TEXT_GENERATION",
+                "VIDEO_DECOMPOSITION_EPISODE", episodeId, textModelId, "DRAFT_GENERATION",
+                "legacy-draft-" + UUID.randomUUID(), UUID.randomUUID().toString(), true, "{}"
+            ), Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of()).id;
+            jdbc.update("update video_decomposition_episode set status = 'PENDING_DRAFT', execution_id = ? where id = ?", draftExecutionId, episodeId);
+            jdbc.update("insert into video_decomposition_analysis (episode_id, execution_id, schema_version, status, normalized_json, created_at) values (?, ?, 'v1', 'SUCCEEDED', ?, now())",
+                episodeId, draftExecutionId, "{\"characters\":[]}");
+
+            executionService.executeEpisode(episodeId);
+
+            var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
+            assertThat(episode.get("status")).isEqualTo("PENDING_REVIEW");
+            assertThat((String) episode.get("draft_content")).isEqualTo("第1集：历史草稿");
         } finally {
             server.stop(0);
         }

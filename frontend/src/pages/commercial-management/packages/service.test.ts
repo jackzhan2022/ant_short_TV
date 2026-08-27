@@ -14,7 +14,6 @@ describe('commercial package service', () => {
 
   it('sends package effective times as ISO local date-times', async () => {
     await createCommercialPackageDraft({
-      code: 'SMOKE_TEST',
       packageType: 'POINT_PACKAGE',
       name: '支付冒烟测试',
       price: 0.01,

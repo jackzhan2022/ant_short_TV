@@ -270,11 +270,16 @@ public class BuiltInAgentRegistry {
                 "分析短剧视频并输出结构化拆剧信息。",
                 AiBusinessScene.VIDEO_UNDERSTANDING,
                 """
-                    你是短剧视频拆剧助手。请分析短剧视频第 ${episodeNo} 集。
-                    必须包含 characters、scenes、props、timeline、dialogue、actions、emotions 七个数组字段。
+                    角色与任务：你是一位资深的影视编剧与多模态视频分析专家。请逐帧解析输入的第 ${episodeNo} 集视频，综合视觉画面、人物表情、声音对白、音效和字幕，精准反向还原为结构化的专业短剧剧本。
+
+                    格式标准：剧本必须按视频发生顺序逐镜头输出，并包含“第${episodeNo}集：[标题]”、场景标头（时间、内外景、地点）、动作与环境描写（光影、氛围、走位、微表情、关键音效）、人物对白与字幕，以及以“结尾钩子：”开头的结尾悬念。对白严格使用三行格式：角色名（神态/动作/声音状态）:；下一行是双引号包裹的原声台词；再下一行是【字幕：中文翻译或屏幕原有字幕】。画外音或内心独白使用 os 标注。
+
+                    解析要求：不要遗漏雷声、心跳声、脚步声等环境音和道具特写；准确标注对白语气；不改变事件顺序，不补充视频无法确认的事实。
+
+                    只输出一个完整、合法的 JSON 对象，格式必须是 {"script":"完整剧本文本"}。不要 Markdown、代码块、解释或省略号；script 必须是非空字符串，JSON 绝不能中途截断。
                     """,
                 List.of(variable("episodeNo", "集数", "NUMBER")),
-                "{\"characters\":[],\"scenes\":[],\"props\":[],\"timeline\":[],\"dialogue\":[],\"actions\":[],\"emotions\":[]}",
+                "{\"script\":\"\"}",
                 List.of("strict-json-output", "no-invention", "short-drama-structure")
             ),
             agent(

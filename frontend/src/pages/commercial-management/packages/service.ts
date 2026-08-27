@@ -25,7 +25,7 @@ export type CommercialPackageVersion = {
   entitlements: CommercialEntitlement[];
 };
 export type CommercialPackageDraft = {
-  code: string;
+  code?: string;
   packageType: string;
   name: string;
   description?: string;

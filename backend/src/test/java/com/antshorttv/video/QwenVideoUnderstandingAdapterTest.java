@@ -112,6 +112,42 @@ class QwenVideoUnderstandingAdapterTest {
         }
     }
 
+    @Test
+    void rejectsTruncatedStructuredOutput() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = """
+                {
+                  "id":"qwen-video-truncated",
+                  "choices":[{"finish_reason":"length","message":{"content":"{\\"characters\\":["}}]
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            QwenVideoUnderstandingAdapter adapter = new QwenVideoUnderstandingAdapter(
+                new AiSecretCodec("test-secret"),
+                new ObjectMapper()
+            );
+
+            assertThatThrownBy(() -> adapter.videoUnderstanding(
+                provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-qwen"),
+                model(),
+                new VideoUnderstandingRequest("https://cdn.example.com/episode-1.mp4", "只返回合法 JSON。")
+            ))
+                .isInstanceOf(AiGatewayException.class)
+                .hasMessageContaining("输出被截断");
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private AiProviderEntity provider() {
         AiProviderEntity provider = new AiProviderEntity();
         provider.setId(1L);

@@ -11,40 +11,36 @@ class VideoAnalysisNormalizerTest {
     private final VideoAnalysisNormalizer normalizer = new VideoAnalysisNormalizer(new ObjectMapper());
 
     @Test
-    void acceptsCompleteStructuredAnalysisAndKeepsNormalizedJson() {
+    void acceptsDirectScreenplayAndKeepsNormalizedJson() {
         String response = """
             {
-              "characters":[{"name":"林晚","roleType":"LEAD"}],
-              "scenes":[{"name":"天台","sceneType":"EXTERIOR"}],
-              "props":[{"name":"录音笔","propType":"KEY_PROP"}],
-              "timeline":[{"time":"00:01","event":"林晚拿出录音笔"}],
-              "dialogue":[{"speaker":"林晚","text":"你终于来了"}],
-              "actions":[{"actor":"林晚","action":"转身"}],
-              "emotions":[{"character":"林晚","emotion":"冷静"}]
+              "script":"第1集：[天台对峙]\\n场景：夜 外 天台\\n结尾钩子：林晚握紧录音笔。"
             }
             """;
 
         VideoAnalysis analysis = normalizer.normalize(response);
 
-        assertThat(analysis.characters()).hasSize(1);
-        assertThat(analysis.normalizedJson()).contains("\"林晚\"");
+        assertThat(analysis.script()).contains("第1集：[天台对峙]");
+        assertThat(analysis.normalizedJson()).contains("\"script\"");
     }
 
     @Test
-    void rejectsTransportSuccessWhenRequiredAnalysisFieldIsMissing() {
+    void rejectsTransportSuccessWhenScriptIsMissing() {
         String response = """
             {
-              "characters":[],
-              "scenes":[],
-              "props":[],
-              "timeline":[],
-              "dialogue":[],
-              "actions":[]
+              "characters":[]
             }
             """;
 
         assertThatThrownBy(() -> normalizer.normalize(response))
             .isInstanceOf(VideoAnalysisParseException.class)
-            .hasMessageContaining("emotions");
+            .hasMessageContaining("script");
+    }
+
+    @Test
+    void rejectsTransportSuccessWhenScriptIsBlank() {
+        assertThatThrownBy(() -> normalizer.normalize("{\"script\":\"   \"}"))
+            .isInstanceOf(VideoAnalysisParseException.class)
+            .hasMessageContaining("script");
     }
 }

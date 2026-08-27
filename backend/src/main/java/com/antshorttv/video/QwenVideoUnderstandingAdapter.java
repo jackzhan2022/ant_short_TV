@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class QwenVideoUnderstandingAdapter {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(300);
+    private static final int STRUCTURED_OUTPUT_MAX_TOKENS = 8192;
 
     private final AiSecretCodec aiSecretCodec;
     private final ObjectMapper objectMapper;
@@ -45,7 +46,12 @@ public class QwenVideoUnderstandingAdapter {
         validate(config, model, request);
         try {
             JsonNode root = postJson(config, endpoint(config), payload(model, request));
-            String content = root.path("choices").path(0).path("message").path("content").asText(null);
+            JsonNode choice = root.path("choices").path(0);
+            String finishReason = choice.path("finish_reason").asText(null);
+            if ("length".equalsIgnoreCase(finishReason)) {
+                throw new AiGatewayException(ErrorCode.AI_RESPONSE_INVALID, "Qwen 视频理解输出被截断，请缩短分析范围后重试。");
+            }
+            String content = choice.path("message").path("content").asText(null);
             if (content == null || content.isBlank()) {
                 throw new AiGatewayException(ErrorCode.AI_RESPONSE_INVALID, "Qwen 视频理解响应缺少内容。");
             }
@@ -146,6 +152,7 @@ public class QwenVideoUnderstandingAdapter {
             )
         )));
         payload.put("temperature", 0.1);
+        payload.put("max_tokens", STRUCTURED_OUTPUT_MAX_TOKENS);
         payload.put("response_format", Map.of("type", "json_object"));
         return payload;
     }

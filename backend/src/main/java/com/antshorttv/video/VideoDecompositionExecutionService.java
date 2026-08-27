@@ -101,7 +101,6 @@ public class VideoDecompositionExecutionService {
         this.objectMapper = objectMapper;
     }
 
-    @Transactional
     public void executeEpisode(Long episodeId) {
         VideoDecompositionEpisodeEntity episode = episodeMapper.selectById(episodeId);
         if (episode == null) {
@@ -189,9 +188,19 @@ public class VideoDecompositionExecutionService {
             finishSharedAttempt(sharedAttempt, callResult, "SUCCEEDED", false, null, null);
             completeStage(episode, sharedAttempt, callResult, AiSettlementOutcome.SUCCESS);
             updateExecution(episode, "SUCCEEDED", "VIDEO_ANALYSIS", 100,
-                "VIDEO_DECOMPOSITION_ANALYSIS", episode.getId());
-            prepareDraftExecution(episode);
-            executeDraftGeneration(episode, analysis.normalizedJson());
+                "VIDEO_DECOMPOSITION_EPISODE", episode.getId());
+            episode.setDraftContent(analysis.script());
+            episode.setDraftStatus("PENDING_REVIEW");
+            episode.setDraftVersion((episode.getDraftVersion() == null ? 0 : episode.getDraftVersion()) + 1);
+            episode.setStatus("PENDING_REVIEW");
+            episode.setExecutionToken(null);
+            episode.setExecutionPhase(null);
+            episode.setHeartbeatAt(null);
+            episode.setExecutionTimeoutAt(null);
+            episode.setRetryable(false);
+            episode.setUpdatedAt(LocalDateTime.now());
+            episodeMapper.updateById(episode);
+            clearExecutionColumns(episode.getId(), false);
         } catch (VideoAnalysisParseException exception) {
             if (callResult != null) {
                 aiInvocationService.markBusinessFailure(callResult.aiCallLogId(), ErrorCode.AI_RESPONSE_INVALID, exception.getMessage());

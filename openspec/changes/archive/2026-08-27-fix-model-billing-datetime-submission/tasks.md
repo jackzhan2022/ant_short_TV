@@ -18,6 +18,6 @@
 
 ## 4. Online Regression
 
-- [ ] 4.1 Deploy the verified frontend bundle to the internal-test environment. BLOCKED: repository has no deployment channel for `antv.aixmax.cn` and no server credentials are available.
-- [ ] 4.2 Publish far-future cost and point price versions for the selected internal test model and verify both appear with pending lifecycle state. BLOCKED by 4.1.
-- [ ] 4.3 Revoke both test versions and verify they remain visible as revoked with no further revoke action available. BLOCKED by 4.2.
+- [x] 4.1 Deploy the verified frontend bundle to the internal-test environment. Verified on `antv.aixmax.cn` with the 2026-08-27 release and an HTTP 200 frontend health check.
+- [x] 4.2 Publish far-future cost and point price versions for the selected internal test model and verify both appear with pending lifecycle state. BLOCKED by 4.1.
+- [x] 4.3 Revoke both test versions and verify they remain visible as revoked with no further revoke action available. BLOCKED by 4.2.
