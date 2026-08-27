@@ -11,16 +11,16 @@
 - [x] 2.2 Validate package period, price, effective interval, and immutable referenced versions.
 - [x] 2.3 Implement fixed entitlement templates for one-time points, periodic points, and global discount.
 - [x] 2.4 Reject unsupported runtime entitlements such as free generations, concurrency, and member limits.
-- [ ] 2.5 Add platform APIs and frontend management screens for package and entitlement versions.
+- [x] 2.5 Add platform APIs and frontend management screens for package and entitlement versions.
 
 ## 3. Orders and WeChat Native Payment
 
 - [x] 3.1 Implement team-admin order creation with package and price snapshots.
-- [ ] 3.2 Integrate WeChat Native order creation and QR-code payment parameters using configuration-backed credentials.
-- [ ] 3.3 Implement callback signature verification and merchant-order/amount validation.
-- [ ] 3.4 Implement the order state machine, 30-minute unpaid closure, active order query, and proactive payment lookup.
-- [ ] 3.5 Make callbacks, lookup, closure, and operator reconciliation idempotent.
-- [ ] 3.6 Persist payment notifications, exceptions, and reconciliation evidence; do not implement refunds.
+- [x] 3.2 Integrate WeChat Native order creation and QR-code payment parameters using configuration-backed credentials.
+- [x] 3.3 Implement callback signature verification and merchant-order/amount validation.
+- [x] 3.4 Implement the order state machine, 30-minute unpaid closure, active order query, and proactive payment lookup.
+- [x] 3.5 Make callbacks, lookup, closure, and operator reconciliation idempotent.
+- [x] 3.6 Persist payment notifications, exceptions, and reconciliation evidence; do not implement refunds.
 
 ## 4. Point Grants and Subscription Lifecycle
 
@@ -29,7 +29,7 @@
 - [x] 4.3 Implement first activation, same-package renewal tail extension, and other-package queued activation.
 - [x] 4.4 Implement subscription period calculation anchored to activation day and unique `subscriptionId + periodNo` grants.
 - [x] 4.5 Implement periodic grant scheduler, retry, failure alerting, and permanent point validity.
-- [ ] 4.6 Add team APIs and UI for current subscription, queued orders, grant history, and point balance links.
+- [x] 4.6 Add team APIs and UI for current subscription, queued orders, grant history, and point balance links.
 
 ## 5. AI Discount Integration
 
@@ -41,8 +41,8 @@
 
 ## 6. Verification and Operations
 
-- [ ] 6.1 Add backend tests for package lifecycle, permissions, order state transitions, callback duplication, and amount mismatch.
-- [ ] 6.2 Add integration tests covering payment success through point grant, subscription activation, periodic grant, and ledger reconciliation.
-- [ ] 6.3 Add frontend tests for package display, permission gating, QR payment polling, order status, and subscription history.
-- [ ] 6.4 Add operational runbook entries for WeChat configuration, callback failures, pending grants, queued subscriptions, and reconciliation.
-- [ ] 6.5 Run backend and frontend tests, type checks, Biome/Ant Design lint, production build, and authorized/non-authorized smoke tests.
+- [x] 6.1 Add backend tests for package lifecycle, permissions, order state transitions, callback duplication, and amount mismatch.
+- [x] 6.2 Add integration tests covering payment success through point grant, subscription activation, periodic grant, and ledger reconciliation.
+- [x] 6.3 Add frontend tests for package display, permission gating, QR payment polling, order status, and subscription history.
+- [x] 6.4 Add operational runbook entries for WeChat configuration, callback failures, pending grants, queued subscriptions, and reconciliation.
+- [x] 6.5 Run backend and frontend tests, type checks, Biome/Ant Design lint, production build, and authorized/non-authorized smoke tests.
