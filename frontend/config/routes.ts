@@ -102,8 +102,18 @@ export default [
     path: '/recharge',
     name: 'recharge',
     layout: false,
-    access: 'canManageBilling',
+    access: 'canViewCommercial',
     component: './commercial',
+  },
+  {
+    path: '/commercial-management',
+    name: 'commercial-management',
+    icon: 'shop',
+    access: 'canViewCommercialPackages',
+    routes: [
+      { path: '/commercial-management', redirect: '/commercial-management/packages' },
+      { path: '/commercial-management/packages', name: 'packages', component: './commercial-management/packages' },
+    ],
   },
   {
     name: 'exception',

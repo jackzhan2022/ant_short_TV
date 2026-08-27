@@ -62,6 +62,17 @@ object-storage:
   region: ${OBJECT_STORAGE_REGION:}
   auto-create-bucket: ${OBJECT_STORAGE_AUTO_CREATE_BUCKET:true}
 
+commercial:
+  wechat:
+    enabled: ${WECHAT_PAY_ENABLED:false}
+    base-url: ${WECHAT_PAY_BASE_URL:https://api.mch.weixin.qq.com}
+    app-id: ${WECHAT_PAY_APP_ID:}
+    merchant-id: ${WECHAT_PAY_MERCHANT_ID:}
+    merchant-serial-number: ${WECHAT_PAY_MERCHANT_SERIAL_NUMBER:}
+    merchant-private-key-path: ${WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH:}
+    api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
+    notify-url: ${WECHAT_PAY_NOTIFY_URL:}
+
 ai:
   secret-key: ${AI_SECRET_KEY:}
   testing:

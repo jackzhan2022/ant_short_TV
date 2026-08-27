@@ -69,4 +69,6 @@ export default {
   'menu.team.settings': 'Team Settings',
   'menu.projects': 'Project Center',
   'menu.projects.list': 'Project List',
+  'menu.commercial-management': 'Commercial',
+  'menu.commercial-management.packages': 'Packages',
 };

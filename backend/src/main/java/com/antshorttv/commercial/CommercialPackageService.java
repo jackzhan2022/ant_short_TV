@@ -37,13 +37,25 @@ public class CommercialPackageService {
     @Transactional public CommercialPackageVersionResponse publish(Long packageId, Long versionId, Long operatorId) { CommercialPackageVersionEntity v = require(versionId); if (!packageId.equals(v.packageId)) throw new IllegalArgumentException("Package mismatch"); if (!"DRAFT".equals(v.status)) throw new IllegalStateException("Only draft versions can be published"); v.status = "PUBLISHED"; v.publishedAt = LocalDateTime.now(); versionMapper.updateById(v); return response(v); }
     @Transactional public CommercialPackageVersionResponse unpublish(Long packageId, Long versionId) { CommercialPackageVersionEntity v = require(versionId); if (!packageId.equals(v.packageId)) throw new IllegalArgumentException("Package mismatch"); if (!"PUBLISHED".equals(v.status)) throw new IllegalStateException("Only published versions can be unpublished"); v.status = "OFF_SALE"; versionMapper.updateById(v); return response(v); }
     public List<CommercialPackageSummaryResponse> listPackages() { return packageMapper.selectList(new QueryWrapper<CommercialPackageEntity>().orderByAsc("id")).stream().map(p -> new CommercialPackageSummaryResponse(p.id, p.code, p.packageType, p.status)).toList(); }
+    public List<CommercialCatalogItemResponse> listForSale(LocalDateTime now) {
+        return versionMapper.selectList(new QueryWrapper<CommercialPackageVersionEntity>()
+            .eq("status", "PUBLISHED").le("effective_from", now)
+            .and(wrapper -> wrapper.isNull("effective_to").or().gt("effective_to", now))
+            .orderByAsc("price")).stream().map(version -> {
+                CommercialPackageEntity pack = packageMapper.selectById(version.packageId);
+                return new CommercialCatalogItemResponse(pack.id, version.id, pack.code, pack.packageType,
+                    version.name, version.description, version.billingPeriod, version.periodMonths,
+                    version.price, version.listPrice, version.currency, response(version).entitlements());
+            }).toList();
+    }
     public List<CommercialPackageVersionResponse> history(Long packageId) { return versionMapper.selectList(new QueryWrapper<CommercialPackageVersionEntity>().eq("package_id", packageId).orderByDesc("version_no")).stream().map(this::response).toList(); }
     @Transactional public void updateDraftName(Long versionId, String name) { CommercialPackageVersionEntity v = require(versionId); if (!"DRAFT".equals(v.status)) throw new IllegalStateException("Published package versions are immutable"); v.name = name; versionMapper.updateById(v); }
     private CommercialPackageVersionEntity require(Long id) { CommercialPackageVersionEntity v = versionMapper.selectById(id); if (v == null) throw new IllegalArgumentException("Package version not found"); return v; }
-    private CommercialPackageVersionResponse response(CommercialPackageVersionEntity v) { return new CommercialPackageVersionResponse(v.packageId, v.id, v.versionNo, v.status, v.name, entitlementMapper.selectList(new QueryWrapper<CommercialEntitlementEntity>().eq("package_version_id", v.id)).stream().map(e -> new CommercialEntitlementInput(e.entitlementType, e.numericValue)).toList()); }
+    private CommercialPackageVersionResponse response(CommercialPackageVersionEntity v) { return new CommercialPackageVersionResponse(v.packageId, v.id, v.versionNo, v.status, v.name, v.description, v.billingPeriod, v.periodMonths, v.price, v.listPrice, v.currency, v.effectiveFrom, v.effectiveTo, entitlementMapper.selectList(new QueryWrapper<CommercialEntitlementEntity>().eq("package_version_id", v.id)).stream().map(e -> new CommercialEntitlementInput(e.entitlementType, e.numericValue)).toList()); }
 }
 
 record CommercialPackageDraftCommand(String code, String packageType, String name, String description, String billingPeriod, Integer periodMonths, BigDecimal price, BigDecimal listPrice, String currency, LocalDateTime effectiveFrom, LocalDateTime effectiveTo, List<CommercialEntitlementInput> entitlements, Long operatorId) {}
 record CommercialEntitlementInput(String type, BigDecimal value) {}
-record CommercialPackageVersionResponse(Long packageId, Long versionId, Integer versionNo, String status, String name, List<CommercialEntitlementInput> entitlements) {}
+record CommercialPackageVersionResponse(Long packageId, Long versionId, Integer versionNo, String status, String name, String description, String billingPeriod, Integer periodMonths, BigDecimal price, BigDecimal listPrice, String currency, LocalDateTime effectiveFrom, LocalDateTime effectiveTo, List<CommercialEntitlementInput> entitlements) {}
 record CommercialPackageSummaryResponse(Long id, String code, String packageType, String status) {}
+record CommercialCatalogItemResponse(Long packageId, Long packageVersionId, String code, String packageType, String name, String description, String billingPeriod, Integer periodMonths, BigDecimal price, BigDecimal listPrice, String currency, List<CommercialEntitlementInput> entitlements) {}

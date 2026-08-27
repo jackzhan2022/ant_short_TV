@@ -36,7 +36,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-                .ignoringRequestMatchers("/api/auth/login", "/api/auth/register"))
+                .ignoringRequestMatchers("/api/auth/login", "/api/auth/register", "/api/commercial/payments/wechat/notify"))
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler))
@@ -44,6 +44,7 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/api/auth/login", "/api/auth/register",
                     "/api/auth/verification-code/**",
+                    "/api/commercial/payments/wechat/notify",
                     "/api/style-library/**", "/api/public/**",
                     "/actuator/health", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
                 ).permitAll()

@@ -1,6 +1,10 @@
 package com.antshorttv.commercial;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -8,6 +12,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -19,6 +24,30 @@ class CommercialSubscriptionLifecycleTest {
     @Autowired CommercialEntitlementOrchestrator orchestrator;
     @Autowired JdbcTemplate jdbc;
     @Autowired ApplicationContext context;
+    @Autowired com.antshorttv.points.AiPointSettlementService settlementService;
+    @Autowired CommercialPaymentLifecycleService paymentLifecycleService;
+    @SpyBean com.antshorttv.points.PointAccountingService pointAccountingService;
+
+    @Test
+    void failedInitialEntitlementStaysPendingAndCompletesOnRetry() {
+        CommercialPackageVersionResponse version = publishedSubscription("RETRY_INITIAL", 1, "100");
+        CommercialOrderResponse order = orderService.create(new CommercialOrderCommand(109L, 209L, version.versionId()));
+        doThrow(new IllegalStateException("temporary grant failure"))
+            .doCallRealMethod()
+            .when(pointAccountingService)
+            .grant(eq(109L), eq(209L), any(BigDecimal.class), any(String.class), any(String.class));
+
+        CommercialOrderEntity pending = orchestrator.confirmPaid(
+            order.id(), "WX-RETRY", new BigDecimal("30.00"), LocalDateTime.of(2026, 8, 26, 20, 0));
+
+        assertThat(pending.status).isEqualTo("ENTITLEMENT_PENDING");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from commercial_entitlement_grant where tenant_id=109", Integer.class)).isZero();
+        assertThat(paymentLifecycleService.retryPendingEntitlements()).isGreaterThanOrEqualTo(1);
+        assertThat(orderService.require(order.id()).status).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from commercial_entitlement_grant where tenant_id=109", Integer.class)).isEqualTo(1);
+    }
 
     @Test
     void firstSubscriptionActivatesImmediatelyAndGrantsFirstPeriodOnce() {
@@ -38,6 +67,9 @@ class CommercialSubscriptionLifecycleTest {
             "select count(*) from commercial_entitlement_grant where tenant_id=101 and period_no=1", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject(
             "select balance from team_point_account where tenant_id=101", BigDecimal.class)).isEqualByComparingTo("100");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from point_ledger where tenant_id=101 and entry_type='GRANT'", Integer.class)).isEqualTo(1);
+        assertThat(settlementService.reconcile(101L).matches()).isTrue();
     }
 
     @Test

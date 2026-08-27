@@ -14,18 +14,25 @@ public class CommercialEntitlementOrchestrator {
     private final CommercialPackageMapper packageMapper; private final CommercialPackageVersionMapper versionMapper;
     private final CommercialEntitlementMapper entitlementMapper; private final CommercialEntitlementGrantMapper grantMapper;
     private final TeamSubscriptionMapper subscriptionMapper; private final PointAccountingService accounting;
-    public CommercialEntitlementOrchestrator(CommercialOrderMapper o, CommercialPaymentMapper p, CommercialPackageMapper pm, CommercialPackageVersionMapper vm, CommercialEntitlementMapper em, CommercialEntitlementGrantMapper gm, TeamSubscriptionMapper sm, PointAccountingService accounting) { this.orderMapper=o; this.paymentMapper=p; this.packageMapper=pm; this.versionMapper=vm; this.entitlementMapper=em; this.grantMapper=gm; this.subscriptionMapper=sm; this.accounting=accounting; }
+    private final CommercialFulfillmentRunner fulfillmentRunner;
+    public CommercialEntitlementOrchestrator(CommercialOrderMapper o, CommercialPaymentMapper p, CommercialPackageMapper pm, CommercialPackageVersionMapper vm, CommercialEntitlementMapper em, CommercialEntitlementGrantMapper gm, TeamSubscriptionMapper sm, PointAccountingService accounting, CommercialFulfillmentRunner fulfillmentRunner) { this.orderMapper=o; this.paymentMapper=p; this.packageMapper=pm; this.versionMapper=vm; this.entitlementMapper=em; this.grantMapper=gm; this.subscriptionMapper=sm; this.accounting=accounting; this.fulfillmentRunner=fulfillmentRunner; }
 
     @Transactional
     public CommercialOrderEntity confirmPaid(Long orderId, String providerTradeNo, BigDecimal paidAmount, LocalDateTime paidAt) {
-        CommercialOrderEntity order = orderMapper.selectById(orderId); if (order == null) throw new IllegalArgumentException("Order not found");
+        CommercialOrderEntity order = orderMapper.selectOne(new QueryWrapper<CommercialOrderEntity>().eq("id", orderId).last("for update")); if (order == null) throw new IllegalArgumentException("Order not found");
         if ("COMPLETED".equals(order.status)) return order;
+        if (!List.of("PENDING_PAYMENT", "PAYMENT_EXCEPTION", "ENTITLEMENT_PENDING").contains(order.status)) throw new IllegalStateException("Order cannot be paid from " + order.status);
         if (paidAmount == null || order.amount.compareTo(paidAmount) != 0) throw new IllegalArgumentException("Payment amount mismatch");
         CommercialPaymentEntity payment = paymentMapper.selectOne(new QueryWrapper<CommercialPaymentEntity>().eq("order_id", order.id));
         payment.providerTradeNo = providerTradeNo; payment.status = "PAID"; payment.paidAt = paidAt; payment.updatedAt = LocalDateTime.now(); paymentMapper.updateById(payment);
         order.status = "ENTITLEMENT_PENDING"; order.paidAt = paidAt; order.updatedAt = LocalDateTime.now(); orderMapper.updateById(order);
-        fulfill(order);
-        order.status = "COMPLETED"; order.completedAt = LocalDateTime.now(); order.updatedAt = order.completedAt; orderMapper.updateById(order); return order;
+        try {
+            fulfillmentRunner.run(() -> fulfill(order));
+            order.status = "COMPLETED"; order.completedAt = LocalDateTime.now(); order.updatedAt = order.completedAt; orderMapper.updateById(order);
+        } catch (RuntimeException exception) {
+            order.status = "ENTITLEMENT_PENDING"; order.updatedAt = LocalDateTime.now(); orderMapper.updateById(order);
+        }
+        return order;
     }
 
     private void fulfill(CommercialOrderEntity order) {

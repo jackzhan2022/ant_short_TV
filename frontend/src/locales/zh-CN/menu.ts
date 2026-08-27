@@ -70,4 +70,6 @@ export default {
   'menu.team.settings': '团队设置',
   'menu.projects': '项目中心',
   'menu.projects.list': '项目列表',
+  'menu.commercial-management': '商业化管理',
+  'menu.commercial-management.packages': '套餐管理',
 };
