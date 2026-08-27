@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   access: { canPublishModelBilling: true },
+  modalValues: {} as Record<string, unknown>,
   queryPlatformModels: vi.fn(),
   billingHistory: vi.fn(),
   publishModelPrice: vi.fn(),
@@ -18,9 +19,14 @@ vi.mock('@umijs/max', async () => {
 
 vi.mock('@ant-design/pro-components', () => ({
   PageContainer: ({ children }: any) => <main>{children}</main>,
-  ModalForm: ({ children, trigger }: any) => (
+  ModalForm: ({ children, onFinish, title, trigger }: any) => (
     <section>
       {trigger}
+      <button
+        type="button"
+        aria-label={title === '发布成本价' ? '提交成本价格表单' : '提交积分价格表单'}
+        onClick={() => onFinish(mocks.modalValues[title])}
+      >提交</button>
       <div>{children}</div>
     </section>
   ),
@@ -80,6 +86,7 @@ describe('ModelBillingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.access.canPublishModelBilling = true;
+    mocks.modalValues = {};
     mocks.queryPlatformModels.mockResolvedValue({
       data: [{ id: 9, name: 'Qwen Max', code: 'QWEN_MAX', providerName: 'Aliyun', status: 'ENABLED' }],
     });
@@ -90,6 +97,8 @@ describe('ModelBillingPage', () => {
         pointPrices: [],
       },
     });
+    mocks.publishModelPrice.mockResolvedValue({ success: true });
+    mocks.publishPointPrice.mockResolvedValue({ success: true });
   });
 
   it('selects an enabled model and shows future revoke action', async () => {
@@ -109,6 +118,44 @@ describe('ModelBillingPage', () => {
 
     expect(screen.getAllByLabelText('生效时间').length).toBeGreaterThan(0);
     expect(screen.queryByLabelText('版本号')).not.toBeInTheDocument();
+  });
+
+  it('submits cost price effective times as ISO local date-times', async () => {
+    mocks.modalValues.发布成本价 = {
+      effectiveFrom: '2099-01-01 00:00:00',
+      effectiveTo: '2099-02-01 12:34:56.789',
+      components: [{ metric: 'CALL', unitSize: 1, unitPrice: 0.01, currency: 'USD' }],
+    };
+    render(<ModelBillingPage />);
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: '提交成本价格表单' }));
+
+    await waitFor(() => expect(mocks.publishModelPrice).toHaveBeenCalledWith(
+      { modelId: 9 },
+      expect.objectContaining({
+        effectiveFrom: '2099-01-01T00:00:00',
+        effectiveTo: '2099-02-01T12:34:56.789',
+      }),
+    ));
+  });
+
+  it('preserves ISO start time and normalizes point price end time', async () => {
+    mocks.modalValues.发布积分价 = {
+      effectiveFrom: '2099-01-01T00:00:00',
+      effectiveTo: '2099-02-01 12:34:56',
+      components: [{ metric: 'CALL', unitSize: 1, pointRate: 1 }],
+    };
+    render(<ModelBillingPage />);
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: '提交积分价格表单' }));
+
+    await waitFor(() => expect(mocks.publishPointPrice).toHaveBeenCalledWith(
+      { modelId: 9 },
+      expect.objectContaining({
+        effectiveFrom: '2099-01-01T00:00:00',
+        effectiveTo: '2099-02-01T12:34:56',
+      }),
+    ));
   });
 
   it('declares required fields and numeric limits for publish validation', async () => {
