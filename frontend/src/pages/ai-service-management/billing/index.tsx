@@ -46,6 +46,15 @@ const metricOptions = [
   ['CHARACTER', '字符数'],
 ].map(([value, label]) => ({ value, label }));
 
+function isoLocalDateTime(value: string): string;
+function isoLocalDateTime(value: string | undefined): string | undefined;
+function isoLocalDateTime(value?: string) {
+  return value?.replace(
+    /^(\d{4}-\d{2}-\d{2}) (?=\d{2}:\d{2}:\d{2}(?:\.\d+)?$)/,
+    '$1T',
+  );
+}
+
 const lifecycle = (version: PriceVersion) => {
   if (version.status === 'REVOKED') return { text: '已撤销', color: 'default' };
   const now = dayjs();
@@ -97,8 +106,8 @@ const ModelBillingPage = () => {
       await publishModelPrice(
         { modelId },
         {
-          effectiveFrom: values.effectiveFrom,
-          effectiveTo: values.effectiveTo,
+          effectiveFrom: isoLocalDateTime(values.effectiveFrom),
+          effectiveTo: isoLocalDateTime(values.effectiveTo),
           components: values.components.map((component) => ({
             metric: component.metric,
             unitSize: component.unitSize,
@@ -112,8 +121,8 @@ const ModelBillingPage = () => {
       await publishPointPrice(
         { modelId },
         {
-          effectiveFrom: values.effectiveFrom,
-          effectiveTo: values.effectiveTo,
+          effectiveFrom: isoLocalDateTime(values.effectiveFrom),
+          effectiveTo: isoLocalDateTime(values.effectiveTo),
           components: values.components.map((component) => ({
             metric: component.metric,
             unitSize: component.unitSize,
