@@ -18,7 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import jakarta.servlet.http.Cookie;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.public-base-url=https://antv.aixmax.cn")
 @AutoConfigureMockMvc
 class AuthControllerTest {
 
@@ -119,5 +119,17 @@ class AuthControllerTest {
             .andReturn();
 
         return result.getResponse().getCookie("ANT_SHORT_SESSION");
+    }
+
+    @Test
+    void loginAcceptsConfiguredPublicOrigin() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                .header("Origin", "https://antv.aixmax.cn")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"mobile":"13000000000","password":"invalid-test-only"}
+                    """))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.errorCode", is("INVALID_CREDENTIALS")));
     }
 }
