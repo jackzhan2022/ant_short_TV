@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   success: vi.fn(),
   historyPush: vi.fn(),
   queryVideoDecompositionBatches: vi.fn(),
+  queryVideoUnderstandingModels: vi.fn(),
   queryVideoDecompositionEpisode: vi.fn(),
   retryVideoDecompositionEpisode: vi.fn(),
   updateVideoDecompositionDraft: vi.fn(),
@@ -103,6 +104,20 @@ vi.mock('antd', () => ({
       onChange={(event) => onChange?.(Number(event.target.value))}
     />
   ),
+  Select: ({ value, onChange, options = [], placeholder }: any) => (
+    <select
+      value={value ?? ''}
+      aria-label="视频理解模型"
+      onChange={(event) => onChange?.(Number(event.target.value))}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option: any) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
   Modal: ({ children, open, title, onCancel, onOk }: any) =>
     open ? (
       <section>
@@ -184,6 +199,7 @@ vi.mock('@ant-design/pro-components', () => ({
 vi.mock('./service', () => ({
   createVideoDecompositionBatch: vi.fn(),
   queryVideoDecompositionBatches: mocks.queryVideoDecompositionBatches,
+  queryVideoUnderstandingModels: mocks.queryVideoUnderstandingModels,
   queryVideoDecompositionEpisode: mocks.queryVideoDecompositionEpisode,
   retryVideoDecompositionEpisode: mocks.retryVideoDecompositionEpisode,
   updateVideoDecompositionDraft: mocks.updateVideoDecompositionDraft,
@@ -220,6 +236,18 @@ describe('VideoScriptDecompositionPage', () => {
               draftVersion: 2,
             },
           ],
+        },
+      ],
+    });
+    mocks.queryVideoUnderstandingModels.mockResolvedValue({
+      data: [
+        {
+          id: 42,
+          name: 'Qwen 3.7 Plus 多模态拆剧',
+          modelCode: 'qwen3.7-plus',
+          serviceType: 'VIDEO_UNDERSTANDING',
+          status: 'ENABLED',
+          isDefault: true,
         },
       ],
     });
@@ -360,5 +388,13 @@ describe('VideoScriptDecompositionPage', () => {
       ]),
     ).toBe(true);
     expect(canCreateVideoDecompositionBatch([])).toBe(false);
+  });
+
+  it('loads the default video understanding model into the model selector', async () => {
+    render(<VideoScriptDecompositionPage />);
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: '视频理解模型' })).toHaveValue('42');
+    });
+    expect(screen.getByRole('option', { name: /qwen3.7-plus/ })).toBeInTheDocument();
   });
 });

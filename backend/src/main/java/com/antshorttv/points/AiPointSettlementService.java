@@ -215,6 +215,16 @@ public class AiPointSettlementService {
         if (outcome == AiSettlementOutcome.PRE_CALL_CANCELED) {
             return release(reservation, attemptId, callLogId, idempotencyKey);
         }
+        if (outcome == AiSettlementOutcome.TRANSPORT_UNKNOWN) {
+            if ("RESERVED".equals(reservation.status)) {
+                reservation.status = "SETTLEMENT_REVIEW_REQUIRED";
+                reservation.updatedAt = LocalDateTime.now();
+                reservationMapper.updateById(reservation);
+                recordLedger(reservation, "SETTLEMENT_REVIEW", BigDecimal.ZERO, attemptId, callLogId,
+                    idempotencyKey + ":review");
+            }
+            return reservation;
+        }
         AiPointPolicyVersionEntity policy = reservation.policyVersionId == null
             ? null : policyVersionMapper.selectById(reservation.policyVersionId);
         boolean charge = switch (outcome) {
@@ -224,7 +234,7 @@ public class AiPointSettlementService {
                 || (outcome == AiSettlementOutcome.PROVIDER_BILLED_FAILURE && Boolean.TRUE.equals(policy.chargeProviderBilledFailure))
                 || (outcome == AiSettlementOutcome.TIMED_OUT && Boolean.TRUE.equals(policy.chargeTimeout))
                 || (outcome == AiSettlementOutcome.BUSINESS_FAILURE && Boolean.TRUE.equals(policy.chargeBusinessFailure));
-            case PRE_CALL_CANCELED -> false;
+            case PRE_CALL_CANCELED, TRANSPORT_UNKNOWN -> false;
         };
         return charge
             ? settle(reservationId, actualUsage, attemptId, callLogId, idempotencyKey)

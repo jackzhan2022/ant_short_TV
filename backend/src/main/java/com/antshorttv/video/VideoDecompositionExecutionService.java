@@ -346,7 +346,9 @@ public class VideoDecompositionExecutionService {
             attempt == null ? null : attempt.getExecutionId(),
             callResult == null ? fallbackCallLogId : callResult.aiCallLogId(),
             callResult == null ? null : callResult.resolvedModelId(),
-            callResult == null ? AiSettlementOutcome.PROVIDER_REJECTION : AiSettlementOutcome.BUSINESS_FAILURE
+            callResult == null && fallbackCallLogId != null && isUncertainTransportFailure(errorCode, errorMessage)
+                ? AiSettlementOutcome.TRANSPORT_UNKNOWN
+                : callResult == null ? AiSettlementOutcome.PROVIDER_REJECTION : AiSettlementOutcome.BUSINESS_FAILURE
         );
         updateExecution(episode, "FAILED", "VIDEO_ANALYSIS", 100, null, null);
     }
@@ -538,6 +540,12 @@ public class VideoDecompositionExecutionService {
         updateExecution(episode, "RUNNING", episode.getExecutionPhase() == null ? "VIDEO_ANALYSIS" : episode.getExecutionPhase(), 5, null, null);
     }
 
+    private boolean isUncertainTransportFailure(String errorCode, String errorMessage) {
+        return ErrorCode.AI_PROVIDER_ERROR.name().equals(errorCode)
+            && errorMessage != null
+            && errorMessage.startsWith("Qwen 视频理解调用失败：");
+    }
+
     private AiExecutionTaskEntity createStageExecution(
         VideoDecompositionEpisodeEntity episode,
         Long modelId,
@@ -613,6 +621,44 @@ public class VideoDecompositionExecutionService {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to persist video decomposition cost summary.", exception);
         }
+    }
+
+    @Transactional
+    public void recoverClaimedEpisode(Long episodeId, String failureMessage) {
+        VideoDecompositionEpisodeEntity episode = episodeMapper.selectById(episodeId);
+        if (episode == null || episode.getExecutionToken() == null || episode.getExecutionId() == null) {
+            return;
+        }
+        String phase = episode.getExecutionPhase() == null ? "VIDEO_ANALYSIS" : episode.getExecutionPhase();
+        String message = failureMessage == null || failureMessage.isBlank()
+            ? "Video decomposition execution failed before provider invocation."
+            : failureMessage;
+        int recovered = jdbcTemplate.update("""
+            update video_decomposition_episode
+               set status = 'FAILED',
+                   error_code = 'AI_EXECUTION_FAILED',
+                   error_message = ?,
+                   execution_token = null,
+                   execution_phase = null,
+                   heartbeat_at = null,
+                   execution_timeout_at = null,
+                   retryable = true,
+                   updated_at = now()
+             where id = ?
+               and execution_token is not null
+               and status in ('ANALYZING', 'DRAFT_GENERATING')
+            """, message, episodeId);
+        if (recovered != 1) {
+            return;
+        }
+
+        VideoDecompositionAttemptEntity attempt = currentAttempt(episodeId, phase);
+        startSharedAttempt(episode, attempt, phase);
+        markAttempt(attempt, "FAILED", null, null, "AI_EXECUTION_FAILED", message);
+        finishLatestSharedFailure(episode, phase, null, "AI_EXECUTION_FAILED", message);
+        failStageSettlement(episode, episode.getExecutionId(), null, null, AiSettlementOutcome.PRE_CALL_CANCELED);
+        updateExecution(episode, "FAILED", phase, 100, null, null);
+        recalculateBatch(episode.getTenantId(), episode.getBatchId());
     }
 
     private void settleStage(

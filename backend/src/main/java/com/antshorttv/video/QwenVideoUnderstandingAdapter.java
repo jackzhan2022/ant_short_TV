@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class QwenVideoUnderstandingAdapter {
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(300);
 
     private final AiSecretCodec aiSecretCodec;
     private final ObjectMapper objectMapper;

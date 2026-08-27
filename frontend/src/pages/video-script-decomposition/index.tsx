@@ -23,6 +23,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Select,
   Modal,
   Progress,
   Row,
@@ -40,12 +41,14 @@ import type {
   VideoDecompositionEpisode,
   VideoDecompositionEpisodeDetail,
   VideoDecompositionUpload,
+  VideoUnderstandingModel,
 } from './service';
 import {
   confirmVideoDecompositionDraft,
   createVideoDecompositionBatch,
   queryVideoDecompositionBatches,
   queryVideoDecompositionEpisode,
+  queryVideoUnderstandingModels,
   retryVideoDecompositionEpisode,
   updateVideoDecompositionDraft,
   uploadEpisodeVideo,
@@ -130,6 +133,7 @@ const VideoScriptDecompositionPage = () => {
     buildDefaultVideoDecompositionBatchName(),
   );
   const [modelId, setModelId] = useState<number>();
+  const [models, setModels] = useState<VideoUnderstandingModel[]>([]);
   const [batches, setBatches] = useState<VideoDecompositionBatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<number>();
@@ -179,6 +183,20 @@ const VideoScriptDecompositionPage = () => {
 
   useEffect(() => {
     loadBatches().catch(() => undefined);
+    queryVideoUnderstandingModels()
+      .then((response) => {
+        const available = (response.data ?? []).filter(
+          (model) =>
+            model.serviceType === 'VIDEO_UNDERSTANDING' &&
+            model.status === 'ENABLED',
+        );
+        setModels(available);
+        const defaultModel = available.find(
+          (model) => model.modelCode === 'qwen3.7-plus' && model.isDefault,
+        );
+        setModelId(defaultModel?.id ?? available[0]?.id);
+      })
+      .catch(() => undefined);
   }, []);
 
   const currentBatch = batches[0];
@@ -337,12 +355,16 @@ const VideoScriptDecompositionPage = () => {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label="视频理解模型">
-                <InputNumber
-                  min={1}
+                <Select
                   value={modelId}
-                  onChange={(value) => setModelId(value ?? undefined)}
+                  onChange={(value) => setModelId(value)}
                   style={{ width: '100%' }}
-                  placeholder="默认 qwen3.7-plus"
+                  placeholder="请选择视频理解模型"
+                  loading={!models.length}
+                  options={models.map((model) => ({
+                    value: model.id,
+                    label: `${model.name} (${model.modelCode})`,
+                  }))}
                 />
               </Form.Item>
             </Col>

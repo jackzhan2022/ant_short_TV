@@ -47,7 +47,8 @@ public class VideoDecompositionTaskScheduler {
                     executionService.executeEpisode(episode.getId());
                 }
             } catch (Exception exception) {
-                LOGGER.warn("Video decomposition episode execution failed. episodeId={}", episode.getId(), exception);
+                LOGGER.warn("Video decomposition episode execution failed before provider completion. episodeId={}", episode.getId(), exception);
+                executionService.recoverClaimedEpisode(episode.getId(), exception.getMessage());
             }
         }
     }

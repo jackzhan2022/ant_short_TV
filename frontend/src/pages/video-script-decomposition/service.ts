@@ -76,6 +76,20 @@ export type CreateVideoDecompositionBatchValues = {
   videos: VideoDecompositionUpload[];
 };
 
+export type VideoUnderstandingModel = {
+  id: number;
+  name: string;
+  modelCode: string;
+  serviceType: string;
+  status: string;
+  isDefault?: boolean;
+};
+
+export const queryVideoUnderstandingModels = async () =>
+  request<{ success: boolean; data: VideoUnderstandingModel[] }>(
+    '/api/platform/ai/models',
+  );
+
 export const uploadEpisodeVideo = async (file: File) => {
   const data = new FormData();
   data.append('file', file);

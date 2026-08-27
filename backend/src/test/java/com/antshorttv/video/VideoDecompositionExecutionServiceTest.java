@@ -3,10 +3,15 @@ package com.antshorttv.video;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.antshorttv.ai.AiSecretCodec;
+import com.antshorttv.accounting.AiUsageMetric;
+import com.antshorttv.execution.AiExecutionCreateCommand;
+import com.antshorttv.execution.AiExecutionService;
 import com.sun.net.httpserver.HttpServer;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +29,56 @@ class VideoDecompositionExecutionServiceTest {
 
     @Autowired
     private VideoDecompositionExecutionService executionService;
+
+    @Autowired
+    private AiExecutionService aiExecutionService;
+
+    @Test
+    void releasesReservedPointsWhenClaimedEpisodeFailsBeforeProviderInvocation() {
+        Long modelId = prepareModel("http://127.0.0.1:9/v1");
+        prepareBilling(modelId);
+        preparePointAccount();
+        Long batchId = insertBatch(modelId);
+        Long episodeId = insertEpisode(batchId);
+        Long executionId = aiExecutionService.createWithReservation(new AiExecutionCreateCommand(
+            501L,
+            701L,
+            601L,
+            "video_decomposition",
+            "VIDEO_UNDERSTANDING",
+            "VIDEO_DECOMPOSITION_EPISODE",
+            episodeId,
+            modelId,
+            "VIDEO_ANALYSIS",
+            "recovery-" + UUID.randomUUID(),
+            UUID.randomUUID().toString(),
+            true,
+            "{\"episodeId\":%d}".formatted(episodeId)
+        ), Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of()).id;
+        jdbc.update("""
+            update video_decomposition_episode
+               set status = 'ANALYZING', execution_id = ?, execution_token = 'claimed',
+                   execution_phase = 'VIDEO_ANALYSIS', execution_version = 1
+             where id = ?
+            """, executionId, episodeId);
+
+        executionService.recoverClaimedEpisode(episodeId, "pre-provider failure");
+
+        var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
+        assertThat(episode.get("status")).isEqualTo("FAILED");
+        assertThat(episode.get("execution_token")).isNull();
+        assertThat(episode.get("retryable")).isEqualTo(true);
+        assertThat(jdbc.queryForObject("select status from video_decomposition_attempt where episode_id = ?", String.class, episodeId))
+            .isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject("select status from ai_execution_attempt where execution_id = ?", String.class, executionId))
+            .isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject("select provider_contacted from ai_execution_attempt where execution_id = ?", Boolean.class, executionId))
+            .isFalse();
+        assertThat(jdbc.queryForObject("select status from ai_execution_task where id = ?", String.class, executionId))
+            .isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject("select status from ai_point_reservation where execution_id = ?", String.class, executionId))
+            .isEqualTo("RELEASED");
+    }
 
     @Test
     void generatesDraftAfterStructuredAnalysisSucceeds() throws Exception {
@@ -307,6 +362,30 @@ class VideoDecompositionExecutionServiceTest {
               (model_id, capability, status, created_at, updated_at)
             values (?, ?, 'ENABLED', now(), now())
             """, modelId, capability);
+    }
+
+    @Test
+    void keepsReservationForSettlementReviewWhenProviderResetsConnection() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> exchange.close());
+        server.start();
+
+        try {
+            Long modelId = prepareModel("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()));
+            prepareBilling(modelId);
+            preparePointAccount();
+            Long batchId = insertBatch(modelId);
+            Long episodeId = insertEpisode(batchId);
+
+            executionService.executeEpisode(episodeId);
+
+            assertThat(jdbc.queryForObject("""
+                select status from ai_point_reservation
+                 where execution_id = (select execution_id from video_decomposition_episode where id = ?)
+                """, String.class, episodeId)).isEqualTo("SETTLEMENT_REVIEW_REQUIRED");
+        } finally {
+            server.stop(0);
+        }
     }
 
     private void prepareBilling(Long modelId) {
