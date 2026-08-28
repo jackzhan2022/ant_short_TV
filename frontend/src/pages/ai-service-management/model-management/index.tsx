@@ -1,4 +1,5 @@
 import { useAccess } from '@umijs/max';
+import { PageContainer } from '@ant-design/pro-components';
 import { Tabs } from 'antd';
 import { useMemo, useState } from 'react';
 import AiCallLogsPage from '../logs';
@@ -30,11 +31,13 @@ const ModelManagementPage = () => {
   if (!selectedKey) return null;
 
   return (
-    <Tabs
-      activeKey={selectedKey}
-      items={items}
-      onChange={(tab) => setActiveKey(tab as ModelManagementTab)}
-    />
+    <PageContainer>
+      <Tabs
+        activeKey={selectedKey}
+        items={items}
+        onChange={(tab) => setActiveKey(tab as ModelManagementTab)}
+      />
+    </PageContainer>
   );
 };
 

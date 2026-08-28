@@ -26,6 +26,10 @@ vi.mock('antd', () => ({
   ),
 }));
 
+vi.mock('@ant-design/pro-components', () => ({
+  PageContainer: ({ children }: any) => <main data-testid="model-management-page">{children}</main>,
+}));
+
 vi.mock('../providers', () => ({ default: () => <div>service-provider-page</div> }));
 vi.mock('../models', () => ({ default: () => <div>ai-model-page</div> }));
 vi.mock('../logs', () => ({ default: () => <div>call-log-page</div> }));
@@ -43,6 +47,7 @@ describe('ModelManagementPage', () => {
   it('opens the first authorized tab and renders all authorized tabs', () => {
     render(<ModelManagementPage />);
 
+    expect(screen.getByTestId('model-management-page')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '模型服务商' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI 大模型' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '调用日志' })).toBeInTheDocument();
