@@ -160,7 +160,9 @@ const RoleEditor = ({
   );
 };
 
-const RoleManagement = () => {
+type RoleManagementProps = { mode?: 'roles' | 'permissions' };
+
+export const RoleManagement = ({ mode }: RoleManagementProps = {}) => {
   const tenantId = getCurrentTenantId();
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
@@ -264,6 +266,34 @@ const RoleManagement = () => {
     },
   ];
 
+  const rolesContent = (
+    <ProTable<Role>
+      actionRef={actionRef}
+      rowKey="id"
+      headerTitle="权限与角色"
+      search={false}
+      columns={columns}
+      request={async () => {
+        const response = await queryTenantRoles(tenantId);
+        return { data: response.data, success: response.success };
+      }}
+      toolBarRender={() => [
+        <RoleEditor
+          key="create"
+          tenantId={tenantId}
+          permissionTree={permissionTree}
+          onDone={reload}
+        />,
+      ]}
+    />
+  );
+  const permissionsContent = (
+    <Tree defaultExpandAll treeData={permissionTree} selectable={false} />
+  );
+
+  if (mode === 'roles') return rolesContent;
+  if (mode === 'permissions') return permissionsContent;
+
   return (
     <PageContainer>
       <Tabs
@@ -271,38 +301,12 @@ const RoleManagement = () => {
           {
             key: 'roles',
             label: '角色管理',
-            children: (
-              <ProTable<Role>
-                actionRef={actionRef}
-                rowKey="id"
-                headerTitle="权限与角色"
-                search={false}
-                columns={columns}
-                request={async () => {
-                  const response = await queryTenantRoles(tenantId);
-                  return { data: response.data, success: response.success };
-                }}
-                toolBarRender={() => [
-                  <RoleEditor
-                    key="create"
-                    tenantId={tenantId}
-                    permissionTree={permissionTree}
-                    onDone={reload}
-                  />,
-                ]}
-              />
-            ),
+            children: rolesContent,
           },
           {
             key: 'permissions',
             label: '权限资源树',
-            children: (
-              <Tree
-                defaultExpandAll
-                treeData={permissionTree}
-                selectable={false}
-              />
-            ),
+            children: permissionsContent,
           },
         ]}
       />

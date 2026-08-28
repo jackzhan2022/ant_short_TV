@@ -85,7 +85,7 @@ const MemberRoleEditor = ({
   );
 };
 
-const TeamMembers = () => {
+export const MemberTabContent = () => {
   const tenantId = getCurrentTenantId();
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
@@ -196,4 +196,4 @@ const TeamMembers = () => {
   );
 };
 
-export default TeamMembers;
+export default MemberTabContent;

@@ -70,14 +70,15 @@ export default [
         name: 'members',
         icon: 'usergroupAdd',
         hideInMenu: true,
-        component: './team/members',
+        redirect: '/team/my',
       },
       {
         path: '/team/roles',
         name: 'roles',
         icon: 'safetyCertificate',
         access: 'canManageRoles',
-        component: './team/roles',
+        hideInMenu: true,
+        redirect: '/team/my',
       },
       {
         path: '/team/invitations',

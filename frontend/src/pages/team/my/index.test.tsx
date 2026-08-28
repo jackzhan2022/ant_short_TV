@@ -15,6 +15,7 @@ vi.mock('@ant-design/icons', () => ({
 
 vi.mock('@umijs/max', () => ({
   history: { push: vi.fn() },
+  useAccess: () => ({ canManageRoles: true }),
   useModel: () => ({ setInitialState: vi.fn() }),
 }));
 
@@ -30,6 +31,12 @@ vi.mock('antd', () => ({
   ),
   Space: ({ children }: any) => <div>{children}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
+  Tabs: ({ items }: any) => (
+    <div>
+      {items?.map((item: any) => <button type="button" key={item.key} role="tab">{item.label}</button>)}
+      {items?.[0]?.children}
+    </div>
+  ),
 }));
 
 vi.mock('@ant-design/pro-components', () => ({
@@ -86,6 +93,10 @@ describe('MyTeams', () => {
     render(<MyTeams />);
 
     expect(screen.getByText('团队管理')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '团队列表' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '成员管理' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '角色管理' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '权限树' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '创建创作团队' }),
     ).toBeInTheDocument();

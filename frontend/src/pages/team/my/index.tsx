@@ -8,15 +8,17 @@ import {
   ProFormTextArea,
   ProTable,
 } from '@ant-design/pro-components';
-import { history, useModel } from '@umijs/max';
-import { App, Button, Space, Tag } from 'antd';
-import { useRef } from 'react';
+import { history, useAccess, useModel } from '@umijs/max';
+import { App, Button, Space, Tabs, Tag } from 'antd';
+import { useRef, useState } from 'react';
 import type {
   TenantSummary,
   TenantType,
 } from '@/services/account-team/types';
 import { applyBootstrapSelection } from '@/services/account-team/bootstrap';
 import { createTenant, queryMyTenants } from './service';
+import { MemberTabContent } from '../members';
+import { RoleManagement } from '../roles';
 
 const tenantTypeOptions = [
   { label: '企业', value: 'COMPANY' },
@@ -27,8 +29,10 @@ const tenantTypeOptions = [
 
 const MyTeams = () => {
   const actionRef = useRef<ActionType | null>(null);
+  const [activeTab, setActiveTab] = useState('teams');
   const { message } = App.useApp();
   const { setInitialState } = useModel('@@initialState');
+  const access = useAccess();
 
   const columns: ProColumns<TenantSummary>[] = [
     {
@@ -40,7 +44,7 @@ const MyTeams = () => {
           onClick={async () => {
             await applyBootstrapSelection(record.id, setInitialState);
             message.success(`已切换至 ${record.name}`);
-            history.push('/team/members');
+            setActiveTab('members');
           }}
         >
           {record.name}
@@ -96,7 +100,7 @@ const MyTeams = () => {
               type="link"
               onClick={async () => {
                 await applyBootstrapSelection(record.id, setInitialState);
-                history.push('/team/members');
+                setActiveTab('members');
               }}
             >
               成员管理
@@ -117,6 +121,15 @@ const MyTeams = () => {
 
   return (
     <PageContainer>
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        destroyInactiveTabPane
+        items={[
+          {
+            key: 'teams',
+            label: '团队列表',
+            children: (
       <ProTable<TenantSummary>
         actionRef={actionRef}
         rowKey="id"
@@ -163,6 +176,17 @@ const MyTeams = () => {
             <ProFormText name="logo" label="Logo 地址" />
             <ProFormTextArea name="description" label="团队简介" />
           </ModalForm>,
+        ]}
+      />
+            ),
+          },
+          { key: 'members', label: '成员管理', children: <MemberTabContent /> },
+          ...(access.canManageRoles
+            ? [
+                { key: 'roles', label: '角色管理', children: <RoleManagement mode="roles" /> },
+                { key: 'permissions', label: '权限树', children: <RoleManagement mode="permissions" /> },
+              ]
+            : []),
         ]}
       />
     </PageContainer>
