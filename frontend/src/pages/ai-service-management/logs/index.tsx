@@ -1,4 +1,4 @@
-import { PageContainer, ProTable } from '@ant-design/pro-components';
+import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
 import { Empty, Tag } from 'antd';
 import { getCurrentTenantId } from '@/services/account-team/auth';
@@ -30,9 +30,7 @@ const AiCallLogsPage = () => {
 
   if (!tenantId) {
     return (
-      <PageContainer>
-        <Empty description="请先在我的团队中选择当前创作团队" />
-      </PageContainer>
+      <Empty description="请先在我的团队中选择当前创作团队" />
     );
   }
 
@@ -114,8 +112,7 @@ const AiCallLogsPage = () => {
   ];
 
   return (
-    <PageContainer>
-      <ProTable<AiCallLog>
+    <ProTable<AiCallLog>
         rowKey="id"
         headerTitle="AI调用日志"
         columns={columns}
@@ -135,8 +132,7 @@ const AiCallLogsPage = () => {
             total: response.data.total,
           };
         }}
-      />
-    </PageContainer>
+    />
   );
 };
 

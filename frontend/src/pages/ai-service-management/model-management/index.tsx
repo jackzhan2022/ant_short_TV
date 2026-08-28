@@ -31,7 +31,7 @@ const ModelManagementPage = () => {
   if (!selectedKey) return null;
 
   return (
-    <PageContainer>
+    <PageContainer title="模型管理">
       <Tabs
         activeKey={selectedKey}
         items={items}

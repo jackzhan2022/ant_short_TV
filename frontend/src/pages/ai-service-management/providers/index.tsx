@@ -6,7 +6,6 @@ import {
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
   ModalForm,
-  PageContainer,
   ProFormSelect,
   ProFormSwitch,
   ProFormText,
@@ -279,8 +278,7 @@ const PlatformProvidersPage = () => {
   ];
 
   return (
-    <PageContainer>
-      <ProTable<PlatformProvider>
+    <ProTable<PlatformProvider>
         actionRef={actionRef}
         rowKey="id"
         headerTitle="模型服务商"
@@ -315,8 +313,7 @@ const PlatformProvidersPage = () => {
         }
         options={{ density: true, fullScreen: true, reload: true }}
         pagination={{ pageSize: 10 }}
-      />
-    </PageContainer>
+    />
   );
 };
 

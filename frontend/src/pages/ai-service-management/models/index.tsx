@@ -7,7 +7,6 @@ import {
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
   ModalForm,
-  PageContainer,
   ProFormDigit,
   ProFormSelect,
   ProFormSwitch,
@@ -374,7 +373,7 @@ const PlatformModelsPage = () => {
   ];
 
   return (
-    <PageContainer>
+    <>
       <ProTable<ModelWithPrice>
         actionRef={actionRef}
         rowKey="id"
@@ -442,7 +441,7 @@ const PlatformModelsPage = () => {
           onChanged={reload}
         />
       )}
-    </PageContainer>
+    </>
   );
 };
 
