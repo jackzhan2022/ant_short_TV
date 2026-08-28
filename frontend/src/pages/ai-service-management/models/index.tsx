@@ -16,6 +16,7 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { App, Button, Form, Space, Switch, Tag, Typography } from 'antd';
+import dayjs from 'dayjs';
 import type { ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAccess } from '@umijs/max';
@@ -34,6 +35,37 @@ import {
   updatePlatformModel,
   updatePlatformModelStatus,
 } from '../platform-service';
+import ModelPricingDialog from '../billing/ModelPricingDialog';
+import { billingHistory } from '@/services/ant-design-pro/platformAiAccountingController';
+
+type ModelWithPrice = PlatformModel & {
+  currentCostPrice?: string;
+  currentPointPrice?: string;
+};
+
+const activePrice = <T extends { status?: string; effectiveFrom?: string; effectiveTo?: string }>(
+  versions: T[] | undefined,
+) => versions?.find((version) =>
+  version.status !== 'REVOKED'
+  && (!version.effectiveFrom || !dayjs().isBefore(version.effectiveFrom))
+  && (!version.effectiveTo || dayjs().isBefore(version.effectiveTo)),
+);
+
+const formatCostPrice = (history: API.ModelBillingHistoryResponse) => {
+  const version = activePrice(history.costPrices);
+  if (!version?.components?.length) return '-';
+  return version.components
+    .map((component) => `${component.metric}: ${component.unitPrice} ${component.currency}`)
+    .join('；');
+};
+
+const formatPointPrice = (history: API.ModelBillingHistoryResponse) => {
+  const version = activePrice(history.pointPrices);
+  if (!version?.components?.length) return '-';
+  return version.components
+    .map((component) => `${component.metric}: ${component.pointRate} 积分`)
+    .join('；');
+};
 
 const defaultFormValues: PlatformModelFormValues = {
   providerId: 0,
@@ -117,17 +149,17 @@ const ModelEditor = ({
 
   return (
     <ModalForm<PlatformModelFormValues>
-      title={isEdit ? '编辑平台 Model' : '新增平台 Model'}
+      title={isEdit ? '编辑 AI 大模型' : '新增 AI 大模型'}
       form={form}
       trigger={trigger}
       modalProps={{ destroyOnHidden: true }}
       onFinish={async (values) => {
         if (record) {
           await updatePlatformModel(record.id, values);
-          message.success('Model 已更新');
+          message.success('AI 大模型已更新');
         } else {
           await createPlatformModel(values);
-          message.success('Model 已创建');
+          message.success('AI 大模型已创建');
         }
         onDone();
         return true;
@@ -135,9 +167,9 @@ const ModelEditor = ({
     >
       <ProFormSelect
         name="providerId"
-        label="所属 Provider"
+        label="所属模型服务商"
         options={providerOptions}
-        rules={[{ required: true, message: '请选择所属 Provider' }]}
+        rules={[{ required: true, message: '请选择所属模型服务商' }]}
       />
       <ProFormText
         name="name"
@@ -146,13 +178,13 @@ const ModelEditor = ({
       />
       <ProFormText
         name="code"
-        label="平台模型 Code"
-        rules={[{ required: true, message: '请输入平台模型 Code' }]}
+        label="AI 大模型 Code"
+        rules={[{ required: true, message: '请输入 AI 大模型 Code' }]}
       />
       <ProFormText
         name="modelCode"
-        label="真实 Model Code"
-        rules={[{ required: true, message: '请输入真实 Model Code' }]}
+        label="真实模型 Code"
+        rules={[{ required: true, message: '请输入真实模型 Code' }]}
       />
       <ProFormSelect
         name="serviceType"
@@ -184,6 +216,7 @@ const PlatformModelsPage = () => {
   const { message } = App.useApp();
   const access = useAccess();
   const [providers, setProviders] = useState<PlatformProvider[]>([]);
+  const [pricingModel, setPricingModel] = useState<PlatformModel>();
 
   useEffect(() => {
     if (!access.canViewPlatformAiModels) return;
@@ -199,13 +232,13 @@ const PlatformModelsPage = () => {
     [providers],
   );
 
-  const columns: ProColumns<PlatformModel>[] = [
+  const columns: ProColumns<ModelWithPrice>[] = [
     {
       title: '模型',
       dataIndex: 'name',
       width: 220,
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.name}</Typography.Text>
           <Typography.Text type="secondary">{record.code}</Typography.Text>
         </Space>
@@ -221,7 +254,7 @@ const PlatformModelsPage = () => {
       ),
     },
     {
-      title: 'Provider',
+      title: '模型服务商',
       dataIndex: 'providerName',
       search: false,
       width: 180,
@@ -229,7 +262,7 @@ const PlatformModelsPage = () => {
         value || providerNameMap.get(record.providerId) || '-',
     },
     {
-      title: '真实 Model Code',
+      title: '真实模型 Code',
       dataIndex: 'modelCode',
       search: false,
       ellipsis: true,
@@ -242,6 +275,22 @@ const PlatformModelsPage = () => {
       width: 220,
       render: (_, record) =>
         (record.capabilities || []).map((item) => <Tag key={item}>{item}</Tag>),
+    },
+    {
+      title: '当前成本价',
+      dataIndex: 'currentCostPrice',
+      search: false,
+      width: 180,
+      ellipsis: true,
+      renderText: (value) => value ?? '-',
+    },
+    {
+      title: '当前积分价',
+      dataIndex: 'currentPointPrice',
+      search: false,
+      width: 180,
+      ellipsis: true,
+      renderText: (value) => value ?? '-',
     },
     {
       title: '默认',
@@ -283,7 +332,7 @@ const PlatformModelsPage = () => {
           disabled={!access.canEnablePlatformAiModels}
           onChange={async (checked) => {
             await updatePlatformModelStatus(record.id, checked);
-            message.success(checked ? 'Model 已启用' : 'Model 已停用');
+            message.success(checked ? 'AI 大模型已启用' : 'AI 大模型已停用');
             reload();
           }}
         />
@@ -300,28 +349,36 @@ const PlatformModelsPage = () => {
       title: '操作',
       valueType: 'option',
       width: 120,
-      render: (_, record) =>
-        access.canEditPlatformAiModels ? (
-          <ModelEditor
-            record={record}
-            providers={providers}
-            trigger={
-              <Button type="link" icon={<EditOutlined />}>
-                编辑
-              </Button>
-            }
-            onDone={reload}
-          />
-        ) : null,
+      render: (_, record) => (
+        <Space size={0}>
+          {access.canViewModelBilling && (
+            <Button type="link" onClick={() => setPricingModel(record)}>
+              模型价格
+            </Button>
+          )}
+          {access.canEditPlatformAiModels && (
+            <ModelEditor
+              record={record}
+              providers={providers}
+              trigger={
+                <Button type="link" icon={<EditOutlined />}>
+                  编辑
+                </Button>
+              }
+              onDone={reload}
+            />
+          )}
+        </Space>
+      ),
     },
   ];
 
   return (
     <PageContainer>
-      <ProTable<PlatformModel>
+      <ProTable<ModelWithPrice>
         actionRef={actionRef}
         rowKey="id"
-        headerTitle="平台 Model"
+        headerTitle="AI 大模型"
         columns={columns}
         search={false}
         tableLayout="fixed"
@@ -331,8 +388,27 @@ const PlatformModelsPage = () => {
             return { data: [], success: true };
           }
           const response = await queryPlatformModels();
+          const models = response.data ?? [];
+          const prices = access.canViewModelBilling
+            ? await Promise.all(models.map(async (model) => {
+              try {
+                const response = await billingHistory({ modelId: model.id });
+                return [model.id, response.data] as const;
+              } catch {
+                return [model.id, undefined] as const;
+              }
+            }))
+            : [];
+          const priceMap = new Map(prices);
           return {
-            data: response.data,
+            data: models.map((model) => {
+              const history = priceMap.get(model.id);
+              return {
+                ...model,
+                currentCostPrice: history ? formatCostPrice(history) : '-',
+                currentPointPrice: history ? formatPointPrice(history) : '-',
+              };
+            }),
             success: response.success,
           };
         }}
@@ -348,7 +424,7 @@ const PlatformModelsPage = () => {
                       icon={<PlusOutlined />}
                       disabled={!providers.length}
                     >
-                      新增 Model
+                      新增 AI 大模型
                     </Button>
                   }
                   onDone={reload}
@@ -358,6 +434,14 @@ const PlatformModelsPage = () => {
         }
         pagination={{ pageSize: 10 }}
       />
+      {pricingModel && (
+        <ModelPricingDialog
+          model={pricingModel}
+          open
+          onClose={() => setPricingModel(undefined)}
+          onChanged={reload}
+        />
+      )}
     </PageContainer>
   );
 };

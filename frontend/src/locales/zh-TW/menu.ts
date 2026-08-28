@@ -50,6 +50,7 @@ export default {
   'menu.editor.mind': '腦圖編輯器',
   'menu.editor.koni': '拓撲編輯器',
   'menu.ai-service-management': 'AI服務管理',
+  'menu.ai-service-management.model-management': '模型管理',
   'menu.operations': 'AI運維',
   'menu.ai-service-management.logs': '調用日誌',
   'menu.video-script-decomposition': '視頻拆劇',

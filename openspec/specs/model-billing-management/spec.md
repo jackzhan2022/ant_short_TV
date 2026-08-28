@@ -4,11 +4,11 @@
 TBD - created by archiving change add-model-billing-management. Update Purpose after archive.
 ## Requirements
 ### Requirement: Platform administrators manage independent model billing prices
-The system SHALL allow only authorized platform administrators to manage supplier cost prices and user point prices as independent rule sets for enabled platform models. Each rule set SHALL be selected by model, usage metric, normalized dimensions, and effective time.
+The system SHALL allow only authorized platform administrators to manage supplier cost prices and user point prices as independent rule sets for enabled platform models. Each rule set SHALL be selected by model, usage metric, normalized dimensions, and effective time. Model billing management SHALL open in a dialog from the corresponding AI-model list item; it SHALL receive that item as fixed model context and MUST NOT require or display a model selector.
 
-#### Scenario: Administrator selects an enabled model
-- **WHEN** an authorized platform administrator opens the model billing management page
-- **THEN** the system SHALL provide a searchable dropdown containing enabled platform models with their name, Code, and Provider
+#### Scenario: Administrator opens model billing from an AI model
+- **WHEN** an authorized platform administrator opens the model-pricing dialog from an enabled AI-model list item
+- **THEN** the system SHALL load supplier cost prices and user point prices for that model without allowing the administrator to select another model
 
 #### Scenario: Non-platform user accesses billing management
 - **WHEN** a user without the required platform billing permission requests a billing management API or page
@@ -55,6 +55,6 @@ The system SHALL support per-call, token, image, video-second, character, and ot
 The system SHALL present current, future, historical, and revoked cost and point price versions separately for each model, including effective period and component details. The interface SHALL expose publish and revoke controls only when the user's permissions and version state allow them.
 
 #### Scenario: Administrator reviews model billing history
-- **WHEN** an authorized platform administrator selects a model on the billing management page
+- **WHEN** an authorized platform administrator opens the model-pricing dialog for an AI model
 - **THEN** the system SHALL show both cost-price and point-price version histories with their metrics, units, rates, effective periods, and lifecycle status
 

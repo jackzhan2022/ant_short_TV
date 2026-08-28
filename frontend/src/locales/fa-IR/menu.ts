@@ -50,6 +50,7 @@ export default {
   'menu.editor.mind': 'ویرایشگر ذهن',
   'menu.editor.koni': 'ویرایشگر Koni',
   'menu.ai-service-management': 'AI Services',
+  'menu.ai-service-management.model-management': 'Model Management',
   'menu.ai-service-management.logs': 'Call Logs',
   'menu.style-library': 'کتابخانه سبک',
 };

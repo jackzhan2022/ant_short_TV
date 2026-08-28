@@ -51,6 +51,7 @@ export default {
   'menu.editor.koni': 'Koni Editor',
   'menu.chatbot': 'AI Assistant',
   'menu.ai-service-management': 'AI Services',
+  'menu.ai-service-management.model-management': 'Model Management',
   'menu.ai-service-management.providers': 'Platform Providers',
   'menu.ai-service-management.models': 'Platform Models',
   'menu.ai-service-management.billing': 'Model Billing',

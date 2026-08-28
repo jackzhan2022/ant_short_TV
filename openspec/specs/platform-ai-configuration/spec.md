@@ -14,6 +14,13 @@ The system SHALL use platform-managed Provider configurations, Models, and Model
 - **WHEN** a tenant user without platform AI configuration permissions requests a Provider or Model management API or page
 - **THEN** the system denies access without exposing configuration values or masked credentials
 
+### Requirement: Platform configuration labels align with model management
+The platform AI configuration interface SHALL present Provider configuration as "模型服务商" and Model configuration as "AI 大模型" when these capabilities are accessed through model management. This naming change SHALL not alter platform-only configuration authority or the existing Provider and Model permission model.
+
+#### Scenario: Authorized platform administrator manages configuration
+- **WHEN** an authorized platform administrator enters model management and opens either configuration tab
+- **THEN** the system SHALL retain the existing permitted configuration operations while using the model-management labels
+
 ### Requirement: Model-based provider workflow contracts
 Every provider-backed AI workflow SHALL identify the requested or resolved platform Model by `modelId` and MUST NOT accept or return a legacy AI service configuration identifier.
 

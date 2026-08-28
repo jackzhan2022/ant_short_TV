@@ -75,7 +75,7 @@ describe('platform-only AI configuration routes', () => {
     ).toBeUndefined();
   });
 
-  it('keeps Provider and Model pages behind platform permissions', () => {
+  it('redirects legacy Provider, Model, and log links into model management', () => {
     const parent = routes.find(
       (item) => item.path === '/ai-service-management',
     );
@@ -84,16 +84,25 @@ describe('platform-only AI configuration routes', () => {
       parent?.routes?.find(
         (item) => item.path === '/ai-service-management/providers',
       ),
-    ).toMatchObject({ access: 'canViewPlatformAiProviders' });
+    ).toMatchObject({
+      hideInMenu: true,
+      redirect: '/ai-service-management/model-management?tab=providers',
+    });
     expect(
       parent?.routes?.find(
         (item) => item.path === '/ai-service-management/models',
       ),
-    ).toMatchObject({ access: 'canViewPlatformAiModels' });
+    ).toMatchObject({
+      hideInMenu: true,
+      redirect: '/ai-service-management/model-management?tab=models',
+    });
     expect(
       parent?.routes?.find(
         (item) => item.path === '/ai-service-management/logs',
       ),
-    ).toMatchObject({ access: 'canViewAiCallLogs' });
+    ).toMatchObject({
+      hideInMenu: true,
+      redirect: '/ai-service-management/model-management?tab=logs',
+    });
   });
 });

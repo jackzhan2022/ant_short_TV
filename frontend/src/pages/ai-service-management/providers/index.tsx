@@ -96,7 +96,7 @@ const ProviderEditor = ({
 
   return (
     <ModalForm<PlatformProviderFormValues>
-      title={isEdit ? '编辑平台 Provider' : '新增平台 Provider'}
+      title={isEdit ? '编辑模型服务商' : '新增模型服务商'}
       form={form}
       trigger={trigger}
       modalProps={{ destroyOnHidden: true }}
@@ -108,10 +108,10 @@ const ProviderEditor = ({
         };
         if (record) {
           await updatePlatformProvider(record.id, payload);
-          message.success('Provider 已更新');
+          message.success('模型服务商已更新');
         } else {
           await createPlatformProvider(payload);
-          message.success('Provider 已创建');
+          message.success('模型服务商已创建');
         }
         onDone();
         return true;
@@ -119,13 +119,13 @@ const ProviderEditor = ({
     >
       <ProFormText
         name="name"
-        label="Provider 名称"
-        rules={[{ required: true, message: '请输入 Provider 名称' }]}
+        label="服务商名称"
+        rules={[{ required: true, message: '请输入服务商名称' }]}
       />
       <ProFormText
         name="code"
-        label="Provider Code"
-        rules={[{ required: true, message: '请输入 Provider Code' }]}
+        label="服务商 Code"
+        rules={[{ required: true, message: '请输入服务商 Code' }]}
       />
       <ProFormSelect
         name="supportedTypes"
@@ -165,11 +165,11 @@ const PlatformProvidersPage = () => {
 
   const columns: ProColumns<PlatformProvider>[] = [
     {
-      title: 'Provider',
+      title: '模型服务商',
       dataIndex: 'name',
       width: 180,
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.name}</Typography.Text>
           <Typography.Text type="secondary">{record.code}</Typography.Text>
         </Space>
@@ -211,7 +211,7 @@ const PlatformProvidersPage = () => {
           disabled={!access.canEnablePlatformAiProviders}
           onChange={async (checked) => {
             await updatePlatformProviderStatus(record.id, checked);
-            message.success(checked ? 'Provider 已启用' : 'Provider 已停用');
+            message.success(checked ? '模型服务商已启用' : '模型服务商已停用');
             reload();
           }}
         />
@@ -283,7 +283,7 @@ const PlatformProvidersPage = () => {
       <ProTable<PlatformProvider>
         actionRef={actionRef}
         rowKey="id"
-        headerTitle="平台 Provider"
+        headerTitle="模型服务商"
         columns={columns}
         search={false}
         tableLayout="fixed"
@@ -305,7 +305,7 @@ const PlatformProvidersPage = () => {
                   key="create"
                   trigger={
                     <Button type="primary" icon={<PlusOutlined />}>
-                      新增 Provider
+                      新增模型服务商
                     </Button>
                   }
                   onDone={reload}
