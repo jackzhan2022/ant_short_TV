@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>侧边栏排版预览</title>
+    <style>
+      :root {
+        --sidebar: #f8f9fa;
+        --sidebar-border: #e2e5f1;
+        --text: #3f3f51;
+        --muted: #6e718c;
+        --primary: #5252ff;
+        --primary-bg: #edeffc;
+        --line: #e7e9f0;
+        --canvas: #f4f5f8;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+        color: var(--text);
+        background: var(--canvas);
+        font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      .app { display: flex; min-height: 100vh; }
+
+      .sidebar {
+        display: flex;
+        flex: 0 0 224px;
+        flex-direction: column;
+        width: 224px;
+        min-height: 100vh;
+        padding: 20px 12px 12px;
+        background: var(--sidebar);
+        border-right: 1px solid var(--sidebar-border);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 32px;
+        padding: 0 8px;
+        color: #1d2129;
+        font-size: 18px;
+        font-weight: 650;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        overflow: hidden;
+        color: #fff;
+        background: linear-gradient(135deg, #9778ff 0%, #7284f2 52%, #2642f7 100%);
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .team-select {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        height: 40px;
+        margin-top: 22px;
+        padding: 0 11px;
+        color: #0b0b0f;
+        background: #f8f9fa;
+        border: 1px solid #dde2e9;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 14px;
+        text-align: left;
+      }
+
+      .team-avatar {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        margin-right: 8px;
+        place-items: center;
+        color: #5b2b82;
+        background: #e9deff;
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        border-radius: 50%;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .team-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .caret { width: 16px; height: 16px; color: var(--muted); }
+
+      .navigation { flex: 1; min-height: 0; padding-top: 24px; overflow-y: auto; }
+      .menu-group + .menu-group { margin-top: 20px; }
+
+      .menu-caption {
+        height: 20px;
+        padding: 0 12px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 20px;
+      }
+
+      .menu-list { display: grid; gap: 3px; margin: 5px 0 0; padding: 0; list-style: none; }
+
+      .menu-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        height: 40px;
+        padding: 0 12px;
+        color: var(--text);
+        background: transparent;
+        border: 0;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 14px;
+        text-align: left;
+      }
+
+      .menu-item svg { width: 20px; height: 20px; flex: none; stroke-width: 1.7; }
+      .menu-item.active { color: var(--primary); background: var(--primary-bg); font-weight: 600; }
+      .menu-item:hover, .footer-row:hover { background: #f0f2f6; }
+      .menu-item.active:hover { background: #e7eaff; }
+
+      .sidebar-footer {
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+
+      .account-row, .points-row, .footer-row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+        border-radius: 6px;
+      }
+
+      .account-row { gap: 10px; height: 52px; padding: 0 8px; }
+      .user-avatar { display: grid; width: 30px; height: 30px; place-items: center; color: #fff; background: #4b6bce; border-radius: 50%; font-size: 12px; font-weight: 700; }
+      .account-copy { min-width: 0; flex: 1; }
+      .account-name { overflow: hidden; color: #292b3d; font-size: 14px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+      .account-role { margin-top: 2px; color: #9296aa; font-size: 12px; }
+      .more { width: 18px; height: 18px; color: #9296aa; }
+
+      .points-row {
+        gap: 10px;
+        height: 40px;
+        padding: 0 10px;
+        color: var(--text);
+        font-size: 14px;
+      }
+
+      .points-icon { display: grid; width: 20px; height: 20px; place-items: center; color: #7c5cc4; background: #eee9fc; border-radius: 5px; }
+      .points-icon svg { width: 14px; height: 14px; }
+      .points-label { flex: 1; }
+      .points-value { color: #6e718c; font-size: 12px; }
+      .points-row .caret { color: #9ca0b2; }
+
+      .workspace { flex: 1; min-width: 0; padding: 28px 36px; }
+      .crumb { color: #86909c; font-size: 13px; }
+      .page-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 12px 0 24px; }
+      .workspace h1 { margin: 0; color: #1d2129; font-size: 24px; font-weight: 600; line-height: 32px; }
+      .project-count { display: block; margin-top: 4px; color: #86909c; font-size: 13px; }
+      .create-button { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; color: #fff; background: #5252ff; border: 0; border-radius: 6px; font: inherit; font-size: 14px; }
+      .create-button strong { font-size: 19px; font-weight: 400; line-height: 1; }
+      .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; max-width: 1160px; }
+      .project-card { overflow: hidden; background: #fff; border: 1px solid #e5e6eb; border-radius: 8px; box-shadow: 0 2px 8px rgba(29, 33, 41, 0.04); }
+      .project-cover { display: grid; width: 100%; aspect-ratio: 16 / 9; place-items: center; color: #fff; background: linear-gradient(135deg, #566fd2, #8f77cf); font-size: 38px; font-weight: 600; }
+      .project-cover.cover-two { background: linear-gradient(135deg, #3c8e9c, #75bca9); }
+      .project-cover.cover-three { background: linear-gradient(135deg, #ba6e74, #e9a180); }
+      .project-body { padding: 16px; }
+      .project-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #1d2129; font-size: 16px; font-weight: 600; }
+      .project-more { color: #86909c; font-size: 20px; letter-spacing: 2px; }
+      .project-meta { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #86909c; font-size: 12px; }
+      .status { padding: 2px 7px; color: #5252ff; background: #f0efff; border-radius: 4px; }
+      .project-date { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; color: #86909c; font-size: 12px; }
+      .project-owner { margin-top: 8px; color: #4e5969; font-size: 12px; }
+      .project-actions { display: flex; gap: 18px; margin-top: 12px; padding-top: 10px; color: #5252ff; border-top: 1px solid #f2f3f5; font-size: 13px; }
+
+      @media (max-width: 640px) {
+        .app { display: block; }
+        .sidebar { width: 100%; min-height: auto; padding-bottom: 16px; border-right: 0; border-bottom: 1px solid var(--sidebar-border); }
+        .navigation { flex: none; }
+        .sidebar-footer { margin-top: 24px; }
+        .workspace { padding: 24px 20px; }
+        .page-toolbar { align-items: flex-start; flex-direction: column; }
+        .project-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar" aria-label="应用侧边栏">
+        <div class="brand"><span class="brand-mark">剧</span><span>剧创</span></div>
+
+        <button class="team-select" type="button" aria-label="当前团队：新禾文化">
+          <span class="team-avatar">禾</span>
+          <span class="team-name">新禾文化</span>
+          <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
+        </button>
+
+        <nav class="navigation" aria-label="主菜单">
+          <section class="menu-group">
+            <div class="menu-caption">创作</div>
+            <ul class="menu-list">
+              <li><button class="menu-item" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m12 3-1.8 5.2L5 10l5.2 1.8L12 17l1.8-5.2L19 10l-5.2-1.8L12 3Z" /><path d="m19 16-.8 2.2L16 19l2.2.8L19 22l.8-2.2L22 19l-2.2-.8L19 16Z" /></svg><span>剧本创作</span></button></li>
+              <li><button class="menu-item active" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M8 8h8M8 12h5M8 16h8" /></svg><span>项目列表</span></button></li>
+              <li><button class="menu-item" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5Z" /><path d="m10 9 5 3-5 3Z" /></svg><span>视频剧本拆解</span></button></li>
+              <li><button class="menu-item" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" /><circle cx="9" cy="9" r="1.5" /><path d="m20 15-4.5-4.5L7 19" /></svg><span>风格库</span></button></li>
+              <li><button class="menu-item" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h14v16H5z" /><path d="M8 9h8M8 13h5" /><path d="m15 17 1.5 1.5L20 15" /></svg><span>剧本审核</span></button></li>
+            </ul>
+          </section>
+          <section class="menu-group">
+            <div class="menu-caption">管理</div>
+            <ul class="menu-list">
+              <li><button class="menu-item" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20v-1.5A4.5 4.5 0 0 1 8.5 14h7a4.5 4.5 0 0 1 4.5 4.5V20" /><circle cx="12" cy="8" r="3.5" /></svg><span>我的团队</span></button></li>
+              <li><button class="menu-item" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 7h14v12H5z" /><path d="M8 7V5h8v2M8 12h8" /></svg><span>商业套餐</span></button></li>
+              <li><button class="menu-item" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 7h10v10H7z" /><path d="M3 10V7a4 4 0 0 1 4-4h3M14 3h3a4 4 0 0 1 4 4v3M21 14v3a4 4 0 0 1-4 4h-3M10 21H7a4 4 0 0 1-4-4v-3" /></svg><span>AI 服务管理</span></button></li>
+            </ul>
+          </section>
+        </nav>
+
+        <footer class="sidebar-footer">
+          <div class="account-row">
+            <div class="user-avatar">JZ</div>
+            <div class="account-copy"><div class="account-name">jiafeng.zhan</div><div class="account-role">团队管理员</div></div>
+            <svg class="more" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>
+          </div>
+          <div class="points-row" aria-label="团队积分，当前 2,460">
+            <span class="points-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M7 7h8.5a3.5 3.5 0 0 1 0 7H9a3.5 3.5 0 0 0 0 7h8" /></svg></span>
+            <span class="points-label">团队积分</span><span class="points-value">2,460</span>
+            <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+          </div>
+        </footer>
+      </aside>
+      <section class="workspace" aria-label="项目列表页面预览">
+        <div class="crumb">项目中心 / 项目列表</div>
+        <div class="page-toolbar">
+          <div><h1>项目列表</h1><span class="project-count">共 3 个项目</span></div>
+          <button class="create-button" type="button"><strong>+</strong> 创建项目</button>
+        </div>
+        <div class="project-grid">
+          <article class="project-card">
+            <div class="project-cover">新</div>
+            <div class="project-body">
+              <div class="project-heading"><span>新郎，换你来当</span><span class="project-more">...</span></div>
+              <div class="project-meta"><span class="status">进行中</span><span>短剧项目</span></div>
+              <div class="project-date"><span>创建于 2026-08-05</span><span>3 位成员</span></div>
+              <div class="project-owner">负责人：jiafeng.zhan</div>
+              <div class="project-actions"><span>进入</span><span>进度</span></div>
+            </div>
+          </article>
+          <article class="project-card">
+            <div class="project-cover cover-two">假</div>
+            <div class="project-body">
+              <div class="project-heading"><span>假恩人，到此为止</span><span class="project-more">...</span></div>
+              <div class="project-meta"><span class="status">进行中</span><span>短剧项目</span></div>
+              <div class="project-date"><span>创建于 2026-08-01</span><span>2 位成员</span></div>
+              <div class="project-owner">负责人：jiafeng.zhan</div>
+              <div class="project-actions"><span>进入</span><span>进度</span></div>
+            </div>
+          </article>
+          <article class="project-card">
+            <div class="project-cover cover-three">婆</div>
+            <div class="project-body">
+              <div class="project-heading"><span>婆家算计我的房</span><span class="project-more">...</span></div>
+              <div class="project-meta"><span class="status">进行中</span><span>短剧项目</span></div>
+              <div class="project-date"><span>创建于 2026-07-28</span><span>4 位成员</span></div>
+              <div class="project-owner">负责人：jiafeng.zhan</div>
+              <div class="project-actions"><span>进入</span><span>进度</span></div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
