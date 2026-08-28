@@ -97,6 +97,7 @@ describe('MyTeams', () => {
     expect(screen.getByRole('tab', { name: '成员管理' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '角色管理' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '权限树' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '邀请管理' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '创建创作团队' }),
     ).toBeInTheDocument();

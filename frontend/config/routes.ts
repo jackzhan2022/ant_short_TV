@@ -84,7 +84,8 @@ export default [
         path: '/team/invitations',
         name: 'invitations',
         icon: 'mail',
-        component: './team/invitations',
+        hideInMenu: true,
+        redirect: '/team/my',
       },
       {
         path: '/team/invitations/:token',

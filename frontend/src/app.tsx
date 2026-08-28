@@ -120,6 +120,41 @@ export const layout: RunTimeLayoutConfig = ({
   };
 
   return {
+    menuDataRender: (menuData) => {
+      const find = (path: string, items: any[]): any | undefined => {
+        for (const item of items) {
+          if (item.path === path) return item;
+          const nested = item.children ? find(path, item.children) : undefined;
+          if (nested) return nested;
+        }
+        return undefined;
+      };
+      const pick = (path: string) => {
+        const item = find(path, menuData as any[]);
+        return item ? { ...item, children: undefined } : undefined;
+      };
+      const group = (key: string, name: string, paths: string[]) => ({
+        key,
+        name,
+        children: paths.map(pick).filter(Boolean),
+      });
+      return [
+        group('creation', '创作', [
+          '/short-drama-creation',
+          '/video-script-decomposition',
+          '/script-review',
+        ]),
+        group('mine', '我的', ['/projects/list', '/style-library']),
+        group('management', '管理', [
+          '/team/my',
+          '/ai-service-management/model-management',
+        ]),
+        group('commercial', '商业', [
+          '/commercial-management/packages',
+          '/ai-service-management/operations',
+        ]),
+      ].filter((item) => item.children.length > 0);
+    },
     menuItemRender: (item, dom) => {
       if (item.path) {
         return (

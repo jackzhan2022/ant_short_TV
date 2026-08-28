@@ -19,6 +19,7 @@ import { applyBootstrapSelection } from '@/services/account-team/bootstrap';
 import { createTenant, queryMyTenants } from './service';
 import { MemberTabContent } from '../members';
 import { RoleManagement } from '../roles';
+import { InvitationTabContent } from '../invitations';
 
 const tenantTypeOptions = [
   { label: '企业', value: 'COMPANY' },
@@ -181,6 +182,7 @@ const MyTeams = () => {
             ),
           },
           { key: 'members', label: '成员管理', children: <MemberTabContent /> },
+          { key: 'invitations', label: '邀请管理', children: <InvitationTabContent /> },
           ...(access.canManageRoles
             ? [
                 { key: 'roles', label: '角色管理', children: <RoleManagement mode="roles" /> },

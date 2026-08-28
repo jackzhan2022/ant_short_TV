@@ -46,6 +46,7 @@ describe('menu routes visibility', () => {
     const hiddenPaths = [
       '/team/select',
       '/team/members',
+      '/team/invitations',
       '/team/settings',
       '/chatbot',
       '/projects/:id/production-workbench/ai-config',

@@ -14,7 +14,7 @@ import {
   rejectInvitation,
 } from './service';
 
-const TeamInvitations = () => {
+export const InvitationTabContent = () => {
   const actionRef = useRef<ActionType | null>(null);
   const sentActionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
@@ -147,4 +147,4 @@ const TeamInvitations = () => {
   );
 };
 
-export default TeamInvitations;
+export default InvitationTabContent;
