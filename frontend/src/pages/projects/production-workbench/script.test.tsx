@@ -317,11 +317,8 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('剧集智能拆分')).toBeInTheDocument();
     expect(screen.getByText('剧集概要提炼')).toBeInTheDocument();
     expect(screen.getByText('角色场景识别')).toBeInTheDocument();
-    expect(screen.getByText('一句话：主角回归')).toBeInTheDocument();
-    expect(screen.getByText('主题：回家')).toBeInTheDocument();
-    expect(screen.getByText('第1集 · 第一集')).toBeInTheDocument();
-    expect(screen.getAllByText('100%').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText('45%').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('当前剧情正在解析中，请耐心等待...')).toBeInTheDocument();
+    expect(screen.getByText('45%')).toBeInTheDocument();
     expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
     expect(screen.queryByText('分集剧情')).not.toBeInTheDocument();
   });

@@ -1,13 +1,10 @@
-import { ReloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useParams } from '@umijs/max';
 import {
   App,
   Button,
-  Collapse,
-  Descriptions,
   Flex,
   Input,
-  Progress,
   Skeleton,
   Tag,
   Typography,
@@ -299,102 +296,58 @@ export const ScriptAnalysisStateContainer = ({
     <section
       aria-label="剧本分析进度"
       style={{
-        background: '#fff',
-        border: '1px solid var(--app-color-border)',
-        borderRadius: 8,
-        padding: 18,
-        marginBottom: 14,
+        minHeight: 620,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '36px 18px 72px',
       }}
     >
-      <Flex justify="space-between" align="center">
-        <div>
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            {title}
-          </Typography.Title>
-          <Typography.Text type={isFailed ? 'danger' : 'secondary'}>
-            {guidance}
-          </Typography.Text>
-        </div>
-        <Typography.Text strong>{analysis.overallProgress}%</Typography.Text>
-      </Flex>
-      <Progress
-        percent={analysis.overallProgress}
-        status={isFailed ? 'exception' : undefined}
-        showInfo={false}
-        style={{ margin: '12px 0 16px' }}
-      />
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 56, lineHeight: 1, color: '#b8c4e8', marginBottom: 18 }}>▧</div>
+        <Typography.Title level={4} style={{ margin: 0, fontSize: 20 }}>
+          {title}
+        </Typography.Title>
+        <Typography.Text type={isFailed ? 'danger' : 'secondary'}>
+          {guidance}
+        </Typography.Text>
+      </div>
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap: 10,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          marginTop: 56,
+          maxWidth: 560,
+          width: '100%',
         }}
       >
-        {stages.map((stage) => (
-          <div
-            key={stage.stageCode}
-            style={{
-              minHeight: 92,
-              border: '1px solid var(--app-color-border-secondary)',
-              borderRadius: 8,
-              padding: 12,
-              background: 'var(--app-color-bg-container)',
-            }}
-          >
-            <Flex justify="space-between" align="center">
-              <Typography.Text strong>
-                {analysisStageLabels[stage.stageCode] || stage.stageCode}
-              </Typography.Text>
-              <Typography.Text>{stage.progressPercent}%</Typography.Text>
-            </Flex>
-            <Progress
-              percent={stage.progressPercent}
-              size="small"
-              status={stage.status === 'FAILED' ? 'exception' : undefined}
-              showInfo={false}
-              style={{ margin: '8px 0 4px' }}
-            />
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {stage.errorMessage ||
-                stage.currentAction ||
-                (stage.status === 'SUCCEEDED' ? '已完成' : '等待中')}
-            </Typography.Text>
-            {stage.resultJson ? (
-              <div style={{ marginTop: 8 }}>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {analysisStageDescriptions[stage.stageCode] || '阶段结果'}
-                </Typography.Text>
-                <div style={{ marginTop: 6 }}>
-                  {renderResultSummary(stage.stageCode, stage.resultJson)}
+        {stages.map((stage, index) => {
+          const completed = stage.status === 'SUCCEEDED';
+          return (
+            <div key={stage.stageCode} style={{ display: 'flex', alignItems: 'flex-start', flex: 1 }}>
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <div style={{ width: 58, height: 58, margin: '0 auto 16px', borderRadius: '50%', display: 'grid', placeItems: 'center', border: `5px solid ${completed ? '#16b979' : '#e1e5f1'}`, color: completed ? '#16b979' : '#24324a', background: '#fff', fontWeight: 700, fontSize: 15 }}>
+                  {completed ? <CheckOutlined /> : `${stage.progressPercent}%`}
                 </div>
-                <Descriptions
-                  size="small"
-                  column={1}
-                  style={{ marginTop: 8 }}
-                  items={[
-                    { key: 'req', label: '请求', children: stage.providerRequestId || '-' },
-                    { key: 'call', label: '调用', children: stage.aiCallLogId ? `#${stage.aiCallLogId}` : '-' },
-                    { key: 'cost', label: '耗时', children: stage.durationMs ? `${Math.round(stage.durationMs / 1000)}s` : '-' },
-                    { key: 'resultError', label: '结果错误', children: stage.resultErrorMessage || stage.resultErrorCode || '-' },
-                  ]}
-                />
+                <Typography.Text type="secondary" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                  {analysisStageLabels[stage.stageCode] || stage.stageCode}
+                </Typography.Text>
+                {isFailed && stage.status === 'FAILED' && stage.retryable ? (
+                  <div>
+                    <Button type="link" size="small" icon={<ReloadOutlined />} onClick={() => onRetryStage(stage.stageCode)} style={{ padding: 0, marginTop: 8 }}>
+                      重试此步骤
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            {stage.resultJson ? (
-              <Collapse
-                size="small"
-                ghost
-                items={[{ key: 'raw', label: '查看原始内容', children: <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: '18px', color: 'var(--app-color-text)' }}>{stage.resultJson}</pre> }]}
-              />
-            ) : null}
-            {stage.status === 'FAILED' && stage.retryable ? (
-              <Button type="link" size="small" icon={<ReloadOutlined />} onClick={() => onRetryStage(stage.stageCode)} style={{ padding: 0, marginTop: 6 }}>
-                重试此步骤
-              </Button>
-            ) : null}
-          </div>
-        ))}
+              {index < stages.length - 1 ? <div style={{ flex: '0 0 26px', height: 3, marginTop: 28, background: completed ? '#c5eede' : '#e5e8f2' }} /> : null}
+            </div>
+          );
+        })}
       </div>
+      {isFailed ? <Typography.Text type="danger" style={{ marginTop: 24 }}>{analysis.errorMessage || '解析失败，请重试。'}</Typography.Text> : null}
     </section>
   );
 };
@@ -645,7 +598,7 @@ const ProductionWorkbenchScript = () => {
           </div>
         ) : null}
 
-        <section
+        {analysis && analysis.status !== 'COMPLETED' ? null : <section
           style={{
             background: '#fff',
             border: '1px solid var(--app-color-border)',
@@ -751,7 +704,7 @@ const ProductionWorkbenchScript = () => {
               </div>
             </div>
           </div>}
-        </section>
+        </section>}
 
         {analysis && analysis.status !== 'COMPLETED' ? null : <section
           style={{
