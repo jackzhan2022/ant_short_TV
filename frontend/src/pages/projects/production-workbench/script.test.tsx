@@ -312,7 +312,7 @@ describe('ProductionWorkbenchScript', () => {
 
     render(<ProductionWorkbenchScript />);
 
-    expect(await screen.findByText('剧本智能分析')).toBeInTheDocument();
+    expect(await screen.findByText('当前剧集解析中')).toBeInTheDocument();
     expect(screen.getByText('剧情全局理解')).toBeInTheDocument();
     expect(screen.getByText('剧集智能拆分')).toBeInTheDocument();
     expect(screen.getByText('剧集概要提炼')).toBeInTheDocument();
@@ -322,6 +322,28 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('第1集 · 第一集')).toBeInTheDocument();
     expect(screen.getAllByText('100%').length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('45%').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
+    expect(screen.queryByText('分集剧情')).not.toBeInTheDocument();
+  });
+
+  it('renders an actionable retry state when analysis fails', async () => {
+    mocks.queryScriptWorkspace.mockResolvedValue({
+      data: {
+        projectId: 1,
+        script: { id: 11, projectId: 1, title: '失败剧本', sourceType: 'MANUAL_EDIT', content: '正文', status: 'DRAFT', currentVersionId: 7 },
+        versions: [], characters: [], scenes: [], props: [], storyboards: [], episodes: [],
+        analysis: {
+          id: 99, scriptVersionId: 7, status: 'FAILED', currentStage: 'EPISODE_SUMMARY', overallProgress: 45,
+          currentAction: '分析失败', errorMessage: '模型服务暂时不可用',
+          stages: [{ id: 3, stageCode: 'EPISODE_SUMMARY', stageOrder: 3, status: 'FAILED', progressPercent: 45, completedUnits: 0, totalUnits: 1, errorMessage: '模型服务暂时不可用', retryable: true }],
+        },
+      },
+    });
+    render(<ProductionWorkbenchScript />);
+    expect((await screen.findAllByText('模型服务暂时不可用')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试此步骤' }));
+    await waitFor(() => expect(mocks.retryScriptAnalysis).toHaveBeenCalledWith(1, 'EPISODE_SUMMARY'));
   });
 
   it('follows shared execution and refreshes the analysis workspace after reanalysis', async () => {
