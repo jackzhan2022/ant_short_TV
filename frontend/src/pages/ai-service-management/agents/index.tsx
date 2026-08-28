@@ -163,10 +163,8 @@ const AgentDetail = ({
   );
 };
 
-const BuiltInAgentsPage = () => {
+export const AgentTabContent = () => {
   const [selectedAgent, setSelectedAgent] = useState<BuiltInAgent>();
-  const [selectedSkill, setSelectedSkill] = useState<BuiltInSkill>();
-
   const agentColumns = useMemo<ProColumns<BuiltInAgent>[]>(
     () => [
       {
@@ -227,6 +225,24 @@ const BuiltInAgentsPage = () => {
     [],
   );
 
+  return <>
+    <ProTable<BuiltInAgent>
+      rowKey="code"
+      headerTitle="系统内置 Agent"
+      columns={agentColumns}
+      search={false}
+      request={async () => {
+        const response = await queryBuiltInAgents();
+        return { data: response.data ?? [], success: response.success };
+      }}
+      pagination={false}
+    />
+    {selectedAgent && <AgentDetail agent={selectedAgent} onClose={() => setSelectedAgent(undefined)} />}
+  </>;
+};
+
+export const SkillTabContent = () => {
+  const [selectedSkill, setSelectedSkill] = useState<BuiltInSkill>();
   const skillColumns = useMemo<ProColumns<BuiltInSkill>[]>(
     () => [
       {
@@ -282,60 +298,18 @@ const BuiltInAgentsPage = () => {
     [],
   );
 
-  return (
-    <PageContainer>
-      <Tabs
-        items={[
-          {
-            key: 'agents',
-            label: 'Agent 管理',
-            children: (
-              <ProTable<BuiltInAgent>
-                rowKey="code"
-                headerTitle="系统内置 Agent"
-                columns={agentColumns}
-                search={false}
-                request={async () => {
-                  const response = await queryBuiltInAgents();
-                  return {
-                    data: response.data ?? [],
-                    success: response.success,
-                  };
-                }}
-                pagination={false}
-              />
-            ),
-          },
-          {
-            key: 'skills',
-            label: 'Skill 管理',
-            children: (
-              <ProTable<BuiltInSkill>
-                rowKey="code"
-                headerTitle="系统预置 Skill"
-                columns={skillColumns}
-                search={false}
-                request={async () => {
-                  const response = await queryBuiltInSkills();
-                  return {
-                    data: response.data ?? [],
-                    success: response.success,
-                  };
-                }}
-                pagination={false}
-              />
-            ),
-          },
-        ]}
-      />
-
-      {selectedAgent && (
-        <AgentDetail
-          agent={selectedAgent}
-          onClose={() => setSelectedAgent(undefined)}
-        />
-      )}
-
+  return <>
+    <ProTable<BuiltInSkill>
+      rowKey="code"
+      headerTitle="系统预置 Skill"
+      columns={skillColumns}
+      search={false}
+      request={async () => {
+        const response = await queryBuiltInSkills();
+        return { data: response.data ?? [], success: response.success };
+      }}
+      pagination={false}
+    />
       <Drawer
         title={
           <Space>
@@ -380,8 +354,18 @@ const BuiltInAgentsPage = () => {
           <Empty />
         )}
       </Drawer>
-    </PageContainer>
-  );
+  </>;
 };
+
+const BuiltInAgentsPage = () => (
+  <PageContainer>
+    <Tabs
+      items={[
+        { key: 'agents', label: 'Agent 管理', children: <AgentTabContent /> },
+        { key: 'skills', label: 'Skill 管理', children: <SkillTabContent /> },
+      ]}
+    />
+  </PageContainer>
+);
 
 export default BuiltInAgentsPage;

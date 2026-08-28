@@ -1,8 +1,5 @@
-# model-management-navigation Specification
+## MODIFIED Requirements
 
-## Purpose
-Provide a single permission-aware navigation surface for platform model configuration, pricing, and call logs.
-## Requirements
 ### Requirement: Unified model management navigation
 The system SHALL replace the separate visible menus for platform Provider, platform Model, model billing, and call logs with one visible menu named "模型管理" under AI service management. It SHALL expose "模型服务商", "AI 大模型", and "调用日志" as internal tabs, subject to their existing view permissions. It SHALL also expose "Agent 管理" and "Skill 管理" as additional internal tabs after "调用日志", subject to the built-in Agent view permission.
 
@@ -18,13 +15,6 @@ The system SHALL replace the separate visible menus for platform Provider, platf
 - **WHEN** a user with built-in Agent view permission selects "Agent 管理" or "Skill 管理"
 - **THEN** the system SHALL render the existing read-only Agent or Skill list and its detail interactions as a same-level model-management tab
 
-### Requirement: Model management labels
-The system SHALL use "模型服务商" as the user-visible label for platform Provider management and "AI 大模型" as the user-visible label for platform Model management in the model management tabs, page titles, table headings, forms, and actions affected by this change.
-
-#### Scenario: User views configuration tabs
-- **WHEN** a user opens the service-provider or AI-model tab
-- **THEN** the system SHALL display the corresponding new Chinese label and SHALL not display the former "平台 Provider" or "平台 Model" labels in that management flow
-
 ### Requirement: Legacy model-management links remain usable
 The system SHALL preserve access to legacy service-provider, model, billing, and call-log routes by redirecting them to the model management workspace. The legacy Agent route SHALL also redirect to the model management workspace and SHALL not appear as a visible menu entry.
 
@@ -35,4 +25,3 @@ The system SHALL preserve access to legacy service-provider, model, billing, and
 #### Scenario: User visits the legacy Agent link
 - **WHEN** an authorized user requests `/ai-service-management/agents`
 - **THEN** the system SHALL redirect the user to `/ai-service-management/model-management`
-

@@ -45,7 +45,7 @@ describe('short drama creation route', () => {
 });
 
 describe('built-in Agent catalog route', () => {
-  it('is a read-only AI management child route', () => {
+  it('redirects the legacy route into model management without a visible menu entry', () => {
     const parent = routes.find(
       (item) => item.path === '/ai-service-management',
     );
@@ -55,9 +55,8 @@ describe('built-in Agent catalog route', () => {
 
     expect(route).toMatchObject({
       path: '/ai-service-management/agents',
-      name: 'agents',
-      component: './ai-service-management/agents',
-      access: 'canViewBuiltInAiAgents',
+      hideInMenu: true,
+      redirect: '/ai-service-management/model-management',
     });
   });
 });

@@ -198,10 +198,8 @@ export default [
       },
       {
         path: '/ai-service-management/agents',
-        name: 'agents',
-        icon: 'robot',
-        access: 'canViewBuiltInAiAgents',
-        component: './ai-service-management/agents',
+        hideInMenu: true,
+        redirect: '/ai-service-management/model-management',
       },
     ],
   },

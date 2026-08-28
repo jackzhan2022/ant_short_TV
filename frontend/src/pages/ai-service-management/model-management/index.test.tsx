@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     canViewPlatformAiProviders: true,
     canViewPlatformAiModels: true,
     canViewAiCallLogs: true,
+    canViewBuiltInAiAgents: true,
   },
 }));
 
@@ -33,6 +34,10 @@ vi.mock('@ant-design/pro-components', () => ({
 vi.mock('../providers', () => ({ default: () => <div>service-provider-page</div> }));
 vi.mock('../models', () => ({ default: () => <div>ai-model-page</div> }));
 vi.mock('../logs', () => ({ default: () => <div>call-log-page</div> }));
+vi.mock('../agents', () => ({
+  AgentTabContent: () => <div>agent-page</div>,
+  SkillTabContent: () => <div>skill-page</div>,
+}));
 
 import ModelManagementPage from './index';
 
@@ -42,6 +47,7 @@ describe('ModelManagementPage', () => {
     mocks.access.canViewPlatformAiProviders = true;
     mocks.access.canViewPlatformAiModels = true;
     mocks.access.canViewAiCallLogs = true;
+    mocks.access.canViewBuiltInAiAgents = true;
   });
 
   it('opens the first authorized tab and renders all authorized tabs', () => {
@@ -51,6 +57,8 @@ describe('ModelManagementPage', () => {
     expect(screen.getByRole('button', { name: '模型服务商' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI 大模型' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '调用日志' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agent 管理' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Skill 管理' })).toBeInTheDocument();
     expect(screen.getByText('service-provider-page')).toBeInTheDocument();
   });
 
@@ -62,11 +70,18 @@ describe('ModelManagementPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '调用日志' }));
     expect(screen.getByText('call-log-page')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Agent 管理' }));
+    expect(screen.getByText('agent-page')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skill 管理' }));
+    expect(screen.getByText('skill-page')).toBeInTheDocument();
   });
 
   it('opens the first permitted tab without URL fallback', () => {
     mocks.access.canViewPlatformAiProviders = false;
     mocks.access.canViewAiCallLogs = false;
+    mocks.access.canViewBuiltInAiAgents = false;
 
     render(<ModelManagementPage />);
 
