@@ -193,7 +193,7 @@ export default [
         path: '/ai-service-management/operations',
         name: 'operations',
         icon: 'dashboard',
-        access: 'canViewPlatformAiProviders',
+        access: 'canViewModelBilling',
         component: './ai-service-management/operations',
       },
       {

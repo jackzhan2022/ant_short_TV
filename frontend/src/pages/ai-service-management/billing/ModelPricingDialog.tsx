@@ -18,6 +18,7 @@ import {
   revokeCostPrice,
   revokePointPrice,
 } from '@/services/ant-design-pro/platformAiAccountingController';
+import { metricText } from '@/utils/fieldDictionary';
 
 type PriceKind = 'cost' | 'point';
 type PriceVersion = API.ModelPriceVersionResponse | API.ModelPointPriceVersionResponse;
@@ -154,7 +155,7 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
             <Space orientation="vertical" size={2}>
               {(record.components ?? []).map((component) => (
                 <Typography.Text key={component.id ?? component.metric}>
-                  {component.metric} / {component.unitSize}:{' '}
+                  {metricText(component.metric)} / {component.unitSize}:{' '}
                   {kind === 'cost'
                     ? `${(component as API.ModelPriceComponentResponse).unitPrice} ${(component as API.ModelPriceComponentResponse).currency}`
                     : `${(component as API.PointPolicyComponentResponse).pointRate} 积分`}

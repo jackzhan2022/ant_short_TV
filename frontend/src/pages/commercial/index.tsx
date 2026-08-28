@@ -4,6 +4,7 @@ import { App, Button, Card, Empty, Modal, QRCode, Space, Spin, Statistic, Table,
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
+import { entitlementTypeText, statusText } from '@/utils/fieldDictionary';
 import { createCommercialOrder, queryActiveCommercialOrders, queryCommercialCatalog, queryCommercialGrants, queryCurrentSubscription, queryQueuedSubscriptions, refreshCommercialOrder, type CommercialCatalogItem, type CommercialGrant, type CommercialOrder, type TeamSubscription } from './service';
 import styles from './index.less';
 
@@ -90,13 +91,13 @@ const CommercialPage = () => {
   if (!tenantId) return <Empty description="请先选择团队" />;
   return <Spin spinning={loading}><main className={styles.page}>
     <header className={styles.header}>
-      <button className={styles.brand} type="button" onClick={() => history.push('/')}><span className={styles.brandMark}>A</span><span>Ant Short TV</span></button>
+      <button className={styles.brand} type="button" onClick={() => history.push('/')}><span className={styles.brandMark}>剧</span><span>剧智创</span></button>
       <div className={styles.headerRight}><Statistic title="团队积分余额" value={balance} suffix="积分" prefix={<WalletOutlined />} /><Button type="text" onClick={() => history.push('/team/settings')}>积分明细</Button><Button type="text" icon={<LeftOutlined />} onClick={() => history.back()}>返回工作台</Button></div>
     </header>
     <section className={styles.content}>
       <div className={styles.hero}><Title level={2}>充值中心</Title><Text type="secondary">选择适合团队的积分包或会员订阅，已发放积分永久有效</Text></div>
       <Card className={styles.currentCard} variant="borderless">
-        <div><Text className={styles.label}>当前会员</Text><Title level={4}>{current ? snapshotName(current.snapshotJson) : '暂无会员'} {current && <Tag color="success">{current.status}</Tag>}</Title></div>
+        <div><Text className={styles.label}>当前会员</Text><Title level={4}>{current ? snapshotName(current.snapshotJson) : '暂无会员'} {current && <Tag color="success">{statusText(current.status)}</Tag>}</Title></div>
         <div><Text className={styles.label}>有效期至</Text><strong>{current?.endsAt ?? '-'}</strong></div>
         <div><Text className={styles.label}>下一次积分发放</Text><strong>{current?.nextGrantAt ?? '-'}</strong></div>
         <Button onClick={() => setActiveTab('subscriptions')}>查看会员套餐</Button>
@@ -110,17 +111,17 @@ const CommercialPage = () => {
       </Card>)}</div>}
       <Card className={styles.queueCard} variant="borderless" title="订阅与订单">
         {queued.length === 0 && orders.length === 0 ? <Empty description="暂无排队订阅或待处理订单" /> : <Space orientation="vertical" style={{ width: '100%' }}>
-          {queued.map((item) => <div key={item.id}>{snapshotName(item.snapshotJson)} <Tag>{item.status}</Tag> {item.startsAt} 至 {item.endsAt}</div>)}
-          {orders.map((item) => <div key={item.id}>{item.merchantOrderNo} <Tag>{item.status}</Tag> ¥{item.amount}</div>)}
+          {queued.map((item) => <div key={item.id}>{snapshotName(item.snapshotJson)} <Tag>{statusText(item.status)}</Tag> {item.startsAt} 至 {item.endsAt}</div>)}
+          {orders.map((item) => <div key={item.id}>{item.merchantOrderNo} <Tag>{statusText(item.status)}</Tag> ¥{item.amount}</div>)}
         </Space>}
       </Card>
       <Card className={styles.queueCard} variant="borderless" title="权益发放记录"><Table<CommercialGrant> rowKey="id" size="small" pagination={false} dataSource={grants} columns={[
-        { title: '权益', dataIndex: 'entitlementType' }, { title: '数量', dataIndex: 'amount', render: (value) => value == null ? '-' : Number(value).toLocaleString() },
+        { title: '权益', dataIndex: 'entitlementType', render: (value) => entitlementTypeText(value) }, { title: '数量', dataIndex: 'amount', render: (value) => value == null ? '-' : Number(value).toLocaleString() },
         { title: '状态', dataIndex: 'status', render: (value) => <Tag>{value}</Tag> }, { title: '发放时间', dataIndex: 'grantedAt', render: (value) => value ?? '-' },
       ]} /></Card>
     </section>
     <Modal title="微信扫码支付" open={Boolean(payment)} footer={null} onCancel={() => setPayment(undefined)} destroyOnHidden>
-      {payment?.codeUrl && <Space orientation="vertical" align="center" style={{ width: '100%' }}><QRCode value={payment.codeUrl} status={payment.status === 'PENDING_PAYMENT' ? 'active' : 'scanned'} /><Text>订单 {payment.merchantOrderNo}</Text><Text type="secondary">请在 {payment.expiresAt} 前完成支付</Text><Tag>{payment.status}</Tag></Space>}
+      {payment?.codeUrl && <Space orientation="vertical" align="center" style={{ width: '100%' }}><QRCode value={payment.codeUrl} status={payment.status === 'PENDING_PAYMENT' ? 'active' : 'scanned'} /><Text>订单 {payment.merchantOrderNo}</Text><Text type="secondary">请在 {payment.expiresAt} 前完成支付</Text><Tag>{statusText(payment.status)}</Tag></Space>}
     </Modal>
   </main></Spin>;
 };

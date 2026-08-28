@@ -1,9 +1,10 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
 import { Empty, Tag } from 'antd';
+import { statusText } from '@/utils/fieldDictionary';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { AiCallLog } from './data';
-import { SERVICE_TYPE_TEXT, STATUS_TEXT } from './data';
+import { SERVICE_TYPE_TEXT } from './data';
 import { queryAiCallLogs } from './service';
 
 const statusColor: Record<string, string> = {
@@ -57,7 +58,7 @@ const AiCallLogsPage = () => {
       width: 110,
       render: (_, record) => (
         <Tag color={statusColor[record.status] ?? 'default'}>
-          {STATUS_TEXT[record.status] ?? record.status}
+          {statusText(record.status)}
         </Tag>
       ),
     },

@@ -22,6 +22,7 @@ import {
   type CommercialPackageSummary,
   type CommercialPackageVersion,
 } from './service';
+import { entitlementTypeText, statusText } from '@/utils/fieldDictionary';
 
 const entitlementOptions = [
   { label: '一次性积分', value: 'ONE_TIME_POINTS' },
@@ -104,7 +105,7 @@ const CommercialPackageManagementPage = () => {
         columns={[
           { title: '编码', dataIndex: 'code' },
           { title: '类型', dataIndex: 'packageType', render: (value) => value === 'SUBSCRIPTION' ? '会员订阅' : '积分包' },
-          { title: '状态', dataIndex: 'status', render: (value) => <Tag>{value}</Tag> },
+          { title: '状态', dataIndex: 'status', render: (value) => <Tag>{statusText(value)}</Tag> },
           { title: '操作', render: (_, record) => <Button type="link" onClick={() => void loadVersions(record)}>版本历史</Button> },
         ]}
       />
@@ -118,8 +119,8 @@ const CommercialPackageManagementPage = () => {
           { title: '版本', dataIndex: 'versionNo', width: 70, render: (value) => `v${value}` },
           { title: '名称', dataIndex: 'name' },
           { title: '售价', render: (_, record) => `${record.price} ${record.currency}` },
-          { title: '状态', dataIndex: 'status', render: (value) => <Tag>{value}</Tag> },
-          { title: '权益', render: (_, record) => <Space orientation="vertical" size={0}>{record.entitlements.map((item) => <Typography.Text key={item.type}>{item.type}: {item.value}</Typography.Text>)}</Space> },
+          { title: '状态', dataIndex: 'status', render: (value) => <Tag>{statusText(value)}</Tag> },
+          { title: '权益', render: (_, record) => <Space orientation="vertical" size={0}>{record.entitlements.map((item) => <Typography.Text key={item.type}>{entitlementTypeText(item.type)}：{item.value}</Typography.Text>)}</Space> },
           { title: '操作', width: 90, render: (_, record) => access.canEditCommercialPackages && (record.status === 'DRAFT' ? <Popconfirm title="确认发布？" onConfirm={() => void transition(record, 'publish')}><Button type="link">发布</Button></Popconfirm> : record.status === 'PUBLISHED' ? <Popconfirm title="确认下架？" onConfirm={() => void transition(record, 'unpublish')}><Button type="link" danger>下架</Button></Popconfirm> : '-') },
         ]}
       />}

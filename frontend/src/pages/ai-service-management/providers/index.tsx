@@ -28,6 +28,7 @@ import {
   updatePlatformProvider,
   updatePlatformProviderStatus,
 } from '../platform-service';
+import { serviceTypeText as displayServiceTypeText } from '@/utils/fieldDictionary';
 
 const defaultFormValues: PlatformProviderFormValues = {
   name: '',
@@ -123,8 +124,8 @@ const ProviderEditor = ({
       />
       <ProFormText
         name="code"
-        label="服务商 Code"
-        rules={[{ required: true, message: '请输入服务商 Code' }]}
+        label="服务商编码"
+        rules={[{ required: true, message: '请输入服务商编码' }]}
       />
       <ProFormSelect
         name="supportedTypes"
@@ -135,15 +136,15 @@ const ProviderEditor = ({
       />
       <ProFormText
         name="baseUrl"
-        label="Base URL"
-        rules={[{ required: true, message: '请输入 Base URL' }]}
+        label="接口地址"
+        rules={[{ required: true, message: '请输入接口地址' }]}
       />
-      <ProFormText name="defaultBaseUrl" label="默认 Base URL" />
+      <ProFormText name="defaultBaseUrl" label="默认接口地址" />
       <ProFormText
         name="apiKey"
-        label={isEdit ? 'API Key（留空表示不修改）' : 'API Key'}
+        label={isEdit ? '访问密钥（留空表示不修改）' : '访问密钥'}
         fieldProps={{ type: 'password', placeholder: record?.apiKey || '' }}
-        rules={isEdit ? [] : [{ required: true, message: '请输入 API Key' }]}
+        rules={isEdit ? [] : [{ required: true, message: '请输入访问密钥' }]}
       />
       <ProFormSwitch
         name="enabled"
@@ -181,18 +182,18 @@ const PlatformProvidersPage = () => {
       width: 180,
       render: (_, record) =>
         splitSupportedTypes(record.supportedTypes).map((item) => (
-          <Tag key={item}>{item}</Tag>
+          <Tag key={item}>{displayServiceTypeText(item)}</Tag>
         )),
     },
     {
-      title: 'Base URL',
+      title: '接口地址',
       dataIndex: 'baseUrl',
       search: false,
       ellipsis: true,
       width: 260,
     },
     {
-      title: 'API Key',
+      title: '访问密钥',
       dataIndex: 'apiKey',
       search: false,
       width: 180,

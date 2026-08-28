@@ -20,4 +20,15 @@ describe('AI service management routes', () => {
       });
     }
   });
+
+  it('guards AI operations with the platform accounting permission used by its API', () => {
+    const operations = (aiServiceManagement?.routes ?? []).find(
+      (route) => route.path === '/ai-service-management/operations',
+    );
+
+    expect(operations).toMatchObject({
+      name: 'operations',
+      access: 'canViewModelBilling',
+    });
+  });
 });

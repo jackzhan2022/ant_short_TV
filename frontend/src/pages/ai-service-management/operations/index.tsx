@@ -65,7 +65,7 @@ const AiOperationsPage = () => {
           {metrics.map(([title, value]) => (
             <div
               key={title}
-              style={{ border: '1px solid #f0f0f0', padding: 16 }}
+              style={{ border: '1px solid var(--app-color-border-secondary)', padding: 16 }}
             >
               <Statistic title={title} value={value} />
             </div>

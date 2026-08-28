@@ -74,7 +74,7 @@ const AgentDetail = ({
     >
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <Descriptions column={2} bordered size="small">
-          <Descriptions.Item label="Agent Code">{agent.code}</Descriptions.Item>
+          <Descriptions.Item label="智能体编码">{agent.code}</Descriptions.Item>
           <Descriptions.Item label="业务场景">
             {agent.businessSceneName}
           </Descriptions.Item>
@@ -141,7 +141,7 @@ const AgentDetail = ({
               copyable
               style={{
                 whiteSpace: 'pre-wrap',
-                background: '#f5f5f5',
+                background: 'var(--app-color-fill-secondary)',
                 padding: 12,
                 maxHeight: 320,
                 overflow: 'auto',
@@ -152,7 +152,7 @@ const AgentDetail = ({
             <Typography.Title level={5}>输出结构</Typography.Title>
             <Typography.Paragraph
               copyable
-              style={{ whiteSpace: 'pre-wrap', background: '#f5f5f5', padding: 12 }}
+              style={{ whiteSpace: 'pre-wrap', background: 'var(--app-color-fill-secondary)', padding: 12 }}
             >
               {preview.outputSchema}
             </Typography.Paragraph>
@@ -351,7 +351,7 @@ const BuiltInAgentsPage = () => {
         {selectedSkill ? (
           <Space orientation="vertical" size="large" style={{ width: '100%' }}>
             <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="Skill Code">
+              <Descriptions.Item label="技能编码">
                 {selectedSkill.code}
               </Descriptions.Item>
               <Descriptions.Item label="分类">
@@ -371,7 +371,7 @@ const BuiltInAgentsPage = () => {
             <Typography.Title level={5}>Skill 内容</Typography.Title>
             <Typography.Paragraph
               copyable
-              style={{ whiteSpace: 'pre-wrap', background: '#f5f5f5', padding: 12 }}
+              style={{ whiteSpace: 'pre-wrap', background: 'var(--app-color-fill-secondary)', padding: 12 }}
             >
               {selectedSkill.content}
             </Typography.Paragraph>

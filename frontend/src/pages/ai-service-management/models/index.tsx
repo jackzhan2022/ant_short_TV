@@ -29,13 +29,13 @@ import {
   createPlatformModel,
   queryPlatformModels,
   queryPlatformProviders,
-  serviceTypeText,
   setDefaultPlatformModel,
   updatePlatformModel,
   updatePlatformModelStatus,
 } from '../platform-service';
 import ModelPricingDialog from '../billing/ModelPricingDialog';
 import { billingHistory } from '@/services/ant-design-pro/platformAiAccountingController';
+import { serviceTypeText as displayServiceTypeText } from '@/utils/fieldDictionary';
 
 type ModelWithPrice = PlatformModel & {
   currentCostPrice?: string;
@@ -177,13 +177,13 @@ const ModelEditor = ({
       />
       <ProFormText
         name="code"
-        label="AI 大模型 Code"
-        rules={[{ required: true, message: '请输入 AI 大模型 Code' }]}
+        label="AI 大模型编码"
+        rules={[{ required: true, message: '请输入 AI 大模型编码' }]}
       />
       <ProFormText
         name="modelCode"
-        label="真实模型 Code"
-        rules={[{ required: true, message: '请输入真实模型 Code' }]}
+        label="真实模型编码"
+        rules={[{ required: true, message: '请输入真实模型编码' }]}
       />
       <ProFormSelect
         name="serviceType"
@@ -205,7 +205,7 @@ const ModelEditor = ({
         unCheckedChildren="默认"
       />
       <ProFormTextArea name="description" label="模型描述" />
-      <ProFormTextArea name="configJson" label="扩展配置 JSON" />
+      <ProFormTextArea name="configJson" label="扩展配置" />
     </ModalForm>
   );
 };
@@ -249,7 +249,7 @@ const PlatformModelsPage = () => {
       valueEnum: serviceTypeValueEnum,
       width: 110,
       render: (_, record) => (
-        <Tag>{serviceTypeText[record.serviceType] ?? record.serviceType}</Tag>
+        <Tag>{displayServiceTypeText(record.serviceType)}</Tag>
       ),
     },
     {
@@ -261,7 +261,7 @@ const PlatformModelsPage = () => {
         value || providerNameMap.get(record.providerId) || '-',
     },
     {
-      title: '真实模型 Code',
+      title: '真实模型编码',
       dataIndex: 'modelCode',
       search: false,
       ellipsis: true,

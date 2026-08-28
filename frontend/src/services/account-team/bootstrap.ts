@@ -8,7 +8,7 @@ const toLayoutCurrentUser = (user: UserProfile): LayoutCurrentUser => ({
   email: user.email || undefined,
   phone: user.mobile,
   title: user.status === 'ACTIVE' ? '创作团队成员' : '账号已停用',
-  group: 'Ant Short TV',
+  group: '剧智创',
   access: 'user',
 });
 

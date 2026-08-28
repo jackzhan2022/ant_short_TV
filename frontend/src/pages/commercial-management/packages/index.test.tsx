@@ -60,7 +60,7 @@ describe('CommercialPackageManagementPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '版本历史' }));
     await waitFor(() => expect(mocks.listPackageVersions).toHaveBeenCalledWith(1));
     expect(await screen.findByText('专业版月卡')).toBeInTheDocument();
-    expect(screen.getByText('GLOBAL_DISCOUNT: 0.9')).toBeInTheDocument();
+    expect(screen.getByText('全局折扣：0.9')).toBeInTheDocument();
   });
 
   it('shows lifecycle controls only with package edit permission', async () => {
