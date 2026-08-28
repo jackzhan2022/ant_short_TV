@@ -708,4 +708,34 @@ class SchemaMigrationTest {
         assertThat(platformPermissionCount).isEqualTo(3);
         assertThat(billingPermissionCount).isEqualTo(1);
     }
+
+    @Test
+    void flywaySeedsDisabledVolcengineArkSeedanceModels() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer providerCount = jdbc.queryForObject("""
+            select count(*) from ai_provider
+             where code = 'VOLCENGINE_ARK'
+               and status = 'DISABLED'
+               and default_base_url = 'https://ark.cn-beijing.volces.com/api/v3'
+            """, Integer.class);
+        Integer modelCount = jdbc.queryForObject("""
+            select count(*) from ai_model
+             where code in ('SEEDANCE_2_0_FAST', 'SEEDANCE_2_0_STANDARD', 'SEEDANCE_2_5')
+               and service_type = 'VIDEO'
+               and status = 'DISABLED'
+               and is_default = false
+            """, Integer.class);
+        Integer capabilityCount = jdbc.queryForObject("""
+            select count(*)
+              from ai_model_capability capability
+              join ai_model model on model.id = capability.model_id
+             where model.code in ('SEEDANCE_2_0_FAST', 'SEEDANCE_2_0_STANDARD', 'SEEDANCE_2_5')
+               and capability.capability = 'VIDEO_GENERATION'
+               and capability.status = 'DISABLED'
+            """, Integer.class);
+
+        assertThat(providerCount).isEqualTo(1);
+        assertThat(modelCount).isEqualTo(3);
+        assertThat(capabilityCount).isEqualTo(3);
+    }
 }

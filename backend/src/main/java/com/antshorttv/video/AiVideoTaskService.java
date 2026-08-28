@@ -77,6 +77,7 @@ public class AiVideoTaskService {
     private final ObjectStorageService objectStorageService;
     private final AiTaskExecutionSupport executionSupport;
     private final AiVideoProviderAdapter providerAdapter;
+    private final SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter;
     private final com.antshorttv.ai.AiInvocationService invocationService;
     private final ProjectAiConfigService projectAiConfigService;
     private final AiModelRouter aiModelRouter;
@@ -107,6 +108,7 @@ public class AiVideoTaskService {
         ObjectStorageService objectStorageService,
         AiTaskExecutionSupport executionSupport,
         AiVideoProviderAdapter providerAdapter,
+        SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter,
         com.antshorttv.ai.AiInvocationService invocationService,
         ProjectAiConfigService projectAiConfigService,
         AiModelRouter aiModelRouter,
@@ -136,6 +138,7 @@ public class AiVideoTaskService {
         this.objectStorageService = objectStorageService;
         this.executionSupport = executionSupport;
         this.providerAdapter = providerAdapter;
+        this.seedanceArkProviderAdapter = seedanceArkProviderAdapter;
         this.invocationService = invocationService;
         this.projectAiConfigService = projectAiConfigService;
         this.aiModelRouter = aiModelRouter;
@@ -472,7 +475,7 @@ public class AiVideoTaskService {
                         Duration.ofSeconds(10),
                         com.antshorttv.ai.AiProviderReconciliationStatus.NOT_REQUIRED
                     )
-                    : providerAdapter.submit(route.providerConfig(), route.model(), task, attempt.idempotencyKey)
+                    : submitProviderTask(route, task, attempt.idempotencyKey)
             );
             finishExecutionAttempt(attempt, invocation, "SUCCEEDED", false, null, null);
             task.externalTaskId = invocation.externalTaskId();
@@ -603,8 +606,30 @@ public class AiVideoTaskService {
                     new AiVideoProviderAdapter.VideoResult("SUCCEEDED", null, null),
                     "mock-query-" + task.id
                 )
-                : providerAdapter.poll(route.providerConfig(), route.model(), task.externalTaskId, attempt.idempotencyKey)
+                : pollProviderTask(route, task.externalTaskId, attempt.idempotencyKey)
         );
+    }
+
+    private com.antshorttv.ai.AiProviderExecutionOutcome<AiVideoProviderAdapter.VideoResult> submitProviderTask(
+        AiModelRoute route,
+        AiVideoTaskEntity task,
+        String idempotencyKey
+    ) throws Exception {
+        if ("VOLCENGINE_ARK".equalsIgnoreCase(route.provider().getCode())) {
+            return seedanceArkProviderAdapter.submit(route.providerConfig(), route.model(), task, idempotencyKey);
+        }
+        return providerAdapter.submit(route.providerConfig(), route.model(), task, idempotencyKey);
+    }
+
+    private com.antshorttv.ai.AiProviderExecutionOutcome<AiVideoProviderAdapter.VideoResult> pollProviderTask(
+        AiModelRoute route,
+        String externalTaskId,
+        String idempotencyKey
+    ) throws Exception {
+        if ("VOLCENGINE_ARK".equalsIgnoreCase(route.provider().getCode())) {
+            return seedanceArkProviderAdapter.poll(route.providerConfig(), route.model(), externalTaskId, idempotencyKey);
+        }
+        return providerAdapter.poll(route.providerConfig(), route.model(), externalTaskId, idempotencyKey);
     }
 
     private void failTask(AiVideoTaskEntity task, String errorMessage, Long userId, LocalDateTime now) {

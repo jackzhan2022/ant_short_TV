@@ -132,6 +132,25 @@ class AiModelRouterTest {
             .isEqualTo(ErrorCode.AI_PROVIDER_DISABLED);
     }
 
+    @Test
+    void routesEachEnabledSeedanceVariantThroughVolcengineArkAdapter() {
+        Long arkProviderId = jdbcTemplate.queryForObject(
+            "select id from ai_provider where code = 'VOLCENGINE_ARK' limit 1", Long.class);
+        jdbcTemplate.update("update ai_provider set status = 'ENABLED' where id = ?", arkProviderId);
+        jdbcTemplate.update("update ai_provider_config set api_key_cipher = 'test-cipher', status = 'ENABLED' where provider_id = ?", arkProviderId);
+        for (String code : new String[] {"SEEDANCE_2_0_FAST", "SEEDANCE_2_0_STANDARD", "SEEDANCE_2_5"}) {
+            Long modelId = jdbcTemplate.queryForObject("select id from ai_model where code = ?", Long.class, code);
+            jdbcTemplate.update("update ai_model set status = 'ENABLED' where id = ?", modelId);
+            jdbcTemplate.update("update ai_model_capability set status = 'ENABLED' where model_id = ? and capability = 'VIDEO_GENERATION'", modelId);
+
+            AiModelRoute route = router.route(modelId, "VIDEO");
+
+            assertThat(route.provider().getCode()).isEqualTo("VOLCENGINE_ARK");
+            assertThat(route.adapter()).isInstanceOf(com.antshorttv.video.SeedanceArkVideoProviderAdapter.class);
+            assertThat(route.model().getCode()).isEqualTo(code);
+        }
+    }
+
     private Long insertModel(String code, String serviceType, boolean isDefault, int sort) {
         jdbcTemplate.update(
             """
