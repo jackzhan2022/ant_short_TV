@@ -107,6 +107,14 @@ describe('app bootstrap state', () => {
     expect(state.fetchUserInfo).toBeDefined();
   });
 
+  it('does not bootstrap on an authentication page with a trailing slash', async () => {
+    mockHistory.location = { pathname: '/user/login/', search: '', hash: '' };
+    const { getInitialState } = await import('./app');
+    const state = await getInitialState();
+    expect(mocks.queryAuthBootstrap).not.toHaveBeenCalled();
+    expect(state.fetchUserInfo).toBeDefined();
+  });
+
   it('applies a validated tenant bootstrap before storing the tenant id', async () => {
     const target = bootstrap();
     target.tenants = [tenant, { ...tenant, id: 22, code: 'T0000022', name: '目标团队' }];

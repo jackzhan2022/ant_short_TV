@@ -3,6 +3,7 @@ package com.antshorttv.security;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -14,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -70,6 +72,7 @@ class SecurityBoundaryIntegrationTest {
                     {"name":"CSRF Tenant","type":"STUDIO","description":"csrf"}
                     """))
             .andExpect(status().isForbidden())
+            .andExpect(content().encoding(StandardCharsets.UTF_8))
             .andExpect(jsonPath("$.errorCode", is("FORBIDDEN")));
 
         MvcResult safeRequest = mockMvc.perform(get("/api/tenants/my").cookie(session))
@@ -90,6 +93,7 @@ class SecurityBoundaryIntegrationTest {
     private void assertUnauthorized(String path) throws Exception {
         mockMvc.perform(get(path))
             .andExpect(status().isUnauthorized())
+            .andExpect(content().encoding(StandardCharsets.UTF_8))
             .andExpect(jsonPath("$.success", is(false)))
             .andExpect(jsonPath("$.errorCode", is("UNAUTHORIZED")));
     }

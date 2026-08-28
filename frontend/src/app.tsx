@@ -34,6 +34,11 @@ import { errorConfig } from './requestErrorConfig';
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
+const authenticationPaths = [loginPath, '/user/register', '/user/register-result'];
+const isAuthenticationPath = (pathname: string) =>
+  authenticationPaths.some(
+    (path) => pathname === path || pathname === `${path}/`,
+  );
 
 export type AppInitialState = {
   settings?: Partial<LayoutSettings>;
@@ -69,11 +74,7 @@ export async function getInitialState(): Promise<AppInitialState> {
   };
   // 如果不是登录页面，执行
   const { location } = history;
-  if (
-    ![loginPath, '/user/register', '/user/register-result'].includes(
-      location.pathname,
-    )
-  ) {
+  if (!isAuthenticationPath(location.pathname)) {
     try {
       const response = await queryAuthBootstrap(getCurrentTenantId(), {
         skipErrorHandler: true,
@@ -154,7 +155,7 @@ export const layout: RunTimeLayoutConfig = ({
       // 如果没有登录，重定向到 login
       if (
         !initialState?.currentUser &&
-        location.pathname !== loginPath
+        !isAuthenticationPath(location.pathname)
       ) {
         history.replace(
           `${loginPath}?redirect=${encodeURIComponent(location.pathname + location.search + location.hash)}`,

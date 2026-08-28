@@ -289,6 +289,9 @@ const PlatformProvidersPage = () => {
         tableLayout="fixed"
         scroll={{ x: 1300 }}
         request={async () => {
+          if (!access.canViewPlatformAiProviders) {
+            return { data: [], success: true };
+          }
           const response = await queryPlatformProviders();
           return {
             data: response.data,

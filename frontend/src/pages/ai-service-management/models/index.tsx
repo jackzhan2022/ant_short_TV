@@ -186,10 +186,11 @@ const PlatformModelsPage = () => {
   const [providers, setProviders] = useState<PlatformProvider[]>([]);
 
   useEffect(() => {
+    if (!access.canViewPlatformAiModels) return;
     queryPlatformProviders()
       .then((response) => setProviders(response.data ?? []))
       .catch(() => message.error('Provider 列表加载失败'));
-  }, [message]);
+  }, [access.canViewPlatformAiModels, message]);
 
   const reload = () => actionRef.current?.reload();
 
@@ -326,6 +327,9 @@ const PlatformModelsPage = () => {
         tableLayout="fixed"
         scroll={{ x: 1400 }}
         request={async () => {
+          if (!access.canViewPlatformAiModels) {
+            return { data: [], success: true };
+          }
           const response = await queryPlatformModels();
           return {
             data: response.data,
