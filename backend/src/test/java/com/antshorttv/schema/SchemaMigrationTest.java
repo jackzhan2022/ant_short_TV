@@ -254,7 +254,7 @@ class SchemaMigrationTest {
                and lower(column_name) = 'initial_script_content'
             """, Integer.class);
 
-        assertThat(maxLength).isGreaterThan(10000);
+        assertThat(maxLength).isGreaterThan(65535);
     }
 
     @Test
