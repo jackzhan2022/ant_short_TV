@@ -6,13 +6,13 @@ const AiServiceManagementIndex = () => {
 
   useEffect(() => {
     if (access.canViewPlatformAiProviders) {
-      history.replace('/ai-service-management/model-management?tab=providers');
+      history.replace('/ai-service-management/model-management');
     } else if (access.canViewPlatformAiModels) {
-      history.replace('/ai-service-management/model-management?tab=models');
+      history.replace('/ai-service-management/model-management');
     } else if (access.canViewBuiltInAiAgents) {
       history.replace('/ai-service-management/agents');
     } else if (access.canViewAiCallLogs) {
-      history.replace('/ai-service-management/model-management?tab=logs');
+      history.replace('/ai-service-management/model-management');
     }
   }, [access]);
 

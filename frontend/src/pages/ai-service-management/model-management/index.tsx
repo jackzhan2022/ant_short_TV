@@ -1,16 +1,11 @@
-import { history, useAccess } from '@umijs/max';
+import { useAccess } from '@umijs/max';
 import { Tabs } from 'antd';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import AiCallLogsPage from '../logs';
 import PlatformModelsPage from '../models';
 import PlatformProvidersPage from '../providers';
 
 type ModelManagementTab = 'providers' | 'models' | 'logs';
-
-const tabFromSearch = (): ModelManagementTab | undefined => {
-  const tab = new URLSearchParams(history.location.search).get('tab');
-  return tab === 'providers' || tab === 'models' || tab === 'logs' ? tab : undefined;
-};
 
 const ModelManagementPage = () => {
   const access = useAccess();
@@ -27,22 +22,18 @@ const ModelManagementPage = () => {
     }
     return tabs;
   }, [access.canViewAiCallLogs, access.canViewPlatformAiModels, access.canViewPlatformAiProviders]);
-  const requestedTab = tabFromSearch();
-  const activeKey = items.some((item) => item.key === requestedTab)
-    ? requestedTab
+  const [activeKey, setActiveKey] = useState<ModelManagementTab>();
+  const selectedKey = items.some((item) => item.key === activeKey)
+    ? activeKey
     : items[0]?.key;
 
-  if (!activeKey) return null;
-
-  if (requestedTab && requestedTab !== activeKey) {
-    history.replace(`/ai-service-management/model-management?tab=${activeKey}`);
-  }
+  if (!selectedKey) return null;
 
   return (
     <Tabs
-      activeKey={activeKey}
+      activeKey={selectedKey}
       items={items}
-      onChange={(tab) => history.replace(`/ai-service-management/model-management?tab=${tab}`)}
+      onChange={(tab) => setActiveKey(tab as ModelManagementTab)}
     />
   );
 };

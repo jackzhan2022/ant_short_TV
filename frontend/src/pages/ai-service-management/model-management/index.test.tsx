@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -7,12 +7,9 @@ const mocks = vi.hoisted(() => ({
     canViewPlatformAiModels: true,
     canViewAiCallLogs: true,
   },
-  location: { search: '' },
-  replace: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
-  history: { location: mocks.location, replace: mocks.replace },
   useAccess: () => mocks.access,
 }));
 
@@ -41,7 +38,6 @@ describe('ModelManagementPage', () => {
     mocks.access.canViewPlatformAiProviders = true;
     mocks.access.canViewPlatformAiModels = true;
     mocks.access.canViewAiCallLogs = true;
-    mocks.location.search = '';
   });
 
   it('opens the first authorized tab and renders all authorized tabs', () => {
@@ -53,16 +49,24 @@ describe('ModelManagementPage', () => {
     expect(screen.getByText('service-provider-page')).toBeInTheDocument();
   });
 
-  it('falls back to the first authorized tab when the requested tab is unavailable', () => {
+  it('switches content locally when a visible tab is selected', () => {
+    render(<ModelManagementPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI 大模型' }));
+    expect(screen.getByText('ai-model-page')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '调用日志' }));
+    expect(screen.getByText('call-log-page')).toBeInTheDocument();
+  });
+
+  it('opens the first permitted tab without URL fallback', () => {
     mocks.access.canViewPlatformAiProviders = false;
     mocks.access.canViewAiCallLogs = false;
-    mocks.location.search = '?tab=providers';
 
     render(<ModelManagementPage />);
 
     expect(screen.queryByRole('button', { name: '模型服务商' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '调用日志' })).not.toBeInTheDocument();
     expect(screen.getByText('ai-model-page')).toBeInTheDocument();
-    expect(mocks.replace).toHaveBeenCalledWith('/ai-service-management/model-management?tab=models');
   });
 });

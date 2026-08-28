@@ -13,13 +13,11 @@ describe('AI service management routes', () => {
     );
 
     expect(modelManagement).toMatchObject({ name: 'model-management' });
-    expect(children.find((route) => route.path === '/ai-service-management/billing')).toMatchObject({
-      hideInMenu: true,
-      redirect: '/ai-service-management/model-management?tab=models',
-    });
-    expect(children.find((route) => route.path === '/ai-service-management/providers')).toMatchObject({
-      hideInMenu: true,
-      redirect: '/ai-service-management/model-management?tab=providers',
-    });
+    for (const path of ['billing', 'providers', 'models', 'logs']) {
+      expect(children.find((route) => route.path === `/ai-service-management/${path}`)).toMatchObject({
+        hideInMenu: true,
+        redirect: '/ai-service-management/model-management',
+      });
+    }
   });
 });

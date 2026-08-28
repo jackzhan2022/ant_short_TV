@@ -75,7 +75,7 @@ describe('platform-only AI configuration routes', () => {
     ).toBeUndefined();
   });
 
-  it('redirects legacy Provider, Model, and log links into model management', () => {
+  it('redirects legacy Provider, Model, and log links to the model-management landing page', () => {
     const parent = routes.find(
       (item) => item.path === '/ai-service-management',
     );
@@ -86,7 +86,7 @@ describe('platform-only AI configuration routes', () => {
       ),
     ).toMatchObject({
       hideInMenu: true,
-      redirect: '/ai-service-management/model-management?tab=providers',
+      redirect: '/ai-service-management/model-management',
     });
     expect(
       parent?.routes?.find(
@@ -94,7 +94,7 @@ describe('platform-only AI configuration routes', () => {
       ),
     ).toMatchObject({
       hideInMenu: true,
-      redirect: '/ai-service-management/model-management?tab=models',
+      redirect: '/ai-service-management/model-management',
     });
     expect(
       parent?.routes?.find(
@@ -102,7 +102,7 @@ describe('platform-only AI configuration routes', () => {
       ),
     ).toMatchObject({
       hideInMenu: true,
-      redirect: '/ai-service-management/model-management?tab=logs',
+      redirect: '/ai-service-management/model-management',
     });
   });
 });

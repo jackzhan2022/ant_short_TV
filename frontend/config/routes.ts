@@ -172,22 +172,22 @@ export default [
       {
         path: '/ai-service-management/providers',
         hideInMenu: true,
-        redirect: '/ai-service-management/model-management?tab=providers',
+        redirect: '/ai-service-management/model-management',
       },
       {
         path: '/ai-service-management/models',
         hideInMenu: true,
-        redirect: '/ai-service-management/model-management?tab=models',
+        redirect: '/ai-service-management/model-management',
       },
       {
         path: '/ai-service-management/billing',
         hideInMenu: true,
-        redirect: '/ai-service-management/model-management?tab=models',
+        redirect: '/ai-service-management/model-management',
       },
       {
         path: '/ai-service-management/logs',
         hideInMenu: true,
-        redirect: '/ai-service-management/model-management?tab=logs',
+        redirect: '/ai-service-management/model-management',
       },
       {
         path: '/ai-service-management/operations',
