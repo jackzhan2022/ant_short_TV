@@ -12,6 +12,48 @@ so the previous release remains available for rollback.
 - Confirm the server has space for a new backend JAR, frontend bundle, and at
   least one retained release.
 
+## SSH Key Access
+
+Use a dedicated ED25519 key for deployment rather than a personal or GitHub
+key. Never commit the private key, add it to a release archive, or copy it to
+the server.
+
+Generate the key on the deployment workstation if one does not already exist:
+
+```powershell
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\antv_prod_ed25519" -C "antv-production-deploy"
+```
+
+An administrator must add the generated `.pub` file to the target deployment
+user's `~/.ssh/authorized_keys`. On the server, logged in as that user:
+
+```bash
+install -d -m 700 ~/.ssh
+printf '%s\n' '<public-key-from-antv_prod_ed25519.pub>' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Configure a local SSH alias in `~/.ssh/config`; substitute the production host
+when it changes, but keep the deploy user and dedicated key explicit:
+
+```sshconfig
+Host antv-prod
+  HostName 43.138.147.3
+  User ubuntu
+  IdentityFile ~/.ssh/antv_prod_ed25519
+  IdentitiesOnly yes
+```
+
+Verify key-only access before building or uploading any release:
+
+```powershell
+ssh -o BatchMode=yes antv-prod "hostname && whoami && readlink -f /opt/antv/current"
+```
+
+The command must succeed without a password prompt. The deployment user needs
+passwordless `sudo` only for creating release directories, updating the
+`current` symlink, and restarting `antv.service`.
+
 ## Build and Verify
 
 Run the focused billing and commercial tests before deployment, then build both
@@ -55,18 +97,41 @@ serves `/opt/antv/current/frontend/dist` and proxies `/api/` to `127.0.0.1:8080`
 
 ## Deploy
 
-1. Archive `frontend/dist` and upload it with the packaged backend JAR to a
-   server temporary directory.
-2. Verify SHA-256 hashes of both uploaded artifacts.
-3. Create a release directory and install the JAR plus extracted frontend files.
-   The archive contains a top-level `dist` directory; extract it so the final
-   path is `frontend/dist/index.html`.
-4. Link the existing shared runtime environment file. Do not copy it into a
-   release directory.
-5. Atomically update the `current` symlink and restart the backend:
+Set a release name from the current pushed commit, archive the frontend, and
+upload both artifacts into a release-specific temporary directory. Do not reuse
+another release's temporary directory.
+
+```powershell
+$release = "$(Get-Date -Format yyyyMMddHHmm)-$(git rev-parse --short HEAD)"
+$frontendArchive = ".temp\$release-frontend.tar.gz"
+tar -czf $frontendArchive -C frontend dist
+ssh antv-prod "mkdir -p /tmp/$release"
+scp $frontendArchive backend\target\ant-short-tv-backend-0.1.0-SNAPSHOT.jar "antv-prod:/tmp/$release/"
+```
+
+Verify that local and remote SHA-256 hashes match before changing any release
+link. A mismatch requires deleting only that release-specific temporary
+directory and uploading again.
+
+```powershell
+Get-FileHash $frontendArchive,backend\target\ant-short-tv-backend-0.1.0-SNAPSHOT.jar -Algorithm SHA256
+ssh antv-prod "sha256sum /tmp/$release/*"
+```
+
+Install the verified files, retain the existing release for rollback, link the
+existing shared runtime environment, then atomically update `current` and
+restart the backend. The frontend archive contains a top-level `dist`
+directory, so extraction must target `frontend` rather than `frontend/dist`.
 
 ```bash
-sudo ln -sfnT /opt/antv/releases/<release> /opt/antv/current
+release=/opt/antv/releases/<timestamp>-<commit>
+tmp=/tmp/<timestamp>-<commit>
+sudo install -d -m 755 "$release/backend" "$release/frontend"
+sudo install -m 644 "$tmp/ant-short-tv-backend-0.1.0-SNAPSHOT.jar" "$release/backend/ant-short-tv-backend-0.1.0-SNAPSHOT.jar"
+sudo tar -xzf "$tmp/<timestamp>-<commit>-frontend.tar.gz" -C "$release/frontend"
+sudo ln -s /opt/antv/shared/env "$release/backend/env"
+test -f "$release/frontend/dist/index.html"
+sudo ln -sfnT "$release" /opt/antv/current
 sudo systemctl restart antv.service
 ```
 
@@ -77,12 +142,15 @@ systemctl is-active antv.service
 readlink -f /opt/antv/current
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/api/currentUser
 curl -k -sS -o /dev/null -w '%{http_code}\n' https://antv.aixmax.cn/
+curl -k -sS -D - https://antv.aixmax.cn/api/auth/bootstrap | sed -n '1,20p'
 ```
 
 Expected results are `active`, the new release path, `401` for the protected
-current-user API without a token, and `200` for the frontend homepage. For the
-model billing date fix, confirm the deployed billing chunk contains
-`isoLocalDateTime`, then publish a future cost-price version through the UI.
+current-user API without a token, and `200` for the frontend homepage. The
+bootstrap response must declare `application/json;charset=UTF-8` and preserve
+Chinese error text. If `/actuator/health` is not exposed, do not treat its 404
+as a deployment failure; use the service state and protected API response as
+the backend checks.
 
 ## Rollback
 
