@@ -244,6 +244,20 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void projectInitialScriptContentSupportsLongText() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer maxLength = jdbc.queryForObject("""
+            select character_maximum_length
+              from information_schema.columns
+             where lower(table_name) = 'project'
+               and lower(column_name) = 'initial_script_content'
+            """, Integer.class);
+
+        assertThat(maxLength).isGreaterThan(10000);
+    }
+
+    @Test
     void flywayCreatesScriptAnalysisPipelineTables() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
