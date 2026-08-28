@@ -28,6 +28,23 @@ class PointAccountingArchitectureTest {
             .isEmpty();
     }
 
+    @Test
+    void onlyCommercialServicesCanGrantPoints() throws IOException {
+        List<Path> violations;
+        try (var files = Files.walk(PRODUCTION_ROOT)) {
+            violations = files
+                .filter(path -> path.toString().endsWith(".java"))
+                .filter(path -> !path.getFileName().toString().equals("PointAccountingService.java"))
+                .filter(path -> !path.toString().contains("com\\antshorttv\\commercial"))
+                .filter(this::callsPointGrant)
+                .toList();
+        }
+
+        assertThat(violations)
+            .as("point grants outside commercial package fulfillment")
+            .isEmpty();
+    }
+
     private boolean containsLegacyPointMutation(Path path) {
         try {
             String source = Files.readString(path);
@@ -36,6 +53,14 @@ class PointAccountingArchitectureTest {
                 || source.contains("ai_point_ledger")
                 || (source.contains("update team_point_account")
                     && !path.getFileName().toString().equals("PointAccountingService.java"));
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to inspect " + path, exception);
+        }
+    }
+
+    private boolean callsPointGrant(Path path) {
+        try {
+            return Files.readString(path).contains(".grant(");
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to inspect " + path, exception);
         }

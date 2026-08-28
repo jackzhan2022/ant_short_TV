@@ -1,6 +1,5 @@
 package com.antshorttv.points;
 
-import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -14,6 +13,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -23,6 +23,9 @@ class TeamPointControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void returnsZeroBalanceForNewTenant() throws Exception {
@@ -39,7 +42,7 @@ class TeamPointControllerTest {
     }
 
     @Test
-    void ownerAdjustsTeamPointsAndListsTransactions() throws Exception {
+    void manualPointAdjustmentEndpointIsUnavailable() throws Exception {
         String token = registerUser("13800019002", "Point Admin");
         Long tenantId = createTenant(token, "积分充值团队");
 
@@ -49,47 +52,36 @@ class TeamPointControllerTest {
                 .content("""
                     {"amount":50,"description":"测试充值"}
                     """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.balance", is(50)))
-            .andExpect(jsonPath("$.data.totalGranted", is(50)))
-            .andExpect(jsonPath("$.data.totalConsumed", is(0)));
+            .andExpect(status().isNotFound());
 
-        mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"amount":-10,"description":"测试扣减"}
-                    """))
+        mockMvc.perform(get("/api/tenants/%d/points/account".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.balance", is(40)))
-            .andExpect(jsonPath("$.data.totalGranted", is(50)))
-            .andExpect(jsonPath("$.data.totalConsumed", is(10)));
+            .andExpect(jsonPath("$.data.balance", is(0)))
+            .andExpect(jsonPath("$.data.totalGranted", is(0)))
+            .andExpect(jsonPath("$.data.totalConsumed", is(0)));
+    }
+
+    @Test
+    void listsHistoricalManualGrantTransactions() throws Exception {
+        String token = registerUser("13800019003", "Point History");
+        Long tenantId = createTenant(token, "积分历史团队");
+        mockMvc.perform(get("/api/tenants/%d/points/account".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk());
+        jdbcTemplate.update("""
+            insert into point_ledger
+              (tenant_id, entry_type, amount, available_balance_after, reserved_balance_after,
+               idempotency_key, description, created_at)
+            values (?, 'GRANT', 25, 25, 0, 'legacy-manual-grant', '历史手工增加', now())
+            """, tenantId);
 
         mockMvc.perform(get("/api/tenants/%d/points/transactions".formatted(tenantId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.total", is(2)))
-            .andExpect(jsonPath("$.data.records", hasSize(2)))
-            .andExpect(jsonPath("$.data.records[0].changeAmount", is(-10)))
-            .andExpect(jsonPath("$.data.records[0].balanceAfter", is(40)))
-            .andExpect(jsonPath("$.data.records[0].transactionType", is("ADJUST_DEDUCT")))
-            .andExpect(jsonPath("$.data.records[1].changeAmount", is(50)))
-            .andExpect(jsonPath("$.data.records[1].transactionType", is("ADJUST_GRANT")));
-    }
-
-    @Test
-    void preventsAdjustingBelowZero() throws Exception {
-        String token = registerUser("13800019003", "Point Guard");
-        Long tenantId = createTenant(token, "积分保护团队");
-
-        mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"amount":-1,"description":"超额扣减"}
-                    """))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
+            .andExpect(jsonPath("$.data.total", is(1)))
+            .andExpect(jsonPath("$.data.records[0].transactionType", is("ADJUST_GRANT")))
+            .andExpect(jsonPath("$.data.records[0].description", is("历史手工增加")));
     }
 
     @Test
@@ -101,27 +93,6 @@ class TeamPointControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.tenantId", is(tenantId.intValue())))
             .andExpect(jsonPath("$.data.matches", is(true)));
-    }
-
-    @Test
-    void adjustmentIsIdempotentAndRejectsConflictingReuse() throws Exception {
-        String token = registerUser("13800019005", "积分幂等");
-        Long tenantId = createTenant(token, "幂等团队");
-        for (int i = 0; i < 2; i++) {
-            mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
-                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                    .header("Idempotency-Key", "grant-once")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"amount\":50,\"description\":\"一次充值\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.balance", is(50)));
-        }
-        mockMvc.perform(post("/api/tenants/%d/points/adjust".formatted(tenantId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("Idempotency-Key", "grant-once")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"amount\":60,\"description\":\"冲突充值\"}"))
-            .andExpect(status().isBadRequest());
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

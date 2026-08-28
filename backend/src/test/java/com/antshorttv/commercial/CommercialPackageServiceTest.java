@@ -124,6 +124,12 @@ class CommercialPackageServiceTest {
         orchestrator.confirmPaid(first.id(), "WX-OK", new BigDecimal("30.00"), LocalDateTime.now());
         BigDecimal balance = jdbc.queryForObject("select balance from team_point_account where tenant_id=41", BigDecimal.class);
         assertThat(balance).isEqualByComparingTo("300");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from commercial_entitlement_grant where tenant_id=41 and order_id=?",
+            Integer.class, first.id())).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from point_ledger where tenant_id=41 and entry_type='GRANT'",
+            Integer.class)).isEqualTo(1);
     }
 
     @Test

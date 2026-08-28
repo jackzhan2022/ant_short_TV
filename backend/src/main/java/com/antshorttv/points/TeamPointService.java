@@ -1,17 +1,9 @@
 package com.antshorttv.points;
 
-import com.antshorttv.common.BusinessException;
-import com.antshorttv.common.ErrorCode;
-import com.antshorttv.operationlog.OperationLogService;
-import com.antshorttv.operationlog.OperationResult;
-import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
-import jakarta.servlet.http.HttpServletRequest;
 import java.sql.Timestamp;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,18 +16,15 @@ public class TeamPointService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TenantContextResolver tenantContextResolver;
-    private final OperationLogService operationLogService;
     private final PointAccountingService accountingService;
 
     public TeamPointService(
         JdbcTemplate jdbcTemplate,
         TenantContextResolver tenantContextResolver,
-        OperationLogService operationLogService,
         PointAccountingService accountingService
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.tenantContextResolver = tenantContextResolver;
-        this.operationLogService = operationLogService;
         this.accountingService = accountingService;
     }
 
@@ -43,31 +32,6 @@ public class TeamPointService {
     public TeamPointAccountResponse account(Long tenantId) {
         tenantContextResolver.requireActiveMember(tenantId);
         accountingService.ensureAccount(tenantId);
-        return readAccount(tenantId);
-    }
-
-    @Transactional
-    public TeamPointAccountResponse adjust(
-        Long tenantId,
-        TeamPointAdjustmentRequest request,
-        HttpServletRequest servletRequest
-    ) {
-        TenantContext context = tenantContextResolver.requireOwner(tenantId);
-        int amount = request.amount();
-        if (amount == 0) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "积分调整数量不能为 0。");
-        }
-        accountingService.ensureAccount(tenantId);
-        String idempotencyKey = servletRequest.getHeader("Idempotency-Key");
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            idempotencyKey = "admin-adjust:" + UUID.randomUUID();
-        }
-        if (amount > 0) {
-            accountingService.grant(tenantId, context.userId(), BigDecimal.valueOf(amount), idempotencyKey, request.description());
-        } else {
-            accountingService.adjustDebit(tenantId, context.userId(), BigDecimal.valueOf(-amount), idempotencyKey, request.description());
-        }
-        operationLogService.record(context.userId(), tenantId, "ADJUST_TEAM_POINTS", tenantId, OperationResult.SUCCESS, servletRequest);
         return readAccount(tenantId);
     }
 

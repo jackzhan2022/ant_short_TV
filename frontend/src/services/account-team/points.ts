@@ -16,17 +16,3 @@ export async function queryTeamPointTransactions(tenantId: number) {
     `/api/tenants/${tenantId}/points/transactions`,
   );
 }
-
-export async function adjustTeamPoints(
-  tenantId: number,
-  values: { amount: number; description?: string },
-) {
-  return request<ApiResponse<TeamPointAccount>>(
-    `/api/tenants/${tenantId}/points/adjust`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      data: values,
-    },
-  );
-}

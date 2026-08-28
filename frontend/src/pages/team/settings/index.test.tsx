@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   queryTenantMembers: vi.fn(),
   queryTeamPointAccount: vi.fn(),
   queryTeamPointTransactions: vi.fn(),
-  adjustTeamPoints: vi.fn(),
   updateTenant: vi.fn(),
   updateTenantStatus: vi.fn(),
   leaveTenant: vi.fn(),
@@ -30,9 +29,10 @@ vi.mock('antd', () => ({
       {children}
     </button>
   ),
-  Card: ({ children, title }: any) => (
+  Card: ({ children, extra, title }: any) => (
     <section>
       <h2>{title}</h2>
+      {extra}
       {children}
     </section>
   ),
@@ -77,14 +77,12 @@ vi.mock('@ant-design/pro-components', () => ({
     </main>
   ),
   ProForm: ({ children }: any) => <form>{children}</form>,
-  ProFormDigit: ({ label }: any) => <span>{label}</span>,
   ProFormSelect: ({ label }: any) => <span>{label}</span>,
   ProFormText: ({ label }: any) => <span>{label}</span>,
   ProFormTextArea: ({ label }: any) => <span>{label}</span>,
 }));
 
 vi.mock('./service', () => ({
-  adjustTeamPoints: mocks.adjustTeamPoints,
   leaveTenant: mocks.leaveTenant,
   queryTeamPointAccount: mocks.queryTeamPointAccount,
   queryTeamPointTransactions: mocks.queryTeamPointTransactions,
@@ -130,8 +128,14 @@ describe('TeamSettings', () => {
             description: 'AI 调用消耗积分',
             balanceAfter: 88,
           },
+          {
+            id: 2,
+            transactionType: 'ADJUST_GRANT',
+            description: '历史手工增加',
+            balanceAfter: 100,
+          },
         ],
-        total: 1,
+        total: 2,
         current: 1,
         pageSize: 20,
       },
@@ -148,5 +152,7 @@ describe('TeamSettings', () => {
     expect(screen.getByText('可用积分')).toBeInTheDocument();
     expect(screen.getByText('88点')).toBeInTheDocument();
     expect(screen.getByText('AI 调用消耗积分')).toBeInTheDocument();
+    expect(screen.getByText('历史手工增加')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '调整积分' })).not.toBeInTheDocument();
   });
 });

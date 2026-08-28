@@ -9,7 +9,6 @@ export {
   updateTenantStatus,
 } from '@/services/account-team/tenant';
 export {
-  adjustTeamPoints,
   queryTeamPointAccount,
   queryTeamPointTransactions,
 } from '@/services/account-team/points';

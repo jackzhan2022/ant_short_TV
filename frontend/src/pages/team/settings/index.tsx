@@ -2,7 +2,6 @@ import {
   ModalForm,
   PageContainer,
   ProForm,
-  ProFormDigit,
   ProFormSelect,
   ProFormText,
   ProFormTextArea,
@@ -18,7 +17,6 @@ import type {
   TenantType,
 } from '@/services/account-team/types';
 import {
-  adjustTeamPoints,
   leaveTenant,
   queryTeamPointAccount,
   queryTeamPointTransactions,
@@ -177,29 +175,6 @@ const TeamSettings = () => {
         <Card
           title="团队积分"
           style={{ marginTop: 24 }}
-          extra={
-            isOwner ? (
-              <ModalForm<{ amount: number; description?: string }>
-                title="调整团队积分"
-                trigger={<Button type="primary">调整积分</Button>}
-                modalProps={{ destroyOnHidden: true }}
-                onFinish={async (values) => {
-                  await adjustTeamPoints(tenant.id, values);
-                  message.success('团队积分已更新');
-                  await load();
-                  return true;
-                }}
-              >
-                <ProFormDigit
-                  name="amount"
-                  label="调整数量"
-                  fieldProps={{ precision: 0 }}
-                  rules={[{ required: true, message: '请输入调整数量' }]}
-                />
-                <ProFormTextArea name="description" label="说明" />
-              </ModalForm>
-            ) : null
-          }
         >
           <Space size={48} wrap>
             <Statistic title="可用积分" value={pointAccount.balance} suffix="点" />

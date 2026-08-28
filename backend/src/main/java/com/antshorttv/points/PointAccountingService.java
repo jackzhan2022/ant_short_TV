@@ -102,19 +102,6 @@ public class PointAccountingService {
         append(e);
     }
 
-    public void adjustDebit(Long tenantId, Long userId, BigDecimal amount, String key, String description) {
-        ensureAccount(tenantId);
-        if (amount.signum() <= 0) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "积分数量必须大于 0。");
-        AiPointLedgerEntity existing = find(tenantId, key);
-        if (existing != null) {
-            requireSame(existing, "ADJUST_DEDUCT", amount.negate());
-            return;
-        }
-        if (jdbc.update("update team_point_account set balance=balance-?, total_consumed=total_consumed+?, version=version+1, updated_at=now() where tenant_id=? and balance>=?", amount, amount, tenantId, amount) == 0)
-            throw new BusinessException(ErrorCode.TEAM_POINTS_INSUFFICIENT, "团队积分不足。");
-        append(base(tenantId, userId, "ADJUST_DEDUCT", amount.negate(), key, description));
-    }
-
     private AiPointLedgerEntity base(Long tenantId, Long userId, String type, BigDecimal amount, String key, String description) {
         AiPointLedgerEntity e = new AiPointLedgerEntity(); e.tenantId=tenantId; e.userId=userId; e.entryType=type; e.amount=amount; e.idempotencyKey=key; e.description=description; return e;
     }
