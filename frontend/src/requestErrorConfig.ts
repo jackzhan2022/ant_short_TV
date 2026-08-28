@@ -140,8 +140,8 @@ export const errorConfig: RequestConfig = {
         : undefined;
       config.withCredentials = true;
       config.headers = {
-        ...config.headers,
         ...(currentTenantId ? { 'X-Tenant-Id': currentTenantId } : {}),
+        ...config.headers,
         ...(csrfToken ? { 'X-XSRF-TOKEN': csrfToken } : {}),
       };
       return config;

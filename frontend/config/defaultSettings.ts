@@ -1,4 +1,5 @@
 import type { ProLayoutProps } from '@ant-design/pro-components';
+import { appThemeToken } from './theme';
 
 /**
  * @name
@@ -7,15 +8,15 @@ const Settings: ProLayoutProps & {
   logo?: string;
 } = {
   navTheme: 'light',
-  colorPrimary: '#1677ff',
+  colorPrimary: appThemeToken.colorPrimary,
   layout: 'side',
   siderWidth: 200,
   contentWidth: 'Fluid',
   fixedHeader: true,
   fixSiderbar: true,
   colorWeak: false,
-  title: 'Ant Short TV',
-  logo: '/logo.svg',
+  title: '剧智创',
+  logo: '/juzhichuang-logo-mark.png',
   iconfontUrl: '',
   token: {
     // 参见ts声明，demo 见文档，通过token 修改样式

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { defineConfig } from '@umijs/max';
 import defaultSettings from './defaultSettings';
 import proxy from './proxy';
+import { appThemeToken } from './theme';
 
 import routes from './routes';
 
@@ -46,6 +47,9 @@ export default defineConfig({
   esbuildMinifyIIFE: true,
 
   publicPath: PUBLIC_PATH,
+
+  // Browser tab and address-bar site icon.
+  favicons: ['/juzhichuang-logo-mark.png'],
 
   /**
    * @name 兼容性设置
@@ -115,7 +119,7 @@ export default defineConfig({
    * @name layout 插件
    * @doc https://umijs.org/docs/max/layout-menu
    */
-  title: 'Ant Short TV',
+  title: '剧智创',
   layout: {
     locale: true,
     ...defaultSettings,
@@ -152,6 +156,7 @@ export default defineConfig({
       theme: {
         token: {
           fontFamily: 'AlibabaSans, sans-serif',
+          ...appThemeToken,
         },
       },
     },

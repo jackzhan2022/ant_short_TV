@@ -1,0 +1,15 @@
+export const appThemeToken = {
+  colorPrimary: '#5252ff',
+  colorInfo: '#5252ff',
+  colorLink: '#5252ff',
+  colorBgLayout: '#f7f8fc',
+  colorBgContainer: '#ffffff',
+  colorBgElevated: '#ffffff',
+  colorFillSecondary: '#f0f2f6',
+  colorText: '#292b3d',
+  colorTextSecondary: '#6e718c',
+  colorTextTertiary: '#9296aa',
+  colorBorder: '#e7e9f0',
+  colorBorderSecondary: '#edf0f5',
+  borderRadius: 6,
+} as const;

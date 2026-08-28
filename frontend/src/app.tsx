@@ -10,13 +10,7 @@ import React from 'react';
 // Initialize dayjs plugins globally
 dayjs.extend(relativeTime);
 
-import {
-  AvatarDropdown,
-  ErrorBoundary,
-  Footer,
-  OfflineBanner,
-  TeamSwitcher,
-} from '@/components';
+import { ErrorBoundary, Footer, OfflineBanner, SidebarAccount, TeamSwitcher } from '@/components';
 import {
   getCurrentTenantId,
   queryAuthBootstrap,
@@ -139,13 +133,6 @@ export const layout: RunTimeLayoutConfig = ({
     actionsRender: () => {
       return [];
     },
-    avatarProps: {
-      src: initialState?.currentUser?.avatar,
-      title: 'ProUser',
-      render: (_, avatarChildren) => (
-        <AvatarDropdown>{avatarChildren}</AvatarDropdown>
-      ),
-    },
     // waterMarkProps: {
     //   content: initialState?.currentUser?.name,
     // },
@@ -192,6 +179,10 @@ export const layout: RunTimeLayoutConfig = ({
             onChange={refreshTenantContext}
           />
         </div>
+      ),
+    menuFooterRender: (props) =>
+      props?.collapsed ? null : (
+        <SidebarAccount currentUser={initialState?.currentUser} />
       ),
     // Replace ProLayout's default ErrorBoundary with our offline-aware version,
     // so chunk load errors show friendly messages instead of "Something went wrong."

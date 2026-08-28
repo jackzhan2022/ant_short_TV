@@ -26,7 +26,7 @@ export default {
   'pages.login.loginWith': 'Login com :',
   'pages.login.registerAccount': 'Registra Conta',
   'pages.welcome.link': 'Bem-vindo',
-  'pages.welcome.celebrationTitle': 'Bem-vindo ao Ant Short TV',
+  'pages.welcome.celebrationTitle': 'Bem-vindo ao 剧智创',
   'pages.welcome.alertMessage':
     'Componentes pesados mais rápidos e mais fortes foram lançados.',
   'pages.404.subTitle': 'Desculpe, a página que você visitou não existe. ',

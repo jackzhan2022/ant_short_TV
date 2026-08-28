@@ -61,6 +61,20 @@ describe('requestErrorConfig', () => {
     expect(config.headers['X-XSRF-TOKEN']).toBeUndefined();
   });
 
+  it('preserves an explicitly selected tenant over a stale stored tenant', () => {
+    localStorage.setItem('currentTenantId', '21');
+    const interceptor = errorConfig.requestInterceptors?.[0] as (
+      config: any,
+    ) => any;
+
+    const config = interceptor({
+      method: 'GET',
+      headers: { 'X-Tenant-Id': '11' },
+    });
+
+    expect(config.headers['X-Tenant-Id']).toBe('11');
+  });
+
   it('shows backend error code and message from non-2xx responses', () => {
     errorConfig.errorConfig?.errorHandler?.(
       {

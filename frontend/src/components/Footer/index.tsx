@@ -68,7 +68,7 @@ const Footer: React.FC = () => {
 
   return (
     <div className={styles.footer}>
-      <div className={styles.copyright}>Ant Short TV &copy; {year}</div>
+      <div className={styles.copyright}>剧智创 &copy; {year}</div>
       <div className={styles.meta}>
         <span className={styles.group}>
           <span className={styles.label}>ver</span>

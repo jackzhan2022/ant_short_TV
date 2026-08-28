@@ -1,6 +1,6 @@
 {
-  "name": "Ant Short TV",
-  "short_name": "Ant Short TV",
+  "name": "剧智创",
+  "short_name": "剧智创",
   "display": "standalone",
   "start_url": "./?utm_source=homescreen",
   "theme_color": "#111827",

@@ -12,6 +12,9 @@ import HeaderDropdown from '../HeaderDropdown';
 
 type GlobalHeaderRightProps = {
   children?: React.ReactNode;
+  overlayClassName?: string;
+  placement?: 'bottomRight' | 'topLeft';
+  triggerClassName?: string;
 };
 
 const menuItems: MenuProps['items'] = [
@@ -57,6 +60,9 @@ const loginOut = async () => {
 
 export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   children,
+  overlayClassName,
+  placement = 'bottomRight',
+  triggerClassName = 'ant-short-account-trigger',
 }) => {
   const { initialState, setInitialState } = useModel('@@initialState');
 
@@ -90,7 +96,8 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
 
   return (
     <HeaderDropdown
-      placement="bottomRight"
+      overlayClassName={overlayClassName}
+      placement={placement}
       menu={{
         selectedKeys: [],
         onClick: onMenuClick,
@@ -98,7 +105,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
       }}
       arrow
     >
-      <span className="ant-short-account-trigger">
+      <span className={triggerClassName}>
         <Avatar
           size={22}
           src={currentUser.avatar}

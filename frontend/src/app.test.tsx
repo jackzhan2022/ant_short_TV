@@ -17,6 +17,7 @@ vi.mock('@/components', () => ({
   ErrorBoundary: ({ children }: any) => children,
   Footer: () => null,
   OfflineBanner: () => null,
+  SidebarAccount: () => <div data-testid="sidebar-account" />,
   TeamSwitcher: ({ currentTenantId, onChange }: any) => (
     <button type="button" onClick={() => { void onChange?.(22).catch(() => undefined); }}>
       当前团队 {currentTenantId}
@@ -148,6 +149,14 @@ describe('app bootstrap state', () => {
     await waitFor(() => expect(mocks.queryAuthBootstrap).toHaveBeenCalled());
     expect(setInitialState).not.toHaveBeenCalled();
     expect(mocks.setCurrentTenantId).not.toHaveBeenCalled();
+  });
+
+  it('keeps the route menu data for native sidebar groups', async () => {
+    const { layout } = await import('./app');
+    const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
+
+    expect(config.menuDataRender).toBeUndefined();
+    expect(config.menu).toBeUndefined();
   });
 
   it('redirects page navigation when no authenticated bootstrap state exists', async () => {

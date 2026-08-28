@@ -15,6 +15,7 @@ export { default as ArticleListContent } from './ArticleListContent';
 export { default as AvatarList } from './AvatarList';
 export { default as ErrorBoundary } from './ErrorBoundary';
 export { default as OfflineBanner } from './OfflineBanner';
+export { default as SidebarAccount } from './SidebarAccount';
 export { default as StandardFormRow } from './StandardFormRow';
 export { default as TagSelect } from './TagSelect';
 export { default as TeamSwitcher } from './TeamSwitcher';
