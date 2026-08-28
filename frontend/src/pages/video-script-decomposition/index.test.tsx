@@ -324,7 +324,7 @@ describe('VideoScriptDecompositionPage', () => {
     render(<VideoScriptDecompositionPage />);
 
     fireEvent.click(
-      await screen.findByRole('button', { name: /第 1 集 · PENDING_REVIEW/ }),
+      await screen.findByRole('button', { name: /第 1 集 · 待审核/ }),
     );
 
     expect(await screen.findByText('第 1 集拆剧详情')).toBeInTheDocument();
@@ -351,7 +351,7 @@ describe('VideoScriptDecompositionPage', () => {
     expect(dialog).toBeTruthy();
     fireEvent.change(
       within(dialog as HTMLElement).getByPlaceholderText(
-        '请输入要导入的项目 ID',
+        '请输入要导入的项目编号',
       ),
       { target: { value: '101' } },
     );

@@ -35,6 +35,7 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
+import { statusText } from '@/utils/fieldDictionary';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import type {
   VideoDecompositionBatch,
@@ -537,7 +538,7 @@ const VideoScriptDecompositionPage = () => {
               ellipsis: true,
             },
             {
-              title: '项目 ID',
+              title: '项目编号',
               dataIndex: 'projectId',
               width: 100,
               render: (value) => value ?? '未绑定',
@@ -554,7 +555,7 @@ const VideoScriptDecompositionPage = () => {
               width: 140,
               render: (_, record) => (
                 <Tag color={record.failedEpisodes > 0 ? 'red' : 'blue'}>
-                  {record.status}
+                  {statusText(record.status)}
                 </Tag>
               ),
             },
@@ -570,7 +571,7 @@ const VideoScriptDecompositionPage = () => {
                       icon={<EyeOutlined />}
                       onClick={() => openEpisode(episode)}
                     >
-                      第 {episode.episodeNo} 集 · {episode.status}
+                      第 {episode.episodeNo} 集 · {statusText(episode.status)}
                     </Button>
                   ))}
                 </Space>
@@ -675,7 +676,7 @@ const VideoScriptDecompositionPage = () => {
                     label: '状态',
                     children: (
                       <Tag color={episodeStatusColor(detail.episode.status)}>
-                        {detail.episode.status}
+                        {statusText(detail.episode.status)}
                       </Tag>
                     ),
                   },
@@ -777,12 +778,12 @@ const VideoScriptDecompositionPage = () => {
                     width: 120,
                     render: (_, record) => (
                       <Tag color={record.status === 'FAILED' ? 'red' : 'blue'}>
-                        {record.status}
+                        {statusText(record.status)}
                       </Tag>
                     ),
                   },
                   {
-                    title: '请求 ID',
+                    title: '请求编号',
                     dataIndex: 'providerRequestId',
                     ellipsis: true,
                   },
@@ -817,7 +818,7 @@ const VideoScriptDecompositionPage = () => {
               value={confirmProjectId}
               onChange={(value) => setConfirmProjectId(value ?? undefined)}
               style={{ width: '100%' }}
-              placeholder="请输入要导入的项目 ID"
+              placeholder="请输入要导入的项目编号"
             />
           </div>
         </Modal>

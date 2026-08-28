@@ -9,13 +9,13 @@
 .creationShell {
   min-height: 100vh;
   padding: 64px 32px 72px;
-  background: #f3f4f6;
+  background: var(--app-color-bg-layout);
 }
 
 .heroTitle {
   margin: 0 0 30px;
   text-align: center;
-  color: #111318;
+  color: var(--app-color-text);
   font-size: 34px;
   font-weight: 750;
   line-height: 1.25;
@@ -23,7 +23,7 @@
 }
 
 .heroTitle span {
-  background: linear-gradient(90deg, #3a5cff 0%, #8109ff 100%);
+  background: linear-gradient(90deg, var(--app-color-primary) 0%, var(--app-color-primary-hover) 100%);
   background-clip: text;
   color: transparent;
 }
@@ -33,24 +33,24 @@
   width: min(100%, 1120px);
   margin: 0 auto;
   overflow: hidden;
-  border: 1px solid #e0e1e6;
+  border: 1px solid var(--app-color-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--app-color-bg-container);
   box-shadow: 0 10px 30px rgba(33, 36, 50, 0.06);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .scriptPanel:focus-within {
-  border-color: #8b72ff;
-  box-shadow: 0 12px 34px rgba(82, 65, 180, 0.1);
+  border-color: var(--app-color-primary);
+  box-shadow: 0 12px 34px rgb(82 82 255 / 10%);
 }
 
 .regionTabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   height: 52px;
-  border-bottom: 1px solid #eaebef;
-  background: #eceef9;
+  border-bottom: 1px solid var(--app-color-border-secondary);
+  background: var(--app-color-fill-secondary);
 }
 
 .regionTab,
@@ -61,7 +61,7 @@
   gap: 12px;
   border: 0;
   background: transparent;
-  color: #555964;
+  color: var(--app-color-text-secondary);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
@@ -70,31 +70,31 @@
 
 .regionTabActive {
   position: relative;
-  background: #fff;
-  color: #4b28d4;
+  background: var(--app-color-bg-container);
+  color: var(--app-color-primary);
   font-weight: 650;
 }
 
 .scriptInputWrap {
   position: relative;
   min-height: 226px;
-  background: #fff;
+  background: var(--app-color-bg-container);
 }
 
 .scriptTextarea {
   height: 226px;
   padding: 24px 24px 70px;
   border: 0;
-  background: #fff;
+  background: var(--app-color-bg-container);
   resize: none;
-  color: #191919;
+  color: var(--app-color-text);
   font-size: 15px;
   line-height: 1.7;
   box-shadow: none;
 }
 
 .scriptTextarea::placeholder {
-  color: #a5a7ad;
+  color: var(--app-color-text-tertiary);
 }
 
 .uploadButton {
@@ -107,8 +107,8 @@
   padding: 0;
   border-radius: 50%;
   aspect-ratio: 1;
-  background: #f2f3fb;
-  color: #1d1d23;
+  background: var(--app-color-fill-secondary);
+  color: var(--app-color-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -136,22 +136,22 @@
   padding: 0 20px;
   border: 0;
   border-radius: 21px;
-  background: linear-gradient(90deg, #7252f2 0%, #7e0cff 100%);
-  box-shadow: 0 8px 20px rgba(103, 56, 224, 0.2);
+  background: linear-gradient(90deg, var(--app-color-primary) 0%, var(--app-color-primary-hover) 100%);
+  box-shadow: 0 8px 20px rgb(82 82 255 / 20%);
   font-size: 15px;
   font-weight: 700;
 }
 
 .uploadHint {
   margin-top: 14px;
-  color: #9aa0aa;
+  color: var(--app-color-text-tertiary);
   font-size: 14px;
 }
 
 .skipButton {
   border: 0;
   background: transparent;
-  color: #666b75;
+  color: var(--app-color-text-secondary);
   font-size: 14px;
   cursor: pointer;
 }
@@ -171,7 +171,7 @@
 .sectionTitle {
   display: block;
   margin-bottom: 16px;
-  color: #17191f;
+  color: var(--app-color-text);
   font-size: 16px;
   font-weight: 700;
 }
@@ -187,10 +187,10 @@
   aspect-ratio: 16 / 9;
   height: auto;
   overflow: hidden;
-  border: 1px solid rgba(224, 225, 230, 0.9);
+  border: 1px solid var(--app-color-border);
   border-radius: 10px;
   padding: 0;
-  background: #eef0f5;
+  background: var(--app-color-fill-secondary);
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(26, 29, 40, 0.04);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -214,7 +214,7 @@
 }
 
 .inspirationCard:hover {
-  border-color: rgba(126, 12, 255, 0.24);
+  border-color: var(--app-color-primary);
   box-shadow: 0 10px 24px rgba(31, 34, 46, 0.1);
 }
 
@@ -254,7 +254,7 @@
 
 .settingsPage {
   min-height: calc(100vh - 56px);
-  background: #fff;
+  background: var(--app-color-bg-container);
 }
 
 .settingsHeader {
@@ -270,7 +270,7 @@
 }
 
 .settingsHeader :where(.ant-btn-text) {
-  color: #111;
+  color: var(--app-color-text);
   font-size: 18px;
   font-weight: 700;
 }
@@ -279,7 +279,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #8b92a2;
+  color: var(--app-color-text-secondary);
   font-size: 14px;
 }
 
@@ -288,11 +288,11 @@
   border: 0;
   border-radius: 10px;
   padding: 0 24px;
-  background: #7b22ff;
+  background: var(--app-color-primary);
   color: #fff;
   font-size: 15px;
   font-weight: 700;
-  box-shadow: 0 10px 22px rgba(123, 34, 255, 0.2);
+  box-shadow: 0 10px 22px rgb(82 82 255 / 20%);
 }
 
 .settingsBody {
@@ -309,7 +309,7 @@
   align-items: center;
   gap: 8px;
   margin-bottom: 18px;
-  color: #252933;
+  color: var(--app-color-text);
   font-size: 17px;
   font-weight: 700;
 }
@@ -318,7 +318,7 @@
   width: 4px;
   height: 22px;
   border-radius: 8px;
-  background: #7b22ff;
+  background: var(--app-color-primary);
   content: '';
 }
 
@@ -331,14 +331,14 @@
   height: 44px;
   margin-right: 14px;
   border-radius: 22px;
-  background: #f4f5f9;
-  color: #4e5564;
+  background: var(--app-color-fill-secondary);
+  color: var(--app-color-text-secondary);
   font-size: 15px;
   line-height: 44px;
 }
 
 .pillSegment :where(.ant-segmented-item-selected) {
-  background: #7b22ff;
+  background: var(--app-color-primary);
   color: #fff;
 }
 
@@ -352,14 +352,14 @@
   margin-right: 14px;
   border: 0;
   border-radius: 22px;
-  background: #f4f5f9;
-  color: #4e5564;
+  background: var(--app-color-fill-secondary);
+  color: var(--app-color-text-secondary);
   font-size: 15px;
   line-height: 44px;
 }
 
 .strengthGroup :where(.ant-radio-button-wrapper-checked) {
-  background: #7b22ff;
+  background: var(--app-color-primary);
   color: #fff;
 }
 
@@ -378,8 +378,8 @@
   justify-content: center;
   overflow: hidden;
   border-radius: 8px;
-  background: #ededf0;
-  color: #c8cbd3;
+  background: var(--app-color-fill-secondary);
+  color: var(--app-color-text-tertiary);
   font-size: 34px;
 }
 
@@ -405,7 +405,7 @@
   border: 0;
   border-radius: 8px;
   padding: 0;
-  background: #eef0f6;
+  background: var(--app-color-fill-secondary);
   cursor: pointer;
 }
 
@@ -428,7 +428,7 @@
 }
 
 .styleCardActive {
-  box-shadow: 0 0 0 3px #8a20ff inset;
+  box-shadow: 0 0 0 3px var(--app-color-primary) inset;
 }
 
 .selectedStyleCard img,
@@ -475,7 +475,7 @@
   grid-template-columns: 96px minmax(0, 1fr);
   gap: 18px;
   padding: 18px 22px 22px;
-  background: #fff;
+  background: var(--app-color-bg-container);
 }
 
 .detailThumb {
@@ -483,7 +483,7 @@
   height: 96px;
   overflow: hidden;
   border-radius: 8px;
-  background: #eef0f5;
+  background: var(--app-color-fill-secondary);
 }
 
 .detailThumb img,
@@ -500,7 +500,7 @@
 .detailTitle {
   display: block;
   margin-bottom: 8px;
-  color: #18191f;
+  color: var(--app-color-text);
   font-size: 16px;
   font-weight: 700;
 }
@@ -508,14 +508,14 @@
 .detailLabel {
   display: block;
   margin-bottom: 6px;
-  color: #6a36ff;
+  color: var(--app-color-primary);
   font-size: 13px;
   font-weight: 700;
 }
 
 .detailPrompt {
   margin: 0 0 12px;
-  color: #23242a;
+  color: var(--app-color-text);
   font-size: 14px;
   line-height: 1.65;
 }

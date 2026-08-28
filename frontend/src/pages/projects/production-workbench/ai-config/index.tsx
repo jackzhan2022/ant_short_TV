@@ -90,9 +90,9 @@ const ModelOptionCard = ({
       minHeight: 108,
       padding: '16px 18px',
       textAlign: 'left',
-      border: selected ? '1px solid #6678ff' : '1px solid #e3e8f2',
+      border: selected ? '1px solid var(--app-color-primary)' : '1px solid var(--app-color-border-secondary)',
       borderRadius: 8,
-      background: selected ? '#f3f5ff' : '#fff',
+      background: selected ? 'var(--app-color-primary-bg)' : 'var(--app-color-bg-container)',
       cursor: 'pointer',
       transition: 'all 160ms ease',
     }}
@@ -103,7 +103,7 @@ const ModelOptionCard = ({
           position: 'absolute',
           top: 12,
           right: 12,
-          color: '#5368f5',
+          color: 'var(--app-color-primary)',
           fontSize: 17,
         }}
       />
@@ -215,7 +215,7 @@ const ProjectAiConfigPage = () => {
       style={{
         minHeight: 'calc(100vh - 100px)',
         padding: '18px 28px 70px',
-        background: '#f6f7fb',
+        background: 'var(--app-color-bg-layout)',
         boxSizing: 'border-box',
       }}
     >
@@ -252,9 +252,9 @@ const ProjectAiConfigPage = () => {
                   key={section.field}
                   style={{
                     padding: 18,
-                    border: '1px solid #e5eaf3',
+                    border: '1px solid var(--app-color-border-secondary)',
                     borderRadius: 8,
-                    background: '#fff',
+                    background: 'var(--app-color-bg-container)',
                   }}
                 >
                   <Flex justify="space-between" align="center">
@@ -266,8 +266,8 @@ const ProjectAiConfigPage = () => {
                           width: 32,
                           height: 32,
                           borderRadius: 8,
-                          color: '#5368f5',
-                          background: '#eef1ff',
+                          color: 'var(--app-color-primary)',
+                          background: 'var(--app-color-primary-bg)',
                           fontSize: 17,
                         }}
                       >

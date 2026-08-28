@@ -483,7 +483,7 @@ describe('ScriptReviewPage', () => {
       expect(editor.selectionEnd).toBeGreaterThan(editor.selectionStart);
     });
     expect(screen.getByText('当前版本 V2')).toBeInTheDocument();
-    expect(screen.getByText('第 1 轮 · COMPLETED')).toBeInTheDocument();
+    expect(screen.getByText('第 1 轮 · 已完成')).toBeInTheDocument();
     expect(screen.getByText('问题 2 · 已处理 1')).toBeInTheDocument();
   });
 

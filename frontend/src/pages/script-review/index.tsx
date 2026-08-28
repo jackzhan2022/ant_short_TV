@@ -32,6 +32,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import { statusText } from '@/utils/fieldDictionary';
 import type {
   ReviewIssue,
   ReviewProject,
@@ -393,7 +394,7 @@ const ScriptReviewPage = () => {
                       padding: '10px 8px',
                       background:
                         project.id === selectedProjectId
-                          ? '#e6f4ff'
+                          ? 'var(--app-color-primary-bg)'
                           : undefined,
                     }}
                   >
@@ -548,7 +549,7 @@ const ScriptReviewPage = () => {
                         title={`第 ${task.roundNo} 轮 · ${task.reviewMode}`}
                         extra={
                           <Tag color={statusColor(task.status)}>
-                            {task.status}
+                            {statusText(task.status)}
                           </Tag>
                         }
                       >
@@ -644,7 +645,7 @@ const ScriptReviewPage = () => {
                                 </Tag>
                                 <Tag>{issue.dimension}</Tag>
                                 <Tag color={statusColor(issue.status)}>
-                                  {issue.status}
+                                  {statusText(issue.status)}
                                 </Tag>
                                 <Typography.Text strong>
                                   {issue.title}
@@ -745,7 +746,7 @@ const ScriptReviewPage = () => {
                               <List.Item>
                                 <Space vertical size={0}>
                                   <Typography.Text>
-                                    第 {item.roundNo} 轮 · {item.status}
+                                    第 {item.roundNo} 轮 · {statusText(item.status)}
                                   </Typography.Text>
                                   <Typography.Text type="secondary">
                                     问题 {item.issueCount} · 已处理{' '}

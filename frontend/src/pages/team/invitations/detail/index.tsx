@@ -8,6 +8,7 @@ import {
   rejectInvitation,
 } from '@/services/account-team/invitation';
 import type { TenantInvitation } from '@/services/account-team/types';
+import { statusText } from '@/utils/fieldDictionary';
 
 const InvitationDetail = () => {
   const { token } = useParams<{ token: string }>();
@@ -75,7 +76,7 @@ const InvitationDetail = () => {
               dataIndex: 'status',
               render: (_, record) => (
                 <Tag color={record.status === 'PENDING' ? 'blue' : 'default'}>
-                  {record.status}
+                  {statusText(record.status)}
                 </Tag>
               ),
             },

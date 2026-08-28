@@ -147,7 +147,7 @@ const ChatbotPage: React.FC = () => {
     },
     {
       key: 'preset-6',
-      label: 'Ant Short TV 如何接入后端权限系统？',
+      label: '剧智创如何接入后端权限系统？',
       group: '更早',
     },
     {

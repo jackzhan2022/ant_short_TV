@@ -4,6 +4,7 @@ import { App, Button, Space, Tag } from 'antd';
 import { useModel } from '@umijs/max';
 import { useRef } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
+import { statusText } from '@/utils/fieldDictionary';
 import type { TenantInvitation } from '@/services/account-team/types';
 import {
   acceptInvitation,
@@ -29,7 +30,7 @@ const TeamInvitations = () => {
       dataIndex: 'status',
       render: (_, record) => {
         const color = record.status === 'PENDING' ? 'blue' : 'default';
-        return <Tag color={color}>{record.status}</Tag>;
+        return <Tag color={color}>{statusText(record.status)}</Tag>;
       },
     },
     {
@@ -79,7 +80,7 @@ const TeamInvitations = () => {
       dataIndex: 'status',
       render: (_, record) => {
         const color = record.status === 'PENDING' ? 'blue' : 'default';
-        return <Tag color={color}>{record.status}</Tag>;
+        return <Tag color={color}>{statusText(record.status)}</Tag>;
       },
     },
     {

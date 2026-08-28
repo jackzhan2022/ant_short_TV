@@ -101,7 +101,7 @@ const renderResultSummary = (stageCode: string, resultJson?: string | null) => {
 
   if (stageCode === 'GLOBAL_UNDERSTANDING') {
     return (
-      <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#374151' }}>
+      <div style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--app-color-text)' }}>
         <div>一句话：{parsed.logline || '-'}</div>
         <div>主题：{listText(parsed.themes)}</div>
         <div>人物：{listText(parsed.characters)}</div>
@@ -123,13 +123,13 @@ const renderResultSummary = (stageCode: string, resultJson?: string | null) => {
             style={{
               padding: '8px 10px',
               borderRadius: 6,
-              background: '#f8fafc',
-              border: '1px solid #e5e7eb',
+              background: 'var(--app-color-bg-layout)',
+              border: '1px solid var(--app-color-border)',
               fontSize: 12,
               lineHeight: '18px',
             }}
           >
-            <div style={{ fontWeight: 700, color: '#111827' }}>
+            <div style={{ fontWeight: 700, color: 'var(--app-color-text)' }}>
               第{episode.episodeNo || '-'}集{' '}
               {episode.title ? `· ${episode.title}` : ''}
             </div>
@@ -195,7 +195,7 @@ const renderResultSummary = (stageCode: string, resultJson?: string | null) => {
         wordBreak: 'break-word',
         fontSize: 12,
         lineHeight: '18px',
-        color: '#374151',
+        color: 'var(--app-color-text)',
       }}
     >
       {resultJson}
@@ -248,21 +248,21 @@ const getEpisodeBlocks = (workspace: ScriptWorkspace): EpisodeBlock[] => {
 const metricStyle = {
   minHeight: 68,
   borderRadius: 8,
-  border: '1px solid #edf1f8',
-  background: '#fbfcff',
+  border: '1px solid var(--app-color-border-secondary)',
+  background: 'var(--app-color-bg-container)',
   padding: '12px 14px',
 } as const;
 
 const labelStyle = {
   display: 'block',
-  color: '#858fa5',
+  color: 'var(--app-color-text-tertiary)',
   fontSize: 12,
   lineHeight: '18px',
 } as const;
 
 const valueStyle = {
   marginTop: 6,
-  color: '#1f2937',
+  color: 'var(--app-color-text)',
   fontSize: 15,
   fontWeight: 700,
   lineHeight: '22px',
@@ -426,7 +426,7 @@ const ProductionWorkbenchScript = () => {
         minHeight: 'calc(100vh - 100px)',
         padding: '16px 28px 68px',
         boxSizing: 'border-box',
-        background: '#f6f7fb',
+        background: 'var(--app-color-bg-layout)',
       }}
     >
       <div style={{ maxWidth: 1500, margin: '0 auto' }}>
@@ -456,7 +456,7 @@ const ProductionWorkbenchScript = () => {
           <section
             style={{
               background: '#fff',
-              border: '1px solid #e6ebf5',
+              border: '1px solid var(--app-color-border)',
               borderRadius: 8,
               padding: 18,
               marginBottom: 14,
@@ -471,7 +471,7 @@ const ProductionWorkbenchScript = () => {
             aria-label="剧本分析进度"
             style={{
               background: '#fff',
-              border: '1px solid #e6ebf5',
+              border: '1px solid var(--app-color-border)',
               borderRadius: 8,
               padding: 18,
               marginBottom: 14,
@@ -508,10 +508,10 @@ const ProductionWorkbenchScript = () => {
                   key={stage.stageCode}
                   style={{
                     minHeight: 92,
-                    border: '1px solid #edf1f8',
+                    border: '1px solid var(--app-color-border-secondary)',
                     borderRadius: 8,
                     padding: 12,
-                    background: '#fbfcff',
+                    background: 'var(--app-color-bg-container)',
                   }}
                 >
                   <Flex justify="space-between" align="center">
@@ -596,7 +596,7 @@ const ProductionWorkbenchScript = () => {
                                 wordBreak: 'break-word',
                                 fontSize: 12,
                                 lineHeight: '18px',
-                                color: '#374151',
+                                color: 'var(--app-color-text)',
                               }}
                             >
                               {stage.resultJson}
@@ -635,7 +635,7 @@ const ProductionWorkbenchScript = () => {
             aria-label="AI执行状态"
             style={{
               background: '#fff',
-              border: '1px solid #e6ebf5',
+              border: '1px solid var(--app-color-border)',
               borderRadius: 8,
               padding: 18,
               marginBottom: 14,
@@ -668,7 +668,7 @@ const ProductionWorkbenchScript = () => {
         <section
           style={{
             background: '#fff',
-            border: '1px solid #e6ebf5',
+            border: '1px solid var(--app-color-border)',
             borderRadius: 8,
             padding: 18,
             marginBottom: 14,
@@ -706,7 +706,7 @@ const ProductionWorkbenchScript = () => {
             </div>
           </div>
 
-          <div style={{ marginTop: 10, color: '#7a849a', fontSize: 12 }}>
+          <div style={{ marginTop: 10, color: 'var(--app-color-text-tertiary)', fontSize: 12 }}>
             当前版本{' '}
             {script?.currentVersionId ? `#${script.currentVersionId}` : '-'}
           </div>
@@ -728,10 +728,10 @@ const ProductionWorkbenchScript = () => {
                 placeholder="暂无线上剧本内容"
                 style={{
                   marginTop: 8,
-                  background: '#fafbfe',
-                  borderColor: '#dfe5f1',
+                  background: 'var(--app-color-bg-container)',
+                  borderColor: 'var(--app-color-border-secondary)',
                   borderRadius: 8,
-                  color: '#202736',
+                  color: 'var(--app-color-text)',
                   fontSize: 14,
                   lineHeight: '24px',
                 }}
@@ -745,8 +745,8 @@ const ProductionWorkbenchScript = () => {
                   padding: '14px 15px',
                   minHeight: 528,
                   borderRadius: 8,
-                  border: '1px solid #edf1f7',
-                  background: '#fcfdff',
+                  border: '1px solid var(--app-color-border-secondary)',
+                  background: 'var(--app-color-bg-container)',
                 }}
               >
                 {outline.length ? (
@@ -757,7 +757,7 @@ const ProductionWorkbenchScript = () => {
                         fontSize: 13,
                         lineHeight: '22px',
                         marginBottom: 9,
-                        color: '#2b3446',
+                        color: 'var(--app-color-text)',
                       }}
                     >
                       {item}
@@ -776,7 +776,7 @@ const ProductionWorkbenchScript = () => {
         <section
           style={{
             background: '#fff',
-            border: '1px solid #e6ebf5',
+            border: '1px solid var(--app-color-border)',
             borderRadius: 8,
             padding: 18,
           }}
@@ -809,9 +809,9 @@ const ProductionWorkbenchScript = () => {
                     minWidth: 64,
                     padding: '0 12px',
                     borderRadius: 14,
-                    border: active ? '1px solid #7d8cff' : '1px solid #e4e9f3',
-                    background: active ? '#eef2ff' : '#fff',
-                    color: active ? '#334be4' : '#4a5568',
+                    border: active ? '1px solid var(--app-color-primary)' : '1px solid var(--app-color-border)',
+                    background: active ? 'var(--app-color-primary-bg)' : '#fff',
+                    color: active ? '#334be4' : 'var(--app-color-text-secondary)',
                     fontSize: 12,
                     fontWeight: active ? 700 : 500,
                     cursor: 'pointer',
@@ -830,10 +830,10 @@ const ProductionWorkbenchScript = () => {
             autoSize={{ minRows: 22, maxRows: 34 }}
             style={{
               marginTop: 8,
-              background: '#fafbfe',
-              borderColor: '#dfe5f1',
+              background: 'var(--app-color-bg-container)',
+              borderColor: 'var(--app-color-border-secondary)',
               borderRadius: 8,
-              color: '#202736',
+              color: 'var(--app-color-text)',
               fontSize: 14,
               lineHeight: '25px',
             }}

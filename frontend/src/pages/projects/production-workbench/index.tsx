@@ -128,12 +128,12 @@ const ProductionWorkbench = () => {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f6f7fb' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--app-color-bg-layout)' }}>
       <header
         style={{
           height: 68,
-          background: '#fff',
-          borderBottom: '1px solid #e4e9f3',
+          background: 'var(--app-color-bg-container)',
+          borderBottom: '1px solid var(--app-color-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -163,7 +163,7 @@ const ProductionWorkbench = () => {
                 />
               )}
             </Flex>
-          <div style={{ marginTop: 5, color: '#65708a', fontSize: 13 }}>
+          <div style={{ marginTop: 5, color: 'var(--app-color-text-secondary)', fontSize: 13 }}>
             <span style={{ marginRight: 12 }}>
               {project?.aspectRatio || '-'}
             </span>
@@ -222,16 +222,16 @@ const ProductionWorkbench = () => {
                     width: 72,
                     height: 44,
                     borderRadius: 22,
-                    border: active ? '1px solid #8fa2ff' : '1px solid #e8edf6',
-                    color: active ? '#3156ff' : '#111827',
+                    border: active ? '1px solid var(--app-color-primary)' : '1px solid var(--app-color-border-secondary)',
+                    color: active ? 'var(--app-color-primary)' : 'var(--app-color-text)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: active ? '#f5f7ff' : '#fff',
+                    background: active ? 'var(--app-color-primary-bg)' : 'var(--app-color-bg-container)',
                     fontSize: 12,
                     boxShadow: active
-                      ? '0 0 0 1px rgba(49,86,255,0.03)'
+                      ? '0 0 0 1px rgb(82 82 255 / 8%)'
                       : 'none',
                     cursor: 'pointer',
                   }}
@@ -240,7 +240,7 @@ const ProductionWorkbench = () => {
                   <span style={{ marginTop: 1 }}>{step.label}</span>
                 </button>
                 {index < topSteps.length - 1 && (
-                  <div style={{ width: 18, height: 1, background: '#dfe5f2' }} />
+                  <div style={{ width: 18, height: 1, background: 'var(--app-color-border-secondary)' }} />
                 )}
               </div>
             );
@@ -252,11 +252,11 @@ const ProductionWorkbench = () => {
             minWidth: 96,
             height: 32,
             borderRadius: 8,
-            background: '#f1f4ff',
+            background: 'var(--app-color-primary-bg)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#6672a8',
+            color: 'var(--app-color-text-secondary)',
             fontSize: 14,
             fontWeight: 600,
           }}
@@ -312,8 +312,8 @@ const ProductionWorkbench = () => {
           bottom: 0,
           height: 32,
           background: 'rgba(255,255,255,0.94)',
-          borderTop: '1px solid #eef2f7',
-          color: '#9aa3b5',
+          borderTop: '1px solid var(--app-color-border-secondary)',
+          color: 'var(--app-color-text-tertiary)',
           textAlign: 'center',
           lineHeight: '32px',
           fontSize: 12,

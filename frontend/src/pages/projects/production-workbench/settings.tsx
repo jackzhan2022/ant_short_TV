@@ -104,7 +104,7 @@ const AssetCard = ({
   <article
     style={{
       minHeight: 252,
-      border: '1px solid #e5e9f3',
+      border: '1px solid var(--app-color-border)',
       borderRadius: 10,
       background: '#fff',
       boxShadow: '0 8px 20px rgba(26, 39, 76, 0.05)',
@@ -130,7 +130,7 @@ const AssetCard = ({
               : type === 'SCENE'
                 ? 'linear-gradient(135deg, #dceafa 0%, #f8fbff 100%)'
                 : 'linear-gradient(135deg, #f4edff 0%, #eaf7f1 100%)',
-          color: '#5252ff',
+          color: 'var(--app-color-primary)',
           fontSize: 34,
           fontWeight: 700,
         }}
@@ -140,7 +140,7 @@ const AssetCard = ({
       <div style={{ padding: '13px 16px 14px' }}>
         <Flex justify="space-between" align="flex-start" gap={12}>
           <div>
-            <Typography.Text strong style={{ fontSize: 15, color: '#111827' }}>
+            <Typography.Text strong style={{ fontSize: 15, color: 'var(--app-color-text)' }}>
               {item.name}
             </Typography.Text>
             <div style={{ marginTop: 7 }}>
@@ -180,7 +180,7 @@ const AssetCard = ({
         <Typography.Paragraph
           style={{
             margin: '10px 0 0',
-            color: '#48546b',
+            color: 'var(--app-color-text-secondary)',
             fontSize: 13,
             lineHeight: '22px',
             height: 44,
@@ -192,7 +192,7 @@ const AssetCard = ({
         <div
           style={{
             marginTop: 6,
-            color: '#7a849a',
+            color: 'var(--app-color-text-tertiary)',
             fontSize: 12,
             lineHeight: '20px',
             whiteSpace: 'nowrap',
@@ -370,7 +370,7 @@ const ProductionWorkbenchSettings = () => {
       style={{
         minHeight: 'calc(100vh - 100px)',
         padding: '18px 28px 70px',
-        background: '#f6f7fb',
+        background: 'var(--app-color-bg-layout)',
         boxSizing: 'border-box',
       }}
     >
@@ -388,7 +388,7 @@ const ProductionWorkbenchSettings = () => {
               {loading ? '正在加载设定内容...' : '角色、场景、道具统一管理，确认后进入分镜'}
             </Typography.Text>
           </div>
-          <div style={{ color: '#667085', fontSize: 13 }}>
+          <div style={{ color: 'var(--app-color-text-secondary)', fontSize: 13 }}>
             共 {workspace.characters.length + workspace.scenes.length + workspace.props.length} 项设定
           </div>
         </Flex>
@@ -396,8 +396,8 @@ const ProductionWorkbenchSettings = () => {
         {activeExecution ? (
           <div
             style={{
-              background: '#f5f7ff',
-              border: '1px solid #e1e5ff',
+              background: 'var(--app-color-primary-bg)',
+              border: '1px solid var(--app-color-border-secondary)',
               borderRadius: 8,
               padding: '12px 16px',
               marginBottom: 16,
@@ -412,7 +412,7 @@ const ProductionWorkbenchSettings = () => {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            borderBottom: '1px solid #e5e9f3',
+            borderBottom: '1px solid var(--app-color-border)',
             marginBottom: 16,
           }}
         >
@@ -431,16 +431,16 @@ const ProductionWorkbenchSettings = () => {
                 onClick={() => setActiveType(section.type)}
                 style={{
                   border: 0,
-                  borderBottom: active ? '2px solid #5252ff' : '2px solid transparent',
+                  borderBottom: active ? '2px solid var(--app-color-primary)' : '2px solid transparent',
                   background: 'transparent',
-                  color: active ? '#3434d6' : '#667085',
+                  color: active ? 'var(--app-color-primary-active)' : 'var(--app-color-text-secondary)',
                   padding: '10px 14px',
                   cursor: 'pointer',
                   fontWeight: active ? 600 : 400,
                 }}
               >
                 {elementLabels[section.type]}
-                <span style={{ marginLeft: 6, fontSize: 12, color: active ? '#5252ff' : '#98a2b3' }}>
+                <span style={{ marginLeft: 6, fontSize: 12, color: active ? 'var(--app-color-primary)' : 'var(--app-color-text-tertiary)' }}>
                   {completed}/{count}
                 </span>
               </button>
@@ -456,7 +456,7 @@ const ProductionWorkbenchSettings = () => {
               <Flex justify="space-between" align="center" style={{ marginBottom: 14 }}>
                 <div>
                   <Typography.Text strong style={{ fontSize: 16 }}>{section.title}</Typography.Text>
-                  <span style={{ marginLeft: 10, color: '#7a849a', fontSize: 13 }}>{items.length} 项</span>
+                  <span style={{ marginLeft: 10, color: 'var(--app-color-text-tertiary)', fontSize: 13 }}>{items.length} 项</span>
                 </div>
                 <Flex gap={8}>
                   <Input
@@ -499,7 +499,7 @@ const ProductionWorkbenchSettings = () => {
                   ))}
                 </div>
               ) : (
-                <div style={{ padding: '56px 0', background: '#fff', border: '1px dashed #d9e0ed', borderRadius: 10 }}>
+                <div style={{ padding: '56px 0', background: '#fff', border: '1px dashed var(--app-color-border-secondary)', borderRadius: 10 }}>
                   <Empty description={`暂无${elementLabels[section.type]}设定`} />
                 </div>
               )}
