@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -122,6 +123,126 @@ public class ScriptWorkflowController {
         HttpServletRequest request
     ) {
         return accepted(scriptWorkflowService.submitExtractElements(tenantId(request), projectId, body, request));
+    }
+
+    @GetMapping("/asset-candidates")
+    @RequireProjectPermission("ELEMENT:VIEW")
+    public ApiResponse<ScriptAssetCandidateReviewService.CandidatePage> assetCandidates(
+        @PathVariable Long projectId,
+        @RequestParam(required = false) String reviewStatus,
+        @RequestParam(required = false) String assetType,
+        @RequestParam(defaultValue = "1") Integer page,
+        @RequestParam(defaultValue = "20") Integer pageSize,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.assetCandidates(
+            tenantId(request), projectId, reviewStatus, assetType, page, pageSize));
+    }
+
+    @GetMapping("/asset-candidates/{candidateId}")
+    @RequireProjectPermission("ELEMENT:VIEW")
+    public ApiResponse<ScriptAssetCandidateReviewService.CandidateResponse> assetCandidate(
+        @PathVariable Long projectId,
+        @PathVariable Long candidateId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.assetCandidate(
+            tenantId(request), projectId, candidateId));
+    }
+
+    @PostMapping("/asset-candidates/{candidateId}/decisions")
+    @RequireProjectPermission("ELEMENT:EDIT")
+    public ApiResponse<ScriptAssetCandidateReviewService.DecisionResponse> decideAssetCandidate(
+        @PathVariable Long projectId,
+        @PathVariable Long candidateId,
+        @RequestBody ScriptAssetCandidateReviewService.DecisionCommand body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.decideAssetCandidate(
+            tenantId(request), projectId, candidateId, body));
+    }
+
+    @GetMapping("/script-elements/{elementType}/{elementId}/visual-variants")
+    @RequireProjectPermission("ELEMENT:VIEW")
+    public ApiResponse<java.util.List<AssetVisualVariantService.VariantResponse>> visualVariants(
+        @PathVariable Long projectId,
+        @PathVariable String elementType,
+        @PathVariable Long elementId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.visualVariants(
+            tenantId(request), projectId, elementType, elementId));
+    }
+
+    @PostMapping("/script-elements/{elementType}/{elementId}/visual-variants")
+    @RequireProjectPermission("ELEMENT:EDIT")
+    public ApiResponse<AssetVisualVariantService.VariantResponse> createVisualVariant(
+        @PathVariable Long projectId,
+        @PathVariable String elementType,
+        @PathVariable Long elementId,
+        @RequestBody AssetVisualVariantService.VariantCommand body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.createVisualVariant(
+            tenantId(request), projectId, elementType, elementId, body));
+    }
+
+    @PutMapping("/visual-variants/{variantId}")
+    @RequireProjectPermission("ELEMENT:EDIT")
+    public ApiResponse<AssetVisualVariantService.VariantResponse> updateVisualVariant(
+        @PathVariable Long projectId,
+        @PathVariable Long variantId,
+        @RequestBody AssetVisualVariantService.VariantCommand body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.updateVisualVariant(
+            tenantId(request), projectId, variantId, body));
+    }
+
+    @PutMapping("/visual-variants/{variantId}/primary")
+    @RequireProjectPermission("ELEMENT:EDIT")
+    public ApiResponse<AssetVisualVariantService.VariantResponse> selectPrimaryVisualVariant(
+        @PathVariable Long projectId,
+        @PathVariable Long variantId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.selectPrimaryVisualVariant(
+            tenantId(request), projectId, variantId));
+    }
+
+    @DeleteMapping("/visual-variants/{variantId}")
+    @RequireProjectPermission("ELEMENT:EDIT")
+    public ApiResponse<Void> deleteVisualVariant(
+        @PathVariable Long projectId,
+        @PathVariable Long variantId,
+        HttpServletRequest request
+    ) {
+        scriptWorkflowService.deleteVisualVariant(tenantId(request), projectId, variantId);
+        return ApiResponse.success(null);
+    }
+
+    @PutMapping("/visual-variants/{variantId}/episode-bindings")
+    @RequireProjectPermission("ELEMENT:EDIT")
+    public ApiResponse<java.util.List<AssetVisualBindingService.BindingResponse>> bindVisualVariantEpisodes(
+        @PathVariable Long projectId,
+        @PathVariable Long variantId,
+        @RequestBody AssetVisualBindingService.BindingCommand body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.bindVisualVariantEpisodes(
+            tenantId(request), projectId, variantId, body));
+    }
+
+    @GetMapping("/script-elements/{elementType}/{elementId}/episode-bindings")
+    @RequireProjectPermission("ELEMENT:VIEW")
+    public ApiResponse<java.util.List<AssetVisualBindingService.BindingResponse>> visualVariantBindings(
+        @PathVariable Long projectId,
+        @PathVariable String elementType,
+        @PathVariable Long elementId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.visualVariantBindings(
+            tenantId(request), projectId, elementType, elementId));
     }
 
     @PutMapping("/script-elements/{elementType}/{elementId}")

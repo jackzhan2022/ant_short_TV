@@ -71,4 +71,8 @@ export default {
   'pages.searchTable.tenThousand': '000',
   'pages.searchTable.batchDeletion': 'একসাখে ডিলিট',
   'pages.searchTable.batchApproval': 'একসাখে অনুমোদন',
+  'pages.productionWorkbench.assets.reviewQueue':
+    'পর্যালোচনার অপেক্ষায় শনাক্তকরণ ফলাফল',
+  'pages.productionWorkbench.assets.variantsAndBindings':
+    'ভিজ্যুয়াল রূপ ও পর্বের সংযোগ',
 };

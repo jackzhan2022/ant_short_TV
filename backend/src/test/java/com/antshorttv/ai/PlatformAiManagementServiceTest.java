@@ -1,6 +1,7 @@
 package com.antshorttv.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -82,6 +83,23 @@ class PlatformAiManagementServiceTest {
 
         assertThat(response.status()).isEqualTo("FAILED");
         assertThat(response.message()).contains("启用的模型能力");
+    }
+
+    @Test
+    void rejectsModelParametersOutsideConfiguredRanges() {
+        AiModelParameterProfileMapper parameterMapper = mock(AiModelParameterProfileMapper.class);
+        PlatformAiManagementService parameterService = new PlatformAiManagementService(
+            providerMapper, configMapper, modelMapper, capabilityMapper, parameterMapper,
+            secretCodec, operationLogService, router, currentPrincipal
+        );
+        AiModelEntity model = new AiModelEntity();
+        model.setId(1L);
+        when(modelMapper.selectById(1L)).thenReturn(model);
+        when(currentPrincipal.require()).thenReturn(new AuthenticatedUser(9L, "13800000009", "session", LocalDateTime.now().plusHours(1)));
+
+        assertThatThrownBy(() -> parameterService.updateModelParameters(
+            1L, new AiModelParameterRequest(2.1, 0.5, 8192, true, 60, 1), null
+        )).isInstanceOf(com.antshorttv.common.BusinessException.class);
     }
 
     private void prepare(AiModelRoute route) {

@@ -78,4 +78,6 @@ export default {
   'pages.searchTable.tenThousand': '万',
   'pages.searchTable.batchDeletion': '批量删除',
   'pages.searchTable.batchApproval': '批量审批',
+  'pages.productionWorkbench.assets.reviewQueue': '待审核识别结果',
+  'pages.productionWorkbench.assets.variantsAndBindings': '视觉形象与剧集绑定',
 };

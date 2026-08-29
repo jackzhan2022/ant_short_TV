@@ -3,7 +3,7 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/platform/ai/agents */
-export async function agents(options?: { [key: string]: any }) {
+export async function agents1(options?: { [key: string]: any }) {
   return request<API.ApiResponseListBuiltInAgentResponse>(
     "/api/platform/ai/agents",
     {

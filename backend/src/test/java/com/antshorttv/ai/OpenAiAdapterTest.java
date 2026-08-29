@@ -11,6 +11,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -30,7 +31,7 @@ class OpenAiAdapterTest {
             byte[] body = """
                 {
                   "id":"chatcmpl-test",
-                  "choices":[{"message":{"content":"真实文本结果"}}],
+                  "choices":[{"finish_reason":"stop","message":{"content":"真实文本结果"}}],
                   "usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}
                 }
                 """.getBytes(StandardCharsets.UTF_8);
@@ -58,6 +59,7 @@ class OpenAiAdapterTest {
             assertThat(response.promptTokens()).isEqualTo(7);
             assertThat(response.completionTokens()).isEqualTo(3);
             assertThat(response.totalTokens()).isEqualTo(10);
+            assertThat(response.finishReason()).isEqualTo("stop");
         } finally {
             server.stop(0);
         }
@@ -187,6 +189,146 @@ class OpenAiAdapterTest {
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.AI_AUTH_FAILED);
             assertThat(requests).hasValue(0);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void usesLogicalExecutionKeyInsteadOfReusingAContentHash() throws Exception {
+        CopyOnWriteArrayList<String> keys = new CopyOnWriteArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/images/generations", exchange -> {
+            keys.add(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+            exchange.getRequestBody().readAllBytes();
+            byte[] body = "{\"data\":[]}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            AiProviderConfigEntity config = config(
+                "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-456");
+            AiImageRequest request = new AiImageRequest("同一个提示词", null, null, "9:16", 1, null);
+            adapter.image(provider(), config, model("gpt-image-test", "IMAGE"), request, "execution-101-attempt-1");
+            adapter.image(provider(), config, model("gpt-image-test", "IMAGE"), request, "execution-102-attempt-1");
+
+            assertThat(keys).containsExactly("execution-101-attempt-1", "execution-102-attempt-1");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void reusesTheSameLogicalKeyAcrossProviderRetries() throws Exception {
+        CopyOnWriteArrayList<String> keys = new CopyOnWriteArrayList<>();
+        AtomicInteger attempts = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            keys.add(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+            exchange.getRequestBody().readAllBytes();
+            int status = attempts.incrementAndGet() == 1 ? 502 : 200;
+            byte[] body = (status == 200
+                ? "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}"
+                : "{\"error\":\"temporary\"}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            AiTextResponse response = adapter.text(provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-test", "TEXT"),
+                new AiTextRequest(null, "retry", 0.2, 128, null, false, null, 5, 1),
+                "execution-201-attempt-1");
+
+            assertThat(response.content()).isEqualTo("ok");
+            assertThat(keys).containsExactly("execution-201-attempt-1", "execution-201-attempt-1");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void exposesLengthFinishReasonForTruncatedJson() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = "{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"content\":\"{}\"}}]}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            AiTextResponse response = adapter.text(provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-test", "TEXT"), new AiTextRequest(null, "用户提示", 0.2, 256, null));
+            assertThat(response.finishReason()).isEqualTo("length");
+            assertThat(response.truncated()).isTrue();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void sendsConfiguredTopPAndJsonResponseFormat() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = """
+                {"id":"chatcmpl-json","choices":[{"message":{"content":"{}"}}]}
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            adapter.text(
+                provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-test", "TEXT"),
+                new AiTextRequest(null, "只返回 JSON", 0.2, 8192, 0.8, true, null)
+            );
+
+            assertThat(requestBody.get()).contains("\"max_tokens\":8192");
+            assertThat(requestBody.get()).contains("\"top_p\":0.8");
+            assertThat(requestBody.get()).contains("\"response_format\":{\"type\":\"json_object\"}");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void longScriptAnalysisUsesExpandedTokenBudgetAndJsonMode() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"{}\"}}]}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            String longScript = "场景：林晚在天台发现录音笔。".repeat(2000);
+            adapter.text(provider(), config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-long-script", "TEXT"), new AiTextRequest(null, longScript, 0.2, 8192, 0.8, true, null));
+
+            assertThat(requestBody.get()).contains("\"max_tokens\":8192", "\"top_p\":0.8", "\"response_format\":{\"type\":\"json_object\"}");
+            assertThat(requestBody.get()).contains(longScript.substring(0, 100));
         } finally {
             server.stop(0);
         }

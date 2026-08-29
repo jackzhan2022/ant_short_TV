@@ -37,3 +37,12 @@ record ProjectAiConfigRequest(
     Long audioModelId
 ) {
 }
+
+record AiModelParameterRequest(
+    Double temperature,
+    Double topP,
+    Integer maxTokens,
+    Boolean jsonMode,
+    Integer timeoutSeconds,
+    Integer retryCount
+) {}

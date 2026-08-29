@@ -79,6 +79,19 @@ export type PlatformModelFormValues = {
   configJson?: string;
 };
 
+export type AiModelParameter = {
+  modelId: number;
+  versionNo: number;
+  temperature: number;
+  topP?: number;
+  maxTokens: number;
+  jsonMode: boolean;
+  timeoutSeconds: number;
+  retryCount: number;
+};
+
+export type AiModelParameterFormValues = Omit<AiModelParameter, 'modelId' | 'versionNo'>;
+
 export type AiServiceTestResult = {
   status: 'SUCCESS' | 'FAILED';
   message: string;
@@ -124,6 +137,13 @@ export type BuiltInSkill = {
   category: string;
   content: string;
   agents: BuiltInAgentSummary[];
+};
+
+export type EditableAgent = {
+  code: string; versionNo: number; name: string; description?: string; promptTemplate: string; outputSchema?: string; status: string; published: boolean;
+};
+export type EditableSkill = {
+  code: string; versionNo: number; name: string; category?: string; content: string; status: string; published: boolean;
 };
 
 export type BuiltInAgentPreview = {
@@ -208,6 +228,16 @@ export const setDefaultPlatformModel = async (id: number) =>
     method: 'POST',
   });
 
+export const queryModelParameters = async (id: number) =>
+  request<ApiResponse<AiModelParameter>>(`/api/platform/ai/models/${id}/parameters`);
+
+export const updateModelParameters = async (id: number, values: AiModelParameterFormValues) =>
+  request<ApiResponse<AiModelParameter>>(`/api/platform/ai/models/${id}/parameters`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    data: values,
+  });
+
 export const queryBuiltInAgents = async () =>
   request<ApiResponse<BuiltInAgent[]>>('/api/platform/ai/agents');
 
@@ -226,3 +256,24 @@ export const previewBuiltInAgent = async (
       data: { variables },
     },
   );
+
+export const queryEditableAgents = async () =>
+  request<ApiResponse<EditableAgent[]>>('/api/platform/ai/definitions/agents');
+export const updateEditableAgent = async (code: string, data: Pick<EditableAgent, 'name' | 'description' | 'promptTemplate' | 'outputSchema'>) =>
+  request<ApiResponse<EditableAgent>>(`/api/platform/ai/definitions/agents/${code}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, data });
+export const publishEditableAgent = async (code: string) =>
+  request<ApiResponse<EditableAgent>>(`/api/platform/ai/definitions/agents/${code}/publish`, { method: 'POST' });
+export const setEditableAgentStatus = async (code: string, enabled: boolean) =>
+  request<ApiResponse<EditableAgent>>(`/api/platform/ai/definitions/agents/${code}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
+export const rollbackEditableAgent = async (code: string, version: number) =>
+  request<ApiResponse<EditableAgent>>(`/api/platform/ai/definitions/agents/${code}/rollback/${version}`, { method: 'POST' });
+export const queryEditableSkills = async () =>
+  request<ApiResponse<EditableSkill[]>>('/api/platform/ai/definitions/skills');
+export const updateEditableSkill = async (code: string, data: Pick<EditableSkill, 'name' | 'category' | 'content'>) =>
+  request<ApiResponse<EditableSkill>>(`/api/platform/ai/definitions/skills/${code}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, data });
+export const publishEditableSkill = async (code: string) =>
+  request<ApiResponse<EditableSkill>>(`/api/platform/ai/definitions/skills/${code}/publish`, { method: 'POST' });
+export const setEditableSkillStatus = async (code: string, enabled: boolean) =>
+  request<ApiResponse<EditableSkill>>(`/api/platform/ai/definitions/skills/${code}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
+export const rollbackEditableSkill = async (code: string, version: number) =>
+  request<ApiResponse<EditableSkill>>(`/api/platform/ai/definitions/skills/${code}/rollback/${version}`, { method: 'POST' });

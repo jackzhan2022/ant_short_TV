@@ -93,4 +93,17 @@ public class PlatformAiManagementController {
     public ApiResponse<PlatformModelResponse> defaultModel(@PathVariable Long id, HttpServletRequest request) {
         return ApiResponse.success(service.setDefault(id, request));
     }
+
+    @GetMapping("/models/{id}/parameters")
+    @RequirePlatformPermission("PLATFORM_AI_MODEL_VIEW")
+    public ApiResponse<AiModelParameterResponse> modelParameters(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResponse.success(service.modelParameters(id));
+    }
+
+    @PutMapping("/models/{id}/parameters")
+    @RequirePlatformPermission("PLATFORM_AI_MODEL_EDIT")
+    public ApiResponse<AiModelParameterResponse> updateModelParameters(
+        @PathVariable Long id, @Valid @RequestBody AiModelParameterRequest body, HttpServletRequest request) {
+        return ApiResponse.success(service.updateModelParameters(id, body, request));
+    }
 }

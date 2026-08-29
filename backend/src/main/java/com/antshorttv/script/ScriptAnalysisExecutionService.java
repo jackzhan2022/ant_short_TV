@@ -25,10 +25,14 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ScriptAnalysisExecutionService {
+    @Autowired private ScriptAnalysisConfigSnapshotService configSnapshotService;
+    @Autowired(required = false) private ScriptEpisodeService scriptEpisodeService;
+    @Autowired(required = false) private ScriptAssetNormalizationService assetNormalizationService;
     private final ScriptAnalysisTaskMapper taskMapper;
     private final ScriptAnalysisStageMapper stageMapper;
     private final ScriptAnalysisResultMapper resultMapper;
@@ -129,6 +133,7 @@ public class ScriptAnalysisExecutionService {
         String normalizedJson = null;
         String rawResponse = null;
         Long callLogId = null;
+        Long normalizationRunId = null;
         String requestId = null;
         Long durationMs = null;
         try {
@@ -151,20 +156,92 @@ public class ScriptAnalysisExecutionService {
                 durationMs = call.durationMs();
             }
             JsonNode parsed = objectMapper.readTree(normalizedJson);
+            if ("CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode())
+                && parsed.path("assets").isObject()) {
+                parsed = parsed.path("assets");
+                normalizedJson = parsed.toString();
+            }
+            if ("CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode())
+                && parsed.path("short_drama_assets").isObject()) {
+                parsed = parsed.path("short_drama_assets");
+                normalizedJson = parsed.toString();
+            }
+            if ("CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode())
+                && !parsed.has("scenes") && parsed.has("locations")) {
+                ObjectNode compatible = parsed.deepCopy();
+                compatible.set("scenes", normalizeLocations(parsed.path("locations")));
+                compatible.remove("locations");
+                if (!compatible.has("props") && compatible.has("key_items")) {
+                    compatible.set("props", normalizeLocations(compatible.path("key_items")));
+                    compatible.remove("key_items");
+                }
+                parsed = compatible;
+                normalizedJson = parsed.toString();
+            }
+            if ("CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode())
+                && !parsed.has("props") && parsed.has("key_items")) {
+                ObjectNode compatible = parsed.deepCopy();
+                compatible.set("props", normalizeLocations(parsed.path("key_items")));
+                compatible.remove("key_items");
+                parsed = compatible;
+                normalizedJson = parsed.toString();
+            }
+            if ("CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode())
+                && !parsed.has("characters") && parsed.has("主要角色")) {
+                ObjectNode compatible = objectMapper.createObjectNode();
+                compatible.set("characters", mapAssetObject(parsed.path("主要角色"), "CHARACTER"));
+                compatible.set("scenes", mapAssetObject(parsed.path("主要场景"), "SCENE"));
+                compatible.set("props", mapAssetObject(parsed.path("关键物品"), "PROP"));
+                parsed = compatible;
+                normalizedJson = parsed.toString();
+            }
             validateStageResult(stage.getStageCode(), parsed, version.getContent());
             if (!isCurrentVersion(task)) {
                 failStaleStage(task, stage);
                 return;
             }
-            if ("CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode())) {
-                scriptElementDraftService.replaceAnalysisDrafts(
+            if ("EPISODE_SPLITTING".equals(stage.getStageCode()) && scriptEpisodeService != null) {
+                scriptEpisodeService.reconcileAndPersist(
                     task.getTenantId(),
                     task.getProjectId(),
-                    task.getCreatedBy(),
-                    normalizeExtractionResult(parsed)
+                    version.getScriptId(),
+                    version.getId(),
+                    episodeResponses(parsed.path("episodes"))
                 );
             }
-            persistResult(
+            if ("CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode())) {
+                if (assetNormalizationService == null) {
+                    throw new IllegalStateException("资产归一化服务未配置。");
+                }
+                ScriptAssetNormalizationService.NormalizationPersistenceResult normalization =
+                    assetNormalizationService.normalizeAndPersist(
+                    task.getTenantId(),
+                    task.getProjectId(),
+                    task.getScriptId(),
+                    version.getId(),
+                    task.getId(),
+                    stage.getId(),
+                    executionContext == null ? task.getExecutionId() : executionContext.task().id,
+                    executionContext == null ? null : executionContext.claim().attemptId(),
+                    callLogId,
+                    "analysis:%d:stage:%d:attempt:%d".formatted(
+                        task.getId(), stage.getId(), stage.getAttemptNo()),
+                    rawResponse
+                    );
+                normalizationRunId = normalization.runId();
+                normalizedJson = objectMapper.writeValueAsString(Map.of(
+                    "normalizationRunId", normalization.runId(),
+                    "candidateCount", normalization.candidateCount(),
+                    "status", normalization.status()
+                ));
+                if (!normalization.valid()) {
+                    throw new BusinessException(
+                        com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID,
+                        "角色场景识别结果未通过归一化校验，候选与调用证据已保留。"
+                    );
+                }
+            }
+            Long analysisResultId = persistResult(
                 task,
                 stage,
                 "SUCCEEDED",
@@ -177,6 +254,10 @@ public class ScriptAnalysisExecutionService {
                 null,
                 false
             );
+            if (normalizationRunId != null) {
+                assetNormalizationService.attachAnalysisResult(
+                    task.getTenantId(), normalizationRunId, analysisResultId);
+            }
 
             stage.setStatus("SUCCEEDED");
             stage.setProgressPercent(100);
@@ -195,7 +276,7 @@ public class ScriptAnalysisExecutionService {
                 ? businessException.getErrorCode().name()
                 : "AI_ANALYSIS_FAILED";
             String errorMessage = exception.getMessage();
-            persistResult(
+            Long analysisResultId = persistResult(
                 task,
                 stage,
                 "FAILED",
@@ -208,6 +289,10 @@ public class ScriptAnalysisExecutionService {
                 errorMessage,
                 true
             );
+            if (normalizationRunId != null && assetNormalizationService != null) {
+                assetNormalizationService.attachAnalysisResult(
+                    task.getTenantId(), normalizationRunId, analysisResultId);
+            }
             stage.setStatus("FAILED");
             stage.setProgressPercent(Math.max(10, stage.getProgressPercent() == null ? 10 : stage.getProgressPercent()));
             stage.setErrorCode(errorCode);
@@ -243,48 +328,66 @@ public class ScriptAnalysisExecutionService {
             throw new BusinessException(com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID, "分集结果为空，无法提炼概要。");
         }
 
-        int maxConcurrency = 2;
-        var executor = Executors.newFixedThreadPool(maxConcurrency);
         try {
-            Semaphore semaphore = new Semaphore(maxConcurrency);
-            List<CompletableFuture<EpisodeSummaryCall>> futures = new ArrayList<>();
-            for (JsonNode episode : episodesNode) {
-                futures.add(CompletableFuture.supplyAsync(
-                    () -> summarizeEpisode(task, version, episode, semaphore, executionContext, tracker), executor
-                ));
+            AiCall call = invokeEpisodesSummary(task, version, episodesNode, executionContext, tracker);
+            JsonNode parsed = objectMapper.readTree(normalizeJson(call.rawResponse()));
+            Map<Integer, JsonNode> summaries = new java.util.HashMap<>();
+            if (parsed.path("episodes").isArray()) {
+                for (JsonNode episode : parsed.path("episodes")) {
+                    summaries.put(episode.path("episodeNo").asInt(0), episode);
+                }
             }
-            List<EpisodeSummaryCall> calls = futures.stream().map(CompletableFuture::join).sorted(Comparator.comparingInt(EpisodeSummaryCall::episodeNo)).toList();
             ArrayNode episodes = objectMapper.createArrayNode();
-            StringBuilder raw = new StringBuilder();
-            for (EpisodeSummaryCall call : calls) {
-                JsonNode parsed = objectMapper.readTree(call.normalizedJson());
-                JsonNode sourceEpisode = parsed.path("episodes").isArray() && parsed.path("episodes").size() > 0
-                    ? parsed.path("episodes").get(0)
-                    : null;
+            for (JsonNode episode : episodesNode) {
+                JsonNode sourceEpisode = summaries.get(episode.path("episodeNo").asInt(0));
                 ObjectNode node = episodes.addObject();
-                node.put("episodeNo", call.episodeNo());
+                node.put("episodeNo", episode.path("episodeNo").asInt(0));
                 node.put("summary", sourceEpisode == null ? "" : sourceEpisode.path("summary").asText(""));
                 node.set("highlights", sourceEpisode == null ? objectMapper.createArrayNode() : sourceEpisode.path("highlights"));
                 node.put("endingHook", sourceEpisode == null ? "" : sourceEpisode.path("endingHook").asText(""));
-                if (raw.length() > 0) {
-                    raw.append('\n');
-                }
-                raw.append(call.rawResponse());
             }
             ObjectNode root = objectMapper.createObjectNode();
             root.set("episodes", episodes);
             return new SummaryCall(
-                raw.toString(),
+                call.rawResponse(),
                 root.toString(),
-                calls.isEmpty() ? null : calls.get(calls.size() - 1).callLogId(),
-                calls.isEmpty() ? null : calls.get(calls.size() - 1).requestId(),
-                calls.stream().map(EpisodeSummaryCall::durationMs).filter(value -> value != null).mapToLong(Long::longValue).sum()
+                call.callLogId(),
+                call.requestId(),
+                call.durationMs()
             );
         } catch (Exception exception) {
             throw new BusinessException(com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID, "剧集概要提炼失败。");
-        } finally {
-            executor.shutdownNow();
         }
+    }
+
+    private AiCall invokeEpisodesSummary(
+        ScriptAnalysisTaskEntity task,
+        ScriptVersionEntity version,
+        JsonNode episodes,
+        AiExecutionContext executionContext,
+        InvocationTracker tracker
+    ) {
+        if (executionContext == null) {
+            throw new BusinessException(com.antshorttv.common.ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
+        }
+        Long modelId = frozenModelId(task);
+        Map<String, Object> variables = Map.of("episodes", episodes);
+        AiInvocationRequest.Builder builder = AiInvocationRequest.text()
+            .tenantId(task.getTenantId())
+            .userId(task.getCreatedBy())
+            .projectId(task.getProjectId())
+            .taskId(task.getId())
+            .modelId(modelId)
+            .scene(AiBusinessScene.SCRIPT_EPISODE_SUMMARY)
+            .promptTemplateId(AiBusinessScene.SCRIPT_EPISODE_SUMMARY.agentCode())
+            .templateVariables(variables)
+            .requestSummary("script-analysis:EPISODE_SUMMARY")
+            .traceId("script-analysis-%d-summary".formatted(task.getId()));
+        applyFrozenTextConfiguration(builder, task, AiBusinessScene.SCRIPT_EPISODE_SUMMARY, variables);
+        applyExecutionIdentity(builder, executionContext, "EPISODE_SUMMARY");
+        var invocation = aiInvocationService.invokeText(builder.build());
+        tracker.record(invocation);
+        return new AiCall(invocation.content(), invocation.aiCallLogId(), invocation.providerRequestId(), invocation.durationMs());
     }
 
     private EpisodeSummaryCall summarizeEpisode(
@@ -325,8 +428,11 @@ public class ScriptAnalysisExecutionService {
         if (executionContext == null) {
             throw new BusinessException(com.antshorttv.common.ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
         }
-        Long modelId = projectAiConfigService.resolveModelId(task.getTenantId(), task.getProjectId(), "TEXT");
+        Long modelId = frozenModelId(task);
         int episodeNo = episode.path("episodeNo").asInt(0);
+        Map<String, Object> variables = Map.of(
+            "episodes", objectMapper.createArrayNode().add(episode)
+        );
         AiInvocationRequest.Builder builder = AiInvocationRequest.text()
             .tenantId(task.getTenantId())
             .userId(task.getCreatedBy())
@@ -335,12 +441,10 @@ public class ScriptAnalysisExecutionService {
             .modelId(modelId)
             .scene(AiBusinessScene.SCRIPT_EPISODE_SUMMARY)
             .promptTemplateId(AiBusinessScene.SCRIPT_EPISODE_SUMMARY.agentCode())
-            .templateVariables(Map.of(
-                "episodes",
-                objectMapper.createArrayNode().add(episode)
-            ))
+            .templateVariables(variables)
             .requestSummary("script-analysis:EPISODE_SUMMARY")
             .traceId("script-analysis-%d-summary-%d".formatted(task.getId(), episodeNo));
+        applyFrozenTextConfiguration(builder, task, AiBusinessScene.SCRIPT_EPISODE_SUMMARY, variables);
         applyExecutionIdentity(builder, executionContext, "EPISODE_SUMMARY:" + episodeNo);
         var invocation = aiInvocationService.invokeText(builder.build());
         tracker.record(invocation);
@@ -434,17 +538,109 @@ public class ScriptAnalysisExecutionService {
         InvocationTracker tracker
     ) {
         List<ScriptEpisodeResponse> parsed = ScriptEpisodeParser.parse(version.getContent());
-        if (parsed.size() > 1 || hasEpisodeHeading(version.getContent())) {
+        if (parsed.size() > 1 && hasUsableEpisodeHeadings(parsed)) {
             return episodesJson(parsed);
         }
         AiCall call = invoke(task, version, "EPISODE_SPLITTING", executionContext, tracker);
-        return normalizeJson(call.rawResponse());
+        return normalizeAiSplitResult(call.rawResponse(), version.getContent());
     }
 
-    private boolean hasEpisodeHeading(String content) {
-        return ScriptEpisodeParser.parse(content).stream().anyMatch(item ->
-            item.title() != null && !item.title().equals("第1集")
-        );
+    private String normalizeAiSplitResult(String rawResponse, String scriptContent) {
+        try {
+            JsonNode parsed = objectMapper.readTree(normalizeJson(rawResponse));
+            JsonNode sourceEpisodes = parsed.path("episodes");
+            if (!sourceEpisodes.isArray() || sourceEpisodes.isEmpty()) {
+                return singleEpisodeJson(scriptContent);
+            }
+            ObjectNode root = objectMapper.createObjectNode();
+            ArrayNode episodes = root.putArray("episodes");
+            int episodeNo = 1;
+            int cursor = 0;
+            for (JsonNode source : sourceEpisodes) {
+                String startMarker = source.path("startMarker").asText("");
+                String endMarker = source.path("endMarker").asText("");
+                if (startMarker.isBlank() || endMarker.isBlank()) {
+                    return singleEpisodeJson(scriptContent);
+                }
+                int start = scriptContent.indexOf(startMarker, cursor);
+                int end = scriptContent.indexOf(endMarker, start < 0 ? cursor : start);
+                if (start < 0 || end < start) {
+                    return singleEpisodeJson(scriptContent);
+                }
+                ObjectNode episode = episodes.addObject();
+                episode.put("episodeNo", episodeNo);
+                episode.put("title", "第" + episodeNo + "集");
+                episode.put("content", scriptContent.substring(start, end + endMarker.length()));
+                cursor = end + endMarker.length();
+                episodeNo++;
+            }
+            if (scriptContent != null && !scriptContent.substring(cursor).trim().isEmpty()) {
+                return singleEpisodeJson(scriptContent);
+            }
+            return root.toString();
+        } catch (Exception exception) {
+            throw new BusinessException(com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID, "AI 分集结果不是有效 JSON。");
+        }
+    }
+
+    private String singleEpisodeJson(String scriptContent) {
+        ObjectNode root = objectMapper.createObjectNode();
+        ObjectNode episode = root.putArray("episodes").addObject();
+        episode.put("episodeNo", 1);
+        episode.put("title", "第1集");
+        episode.put("content", scriptContent == null ? "" : scriptContent);
+        return root.toString();
+    }
+
+    private List<ScriptEpisodeResponse> episodeResponses(JsonNode episodes) {
+        if (episodes == null || !episodes.isArray()) {
+            return List.of();
+        }
+        List<ScriptEpisodeResponse> result = new ArrayList<>();
+        episodes.forEach(episode -> result.add(new ScriptEpisodeResponse(
+            episode.path("episodeNo").asInt(),
+            episode.path("title").asText(""),
+            episode.path("content").asText("")
+        )));
+        return List.copyOf(result);
+    }
+
+    private ArrayNode mapAssetObject(JsonNode values, String type) {
+        ArrayNode result = objectMapper.createArrayNode();
+        if (values != null && values.isObject()) {
+            values.fields().forEachRemaining(entry -> {
+                ObjectNode item = result.addObject();
+                item.put("name", entry.getKey());
+                item.put("description", entry.getValue().asText(""));
+                item.put("type", type);
+            });
+        }
+        return result;
+    }
+
+    private ArrayNode normalizeLocations(JsonNode values) {
+        ArrayNode result = objectMapper.createArrayNode();
+        if (values != null && values.isArray()) {
+            values.forEach(value -> {
+                ObjectNode item = result.addObject();
+                item.put("name", value.asText(""));
+                item.put("type", "SCENE");
+            });
+        }
+        return result;
+    }
+
+    private boolean hasUsableEpisodeHeadings(List<ScriptEpisodeResponse> episodes) {
+        int expected = 1;
+        for (ScriptEpisodeResponse episode : episodes) {
+            if (episode.episodeNo() != expected
+                || episode.title() == null
+                || !episode.title().matches("第\\s*" + expected + "\\s*集(?:\\s*[:：-].*)?")) {
+                return false;
+            }
+            expected++;
+        }
+        return !episodes.isEmpty();
     }
 
     private String episodesJson(List<ScriptEpisodeResponse> episodes) {
@@ -479,7 +675,7 @@ public class ScriptAnalysisExecutionService {
         if (executionContext == null) {
             throw new BusinessException(com.antshorttv.common.ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
         }
-        Long modelId = projectAiConfigService.resolveModelId(task.getTenantId(), task.getProjectId(), "TEXT");
+        Long modelId = frozenModelId(task);
         Map<String, Object> variables = stageVariables(task, version, stageCode);
         AiInvocationRequest.Builder builder = AiInvocationRequest.text()
             .tenantId(task.getTenantId())
@@ -492,10 +688,36 @@ public class ScriptAnalysisExecutionService {
             .templateVariables(variables)
             .requestSummary("script-analysis:" + stageCode)
             .traceId("script-analysis-%d-%s".formatted(task.getId(), stageCode));
+        applyFrozenTextConfiguration(builder, task, scene, variables);
         applyExecutionIdentity(builder, executionContext, stageCode);
         var invocation = aiInvocationService.invokeText(builder.build());
         tracker.record(invocation);
         return new AiCall(invocation.content(), invocation.aiCallLogId(), invocation.providerRequestId(), invocation.durationMs());
+    }
+
+    private Long frozenModelId(ScriptAnalysisTaskEntity task) {
+        Long modelId = configSnapshotService == null ? null : configSnapshotService.modelIdFor(task.getId());
+        return modelId == null
+            ? projectAiConfigService.resolveModelId(task.getTenantId(), task.getProjectId(), "TEXT")
+            : modelId;
+    }
+
+    private void applyFrozenTextConfiguration(
+        AiInvocationRequest.Builder builder,
+        ScriptAnalysisTaskEntity task,
+        AiBusinessScene scene,
+        Map<String, Object> variables
+    ) {
+        builder.textParameters(0.2, 8192, 0.8, true);
+        if (configSnapshotService == null) return;
+        var snapshotParameters = configSnapshotService.parametersFor(task.getId());
+        if (snapshotParameters != null) {
+            builder.textParameters(snapshotParameters.getTemperature(), snapshotParameters.getMaxTokens(),
+                snapshotParameters.getTopP(), snapshotParameters.getJsonMode(),
+                snapshotParameters.getTimeoutSeconds(), snapshotParameters.getRetryCount());
+        }
+        String frozenPrompt = configSnapshotService.renderPrompt(task.getId(), scene.agentCode(), variables);
+        if (frozenPrompt != null) builder.userPrompt(frozenPrompt);
     }
 
     private void applyExecutionIdentity(
@@ -596,8 +818,10 @@ public class ScriptAnalysisExecutionService {
             for (JsonNode episode : episodes) {
                 combined += episode.path("content").asText("").replaceAll("\\s+", "");
             }
-            if (!source.isBlank() && !combined.contains(source.substring(0, Math.min(24, source.length())))) {
-                throw new BusinessException(com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID, "分集正文未覆盖原始剧本开头内容。");
+            String original = scriptContent == null ? "" : scriptContent.replaceAll("\\s+", "");
+            boolean isWholeScriptFallback = episodes.size() == 1 && original.equals(combined);
+            if (!source.isBlank() && !source.equals(combined) && !isWholeScriptFallback) {
+                throw new BusinessException(com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID, "分集正文必须逐字覆盖原始剧本，不能改写或遗漏。");
             }
         } else if ("EPISODE_SUMMARY".equals(stageCode)
             && (!result.has("episodes") || !result.get("episodes").isArray())) {
@@ -620,7 +844,7 @@ public class ScriptAnalysisExecutionService {
         } catch (Exception exception) {
             throw new BusinessException(
                 com.antshorttv.common.ErrorCode.AI_RESPONSE_INVALID,
-                "AI 分析结果不是有效 JSON。"
+                value.endsWith("}") ? "AI 分析结果不是有效 JSON。" : "AI 分析结果可能被截断，请提高最大输出 token 后重试。"
             );
         }
         return value;
@@ -633,7 +857,7 @@ public class ScriptAnalysisExecutionService {
         return Math.max(0, java.time.Duration.between(stage.getStartedAt(), LocalDateTime.now()).toMillis());
     }
 
-    private void persistResult(
+    private Long persistResult(
         ScriptAnalysisTaskEntity task,
         ScriptAnalysisStageEntity stage,
         String status,
@@ -664,6 +888,7 @@ public class ScriptAnalysisExecutionService {
         result.setCreatedAt(LocalDateTime.now());
         result.setUpdatedAt(LocalDateTime.now());
         resultMapper.insert(result);
+        return result.getId();
     }
 
     private String sanitizeRawResponse(String rawResponse) {

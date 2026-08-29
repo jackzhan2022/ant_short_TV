@@ -1,6 +1,7 @@
 import {
   EditOutlined,
   PlusOutlined,
+  SettingOutlined,
   StarFilled,
   StarOutlined,
 } from '@ant-design/icons';
@@ -32,7 +33,10 @@ import {
   setDefaultPlatformModel,
   updatePlatformModel,
   updatePlatformModelStatus,
+  queryModelParameters,
+  updateModelParameters,
 } from '../platform-service';
+import type { AiModelParameterFormValues } from '../platform-service';
 import ModelPricingDialog from '../billing/ModelPricingDialog';
 import { billingHistory } from '@/services/ant-design-pro/platformAiAccountingController';
 import { serviceTypeText as displayServiceTypeText } from '@/utils/fieldDictionary';
@@ -210,6 +214,38 @@ const ModelEditor = ({
   );
 };
 
+const ModelParameterEditor = ({ model, onDone }: { model: PlatformModel; onDone: () => void }) => {
+  const [form] = Form.useForm<AiModelParameterFormValues>();
+  const { message } = App.useApp();
+  return (
+    <ModalForm<AiModelParameterFormValues>
+      title={`配置参数：${model.name}`}
+      trigger={<Button type="link" icon={<SettingOutlined />}>参数</Button>}
+      form={form}
+      modalProps={{ destroyOnHidden: true }}
+      request={async () => {
+        const response = await queryModelParameters(model.id);
+        const data = response.data;
+        if (data) form.setFieldsValue(data);
+        return data;
+      }}
+      onFinish={async (values) => {
+        await updateModelParameters(model.id, values);
+        message.success('模型参数已更新');
+        onDone();
+        return true;
+      }}
+    >
+      <ProFormDigit name="temperature" label="Temperature" min={0} max={2} step={0.1} rules={[{ required: true }]} />
+      <ProFormDigit name="topP" label="Top P" min={0} max={1} step={0.1} />
+      <ProFormDigit name="maxTokens" label="最大输出 Token" min={256} max={32768} rules={[{ required: true }]} />
+      <ProFormSwitch name="jsonMode" label="JSON 输出模式" />
+      <ProFormDigit name="timeoutSeconds" label="超时（秒）" min={5} max={180} rules={[{ required: true }]} />
+      <ProFormDigit name="retryCount" label="重试次数" min={0} max={3} rules={[{ required: true }]} />
+    </ModalForm>
+  );
+};
+
 const PlatformModelsPage = () => {
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
@@ -354,6 +390,9 @@ const PlatformModelsPage = () => {
             <Button type="link" onClick={() => setPricingModel(record)}>
               模型价格
             </Button>
+          )}
+          {access.canEditPlatformAiModels && record.serviceType === 'TEXT' && (
+            <ModelParameterEditor model={record} onDone={reload} />
           )}
           {access.canEditPlatformAiModels && (
             <ModelEditor

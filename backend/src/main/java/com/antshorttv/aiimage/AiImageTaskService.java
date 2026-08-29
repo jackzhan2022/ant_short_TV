@@ -21,6 +21,8 @@ import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
+import com.antshorttv.script.AssetVisualVariantService;
+import com.antshorttv.script.EpisodeAwareVisualResolver;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -36,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AiImageTaskService {
     private static final List<String> TASK_TYPES = List.of("CHARACTER", "SCENE", "STORYBOARD_FIRST_FRAME");
-    private static final List<String> TARGET_TYPES = List.of("CHARACTER", "SCENE", "STORYBOARD");
+    private static final List<String> TARGET_TYPES = List.of("CHARACTER", "SCENE", "STORYBOARD", "VISUAL_VARIANT");
     private static final List<String> ASPECT_RATIOS = List.of("1:1", "3:4", "4:3", "9:16", "16:9");
 
     private final TenantContextResolver tenantContextResolver;
@@ -53,6 +55,8 @@ public class AiImageTaskService {
     private final AiImageStorageService storageService;
     private final JdbcTemplate jdbcTemplate;
     private final OperationLogService operationLogService;
+    private final AssetVisualVariantService assetVisualVariantService;
+    private final EpisodeAwareVisualResolver episodeAwareVisualResolver;
 
     public AiImageTaskService(
         TenantContextResolver tenantContextResolver,
@@ -68,7 +72,9 @@ public class AiImageTaskService {
         AiPointReservationMapper pointReservationMapper,
         AiImageStorageService storageService,
         JdbcTemplate jdbcTemplate,
-        OperationLogService operationLogService
+        OperationLogService operationLogService,
+        AssetVisualVariantService assetVisualVariantService,
+        EpisodeAwareVisualResolver episodeAwareVisualResolver
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.projectMapper = projectMapper;
@@ -84,6 +90,8 @@ public class AiImageTaskService {
         this.storageService = storageService;
         this.jdbcTemplate = jdbcTemplate;
         this.operationLogService = operationLogService;
+        this.assetVisualVariantService = assetVisualVariantService;
+        this.episodeAwareVisualResolver = episodeAwareVisualResolver;
     }
 
     public List<AiImageTaskResponse> list(Long tenantId, Long projectId, String taskType, String status) {
@@ -123,7 +131,8 @@ public class AiImageTaskService {
         task.setModel(resolved.modelName());
         task.setPrompt(request.prompt().trim());
         task.setNegativePrompt(blankToNull(request.negativePrompt()));
-        task.setReferenceImages(ReferenceImagesCodec.encode(request.referenceImages()));
+        task.setReferenceImages(ReferenceImagesCodec.encode(resolveReferenceImages(
+            tenantId, projectId, request)));
         task.setAspectRatio(request.aspectRatio().trim());
         task.setImageCount(request.imageCount());
         task.setStyle(blankToNull(request.style()));
@@ -135,6 +144,11 @@ public class AiImageTaskService {
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
         taskMapper.insert(task);
+        if ("VISUAL_VARIANT".equals(task.getTargetType())) {
+            Long previousTaskId = assetVisualVariantService.replaceGenerationOwner(
+                tenantId, projectId, task.getTargetId(), task.getId());
+            supersedeVisualVariantTask(previousTaskId);
+        }
 
         AiExecutionTaskEntity execution = executionService.createWithReservation(
             new AiExecutionCreateCommand(
@@ -215,8 +229,35 @@ public class AiImageTaskService {
         task.setExecutionId(execution.id);
         taskMapper.updateById(task);
 
+        if ("VISUAL_VARIANT".equals(task.getTargetType())) {
+            Long previousTaskId = assetVisualVariantService.replaceGenerationOwner(
+                tenantId, projectId, task.getTargetId(), task.getId());
+            supersedeVisualVariantTask(previousTaskId);
+        }
+
         operationLogService.record(context.userId(), tenantId, "REGENERATE_AI_IMAGE_TASK", task.getId(), OperationResult.SUCCESS, servletRequest);
         return toResponse(task);
+    }
+
+    private void supersedeVisualVariantTask(Long taskId) {
+        if (taskId == null) return;
+        AiImageTaskEntity previous = taskMapper.selectById(taskId);
+        if (previous == null || previous.getExecutionId() == null
+            || !List.of(AiImageTaskStatus.PENDING.name(), AiImageTaskStatus.RUNNING.name()).contains(previous.getStatus())) {
+            return;
+        }
+        AiExecutionTaskEntity execution = executionService.requireTask(previous.getExecutionId());
+        if (!List.of(AiExecutionStatus.PENDING.name(), AiExecutionStatus.RUNNING.name()).contains(execution.status)) {
+            return;
+        }
+        var cancellation = executionService.cancelWithDisposition(execution.id);
+        execution = cancellation.task();
+        settleCancellation(execution, cancellation.beforeProviderCall(), "superseded");
+        previous.setStatus(AiImageTaskStatus.CANCELED.name());
+        previous.setErrorMessage("已被同一视觉形象的新生成任务替代。");
+        previous.setCompletedAt(LocalDateTime.now());
+        previous.setUpdatedAt(previous.getCompletedAt());
+        taskMapper.updateById(previous);
     }
 
     @Transactional
@@ -227,28 +268,28 @@ public class AiImageTaskService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前任务状态不可取消。");
         }
         AiExecutionTaskEntity execution = executionService.requireTask(task.getExecutionId());
-        boolean beforeProviderCall = AiExecutionStatus.PENDING.name().equals(execution.status);
-        execution = executionService.cancel(execution.id);
-        if (beforeProviderCall) {
-            AiPointReservationEntity reservation = pointReservationMapper.selectByExecutionId(execution.id);
-            if (reservation != null) {
-                AiPointReservationEntity released = pointSettlementService.finalizeOutcome(
-                    reservation.id,
-                    AiSettlementOutcome.PRE_CALL_CANCELED,
-                    Map.of(),
-                    null,
-                    null,
-                    "execution:%d:v%d:cancel".formatted(execution.id, execution.executionVersion)
-                );
-                executionService.updateSettlementSummary(released);
-            }
-        }
+        var cancellation = executionService.cancelWithDisposition(execution.id);
+        execution = cancellation.task();
+        settleCancellation(execution, cancellation.beforeProviderCall(), "cancel");
         task.setStatus(AiImageTaskStatus.CANCELED.name());
         task.setCompletedAt(LocalDateTime.now());
         task.setUpdatedAt(task.getCompletedAt());
         taskMapper.updateById(task);
         operationLogService.record(context.userId(), tenantId, "CANCEL_AI_IMAGE_TASK", task.getId(), OperationResult.SUCCESS, servletRequest);
         return toResponse(task);
+    }
+
+    private void settleCancellation(
+        AiExecutionTaskEntity execution, boolean beforeProviderCall, String reason
+    ) {
+        AiPointReservationEntity reservation = pointReservationMapper.selectByExecutionId(execution.id);
+        if (reservation == null) return;
+        AiPointReservationEntity settled = pointSettlementService.finalizeOutcome(
+            reservation.id,
+            beforeProviderCall ? AiSettlementOutcome.PRE_CALL_CANCELED : AiSettlementOutcome.TRANSPORT_UNKNOWN,
+            Map.of(), null, null,
+            "execution:%d:v%d:%s".formatted(execution.id, execution.executionVersion, reason));
+        executionService.updateSettlementSummary(settled);
     }
 
     @Transactional
@@ -344,8 +385,30 @@ public class AiImageTaskService {
                    set first_frame_image_url = ?, first_frame_result_id = ?, updated_at = now()
                  where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
                 """, result.getImageUrl(), result.getId(), result.getTenantId(), result.getProjectId(), result.getTargetId());
+            case "VISUAL_VARIANT" -> {
+                AssetVisualVariantService.VariantResponse variant = assetVisualVariantService.generationSucceeded(
+                    result.getTenantId(), result.getProjectId(), result.getTargetId(), result.getId(), result.getImageUrl());
+                if (variant.primary()) {
+                    bindLegacyPrimary(variant, result);
+                }
+            }
             default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择关联对象。");
         }
+    }
+
+    private void bindLegacyPrimary(
+        AssetVisualVariantService.VariantResponse variant, AiImageResultEntity result
+    ) {
+        String table = switch (variant.assetType()) {
+            case "CHARACTER" -> "character_asset";
+            case "SCENE" -> "scene_asset";
+            case "PROP" -> "prop_asset";
+            default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视觉形象关联的资产类型无效。");
+        };
+        jdbcTemplate.update("update " + table
+                + " set main_image_url = ?, main_image_result_id = ?, updated_at = now()"
+                + " where tenant_id = ? and project_id = ? and id = ? and deleted_at is null",
+            result.getImageUrl(), result.getId(), result.getTenantId(), result.getProjectId(), variant.assetId());
     }
 
     private boolean isResultReferenced(AiImageResultEntity result) {
@@ -353,6 +416,7 @@ public class AiImageTaskService {
             case "CHARACTER" -> countReferences("character_asset", "main_image_result_id", result) > 0;
             case "SCENE" -> countReferences("scene_asset", "main_image_result_id", result) > 0;
             case "STORYBOARD" -> countReferences("storyboard", "first_frame_result_id", result) > 0;
+            case "VISUAL_VARIANT" -> countReferences("asset_visual_variant", "current_image_result_id", result) > 0;
             default -> false;
         };
     }
@@ -385,6 +449,12 @@ public class AiImageTaskService {
                 update storyboard
                    set first_frame_image_url = null, first_frame_result_id = null, updated_at = now()
                  where tenant_id = ? and project_id = ? and id = ? and first_frame_result_id = ?
+                """, result.getTenantId(), result.getProjectId(), result.getTargetId(), result.getId());
+            case "VISUAL_VARIANT" -> jdbcTemplate.update("""
+                update asset_visual_variant
+                   set current_image_url = null, current_image_result_id = null,
+                       generation_status = 'NOT_STARTED', updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = ? and current_image_result_id = ?
                 """, result.getTenantId(), result.getProjectId(), result.getTargetId(), result.getId());
             default -> {
             }
@@ -444,6 +514,82 @@ public class AiImageTaskService {
         }
         if (request.referenceImages() != null && request.referenceImages().size() > 4) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "参考图最多上传 4 张。");
+        }
+    }
+
+    private List<String> resolveReferenceImages(
+        Long tenantId, Long projectId, CreateAiImageTaskRequest request
+    ) {
+        if (request.referenceImages() != null && !request.referenceImages().isEmpty()) {
+            return request.referenceImages();
+        }
+        if (!"STORYBOARD".equals(request.targetType())) {
+            return List.of();
+        }
+        List<Map<String, Object>> storyboards = jdbcTemplate.queryForList("""
+            select script_id, episode_no, characters, scene, visual_description, image_prompt
+              from storyboard
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+             limit 1
+            """, tenantId, projectId, request.targetId());
+        if (storyboards.isEmpty()) return List.of();
+        Map<String, Object> storyboard = storyboards.get(0);
+        Long scriptId = storyboard.get("script_id") instanceof Number value ? value.longValue() : null;
+        Integer episodeNo = storyboard.get("episode_no") instanceof Number value ? value.intValue() : null;
+        Long episodeId = null;
+        if (scriptId != null && episodeNo != null) {
+            List<Long> episodeIds = jdbcTemplate.query("""
+                select id from script_episode
+                 where tenant_id = ? and project_id = ? and script_id = ? and episode_no = ?
+                   and status = 'ACTIVE' and retired_at is null
+                 limit 1
+                """, (rs, rowNum) -> rs.getLong(1), tenantId, projectId, scriptId, episodeNo);
+            episodeId = episodeIds.isEmpty() ? null : episodeIds.get(0);
+        }
+        java.util.LinkedHashSet<String> urls = new java.util.LinkedHashSet<>();
+        String characters = storyboard.get("characters") == null ? "" : storyboard.get("characters").toString();
+        for (String character : characters.split("[,，、;；]")) {
+            addResolvedAssetUrl(urls, tenantId, projectId, "CHARACTER", character, episodeId);
+        }
+        String scene = storyboard.get("scene") == null ? "" : storyboard.get("scene").toString();
+        addResolvedAssetUrl(urls, tenantId, projectId, "SCENE", scene, episodeId);
+        String propSource = (storyboard.get("visual_description") == null ? "" : storyboard.get("visual_description").toString())
+            + " " + (storyboard.get("image_prompt") == null ? "" : storyboard.get("image_prompt").toString());
+        for (Map<String, Object> prop : jdbcTemplate.queryForList("""
+            select id, name from prop_asset
+             where tenant_id = ? and project_id = ? and deleted_at is null order by id
+            """, tenantId, projectId)) {
+            String propName = String.valueOf(prop.get("name"));
+            if (!propName.isBlank() && propSource.contains(propName)) {
+                addResolvedAssetUrl(urls, tenantId, projectId, "PROP", propName, episodeId);
+            }
+        }
+        return urls.stream().limit(4).toList();
+    }
+
+    private void addResolvedAssetUrl(
+        java.util.Set<String> urls,
+        Long tenantId,
+        Long projectId,
+        String assetType,
+        String name,
+        Long episodeId
+    ) {
+        if (name == null || name.isBlank()) return;
+        String table = switch (assetType) {
+            case "CHARACTER" -> "character_asset";
+            case "SCENE" -> "scene_asset";
+            case "PROP" -> "prop_asset";
+            default -> throw new IllegalArgumentException("Unsupported asset type: " + assetType);
+        };
+        List<Long> ids = jdbcTemplate.query("select id from " + table
+                + " where tenant_id = ? and project_id = ? and lower(name) = lower(?) and deleted_at is null limit 1",
+            (rs, rowNum) -> rs.getLong(1), tenantId, projectId, name.trim());
+        if (ids.isEmpty()) return;
+        EpisodeAwareVisualResolver.ResolvedVisual resolved = episodeAwareVisualResolver.resolve(
+            tenantId, projectId, assetType, ids.get(0), episodeId);
+        if (resolved.imageUrl() != null && !resolved.imageUrl().isBlank()) {
+            urls.add(resolved.imageUrl());
         }
     }
 

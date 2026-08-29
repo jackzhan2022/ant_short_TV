@@ -75,4 +75,7 @@ export default {
   'pages.searchTable.tenThousand': '万',
   'pages.searchTable.batchDeletion': 'バッチ削除',
   'pages.searchTable.batchApproval': 'バッチ承認',
+  'pages.productionWorkbench.assets.reviewQueue': 'レビュー待ちの認識結果',
+  'pages.productionWorkbench.assets.variantsAndBindings':
+    'ビジュアル形象とエピソード紐付け',
 };

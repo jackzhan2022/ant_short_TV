@@ -60,3 +60,8 @@ record ProjectAiConfigResponse(
     Long audioModelId
 ) {
 }
+
+record AiModelParameterResponse(
+    Long modelId, Integer versionNo, Double temperature, Double topP, Integer maxTokens,
+    Boolean jsonMode, Integer timeoutSeconds, Integer retryCount, String status, Boolean published
+) {}

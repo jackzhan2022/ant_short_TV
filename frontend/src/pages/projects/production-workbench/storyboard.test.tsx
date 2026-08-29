@@ -222,6 +222,17 @@ const setupWorkspaceResponse = (
     description: '场景描述',
     visualStyle: '写实',
     prompt: '场景提示词',
+    visual:
+      index === 0
+        ? {
+            variantCount: 2,
+            variants: [],
+            generationSummary: {},
+            episodeBindings: [],
+            resolvedImageUrl: '/episode-parking.png',
+            resolvedImageSource: 'EPISODE_PREFERRED',
+          }
+        : undefined,
   }));
   const props = [
     {
@@ -231,6 +242,14 @@ const setupWorkspaceResponse = (
       appearance: '棒棒糖',
       plotFunction: '道具',
       prompt: '棒棒糖提示词',
+      visual: {
+        variantCount: 1,
+        variants: [],
+        generationSummary: {},
+        episodeBindings: [],
+        resolvedImageUrl: '/legacy-candy.png',
+        resolvedImageSource: 'LEGACY_FALLBACK',
+      },
     },
     {
       id: 2,
@@ -507,6 +526,9 @@ describe('ProductionWorkbench script page', () => {
     ).toBeGreaterThan(0);
     expect(screen.getAllByText('李慧 - 李慧').length).toBeGreaterThan(0);
     expect(screen.getAllByText('停车场 - 停车场').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('场景参考来源：剧集首选形象').length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getAllByText('灰色轿车后备箱 - 灰色轿车后备箱').length,
     ).toBeGreaterThan(0);

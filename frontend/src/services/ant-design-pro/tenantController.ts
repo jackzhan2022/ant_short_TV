@@ -18,9 +18,9 @@ export async function create1(
 }
 
 /** 此处后端没有提供注释 GET /api/tenants/${param0} */
-export async function detail3(
+export async function detail4(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail3Params,
+  params: API.detail4Params,
   options?: { [key: string]: any }
 ) {
   const { id: param0, ...queryParams } = params;

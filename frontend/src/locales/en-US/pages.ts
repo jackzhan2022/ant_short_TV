@@ -83,4 +83,8 @@ export default {
   'pages.searchTable.tenThousand': '0000',
   'pages.searchTable.batchDeletion': 'batch deletion',
   'pages.searchTable.batchApproval': 'batch approval',
+  'pages.productionWorkbench.assets.reviewQueue':
+    'Recognition results awaiting review',
+  'pages.productionWorkbench.assets.variantsAndBindings':
+    'Visual variants and episode bindings',
 };

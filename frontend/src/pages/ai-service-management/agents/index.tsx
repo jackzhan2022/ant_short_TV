@@ -1,4 +1,4 @@
-import { EyeOutlined, LockOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { EditOutlined, EyeOutlined, LockOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import type { ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import {
@@ -6,14 +6,19 @@ import {
   Button,
   Descriptions,
   Drawer,
+  Dropdown,
   Empty,
   Input,
   Space,
+  Switch,
   Tabs,
   Tag,
   Typography,
+  App,
+  Popconfirm,
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { ModalForm, ProFormText, ProFormTextArea } from '@ant-design/pro-components';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   BuiltInAgent,
   BuiltInAgentPreview,
@@ -23,7 +28,19 @@ import {
   previewBuiltInAgent,
   queryBuiltInAgents,
   queryBuiltInSkills,
+  queryEditableAgents, queryEditableSkills, updateEditableAgent, updateEditableSkill, publishEditableAgent, publishEditableSkill, setEditableAgentStatus, setEditableSkillStatus, rollbackEditableAgent, rollbackEditableSkill,
 } from '../platform-service';
+import type { EditableAgent, EditableSkill } from '../platform-service';
+
+const AgentEditor = ({ record, onDone }: { record: EditableAgent; onDone: () => void }) => {
+  const { message } = App.useApp();
+  return <ModalForm<Pick<EditableAgent, 'name' | 'description' | 'promptTemplate' | 'outputSchema'>> title={`编辑 Agent：${record.name}`} trigger={<Button type="link" icon={<EditOutlined />}>编辑</Button>} initialValues={record} onFinish={async (values) => { await updateEditableAgent(record.code, values); message.success('Agent 草稿已保存'); onDone(); return true; }}><ProFormText name="name" label="名称" rules={[{ required: true }]} /><ProFormTextArea name="description" label="描述" /><ProFormTextArea name="promptTemplate" label="提示词模板" rules={[{ required: true }]} fieldProps={{ autoSize: { minRows: 8 } }} /><ProFormTextArea name="outputSchema" label="输出 JSON Schema" fieldProps={{ autoSize: { minRows: 4 } }} /></ModalForm>;
+};
+
+const SkillEditor = ({ record, onDone }: { record: EditableSkill; onDone: () => void }) => {
+  const { message } = App.useApp();
+  return <ModalForm<Pick<EditableSkill, 'name' | 'category' | 'content'>> title={`编辑 Skill：${record.name}`} trigger={<Button type="link" icon={<EditOutlined />}>编辑</Button>} initialValues={record} onFinish={async (values) => { await updateEditableSkill(record.code, values); message.success('Skill 草稿已保存'); onDone(); return true; }}><ProFormText name="name" label="名称" rules={[{ required: true }]} /><ProFormText name="category" label="分类" /><ProFormTextArea name="content" label="Skill 内容" rules={[{ required: true }]} fieldProps={{ autoSize: { minRows: 10 } }} /></ModalForm>;
+};
 
 const capabilityText: Record<string, string> = {
   TEXT: '文本',
@@ -165,6 +182,9 @@ const AgentDetail = ({
 
 export const AgentTabContent = () => {
   const [selectedAgent, setSelectedAgent] = useState<BuiltInAgent>();
+  const [editableAgents, setEditableAgents] = useState<EditableAgent[]>([]);
+  const reloadEditable = () => { queryEditableAgents().then((r) => setEditableAgents(r.data ?? [])).catch(() => undefined); };
+  useEffect(() => { reloadEditable(); }, []);
   const agentColumns = useMemo<ProColumns<BuiltInAgent>[]>(
     () => [
       {
@@ -208,17 +228,17 @@ export const AgentTabContent = () => {
         ),
       },
       {
-        title: '查看',
+        title: '操作',
         valueType: 'option',
-        width: 90,
+        width: 210,
         render: (_, record) => (
-          <Button
+          <Space><Button
             type="link"
             icon={<EyeOutlined />}
             onClick={() => setSelectedAgent(record)}
           >
             详情
-          </Button>
+          </Button>{(() => { const versions = editableAgents.filter((item) => item.code === record.code); const editable = versions[0]; return editable ? <><AgentEditor record={editable} onDone={reloadEditable} /><Button type="link" icon={<UploadOutlined />} onClick={async () => { await publishEditableAgent(record.code); reloadEditable(); }}>发布</Button><Switch size="small" checked={editable.status === 'ENABLED'} checkedChildren="启用" unCheckedChildren="停用" onChange={async (checked) => { await setEditableAgentStatus(record.code, checked); reloadEditable(); }} />{versions.length > 1 && <Dropdown menu={{ items: versions.slice(1).map((version) => ({ key: String(version.versionNo), label: <Popconfirm title={`回滚到 v${version.versionNo}？`} onConfirm={async () => { await rollbackEditableAgent(record.code, version.versionNo); reloadEditable(); }}><span>回滚到 v{version.versionNo}</span></Popconfirm> })) }}><Button type="link">历史版本</Button></Dropdown>}</> : null; })()}</Space>
         ),
       },
     ],
@@ -243,6 +263,9 @@ export const AgentTabContent = () => {
 
 export const SkillTabContent = () => {
   const [selectedSkill, setSelectedSkill] = useState<BuiltInSkill>();
+  const [editableSkills, setEditableSkills] = useState<EditableSkill[]>([]);
+  const reloadEditable = () => { queryEditableSkills().then((r) => setEditableSkills(r.data ?? [])).catch(() => undefined); };
+  useEffect(() => { reloadEditable(); }, []);
   const skillColumns = useMemo<ProColumns<BuiltInSkill>[]>(
     () => [
       {
@@ -281,17 +304,17 @@ export const SkillTabContent = () => {
         ),
       },
       {
-        title: '查看',
+        title: '操作',
         valueType: 'option',
-        width: 90,
+        width: 210,
         render: (_, record) => (
-          <Button
+          <Space><Button
             type="link"
             icon={<EyeOutlined />}
             onClick={() => setSelectedSkill(record)}
           >
             详情
-          </Button>
+          </Button>{(() => { const versions = editableSkills.filter((item) => item.code === record.code); const editable = versions[0]; return editable ? <><SkillEditor record={editable} onDone={reloadEditable} /><Button type="link" icon={<UploadOutlined />} onClick={async () => { await publishEditableSkill(record.code); reloadEditable(); }}>发布</Button><Switch size="small" checked={editable.status === 'ENABLED'} checkedChildren="启用" unCheckedChildren="停用" onChange={async (checked) => { await setEditableSkillStatus(record.code, checked); reloadEditable(); }} />{versions.length > 1 && <Dropdown menu={{ items: versions.slice(1).map((version) => ({ key: String(version.versionNo), label: <Popconfirm title={`回滚到 v${version.versionNo}？`} onConfirm={async () => { await rollbackEditableSkill(record.code, version.versionNo); reloadEditable(); }}><span>回滚到 v{version.versionNo}</span></Popconfirm> })) }}><Button type="link">历史版本</Button></Dropdown>}</> : null; })()}</Space>
         ),
       },
     ],

@@ -269,26 +269,36 @@ public class AiExecutionService {
 
     @Transactional
     public AiExecutionTaskEntity cancel(Long id) {
-        AiExecutionTaskEntity task = requireTask(id);
-        if (!AiExecutionStatus.PENDING.name().equals(task.status)
-            && !AiExecutionStatus.RUNNING.name().equals(task.status)) {
-            throw invalidStatus("Execution cannot be canceled from status " + task.status);
-        }
+        return cancelWithDisposition(id).task();
+    }
+
+    @Transactional
+    public AiExecutionCancellation cancelWithDisposition(Long id) {
+        requireTask(id);
         LocalDateTime now = LocalDateTime.now();
-        int updated = taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+        UpdateWrapper<AiExecutionTaskEntity> cancellation = new UpdateWrapper<AiExecutionTaskEntity>()
             .set("status", AiExecutionStatus.CANCELED.name())
             .set("claim_token", null)
             .set("claim_expires_at", null)
             .set("canceled_at", now)
             .set("completed_at", now)
             .set("updated_at", now)
-            .eq("id", id)
-            .in("status", AiExecutionStatus.PENDING.name(), AiExecutionStatus.RUNNING.name()));
-        if (updated == 0) {
-            throw invalidStatus("Execution state changed before cancellation.");
+            .eq("id", id);
+        int pending = taskMapper.update(null, cancellation.clone()
+            .eq("status", AiExecutionStatus.PENDING.name()));
+        if (pending == 1) {
+            return new AiExecutionCancellation(requireTask(id), true);
         }
-        return requireTask(id);
+        int running = taskMapper.update(null, cancellation
+            .eq("status", AiExecutionStatus.RUNNING.name()));
+        if (running == 1) {
+            return new AiExecutionCancellation(requireTask(id), false);
+        }
+        AiExecutionTaskEntity latest = requireTask(id);
+        throw invalidStatus("Execution cannot be canceled from status " + latest.status);
     }
+
+    public record AiExecutionCancellation(AiExecutionTaskEntity task, boolean beforeProviderCall) {}
 
     @Transactional
     public AiExecutionTaskEntity retry(Long id) {

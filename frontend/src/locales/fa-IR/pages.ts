@@ -73,4 +73,8 @@ export default {
   'pages.searchTable.tenThousand': '0000',
   'pages.searchTable.batchDeletion': 'حذف دسته ای',
   'pages.searchTable.batchApproval': 'تصویب دسته ای',
+  'pages.productionWorkbench.assets.reviewQueue':
+    'نتایج شناسایی در انتظار بررسی',
+  'pages.productionWorkbench.assets.variantsAndBindings':
+    'گونه‌های بصری و اتصال قسمت‌ها',
 };

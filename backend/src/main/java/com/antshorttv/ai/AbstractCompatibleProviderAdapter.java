@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 
 abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
@@ -32,6 +33,14 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
 
     @Override
     public AiTextResponse text(AiProviderEntity provider, AiProviderConfigEntity config, AiModelEntity model, AiTextRequest request) {
+        return text(provider, config, model, request, UUID.randomUUID().toString());
+    }
+
+    @Override
+    public AiTextResponse text(
+        AiProviderEntity provider, AiProviderConfigEntity config, AiModelEntity model,
+        AiTextRequest request, String idempotencyKey
+    ) {
         long started = System.currentTimeMillis();
         if (shouldUseLocalMock(config)) {
             String prompt = request.userPrompt() == null ? "" : request.userPrompt();
@@ -41,13 +50,16 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
         }
         String apiKey = apiKey(config);
+        String effectiveIdempotencyKey = requireIdempotencyKey(idempotencyKey);
         try {
-            JsonNode root = postJson(config, chatCompletionsUri(config), chatPayload(model, request), apiKey);
+            JsonNode root = postJsonWithRetry(config, chatCompletionsUri(config), chatPayload(model, request),
+                apiKey, request.timeoutSeconds(), request.retryCount(), effectiveIdempotencyKey);
             String content = root.path("choices").path(0).path("message").path("content").asText(null);
             if (content == null || content.isBlank()) {
                 content = root.path("choices").path(0).path("text").asText("");
             }
             JsonNode usage = root.path("usage");
+            String finishReason = root.path("choices").path(0).path("finish_reason").asText(null);
             return new AiTextResponse(
                 content,
                 root.path("id").asText(null),
@@ -55,7 +67,9 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
                 nullableInt(usage, "completion_tokens"),
                 nullableInt(usage, "total_tokens"),
                 elapsed(started),
-                Map.of("provider", provider.getCode())
+                Map.of("provider", provider.getCode()),
+                finishReason,
+                "length".equalsIgnoreCase(finishReason)
             );
         } catch (AiGatewayException exception) {
             throw exception;
@@ -66,6 +80,14 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
 
     @Override
     public AiImageResponse image(AiProviderEntity provider, AiProviderConfigEntity config, AiModelEntity model, AiImageRequest request) {
+        return image(provider, config, model, request, UUID.randomUUID().toString());
+    }
+
+    @Override
+    public AiImageResponse image(
+        AiProviderEntity provider, AiProviderConfigEntity config, AiModelEntity model,
+        AiImageRequest request, String idempotencyKey
+    ) {
         long started = System.currentTimeMillis();
         if (shouldUseLocalMock(config)) {
             int count = request.count() == null ? 1 : request.count();
@@ -75,8 +97,10 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
         }
         String apiKey = apiKey(config);
+        String effectiveIdempotencyKey = requireIdempotencyKey(idempotencyKey);
         try {
-            JsonNode root = postJson(config, imagesUri(config), imagePayload(model, request), apiKey);
+            JsonNode root = postJson(
+                config, imagesUri(config), imagePayload(model, request), apiKey, REQUEST_TIMEOUT, effectiveIdempotencyKey);
             List<String> imageUrls = new ArrayList<>();
             for (JsonNode item : root.path("data")) {
                 String url = item.path("url").asText(null);
@@ -114,18 +138,28 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
     }
 
     private String localMockText(String prompt) {
+        if (prompt.contains("剧情全局理解") || prompt.contains("全局理解") || prompt.contains("中文短剧结构分析助手")) {
+            return "{\"logline\":\"\",\"themes\":[],\"characters\":[],\"relationships\":[],\"coreConflict\":\"\",\"turningPoints\":[],\"endingHook\":\"\"}";
+        }
+        if (prompt.contains("分集助手") || prompt.contains("剧集概要提炼") || prompt.contains("概要提炼")) {
+            return "{\"episodes\":[{\"episodeNo\":1,\"title\":\"\",\"content\":\"\",\"summary\":\"\",\"highlights\":[],\"endingHook\":\"\"}]}";
+        }
         if (prompt.contains("提取角色信息")) {
             if (prompt.contains("林晚")) {
                 return "{\"characters\":[{\"name\":\"林晚\",\"roleType\":\"LEAD\",\"gender\":\"\",\"ageRange\":\"\",\"identity\":\"\",\"personality\":[],\"appearance\":\"\",\"prompt\":\"\"}]}";
             }
-            return "{\"characters\":[{\"name\":\"主角\",\"roleType\":\"LEAD\",\"gender\":\"\",\"ageRange\":\"\",\"identity\":\"\",\"personality\":[],\"appearance\":\"\",\"prompt\":\"主角角色定妆照\"},{\"name\":\"反派\",\"roleType\":\"VILLAIN\",\"gender\":\"\",\"ageRange\":\"\",\"identity\":\"\",\"personality\":[],\"appearance\":\"\",\"prompt\":\"反派角色定妆照\"}]}";
+            return "{\"characters\":[{\"name\":\"主角\",\"roleType\":\"LEAD\",\"gender\":\"\",\"ageRange\":\"\",\"identity\":\"\",\"personality\":[],\"appearance\":\"\",\"prompt\":\"主角角色定妆照\"},{\"name\":\"反派\",\"roleType\":\"SUPPORTING\",\"gender\":\"\",\"ageRange\":\"\",\"identity\":\"\",\"personality\":[],\"appearance\":\"\",\"prompt\":\"反派角色定妆照\"}]}";
         }
         if (prompt.contains("提取场景信息")) {
             String firstScene = prompt.contains("林家老宅门口") ? "林家老宅门口" : "主场景";
             return "{\"scenes\":[{\"name\":\"" + firstScene + "\",\"sceneType\":\"EXTERIOR\",\"atmosphere\":\"紧张\",\"description\":\"故事主要发生地\",\"visualStyle\":\"电影感\",\"prompt\":\"" + firstScene + "场景\"},{\"name\":\"室内场景\",\"sceneType\":\"INTERIOR\",\"atmosphere\":\"压迫\",\"description\":\"室内戏场景\",\"visualStyle\":\"电影感\",\"prompt\":\"室内场景\"}]}";
         }
-        if (prompt.contains("提取道具信息")) {
-            return "{\"props\":[{\"name\":\"股权协议\",\"propType\":\"KEY_PROP\",\"appearance\":\"重要文件\",\"plotFunction\":\"推动剧情\",\"prompt\":\"股权协议道具特写\"}]}";
+        if (prompt.contains("提取道具信息") || prompt.contains("提取关键道具信息")) {
+            String propName = prompt.contains("录音笔") ? "录音笔" : "股权协议";
+            return "{\"props\":[{\"name\":\"" + propName + "\",\"propType\":\"KEY_PROP\",\"appearance\":\"重要道具\",\"plotFunction\":\"推动剧情\",\"prompt\":\"" + propName + "道具特写\"}]}";
+        }
+        if (prompt.contains("资产识别助手") || prompt.contains("角色场景识别")) {
+            return "{\"characters\":[\"主角\"],\"scenes\":[\"主场景\"],\"props\":[\"关键道具\"]}";
         }
         return prompt;
     }
@@ -137,18 +171,55 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         return aiSecretCodec.requireDecrypted(config.getApiKeyCipher());
     }
 
-    private JsonNode postJson(AiProviderConfigEntity config, URI uri, Map<String, Object> payload, String apiKey) throws Exception {
+    private JsonNode postJsonWithRetry(
+        AiProviderConfigEntity config,
+        URI uri,
+        Map<String, Object> payload,
+        String apiKey,
+        Integer timeoutSeconds,
+        Integer retryCount,
+        String idempotencyKey
+    ) throws Exception {
+        int attempts = 1 + Math.max(0, retryCount == null ? 0 : Math.min(5, retryCount));
+        Duration timeout = Duration.ofSeconds(Math.max(1, timeoutSeconds == null ? 60 : timeoutSeconds));
+        AiGatewayException last = null;
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                return postJson(config, uri, payload, apiKey, timeout, idempotencyKey);
+            } catch (AiGatewayException exception) {
+                last = exception;
+                if ((exception.getErrorCode() != ErrorCode.AI_PROVIDER_ERROR
+                    && exception.getErrorCode() != ErrorCode.AI_RATE_LIMIT) || attempt == attempts) throw exception;
+            } catch (java.io.IOException exception) {
+                if (attempt == attempts) throw exception;
+            }
+        }
+        throw last;
+    }
+
+    private JsonNode postJson(
+        AiProviderConfigEntity config, URI uri, Map<String, Object> payload, String apiKey, Duration timeout,
+        String idempotencyKey
+    ) throws Exception {
+        String requestBody = objectMapper.writeValueAsString(payload);
         HttpRequest request = HttpRequest.newBuilder(uri)
-            .timeout(REQUEST_TIMEOUT)
+            .timeout(timeout)
             .header("Content-Type", "application/json")
             .header("Authorization", "Bearer " + apiKey)
-            .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+            .header("Idempotency-Key", requireIdempotencyKey(idempotencyKey))
+            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         String contentType = response.headers().firstValue("Content-Type").orElse("unknown");
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            ErrorCode errorCode = switch (response.statusCode()) {
+                case 401, 403 -> ErrorCode.AI_AUTH_FAILED;
+                case 429 -> ErrorCode.AI_RATE_LIMIT;
+                default -> response.statusCode() >= 500
+                    ? ErrorCode.AI_PROVIDER_ERROR : ErrorCode.AI_RESPONSE_INVALID;
+            };
             throw new AiGatewayException(
-                ErrorCode.AI_PROVIDER_ERROR,
+                errorCode,
                 "AI 服务商返回 HTTP %d，URL：%s，Content-Type：%s，响应：%s"
                     .formatted(response.statusCode(), uri, contentType, responseSummary(response.body()))
             );
@@ -162,6 +233,12 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
                     .formatted(uri, contentType, responseSummary(response.body()))
             );
         }
+    }
+
+    private String requireIdempotencyKey(String idempotencyKey) {
+        return idempotencyKey == null || idempotencyKey.isBlank()
+            ? UUID.randomUUID().toString()
+            : idempotencyKey.trim();
     }
 
     private String responseSummary(String body) {
@@ -204,6 +281,12 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         }
         if (request.maxTokens() != null) {
             payload.put("max_tokens", request.maxTokens());
+        }
+        if (request.topP() != null) {
+            payload.put("top_p", request.topP());
+        }
+        if (Boolean.TRUE.equals(request.jsonMode())) {
+            payload.put("response_format", Map.of("type", "json_object"));
         }
         return payload;
     }

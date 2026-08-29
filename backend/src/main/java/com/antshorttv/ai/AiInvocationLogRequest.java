@@ -15,8 +15,35 @@ public record AiInvocationLogRequest(
     Integer totalTokens,
     String externalTaskId,
     String transportOutcome,
-    String businessOutcome
+    String businessOutcome,
+    Integer responseLength,
+    String finishReason,
+    Boolean truncated
 ) {
+    public AiInvocationLogRequest(
+        AiContext context,
+        AiModelRoute route,
+        AiCapability capability,
+        String requestSummary,
+        String responseSummary,
+        String status,
+        String errorMessage,
+        Long durationMs,
+        String providerRequestId,
+        Integer promptTokens,
+        Integer completionTokens,
+        Integer totalTokens,
+        String externalTaskId,
+        String transportOutcome,
+        String businessOutcome
+    ) {
+        this(
+            context, route, capability, requestSummary, responseSummary, status, errorMessage,
+            durationMs, providerRequestId, promptTokens, completionTokens, totalTokens,
+            externalTaskId, transportOutcome, businessOutcome, null, null, false
+        );
+    }
+
     public AiInvocationLogRequest(
         AiContext context,
         AiModelRoute route,
@@ -35,7 +62,8 @@ public record AiInvocationLogRequest(
             context, route, capability, requestSummary, responseSummary, status, errorMessage,
             durationMs, providerRequestId, promptTokens, completionTokens, totalTokens, null,
             "FAILED".equals(status) ? "FAILED" : "SUCCEEDED",
-            "FAILED".equals(status) ? "NOT_REACHED" : "SUCCEEDED"
+            "FAILED".equals(status) ? "NOT_REACHED" : "SUCCEEDED",
+            null, null, false
         );
     }
 
@@ -66,7 +94,25 @@ public record AiInvocationLogRequest(
             totalTokens,
             null,
             "SUCCEEDED",
-            "SUCCEEDED"
+            "SUCCEEDED",
+            null,
+            null,
+            false
+        );
+    }
+
+    public static AiInvocationLogRequest successText(
+        AiContext context,
+        AiModelRoute route,
+        String requestSummary,
+        AiTextResponse response,
+        Long durationMs
+    ) {
+        return new AiInvocationLogRequest(
+            context, route, AiCapability.TEXT, requestSummary, response.content(), "SUCCESS", null,
+            durationMs, response.providerRequestId(), response.promptTokens(), response.completionTokens(),
+            response.totalTokens(), null, "SUCCEEDED", "SUCCEEDED",
+            response.content() == null ? 0 : response.content().length(), response.finishReason(), response.truncated()
         );
     }
 
@@ -81,7 +127,8 @@ public record AiInvocationLogRequest(
     ) {
         return new AiInvocationLogRequest(
             context, route, capability, requestSummary, null, "ACCEPTED", null, durationMs,
-            providerRequestId, null, null, null, externalTaskId, "SUCCEEDED", "PENDING"
+            providerRequestId, null, null, null, externalTaskId, "SUCCEEDED", "PENDING",
+            null, null, false
         );
     }
 
@@ -108,7 +155,10 @@ public record AiInvocationLogRequest(
             null,
             null,
             "FAILED",
-            "NOT_REACHED"
+            "NOT_REACHED",
+            null,
+            null,
+            false
         );
     }
 }

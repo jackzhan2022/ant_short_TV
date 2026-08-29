@@ -6,6 +6,8 @@ import java.util.Locale;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.antshorttv.ai.ProjectAiConfigService;
 
 @Service
 public class ScriptAnalysisTaskService {
@@ -20,6 +22,8 @@ public class ScriptAnalysisTaskService {
 
     private final ScriptAnalysisTaskMapper taskMapper;
     private final ScriptAnalysisStageMapper stageMapper;
+    @Autowired private ScriptAnalysisConfigSnapshotService configSnapshotService;
+    @Autowired private ProjectAiConfigService projectAiConfigService;
 
     public ScriptAnalysisTaskService(
         ScriptAnalysisTaskMapper taskMapper,
@@ -108,6 +112,9 @@ public class ScriptAnalysisTaskService {
             stage.setCreatedAt(now);
             stage.setUpdatedAt(now);
             stageMapper.insert(stage);
+        }
+        if (configSnapshotService != null) {
+            configSnapshotService.snapshot(task, projectAiConfigService == null ? null : projectAiConfigService.resolveModelId(tenantId, projectId, "TEXT"));
         }
         return task;
     }

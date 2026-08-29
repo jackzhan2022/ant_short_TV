@@ -12,15 +12,22 @@ import * as projectAiConfigController from "./projectAiConfigController";
 import * as aiImageTaskController from "./aiImageTaskController";
 import * as projectController from "./projectController";
 import * as platformAiManagementController from "./platformAiManagementController";
+import * as editableAiDefinitionController from "./editableAiDefinitionController";
 import * as tenantMemberController from "./tenantMemberController";
-import * as teamPointController from "./teamPointController";
 import * as tenantInvitationController from "./tenantInvitationController";
+import * as commercialOrderController from "./commercialOrderController";
 import * as aiExecutionController from "./aiExecutionController";
 import * as aiVideoTaskController from "./aiVideoTaskController";
+import * as platformCommercialPackageController from "./platformCommercialPackageController";
+import * as platformCommercialOrderController from "./platformCommercialOrderController";
 import * as platformAiAccountingController from "./platformAiAccountingController";
 import * as builtInAgentCatalogController from "./builtInAgentCatalogController";
+import * as wechatPaymentNotificationController from "./wechatPaymentNotificationController";
 import * as authController from "./authController";
 import * as materialFileController from "./materialFileController";
+import * as teamPointController from "./teamPointController";
+import * as teamSubscriptionController from "./teamSubscriptionController";
+import * as teamCommercialCatalogController from "./teamCommercialCatalogController";
 import * as aiCallLogController from "./aiCallLogController";
 import * as styleLibraryController from "./styleLibraryController";
 import * as platformAiOperationsController from "./platformAiOperationsController";
@@ -37,15 +44,22 @@ export default {
   aiImageTaskController,
   projectController,
   platformAiManagementController,
+  editableAiDefinitionController,
   tenantMemberController,
-  teamPointController,
   tenantInvitationController,
+  commercialOrderController,
   aiExecutionController,
   aiVideoTaskController,
+  platformCommercialPackageController,
+  platformCommercialOrderController,
   platformAiAccountingController,
   builtInAgentCatalogController,
+  wechatPaymentNotificationController,
   authController,
   materialFileController,
+  teamPointController,
+  teamSubscriptionController,
+  teamCommercialCatalogController,
   aiCallLogController,
   styleLibraryController,
   platformAiOperationsController,

@@ -3,6 +3,7 @@ package com.antshorttv.aiimage;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -51,6 +52,192 @@ class AiImageTaskControllerTest {
 
     @Autowired
     private AiSecretCodec aiSecretCodec;
+
+    @Test
+    void resolvesEpisodePreferredCharacterAndPrimarySceneForStoryboardGeneration() throws Exception {
+        String token = registerUser("13800014017", "Episode Reference Creator");
+        Long tenantId = createTenant(token, "剧集参考团队");
+        Long ownerId = userIdByMobile("13800014017");
+        Long projectId = createProject(token, tenantId, ownerId, "剧集参考项目", "EPISODE_VISUAL_REFERENCE");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        jdbcTemplate.update("""
+            insert into script
+              (tenant_id, project_id, title, source_type, content, status, created_by, created_at, updated_at)
+            values (?, ?, '参考剧本', 'MANUAL_EDIT', '正文', 'DRAFT', ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long scriptId = jdbcTemplate.queryForObject(
+            "select id from script where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into script_version
+              (tenant_id, project_id, script_id, version_no, source_type, content, status, created_by, created_at)
+            values (?, ?, ?, 1, 'MANUAL_EDIT', '正文', 'CURRENT', ?, now())
+            """, tenantId, projectId, scriptId, ownerId);
+        Long scriptVersionId = jdbcTemplate.queryForObject(
+            "select id from script_version where script_id = ?", Long.class, scriptId);
+        jdbcTemplate.update("update script set current_version_id = ? where id = ?", scriptVersionId, scriptId);
+        jdbcTemplate.update("""
+            insert into script_episode
+              (tenant_id, project_id, script_id, script_version_id, stable_key, episode_no, title, content,
+               content_fingerprint, reconciliation_status, status, created_at, updated_at)
+            values (?, ?, ?, ?, 'ep-one', 1, '第一集', '正文', 'fingerprint', 'MATCHED', 'ACTIVE', now(), now())
+            """, tenantId, projectId, scriptId, scriptVersionId);
+        Long episodeId = jdbcTemplate.queryForObject(
+            "select id from script_episode where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, status, created_by, created_at, updated_at)
+            values (?, ?, '林夏', 'LEAD', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long characterId = jdbcTemplate.queryForObject(
+            "select id from character_asset where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into scene_asset
+              (tenant_id, project_id, name, scene_type, status, created_by, created_at, updated_at)
+            values (?, ?, '宴会厅', 'INTERIOR', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long sceneId = jdbcTemplate.queryForObject(
+            "select id from scene_asset where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, source_type, generation_status,
+               current_image_url, is_primary, created_by, created_at, updated_at)
+            values
+              (?, ?, 'CHARACTER', ?, '日常', 'MANUAL', 'COMPLETED', '/daily.png', true, ?, now(), now()),
+              (?, ?, 'CHARACTER', ?, '礼服', 'MANUAL', 'COMPLETED', '/dress.png', false, ?, now(), now()),
+              (?, ?, 'SCENE', ?, '宴会厅主形象', 'MANUAL', 'COMPLETED', '/hall.png', true, ?, now(), now())
+            """, tenantId, projectId, characterId, ownerId,
+            tenantId, projectId, characterId, ownerId,
+            tenantId, projectId, sceneId, ownerId);
+        Long costumeId = jdbcTemplate.queryForObject(
+            "select id from asset_visual_variant where asset_id = ? and name = '礼服'", Long.class, characterId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant_episode
+              (tenant_id, project_id, script_id, asset_type, asset_id, variant_id, episode_id,
+               is_preferred, binding_status, created_by, created_at, updated_at)
+            values (?, ?, ?, 'CHARACTER', ?, ?, ?, true, 'ACTIVE', ?, now(), now())
+            """, tenantId, projectId, scriptId, characterId, costumeId, episodeId, ownerId);
+        jdbcTemplate.update("""
+            insert into storyboard
+              (tenant_id, project_id, script_id, episode_no, shot_no, visual_description,
+               characters, scene, status, created_by, created_at, updated_at)
+            values (?, ?, ?, 1, 1, '礼服宴会', '林夏', '宴会厅', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, scriptId, ownerId);
+        Long storyboardId = jdbcTemplate.queryForObject(
+            "select id from storyboard where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+
+        createImageTask(token, tenantId, projectId, "episode-reference-create", """
+            {"taskType":"STORYBOARD_FIRST_FRAME","targetType":"STORYBOARD","targetId":%d,
+             "prompt":"宴会首帧","aspectRatio":"16:9","imageCount":1}
+            """.formatted(storyboardId))
+            .getResponse();
+        mockMvc.perform(get("/api/projects/%d/ai-image-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].referenceImages[0]", is("/dress.png")))
+            .andExpect(jsonPath("$.data[0].referenceImages[1]", is("/hall.png")));
+    }
+
+    @Test
+    void linksVariantGenerationAndKeepsPrimaryLegacyBindingCompatible() throws Exception {
+        String token = registerUser("13800014016", "Variant Image Creator");
+        Long tenantId = createTenant(token, "形象图片团队");
+        Long ownerId = userIdByMobile("13800014016");
+        Long projectId = createProject(token, tenantId, ownerId, "形象图片项目", "IMAGE_VARIANT_TARGET");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, status, merge_target_id, created_by, created_at, updated_at)
+            values (?, ?, '林夏', 'LEAD', 'CONFIRMED', null, ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long assetId = jdbcTemplate.queryForObject(
+            "select id from character_asset where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, source_type, generation_status,
+               is_primary, created_by, created_at, updated_at)
+            values (?, ?, 'CHARACTER', ?, '礼服', 'GENERATED', 'NOT_STARTED', true, ?, now(), now())
+            """, tenantId, projectId, assetId, ownerId);
+        Long variantId = jdbcTemplate.queryForObject(
+            "select id from asset_visual_variant where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
+
+        MvcResult created = createImageTask(token, tenantId, projectId, "variant-image-create", """
+            {"taskType":"CHARACTER","targetType":"VISUAL_VARIANT","targetId":%d,
+             "prompt":"礼服定妆照","aspectRatio":"3:4","imageCount":1}
+            """.formatted(variantId));
+        Long taskId = readLong(created, "$.data.id");
+        MvcResult completed = waitForTaskSuccess(token, tenantId, projectId, taskId);
+        Long resultId = readLong(completed, "$.data.results[0].id");
+
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForMap("""
+            select generation_status, generation_task_id, current_image_result_id
+              from asset_visual_variant where id = ?
+            """, variantId))
+            .containsEntry("GENERATION_STATUS", "COMPLETED")
+            .containsEntry("GENERATION_TASK_ID", taskId)
+            .containsEntry("CURRENT_IMAGE_RESULT_ID", resultId);
+
+        mockMvc.perform(put("/api/projects/%d/ai-image-results/%d/selected".formatted(projectId, resultId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select main_image_result_id from character_asset where id = ?", Long.class, assetId))
+            .isEqualTo(resultId);
+    }
+
+    @Test
+    void newerVariantGenerationSupersedesPendingOwnerAndReleasesReservation() throws Exception {
+        String token = registerUser("13800014020", "Variant Superseder");
+        Long tenantId = createTenant(token, "形象任务替代团队");
+        Long ownerId = userIdByMobile("13800014020");
+        Long projectId = createProject(token, tenantId, ownerId, "形象任务替代项目", "IMAGE_VARIANT_SUPERSEDE");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, status, merge_target_id, created_by, created_at, updated_at)
+            values (?, ?, '林夏', 'LEAD', 'CONFIRMED', null, ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long assetId = jdbcTemplate.queryForObject(
+            "select id from character_asset where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, source_type, generation_status,
+               is_primary, created_by, created_at, updated_at)
+            values (?, ?, 'CHARACTER', ?, '礼服', 'GENERATED', 'NOT_STARTED', true, ?, now(), now())
+            """, tenantId, projectId, assetId, ownerId);
+        Long variantId = jdbcTemplate.queryForObject(
+            "select id from asset_visual_variant where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
+        String body = """
+            {"taskType":"CHARACTER","targetType":"VISUAL_VARIANT","targetId":%d,
+             "prompt":"礼服定妆照","aspectRatio":"3:4","imageCount":1}
+            """.formatted(variantId);
+
+        MvcResult first = createImageTask(token, tenantId, projectId, "variant-owner-first", body);
+        MvcResult second = createImageTask(token, tenantId, projectId, "variant-owner-second", body);
+        Long firstTaskId = readLong(first, "$.data.id");
+        Long firstExecutionId = readLong(first, "$.data.executionId");
+        Long secondTaskId = readLong(second, "$.data.id");
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_image_task where id = ?", String.class, firstTaskId)).isEqualTo("CANCELED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_execution_task where id = ?", String.class, firstExecutionId)).isEqualTo("CANCELED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from ai_point_reservation where execution_id = ?", String.class, firstExecutionId))
+            .isEqualTo("RELEASED");
+        assertThat(jdbcTemplate.queryForObject(
+            "select generation_task_id from asset_visual_variant where id = ?", Long.class, variantId))
+            .isEqualTo(secondTaskId);
+    }
 
     @Test
     void createsOneDurableExecutionForDuplicateImageRequests() throws Exception {
@@ -427,7 +614,24 @@ class AiImageTaskControllerTest {
         Long ownerId = userIdByMobile("13800014003");
         Long projectId = createProject(token, tenantId, ownerId, "取消项目", "IMAGE_TASK_CANCEL");
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
-        createImageService(token, tenantId);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/images/generations", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            byte[] body = "{\"data\":[{\"url\":\"https://cdn.example.com/late.png\"}]}"
+                .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        createImageService(token, tenantId,
+            "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-image");
         grantTeamPoints(tenantId, 5);
 
         MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
@@ -462,6 +666,74 @@ class AiImageTaskControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("CANCELED")))
             .andExpect(jsonPath("$.data.results", hasSize(0)));
+        server.stop(0);
+    }
+
+    @Test
+    void keepsCanceledTaskAndSettlementWhenOldWorkerReceivesProviderFailure() throws Exception {
+        String token = registerUser("13800014019", "Failed Image Canceler");
+        Long tenantId = createTenant(token, "失败图片取消团队");
+        Long ownerId = userIdByMobile("13800014019");
+        Long projectId = createProject(token, tenantId, ownerId, "失败取消项目", "IMAGE_TASK_FAILED_CANCEL");
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 5);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/images/generations", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            byte[] body = "{\"error\":\"provider failed\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(502, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            createImageService(token, tenantId,
+                "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-image");
+            MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "taskType":"STORYBOARD_FIRST_FRAME",
+                          "targetType":"STORYBOARD",
+                          "targetId":%d,
+                          "prompt":"取消后供应商失败",
+                          "aspectRatio":"9:16",
+                          "imageCount":1
+                        }
+                        """.formatted(storyboardId)))
+                .andExpect(status().isAccepted())
+                .andReturn();
+            Long taskId = readLong(created, "$.data.id");
+
+            waitForTaskStatus(token, tenantId, projectId, taskId, "RUNNING");
+            mockMvc.perform(put("/api/projects/%d/ai-image-tasks/%d/cancel".formatted(projectId, taskId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status", is("CANCELED")));
+            Thread.sleep(500);
+
+            assertThat(jdbcTemplate.queryForObject(
+                "select status from ai_image_task where id = ?", String.class, taskId)).isEqualTo("CANCELED");
+            Long executionId = jdbcTemplate.queryForObject(
+                "select execution_id from ai_image_task where id = ?", Long.class, taskId);
+            assertThat(jdbcTemplate.queryForObject(
+                "select status from ai_execution_task where id = ?", String.class, executionId)).isEqualTo("CANCELED");
+            assertThat(jdbcTemplate.queryForObject(
+                "select status from ai_point_reservation where execution_id = ?", String.class, executionId))
+                .isEqualTo("SETTLEMENT_REVIEW_REQUIRED");
+        } finally {
+            server.stop(0);
+        }
     }
 
     private MvcResult waitForTaskSuccess(String token, Long tenantId, Long projectId, Long taskId) throws Exception {

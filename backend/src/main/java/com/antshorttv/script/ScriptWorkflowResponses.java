@@ -66,7 +66,8 @@ record CharacterAssetResponse(
     String appearance,
     String prompt,
     String status,
-    Long mergeTargetId
+    Long mergeTargetId,
+    AssetVisualWorkspace visual
 ) {
 }
 
@@ -79,7 +80,8 @@ record SceneAssetResponse(
     String visualStyle,
     String prompt,
     String status,
-    Long mergeTargetId
+    Long mergeTargetId,
+    AssetVisualWorkspace visual
 ) {
 }
 
@@ -91,7 +93,20 @@ record PropAssetResponse(
     String plotFunction,
     String prompt,
     String status,
-    Long mergeTargetId
+    Long mergeTargetId,
+    AssetVisualWorkspace visual
+) {
+}
+
+record AssetVisualWorkspace(
+    int variantCount,
+    AssetVisualVariantService.VariantResponse primaryVariant,
+    List<AssetVisualVariantService.VariantResponse> variants,
+    Map<String, Long> generationSummary,
+    List<AssetVisualBindingService.BindingResponse> episodeBindings,
+    String normalizationReviewStatus,
+    String resolvedImageUrl,
+    String resolvedImageSource
 ) {
 }
 

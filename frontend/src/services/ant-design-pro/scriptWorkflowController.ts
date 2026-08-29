@@ -2,6 +2,68 @@
 /* eslint-disable */
 import { request } from "@umijs/max";
 
+/** 此处后端没有提供注释 GET /api/projects/${param0}/asset-candidates */
+export async function assetCandidates(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.assetCandidatesParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseCandidatePage>(
+    `/api/projects/${param0}/asset-candidates`,
+    {
+      method: "GET",
+      params: {
+        // page has a default value: 1
+        page: "1",
+        // pageSize has a default value: 20
+        pageSize: "20",
+        ...queryParams,
+      },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/asset-candidates/${param1} */
+export async function assetCandidate(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.assetCandidateParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, candidateId: param1, ...queryParams } = params;
+  return request<API.ApiResponseCandidateResponse>(
+    `/api/projects/${param0}/asset-candidates/${param1}`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 POST /api/projects/${param0}/asset-candidates/${param1}/decisions */
+export async function decideAssetCandidate(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.decideAssetCandidateParams,
+  body: API.DecisionCommand,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, candidateId: param1, ...queryParams } = params;
+  return request<API.ApiResponseDecisionResponse>(
+    `/api/projects/${param0}/asset-candidates/${param1}/decisions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 POST /api/projects/${param0}/prompts/ai-generate */
 export async function generatePrompts(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -158,6 +220,77 @@ export async function confirmElement(
     {
       method: "PUT",
       params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/script-elements/${param1}/${param2}/episode-bindings */
+export async function visualVariantBindings(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.visualVariantBindingsParams,
+  options?: { [key: string]: any }
+) {
+  const {
+    projectId: param0,
+    elementType: param1,
+    elementId: param2,
+    ...queryParams
+  } = params;
+  return request<API.ApiResponseListBindingResponse>(
+    `/api/projects/${param0}/script-elements/${param1}/${param2}/episode-bindings`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/script-elements/${param1}/${param2}/visual-variants */
+export async function visualVariants(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.visualVariantsParams,
+  options?: { [key: string]: any }
+) {
+  const {
+    projectId: param0,
+    elementType: param1,
+    elementId: param2,
+    ...queryParams
+  } = params;
+  return request<API.ApiResponseListVariantResponse>(
+    `/api/projects/${param0}/script-elements/${param1}/${param2}/visual-variants`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 POST /api/projects/${param0}/script-elements/${param1}/${param2}/visual-variants */
+export async function createVisualVariant(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.createVisualVariantParams,
+  body: API.VariantCommand,
+  options?: { [key: string]: any }
+) {
+  const {
+    projectId: param0,
+    elementType: param1,
+    elementId: param2,
+    ...queryParams
+  } = params;
+  return request<API.ApiResponseVariantResponse>(
+    `/api/projects/${param0}/script-elements/${param1}/${param2}/visual-variants`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
       ...(options || {}),
     }
   );
@@ -399,6 +532,84 @@ export async function confirmStoryboards(
   const { projectId: param0, ...queryParams } = params;
   return request<API.ApiResponseScriptWorkspaceResponse>(
     `/api/projects/${param0}/storyboards/confirm`,
+    {
+      method: "PUT",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 PUT /api/projects/${param0}/visual-variants/${param1} */
+export async function updateVisualVariant(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.updateVisualVariantParams,
+  body: API.VariantCommand,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, variantId: param1, ...queryParams } = params;
+  return request<API.ApiResponseVariantResponse>(
+    `/api/projects/${param0}/visual-variants/${param1}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 DELETE /api/projects/${param0}/visual-variants/${param1} */
+export async function deleteVisualVariant(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.deleteVisualVariantParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, variantId: param1, ...queryParams } = params;
+  return request<API.ApiResponseVoid>(
+    `/api/projects/${param0}/visual-variants/${param1}`,
+    {
+      method: "DELETE",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 PUT /api/projects/${param0}/visual-variants/${param1}/episode-bindings */
+export async function bindVisualVariantEpisodes(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.bindVisualVariantEpisodesParams,
+  body: API.BindingCommand,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, variantId: param1, ...queryParams } = params;
+  return request<API.ApiResponseListBindingResponse>(
+    `/api/projects/${param0}/visual-variants/${param1}/episode-bindings`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 PUT /api/projects/${param0}/visual-variants/${param1}/primary */
+export async function selectPrimaryVisualVariant(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.selectPrimaryVisualVariantParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, variantId: param1, ...queryParams } = params;
+  return request<API.ApiResponseVariantResponse>(
+    `/api/projects/${param0}/visual-variants/${param1}/primary`,
     {
       method: "PUT",
       params: { ...queryParams },

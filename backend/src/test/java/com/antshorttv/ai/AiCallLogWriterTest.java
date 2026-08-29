@@ -116,6 +116,25 @@ class AiCallLogWriterTest {
     }
 
     @Test
+    void recordsTextResponseDiagnostics() {
+        AiTextResponse response = new AiTextResponse(
+            "123456", "provider-text", 3, 4, 7, 20L, Map.of(), "length", true
+        );
+
+        Long logId = writer.record(AiInvocationLogRequest.successText(
+            new AiContext(741L, 742L, 743L, null, 801L, "character_extract", "trace-text"),
+            route(), "识别角色", response, 20L
+        ));
+
+        Map<String, Object> log = jdbc.queryForMap(
+            "select response_length, finish_reason, truncated from ai_call_log where id = ?", logId
+        );
+        assertThat(log.get("response_length")).isEqualTo(6);
+        assertThat(log.get("finish_reason")).isEqualTo("length");
+        assertThat(log.get("truncated")).isEqualTo(true);
+    }
+
+    @Test
     void redactsCredentialsFromRequestAndResponseSummaries() {
         Long logId = writer.record(new AiInvocationLogRequest(
             new AiContext(731L, 732L, 733L, null, 801L, "script_generate", "trace-redact"),

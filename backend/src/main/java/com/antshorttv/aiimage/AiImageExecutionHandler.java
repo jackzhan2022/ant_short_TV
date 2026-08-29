@@ -26,9 +26,9 @@ import com.antshorttv.points.AiPointReservationEntity;
 import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.AiSettlementOutcome;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.antshorttv.script.AssetVisualVariantService;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -48,6 +48,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
     private final AiPointReservationMapper reservationMapper;
     private final AiPointSettlementService pointSettlementService;
     private final ObjectMapper objectMapper;
+    private final AssetVisualVariantService assetVisualVariantService;
 
     public AiImageExecutionHandler(
         AiImageTaskMapper taskMapper,
@@ -59,7 +60,8 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         AiUsageAccountingService usageAccountingService,
         AiPointReservationMapper reservationMapper,
         AiPointSettlementService pointSettlementService,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        AssetVisualVariantService assetVisualVariantService
     ) {
         this.taskMapper = taskMapper;
         this.resultMapper = resultMapper;
@@ -71,6 +73,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         this.reservationMapper = reservationMapper;
         this.pointSettlementService = pointSettlementService;
         this.objectMapper = objectMapper;
+        this.assetVisualVariantService = assetVisualVariantService;
     }
 
     @Override
@@ -95,6 +98,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
     public AiExecutionHandlerResult execute(AiExecutionContext context) {
         AiExecutionTaskEntity execution = context.task();
         AiImageTaskEntity task = taskMapper.selectById(execution.businessId);
+        java.util.List<Long> createdResultIds = new java.util.ArrayList<>();
         markDomainRunning(task);
         try {
             AiInvocationResult<AiImageResponse> result = invocationService.invokeImage(
@@ -106,17 +110,22 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             int imageCount = response.imageUrls() == null ? 0 : response.imageUrls().size();
             for (int index = 1; index <= task.getImageCount(); index++) {
                 String imageUrl = imageCount >= index ? response.imageUrls().get(index - 1) : null;
-                createResult(execution.id, task, index, imageUrl);
+                createResult(context, task, index, imageUrl, createdResultIds);
             }
             recordUsageAndSettle(context, task, result, task.getImageCount());
             requireActiveClaim(context);
             markDomainSucceeded(task, result.aiCallLogId());
             return new AiExecutionHandlerResult("AI_IMAGE_TASK", task.getId());
         } catch (AiExecutionClaimLostException exception) {
-            discardUnpublishedResults(execution.id);
+            discardUnpublishedResults(task, createdResultIds);
             throw exception;
         } catch (AiGatewayException exception) {
-            markDomainFailed(task, exception.getMessage(), exception.getAiCallLogId());
+            boolean owner = markDomainFailedIfClaimActive(
+                context, task, exception.getMessage(), exception.getAiCallLogId());
+            if (!owner) {
+                discardUnpublishedResults(task, createdResultIds);
+                throw new AiExecutionClaimLostException(context.task().id);
+            }
             settleFailure(context, exception.getAiCallLogId());
             throw exception;
         }
@@ -124,7 +133,6 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
 
     private AiInvocationRequest invocationRequest(AiExecutionContext context, AiImageTaskEntity task) {
         AiExecutionTaskEntity execution = context.task();
-        AiExecutionAttemptEntity attempt = attemptMapper.selectById(context.claim().attemptId());
         return AiInvocationRequest.image()
             .tenantId(execution.tenantId)
             .userId(execution.userId)
@@ -137,7 +145,8 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             .attemptId(context.claim().attemptId())
             .executionVersion(execution.executionVersion)
             .phase(context.claim().phase())
-            .idempotencyKey(attempt.idempotencyKey)
+            .idempotencyKey("execution:%d:v%d:%s".formatted(
+                execution.id, execution.executionVersion, context.claim().phase()))
             .imageRequest(new AiImageRequest(
                 task.getPrompt(), task.getNegativePrompt(), null, task.getAspectRatio(),
                 task.getImageCount(), ReferenceImagesCodec.decode(task.getReferenceImages())
@@ -240,26 +249,38 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         taskMapper.updateById(task);
     }
 
-    private void markDomainFailed(AiImageTaskEntity task, String message, Long callLogId) {
-        task.setStatus(AiImageTaskStatus.FAILED.name());
-        task.setErrorMessage(message);
-        task.setAiCallLogId(callLogId);
-        task.setCompletedAt(LocalDateTime.now());
-        task.setUpdatedAt(task.getCompletedAt());
-        taskMapper.updateById(task);
+    private boolean markDomainFailedIfClaimActive(
+        AiExecutionContext context, AiImageTaskEntity task, String message, Long callLogId
+    ) {
+        int updated = taskMapper.markFailedIfClaimActive(
+            task.getId(), context.task().id, context.claim().claimToken(), message, callLogId);
+        if (updated != 1) {
+            return false;
+        }
+        if ("VISUAL_VARIANT".equals(task.getTargetType())) {
+            boolean variantUpdated = assetVisualVariantService.generationFailedIfClaimActive(
+                task.getTenantId(), task.getProjectId(), task.getTargetId(), task.getId(),
+                "AI_IMAGE_GENERATION_FAILED", message, context.task().id, context.claim().claimToken());
+            if (!variantUpdated) {
+                throw new AiExecutionClaimLostException(context.task().id);
+            }
+        }
+        return true;
     }
 
     private void createResult(
-        Long executionId,
+        AiExecutionContext context,
         AiImageTaskEntity task,
         int index,
-        String providerImageUrl
+        String providerImageUrl,
+        java.util.List<Long> createdResultIds
     ) {
+        requireActiveClaim(context);
         AiImageResultEntity result = new AiImageResultEntity();
         result.setTenantId(task.getTenantId());
         result.setProjectId(task.getProjectId());
         result.setTaskId(task.getId());
-        result.setExecutionId(executionId);
+        result.setExecutionId(context.task().id);
         result.setTargetType(task.getTargetType());
         result.setTargetId(task.getTargetId());
         result.setImageUrl(providerImageUrl == null ? "" : providerImageUrl);
@@ -269,6 +290,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         result.setCreatedAt(LocalDateTime.now());
         result.setUpdatedAt(result.getCreatedAt());
         resultMapper.insert(result);
+        createdResultIds.add(result.getId());
 
         if (providerImageUrl == null || providerImageUrl.isBlank()) {
             StoredImage storedImage = storageService.createPlaceholder(task, result.getId(), index);
@@ -282,11 +304,23 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         }
         result.setUpdatedAt(LocalDateTime.now());
         resultMapper.updateById(result);
+        requireActiveClaim(context);
+        if (index == 1 && "VISUAL_VARIANT".equals(task.getTargetType())) {
+            boolean published = assetVisualVariantService.generationSucceededIfClaimActive(
+                task.getTenantId(), task.getProjectId(), task.getTargetId(), task.getId(),
+                result.getId(), result.getImageUrl(), context.task().id, context.claim().claimToken());
+            if (!published) throw new AiExecutionClaimLostException(context.task().id);
+        }
     }
 
-    private void discardUnpublishedResults(Long executionId) {
-        resultMapper.delete(new QueryWrapper<AiImageResultEntity>()
-            .eq("execution_id", executionId));
+    private void discardUnpublishedResults(AiImageTaskEntity task, java.util.List<Long> resultIds) {
+        for (Long resultId : resultIds) {
+            if ("VISUAL_VARIANT".equals(task.getTargetType())) {
+                assetVisualVariantService.discardGeneratedResult(
+                    task.getTenantId(), task.getProjectId(), task.getTargetId(), resultId);
+            }
+            resultMapper.deleteById(resultId);
+        }
     }
 
     private void updateCostSummary(Long executionId, AiExecutionCostSummary cost) {

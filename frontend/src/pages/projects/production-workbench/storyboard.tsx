@@ -20,9 +20,10 @@ import {
   Image,
   Input,
   Select,
+  Tag,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import type {
@@ -32,6 +33,7 @@ import type {
   PropAsset,
   SaveStoryboardValues,
   SceneAsset,
+  ScriptEpisode,
   ScriptWorkspace,
   StoryboardShot,
 } from './service';
@@ -333,6 +335,7 @@ const StoryboardCard = ({
   characters,
   scenes,
   props,
+  episodes,
   imageTasks,
   videoTasks,
   draft,
@@ -355,6 +358,7 @@ const StoryboardCard = ({
   characters: CharacterAsset[];
   scenes: SceneAsset[];
   props: PropAsset[];
+  episodes: ScriptEpisode[];
   imageTasks: AiImageTask[];
   videoTasks: AiVideoTask[];
   draft: { scriptText: string; videoPrompt: string };
@@ -384,11 +388,51 @@ const StoryboardCard = ({
   const scene = firstByName(scenes, sceneNames);
   const prop = firstByName(props, propNames);
   const video = getStoryboardVideo(item, videoTasks);
+  const resolveEpisodeVisual = (asset?: SceneAsset | PropAsset) => {
+    const visual = asset?.visual;
+    const episodeId = episodes.find(
+      (episode) => episode.episodeNo === item.episodeNo,
+    )?.episodeId;
+    const preferredBinding = episodeId
+      ? visual?.episodeBindings.find(
+          (binding) =>
+            binding.episodeId === episodeId &&
+            binding.preferred &&
+            binding.status === 'ACTIVE',
+        )
+      : undefined;
+    const preferredVariant = preferredBinding
+      ? visual?.variants.find(
+          (variant) => variant.id === preferredBinding.variantId,
+        )
+      : undefined;
+    if (preferredVariant?.usable && preferredVariant.currentImageUrl) {
+      return {
+        url: preferredVariant.currentImageUrl,
+        source: 'EPISODE_PREFERRED',
+      };
+    }
+    return {
+      url: visual?.resolvedImageUrl,
+      source: visual?.resolvedImageSource,
+    };
+  };
+  const resolvedSceneVisual = resolveEpisodeVisual(scene);
+  const resolvedPropVisual = resolveEpisodeVisual(prop);
   const sceneImage =
+    resolvedSceneVisual.url ||
     thumbnailFor(imageTasks, 'SCENE', scene?.id) ||
     item.firstFrameUrl ||
     undefined;
-  const propImage = thumbnailFor(imageTasks, 'PROP', prop?.id);
+  const propImage =
+    resolvedPropVisual.url ||
+    thumbnailFor(imageTasks, 'PROP', prop?.id);
+  const visualSourceLabel = (source?: string | null) => {
+    if (source === 'EPISODE_PREFERRED') return '剧集首选形象';
+    if (source === 'PRIMARY_VARIANT') return '主形象';
+    if (source === 'LEGACY_FALLBACK') return '旧图片回退';
+    return '未解析参考图';
+  };
   const imageTask = imageTasks
     .filter(
       (task) => task.targetType === 'STORYBOARD' && task.targetId === item.id,
@@ -622,6 +666,18 @@ const StoryboardCard = ({
                 </div>
               ))}
             </div>
+            {scene ? (
+              <Tag
+                color={
+                  resolvedSceneVisual.source === 'LEGACY_FALLBACK'
+                    ? 'orange'
+                    : 'blue'
+                }
+              >
+                场景参考来源：
+                {visualSourceLabel(resolvedSceneVisual.source)}
+              </Tag>
+            ) : null}
             <Flex gap={8} style={{ marginTop: 10 }}>
               <Select
                 aria-label={`分镜${index + 1}场景`}
@@ -679,6 +735,18 @@ const StoryboardCard = ({
               />
               <Button aria-label="更多道具操作" icon={<MoreOutlined />} />
             </Flex>
+            {prop ? (
+              <Tag
+                color={
+                  resolvedPropVisual.source === 'LEGACY_FALLBACK'
+                    ? 'orange'
+                    : 'blue'
+                }
+              >
+                道具参考来源：
+                {visualSourceLabel(resolvedPropVisual.source)}
+              </Tag>
+            ) : null}
           </div>
         </section>
 
@@ -927,6 +995,7 @@ const ProductionWorkbenchStoryboard = () => {
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [selectedModel, setSelectedModel] = useState('Doubao-Seedance-2.5');
   const [drafts, setDrafts] = useState<StoryboardDraft>({});
+  const reservedShotNos = useRef<Record<number, number>>({});
   const [workspace, setWorkspace] = useState<ScriptWorkspace>({
     projectId: projectId || 0,
     script: null,
@@ -1326,9 +1395,21 @@ const ProductionWorkbenchStoryboard = () => {
     }
   };
 
-  const addStoryboardAfter = async (storyboard: StoryboardShot) => {
+  const reserveNextShotNo = (episodeNo: number) => {
+    const persistedMaximum = Math.max(
+      0,
+      ...workspace.storyboards
+        .filter((item) => item.episodeNo === episodeNo)
+        .map((item) => item.shotNo),
+    );
     const shotNo =
-      Math.max(0, ...visibleStoryboards.map((item) => item.shotNo)) + 1;
+      Math.max(persistedMaximum, reservedShotNos.current[episodeNo] ?? 0) + 1;
+    reservedShotNos.current[episodeNo] = shotNo;
+    return shotNo;
+  };
+
+  const addStoryboardAfter = async (storyboard: StoryboardShot) => {
+    const shotNo = reserveNextShotNo(storyboard.episodeNo);
     await appendStoryboard(
       {
         episodeNo: storyboard.episodeNo,
@@ -1343,8 +1424,7 @@ const ProductionWorkbenchStoryboard = () => {
   };
 
   const copyStoryboard = async (storyboard: StoryboardShot) => {
-    const shotNo =
-      Math.max(0, ...visibleStoryboards.map((item) => item.shotNo)) + 1;
+    const shotNo = reserveNextShotNo(storyboard.episodeNo);
     await appendStoryboard(
       getStoryboardSavePayload(storyboard, {
         episodeNo: storyboard.episodeNo,
@@ -1485,6 +1565,7 @@ const ProductionWorkbenchStoryboard = () => {
                 characters={characters}
                 scenes={scenes}
                 props={props}
+                episodes={workspace?.episodes ?? []}
                 imageTasks={imageTasks}
                 videoTasks={videoTasks}
                 draft={

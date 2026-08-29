@@ -752,4 +752,79 @@ class SchemaMigrationTest {
         assertThat(modelCount).isEqualTo(3);
         assertThat(capabilityCount).isEqualTo(3);
     }
+
+    @Test
+    void flywayCreatesEditableAiOverlayAndSeedsBuiltIns() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer tableCount = jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) in ('ai_agent_definition', 'ai_skill_definition',
+                                         'ai_agent_skill', 'ai_model_parameter_profile',
+                                         'script_analysis_config_snapshot')
+            """, Integer.class);
+        Integer agentCount = jdbc.queryForObject(
+            "select count(*) from ai_agent_definition where version_no = 1 and published = true", Integer.class);
+        Integer skillCount = jdbc.queryForObject(
+            "select count(*) from ai_skill_definition where version_no = 1 and published = true", Integer.class);
+        Integer associationCount = jdbc.queryForObject("select count(*) from ai_agent_skill", Integer.class);
+
+        assertThat(tableCount).isEqualTo(5);
+        assertThat(agentCount).isEqualTo(11);
+        assertThat(skillCount).isEqualTo(6);
+        assertThat(associationCount).isGreaterThan(0);
+    }
+
+    @Test
+    void flywayCreatesStableEpisodesNormalizationAndVisualVariantSchemaAdditively() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer tableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+              from information_schema.tables
+             where lower(table_name) in (
+               'script_episode', 'script_asset_normalization_run', 'script_asset_candidate',
+               'script_asset_candidate_alias', 'script_asset_promotion_decision',
+               'asset_visual_variant', 'asset_visual_variant_episode'
+             )
+            """, Integer.class);
+        Integer tenantProjectColumns = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where lower(table_name) in (
+               'script_episode', 'script_asset_normalization_run', 'script_asset_candidate',
+               'asset_visual_variant', 'asset_visual_variant_episode'
+             )
+               and lower(column_name) in ('tenant_id', 'project_id')
+            """, Integer.class);
+        Integer lifecycleColumns = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where (lower(table_name) = 'script_episode'
+                    and lower(column_name) in ('stable_key', 'content_fingerprint', 'reconciliation_status', 'retired_at'))
+                or (lower(table_name) = 'asset_visual_variant'
+                    and lower(column_name) in ('generation_status', 'current_image_result_id', 'is_primary', 'deleted_at'))
+                or (lower(table_name) = 'asset_visual_variant_episode'
+                    and lower(column_name) in ('is_preferred', 'retired_at'))
+            """, Integer.class);
+        Integer uniquenessConstraints = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.table_constraints
+             where constraint_type = 'UNIQUE'
+               and lower(constraint_name) in (
+                 'uk_script_episode_stable_key', 'uk_script_asset_normalization_run_idempotency',
+                 'uk_asset_visual_variant_primary', 'uk_asset_visual_variant_episode_preferred'
+               )
+            """, Integer.class);
+        Integer legacyImageColumns = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where lower(table_name) in ('character_asset', 'scene_asset', 'prop_asset')
+               and lower(column_name) in ('main_image_result_id', 'main_image_url')
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(7);
+        assertThat(tenantProjectColumns).isEqualTo(10);
+        assertThat(lifecycleColumns).isEqualTo(10);
+        assertThat(uniquenessConstraints).isEqualTo(4);
+        assertThat(legacyImageColumns).isEqualTo(6);
+    }
 }

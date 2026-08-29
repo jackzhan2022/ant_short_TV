@@ -68,6 +68,9 @@ public class AiCallLogService {
                   l.prompt_tokens,
                   l.completion_tokens,
                   l.total_tokens,
+                  l.response_length,
+                  l.finish_reason,
+                  l.truncated,
                   l.created_at
                 from ai_call_log l
                 %s
@@ -95,6 +98,9 @@ public class AiCallLogService {
                 rs.getObject("prompt_tokens", Integer.class),
                 rs.getObject("completion_tokens", Integer.class),
                 rs.getObject("total_tokens", Integer.class),
+                rs.getObject("response_length", Integer.class),
+                rs.getString("finish_reason"),
+                rs.getObject("truncated", Boolean.class),
                 toLocalDateTime(rs.getTimestamp("created_at"))
             ),
             pageArgs.toArray()

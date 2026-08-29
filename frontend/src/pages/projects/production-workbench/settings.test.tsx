@@ -9,10 +9,19 @@ const mocks = vi.hoisted(() => ({
   queryScriptWorkspace: vi.fn(),
   updateScriptElement: vi.fn(),
   pollExecution: vi.fn(),
+  queryAssetCandidates: vi.fn(),
+  decideAssetCandidate: vi.fn(),
+  createVisualVariant: vi.fn(),
+  selectPrimaryVisualVariant: vi.fn(),
+  bindVisualVariantEpisodes: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
   useParams: () => ({ id: '1' }),
+  useIntl: () => ({
+    formatMessage: ({ defaultMessage }: { defaultMessage: string }) =>
+      defaultMessage,
+  }),
 }));
 
 vi.mock('./service', () => ({
@@ -21,6 +30,11 @@ vi.mock('./service', () => ({
   extractScriptElements: mocks.extractScriptElements,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   updateScriptElement: mocks.updateScriptElement,
+  queryAssetCandidates: mocks.queryAssetCandidates,
+  decideAssetCandidate: mocks.decideAssetCandidate,
+  createVisualVariant: mocks.createVisualVariant,
+  selectPrimaryVisualVariant: mocks.selectPrimaryVisualVariant,
+  bindVisualVariantEpisodes: mocks.bindVisualVariantEpisodes,
 }));
 
 vi.mock('@/services/ai-execution/task', () => ({
@@ -93,6 +107,40 @@ const workspace = {
       personality: ['好奇', '胆小'],
       appearance: '圆脸，黄色上衣',
       prompt: '6岁男孩，写实都市风格',
+      status: 'CONFIRMED',
+      visual: {
+        variantCount: 2,
+        primaryVariant: {
+          id: 11,
+          name: '日常形象',
+          primary: true,
+          usable: true,
+          generationStatus: 'COMPLETED',
+          currentImageUrl: '/daily.png',
+        },
+        variants: [
+          {
+            id: 11,
+            name: '日常形象',
+            primary: true,
+            usable: true,
+            generationStatus: 'COMPLETED',
+            currentImageUrl: '/daily.png',
+          },
+          {
+            id: 12,
+            name: '婚礼礼服',
+            primary: false,
+            usable: false,
+            generationStatus: 'FAILED',
+            errorMessage: '生成超时',
+          },
+        ],
+        generationSummary: { COMPLETED: 1, FAILED: 1 },
+        episodeBindings: [],
+        resolvedImageUrl: '/daily.png',
+        resolvedImageSource: 'PRIMARY_VARIANT',
+      },
     },
   ],
   scenes: [
@@ -117,6 +165,10 @@ const workspace = {
     },
   ],
   storyboards: [],
+  episodes: [
+    { episodeId: 101, episodeNo: 1, title: '骗局开始', content: 'A' },
+    { episodeId: 102, episodeNo: 2, title: '真相浮现', content: 'B' },
+  ],
 };
 
 describe('ProductionWorkbenchSettings', () => {
@@ -136,6 +188,102 @@ describe('ProductionWorkbenchSettings', () => {
     mocks.confirmScriptElement.mockResolvedValue({ data: workspace });
     mocks.deleteScriptElement.mockResolvedValue({ data: workspace });
     mocks.updateScriptElement.mockResolvedValue({ data: workspace });
+    mocks.queryAssetCandidates.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 21,
+            runId: 20,
+            assetType: 'CHARACTER',
+            sourceIndex: 0,
+            name: '林夏',
+            normalizedName: '林夏',
+            candidateJson: '{"name":"林夏"}',
+            validationStatus: 'VALID',
+            duplicateGroupKey: 'character:林夏',
+            proposedTargetId: 1,
+            matchType: 'NORMALIZED_NAME',
+            matchConfidence: 0.95,
+            reviewStatus: 'PENDING_REVIEW',
+            aliases: [],
+          },
+          {
+            id: 22,
+            runId: 20,
+            assetType: 'CHARACTER',
+            sourceIndex: 1,
+            candidateJson: '{}',
+            validationStatus: 'INVALID',
+            validationErrorsJson: '["name不能为空"]',
+            reviewStatus: 'PENDING_REVIEW',
+            aliases: [],
+          },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 20,
+      },
+    });
+    mocks.decideAssetCandidate.mockResolvedValue({ data: {} });
+    mocks.createVisualVariant.mockResolvedValue({ data: {} });
+    mocks.selectPrimaryVisualVariant.mockResolvedValue({ data: {} });
+    mocks.bindVisualVariantEpisodes.mockResolvedValue({ data: [] });
+  });
+
+  it('shows normalized candidates separately from canonical assets', async () => {
+    render(<ProductionWorkbenchSettings />);
+
+    expect(await screen.findByText('待审核识别结果')).toBeInTheDocument();
+    expect(screen.getByText('林夏')).toBeInTheDocument();
+    expect(screen.getByText('name不能为空')).toBeInTheDocument();
+    expect(screen.getByText(/建议合并到/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '合并林夏' }));
+    await waitFor(() => {
+      expect(mocks.decideAssetCandidate).toHaveBeenCalledWith(
+        1,
+        21,
+        expect.objectContaining({
+          decisionType: 'ACCEPT_MERGE',
+          targetAssetId: 1,
+        }),
+      );
+    });
+  });
+
+  it('manages visual variants and stable episode bindings from an asset card', async () => {
+    render(<ProductionWorkbenchSettings />);
+
+    expect(await screen.findByText('2 个视觉形象')).toBeInTheDocument();
+    expect(screen.getByText('主形象：日常形象')).toBeInTheDocument();
+    expect(screen.getByText('来源：主形象')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+
+    expect(screen.getByText('婚礼礼服')).toBeInTheDocument();
+    expect(screen.getByText('生成超时')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('新视觉形象名称'), {
+      target: { value: '雨夜造型' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '新增视觉形象' }));
+    await waitFor(() => {
+      expect(mocks.createVisualVariant).toHaveBeenCalledWith(
+        1,
+        'CHARACTER',
+        1,
+        expect.objectContaining({ name: '雨夜造型' }),
+      );
+    });
+
+    fireEvent.click(
+      screen.getAllByRole('checkbox', { name: '第1集 骗局开始' })[1],
+    );
+    fireEvent.click(screen.getByRole('button', { name: '绑定婚礼礼服到剧集' }));
+    await waitFor(() => {
+      expect(mocks.bindVisualVariantEpisodes).toHaveBeenCalledWith(1, 12, {
+        episodeIds: [101],
+        preferred: true,
+      });
+    });
   });
 
   it('renders restored setting assets instead of the old image task table', async () => {
@@ -145,7 +293,7 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.getByRole('tab', { name: /角色/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /场景/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /道具/ })).toBeInTheDocument();
-    expect(screen.getByText('斌斌')).toBeInTheDocument();
+    expect(screen.getAllByText('斌斌').length).toBeGreaterThan(0);
     expect(screen.queryByText('地下停车场')).not.toBeInTheDocument();
     expect(screen.queryByText('灰色轿车后备箱')).not.toBeInTheDocument();
     expect(screen.queryByText('AI图片生产')).not.toBeInTheDocument();
@@ -158,7 +306,7 @@ describe('ProductionWorkbenchSettings', () => {
   it('reuses existing element backend actions', async () => {
     render(<ProductionWorkbenchSettings />);
 
-    await screen.findByText('斌斌');
+    await screen.findAllByText('斌斌');
     fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
     fireEvent.click(screen.getByRole('button', { name: '确认斌斌' }));
 

@@ -36,7 +36,7 @@ class AiInvocationServiceTest {
     void invokesTextThroughUnifiedContractAndReturnsLogId() {
         AiModelRoute route = route(AiCapability.TEXT);
         when(router.route(501L, "TEXT")).thenReturn(route);
-        when(route.adapter().text(any(), any(), any(), any()))
+        when(route.adapter().text(any(), any(), any(), any(), any()))
             .thenReturn(new AiTextResponse("剧本内容", "req-text", 1, 2, 3, 44L, Map.of()));
         when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9001L);
 
@@ -55,7 +55,11 @@ class AiInvocationServiceTest {
         assertThat(result.aiCallLogId()).isEqualTo(9001L);
         assertThat(result.providerRequestId()).isEqualTo("req-text");
         assertThat(result.businessSceneCode()).isEqualTo("script_generate");
-        verify(logWriter).record(any(AiInvocationLogRequest.class));
+        ArgumentCaptor<AiInvocationLogRequest> logCaptor = ArgumentCaptor.forClass(AiInvocationLogRequest.class);
+        verify(logWriter).record(logCaptor.capture());
+        assertThat(logCaptor.getValue().responseLength()).isEqualTo(4);
+        assertThat(logCaptor.getValue().finishReason()).isNull();
+        assertThat(logCaptor.getValue().truncated()).isFalse();
     }
 
     @Test
@@ -86,7 +90,7 @@ class AiInvocationServiceTest {
     void invokesImageThroughUnifiedContractAndReturnsLogId() {
         AiModelRoute route = route(AiCapability.IMAGE);
         when(router.route(701L, "IMAGE")).thenReturn(route);
-        when(route.adapter().image(any(), any(), any(), any()))
+        when(route.adapter().image(any(), any(), any(), any(), any()))
             .thenReturn(new AiImageResponse(java.util.List.of("https://cdn.example.com/image.png"), "req-image", 55L, Map.of()));
         when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9004L);
 
@@ -110,7 +114,7 @@ class AiInvocationServiceTest {
     void invokesScriptReviewThroughUnifiedContractWithResolvedAgentContext() {
         AiModelRoute route = route(AiCapability.TEXT);
         when(router.route(801L, "TEXT")).thenReturn(route);
-        when(route.adapter().text(any(), any(), any(), any()))
+        when(route.adapter().text(any(), any(), any(), any(), any()))
             .thenReturn(new AiTextResponse("{\"overallScore\":90,\"conclusion\":\"PASS\",\"issues\":[]}", "req-review", 1, 2, 3, 66L, Map.of()));
         when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9005L);
 
@@ -135,7 +139,7 @@ class AiInvocationServiceTest {
     void recordsProviderFailureWithNormalizedError() {
         AiModelRoute route = route(AiCapability.TEXT);
         when(router.route(501L, "TEXT")).thenReturn(route);
-        when(route.adapter().text(any(), any(), any(), any()))
+        when(route.adapter().text(any(), any(), any(), any(), any()))
             .thenThrow(new AiGatewayException(ErrorCode.AI_RATE_LIMIT, "too many requests"));
         when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9003L);
 

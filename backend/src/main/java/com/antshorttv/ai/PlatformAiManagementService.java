@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class PlatformAiManagementService {
@@ -21,10 +22,34 @@ public class PlatformAiManagementService {
     private final AiProviderConfigMapper aiProviderConfigMapper;
     private final AiModelMapper aiModelMapper;
     private final AiModelCapabilityMapper capabilityMapper;
+    private final AiModelParameterProfileMapper parameterMapper;
     private final AiSecretCodec aiSecretCodec;
     private final OperationLogService operationLogService;
     private final AiModelRouter aiModelRouter;
     private final CurrentPrincipal currentPrincipal;
+
+    @Autowired
+    public PlatformAiManagementService(
+        AiProviderMapper aiProviderMapper,
+        AiProviderConfigMapper aiProviderConfigMapper,
+        AiModelMapper aiModelMapper,
+        AiModelCapabilityMapper capabilityMapper,
+        AiModelParameterProfileMapper parameterMapper,
+        AiSecretCodec aiSecretCodec,
+        OperationLogService operationLogService,
+        AiModelRouter aiModelRouter,
+        CurrentPrincipal currentPrincipal
+    ) {
+        this.aiProviderMapper = aiProviderMapper;
+        this.aiProviderConfigMapper = aiProviderConfigMapper;
+        this.aiModelMapper = aiModelMapper;
+        this.capabilityMapper = capabilityMapper;
+        this.parameterMapper = parameterMapper;
+        this.aiSecretCodec = aiSecretCodec;
+        this.operationLogService = operationLogService;
+        this.aiModelRouter = aiModelRouter;
+        this.currentPrincipal = currentPrincipal;
+    }
 
     public PlatformAiManagementService(
         AiProviderMapper aiProviderMapper,
@@ -36,14 +61,62 @@ public class PlatformAiManagementService {
         AiModelRouter aiModelRouter,
         CurrentPrincipal currentPrincipal
     ) {
-        this.aiProviderMapper = aiProviderMapper;
-        this.aiProviderConfigMapper = aiProviderConfigMapper;
-        this.aiModelMapper = aiModelMapper;
-        this.capabilityMapper = capabilityMapper;
-        this.aiSecretCodec = aiSecretCodec;
-        this.operationLogService = operationLogService;
-        this.aiModelRouter = aiModelRouter;
-        this.currentPrincipal = currentPrincipal;
+        this(aiProviderMapper, aiProviderConfigMapper, aiModelMapper, capabilityMapper, null,
+            aiSecretCodec, operationLogService, aiModelRouter, currentPrincipal);
+    }
+
+    public AiModelParameterResponse modelParameters(Long modelId) {
+        currentPrincipal.require();
+        requireModel(modelId);
+        if (parameterMapper == null) return parameterResponse(defaultParameterProfile(modelId, 1));
+        AiModelParameterProfileEntity profile = parameterMapper.selectOne(new LambdaQueryWrapper<AiModelParameterProfileEntity>()
+            .eq(AiModelParameterProfileEntity::getModelId, modelId)
+            .eq(AiModelParameterProfileEntity::getPublished, true)
+            .orderByDesc(AiModelParameterProfileEntity::getVersionNo)
+            .last("limit 1"));
+        if (profile == null) {
+            profile = defaultParameterProfile(modelId, 1);
+        }
+        return parameterResponse(profile);
+    }
+
+    @Transactional
+    public AiModelParameterResponse updateModelParameters(Long modelId, AiModelParameterRequest request, HttpServletRequest servletRequest) {
+        AuthenticatedUser user = currentPrincipal.require();
+        requireModel(modelId);
+        validateParameters(request);
+        AiModelParameterProfileEntity current = parameterMapper.selectOne(new LambdaQueryWrapper<AiModelParameterProfileEntity>()
+            .eq(AiModelParameterProfileEntity::getModelId, modelId).orderByDesc(AiModelParameterProfileEntity::getVersionNo).last("limit 1"));
+        int version = current == null || current.getVersionNo() == null ? 1 : current.getVersionNo() + 1;
+        if (current != null) { current.setPublished(false); parameterMapper.updateById(current); }
+        AiModelParameterProfileEntity profile = defaultParameterProfile(modelId, version);
+        profile.setTemperature(request.temperature()); profile.setTopP(request.topP()); profile.setMaxTokens(request.maxTokens());
+        profile.setJsonMode(Boolean.TRUE.equals(request.jsonMode())); profile.setTimeoutSeconds(request.timeoutSeconds()); profile.setRetryCount(request.retryCount());
+        profile.setCreatedBy(user.userId()); parameterMapper.insert(profile);
+        operationLogService.record(user.userId(), null, "UPDATE_PLATFORM_AI_MODEL_PARAMETERS", modelId, OperationResult.SUCCESS, servletRequest);
+        return parameterResponse(profile);
+    }
+
+    private void validateParameters(AiModelParameterRequest request) {
+        if (request.temperature() == null || request.temperature() < 0 || request.temperature() > 2
+            || (request.topP() != null && (request.topP() < 0 || request.topP() > 1))
+            || request.maxTokens() == null || request.maxTokens() < 256 || request.maxTokens() > 32768
+            || request.timeoutSeconds() == null || request.timeoutSeconds() < 5 || request.timeoutSeconds() > 180
+            || request.retryCount() == null || request.retryCount() < 0 || request.retryCount() > 3) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "模型参数超出允许范围。");
+        }
+    }
+
+    private AiModelParameterProfileEntity defaultParameterProfile(Long modelId, int version) {
+        AiModelParameterProfileEntity profile = new AiModelParameterProfileEntity();
+        profile.setModelId(modelId); profile.setVersionNo(version); profile.setTemperature(0.7); profile.setMaxTokens(2048);
+        profile.setJsonMode(false); profile.setTimeoutSeconds(60); profile.setRetryCount(1); profile.setStatus("ENABLED"); profile.setPublished(true);
+        profile.setCreatedAt(LocalDateTime.now()); profile.setUpdatedAt(LocalDateTime.now());
+        return profile;
+    }
+
+    private AiModelParameterResponse parameterResponse(AiModelParameterProfileEntity profile) {
+        return new AiModelParameterResponse(profile.getModelId(), profile.getVersionNo(), profile.getTemperature(), profile.getTopP(), profile.getMaxTokens(), profile.getJsonMode(), profile.getTimeoutSeconds(), profile.getRetryCount(), profile.getStatus(), profile.getPublished());
     }
 
     public List<PlatformProviderResponse> providers() {

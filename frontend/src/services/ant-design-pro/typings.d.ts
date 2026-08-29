@@ -11,6 +11,10 @@ declare namespace API {
     tenantId: number;
   };
 
+  type activeParams = {
+    tenantId: number;
+  };
+
   type addMemberParams = {
     id: number;
   };
@@ -18,10 +22,6 @@ declare namespace API {
   type AddProjectMemberRequest = {
     userId: number;
     roleId?: number;
-  };
-
-  type adjustParams = {
-    tenantId: number;
   };
 
   type agentParams = {
@@ -56,6 +56,9 @@ declare namespace API {
     promptTokens?: number;
     completionTokens?: number;
     totalTokens?: number;
+    responseLength?: number;
+    finishReason?: string;
+    truncated?: boolean;
     createdAt?: string;
   };
 
@@ -137,6 +140,28 @@ declare namespace API {
     createdBy?: number;
     createdAt?: string;
     results?: AiImageResultResponse[];
+  };
+
+  type AiModelParameterRequest = {
+    temperature?: number;
+    topP?: number;
+    maxTokens?: number;
+    jsonMode?: boolean;
+    timeoutSeconds?: number;
+    retryCount?: number;
+  };
+
+  type AiModelParameterResponse = {
+    modelId?: number;
+    versionNo?: number;
+    temperature?: number;
+    topP?: number;
+    maxTokens?: number;
+    jsonMode?: boolean;
+    timeoutSeconds?: number;
+    retryCount?: number;
+    status?: string;
+    published?: boolean;
   };
 
   type AiPointReconciliation = {
@@ -237,6 +262,13 @@ declare namespace API {
     results?: AiVoiceResultResponse[];
   };
 
+  type AliasResponse = {
+    name?: string;
+    normalizedName?: string;
+    source?: string;
+    evidenceJson?: string;
+  };
+
   type ApiResponseAiCallLogPageResponse = {
     success?: boolean;
     data?: AiCallLogPageResponse;
@@ -261,6 +293,13 @@ declare namespace API {
   type ApiResponseAiImageTaskResponse = {
     success?: boolean;
     data?: AiImageTaskResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseAiModelParameterResponse = {
+    success?: boolean;
+    data?: AiModelParameterResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -342,6 +381,62 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseCandidatePage = {
+    success?: boolean;
+    data?: CandidatePage;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseCandidateResponse = {
+    success?: boolean;
+    data?: CandidateResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseCommercialOrderEntity = {
+    success?: boolean;
+    data?: CommercialOrderEntity;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseCommercialOrderResponse = {
+    success?: boolean;
+    data?: CommercialOrderResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseCommercialPackageVersionResponse = {
+    success?: boolean;
+    data?: CommercialPackageVersionResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseDecisionResponse = {
+    success?: boolean;
+    data?: DecisionResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseEditableAgentResponse = {
+    success?: boolean;
+    data?: EditableAgentResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseEditableSkillResponse = {
+    success?: boolean;
+    data?: EditableSkillResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseEpisodeComposeTaskResponse = {
     success?: boolean;
     data?: EpisodeComposeTaskResponse;
@@ -398,6 +493,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseListBindingResponse = {
+    success?: boolean;
+    data?: BindingResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseListBuiltInAgentResponse = {
     success?: boolean;
     data?: BuiltInAgentResponse[];
@@ -408,6 +510,55 @@ declare namespace API {
   type ApiResponseListBuiltInSkillResponse = {
     success?: boolean;
     data?: BuiltInSkillResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListCommercialCatalogItemResponse = {
+    success?: boolean;
+    data?: CommercialCatalogItemResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListCommercialEntitlementGrantEntity = {
+    success?: boolean;
+    data?: CommercialEntitlementGrantEntity[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListCommercialOrderResponse = {
+    success?: boolean;
+    data?: CommercialOrderResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListCommercialPackageSummaryResponse = {
+    success?: boolean;
+    data?: CommercialPackageSummaryResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListCommercialPackageVersionResponse = {
+    success?: boolean;
+    data?: CommercialPackageVersionResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListEditableAgentResponse = {
+    success?: boolean;
+    data?: EditableAgentResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListEditableSkillResponse = {
+    success?: boolean;
+    data?: EditableSkillResponse[];
     errorCode?: string;
     errorMessage?: string;
   };
@@ -545,6 +696,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseListTeamSubscriptionEntity = {
+    success?: boolean;
+    data?: TeamSubscriptionEntity[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseListTenantInvitationResponse = {
     success?: boolean;
     data?: TenantInvitationResponse[];
@@ -562,6 +720,13 @@ declare namespace API {
   type ApiResponseListTenantSummaryResponse = {
     success?: boolean;
     data?: TenantSummaryResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListVariantResponse = {
+    success?: boolean;
+    data?: VariantResponse[];
     errorCode?: string;
     errorMessage?: string;
   };
@@ -741,6 +906,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseString = {
+    success?: boolean;
+    data?: string;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseTeamPointAccountResponse = {
     success?: boolean;
     data?: TeamPointAccountResponse;
@@ -755,6 +927,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseTeamSubscriptionEntity = {
+    success?: boolean;
+    data?: TeamSubscriptionEntity;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseTenantInvitationResponse = {
     success?: boolean;
     data?: TenantInvitationResponse;
@@ -765,6 +944,13 @@ declare namespace API {
   type ApiResponseTenantSummaryResponse = {
     success?: boolean;
     data?: TenantSummaryResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseVariantResponse = {
+    success?: boolean;
+    data?: VariantResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -807,6 +993,30 @@ declare namespace API {
   type applyVersionParams = {
     projectId: number;
     versionId: number;
+  };
+
+  type assetCandidateParams = {
+    projectId: number;
+    candidateId: number;
+  };
+
+  type assetCandidatesParams = {
+    projectId: number;
+    reviewStatus?: string;
+    assetType?: string;
+    page?: number;
+    pageSize?: number;
+  };
+
+  type AssetVisualWorkspace = {
+    variantCount?: number;
+    primaryVariant?: VariantResponse;
+    variants?: VariantResponse[];
+    generationSummary?: Record<string, any>;
+    episodeBindings?: BindingResponse[];
+    normalizationReviewStatus?: string;
+    resolvedImageUrl?: string;
+    resolvedImageSource?: string;
   };
 
   type AuthBootstrapResponse = {
@@ -854,6 +1064,21 @@ declare namespace API {
     resultId: number;
   };
 
+  type BindingCommand = {
+    episodeIds?: number[];
+    preferred?: boolean;
+  };
+
+  type BindingResponse = {
+    id?: number;
+    variantId?: number;
+    episodeId?: number;
+    episodeNo?: number;
+    episodeTitle?: string;
+    preferred?: boolean;
+    status?: string;
+  };
+
   type bindProjectParams = {
     reviewProjectId: number;
   };
@@ -865,6 +1090,11 @@ declare namespace API {
   type bindStoryboardParams = {
     projectId: number;
     resultId: number;
+  };
+
+  type bindVisualVariantEpisodesParams = {
+    projectId: number;
+    variantId: number;
   };
 
   type bindVoiceResultParams = {
@@ -971,6 +1201,33 @@ declare namespace API {
     taskId: number;
   };
 
+  type CandidatePage = {
+    items?: CandidateResponse[];
+    total?: number;
+    page?: number;
+    pageSize?: number;
+  };
+
+  type CandidateResponse = {
+    id?: number;
+    runId?: number;
+    assetType?: string;
+    sourceIndex?: number;
+    sourceKey?: string;
+    name?: string;
+    normalizedName?: string;
+    candidateJson?: string;
+    validationStatus?: string;
+    validationErrorsJson?: string;
+    duplicateGroupKey?: string;
+    proposedTargetId?: number;
+    matchType?: string;
+    matchConfidence?: number;
+    matchEvidenceJson?: string;
+    reviewStatus?: string;
+    aliases?: AliasResponse[];
+  };
+
   type CharacterAssetResponse = {
     id?: number;
     name?: string;
@@ -983,6 +1240,114 @@ declare namespace API {
     prompt?: string;
     status?: string;
     mergeTargetId?: number;
+    visual?: AssetVisualWorkspace;
+  };
+
+  type CommercialCatalogItemResponse = {
+    packageId?: number;
+    packageVersionId?: number;
+    code?: string;
+    packageType?: string;
+    name?: string;
+    description?: string;
+    billingPeriod?: string;
+    periodMonths?: number;
+    price?: number;
+    listPrice?: number;
+    currency?: string;
+    entitlements?: CommercialEntitlementInput[];
+  };
+
+  type CommercialEntitlementGrantEntity = {
+    id?: number;
+    tenantId?: number;
+    orderId?: number;
+    subscriptionId?: number;
+    periodNo?: number;
+    entitlementType?: string;
+    amount?: number;
+    status?: string;
+    idempotencyKey?: string;
+    grantedAt?: string;
+    errorMessage?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+
+  type CommercialEntitlementInput = {
+    type?: string;
+    value?: number;
+  };
+
+  type CommercialOrderCreateRequest = {
+    packageVersionId?: number;
+  };
+
+  type CommercialOrderEntity = {
+    id?: number;
+    tenantId?: number;
+    userId?: number;
+    packageVersionId?: number;
+    packageSnapshotJson?: string;
+    merchantOrderNo?: string;
+    amount?: number;
+    currency?: string;
+    status?: string;
+    expiresAt?: string;
+    paidAt?: string;
+    completedAt?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+
+  type CommercialOrderResponse = {
+    id?: number;
+    merchantOrderNo?: string;
+    amount?: number;
+    currency?: string;
+    status?: string;
+    expiresAt?: string;
+    codeUrl?: string;
+  };
+
+  type CommercialPackageDraftCommand = {
+    code?: string;
+    packageType?: string;
+    name?: string;
+    description?: string;
+    billingPeriod?: string;
+    periodMonths?: number;
+    price?: number;
+    listPrice?: number;
+    currency?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    entitlements?: CommercialEntitlementInput[];
+    operatorId?: number;
+  };
+
+  type CommercialPackageSummaryResponse = {
+    id?: number;
+    code?: string;
+    packageType?: string;
+    status?: string;
+  };
+
+  type CommercialPackageVersionResponse = {
+    packageId?: number;
+    versionId?: number;
+    versionNo?: number;
+    status?: string;
+    name?: string;
+    description?: string;
+    billingPeriod?: string;
+    periodMonths?: number;
+    price?: number;
+    listPrice?: number;
+    currency?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    entitlements?: CommercialEntitlementInput[];
   };
 
   type composeTaskParams = {
@@ -1030,11 +1395,15 @@ declare namespace API {
     tenantId: number;
   };
 
-  type create4Params = {
-    projectId: number;
+  type create3Params = {
+    tenantId: number;
   };
 
   type create5Params = {
+    projectId: number;
+  };
+
+  type create6Params = {
     projectId: number;
   };
 
@@ -1194,12 +1563,43 @@ declare namespace API {
     videos: VideoUploadMetadataRequest[];
   };
 
+  type createVisualVariantParams = {
+    projectId: number;
+    elementType: string;
+    elementId: number;
+  };
+
   type createVoiceTaskParams = {
     projectId: number;
   };
 
   type currentAnalysisParams = {
     projectId: number;
+  };
+
+  type currentParams = {
+    tenantId: number;
+  };
+
+  type decideAssetCandidateParams = {
+    projectId: number;
+    candidateId: number;
+  };
+
+  type DecisionCommand = {
+    decisionType?: string;
+    targetAssetId?: number;
+    idempotencyKey?: string;
+  };
+
+  type DecisionResponse = {
+    id?: number;
+    candidateId?: number;
+    decisionType?: string;
+    requestedTargetId?: number;
+    resultAssetId?: number;
+    status?: string;
+    idempotencyKey?: string;
   };
 
   type defaultModelParams = {
@@ -1277,6 +1677,11 @@ declare namespace API {
     taskId: number;
   };
 
+  type deleteVisualVariantParams = {
+    projectId: number;
+    variantId: number;
+  };
+
   type deleteVoiceResultParams = {
     projectId: number;
     resultId: number;
@@ -1294,16 +1699,16 @@ declare namespace API {
 
   type detail2Params = {
     tenantId: number;
-    executionId: number;
+    orderId: number;
   };
 
   type detail3Params = {
-    id: number;
+    tenantId: number;
+    executionId: number;
   };
 
   type detail4Params = {
-    projectId: number;
-    taskId: number;
+    id: number;
   };
 
   type detail5Params = {
@@ -1312,14 +1717,19 @@ declare namespace API {
   };
 
   type detail6Params = {
-    id: number;
+    projectId: number;
+    taskId: number;
   };
 
   type detail7Params = {
-    token: string;
+    id: number;
   };
 
   type detail8Params = {
+    token: string;
+  };
+
+  type detail9Params = {
     id: number;
   };
 
@@ -1362,6 +1772,40 @@ declare namespace API {
   type downloadVoiceResultParams = {
     projectId: number;
     resultId: number;
+  };
+
+  type EditableAgentRequest = {
+    name?: string;
+    description?: string;
+    promptTemplate?: string;
+    outputSchema?: string;
+  };
+
+  type EditableAgentResponse = {
+    code?: string;
+    versionNo?: number;
+    name?: string;
+    description?: string;
+    promptTemplate?: string;
+    outputSchema?: string;
+    status?: string;
+    published?: boolean;
+  };
+
+  type EditableSkillRequest = {
+    name?: string;
+    category?: string;
+    content?: string;
+  };
+
+  type EditableSkillResponse = {
+    code?: string;
+    versionNo?: number;
+    name?: string;
+    category?: string;
+    content?: string;
+    status?: string;
+    published?: boolean;
   };
 
   type enableModelParams = {
@@ -1518,6 +1962,14 @@ declare namespace API {
     referenceContent?: string;
   };
 
+  type grantsParams = {
+    tenantId: number;
+  };
+
+  type historyParams = {
+    packageId: number;
+  };
+
   type imageParams = {
     externalId: string;
   };
@@ -1565,6 +2017,10 @@ declare namespace API {
 
   type list2Params = {
     tenantId: number;
+  };
+
+  type list3Params = {
+    tenantId: number;
     current?: number;
     pageSize?: number;
     serviceType?: string;
@@ -1572,18 +2028,18 @@ declare namespace API {
     businessScene?: string;
   };
 
-  type list3Params = {
+  type list4Params = {
     category?: string;
     keyword?: string;
   };
 
-  type list5Params = {
+  type list6Params = {
     projectId: number;
     status?: string;
     storyboardId?: number;
   };
 
-  type list6Params = {
+  type list7Params = {
     projectId: number;
     taskType?: string;
     status?: string;
@@ -1619,6 +2075,10 @@ declare namespace API {
     modelId?: number;
     costPrices?: ModelPriceVersionResponse[];
     pointPrices?: ModelPointPriceVersionResponse[];
+  };
+
+  type modelParametersParams = {
+    id: number;
   };
 
   type ModelPointPriceVersionResponse = {
@@ -1821,6 +2281,10 @@ declare namespace API {
     taskId: number;
   };
 
+  type previewAgentParams = {
+    code: string;
+  };
+
   type previewParams = {
     code: string;
   };
@@ -1938,6 +2402,7 @@ declare namespace API {
     prompt?: string;
     status?: string;
     mergeTargetId?: number;
+    visual?: AssetVisualWorkspace;
   };
 
   type ProviderFailureRate = {
@@ -1945,6 +2410,10 @@ declare namespace API {
     total?: number;
     failed?: number;
     failureRate?: number;
+  };
+
+  type publishAgentParams = {
+    code: string;
   };
 
   type PublishModelPointPriceRequest = {
@@ -1963,8 +2432,21 @@ declare namespace API {
     components: ModelPriceComponentRequest[];
   };
 
+  type publishParams = {
+    packageId: number;
+    versionId: number;
+  };
+
   type publishPointPriceParams = {
     modelId: number;
+  };
+
+  type publishSkillParams = {
+    code: string;
+  };
+
+  type queuedParams = {
+    tenantId: number;
   };
 
   type readParams = {
@@ -1982,8 +2464,17 @@ declare namespace API {
     versionId: number;
   };
 
+  type reconcileParams = {
+    orderId: number;
+  };
+
   type reconciliationParams = {
     tenantId: number;
+  };
+
+  type refreshParams = {
+    tenantId: number;
+    orderId: number;
   };
 
   type regenerate1Params = {
@@ -2282,12 +2773,22 @@ declare namespace API {
     id: number;
   };
 
+  type rollbackAgentParams = {
+    code: string;
+    version: number;
+  };
+
   type rollbackParams = {
     projectId: number;
   };
 
   type RollbackReviewVersionRequest = {
     versionId: number;
+  };
+
+  type rollbackSkillParams = {
+    code: string;
+    version: number;
   };
 
   type saveComposeMaterialParams = {
@@ -2367,6 +2868,7 @@ declare namespace API {
     prompt?: string;
     status?: string;
     mergeTargetId?: number;
+    visual?: AssetVisualWorkspace;
   };
 
   type ScriptAnalysisStageResponse = {
@@ -2403,9 +2905,11 @@ declare namespace API {
   };
 
   type ScriptEpisodeResponse = {
+    episodeId?: number;
     episodeNo?: number;
     title?: string;
     content?: string;
+    summary?: string;
   };
 
   type ScriptResponse = {
@@ -2449,6 +2953,11 @@ declare namespace API {
     permissions?: string[];
   };
 
+  type selectPrimaryVisualVariantParams = {
+    projectId: number;
+    variantId: number;
+  };
+
   type selectResultParams = {
     projectId: number;
     resultId: number;
@@ -2459,9 +2968,19 @@ declare namespace API {
     subtitleId: number;
   };
 
+  type setAgentStatusParams = {
+    code: string;
+    status: string;
+  };
+
   type setCurrentEpisodeVideoVersionParams = {
     projectId: number;
     versionId: number;
+  };
+
+  type setSkillStatusParams = {
+    code: string;
+    status: string;
   };
 
   type ShotComposeResultResponse = {
@@ -2583,11 +3102,6 @@ declare namespace API {
     updatedAt?: string;
   };
 
-  type TeamPointAdjustmentRequest = {
-    amount: number;
-    description?: string;
-  };
-
   type TeamPointTransactionPageResponse = {
     records?: TeamPointTransactionResponse[];
     total?: number;
@@ -2606,6 +3120,20 @@ declare namespace API {
     businessId?: number;
     description?: string;
     createdAt?: string;
+  };
+
+  type TeamSubscriptionEntity = {
+    id?: number;
+    tenantId?: number;
+    packageVersionId?: number;
+    sourceOrderId?: number;
+    status?: string;
+    startsAt?: string;
+    endsAt?: string;
+    nextGrantAt?: string;
+    snapshotJson?: string;
+    createdAt?: string;
+    updatedAt?: string;
   };
 
   type TenantInvitationResponse = {
@@ -2674,8 +3202,17 @@ declare namespace API {
     targetMemberId: number;
   };
 
+  type unpublishParams = {
+    packageId: number;
+    versionId: number;
+  };
+
   type update1Params = {
     id: number;
+  };
+
+  type updateAgentParams = {
+    code: string;
   };
 
   type updateDraftParams = {
@@ -2700,6 +3237,10 @@ declare namespace API {
 
   type UpdateMemberRolesRequest = {
     roleIds?: number[];
+  };
+
+  type updateModelParametersParams = {
+    id: number;
   };
 
   type updateModelParams = {
@@ -2816,6 +3357,10 @@ declare namespace API {
     status?: string;
   };
 
+  type updateSkillParams = {
+    code: string;
+  };
+
   type updateStatus1Params = {
     id: number;
   };
@@ -2866,6 +3411,11 @@ declare namespace API {
     expectedDraftVersion?: number;
   };
 
+  type updateVisualVariantParams = {
+    projectId: number;
+    variantId: number;
+  };
+
   type UsageCostLineResponse = {
     id?: number;
     usageLineId?: number;
@@ -2902,6 +3452,35 @@ declare namespace API {
     nickname?: string;
     avatar?: string;
     status?: string;
+  };
+
+  type VariantCommand = {
+    name?: string;
+    appearance?: string;
+    prompt?: string;
+    sourceType?: string;
+    generationStatus?: string;
+    currentImageResultId?: number;
+    currentImageUrl?: string;
+    primary?: boolean;
+  };
+
+  type VariantResponse = {
+    id?: number;
+    assetType?: string;
+    assetId?: number;
+    name?: string;
+    appearance?: string;
+    prompt?: string;
+    sourceType?: string;
+    generationStatus?: string;
+    generationTaskId?: number;
+    currentImageResultId?: number;
+    currentImageUrl?: string;
+    errorCode?: string;
+    errorMessage?: string;
+    primary?: boolean;
+    usable?: boolean;
   };
 
   type versionHistoryParams = {
@@ -2986,6 +3565,18 @@ declare namespace API {
     mimeType?: string;
     fileSize: number;
     durationSeconds?: number;
+  };
+
+  type visualVariantBindingsParams = {
+    projectId: number;
+    elementType: string;
+    elementId: number;
+  };
+
+  type visualVariantsParams = {
+    projectId: number;
+    elementType: string;
+    elementId: number;
   };
 
   type voiceTaskParams = {

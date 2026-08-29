@@ -5,9 +5,12 @@ import com.antshorttv.video.QwenVideoUnderstandingAdapter;
 import com.antshorttv.video.VideoUnderstandingRequest;
 import com.antshorttv.video.VideoUnderstandingResponse;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class AiInvocationService {
+    @Autowired(required = false)
+    private AiModelParameterProfileMapper parameterProfileMapper;
     private final AiModelRouter aiModelRouter;
     private final AiCallLogWriter aiCallLogWriter;
     private final PromptTemplateRenderer promptTemplateRenderer;
@@ -37,19 +40,15 @@ public class AiInvocationService {
                 route.provider(),
                 route.providerConfig(),
                 route.model(),
-                effectiveRequest.textRequest()
+                effectiveRequest.textRequest(),
+                effectiveRequest.idempotencyKey()
             );
-            Long logId = aiCallLogWriter.record(AiInvocationLogRequest.success(
+            Long logId = aiCallLogWriter.record(AiInvocationLogRequest.successText(
                 effectiveRequest.toAiContext().withModelId(route.model().getId()),
                 route,
-                AiCapability.TEXT,
                 logSummary(effectiveRequest),
-                response.content(),
-                elapsed(started, response.durationMs()),
-                response.providerRequestId(),
-                response.promptTokens(),
-                response.completionTokens(),
-                response.totalTokens()
+                response,
+                elapsed(started, response.durationMs())
             ));
             return AiInvocationResult.text(effectiveRequest.businessSceneCode(), response, logId, route)
                 .withCorrelation(effectiveRequest);
@@ -67,7 +66,8 @@ public class AiInvocationService {
                 route.provider(),
                 route.providerConfig(),
                 route.model(),
-                request.imageRequest()
+                request.imageRequest(),
+                request.idempotencyKey()
             );
             String responseSummary = response.imageUrls() == null ? "generated=0" : "generated=%d".formatted(response.imageUrls().size());
             Long logId = aiCallLogWriter.record(AiInvocationLogRequest.success(
@@ -269,7 +269,7 @@ public class AiInvocationService {
             throw new AiGatewayException(ErrorCode.VALIDATION_ERROR, "AI 文本请求不能为空。");
         }
         String prompt = promptTemplateRenderer.render(request.promptTemplateId(), request.templateVariables());
-        return AiInvocationRequest.text()
+        AiInvocationRequest.Builder renderedBuilder = AiInvocationRequest.text()
             .tenantId(request.tenantId())
             .userId(request.userId())
             .projectId(request.projectId())
@@ -286,8 +286,24 @@ public class AiInvocationService {
             .promptTemplateId(request.promptTemplateId())
             .templateVariables(request.templateVariables())
             .agentCode(request.agentCode())
-            .userPrompt(prompt)
-            .build();
+            .textParameters(request.textRequest() == null ? request.textTemperature() : request.textRequest().temperature(),
+                request.textRequest() == null ? request.textMaxTokens() : request.textRequest().maxTokens(),
+                request.textRequest() == null ? request.textTopP() : request.textRequest().topP(),
+                request.textRequest() == null ? request.textJsonMode() : request.textRequest().jsonMode(),
+                request.textRequest() == null ? request.textTimeoutSeconds() : request.textRequest().timeoutSeconds(),
+                request.textRequest() == null ? request.textRetryCount() : request.textRequest().retryCount());
+        if (parameterProfileMapper != null && request.modelId() != null) {
+            AiModelParameterProfileEntity profile = parameterProfileMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AiModelParameterProfileEntity>()
+                .eq(AiModelParameterProfileEntity::getModelId, request.modelId())
+                .eq(AiModelParameterProfileEntity::getPublished, true)
+                .orderByDesc(AiModelParameterProfileEntity::getVersionNo)
+                .last("limit 1"));
+            if (profile != null) {
+                renderedBuilder.textParameters(profile.getTemperature(), profile.getMaxTokens(), profile.getTopP(),
+                    profile.getJsonMode(), profile.getTimeoutSeconds(), profile.getRetryCount());
+            }
+        }
+        return renderedBuilder.userPrompt(prompt).build();
     }
 
     private VideoUnderstandingRequest requireVideoUnderstandingRequest(AiInvocationRequest request) {

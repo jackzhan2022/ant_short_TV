@@ -155,7 +155,7 @@ describe('app bootstrap state', () => {
     const { layout } = await import('./app');
     const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
 
-    expect(config.menuDataRender).toBeUndefined();
+    expect(config.menuDataRender).toEqual(expect.any(Function));
     expect(config.menu).toBeUndefined();
   });
 

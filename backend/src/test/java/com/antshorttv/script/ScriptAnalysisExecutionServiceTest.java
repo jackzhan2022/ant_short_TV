@@ -107,7 +107,7 @@ class ScriptAnalysisExecutionServiceTest {
         when(projectAiConfigService.resolveModelId(2L, 3L, "TEXT")).thenReturn(7L);
         when(aiInvocationService.invokeText(any())).thenAnswer(invocation -> {
             String raw = """
-                {"episodes":[{"episodeNo":1,"title":"第1集","content":"智能拆分正文"}]}
+                {"episodes":[{"episodeNo":1,"title":"第1集","content":"一段没有标题的长正文，系统需要智能拆分。"}]}
                 """;
             return AiInvocationResult.text(
                 AiBusinessScene.SCRIPT_EPISODE_SPLIT.code(),
@@ -121,7 +121,7 @@ class ScriptAnalysisExecutionServiceTest {
 
         JsonNode root = objectMapper.readTree(json);
         assertThat(root.path("episodes")).hasSize(1);
-        assertThat(root.path("episodes").get(0).path("content").asText()).isEqualTo("智能拆分正文");
+        assertThat(root.path("episodes").get(0).path("content").asText()).isEqualTo("一段没有标题的长正文，系统需要智能拆分。");
         verify(aiInvocationService).invokeText(any());
     }
 
@@ -195,15 +195,16 @@ class ScriptAnalysisExecutionServiceTest {
             JsonNode episodes = episodesVariable instanceof JsonNode node
                 ? node
                 : objectMapper.readTree((String) episodesVariable);
-            JsonNode episode = episodes.get(0);
-            int episodeNo = episode.path("episodeNo").asInt();
             String raw = """
-                {"episodes":[{"episodeNo":%d,"summary":"第%d集概要","highlights":["冲突%d"],"endingHook":"钩子%d"}]}
-                """.formatted(episodeNo, episodeNo, episodeNo, episodeNo);
+                {"episodes":[
+                  {"episodeNo":1,"summary":"第1集概要","highlights":["冲突1"],"endingHook":"钩子1"},
+                  {"episodeNo":2,"summary":"第2集概要","highlights":["冲突2"],"endingHook":"钩子2"}
+                ]}
+                """;
             return AiInvocationResult.text(
                 AiBusinessScene.SCRIPT_EPISODE_SUMMARY.code(),
-                new AiTextResponse(raw, "summary-%d".formatted(episodeNo), 12, 34, 46, 55L, Map.of()),
-                99L + episodeNo,
+                new AiTextResponse(raw, "summary-batch", 12, 34, 46, 55L, Map.of()),
+                99L,
                 null
             );
         });
@@ -217,7 +218,7 @@ class ScriptAnalysisExecutionServiceTest {
         assertThat(root.path("episodes")).hasSize(2);
         assertThat(root.path("episodes").get(0).path("summary").asText()).isEqualTo("第1集概要");
         assertThat(root.path("episodes").get(1).path("endingHook").asText()).isEqualTo("钩子2");
-        verify(aiInvocationService, times(2)).invokeText(any());
+        verify(aiInvocationService, times(1)).invokeText(any());
     }
 
     @SuppressWarnings("unchecked")

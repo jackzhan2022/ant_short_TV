@@ -1,6 +1,7 @@
 package com.antshorttv.script;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -68,16 +69,18 @@ class ScriptElementExtractionControllerTest {
         aiExecutionWorker.run(executionId);
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
-                "/api/projects/%d/script-workspace".formatted(projectId))
+                "/api/projects/%d/asset-candidates?reviewStatus=PENDING_REVIEW".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.characters", hasSize(1)))
-            .andExpect(jsonPath("$.data.characters[0].name", is("林晚")))
-            .andExpect(jsonPath("$.data.scenes", hasSize(2)))
-            .andExpect(jsonPath("$.data.scenes[0].name", is("主场景")))
-            .andExpect(jsonPath("$.data.props", hasSize(1)))
-            .andExpect(jsonPath("$.data.props[0].name", is("股权协议")));
+            .andExpect(jsonPath("$.data.items", hasSize(4)))
+            .andExpect(jsonPath("$.data.items[*].name", hasItems("林晚", "主场景", "室内场景", "录音笔")));
+
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("""
+            select (select count(*) from character_asset where tenant_id = ? and project_id = ?)
+                 + (select count(*) from scene_asset where tenant_id = ? and project_id = ?)
+                 + (select count(*) from prop_asset where tenant_id = ? and project_id = ?)
+            """, Integer.class, tenantId, projectId, tenantId, projectId, tenantId, projectId)).isZero();
 
         Integer callLogs = jdbcTemplate.queryForObject("""
             select count(*) from ai_call_log

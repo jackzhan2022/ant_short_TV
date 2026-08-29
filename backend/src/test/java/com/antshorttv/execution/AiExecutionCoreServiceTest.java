@@ -174,6 +174,21 @@ class AiExecutionCoreServiceTest {
     }
 
     @Test
+    void cancellationDispositionIsDerivedFromTheAtomicStateTransition() {
+        AiExecutionTaskEntity pending = executionService.create(command(8251L, "cancel-pending", false));
+        AiExecutionTaskEntity running = executionService.create(command(8252L, "cancel-running", false));
+        claimService.claim(running.id, "worker-running", LocalDateTime.now(), Duration.ofMinutes(5));
+
+        var pendingCancellation = executionService.cancelWithDisposition(pending.id);
+        var runningCancellation = executionService.cancelWithDisposition(running.id);
+
+        assertThat(pendingCancellation.beforeProviderCall()).isTrue();
+        assertThat(runningCancellation.beforeProviderCall()).isFalse();
+        assertThat(pendingCancellation.task().status).isEqualTo(AiExecutionStatus.CANCELED.name());
+        assertThat(runningCancellation.task().status).isEqualTo(AiExecutionStatus.CANCELED.name());
+    }
+
+    @Test
     void staleWorkerCannotHeartbeatOrFinalizeAfterClaimLoss() {
         AiExecutionTaskEntity task = executionService.create(command(8301L, "claim-loss", false));
         LocalDateTime now = LocalDateTime.now();

@@ -75,4 +75,8 @@ export default {
   'pages.searchTable.tenThousand': '0000',
   'pages.searchTable.batchDeletion': 'deleção em lote',
   'pages.searchTable.batchApproval': 'aprovação em lote',
+  'pages.productionWorkbench.assets.reviewQueue':
+    'Resultados de reconhecimento aguardando revisão',
+  'pages.productionWorkbench.assets.variantsAndBindings':
+    'Variantes visuais e vínculos de episódios',
 };

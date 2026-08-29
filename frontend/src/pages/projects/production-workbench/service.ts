@@ -30,9 +30,49 @@ export type ScriptVersion = {
 };
 
 export type ScriptEpisode = {
+  episodeId?: number;
   episodeNo: number;
   title: string;
   content: string;
+};
+
+export type VisualVariant = {
+  id: number;
+  assetType: Exclude<ScriptElementType, 'ALL'>;
+  assetId: number;
+  name: string;
+  appearance?: string | null;
+  prompt?: string | null;
+  sourceType: string;
+  generationStatus: string;
+  generationTaskId?: number | null;
+  currentImageResultId?: number | null;
+  currentImageUrl?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  primary: boolean;
+  usable: boolean;
+};
+
+export type VisualEpisodeBinding = {
+  id: number;
+  variantId: number;
+  episodeId: number;
+  episodeNo: number;
+  episodeTitle: string;
+  preferred: boolean;
+  status: string;
+};
+
+export type AssetVisualWorkspace = {
+  variantCount: number;
+  primaryVariant?: VisualVariant | null;
+  variants: VisualVariant[];
+  generationSummary: Record<string, number>;
+  episodeBindings: VisualEpisodeBinding[];
+  normalizationReviewStatus?: string | null;
+  resolvedImageUrl?: string | null;
+  resolvedImageSource?: string | null;
 };
 
 export type CharacterAsset = {
@@ -47,6 +87,7 @@ export type CharacterAsset = {
   prompt: string;
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
+  visual?: AssetVisualWorkspace;
 };
 
 export type SceneAsset = {
@@ -59,6 +100,7 @@ export type SceneAsset = {
   prompt: string;
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
+  visual?: AssetVisualWorkspace;
 };
 
 export type PropAsset = {
@@ -70,6 +112,38 @@ export type PropAsset = {
   prompt: string;
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
+  visual?: AssetVisualWorkspace;
+};
+
+export type AssetCandidate = {
+  id: number;
+  runId: number;
+  assetType: Exclude<ScriptElementType, 'ALL'>;
+  sourceIndex: number;
+  sourceKey?: string | null;
+  name?: string | null;
+  normalizedName?: string | null;
+  candidateJson: string;
+  validationStatus: string;
+  validationErrorsJson?: string | null;
+  duplicateGroupKey?: string | null;
+  proposedTargetId?: number | null;
+  matchType?: string | null;
+  matchConfidence?: number | null;
+  matchEvidenceJson?: string | null;
+  reviewStatus: string;
+  aliases: Array<{
+    name: string;
+    normalizedName: string;
+    source: string;
+    evidenceJson?: string | null;
+  }>;
+};
+
+export type AssetCandidateDecision = {
+  decisionType: 'ACCEPT_NEW' | 'ACCEPT_MERGE' | 'RETARGET' | 'REJECT';
+  targetAssetId?: number;
+  idempotencyKey: string;
 };
 
 export type StoryboardShot = {
@@ -352,6 +426,99 @@ export const extractScriptElements = async (
     `/api/projects/${projectId}/scripts/ai-extract-elements`,
     {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const queryAssetCandidates = async (
+  projectId: number,
+  params?: {
+    reviewStatus?: string;
+    assetType?: Exclude<ScriptElementType, 'ALL'>;
+    page?: number;
+    pageSize?: number;
+  },
+) =>
+  request<
+    ApiResponse<{
+      items: AssetCandidate[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>
+  >(`/api/projects/${projectId}/asset-candidates`, { params });
+
+export const decideAssetCandidate = async (
+  projectId: number,
+  candidateId: number,
+  values: AssetCandidateDecision,
+) =>
+  request<ApiResponse<unknown>>(
+    `/api/projects/${projectId}/asset-candidates/${candidateId}/decisions`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const createVisualVariant = async (
+  projectId: number,
+  elementType: Exclude<ScriptElementType, 'ALL'>,
+  elementId: number,
+  values: Partial<VisualVariant>,
+) =>
+  request<ApiResponse<VisualVariant>>(
+    `/api/projects/${projectId}/script-elements/${elementType}/${elementId}/visual-variants`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const updateVisualVariant = async (
+  projectId: number,
+  variantId: number,
+  values: Partial<VisualVariant>,
+) =>
+  request<ApiResponse<VisualVariant>>(
+    `/api/projects/${projectId}/visual-variants/${variantId}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const selectPrimaryVisualVariant = async (
+  projectId: number,
+  variantId: number,
+) =>
+  request<ApiResponse<VisualVariant>>(
+    `/api/projects/${projectId}/visual-variants/${variantId}/primary`,
+    { method: 'PUT' },
+  );
+
+export const deleteVisualVariant = async (
+  projectId: number,
+  variantId: number,
+) =>
+  request<ApiResponse<void>>(
+    `/api/projects/${projectId}/visual-variants/${variantId}`,
+    { method: 'DELETE' },
+  );
+
+export const bindVisualVariantEpisodes = async (
+  projectId: number,
+  variantId: number,
+  values: { episodeIds: number[]; preferred: boolean },
+) =>
+  request<ApiResponse<VisualEpisodeBinding[]>>(
+    `/api/projects/${projectId}/visual-variants/${variantId}/episode-bindings`,
+    {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       data: values,
     },

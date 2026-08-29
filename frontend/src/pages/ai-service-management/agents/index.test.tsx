@@ -34,6 +34,16 @@ vi.mock('../platform-service', () => ({
     ],
   }),
   previewBuiltInAgent: vi.fn(),
+  queryEditableAgents: vi.fn().mockResolvedValue({ success: true, data: [] }),
+  queryEditableSkills: vi.fn().mockResolvedValue({ success: true, data: [] }),
+  updateEditableAgent: vi.fn(),
+  updateEditableSkill: vi.fn(),
+  publishEditableAgent: vi.fn(),
+  publishEditableSkill: vi.fn(),
+  setEditableAgentStatus: vi.fn(),
+  setEditableSkillStatus: vi.fn(),
+  rollbackEditableAgent: vi.fn(),
+  rollbackEditableSkill: vi.fn(),
 }));
 
 vi.mock('@ant-design/pro-components', () => ({

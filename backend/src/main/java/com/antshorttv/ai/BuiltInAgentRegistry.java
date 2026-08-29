@@ -85,8 +85,14 @@ public class BuiltInAgentRegistry {
                 "根据剧情节点、冲突和悬念把无明确集标题的正文拆成剧集。",
                 AiBusinessScene.SCRIPT_EPISODE_SPLIT,
                 """
-                    你是短剧分集助手。请根据剧情理解和原剧本智能拆分剧集，只返回严格 JSON：
-                    {"episodes":[{"episodeNo":1,"title":"","content":"","summary":"","endingHook":""}]}
+                    你是短剧分集助手。请根据剧情理解判断分集边界，只返回严格 JSON：
+                    {"episodes":[{"title":"","startMarker":"","endMarker":""}]}
+                    重要规则：
+                    1. 只返回每段标题、原文中的 startMarker 和 endMarker，不要返回 content。
+                    2. startMarker 和 endMarker 必须是原剧本中逐字出现的连续短句，后端会据此截取正文。
+                    3. 按剧情顺序返回分段；后端会自动编号，标题统一使用“第N集”。
+                    3. “3-2 夜 外 深海”等是第3集内部场次，不是第4集。
+                    4. 必须覆盖原剧本全部正文；无法判断边界时返回空 episodes，后端会将全文作为第1集。
                     剧情理解：
                     ${globalUnderstanding}
                     原剧本：
@@ -96,7 +102,7 @@ public class BuiltInAgentRegistry {
                     variable("globalUnderstanding", "剧情全局理解", "JSON"),
                     variable("scriptContent", "剧本内容", "TEXT")
                 ),
-                "{\"episodes\":[{\"episodeNo\":1,\"title\":\"\",\"content\":\"\",\"summary\":\"\",\"endingHook\":\"\"}]}",
+                "{\"episodes\":[{\"title\":\"\",\"startMarker\":\"\",\"endMarker\":\"\"}]}",
                 List.of("strict-json-output", "no-invention", "short-drama-structure")
             ),
             agent(
@@ -122,11 +128,12 @@ public class BuiltInAgentRegistry {
                 """
                     你是短剧资产识别助手。请仅基于剧本返回严格 JSON：
                     {"characters":[],"scenes":[],"props":[]}
+                    只能返回以上三个顶层字段，禁止返回 locations、costumes、creatures、vehicles、visual_effects、organizations 或任何其他字段；场景信息必须放在 scenes 数组中。
                     剧本内容：
                     ${scriptContent}
                     """,
                 List.of(variable("scriptContent", "剧本内容", "TEXT")),
-                "{\"characters\":[],\"scenes\":[],\"props\":[]}",
+                "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"characters\",\"scenes\",\"props\"],\"properties\":{\"characters\":{\"type\":\"array\",\"maxItems\":500,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100},\"aliases\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"maxLength\":100}},\"roleType\":{\"type\":\"string\",\"enum\":[\"LEAD\",\"SUPPORTING\",\"MINOR\",\"OTHER\"],\"default\":\"SUPPORTING\"},\"gender\":{\"type\":\"string\",\"maxLength\":32},\"ageRange\":{\"type\":\"string\",\"maxLength\":32},\"identity\":{\"type\":\"string\",\"maxLength\":200},\"personality\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"maxLength\":100}},\"appearance\":{\"type\":\"string\",\"maxLength\":500},\"prompt\":{\"type\":\"string\",\"maxLength\":4000}}}},\"scenes\":{\"type\":\"array\",\"maxItems\":500,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100},\"aliases\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"maxLength\":100}},\"sceneType\":{\"type\":\"string\",\"enum\":[\"INTERIOR\",\"EXTERIOR\",\"MIXED\",\"OTHER\"],\"default\":\"INTERIOR\"},\"atmosphere\":{\"type\":\"string\",\"maxLength\":100},\"description\":{\"type\":\"string\",\"maxLength\":4000},\"visualStyle\":{\"type\":\"string\",\"maxLength\":300},\"prompt\":{\"type\":\"string\",\"maxLength\":4000}}}},\"props\":{\"type\":\"array\",\"maxItems\":500,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100},\"aliases\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"maxLength\":100}},\"propType\":{\"type\":\"string\",\"enum\":[\"KEY_PROP\",\"DAILY\",\"WEAPON\",\"DOCUMENT\",\"OTHER\"],\"default\":\"KEY_PROP\"},\"appearance\":{\"type\":\"string\",\"maxLength\":500},\"plotFunction\":{\"type\":\"string\",\"maxLength\":500},\"relatedCharacter\":{\"type\":\"string\",\"maxLength\":200},\"prompt\":{\"type\":\"string\",\"maxLength\":4000}}}}}}",
                 List.of("strict-json-output", "no-invention", "stable-entity-naming")
             ),
             agent(
@@ -274,7 +281,7 @@ public class BuiltInAgentRegistry {
 
                     格式标准：剧本必须按视频发生顺序逐镜头输出，并包含“第${episodeNo}集：[标题]”、场景标头（时间、内外景、地点）、动作与环境描写（光影、氛围、走位、微表情、关键音效）、人物对白与字幕，以及以“结尾钩子：”开头的结尾悬念。对白严格使用三行格式：角色名（神态/动作/声音状态）:；下一行是双引号包裹的原声台词；再下一行是【字幕：中文翻译或屏幕原有字幕】。画外音或内心独白使用 os 标注。
 
-                    解析要求：不要遗漏雷声、心跳声、脚步声等环境音和道具特写；准确标注对白语气；不改变事件顺序，不补充视频无法确认的事实。
+                    解析要求：不要遗漏雷声、心跳声、脚步声等环境音和道具特写；准确标注对白语气；不改变事件顺序，不补充视频无法确认的事实。请完整记录 characters、timeline 等关键结构字段。
 
                     只输出一个完整、合法的 JSON 对象，格式必须是 {"script":"完整剧本文本"}。不要 Markdown、代码块、解释或省略号；script 必须是非空字符串，JSON 绝不能中途截断。
                     """,
@@ -415,9 +422,13 @@ public class BuiltInAgentRegistry {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Agent 变量缺失：" + variable.name());
             }
         }
-        StringBuilder prompt = new StringBuilder(agent.promptTemplate());
+        StringBuilder prompt = new StringBuilder(agent.promptTemplate())
+            .append("\n\n输出 Schema（必须严格遵守；name 不得为空，未知值使用空字符串或空数组）：\n")
+            .append(agent.outputSchema())
+            .append("\n\n技能约束（按顺序执行）：");
         for (String skillCode : agent.skillCodes()) {
-            prompt.append("\n\n").append(findSkillByCode(skillCode).content());
+            prompt.append("\n\n### ").append(skillCode).append("\n")
+                .append(findSkillByCode(skillCode).content());
         }
         String rendered = prompt.toString();
         for (Map.Entry<String, Object> entry : safeVariables.entrySet()) {

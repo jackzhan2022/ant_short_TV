@@ -37,6 +37,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -44,6 +45,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 @Service
 public class ScriptWorkflowService {
+
+    @Autowired
+    private ScriptEpisodeService scriptEpisodeService;
 
     private final ProjectAccessResolver projectAccessResolver;
     private final ProjectPermissionGuard projectPermissionGuard;
@@ -61,6 +65,11 @@ public class ScriptWorkflowService {
     private final MaterialFileAccessService materialFileAccessService;
     private final TeamPointService teamPointService;
     private final ScriptElementExtractionService scriptElementExtractionService;
+    private final ScriptAssetNormalizationService scriptAssetNormalizationService;
+    private final ScriptAssetCandidateReviewService scriptAssetCandidateReviewService;
+    private final AssetVisualVariantService assetVisualVariantService;
+    private final AssetVisualBindingService assetVisualBindingService;
+    private final EpisodeAwareVisualResolver episodeAwareVisualResolver;
     private final ScriptElementDraftService scriptElementDraftService;
     private final ScriptElementConfirmationService scriptElementConfirmationService;
     private final ScriptAiOperationService scriptAiOperationService;
@@ -86,6 +95,11 @@ public class ScriptWorkflowService {
         MaterialFileAccessService materialFileAccessService,
         TeamPointService teamPointService,
         ScriptElementExtractionService scriptElementExtractionService,
+        ScriptAssetNormalizationService scriptAssetNormalizationService,
+        ScriptAssetCandidateReviewService scriptAssetCandidateReviewService,
+        AssetVisualVariantService assetVisualVariantService,
+        AssetVisualBindingService assetVisualBindingService,
+        EpisodeAwareVisualResolver episodeAwareVisualResolver,
         ScriptElementDraftService scriptElementDraftService,
         ScriptElementConfirmationService scriptElementConfirmationService,
         ScriptAiOperationService scriptAiOperationService,
@@ -110,6 +124,11 @@ public class ScriptWorkflowService {
         this.materialFileAccessService = materialFileAccessService;
         this.teamPointService = teamPointService;
         this.scriptElementExtractionService = scriptElementExtractionService;
+        this.scriptAssetNormalizationService = scriptAssetNormalizationService;
+        this.scriptAssetCandidateReviewService = scriptAssetCandidateReviewService;
+        this.assetVisualVariantService = assetVisualVariantService;
+        this.assetVisualBindingService = assetVisualBindingService;
+        this.episodeAwareVisualResolver = episodeAwareVisualResolver;
         this.scriptElementDraftService = scriptElementDraftService;
         this.scriptElementConfirmationService = scriptElementConfirmationService;
         this.scriptAiOperationService = scriptAiOperationService;
@@ -179,6 +198,7 @@ public class ScriptWorkflowService {
             created.setCreatedBy(operation.createdBy);
             created.setCreatedAt(now);
             scriptVersionMapper.insert(created);
+            reconcileEpisodes(script, created);
             script.setCurrentVersionId(created.getId());
             scriptMapper.updateById(script);
             markOperationResult(operation, "SCRIPT_VERSION", created.getId());
@@ -295,19 +315,40 @@ public class ScriptWorkflowService {
             elementType,
             executionContext
         );
+        Long lastNormalizationRunId = null;
+        for (AiInvocationResult<AiTextResponse> invocation : extraction.invocations()) {
+            ScriptAssetNormalizationService.NormalizationPersistenceResult normalization =
+                scriptAssetNormalizationService.normalizePartialAndPersist(
+                    operation.tenantId,
+                    operation.projectId,
+                    operation.scriptId,
+                    operation.scriptVersionId,
+                    null,
+                    null,
+                    executionContext.task().id,
+                    executionContext.claim().attemptId(),
+                    invocation.aiCallLogId(),
+                    invocation.idempotencyKey() == null
+                        ? "script-element-operation:%d:%s".formatted(operation.id, invocation.businessSceneCode())
+                        : invocation.idempotencyKey(),
+                    invocation.content()
+                );
+            lastNormalizationRunId = normalization.runId();
+            if (!normalization.valid()) {
+                throw new BusinessException(
+                    ErrorCode.AI_RESPONSE_INVALID,
+                    "资产提取结果未通过归一化校验，候选与调用证据已保留。"
+                );
+            }
+        }
+        Long normalizationResultId = lastNormalizationRunId;
         transactionTemplate.executeWithoutResult(status -> {
             requireActiveExecutionClaim(executionContext);
-            scriptElementDraftService.replaceDrafts(
-                operation.tenantId,
-                operation.projectId,
-                operation.createdBy,
-                extraction.result()
-            );
-            markOperationResult(operation, "SCRIPT_ELEMENTS", script.getId());
+            markOperationResult(operation, "ASSET_CANDIDATES", normalizationResultId);
         });
         return new ScriptAiOperationExecutionResult(
-            "SCRIPT_ELEMENTS",
-            script.getId(),
+            "ASSET_CANDIDATES",
+            normalizationResultId,
             extraction.invocations()
         );
     }
@@ -522,6 +563,12 @@ public class ScriptWorkflowService {
                 .stream()
                 .map(ScriptVersionResponse::from)
                 .toList();
+        List<ScriptEpisodeResponse> episodes = script == null
+            ? List.of()
+            : scriptEpisodeService.currentEpisodes(tenantId, projectId, script.getId());
+        if (episodes.isEmpty()) {
+            episodes = ScriptEpisodeParser.parse(script == null ? null : script.getContent());
+        }
         return new ScriptWorkspaceResponse(
             projectId,
             ScriptResponse.from(script),
@@ -530,7 +577,7 @@ public class ScriptWorkflowService {
             scenes(tenantId, projectId),
             props(tenantId, projectId),
             storyboards(tenantId, projectId),
-            ScriptEpisodeParser.parse(script == null ? null : script.getContent()),
+            episodes,
             analysis(tenantId, projectId, script)
         );
     }
@@ -672,6 +719,7 @@ public class ScriptWorkflowService {
         version.setCreatedBy(context.userId());
         version.setCreatedAt(now);
         scriptVersionMapper.insert(version);
+        reconcileEpisodes(script, version);
 
         script.setCurrentVersionId(version.getId());
         scriptMapper.updateById(script);
@@ -761,6 +809,7 @@ public class ScriptWorkflowService {
         script.setCurrentVersionId(version.getId());
         script.setUpdatedAt(LocalDateTime.now());
         scriptMapper.updateById(script);
+        reconcileEpisodes(script, version);
         version.setStatus("APPLIED");
         scriptVersionMapper.updateById(version);
         return workspace(tenantId, projectId);
@@ -771,14 +820,112 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:AI_EXTRACT", projectId);
-        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
-        if (script == null || script.getContent() == null || script.getContent().isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先生成或填写剧本内容。");
-        }
-        ScriptElementType elementType = ScriptElementType.from(request.elementType());
-        ScriptElementExtractionResult result = scriptElementExtractionService.extract(context, projectId, script, elementType);
-        scriptElementDraftService.replaceDrafts(tenantId, projectId, context.userId(), result);
-        return workspace(tenantId, projectId);
+        throw new BusinessException(
+            ErrorCode.AI_EXECUTION_STATUS_INVALID,
+            "资产提取必须通过异步执行入口提交，以保留归一化与调用证据。"
+        );
+    }
+
+    public ScriptAssetCandidateReviewService.CandidatePage assetCandidates(
+        Long tenantId, Long projectId, String reviewStatus, String assetType, Integer page, Integer pageSize
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:VIEW", projectId);
+        return scriptAssetCandidateReviewService.listPage(
+            tenantId, projectId, reviewStatus, assetType, page, pageSize);
+    }
+
+    public ScriptAssetCandidateReviewService.CandidateResponse assetCandidate(
+        Long tenantId, Long projectId, Long candidateId
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:VIEW", projectId);
+        return scriptAssetCandidateReviewService.detail(tenantId, projectId, candidateId);
+    }
+
+    public ScriptAssetCandidateReviewService.DecisionResponse decideAssetCandidate(
+        Long tenantId,
+        Long projectId,
+        Long candidateId,
+        ScriptAssetCandidateReviewService.DecisionCommand command
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        return scriptAssetCandidateReviewService.decide(
+            tenantId, projectId, candidateId, context.userId(), command);
+    }
+
+    public List<AssetVisualVariantService.VariantResponse> visualVariants(
+        Long tenantId, Long projectId, String assetType, Long assetId
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:VIEW", projectId);
+        return assetVisualVariantService.list(tenantId, projectId, assetType, assetId);
+    }
+
+    public AssetVisualVariantService.VariantResponse createVisualVariant(
+        Long tenantId, Long projectId, String assetType, Long assetId,
+        AssetVisualVariantService.VariantCommand command
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        AssetVisualVariantService.VariantCommand editable = command == null ? null
+            : new AssetVisualVariantService.VariantCommand(command.name(), command.appearance(), command.prompt(),
+                "MANUAL", "NOT_STARTED", null, null, command.primary());
+        return assetVisualVariantService.create(
+            tenantId, projectId, assetType, assetId, context.userId(), editable);
+    }
+
+    public AssetVisualVariantService.VariantResponse updateVisualVariant(
+        Long tenantId, Long projectId, Long variantId, AssetVisualVariantService.VariantCommand command
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        AssetVisualVariantService.VariantCommand editable = command == null ? null
+            : new AssetVisualVariantService.VariantCommand(command.name(), command.appearance(), command.prompt(),
+                null, null, null, null, command.primary());
+        return assetVisualVariantService.update(tenantId, projectId, variantId, editable);
+    }
+
+    public AssetVisualVariantService.VariantResponse selectPrimaryVisualVariant(
+        Long tenantId, Long projectId, Long variantId
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        return assetVisualVariantService.selectPrimary(tenantId, projectId, variantId);
+    }
+
+    public void deleteVisualVariant(Long tenantId, Long projectId, Long variantId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        assetVisualVariantService.delete(tenantId, projectId, variantId);
+    }
+
+    public List<AssetVisualBindingService.BindingResponse> bindVisualVariantEpisodes(
+        Long tenantId, Long projectId, Long variantId, AssetVisualBindingService.BindingCommand command
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        return assetVisualBindingService.bind(
+            tenantId, projectId, variantId, context.userId(), command);
+    }
+
+    public List<AssetVisualBindingService.BindingResponse> visualVariantBindings(
+        Long tenantId, Long projectId, String assetType, Long assetId
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:VIEW", projectId);
+        return assetVisualBindingService.list(tenantId, projectId, assetType, assetId);
     }
 
     @Transactional
@@ -958,7 +1105,8 @@ public class ScriptWorkflowService {
 
     private List<CharacterAssetResponse> characters(Long tenantId, Long projectId) {
         return jdbcTemplate.query("""
-            select id, name, role_type, gender, age_range, identity, personality, appearance, prompt, status, merge_target_id
+            select id, name, role_type, gender, age_range, identity, personality, appearance, prompt,
+                   status, merge_target_id, main_image_url
               from character_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
              order by id
@@ -973,13 +1121,15 @@ public class ScriptWorkflowService {
                 rs.getString("appearance"),
                 rs.getString("prompt"),
                 rs.getString("status"),
-                rs.getObject("merge_target_id", Long.class)
+                rs.getObject("merge_target_id", Long.class),
+                assetVisualWorkspace(tenantId, projectId, "CHARACTER", rs.getLong("id"))
             ), tenantId, projectId);
     }
 
     private List<SceneAssetResponse> scenes(Long tenantId, Long projectId) {
         return jdbcTemplate.query("""
-            select id, name, scene_type, time_atmosphere, description, visual_style, prompt, status, merge_target_id
+            select id, name, scene_type, time_atmosphere, description, visual_style, prompt,
+                   status, merge_target_id, main_image_url
               from scene_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
              order by id
@@ -992,13 +1142,15 @@ public class ScriptWorkflowService {
                 rs.getString("visual_style"),
                 rs.getString("prompt"),
                 rs.getString("status"),
-                rs.getObject("merge_target_id", Long.class)
+                rs.getObject("merge_target_id", Long.class),
+                assetVisualWorkspace(tenantId, projectId, "SCENE", rs.getLong("id"))
             ), tenantId, projectId);
     }
 
     private List<PropAssetResponse> props(Long tenantId, Long projectId) {
         return jdbcTemplate.query("""
-            select id, name, prop_type, appearance, plot_function, prompt, status, merge_target_id
+            select id, name, prop_type, appearance, plot_function, prompt,
+                   status, merge_target_id, main_image_url
               from prop_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
              order by id
@@ -1010,8 +1162,33 @@ public class ScriptWorkflowService {
                 rs.getString("plot_function"),
                 rs.getString("prompt"),
                 rs.getString("status"),
-                rs.getObject("merge_target_id", Long.class)
+                rs.getObject("merge_target_id", Long.class),
+                assetVisualWorkspace(tenantId, projectId, "PROP", rs.getLong("id"))
             ), tenantId, projectId);
+    }
+
+    private AssetVisualWorkspace assetVisualWorkspace(
+        Long tenantId, Long projectId, String assetType, Long assetId
+    ) {
+        List<AssetVisualVariantService.VariantResponse> variants =
+            assetVisualVariantService.list(tenantId, projectId, assetType, assetId);
+        AssetVisualVariantService.VariantResponse primary = variants.stream()
+            .filter(AssetVisualVariantService.VariantResponse::primary).findFirst().orElse(null);
+        Map<String, Long> generationSummary = variants.stream().collect(java.util.stream.Collectors.groupingBy(
+            AssetVisualVariantService.VariantResponse::generationStatus,
+            java.util.LinkedHashMap::new,
+            java.util.stream.Collectors.counting()));
+        Long pending = jdbcTemplate.queryForObject("""
+            select count(*) from script_asset_candidate
+             where tenant_id = ? and project_id = ? and asset_type = ? and proposed_target_id = ?
+               and review_status = 'PENDING_REVIEW'
+            """, Long.class, tenantId, projectId, assetType, assetId);
+        EpisodeAwareVisualResolver.ResolvedVisual resolved =
+            episodeAwareVisualResolver.resolve(tenantId, projectId, assetType, assetId, null);
+        return new AssetVisualWorkspace(variants.size(), primary, variants, generationSummary,
+            assetVisualBindingService.list(tenantId, projectId, assetType, assetId),
+            pending != null && pending > 0 ? "PENDING_REVIEW" : "NONE",
+            resolved.imageUrl(), resolved.source());
     }
 
     private List<StoryboardResponse> storyboards(Long tenantId, Long projectId) {
@@ -1115,7 +1292,21 @@ public class ScriptWorkflowService {
         version.setCreatedBy(context.userId());
         version.setCreatedAt(now);
         scriptVersionMapper.insert(version);
+        ScriptEntity script = scriptMapper.selectById(scriptId);
+        if (script != null) {
+            reconcileEpisodes(script, version);
+        }
         return version;
+    }
+
+    private void reconcileEpisodes(ScriptEntity script, ScriptVersionEntity version) {
+        scriptEpisodeService.reconcileAndPersist(
+            script.getTenantId(),
+            script.getProjectId(),
+            script.getId(),
+            version.getId(),
+            ScriptEpisodeParser.parse(version.getContent())
+        );
     }
 
     private void insertStoryboard(

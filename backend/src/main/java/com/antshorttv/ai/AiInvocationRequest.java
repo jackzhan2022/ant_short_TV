@@ -25,7 +25,13 @@ public record AiInvocationRequest(
     String requestSummary,
     String promptTemplateId,
     Map<String, Object> templateVariables,
-    String agentCode
+    String agentCode,
+    Double textTemperature,
+    Integer textMaxTokens,
+    Double textTopP,
+    Boolean textJsonMode,
+    Integer textTimeoutSeconds,
+    Integer textRetryCount
 ) {
     public static Builder text() {
         return new Builder(AiCapability.TEXT);
@@ -85,6 +91,12 @@ public record AiInvocationRequest(
         private String promptTemplateId;
         private Map<String, Object> templateVariables = Map.of();
         private String agentCode;
+        private Double textTemperature = 0.7;
+        private Integer textMaxTokens = 2048;
+        private Double textTopP;
+        private Boolean textJsonMode = false;
+        private Integer textTimeoutSeconds = 60;
+        private Integer textRetryCount = 1;
 
         private Builder(AiCapability capability) {
             this.capability = capability;
@@ -171,8 +183,25 @@ public record AiInvocationRequest(
             return this;
         }
 
+        public Builder textParameters(Double temperature, Integer maxTokens, Double topP, Boolean jsonMode) {
+            this.textTemperature = temperature;
+            this.textMaxTokens = maxTokens;
+            this.textTopP = topP;
+            this.textJsonMode = jsonMode;
+            return this;
+        }
+
+        public Builder textParameters(Double temperature, Integer maxTokens, Double topP, Boolean jsonMode,
+                                      Integer timeoutSeconds, Integer retryCount) {
+            textParameters(temperature, maxTokens, topP, jsonMode);
+            this.textTimeoutSeconds = timeoutSeconds;
+            this.textRetryCount = retryCount;
+            return this;
+        }
+
         public Builder userPrompt(String userPrompt) {
-            this.textRequest = new AiTextRequest(null, userPrompt, 0.7, 2048, null);
+            this.textRequest = new AiTextRequest(null, userPrompt, textTemperature, textMaxTokens, textTopP,
+                textJsonMode, null, textTimeoutSeconds, textRetryCount);
             return this;
         }
 
@@ -238,7 +267,13 @@ public record AiInvocationRequest(
                 requestSummary,
                 promptTemplateId,
                 templateVariables,
-                agentCode
+                agentCode,
+                textTemperature,
+                textMaxTokens,
+                textTopP,
+                textJsonMode,
+                textTimeoutSeconds,
+                textRetryCount
             );
         }
     }

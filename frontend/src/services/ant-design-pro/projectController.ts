@@ -3,7 +3,7 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/projects */
-export async function list4(options?: { [key: string]: any }) {
+export async function list5(options?: { [key: string]: any }) {
   return request<API.ApiResponseListProjectResponse>("/api/projects", {
     method: "GET",
     ...(options || {}),
@@ -11,7 +11,7 @@ export async function list4(options?: { [key: string]: any }) {
 }
 
 /** 此处后端没有提供注释 POST /api/projects */
-export async function create3(
+export async function create4(
   body: API.CreateProjectRequest,
   options?: { [key: string]: any }
 ) {
@@ -26,9 +26,9 @@ export async function create3(
 }
 
 /** 此处后端没有提供注释 GET /api/projects/${param0} */
-export async function detail6(
+export async function detail7(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail6Params,
+  params: API.detail7Params,
   options?: { [key: string]: any }
 ) {
   const { id: param0, ...queryParams } = params;

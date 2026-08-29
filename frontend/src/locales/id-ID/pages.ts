@@ -73,4 +73,8 @@ export default {
   'pages.searchTable.tenThousand': '0000',
   'pages.searchTable.batchDeletion': 'Penghapusan batch',
   'pages.searchTable.batchApproval': 'Persetujuan batch',
+  'pages.productionWorkbench.assets.reviewQueue':
+    'Hasil pengenalan menunggu tinjauan',
+  'pages.productionWorkbench.assets.variantsAndBindings':
+    'Varian visual dan pengikatan episode',
 };

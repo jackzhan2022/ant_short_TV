@@ -16,6 +16,7 @@ import com.antshorttv.execution.AiExecutionWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
@@ -94,10 +95,12 @@ class ScriptWorkflowControllerTest {
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.episodes", hasSize(2)))
+            .andExpect(jsonPath("$.data.episodes[0].episodeId").isNumber())
             .andExpect(jsonPath("$.data.episodes[0].episodeNo", is(1)))
             .andExpect(jsonPath("$.data.episodes[0].title", is("第1集：开端")))
             .andExpect(jsonPath("$.data.episodes[0].content", is("主角回家。")))
             .andExpect(jsonPath("$.data.episodes[1].episodeNo", is(2)))
+            .andExpect(jsonPath("$.data.episodes[1].episodeId").isNumber())
             .andExpect(jsonPath("$.data.episodes[1].content", is("对手出现。")));
     }
 
@@ -150,29 +153,48 @@ class ScriptWorkflowControllerTest {
             "select status from script_analysis_task where id = ?", String.class, analysisTaskId
         )).isEqualTo("COMPLETED");
         assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from script_episode where tenant_id = ? and project_id = ? and retired_at is null",
+            Integer.class, tenantId, projectId
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
             "select count(*) from script_analysis_result where task_id = ? and execution_id = ? and status = 'SUCCEEDED'",
             Integer.class, analysisTaskId, executionId
         )).isEqualTo(4);
+        assertThat(jdbcTemplate.queryForMap("""
+            select r.status, r.analysis_result_id, r.ai_call_log_id,
+                   (select count(*) from script_asset_candidate c where c.run_id = r.id) candidate_count
+              from script_asset_normalization_run r
+             where r.tenant_id = ? and r.project_id = ? and r.analysis_task_id = ?
+            """, tenantId, projectId, analysisTaskId))
+            .containsEntry("STATUS", "READY_FOR_REVIEW")
+            .doesNotContainEntry("ANALYSIS_RESULT_ID", null)
+            .doesNotContainEntry("AI_CALL_LOG_ID", null)
+            .containsEntry("CANDIDATE_COUNT", 3L);
+        assertThat(jdbcTemplate.queryForObject("""
+            select (select count(*) from character_asset where tenant_id = ? and project_id = ?)
+                 + (select count(*) from scene_asset where tenant_id = ? and project_id = ?)
+                 + (select count(*) from prop_asset where tenant_id = ? and project_id = ?)
+            """, Integer.class, tenantId, projectId, tenantId, projectId, tenantId, projectId)).isZero();
         assertThat(jdbcTemplate.queryForObject(
             "select count(*) from ai_call_log where execution_id = ? and attempt_id is not null",
             Integer.class, executionId
-        )).isEqualTo(4);
+        )).isEqualTo(3);
         assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY:%'",
-            Integer.class, executionId
-        )).isEqualTo(2);
-        assertThat(jdbcTemplate.queryForObject(
-            "select count(distinct attempt_id) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY:%'",
+            "select count(*) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY%'",
             Integer.class, executionId
         )).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
-            "select count(distinct idempotency_key) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY:%'",
+            "select count(distinct attempt_id) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY%'",
             Integer.class, executionId
-        )).isEqualTo(2);
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(distinct idempotency_key) from ai_call_log where execution_id = ? and phase like 'EPISODE_SUMMARY%'",
+            Integer.class, executionId
+        )).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
             "select settled_points from ai_point_reservation where execution_id = ?",
             java.math.BigDecimal.class, executionId
-        )).isEqualByComparingTo("4");
+        )).isEqualByComparingTo("3");
         assertThat(jdbcTemplate.queryForObject(
             "select released_points from ai_point_reservation where execution_id = ?",
             java.math.BigDecimal.class, executionId
@@ -632,6 +654,7 @@ class ScriptWorkflowControllerTest {
             "async-extract"
         );
         assertExecutionSucceeded(extractExecutionId);
+        acceptPendingCandidates(token, tenantId, projectId);
         assertThat(jdbcTemplate.queryForObject(
             "select count(*) from character_asset where tenant_id = ? and project_id = ? and deleted_at is null",
             Integer.class,
@@ -685,7 +708,22 @@ class ScriptWorkflowControllerTest {
             .andReturn();
         Long executionId = readLong(result, "$.data.id");
         aiExecutionWorker.run(executionId);
+        awaitExecutionTerminal(executionId);
         return executionId;
+    }
+
+    private void awaitExecutionTerminal(Long executionId) throws InterruptedException {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            String status = jdbcTemplate.queryForObject(
+                "select status from ai_execution_task where id = ?",
+                String.class,
+                executionId
+            );
+            if (!"PENDING".equals(status) && !"RUNNING".equals(status)) {
+                return;
+            }
+            Thread.sleep(20);
+        }
     }
 
     private void assertExecutionSucceeded(Long executionId) {
@@ -837,24 +875,24 @@ class ScriptWorkflowControllerTest {
             "{\"elementType\":\"CHARACTER\"}",
             "extract-characters"
         );
-        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
+        mockMvc.perform(get("/api/projects/%d/asset-candidates?assetType=CHARACTER&reviewStatus=PENDING_REVIEW".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.characters", hasSize(2)))
-            .andExpect(jsonPath("$.data.characters[0].name", is("主角")));
+            .andExpect(jsonPath("$.data.items", hasSize(2)))
+            .andExpect(jsonPath("$.data.items[*].name", Matchers.hasItems("主角", "反派")));
 
         submitAndRun(
             token, tenantId, projectId, "/scripts/ai-extract-elements",
             "{\"elementType\":\"SCENE\"}",
             "extract-scenes"
         );
-        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
+        mockMvc.perform(get("/api/projects/%d/asset-candidates?assetType=SCENE&reviewStatus=PENDING_REVIEW".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.scenes", hasSize(2)))
-            .andExpect(jsonPath("$.data.scenes[0].name", is("林家老宅门口")));
+            .andExpect(jsonPath("$.data.items", hasSize(2)))
+            .andExpect(jsonPath("$.data.items[*].name", Matchers.hasItems("林家老宅门口", "室内场景")));
     }
 
     @Test
@@ -913,6 +951,7 @@ class ScriptWorkflowControllerTest {
             "{\"elementType\":\"ALL\"}",
             "full-workflow-extract"
         );
+        acceptPendingCandidates(token, tenantId, projectId);
         MvcResult extractResult = mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
@@ -1048,6 +1087,25 @@ class ScriptWorkflowControllerTest {
     private Long readLong(MvcResult result, String path) throws Exception {
         Number value = JsonPath.read(result.getResponse().getContentAsString(), path);
         return value.longValue();
+    }
+
+    private void acceptPendingCandidates(String token, Long tenantId, Long projectId) throws Exception {
+        List<Long> candidateIds = jdbcTemplate.queryForList("""
+            select id from script_asset_candidate
+             where tenant_id = ? and project_id = ? and review_status = 'PENDING_REVIEW'
+             order by id
+            """, Long.class, tenantId, projectId);
+        for (Long candidateId : candidateIds) {
+            mockMvc.perform(post("/api/projects/%d/asset-candidates/%d/decisions".formatted(projectId, candidateId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"decisionType":"ACCEPT_NEW","idempotencyKey":"workflow-%d-%d"}
+                        """.formatted(projectId, candidateId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status", is("COMPLETED")));
+        }
     }
 
     private Long stageId(Long taskId, String stageCode) {

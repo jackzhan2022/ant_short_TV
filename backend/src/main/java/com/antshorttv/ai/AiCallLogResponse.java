@@ -23,6 +23,9 @@ public record AiCallLogResponse(
     Integer promptTokens,
     Integer completionTokens,
     Integer totalTokens,
+    Integer responseLength,
+    String finishReason,
+    Boolean truncated,
     LocalDateTime createdAt
 ) {
 }

@@ -31,8 +31,9 @@ public class AiCallLogWriter {
                    task_id, model_id, provider_id, trace_id, provider_request_id, prompt_tokens,
                    completion_tokens, total_tokens, estimated_cost,
                    execution_id, attempt_id, execution_version, phase, idempotency_key,
-                   external_task_id, transport_outcome, business_outcome)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   external_task_id, transport_outcome, business_outcome,
+                   response_length, finish_reason, truncated)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, Statement.RETURN_GENERATED_KEYS);
             AiContext context = logRequest.context();
             AiModelRoute route = logRequest.route();
@@ -65,6 +66,9 @@ public class AiCallLogWriter {
             ps.setString(27, logRequest.externalTaskId());
             ps.setString(28, logRequest.transportOutcome());
             ps.setString(29, logRequest.businessOutcome());
+            ps.setObject(30, logRequest.responseLength());
+            ps.setString(31, logRequest.finishReason());
+            ps.setBoolean(32, Boolean.TRUE.equals(logRequest.truncated()));
             return ps;
         }, keyHolder);
         Number key = keyHolder.getKey();

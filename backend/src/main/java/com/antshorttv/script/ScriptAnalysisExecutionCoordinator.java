@@ -107,7 +107,9 @@ public class ScriptAnalysisExecutionCoordinator {
     }
 
     int maximumCallCount(String content) {
-        int episodes = Math.max(1, ScriptEpisodeParser.parse(content).size());
-        return 3 + episodes;
+        // Reserve a fixed four-call budget for the analysis workflow. Episode
+        // summaries are requested in one batch, so the actual usage may settle
+        // below this ceiling and the unused reservation is released.
+        return 4;
     }
 }

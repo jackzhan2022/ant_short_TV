@@ -34,7 +34,7 @@ class AiMigrationSnapshotRehearsalTest {
         assertThat(sourceJdbc.queryForObject(
                 "select count(*) from flyway_schema_history where success = true and version is not null",
                 Integer.class))
-            .isEqualTo(53);
+            .isEqualTo(67);
 
         DataSource restored = dataSource("ai_migration_restored");
         JdbcTemplate restoredJdbc = new JdbcTemplate(restored);
@@ -92,6 +92,68 @@ class AiMigrationSnapshotRehearsalTest {
                     + "where model_id = 8801 and price_type = 'POINT'",
                 Integer.class))
             .isZero();
+    }
+
+    @Test
+    void preservesLegacyAssetsWhenAddingNormalizedAssetWorkflow() {
+        DataSource source = dataSource("normalized_asset_rollout");
+        migrate(source, "62");
+        JdbcTemplate jdbc = new JdbcTemplate(source);
+        jdbc.update("""
+            insert into character_asset
+              (id, tenant_id, project_id, name, role_type, status, main_image_result_id,
+               main_image_url, created_by, created_at, updated_at)
+            values (7101, 7001, 7002, '林夏', 'LEAD', 'CONFIRMED', 7201,
+                    '/legacy/character.png', 7003, current_timestamp, current_timestamp)
+            """);
+        jdbc.update("""
+            insert into scene_asset
+              (id, tenant_id, project_id, name, scene_type, status, main_image_result_id,
+               main_image_url, created_by, created_at, updated_at)
+            values (7102, 7001, 7002, '旧公寓', 'INTERIOR', 'PENDING_REVIEW', 7202,
+                    '/legacy/scene.png', 7003, current_timestamp, current_timestamp)
+            """);
+        jdbc.update("""
+            insert into prop_asset
+              (id, tenant_id, project_id, name, prop_type, status, created_by, created_at, updated_at)
+            values (7103, 7001, 7002, '钥匙', 'KEY_PROP', 'DRAFT', 7003,
+                    current_timestamp, current_timestamp)
+            """);
+        jdbc.update("""
+            insert into character_asset
+              (id, tenant_id, project_id, name, role_type, status, merge_target_id,
+               main_image_url, created_by, created_at, updated_at)
+            values
+              (7104, 7001, 7002, '林夏别名', 'SUPPORTING', 'MERGED', 7101,
+               '/legacy/merged.png', 7003, current_timestamp, current_timestamp),
+              (7105, 7001, 7002, '已删除角色', 'SUPPORTING', 'DRAFT', null,
+               '/legacy/deleted.png', 7003, current_timestamp, current_timestamp)
+            """);
+        jdbc.update("update character_asset set deleted_at = current_timestamp where id = 7105");
+
+        migrate(source, null);
+
+        assertThat(jdbc.queryForObject(
+            "select main_image_url from character_asset where id = 7101", String.class))
+            .isEqualTo("/legacy/character.png");
+        assertThat(jdbc.queryForObject(
+            "select main_image_url from scene_asset where id = 7102", String.class))
+            .isEqualTo("/legacy/scene.png");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from prop_asset where id = 7103 and main_image_result_id is null", Integer.class))
+            .isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from information_schema.tables where lower(table_name) = 'asset_visual_variant'",
+            Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from asset_visual_variant where tenant_id = 7001 and is_primary = true",
+            Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from asset_visual_variant where asset_type = 'CHARACTER' and asset_id = 7104",
+            Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from asset_visual_variant where asset_type = 'CHARACTER' and asset_id = 7105",
+            Integer.class)).isZero();
     }
 
     private static DataSource dataSource(String name) {
