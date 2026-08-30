@@ -305,7 +305,7 @@ describe('VideoScriptDecompositionPage', () => {
     ).toBe(true);
   });
 
-  it('refreshes running list and drawer data, then stops after terminal responses', async () => {
+  it('keeps a running drawer snapshot while the batch list continues polling', async () => {
     vi.useFakeTimers();
     const runningBatch = {
       ...screenplayBatch,
@@ -332,16 +332,46 @@ describe('VideoScriptDecompositionPage', () => {
 
     await act(async () => vi.advanceTimersByTimeAsync(3000));
     expect(mocks.queryBatches).toHaveBeenCalledTimes(2);
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(2);
+    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(1);
 
     await act(async () => vi.advanceTimersByTimeAsync(6000));
     expect(mocks.queryBatches).toHaveBeenCalledTimes(2);
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(2);
+    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(1);
     view.unmount();
     vi.useRealTimers();
   });
 
-  it('restarts drawer polling after an accepted retry', async () => {
+  it('manually refreshes both the batch list and the open drawer', async () => {
+    const refreshedBatch = {
+      ...screenplayBatch,
+      status: 'RUNNING',
+      percentage: 80,
+      failedEpisodes: 0,
+      processingEpisodes: 1,
+    };
+    mocks.queryBatches
+      .mockResolvedValueOnce({ data: [{ ...screenplayBatch, id: 9, episodes: [] }] })
+      .mockResolvedValueOnce({
+        data: [{ ...refreshedBatch, id: 9, episodes: [] }],
+      });
+    mocks.queryScreenplays
+      .mockResolvedValueOnce({ data: screenplayBatch })
+      .mockResolvedValueOnce({ data: refreshedBatch });
+
+    render(<VideoScriptDecompositionPage />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: '查看全部剧本' }),
+    );
+    await screen.findByText('# 第1集：真相');
+
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await waitFor(() => {
+      expect(mocks.queryBatches).toHaveBeenCalledTimes(2);
+      expect(mocks.queryScreenplays).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('refreshes the open drawer once after an accepted retry without polling', async () => {
     vi.useFakeTimers();
     const running = {
       ...screenplayBatch,
@@ -370,9 +400,7 @@ describe('VideoScriptDecompositionPage', () => {
     expect(mocks.queryScreenplays).toHaveBeenCalledTimes(2);
 
     await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(3);
-    await act(async () => vi.advanceTimersByTimeAsync(6000));
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(3);
+    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(2);
     view.unmount();
     vi.useRealTimers();
   });

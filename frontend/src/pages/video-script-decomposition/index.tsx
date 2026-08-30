@@ -152,6 +152,11 @@ const VideoScriptDecompositionPage = () => {
     }
   }, []);
 
+  const refreshOpenBatch = useCallback(async () => {
+    if (!openBatchId) return;
+    await Promise.all([loadBatches(), loadScreenplays(openBatchId)]);
+  }, [loadBatches, loadScreenplays, openBatchId]);
+
   useEffect(() => {
     void loadBatches().catch(() => undefined);
     void queryVideoUnderstandingModels()
@@ -183,20 +188,6 @@ const VideoScriptDecompositionPage = () => {
     );
     return () => window.clearInterval(timer);
   }, [batches, loadBatches]);
-
-  useEffect(() => {
-    if (
-      !openBatchId ||
-      !shouldPollVideoDecompositionBatch(screenplays?.status)
-    ) {
-      return undefined;
-    }
-    const timer = window.setInterval(
-      () => void loadScreenplays(openBatchId).catch(() => undefined),
-      3000,
-    );
-    return () => window.clearInterval(timer);
-  }, [loadScreenplays, openBatchId, screenplays?.status]);
 
   const moveFile = (uid: string, direction: -1 | 1) => {
     setFiles((current) => {
@@ -242,8 +233,7 @@ const VideoScriptDecompositionPage = () => {
     try {
       await retryVideoDecompositionEpisode(episode.id);
       message.success(`第 ${episode.episodeNo} 集已重新加入生成队列`);
-      if (openBatchId) await loadScreenplays(openBatchId);
-      await loadBatches();
+      await refreshOpenBatch();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '重试失败');
     } finally {
@@ -453,22 +443,37 @@ const VideoScriptDecompositionPage = () => {
             setScreenplays(undefined);
           }}
           extra={
-            <Button
-              icon={<CopyOutlined />}
-              disabled={!buildCopyAllScreenplays(screenplays)}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(
-                    buildCopyAllScreenplays(screenplays),
-                  );
-                  message.success('已复制全部成功剧本');
-                } catch {
-                  message.error('复制失败，请检查浏览器剪贴板权限');
+            <Space>
+              <Button
+                icon={<ReloadOutlined />}
+                loading={screenplaysLoading}
+                onClick={() =>
+                  void refreshOpenBatch().catch((error: unknown) =>
+                    message.error(
+                      error instanceof Error ? error.message : '剧本加载失败',
+                    ),
+                  )
                 }
-              }}
-            >
-              复制全部剧本
-            </Button>
+              >
+                刷新
+              </Button>
+              <Button
+                icon={<CopyOutlined />}
+                disabled={!buildCopyAllScreenplays(screenplays)}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(
+                      buildCopyAllScreenplays(screenplays),
+                    );
+                    message.success('已复制全部成功剧本');
+                  } catch {
+                    message.error('复制失败，请检查浏览器剪贴板权限');
+                  }
+                }}
+              >
+                复制全部剧本
+              </Button>
+            </Space>
           }
         >
           {screenplays ? (
