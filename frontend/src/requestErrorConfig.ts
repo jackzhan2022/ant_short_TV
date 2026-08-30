@@ -95,10 +95,17 @@ export const errorConfig: RequestConfig = {
     (config: RequestOptions) => {
       const token = localStorage.getItem('accessToken');
       const currentTenantId = localStorage.getItem('currentTenantId');
+      const url = typeof config.url === 'string' ? config.url : '';
+      const isPublicAuthRequest =
+        url === '/api/auth/login' || url === '/api/auth/register';
       config.headers = {
         ...config.headers,
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(currentTenantId ? { 'X-Tenant-Id': currentTenantId } : {}),
+        ...(!isPublicAuthRequest && token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
+        ...(!isPublicAuthRequest && currentTenantId
+          ? { 'X-Tenant-Id': currentTenantId }
+          : {}),
       };
       return config;
     },

@@ -267,6 +267,33 @@ describe('requestErrorConfig', () => {
       });
     });
 
+    it('should skip auth headers for public auth endpoints', () => {
+      localStorage.setItem('accessToken', 'test-token');
+      localStorage.setItem('currentTenantId', '10');
+      const loginConfig = {
+        url: '/api/auth/login',
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+        },
+      };
+
+      const registerConfig = {
+        url: '/api/auth/register',
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+        },
+      };
+
+      expect(interceptor(loginConfig).headers).toEqual({
+        Accept: 'application/json',
+      });
+      expect(interceptor(registerConfig).headers).toEqual({
+        Accept: 'application/json',
+      });
+    });
+
     it('should handle URL without config', () => {
       const config = {};
 

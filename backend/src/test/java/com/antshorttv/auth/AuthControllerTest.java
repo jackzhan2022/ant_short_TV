@@ -71,6 +71,21 @@ class AuthControllerTest {
     }
 
     @Test
+    void loginIgnoresInvalidBearerTokenFromStaleBrowserStorage() throws Exception {
+        registerUser("13800000013", "Password123", "旧缓存登录");
+
+        mockMvc.perform(post("/api/auth/login")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer stale-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"mobile":"13800000013","password":"Password123"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success", is(true)))
+            .andExpect(jsonPath("$.data.user.mobile", is("13800000013")));
+    }
+
+    @Test
     void loginReturnsJoinedTenantsAndNextAction() throws Exception {
         String token = registerUser("13800000005", "Password123", "钱七");
         mockMvc.perform(post("/api/tenants")

@@ -24,7 +24,11 @@ public class AccessTokenAuthenticationFilter extends OncePerRequestFilter {
         try {
             String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
             if (authorization != null && authorization.startsWith("Bearer ")) {
-                CurrentUserHolder.set(accessTokenService.parse(authorization.substring("Bearer ".length())));
+                try {
+                    CurrentUserHolder.set(accessTokenService.parse(authorization.substring("Bearer ".length())));
+                } catch (RuntimeException ignored) {
+                    CurrentUserHolder.clear();
+                }
             }
             filterChain.doFilter(request, response);
         } finally {
