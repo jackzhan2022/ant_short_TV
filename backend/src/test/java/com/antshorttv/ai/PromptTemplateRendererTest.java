@@ -48,7 +48,9 @@ class PromptTemplateRendererTest {
             Map.of("episodeNo", 3, "normalizedJson", "{\"characters\":[]}")
         );
 
-        assertThat(analysisPrompt).contains("第 3 集", "characters", "timeline", "只返回合法 JSON");
+        assertThat(analysisPrompt)
+            .contains("# 第3集：", "## 3-1", "出场人物：", "——本集完", "\"script\"", "只返回合法 JSON")
+            .doesNotContain("\"characters\"", "\"timeline\"");
         assertThat(draftPrompt).contains("第 3 集视频拆解 JSON", "按场次输出", "{\"characters\":[]}");
     }
 }
