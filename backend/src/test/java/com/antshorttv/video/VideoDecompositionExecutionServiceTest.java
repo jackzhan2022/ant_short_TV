@@ -12,9 +12,11 @@ import com.sun.net.httpserver.HttpServer;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +38,9 @@ class VideoDecompositionExecutionServiceTest {
 
     @Autowired
     private AiExecutionService aiExecutionService;
+
+    @Autowired
+    private AiTaskExecutionSupport executionSupport;
 
     @SpyBean
     private VideoDecompositionCompletionService completionService;
@@ -137,11 +142,88 @@ class VideoDecompositionExecutionServiceTest {
     }
 
     @Test
+    void keepsBatchAndFailsOnlyClaimedEpisodeWhenLazyBillingInitializationFails() {
+        Long modelId = prepareModel("http://127.0.0.1:9/v1");
+        Long batchId = insertBatch(modelId);
+        jdbc.update("update video_decomposition_batch set total_episodes = 2 where id = ?", batchId);
+        Long firstEpisodeId = insertEpisode(batchId, 1);
+        Long secondEpisodeId = insertEpisode(batchId, 2);
+        AiTaskExecutionSupport.ClaimResult claim = executionSupport.claimVideoDecompositionEpisode(
+            firstEpisodeId,
+            "PENDING_ANALYSIS",
+            "ANALYZING",
+            "VIDEO_ANALYSIS",
+            Duration.ofMinutes(30)
+        );
+        assertThat(claim.claimed()).isTrue();
+
+        RuntimeException initializationFailure = null;
+        try {
+            executionService.executeEpisode(firstEpisodeId);
+        } catch (RuntimeException exception) {
+            initializationFailure = exception;
+        }
+        assertThat(initializationFailure).isNotNull();
+        executionService.recoverClaimedEpisode(firstEpisodeId, initializationFailure.getMessage());
+
+        assertThat(jdbc.queryForObject(
+            "select status from video_decomposition_episode where id = ?",
+            String.class,
+            firstEpisodeId
+        )).isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject(
+            "select retryable from video_decomposition_episode where id = ?",
+            Boolean.class,
+            firstEpisodeId
+        )).isTrue();
+        assertThat(jdbc.queryForObject(
+            "select status from video_decomposition_episode where id = ?",
+            String.class,
+            secondEpisodeId
+        )).isEqualTo("PENDING_ANALYSIS");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from video_decomposition_episode where batch_id = ?",
+            Integer.class,
+            batchId
+        )).isEqualTo(2);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_execution_task where business_id = ? and business_type = 'VIDEO_DECOMPOSITION_EPISODE'",
+            Integer.class,
+            firstEpisodeId
+        )).isZero();
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_point_reservation reservation join ai_execution_task execution on execution.id = reservation.execution_id where execution.business_id = ?",
+            Integer.class,
+            firstEpisodeId
+        )).isZero();
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_call_log where task_id = ? and business_scene = 'video_understanding'",
+            Integer.class,
+            firstEpisodeId
+        )).isZero();
+    }
+
+    @Test
     void storesDirectScreenplayWithoutDraftGenerationCall() throws Exception {
         AtomicInteger calls = new AtomicInteger();
+        AtomicInteger executionCountAtProvider = new AtomicInteger();
+        AtomicInteger reservationCountAtProvider = new AtomicInteger();
+        AtomicReference<Long> episodeAtProvider = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
             calls.incrementAndGet();
+            Long providerEpisodeId = episodeAtProvider.get();
+            executionCountAtProvider.set(jdbc.queryForObject("""
+                select count(*) from ai_execution_task
+                 where business_type = 'VIDEO_DECOMPOSITION_EPISODE' and business_id = ?
+                """, Integer.class, providerEpisodeId));
+            reservationCountAtProvider.set(jdbc.queryForObject("""
+                select count(*)
+                  from ai_point_reservation reservation
+                  join ai_execution_task execution on execution.id = reservation.execution_id
+                 where execution.business_type = 'VIDEO_DECOMPOSITION_EPISODE'
+                   and execution.business_id = ?
+                """, Integer.class, providerEpisodeId));
             String json = """
                 {
                   "id":"qwen-analysis-success",
@@ -164,8 +246,18 @@ class VideoDecompositionExecutionServiceTest {
             preparePointAccount();
             Long batchId = insertBatch(modelId);
             Long episodeId = insertEpisode(batchId);
+            episodeAtProvider.set(episodeId);
             int scriptCountBefore = jdbc.queryForObject("select count(*) from script", Integer.class);
             int scriptVersionCountBefore = jdbc.queryForObject("select count(*) from script_version", Integer.class);
+            assertThat(jdbc.queryForObject(
+                "select execution_id from video_decomposition_episode where id = ?",
+                Long.class,
+                episodeId
+            )).isNull();
+            assertThat(jdbc.queryForObject("""
+                select count(*) from ai_execution_task
+                 where business_type = 'VIDEO_DECOMPOSITION_EPISODE' and business_id = ?
+                """, Integer.class, episodeId)).isZero();
 
             executionService.executeEpisode(episodeId);
 
@@ -175,6 +267,8 @@ class VideoDecompositionExecutionServiceTest {
             assertThat(episode.get("draft_content")).isNull();
             assertThat(episode.get("draft_version")).isEqualTo(0);
             assertThat(calls.get()).isEqualTo(1);
+            assertThat(executionCountAtProvider.get()).isEqualTo(1);
+            assertThat(reservationCountAtProvider.get()).isEqualTo(1);
             assertThat(episode.get("execution_token")).isNull();
             assertThat(episode.get("retryable")).isEqualTo(false);
             Integer draftLogs = jdbc.queryForObject("""

@@ -641,7 +641,7 @@ public class VideoDecompositionExecutionService {
     @Transactional
     public void recoverClaimedEpisode(Long episodeId, String failureMessage) {
         VideoDecompositionEpisodeEntity episode = episodeMapper.selectById(episodeId);
-        if (episode == null || episode.getExecutionToken() == null || episode.getExecutionId() == null) {
+        if (episode == null || episode.getExecutionToken() == null) {
             return;
         }
         String phase = episode.getExecutionPhase() == null ? "VIDEO_ANALYSIS" : episode.getExecutionPhase();
@@ -668,11 +668,15 @@ public class VideoDecompositionExecutionService {
         }
 
         VideoDecompositionAttemptEntity attempt = currentAttempt(episodeId, phase);
-        startSharedAttempt(episode, attempt, phase);
+        if (episode.getExecutionId() != null) {
+            startSharedAttempt(episode, attempt, phase);
+        }
         markAttempt(attempt, "FAILED", null, null, "AI_EXECUTION_FAILED", message);
-        finishLatestSharedFailure(episode, phase, null, "AI_EXECUTION_FAILED", message);
-        failStageSettlement(episode, episode.getExecutionId(), null, null, AiSettlementOutcome.PRE_CALL_CANCELED);
-        updateExecution(episode, "FAILED", phase, terminalProgress(episode), null, null);
+        if (episode.getExecutionId() != null) {
+            finishLatestSharedFailure(episode, phase, null, "AI_EXECUTION_FAILED", message);
+            failStageSettlement(episode, episode.getExecutionId(), null, null, AiSettlementOutcome.PRE_CALL_CANCELED);
+            updateExecution(episode, "FAILED", phase, terminalProgress(episode), null, null);
+        }
         recalculateBatch(episode.getTenantId(), episode.getBatchId());
     }
 

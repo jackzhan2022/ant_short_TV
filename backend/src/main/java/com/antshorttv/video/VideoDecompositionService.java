@@ -1,9 +1,7 @@
 package com.antshorttv.video;
 
-import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
-import com.antshorttv.execution.AiExecutionCreateCommand;
 import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
@@ -19,7 +17,6 @@ import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.storage.ObjectStorageService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -190,7 +187,6 @@ public class VideoDecompositionService {
             episode.setCreatedAt(now);
             episode.setUpdatedAt(now);
             episodeMapper.insert(episode);
-            createExecutionHeader(episode, batch.getModelId());
             createAttempt(episode.getId(), 1, "VIDEO_ANALYSIS", "PENDING", now);
         }
 
@@ -401,33 +397,6 @@ public class VideoDecompositionService {
         attempt.setStatus(status);
         attempt.setStartedAt(now);
         attemptMapper.insert(attempt);
-    }
-
-    private void createExecutionHeader(VideoDecompositionEpisodeEntity episode, Long modelId) {
-        AiExecutionTaskEntity execution = executionService.createWithReservation(new AiExecutionCreateCommand(
-            episode.getTenantId(),
-            episode.getCreatedBy(),
-            episode.getProjectId(),
-            "video_decomposition",
-            "VIDEO_UNDERSTANDING",
-            "VIDEO_DECOMPOSITION_EPISODE",
-            episode.getId(),
-            modelId,
-            "VIDEO_ANALYSIS",
-            "video-decomposition:%d".formatted(episode.getId()),
-            UUID.randomUUID().toString(),
-            true,
-            executionSnapshot(episode)
-        ), Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of());
-        episode.setExecutionId(execution.id);
-        episodeMapper.updateById(episode);
-        executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
-            .set("status", "RUNNING")
-            .set("started_at", LocalDateTime.now())
-            .set("progress", 5)
-            .set("next_run_at", null)
-            .set("updated_at", LocalDateTime.now())
-            .eq("id", execution.id));
     }
 
     private void recalculateBatch(Long tenantId, Long batchId) {

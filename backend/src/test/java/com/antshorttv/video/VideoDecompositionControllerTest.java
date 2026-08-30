@@ -9,10 +9,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.antshorttv.execution.AiExecutionCreateCommand;
+import com.antshorttv.execution.AiExecutionService;
+import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
 import com.jayway.jsonpath.JsonPath;
 import java.math.BigDecimal;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -35,6 +40,9 @@ class VideoDecompositionControllerTest {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private AiExecutionService aiExecutionService;
 
     @Test
     void uploadsVideoWithoutProjectId() throws Exception {
@@ -98,13 +106,16 @@ class VideoDecompositionControllerTest {
             .andExpect(jsonPath("$.data.totalEpisodes", is(2)))
             .andExpect(jsonPath("$.data.episodes", hasSize(2)))
             .andExpect(jsonPath("$.data.episodes[0].episodeNo", is(1)))
-            .andExpect(jsonPath("$.data.episodes[0].executionId", org.hamcrest.Matchers.notNullValue()))
+            .andExpect(jsonPath("$.data.episodes[0].executionId").doesNotExist())
             .andExpect(jsonPath("$.data.episodes[0].sourceFileName", is("episode-b.mp4")))
             .andExpect(jsonPath("$.data.episodes[1].episodeNo", is(2)))
+            .andExpect(jsonPath("$.data.episodes[1].executionId").doesNotExist())
             .andExpect(jsonPath("$.data.episodes[1].sourceFileName", is("episode-a.mp4")))
             .andReturn();
 
         Long batchId = readLong(result, "$.data.id");
+        Long firstEpisodeId = readLong(result, "$.data.episodes[0].id");
+        Long secondEpisodeId = readLong(result, "$.data.episodes[1].id");
         String orderedNames = jdbc.queryForObject("""
             select group_concat(source_file_name order by episode_no separator ',')
               from video_decomposition_episode
@@ -112,6 +123,27 @@ class VideoDecompositionControllerTest {
             """, String.class, batchId);
 
         org.assertj.core.api.Assertions.assertThat(orderedNames).isEqualTo("episode-b.mp4,episode-a.mp4");
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("""
+            select count(*)
+              from video_decomposition_attempt
+             where episode_id in (?, ?)
+               and phase = 'VIDEO_ANALYSIS'
+               and status = 'PENDING'
+               and execution_id is null
+            """, Integer.class, firstEpisodeId, secondEpisodeId)).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("""
+            select count(*)
+              from ai_execution_task
+             where business_type = 'VIDEO_DECOMPOSITION_EPISODE'
+               and business_id in (?, ?)
+            """, Integer.class, firstEpisodeId, secondEpisodeId)).isZero();
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("""
+            select count(*)
+              from ai_point_reservation reservation
+              join ai_execution_task execution on execution.id = reservation.execution_id
+             where execution.business_type = 'VIDEO_DECOMPOSITION_EPISODE'
+               and execution.business_id in (?, ?)
+            """, Integer.class, firstEpisodeId, secondEpisodeId)).isZero();
     }
 
     @Test
@@ -247,6 +279,7 @@ class VideoDecompositionControllerTest {
         com.antshorttv.support.ModelBillingTestSupport.publish(
             jdbc, 10L, "CALL", BigDecimal.ONE, BigDecimal.ONE);
         fundPointAccount(tenantId);
+        Long ownerId = userIdByMobile(mobile);
         MvcResult created = mockMvc.perform(post("/api/video-script-decomposition/batches")
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
@@ -261,7 +294,26 @@ class VideoDecompositionControllerTest {
             .andExpect(status().isOk())
             .andReturn();
         Long episodeId = readLong(created, "$.data.episodes[0].id");
-        Long executionId = readLong(created, "$.data.episodes[0].executionId");
+        Long executionId = aiExecutionService.createWithReservation(new AiExecutionCreateCommand(
+            tenantId,
+            ownerId,
+            null,
+            "video_decomposition_video_analysis",
+            "VIDEO_UNDERSTANDING",
+            "VIDEO_DECOMPOSITION_EPISODE",
+            episodeId,
+            10L,
+            "VIDEO_ANALYSIS",
+            "video-decomposition:%d".formatted(episodeId),
+            UUID.randomUUID().toString(),
+            true,
+            "{\"screenplayPrompt\":\"# 第1集：标题 只输出完整合法的 JSON 对象\"}"
+        ), Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of()).id;
+        jdbc.update(
+            "update video_decomposition_episode set execution_id = ?, updated_at = now() where id = ?",
+            executionId,
+            episodeId
+        );
         var frozen = jdbc.queryForMap("""
             select requested_model_id, cost_price_version_id, point_price_version_id, execution_version
               from ai_execution_task where id = ?
