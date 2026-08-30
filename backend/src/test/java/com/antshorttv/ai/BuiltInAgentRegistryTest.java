@@ -67,11 +67,20 @@ class BuiltInAgentRegistryTest {
 
         assertThat(prompt).contains(
             "资深的影视编剧与多模态视频分析专家",
-            "场景标头",
-            "人物对白与字幕",
-            "结尾钩子：",
+            "# 第6集：标题",
+            "## 6-1 夜 内 地点",
+            "出场人物：人物A、人物B",
+            "（OS）",
+            "（VO）",
+            "——本集完",
             "{\"script\":\"完整剧本文本\"}"
         );
-        assertThat(prompt).doesNotContain("characters、scenes、props、timeline、dialogue、actions、emotions 七个数组字段");
+        assertThat(prompt).contains("悬念通过最后的剧情动作自然呈现");
+        assertThat(prompt).doesNotContain(
+            "结尾钩子：",
+            "双引号包裹的原声台词",
+            "【字幕：",
+            "characters、timeline"
+        );
     }
 }

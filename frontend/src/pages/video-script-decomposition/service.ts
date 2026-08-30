@@ -31,6 +31,10 @@ export type VideoDecompositionEpisode = {
   draftStatus?: string | null;
   draftVersion?: number | null;
   confirmedScriptVersionId?: number | null;
+  executionPhase?: string | null;
+  percentage: number;
+  retryable?: boolean | null;
+  errorCode?: string | null;
   errorMessage?: string | null;
 };
 
@@ -49,6 +53,8 @@ export type VideoDecompositionAttempt = {
 
 export type VideoDecompositionEpisodeDetail = {
   episode: VideoDecompositionEpisode;
+  screenplayContent?: string | null;
+  formatVersion?: string | null;
   draftContent?: string | null;
   currentScriptVersionId?: number | null;
   rawResponse?: string | null;
@@ -65,9 +71,32 @@ export type VideoDecompositionBatch = {
   totalEpisodes: number;
   completedEpisodes: number;
   failedEpisodes: number;
+  succeededEpisodes: number;
+  processingEpisodes: number;
+  pendingEpisodes: number;
+  percentage: number;
   createdAt?: string;
   updatedAt?: string;
   episodes: VideoDecompositionEpisode[];
+};
+
+export type VideoDecompositionScreenplayEpisode = {
+  episode: VideoDecompositionEpisode;
+  screenplayContent?: string | null;
+  formatVersion?: string | null;
+};
+
+export type VideoDecompositionBatchScreenplays = {
+  batchId: number;
+  batchName: string;
+  status: string;
+  percentage: number;
+  totalEpisodes: number;
+  succeededEpisodes: number;
+  failedEpisodes: number;
+  processingEpisodes: number;
+  pendingEpisodes: number;
+  episodes: VideoDecompositionScreenplayEpisode[];
 };
 
 export type CreateVideoDecompositionBatchValues = {
@@ -127,16 +156,20 @@ export const queryVideoDecompositionEpisode = async (episodeId: number) =>
     `/api/video-script-decomposition/episodes/${episodeId}`,
   );
 
-export const retryVideoDecompositionEpisode = async (
-  episodeId: number,
-  phase = 'VIDEO_ANALYSIS',
+export const queryVideoDecompositionBatchScreenplays = async (
+  batchId: number,
 ) =>
+  request<ApiResponse<VideoDecompositionBatchScreenplays>>(
+    `/api/video-script-decomposition/batches/${batchId}/screenplays`,
+  );
+
+export const retryVideoDecompositionEpisode = async (episodeId: number) =>
   request<ApiResponse<VideoDecompositionEpisode>>(
     `/api/video-script-decomposition/episodes/${episodeId}/retry`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      data: { phase },
+      data: { phase: 'VIDEO_ANALYSIS' },
     },
   );
 

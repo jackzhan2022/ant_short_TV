@@ -1,27 +1,4 @@
-# direct-video-script-output Specification
-
-## Purpose
-TBD - created by archiving change direct-video-script-output. Update Purpose after archive.
-## Requirements
-### Requirement: Video understanding produces a directly reviewable script
-The system SHALL require new video-understanding responses to be a complete JSON object containing a non-empty `script` string. The `script` value SHALL contain one complete episode screenplay in the configured Markdown shooting-script format and SHALL be accepted only after protocol, truncation, and structural validation.
-
-#### Scenario: Video model returns a valid direct screenplay
-- **WHEN** a video-understanding provider returns a complete protocol object whose `script` satisfies the configured episode and scene structure
-- **THEN** the system accepts the response as a successful video decomposition result
-
-#### Scenario: Video model omits or truncates the screenplay
-- **WHEN** the response omits a non-empty `script`, cannot be parsed as complete JSON, or reports token-limit truncation
-- **THEN** the system marks the attempt as a retryable business parsing failure and retains the provider response for diagnostics
-
-### Requirement: Historical draft-generation tasks remain executable
-
-The system SHALL preserve the legacy text draft-generation path for episodes already in `PENDING_DRAFT` or `DRAFT_GENERATING` when the change is deployed.
-
-#### Scenario: Historical episode resumes draft generation
-
-- **WHEN** an episode created before this change is in `PENDING_DRAFT`
-- **THEN** the system uses its stored normalized analysis JSON and existing text draft-generation workflow
+## ADDED Requirements
 
 ### Requirement: Direct screenplay follows the Markdown shooting-script format
 The system SHALL instruct the video-understanding model to place a Markdown-formatted Chinese shooting screenplay in the protocol `script` string and SHALL structurally validate the required markers before accepting the result.
@@ -51,3 +28,22 @@ The system SHALL require the direct screenplay to preserve the video's event ord
 - **WHEN** the source video ends without a suspenseful event
 - **THEN** the screenplay faithfully records the actual ending and does not invent additional action or dialogue
 
+## MODIFIED Requirements
+
+### Requirement: Video understanding produces a directly reviewable script
+The system SHALL require new video-understanding responses to be a complete JSON object containing a non-empty `script` string. The `script` value SHALL contain one complete episode screenplay in the configured Markdown shooting-script format and SHALL be accepted only after protocol, truncation, and structural validation.
+
+#### Scenario: Video model returns a valid direct screenplay
+- **WHEN** a video-understanding provider returns a complete protocol object whose `script` satisfies the configured episode and scene structure
+- **THEN** the system accepts the response as a successful video decomposition result
+
+#### Scenario: Video model omits or truncates the screenplay
+- **WHEN** the response omits a non-empty `script`, cannot be parsed as complete JSON, or reports token-limit truncation
+- **THEN** the system marks the attempt as a retryable business parsing failure and retains the provider response for diagnostics
+
+## REMOVED Requirements
+
+### Requirement: Direct screenplay becomes the editable draft
+**Reason**: Successful direct screenplays are now immutable independent decomposition results; manual editing, review, and project import are removed from the new workflow.
+
+**Migration**: Historical `draft_content`, draft versions, review statuses, and confirmed script-version links remain readable but are not used for newly created batches.

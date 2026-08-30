@@ -14,6 +14,10 @@ record VideoDecompositionBatchResponse(
     Integer totalEpisodes,
     Integer completedEpisodes,
     Integer failedEpisodes,
+    Integer succeededEpisodes,
+    Integer processingEpisodes,
+    Integer pendingEpisodes,
+    Integer percentage,
     LocalDateTime createdAt,
     LocalDateTime updatedAt,
     List<VideoDecompositionEpisodeResponse> episodes
@@ -22,6 +26,16 @@ record VideoDecompositionBatchResponse(
         VideoDecompositionBatchEntity batch,
         List<VideoDecompositionEpisodeEntity> episodes
     ) {
+        return from(batch, episodes, VideoDecompositionEpisodeResponse::from, ignored -> null);
+    }
+
+    static VideoDecompositionBatchResponse from(
+        VideoDecompositionBatchEntity batch,
+        List<VideoDecompositionEpisodeEntity> episodes,
+        java.util.function.Function<VideoDecompositionEpisodeEntity, VideoDecompositionEpisodeResponse> episodeMapper,
+        java.util.function.Function<VideoDecompositionEpisodeEntity, Integer> progressMapper
+    ) {
+        VideoDecompositionBatchProgress progress = VideoDecompositionBatchProgress.fromEpisodes(episodes, progressMapper);
         return new VideoDecompositionBatchResponse(
             batch.getId(),
             batch.getTenantId(),
@@ -32,9 +46,13 @@ record VideoDecompositionBatchResponse(
             batch.getTotalEpisodes(),
             batch.getCompletedEpisodes(),
             batch.getFailedEpisodes(),
+            progress.succeeded(),
+            progress.processing(),
+            progress.pending(),
+            progress.percentage(),
             batch.getCreatedAt(),
             batch.getUpdatedAt(),
-            episodes.stream().map(VideoDecompositionEpisodeResponse::from).toList()
+            episodes.stream().map(episodeMapper).toList()
         );
     }
 }
@@ -58,11 +76,16 @@ record VideoDecompositionEpisodeResponse(
     String errorCode,
     String errorMessage,
     String executionPhase,
+    Integer percentage,
     Boolean retryable,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
     static VideoDecompositionEpisodeResponse from(VideoDecompositionEpisodeEntity entity) {
+        return from(entity, null);
+    }
+
+    static VideoDecompositionEpisodeResponse from(VideoDecompositionEpisodeEntity entity, Integer persistedProgress) {
         return new VideoDecompositionEpisodeResponse(
             entity.getId(),
             entity.getExecutionId(),
@@ -82,6 +105,7 @@ record VideoDecompositionEpisodeResponse(
             entity.getErrorCode(),
             entity.getErrorMessage(),
             entity.getExecutionPhase(),
+            VideoDecompositionBatchProgress.episodePercentage(entity.getStatus(), persistedProgress),
             entity.getRetryable(),
             entity.getCreatedAt(),
             entity.getUpdatedAt()
@@ -100,11 +124,34 @@ record VideoDecompositionUploadResponse(
 
 record VideoDecompositionEpisodeDetailResponse(
     VideoDecompositionEpisodeResponse episode,
+    String screenplayContent,
+    String formatVersion,
     String draftContent,
     Long currentScriptVersionId,
     String rawResponse,
     String normalizedJson,
     List<VideoDecompositionAttemptResponse> attempts
+) {
+}
+
+record VideoDecompositionBatchScreenplaysResponse(
+    Long batchId,
+    String batchName,
+    String status,
+    Integer percentage,
+    Integer totalEpisodes,
+    Integer succeededEpisodes,
+    Integer failedEpisodes,
+    Integer processingEpisodes,
+    Integer pendingEpisodes,
+    List<VideoDecompositionScreenplayEpisodeResponse> episodes
+) {
+}
+
+record VideoDecompositionScreenplayEpisodeResponse(
+    VideoDecompositionEpisodeResponse episode,
+    String screenplayContent,
+    String formatVersion
 ) {
 }
 

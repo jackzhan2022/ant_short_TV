@@ -56,6 +56,14 @@ public class VideoDecompositionController {
         return ApiResponse.success(service.detail(tenantId(request), batchId));
     }
 
+    @GetMapping("/batches/{batchId}/screenplays")
+    public ApiResponse<VideoDecompositionBatchScreenplaysResponse> screenplays(
+        @PathVariable Long batchId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.allScreenplays(tenantId(request), batchId));
+    }
+
     @GetMapping("/episodes/{episodeId}")
     public ApiResponse<VideoDecompositionEpisodeDetailResponse> episode(
         @PathVariable Long episodeId,

@@ -240,6 +240,82 @@ class VideoDecompositionControllerTest {
     }
 
     @Test
+    void technicalRetryKeepsTheFrozenExecutionAndPricingSnapshot() throws Exception {
+        String mobile = uniqueMobile();
+        String token = registerUser(mobile, "Technical Retry Owner");
+        Long tenantId = createTenant(token, "技术重试团队");
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbc, 10L, "CALL", BigDecimal.ONE, BigDecimal.ONE);
+        fundPointAccount(tenantId);
+        MvcResult created = mockMvc.perform(post("/api/video-script-decomposition/batches")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"技术重试","modelId":10,"videos":[{
+                      "fileName":"retry.mp4",
+                      "storagePath":"/materials/%d/video-decomposition/retry.mp4",
+                      "mimeType":"video/mp4","fileSize":2048
+                    }]}
+                    """.formatted(tenantId)))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long episodeId = readLong(created, "$.data.episodes[0].id");
+        Long executionId = readLong(created, "$.data.episodes[0].executionId");
+        var frozen = jdbc.queryForMap("""
+            select requested_model_id, cost_price_version_id, point_price_version_id, execution_version
+              from ai_execution_task where id = ?
+            """, executionId);
+        String executionSnapshot = jdbc.queryForObject(
+            "select redacted_input_json from ai_execution_task where id = ?", String.class, executionId);
+        org.assertj.core.api.Assertions.assertThat(executionSnapshot)
+            .contains("screenplayPrompt", "# 第1集：标题", "只输出完整合法的 JSON 对象");
+        int reservations = jdbc.queryForObject(
+            "select count(*) from ai_point_reservation where execution_id = ?",
+            Integer.class, executionId);
+        jdbc.update("""
+            update video_decomposition_episode
+               set status = 'FAILED', retryable = true, error_code = 'AI_RATE_LIMIT'
+             where id = ?
+            """, episodeId);
+        jdbc.update("""
+            update ai_execution_task
+               set status = 'FAILED', progress = 17, retryable = true,
+                   error_code = 'AI_RATE_LIMIT', error_message = 'rate limited', completed_at = now()
+             where id = ?
+            """, executionId);
+
+        mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/retry".formatted(episodeId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("PENDING_ANALYSIS")));
+
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForMap("""
+            select requested_model_id, cost_price_version_id, point_price_version_id, execution_version
+              from ai_execution_task where id = ?
+            """, executionId)).isEqualTo(frozen);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+            "select count(*) from ai_point_reservation where execution_id = ?",
+            Integer.class, executionId)).isEqualTo(reservations);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+            "select count(*) from video_decomposition_attempt where episode_id = ? and phase = 'VIDEO_ANALYSIS'",
+            Integer.class, episodeId)).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForMap("""
+            select status, progress, error_code, error_message, completed_at
+              from ai_execution_task where id = ?
+            """, executionId)).satisfies(execution -> {
+                org.assertj.core.api.Assertions.assertThat(execution.get("status")).isEqualTo("PENDING");
+                org.assertj.core.api.Assertions.assertThat(execution.get("progress")).isEqualTo(0);
+                org.assertj.core.api.Assertions.assertThat(execution.get("error_code")).isNull();
+                org.assertj.core.api.Assertions.assertThat(execution.get("error_message")).isNull();
+                org.assertj.core.api.Assertions.assertThat(execution.get("completed_at")).isNull();
+            });
+    }
+
+    @Test
     void exposesRetryabilityInEpisodeDetail() throws Exception {
         String mobile = uniqueMobile();
         String token = registerUser(mobile, "Decomposition Detail Reviewer");
@@ -263,6 +339,84 @@ class VideoDecompositionControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.episode.status", is("FAILED")))
             .andExpect(jsonPath("$.data.episode.retryable", is(true)));
+    }
+
+    @Test
+    void returnsOrderedImmutableScreenplaysWithBatchProgressAndTenantIsolation() throws Exception {
+        String mobile = uniqueMobile();
+        String token = registerUser(mobile, "Screenplay Reader");
+        Long tenantId = createTenant(token, "剧本结果团队");
+        Long ownerId = userIdByMobile(mobile);
+        Long firstEpisodeId = insertReviewableEpisode(tenantId, null, ownerId, "历史草稿", 0);
+        Long batchId = jdbc.queryForObject(
+            "select batch_id from video_decomposition_episode where id = ?", Long.class, firstEpisodeId);
+        jdbc.update("""
+            update video_decomposition_episode
+               set status = 'SUCCEEDED', draft_content = null, draft_status = 'NOT_STARTED', retryable = false
+             where id = ?
+            """, firstEpisodeId);
+        insertImmutableResult(tenantId, batchId, firstEpisodeId, "# 第1集：真相\n\n## 1-1 夜 内 客厅\n\n出场人物：林晚\n\n林晚抬头。\n\n——本集完");
+        jdbc.update("""
+            insert into video_decomposition_episode
+              (batch_id, tenant_id, episode_no, source_file_name, storage_path, mime_type, file_size,
+               status, analysis_version, draft_status, draft_version, error_code, error_message,
+               retryable, created_by, created_at, updated_at)
+            values (?, ?, 2, 'episode-2.mp4', ?, 'video/mp4', 2048,
+                    'FAILED', 0, 'NOT_STARTED', 0, 'AI_RATE_LIMIT', '请求频率过高',
+                    true, ?, now(), now())
+            """, batchId, tenantId, "/materials/%d/video-decomposition/episode-2.mp4".formatted(tenantId), ownerId);
+
+        mockMvc.perform(get("/api/video-script-decomposition/batches/%d/screenplays".formatted(batchId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("PARTIAL_FAILED")))
+            .andExpect(jsonPath("$.data.percentage", is(50)))
+            .andExpect(jsonPath("$.data.succeededEpisodes", is(1)))
+            .andExpect(jsonPath("$.data.failedEpisodes", is(1)))
+            .andExpect(jsonPath("$.data.episodes", hasSize(2)))
+            .andExpect(jsonPath("$.data.episodes[0].episode.episodeNo", is(1)))
+            .andExpect(jsonPath("$.data.episodes[0].screenplayContent", org.hamcrest.Matchers.startsWith("# 第1集")))
+            .andExpect(jsonPath("$.data.episodes[0].formatVersion", is("markdown-screenplay-v1")))
+            .andExpect(jsonPath("$.data.episodes[1].episode.episodeNo", is(2)))
+            .andExpect(jsonPath("$.data.episodes[1].episode.retryable", is(true)))
+            .andExpect(jsonPath("$.data.episodes[1].screenplayContent").doesNotExist());
+
+        String otherToken = registerUser(uniqueMobile(), "Other Tenant Reader");
+        Long otherTenantId = createTenant(otherToken, "其他剧本团队");
+        mockMvc.perform(get("/api/video-script-decomposition/batches/%d/screenplays".formatted(batchId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))
+                .header("X-Tenant-Id", otherTenantId))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void immutableResultCannotBeEditedOrRetried() throws Exception {
+        String mobile = uniqueMobile();
+        String token = registerUser(mobile, "Immutable Reader");
+        Long tenantId = createTenant(token, "不可变剧本团队");
+        Long ownerId = userIdByMobile(mobile);
+        Long episodeId = insertReviewableEpisode(tenantId, null, ownerId, "历史草稿", 0);
+        Long batchId = jdbc.queryForObject(
+            "select batch_id from video_decomposition_episode where id = ?", Long.class, episodeId);
+        jdbc.update("update video_decomposition_episode set status = 'SUCCEEDED', retryable = false where id = ?", episodeId);
+        insertImmutableResult(tenantId, batchId, episodeId, "# 第1集：结果\n\n## 1-1 夜 内 房间\n\n出场人物：林晚\n\n林晚转身。\n\n——本集完");
+
+        mockMvc.perform(put("/api/video-script-decomposition/episodes/%d/draft".formatted(episodeId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"draftContent\":\"试图修改\",\"expectedDraftVersion\":0}"))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/retry".formatted(episodeId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"phase\":\"VIDEO_ANALYSIS\"}"))
+            .andExpect(status().isBadRequest());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+            "select content from video_decomposition_script_result where episode_id = ?",
+            String.class, episodeId)).startsWith("# 第1集：结果");
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {
@@ -340,6 +494,21 @@ class VideoDecompositionControllerTest {
             values (?, ?, ?, 1, 'episode.mp4', ?, 'video/mp4', 2048, 90, 'PENDING_REVIEW', 1, ?, 'PENDING_REVIEW', ?, ?, now(), now())
             """, batchId, tenantId, projectId, "/materials/%d/%d/episode.mp4".formatted(tenantId, projectId), draftContent, draftVersion, ownerId);
         return jdbc.queryForObject("select max(id) from video_decomposition_episode where batch_id = ?", Long.class, batchId);
+    }
+
+    private void insertImmutableResult(Long tenantId, Long batchId, Long episodeId, String content) {
+        jdbc.update("""
+            insert into video_decomposition_analysis
+              (episode_id, schema_version, status, raw_response, normalized_json, created_at)
+            values (?, 'v1', 'SUCCEEDED', ?, ?, now())
+            """, episodeId, "{\"script\":\"result\"}", "{\"script\":\"result\"}");
+        Long analysisId = jdbc.queryForObject(
+            "select max(id) from video_decomposition_analysis where episode_id = ?", Long.class, episodeId);
+        jdbc.update("""
+            insert into video_decomposition_script_result
+              (tenant_id, batch_id, episode_id, analysis_id, content, format_version, created_at)
+            values (?, ?, ?, ?, ?, 'markdown-screenplay-v1', now())
+            """, tenantId, batchId, episodeId, analysisId, content);
     }
 
     private Long insertScript(Long tenantId, Long projectId, Long ownerId, String content) {

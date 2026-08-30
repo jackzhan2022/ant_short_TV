@@ -48,6 +48,7 @@ public class VideoDecompositionExecutionService {
     private final VideoDecompositionAttemptMapper attemptMapper;
     private final ModelAccessibleVideoUrlResolver videoUrlResolver;
     private final VideoAnalysisNormalizer normalizer;
+    private final VideoDecompositionCompletionService completionService;
     private final AiInvocationService aiInvocationService;
     private final ProjectAiConfigService projectAiConfigService;
     private final PromptTemplateRenderer promptTemplateRenderer;
@@ -68,6 +69,7 @@ public class VideoDecompositionExecutionService {
         VideoDecompositionAttemptMapper attemptMapper,
         ModelAccessibleVideoUrlResolver videoUrlResolver,
         VideoAnalysisNormalizer normalizer,
+        VideoDecompositionCompletionService completionService,
         AiInvocationService aiInvocationService,
         ProjectAiConfigService projectAiConfigService,
         PromptTemplateRenderer promptTemplateRenderer,
@@ -87,6 +89,7 @@ public class VideoDecompositionExecutionService {
         this.attemptMapper = attemptMapper;
         this.videoUrlResolver = videoUrlResolver;
         this.normalizer = normalizer;
+        this.completionService = completionService;
         this.aiInvocationService = aiInvocationService;
         this.projectAiConfigService = projectAiConfigService;
         this.promptTemplateRenderer = promptTemplateRenderer;
@@ -176,31 +179,13 @@ public class VideoDecompositionExecutionService {
                 .videoRequest(new VideoUnderstandingRequest(videoUrl, structuredPrompt(episode)))
                 .build());
             rawResponse = callResult.content();
-            VideoAnalysis analysis = normalizer.normalize(rawResponse);
-            insertAnalysis(episode, "SUCCEEDED", rawResponse, analysis.normalizedJson(), callResult);
-            episode.setStatus("ANALYSIS_SUCCEEDED");
-            episode.setAnalysisVersion(episode.getAnalysisVersion() + 1);
-            episode.setErrorCode(null);
-            episode.setErrorMessage(null);
-            episode.setUpdatedAt(LocalDateTime.now());
-            episodeMapper.updateById(episode);
+            VideoAnalysis analysis = normalizer.normalize(rawResponse, episode.getEpisodeNo());
             markAttempt(attempt, "SUCCEEDED", callResult.response().providerRequestId(), callResult.aiCallLogId(), null, null);
             finishSharedAttempt(sharedAttempt, callResult, "SUCCEEDED", false, null, null);
             completeStage(episode, sharedAttempt, callResult, AiSettlementOutcome.SUCCESS);
             updateExecution(episode, "SUCCEEDED", "VIDEO_ANALYSIS", 100,
                 "VIDEO_DECOMPOSITION_EPISODE", episode.getId());
-            episode.setDraftContent(analysis.script());
-            episode.setDraftStatus("PENDING_REVIEW");
-            episode.setDraftVersion((episode.getDraftVersion() == null ? 0 : episode.getDraftVersion()) + 1);
-            episode.setStatus("PENDING_REVIEW");
-            episode.setExecutionToken(null);
-            episode.setExecutionPhase(null);
-            episode.setHeartbeatAt(null);
-            episode.setExecutionTimeoutAt(null);
-            episode.setRetryable(false);
-            episode.setUpdatedAt(LocalDateTime.now());
-            episodeMapper.updateById(episode);
-            clearExecutionColumns(episode.getId(), false);
+            completionService.complete(episode, analysis, rawResponse, callResult);
         } catch (VideoAnalysisParseException exception) {
             if (callResult != null) {
                 aiInvocationService.markBusinessFailure(callResult.aiCallLogId(), ErrorCode.AI_RESPONSE_INVALID, exception.getMessage());
@@ -317,10 +302,16 @@ public class VideoDecompositionExecutionService {
         AiInvocationResult<VideoUnderstandingResponse> callResult,
         Long fallbackCallLogId
     ) {
+        int terminalProgress = terminalProgress(episode);
+        AiSettlementOutcome settlementOutcome = callResult == null && fallbackCallLogId != null
+            && isUncertainTransportFailure(errorCode, errorMessage)
+                ? AiSettlementOutcome.TRANSPORT_UNKNOWN
+                : callResult == null ? AiSettlementOutcome.PROVIDER_REJECTION : AiSettlementOutcome.BUSINESS_FAILURE;
+        boolean retryable = settlementOutcome != AiSettlementOutcome.TRANSPORT_UNKNOWN;
         episode.setStatus("FAILED");
         episode.setErrorCode(errorCode);
         episode.setErrorMessage(errorMessage);
-        clearExecution(episode, true);
+        clearExecution(episode, retryable);
         episode.setUpdatedAt(LocalDateTime.now());
         jdbcTemplate.update("""
             update video_decomposition_episode
@@ -331,10 +322,10 @@ public class VideoDecompositionExecutionService {
                    execution_phase = null,
                    heartbeat_at = null,
                    execution_timeout_at = null,
-                   retryable = true,
+                   retryable = ?,
                    updated_at = now()
              where id = ?
-            """, errorCode, errorMessage, episode.getId());
+            """, errorCode, errorMessage, retryable, episode.getId());
         markAttempt(
             attempt,
             "FAILED",
@@ -355,11 +346,14 @@ public class VideoDecompositionExecutionService {
             attempt == null ? null : attempt.getExecutionId(),
             callResult == null ? fallbackCallLogId : callResult.aiCallLogId(),
             callResult == null ? null : callResult.resolvedModelId(),
-            callResult == null && fallbackCallLogId != null && isUncertainTransportFailure(errorCode, errorMessage)
-                ? AiSettlementOutcome.TRANSPORT_UNKNOWN
-                : callResult == null ? AiSettlementOutcome.PROVIDER_REJECTION : AiSettlementOutcome.BUSINESS_FAILURE
+            settlementOutcome
         );
-        updateExecution(episode, "FAILED", "VIDEO_ANALYSIS", 100, null, null);
+        updateExecution(episode, "FAILED", "VIDEO_ANALYSIS", terminalProgress, null, null);
+        if (!retryable) {
+            executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+                .set("retryable", false)
+                .eq("id", episode.getExecutionId()));
+        }
     }
 
     private void markAttempt(
@@ -436,7 +430,7 @@ public class VideoDecompositionExecutionService {
             null,
             callLogId == null ? AiSettlementOutcome.PROVIDER_REJECTION : AiSettlementOutcome.PROVIDER_BILLED_FAILURE
         );
-        updateExecution(episode, "FAILED", "DRAFT_GENERATION", 100, null, null);
+        updateExecution(episode, "FAILED", "DRAFT_GENERATION", terminalProgress(episode), null, null);
     }
 
     private VideoDecompositionAttemptEntity currentAttempt(Long episodeId, String phase) {
@@ -462,17 +456,29 @@ public class VideoDecompositionExecutionService {
 
     private void recalculateBatch(Long tenantId, Long batchId) {
         List<VideoDecompositionEpisodeEntity> episodes = episodeMapper.selectByBatch(tenantId, batchId);
-        int failed = (int) episodes.stream().filter(item -> "FAILED".equals(item.getStatus())).count();
-        int completed = (int) episodes.stream().filter(item -> List.of("ANALYSIS_SUCCEEDED", "PENDING_REVIEW", "CONFIRMED").contains(item.getStatus())).count();
+        VideoDecompositionBatchProgress progress = VideoDecompositionBatchProgress.fromEpisodes(
+            episodes, this::persistedExecutionProgress);
         VideoDecompositionBatchEntity batch = batchMapper.selectById(batchId);
-        batch.setFailedEpisodes(failed);
-        batch.setCompletedEpisodes(completed);
-        batch.setStatus(failed > 0 ? "PARTIAL_FAILED" : completed == batch.getTotalEpisodes() ? "ANALYSIS_SUCCEEDED" : "ANALYZING");
+        batch.setFailedEpisodes(progress.failed());
+        batch.setCompletedEpisodes(progress.succeeded());
+        batch.setStatus(progress.status());
         batch.setUpdatedAt(LocalDateTime.now());
         batchMapper.updateById(batch);
     }
 
     private String structuredPrompt(VideoDecompositionEpisodeEntity episode) {
+        AiExecutionTaskEntity execution = executionService.requireTask(episode.getExecutionId());
+        if (execution.redactedInputJson != null && !execution.redactedInputJson.isBlank()) {
+            try {
+                String snapshot = objectMapper.readTree(execution.redactedInputJson)
+                    .path("screenplayPrompt").asText(null);
+                if (snapshot != null && !snapshot.isBlank()) {
+                    return snapshot;
+                }
+            } catch (Exception ignored) {
+                // Historical execution rows did not contain a prompt snapshot.
+            }
+        }
         return promptTemplateRenderer.render(
             AiBusinessScene.VIDEO_UNDERSTANDING.promptTemplateId(),
             Map.of("episodeNo", episode.getEpisodeNo())
@@ -666,7 +672,7 @@ public class VideoDecompositionExecutionService {
         markAttempt(attempt, "FAILED", null, null, "AI_EXECUTION_FAILED", message);
         finishLatestSharedFailure(episode, phase, null, "AI_EXECUTION_FAILED", message);
         failStageSettlement(episode, episode.getExecutionId(), null, null, AiSettlementOutcome.PRE_CALL_CANCELED);
-        updateExecution(episode, "FAILED", phase, 100, null, null);
+        updateExecution(episode, "FAILED", phase, terminalProgress(episode), null, null);
         recalculateBatch(episode.getTenantId(), episode.getBatchId());
     }
 
@@ -759,7 +765,6 @@ public class VideoDecompositionExecutionService {
             new QueryWrapper<AiExecutionAttemptEntity>()
                 .eq("execution_id", episode.getExecutionId())
                 .eq("phase", phase)
-                .eq("status", "STARTED")
                 .orderByDesc("id")
                 .last("limit 1")
         );
@@ -799,6 +804,17 @@ public class VideoDecompositionExecutionService {
         if ("SUCCEEDED".equals(status) || "FAILED".equals(status)) update.set("completed_at", LocalDateTime.now());
         if (resultType != null) update.set("result_type", resultType).set("result_id", resultId);
         executionTaskMapper.update(null, update);
+    }
+
+    private Integer persistedExecutionProgress(VideoDecompositionEpisodeEntity episode) {
+        AiExecutionTaskEntity execution = episode.getExecutionId() == null
+            ? null : executionTaskMapper.selectById(episode.getExecutionId());
+        return execution == null ? null : execution.progress;
+    }
+
+    private int terminalProgress(VideoDecompositionEpisodeEntity episode) {
+        Integer progress = persistedExecutionProgress(episode);
+        return progress == null ? 0 : Math.max(0, Math.min(99, progress));
     }
 
     private int safeVersion(Integer version) {

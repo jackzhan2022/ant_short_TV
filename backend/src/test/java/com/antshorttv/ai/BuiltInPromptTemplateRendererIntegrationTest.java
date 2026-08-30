@@ -40,4 +40,14 @@ class BuiltInPromptTemplateRendererIntegrationTest {
             .contains("startMarker", "endMarker", "必须覆盖原剧本全部正文")
             .doesNotContain("\"content\":\"\"");
     }
+
+    @Test
+    void rendersPersistedDirectVideoScreenplayContract() {
+        String prompt = renderer.render("video-understanding", Map.of("episodeNo", 3));
+
+        assertThat(prompt)
+            .contains("# 第3集：标题", "## 3-1 夜 内 地点", "出场人物：", "（OS）", "（VO）", "——本集完")
+            .contains("{\"script\":\"完整剧本文本\"}")
+            .doesNotContain("结尾钩子：", "【字幕：", "双引号包裹的原声台词");
+    }
 }

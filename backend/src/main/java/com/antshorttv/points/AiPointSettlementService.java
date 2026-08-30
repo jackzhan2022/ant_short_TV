@@ -107,6 +107,36 @@ public class AiPointSettlementService {
     }
 
     @Transactional
+    public AiPointReservationEntity reserveRetry(
+        Long reservationId,
+        Map<AiUsageMetric, BigDecimal> authorizedUsage,
+        String idempotencyKey
+    ) {
+        AiPointReservationEntity reservation = requireReservation(reservationId);
+        if ("RESERVED".equals(reservation.status)) {
+            return reservation;
+        }
+        if ("SETTLEMENT_REVIEW_REQUIRED".equals(reservation.status)) {
+            throw new IllegalStateException("Reservation under settlement review cannot be retried.");
+        }
+        BigDecimal required = calculateModelPointPrice(
+            reservation.pointPriceVersionId,
+            authorizedUsage == null ? Map.of() : authorizedUsage,
+            AiAccountingJson.read(reservation.dimensionsJson)
+        ).multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate)
+            .setScale(POINT_SCALE, RoundingMode.HALF_UP);
+        if (accountingService.reserveFunds(reservation.tenantId, required) == 0) {
+            throw new BusinessException(ErrorCode.TEAM_POINTS_INSUFFICIENT, "团队积分不足，请充值后再重试 AI 任务。");
+        }
+        reservation.reservedPoints = reservation.reservedPoints.add(required);
+        reservation.status = "RESERVED";
+        reservation.updatedAt = LocalDateTime.now();
+        reservationMapper.updateById(reservation);
+        recordLedger(reservation, "RESERVE", required, null, null, idempotencyKey);
+        return reservation;
+    }
+
+    @Transactional
     public AiPointReservationEntity settle(
         Long reservationId,
         Map<AiUsageMetric, BigDecimal> actualUsage,
@@ -124,7 +154,10 @@ public class AiPointSettlementService {
             : calculateModelPointPrice(reservation.pointPriceVersionId,
                 actualUsage == null ? Map.of() : actualUsage,
                 AiAccountingJson.read(reservation.dimensionsJson)).multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate).setScale(8, RoundingMode.HALF_UP);
-        BigDecimal overage = actual.subtract(reservation.reservedPoints).max(BigDecimal.ZERO);
+        BigDecimal outstanding = reservation.reservedPoints
+            .subtract(reservation.settledPoints)
+            .subtract(reservation.releasedPoints);
+        BigDecimal overage = actual.subtract(outstanding).max(BigDecimal.ZERO);
         if (overage.signum() > 0 && !incrementalReserve(reservation, overage, idempotencyKey)) {
             reservation.status = "SETTLEMENT_REVIEW_REQUIRED";
             reservation.updatedAt = LocalDateTime.now();
@@ -133,12 +166,14 @@ public class AiPointSettlementService {
             return reservation;
         }
 
-        BigDecimal totalReserved = reservation.reservedPoints;
-        BigDecimal released = totalReserved.subtract(actual);
-        accountingService.settleFunds(reservation.tenantId, totalReserved, released, actual);
+        outstanding = reservation.reservedPoints
+            .subtract(reservation.settledPoints)
+            .subtract(reservation.releasedPoints);
+        BigDecimal released = outstanding.subtract(actual);
+        accountingService.settleFunds(reservation.tenantId, outstanding, released, actual);
         reservation.status = "SETTLED";
-        reservation.settledPoints = actual;
-        reservation.releasedPoints = released;
+        reservation.settledPoints = reservation.settledPoints.add(actual);
+        reservation.releasedPoints = reservation.releasedPoints.add(released);
         reservation.settledAt = LocalDateTime.now();
         reservation.releasedAt = released.signum() > 0 ? reservation.settledAt : null;
         reservation.updatedAt = reservation.settledAt;

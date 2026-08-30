@@ -7,6 +7,9 @@ import com.antshorttv.execution.AiExecutionCreateCommand;
 import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
+import com.antshorttv.ai.AiBusinessScene;
+import com.antshorttv.ai.PromptTemplateRenderer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.script.ScriptEntity;
 import com.antshorttv.script.ScriptMapper;
@@ -26,7 +29,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -39,7 +41,6 @@ public class VideoDecompositionService {
     private static final BigDecimal MAX_DURATION_SECONDS = BigDecimal.valueOf(1800);
     private static final List<String> SUPPORTED_MIME_TYPES = List.of("video/mp4", "video/quicktime", "video/x-msvideo");
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".mp4", ".mov", ".avi");
-    private static final Set<String> RETRYABLE_STATUSES = Set.of("FAILED");
 
     private final TenantContextResolver tenantContextResolver;
     private final ProjectPermissionGuard projectPermissionGuard;
@@ -47,11 +48,14 @@ public class VideoDecompositionService {
     private final VideoDecompositionEpisodeMapper episodeMapper;
     private final VideoDecompositionAnalysisMapper analysisMapper;
     private final VideoDecompositionAttemptMapper attemptMapper;
+    private final VideoDecompositionScriptResultRepository resultRepository;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final ObjectStorageService objectStorageService;
     private final AiExecutionService executionService;
     private final AiExecutionTaskMapper executionTaskMapper;
+    private final PromptTemplateRenderer promptTemplateRenderer;
+    private final ObjectMapper objectMapper;
     private final Path storageRoot;
 
     public VideoDecompositionService(
@@ -61,11 +65,14 @@ public class VideoDecompositionService {
         VideoDecompositionEpisodeMapper episodeMapper,
         VideoDecompositionAnalysisMapper analysisMapper,
         VideoDecompositionAttemptMapper attemptMapper,
+        VideoDecompositionScriptResultRepository resultRepository,
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
         ObjectStorageService objectStorageService,
         AiExecutionService executionService,
         AiExecutionTaskMapper executionTaskMapper,
+        PromptTemplateRenderer promptTemplateRenderer,
+        ObjectMapper objectMapper,
         @Value("${ai.video.storage-root:storage}") String storageRoot
     ) {
         this.tenantContextResolver = tenantContextResolver;
@@ -74,11 +81,14 @@ public class VideoDecompositionService {
         this.episodeMapper = episodeMapper;
         this.analysisMapper = analysisMapper;
         this.attemptMapper = attemptMapper;
+        this.resultRepository = resultRepository;
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
         this.objectStorageService = objectStorageService;
         this.executionService = executionService;
         this.executionTaskMapper = executionTaskMapper;
+        this.promptTemplateRenderer = promptTemplateRenderer;
+        this.objectMapper = objectMapper;
         this.storageRoot = Path.of(storageRoot).toAbsolutePath().normalize();
     }
 
@@ -131,7 +141,7 @@ public class VideoDecompositionService {
         }
         return batchMapper.selectList(wrapper).stream()
             .filter(batch -> projectId != null || batch.getProjectId() == null || canViewProject(context, batch.getProjectId()))
-            .map(batch -> VideoDecompositionBatchResponse.from(batch, episodeMapper.selectByBatch(tenantId, batch.getId())))
+            .map(batch -> batchResponse(batch, episodeMapper.selectByBatch(tenantId, batch.getId())))
             .toList();
     }
 
@@ -139,7 +149,7 @@ public class VideoDecompositionService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionBatchEntity batch = requireBatch(tenantId, batchId);
         requireProjectAccessIfBound(context, batch.getProjectId(), "PROJECT:VIEW");
-        return VideoDecompositionBatchResponse.from(batch, episodeMapper.selectByBatch(tenantId, batchId));
+        return batchResponse(batch, episodeMapper.selectByBatch(tenantId, batchId));
     }
 
     @Transactional
@@ -193,12 +203,16 @@ public class VideoDecompositionService {
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
         requireProjectAccessIfBound(context, episode.getProjectId(), "AI_SERVICE:USE");
         String phase = normalizePhase(request == null ? null : request.phase());
-        if (!RETRYABLE_STATUSES.contains(episode.getStatus()) || episode.getExecutionToken() != null) {
+        if (!VideoDecompositionRetryPolicy.allows(
+            episode.getStatus(), episode.getRetryable(), episode.getExecutionToken(),
+            resultRepository.findByEpisode(tenantId, episodeId).isPresent()
+        )) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前拆剧任务状态不可重试。");
         }
         int attemptNo = nextAttemptNo(episodeId, phase);
+        executionService.reserveTechnicalRetry(episode.getExecutionId(), attemptNo);
         LocalDateTime now = LocalDateTime.now();
-        episode.setStatus("VIDEO_ANALYSIS".equals(phase) ? "PENDING_ANALYSIS" : "PENDING_DRAFT");
+        episode.setStatus("PENDING_ANALYSIS");
         episode.setErrorCode(null);
         episode.setErrorMessage(null);
         episode.setExecutionToken(null);
@@ -218,6 +232,7 @@ public class VideoDecompositionService {
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
         requireProjectAccessIfBound(context, episode.getProjectId(), "PROJECT:VIEW");
         VideoDecompositionAnalysisEntity analysis = analysisMapper.selectLatest(episodeId);
+        VideoDecompositionScriptResult result = resultRepository.findByEpisode(tenantId, episodeId).orElse(null);
         List<VideoDecompositionAttemptResponse> attempts = attemptMapper.selectList(
                 new LambdaQueryWrapper<VideoDecompositionAttemptEntity>()
                     .eq(VideoDecompositionAttemptEntity::getEpisodeId, episodeId)
@@ -226,12 +241,36 @@ public class VideoDecompositionService {
             .map(VideoDecompositionAttemptResponse::from)
             .toList();
         return new VideoDecompositionEpisodeDetailResponse(
-            VideoDecompositionEpisodeResponse.from(episode),
+            episodeResponse(episode),
+            result == null ? null : result.content(),
+            result == null ? null : result.formatVersion(),
             episode.getDraftContent(),
             currentScriptVersionId(tenantId, episode.getProjectId()),
             analysis == null ? null : analysis.getRawResponse(),
             analysis == null ? null : analysis.getNormalizedJson(),
             attempts
+        );
+    }
+
+    public VideoDecompositionBatchScreenplaysResponse allScreenplays(Long tenantId, Long batchId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        VideoDecompositionBatchEntity batch = requireBatch(tenantId, batchId);
+        requireProjectAccessIfBound(context, batch.getProjectId(), "PROJECT:VIEW");
+        List<VideoDecompositionEpisodeEntity> episodes = episodeMapper.selectByBatch(tenantId, batchId);
+        Map<Long, VideoDecompositionScriptResult> results = resultRepository.listByBatch(tenantId, batchId)
+            .stream().collect(java.util.stream.Collectors.toMap(VideoDecompositionScriptResult::episodeId, value -> value));
+        VideoDecompositionBatchProgress progress = VideoDecompositionBatchProgress.fromEpisodes(
+            episodes, this::persistedExecutionProgress);
+        return new VideoDecompositionBatchScreenplaysResponse(
+            batch.getId(), batch.getName(), progress.status(), progress.percentage(), progress.total(),
+            progress.succeeded(), progress.failed(), progress.processing(), progress.pending(),
+            episodes.stream().map(episode -> {
+                VideoDecompositionScriptResult result = results.get(episode.getId());
+                return new VideoDecompositionScreenplayEpisodeResponse(
+                    episodeResponse(episode), result == null ? null : result.content(),
+                    result == null ? null : result.formatVersion()
+                );
+            }).toList()
         );
     }
 
@@ -244,6 +283,7 @@ public class VideoDecompositionService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
         requireProjectAccessIfBound(context, episode.getProjectId(), "AI_SERVICE:USE");
+        rejectImmutableResultMutation(tenantId, episodeId);
         requireDraftVersion(episode, request.expectedDraftVersion());
 
         episode.setDraftContent(request.draftContent().trim());
@@ -267,6 +307,7 @@ public class VideoDecompositionService {
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
+        rejectImmutableResultMutation(tenantId, episodeId);
         requireProjectAccess(context, request.projectId(), "AI_SERVICE:USE");
         if (episode.getProjectId() != null && !episode.getProjectId().equals(request.projectId())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "该拆剧单集已绑定其他项目。");
@@ -376,7 +417,7 @@ public class VideoDecompositionService {
             "video-decomposition:%d".formatted(episode.getId()),
             UUID.randomUUID().toString(),
             true,
-            "{\"episodeId\":%d}".formatted(episode.getId())
+            executionSnapshot(episode)
         ), Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of());
         episode.setExecutionId(execution.id);
         episodeMapper.updateById(episode);
@@ -391,12 +432,12 @@ public class VideoDecompositionService {
 
     private void recalculateBatch(Long tenantId, Long batchId) {
         List<VideoDecompositionEpisodeEntity> episodes = episodeMapper.selectByBatch(tenantId, batchId);
-        int failed = (int) episodes.stream().filter(item -> "FAILED".equals(item.getStatus())).count();
-        int completed = (int) episodes.stream().filter(item -> List.of("PENDING_REVIEW", "CONFIRMED").contains(item.getStatus())).count();
+        VideoDecompositionBatchProgress progress = VideoDecompositionBatchProgress.fromEpisodes(
+            episodes, this::persistedExecutionProgress);
         VideoDecompositionBatchEntity batch = requireBatch(tenantId, batchId);
-        batch.setFailedEpisodes(failed);
-        batch.setCompletedEpisodes(completed);
-        batch.setStatus(failed > 0 ? "PARTIAL_FAILED" : completed == batch.getTotalEpisodes() ? "PENDING_REVIEW" : "PENDING_ANALYSIS");
+        batch.setFailedEpisodes(progress.failed());
+        batch.setCompletedEpisodes(progress.succeeded());
+        batch.setStatus(progress.status());
         batch.setUpdatedAt(LocalDateTime.now());
         batchMapper.updateById(batch);
     }
@@ -517,10 +558,48 @@ public class VideoDecompositionService {
 
     private String normalizePhase(String phase) {
         String value = phase == null || phase.isBlank() ? "VIDEO_ANALYSIS" : phase.trim().toUpperCase(Locale.ROOT);
-        if (!List.of("VIDEO_ANALYSIS", "DRAFT_GENERATION").contains(value)) {
+        if (!"VIDEO_ANALYSIS".equals(value)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "重试阶段不正确。");
         }
         return value;
+    }
+
+    private String executionSnapshot(VideoDecompositionEpisodeEntity episode) {
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                "episodeId", episode.getId(),
+                "screenplayPrompt", promptTemplateRenderer.render(
+                    AiBusinessScene.VIDEO_UNDERSTANDING.promptTemplateId(),
+                    Map.of("episodeNo", episode.getEpisodeNo())
+                )
+            ));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to snapshot video decomposition prompt.", exception);
+        }
+    }
+
+    private VideoDecompositionBatchResponse batchResponse(
+        VideoDecompositionBatchEntity batch,
+        List<VideoDecompositionEpisodeEntity> episodes
+    ) {
+        return VideoDecompositionBatchResponse.from(
+            batch, episodes, this::episodeResponse, this::persistedExecutionProgress);
+    }
+
+    private VideoDecompositionEpisodeResponse episodeResponse(VideoDecompositionEpisodeEntity episode) {
+        return VideoDecompositionEpisodeResponse.from(episode, persistedExecutionProgress(episode));
+    }
+
+    private Integer persistedExecutionProgress(VideoDecompositionEpisodeEntity episode) {
+        AiExecutionTaskEntity execution = episode.getExecutionId() == null
+            ? null : executionTaskMapper.selectById(episode.getExecutionId());
+        return execution == null ? null : execution.progress;
+    }
+
+    private void rejectImmutableResultMutation(Long tenantId, Long episodeId) {
+        if (resultRepository.findByEpisode(tenantId, episodeId).isPresent()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "生成的剧本为只读结果，不支持编辑或确认导入。");
+        }
     }
 
     private String blankToNull(String value) {

@@ -1,6 +1,8 @@
 package com.antshorttv.video;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 
 import com.antshorttv.ai.AiSecretCodec;
 import com.antshorttv.accounting.AiUsageMetric;
@@ -13,9 +15,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest
@@ -32,6 +36,58 @@ class VideoDecompositionExecutionServiceTest {
 
     @Autowired
     private AiExecutionService aiExecutionService;
+
+    @SpyBean
+    private VideoDecompositionCompletionService completionService;
+
+    @Test
+    void marksSharedAttemptFailedWhenFinalResultPersistenceFails() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = """
+                {
+                  "id":"qwen-persistence-failure",
+                  "choices":[{"message":{"content":"{\"script\":\"# 第1集：落库失败\\n\\n## 1-1 夜 内 客厅\\n\\n出场人物：林晚\\n\\n林晚抬头。\\n\\n——本集完\"}"}}],
+                  "usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            Long modelId = prepareModel("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()));
+            prepareBilling(modelId);
+            preparePointAccount();
+            Long batchId = insertBatch(modelId);
+            Long episodeId = insertEpisode(batchId);
+            doThrow(new IllegalStateException("result insert failed")).when(completionService)
+                .complete(any(), any(), any(), any());
+
+            executionService.executeEpisode(episodeId);
+
+            Long executionId = jdbc.queryForObject(
+                "select execution_id from video_decomposition_episode where id = ?", Long.class, episodeId);
+            assertThat(jdbc.queryForObject(
+                "select status from video_decomposition_episode where id = ?", String.class, episodeId))
+                .isEqualTo("FAILED");
+            assertThat(jdbc.queryForObject("""
+                select status from ai_execution_attempt
+                 where execution_id = ? order by id desc limit 1
+                """, String.class, executionId)).isEqualTo("FAILED");
+            assertThat(jdbc.queryForObject(
+                "select status from ai_execution_task where id = ?", String.class, executionId))
+                .isEqualTo("FAILED");
+            assertThat(jdbc.queryForObject(
+                "select count(*) from video_decomposition_script_result where episode_id = ?",
+                Integer.class, episodeId)).isZero();
+        } finally {
+            server.stop(0);
+        }
+    }
 
     @Test
     void releasesReservedPointsWhenClaimedEpisodeFailsBeforeProviderInvocation() {
@@ -89,7 +145,7 @@ class VideoDecompositionExecutionServiceTest {
             String json = """
                 {
                   "id":"qwen-analysis-success",
-                  "choices":[{"message":{"content":"{\\"script\\":\\"第1集：[天台对峙]\\\\n场景：夜 外 天台\\\\n结尾钩子：林晚握紧录音笔。\\"}"}}],
+                  "choices":[{"message":{"content":"{\\"script\\":\\"# 第1集：天台对峙\\\\n\\\\n## 1-1 夜 外 天台\\\\n\\\\n出场人物：林晚\\\\n\\\\n林晚握紧录音笔。\\\\n\\\\n——本集完\\"}"}}],
                   "usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}
                 }
                 """;
@@ -108,14 +164,16 @@ class VideoDecompositionExecutionServiceTest {
             preparePointAccount();
             Long batchId = insertBatch(modelId);
             Long episodeId = insertEpisode(batchId);
+            int scriptCountBefore = jdbc.queryForObject("select count(*) from script", Integer.class);
+            int scriptVersionCountBefore = jdbc.queryForObject("select count(*) from script_version", Integer.class);
 
             executionService.executeEpisode(episodeId);
 
             var episode = jdbc.queryForMap("select * from video_decomposition_episode where id = ?", episodeId);
-            assertThat(episode.get("status")).as("episode row: %s", episode).isEqualTo("PENDING_REVIEW");
-            assertThat(episode.get("draft_status")).isEqualTo("PENDING_REVIEW");
-            assertThat((String) episode.get("draft_content")).contains("第1集：[天台对峙]");
-            assertThat(episode.get("draft_version")).isEqualTo(1);
+            assertThat(episode.get("status")).as("episode row: %s", episode).isEqualTo("SUCCEEDED");
+            assertThat(episode.get("draft_status")).isEqualTo("NOT_STARTED");
+            assertThat(episode.get("draft_content")).isNull();
+            assertThat(episode.get("draft_version")).isEqualTo(0);
             assertThat(calls.get()).isEqualTo(1);
             assertThat(episode.get("execution_token")).isNull();
             assertThat(episode.get("retryable")).isEqualTo(false);
@@ -147,6 +205,16 @@ class VideoDecompositionExecutionServiceTest {
                 episodeId,
                 analysisExecutionId
             )).isEqualTo(1);
+            var result = jdbc.queryForMap(
+                "select * from video_decomposition_script_result where episode_id = ?", episodeId);
+            assertThat(result.get("analysis_id")).isEqualTo(jdbc.queryForObject(
+                "select id from video_decomposition_analysis where episode_id = ?", Long.class, episodeId));
+            assertThat(result.get("ai_call_log_id")).isEqualTo(jdbc.queryForObject(
+                "select ai_call_log_id from video_decomposition_analysis where episode_id = ?", Long.class, episodeId));
+            assertThat((String) result.get("content")).startsWith("# 第1集：天台对峙");
+            assertThat(result.get("format_version")).isEqualTo("markdown-screenplay-v1");
+            assertThat(jdbc.queryForObject("select count(*) from script", Integer.class)).isEqualTo(scriptCountBefore);
+            assertThat(jdbc.queryForObject("select count(*) from script_version", Integer.class)).isEqualTo(scriptVersionCountBefore);
             var analysisExecution = jdbc.queryForMap(
                 "select * from ai_execution_task where id = ?", analysisExecutionId);
             assertThat(analysisExecution.get("status")).isEqualTo("SUCCEEDED");
@@ -269,6 +337,12 @@ class VideoDecompositionExecutionServiceTest {
             var analysis = jdbc.queryForMap("select * from video_decomposition_analysis where episode_id = ?", episodeId);
             assertThat(analysis.get("status")).isEqualTo("FAILED");
             assertThat((String) analysis.get("raw_response")).contains("\"characters\"");
+            assertThat(jdbc.queryForObject(
+                "select count(*) from video_decomposition_script_result where episode_id = ?",
+                Integer.class, episodeId)).isZero();
+            assertThat(jdbc.queryForObject(
+                "select retryable from video_decomposition_attempt where episode_id = ? order by id desc limit 1",
+                Boolean.class, episodeId)).isTrue();
             var log = jdbc.queryForMap("select * from ai_call_log where id = ?", analysis.get("ai_call_log_id"));
             assertThat(log.get("status")).isEqualTo("FAILED");
             assertThat((String) log.get("error_message")).contains("业务解析失败");
@@ -308,6 +382,102 @@ class VideoDecompositionExecutionServiceTest {
             assertThat(log.get("status")).isEqualTo("FAILED");
             assertThat(log.get("business_scene")).isEqualTo("video_understanding");
             assertThat((String) log.get("error_message")).contains("AI_RATE_LIMIT");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void multiVideoSmokeCoversPartialFailureRetryAndOrderedAllSuccess() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        ObjectMapper mapper = new ObjectMapper();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            int call = calls.incrementAndGet();
+            if (call == 2) {
+                byte[] body = "{\"error\":{\"message\":\"temporary rate limit\"}}".getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(429, body.length);
+                exchange.getResponseBody().write(body);
+                exchange.close();
+                return;
+            }
+            int episodeNo = call == 1 ? 1 : 2;
+            String protocol = "{\"script\":\"# 第%d集：烟测\\n\\n## %d-1 夜 内 客厅\\n\\n出场人物：林晚\\n\\n林晚抬头。\\n\\n——本集完\"}"
+                .formatted(episodeNo, episodeNo);
+            String json = "{\"id\":\"smoke-%d\",\"choices\":[{\"message\":{\"content\":%s}}],"
+                .formatted(call, mapper.writeValueAsString(protocol))
+                + "\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":5,\"total_tokens\":8}}";
+            byte[] body = json.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            Long modelId = prepareModel("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()));
+            prepareBilling(modelId);
+            preparePointAccount();
+            Long batchId = insertBatch(modelId);
+            jdbc.update("update video_decomposition_batch set total_episodes = 2 where id = ?", batchId);
+            Long firstEpisodeId = insertEpisode(batchId, 1);
+            Long secondEpisodeId = insertEpisode(batchId, 2);
+
+            executionService.executeEpisode(firstEpisodeId);
+            executionService.executeEpisode(secondEpisodeId);
+            assertThat(VideoDecompositionBatchProgress.fromStatuses(jdbc.queryForList(
+                "select status from video_decomposition_episode where batch_id = ? order by episode_no",
+                String.class, batchId))).satisfies(progress -> {
+                    assertThat(progress.succeeded()).isEqualTo(1);
+                    assertThat(progress.failed()).isEqualTo(1);
+                    assertThat(progress.status()).isEqualTo("PARTIAL_FAILED");
+                });
+
+            Long executionId = jdbc.queryForObject(
+                "select execution_id from video_decomposition_episode where id = ?", Long.class, secondEpisodeId);
+            var frozen = jdbc.queryForMap(
+                "select requested_model_id, cost_price_version_id, point_price_version_id, execution_version from ai_execution_task where id = ?",
+                executionId);
+            aiExecutionService.reserveTechnicalRetry(executionId, 2);
+            jdbc.update("""
+                update video_decomposition_episode
+                   set status = 'PENDING_ANALYSIS', retryable = false, error_code = null, error_message = null
+                 where id = ?
+                """, secondEpisodeId);
+            jdbc.update("""
+                insert into video_decomposition_attempt
+                  (episode_id, execution_id, attempt_no, phase, status, started_at)
+                values (?, ?, 2, 'VIDEO_ANALYSIS', 'PENDING', now())
+                """, secondEpisodeId, executionId);
+
+            executionService.executeEpisode(secondEpisodeId);
+
+            assertThat(jdbc.queryForMap(
+                "select requested_model_id, cost_price_version_id, point_price_version_id, execution_version from ai_execution_task where id = ?",
+                executionId)).isEqualTo(frozen);
+            assertThat(jdbc.queryForMap(
+                "select status, reserved_points, settled_points, released_points from ai_point_reservation where execution_id = ?",
+                executionId)).satisfies(reservation -> {
+                    assertThat(reservation.get("status")).isEqualTo("SETTLED");
+                    assertThat(reservation.get("reserved_points")).isEqualTo(new BigDecimal("2.00000000"));
+                    assertThat(reservation.get("settled_points")).isEqualTo(new BigDecimal("1.00000000"));
+                    assertThat(reservation.get("released_points")).isEqualTo(new BigDecimal("1.00000000"));
+                });
+            assertThat(jdbc.queryForList(
+                "select content from video_decomposition_script_result result join video_decomposition_episode episode on episode.id = result.episode_id where result.batch_id = ? order by episode.episode_no",
+                String.class, batchId)).containsExactly(
+                    "# 第1集：烟测\n\n## 1-1 夜 内 客厅\n\n出场人物：林晚\n\n林晚抬头。\n\n——本集完",
+                    "# 第2集：烟测\n\n## 2-1 夜 内 客厅\n\n出场人物：林晚\n\n林晚抬头。\n\n——本集完"
+                );
+            assertThat(jdbc.queryForObject(
+                "select count(*) from video_decomposition_script_result where batch_id = ?", Integer.class, batchId)).isEqualTo(2);
+            assertThat(jdbc.queryForObject(
+                "select count(*) from ai_call_log where task_id in (?, ?) and business_scene = 'video_script_draft'",
+                Integer.class, firstEpisodeId, secondEpisodeId)).isZero();
+            assertThat(jdbc.queryForObject(
+                "select status from video_decomposition_batch where id = ?", String.class, batchId)).isEqualTo("SUCCEEDED");
         } finally {
             server.stop(0);
         }
@@ -427,13 +597,17 @@ class VideoDecompositionExecutionServiceTest {
     }
 
     private Long insertEpisode(Long batchId) {
+        return insertEpisode(batchId, 1);
+    }
+
+    private Long insertEpisode(Long batchId, int episodeNo) {
         jdbc.update("""
             insert into video_decomposition_episode
               (batch_id, tenant_id, project_id, episode_no, source_file_name, storage_path, mime_type, file_size,
                duration_seconds, status, analysis_version, draft_status, draft_version, created_by, created_at, updated_at)
-            values (?, 501, 601, 1, 'episode.mp4', 'https://cdn.example.com/episode.mp4', 'video/mp4', 2048,
+            values (?, 501, 601, ?, 'episode.mp4', 'https://cdn.example.com/episode.mp4', 'video/mp4', 2048,
                90, 'PENDING_ANALYSIS', 0, 'NOT_STARTED', 0, 701, now(), now())
-            """, batchId);
+            """, batchId, episodeNo);
         Long episodeId = jdbc.queryForObject("select max(id) from video_decomposition_episode where batch_id = ?", Long.class, batchId);
         jdbc.update("""
             insert into video_decomposition_attempt

@@ -763,13 +763,21 @@ class SchemaMigrationTest {
                                          'script_analysis_config_snapshot')
             """, Integer.class);
         Integer agentCount = jdbc.queryForObject(
-            "select count(*) from ai_agent_definition where version_no = 1 and published = true", Integer.class);
+            "select count(distinct code) from ai_agent_definition where published = true", Integer.class);
         Integer skillCount = jdbc.queryForObject(
             "select count(*) from ai_skill_definition where version_no = 1 and published = true", Integer.class);
         Integer associationCount = jdbc.queryForObject("select count(*) from ai_agent_skill", Integer.class);
 
         assertThat(tableCount).isEqualTo(5);
         assertThat(agentCount).isEqualTo(11);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from ai_agent_definition
+             where code = 'video-understanding' and version_no = 1 and published = false
+            """, Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from ai_agent_definition
+             where code = 'video-understanding' and version_no = 2 and published = true
+            """, Integer.class)).isEqualTo(1);
         assertThat(skillCount).isEqualTo(6);
         assertThat(associationCount).isGreaterThan(0);
     }
@@ -882,5 +890,52 @@ class SchemaMigrationTest {
         assertThat(permissionCount).isEqualTo(4);
         assertThat(adminGrantCount).isEqualTo(4);
         assertThat(legacyDefinitionTableCount).isEqualTo(3);
+    }
+
+    @Test
+    void flywayCreatesImmutableVideoDecompositionScriptResultsAdditively() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer tableCount = jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) = 'video_decomposition_script_result'
+            """, Integer.class);
+        Integer requiredColumns = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'video_decomposition_script_result'
+               and lower(column_name) in (
+                 'tenant_id', 'batch_id', 'episode_id', 'analysis_id', 'ai_call_log_id',
+                 'content', 'format_version', 'created_at'
+               )
+            """, Integer.class);
+        Integer lookupIndexes = jdbc.queryForObject("""
+            select count(distinct lower(index_name)) from information_schema.indexes
+             where lower(table_name) = 'video_decomposition_script_result'
+               and lower(index_name) = 'idx_video_decomposition_script_result_batch'
+            """, Integer.class);
+        Integer uniqueConstraints = jdbc.queryForObject("""
+            select count(*) from information_schema.table_constraints
+             where lower(table_name) = 'video_decomposition_script_result'
+               and constraint_type = 'UNIQUE'
+               and lower(constraint_name) = 'uk_video_decomposition_script_result_episode'
+            """, Integer.class);
+        Integer foreignKeys = jdbc.queryForObject("""
+            select count(*) from information_schema.table_constraints
+             where lower(table_name) = 'video_decomposition_script_result'
+               and constraint_type = 'FOREIGN KEY'
+            """, Integer.class);
+        Integer historicalColumns = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where (lower(table_name) = 'video_decomposition_episode'
+                    and lower(column_name) in ('draft_content', 'draft_status', 'draft_version', 'confirmed_script_version_id'))
+                or (lower(table_name) = 'script_version'
+                    and lower(column_name) in ('source_type', 'content'))
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(1);
+        assertThat(requiredColumns).isEqualTo(8);
+        assertThat(lookupIndexes).isEqualTo(1);
+        assertThat(uniqueConstraints).isEqualTo(1);
+        assertThat(foreignKeys).isGreaterThanOrEqualTo(3);
+        assertThat(historicalColumns).isEqualTo(6);
     }
 }

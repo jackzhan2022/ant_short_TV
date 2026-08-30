@@ -9,6 +9,7 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.points.AiPointReservationCommand;
 import com.antshorttv.points.AiPointReservationEntity;
+import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -22,19 +23,56 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 public class AiExecutionService {
     private final AiExecutionTaskMapper taskMapper;
     private final AiPointSettlementService pointSettlementService;
+    private final AiPointReservationMapper reservationMapper;
     private final AiModelBillingResolver billingResolver;
     private final CommercialEntitlementResolver entitlementResolver;
 
     public AiExecutionService(
         AiExecutionTaskMapper taskMapper,
         AiPointSettlementService pointSettlementService,
+        AiPointReservationMapper reservationMapper,
         AiModelBillingResolver billingResolver
         , CommercialEntitlementResolver entitlementResolver
     ) {
         this.taskMapper = taskMapper;
         this.pointSettlementService = pointSettlementService;
+        this.reservationMapper = reservationMapper;
         this.billingResolver = billingResolver;
         this.entitlementResolver = entitlementResolver;
+    }
+
+    @Transactional
+    public AiExecutionTaskEntity reserveTechnicalRetry(Long executionId, int attemptNo) {
+        AiExecutionTaskEntity task = requireTask(executionId);
+        AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(executionId);
+        if (reservation == null) {
+            throw new IllegalStateException("AI execution has no point reservation.");
+        }
+        AiPointReservationEntity reopened = pointSettlementService.reserveRetry(
+            reservation.id,
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
+            "execution:%d:v%d:retry:%d:reserve".formatted(executionId, task.executionVersion, attemptNo)
+        );
+        updateSettlementSummary(reopened);
+        taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("status", AiExecutionStatus.PENDING.name())
+            .set("phase", "VIDEO_ANALYSIS")
+            .set("progress", 0)
+            .set("retryable", true)
+            .set("next_run_at", LocalDateTime.now())
+            .set("claim_token", null)
+            .set("claimed_at", null)
+            .set("heartbeat_at", null)
+            .set("claim_expires_at", null)
+            .set("error_code", null)
+            .set("error_message", null)
+            .set("completed_at", null)
+            .set("result_type", null)
+            .set("result_id", null)
+            .set("updated_at", LocalDateTime.now())
+            .eq("id", executionId)
+            .in("status", AiExecutionStatus.FAILED.name(), AiExecutionStatus.TIMED_OUT.name()));
+        return requireTask(executionId);
     }
 
     @Transactional
