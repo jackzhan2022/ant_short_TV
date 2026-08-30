@@ -5,6 +5,7 @@ const AiServiceManagementIndex = () => {
   const access = useAccess();
 
   useEffect(() => {
+    if (!access) return;
     if (access.canViewPlatformAiProviders) {
       history.replace('/ai-service-management/model-management');
     } else if (access.canViewPlatformAiModels) {
