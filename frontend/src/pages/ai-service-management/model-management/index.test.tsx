@@ -38,7 +38,9 @@ vi.mock('@ant-design/pro-components', () => ({
 vi.mock('../providers', () => ({
   default: () => <div>service-provider-page</div>,
 }));
-vi.mock('../models', () => ({ default: () => <div>ai-model-page</div> }));
+vi.mock('../platform-models', () => ({
+  default: () => <div>ai-model-page</div>,
+}));
 vi.mock('../logs', () => ({ default: () => <div>call-log-page</div> }));
 vi.mock('../agents', () => ({
   AgentTabContent: () => <div>agent-page</div>,

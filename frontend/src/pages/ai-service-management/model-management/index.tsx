@@ -4,7 +4,7 @@ import { Tabs } from 'antd';
 import { useMemo, useState } from 'react';
 import { AgentTabContent, SkillTabContent } from '../agents';
 import AiCallLogsPage from '../logs';
-import PlatformModelsPage from '../models';
+import PlatformModelsPage from '../platform-models';
 import PlatformProvidersPage from '../providers';
 import WorkflowAgentsPage from '../workflow-agents';
 import WorkflowSkillsPage from '../workflow-skills';
