@@ -105,6 +105,24 @@ describe('access', () => {
     expect(result.canViewAiManagement).toBe(true);
   });
 
+  it('keeps workflow Agent and Skill view/edit permissions independent', () => {
+    const result = access({
+      currentUser: { userid: '1', name: 'Workflow Editor', access: 'user' },
+      platformPermissions: [
+        'PLATFORM_AI_WORKFLOW_AGENT_VIEW',
+        'PLATFORM_AI_WORKFLOW_AGENT_EDIT',
+        'PLATFORM_AI_WORKFLOW_SKILL_VIEW',
+      ],
+    });
+
+    expect(result.canViewAiManagement).toBe(true);
+    expect(result.canViewWorkflowAgents).toBe(true);
+    expect(result.canEditWorkflowAgents).toBe(true);
+    expect(result.canViewWorkflowSkills).toBe(true);
+    expect(result.canEditWorkflowSkills).toBe(false);
+    expect(result.canViewBuiltInAiAgents).toBe(false);
+  });
+
   it('should allow authenticated users to enter project center routes', () => {
     const initialState = {
       currentUser: {
@@ -130,7 +148,11 @@ describe('access', () => {
     });
     const withUsage = access({
       currentUser: { userid: '1', name: 'AI Creator', access: 'user' },
-      tenantPermissions: ['AI_IMAGE_TASK:CREATE', 'AI_VIDEO_TASK:CREATE', 'AI_SERVICE:USE'],
+      tenantPermissions: [
+        'AI_IMAGE_TASK:CREATE',
+        'AI_VIDEO_TASK:CREATE',
+        'AI_SERVICE:USE',
+      ],
     });
 
     expect(withoutUsage.canCreateAiImageTasks).toBe(false);

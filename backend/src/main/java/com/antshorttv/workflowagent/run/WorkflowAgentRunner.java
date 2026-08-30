@@ -1,0 +1,320 @@
+package com.antshorttv.workflowagent.run;
+
+import com.antshorttv.ai.AiChatMessage;
+import com.antshorttv.ai.AiGatewayException;
+import com.antshorttv.ai.AiInvocationRequest;
+import com.antshorttv.ai.AiInvocationResult;
+import com.antshorttv.ai.AiInvocationService;
+import com.antshorttv.ai.AiTextRequest;
+import com.antshorttv.ai.AiTextResponse;
+import com.antshorttv.ai.AiToolCall;
+import com.antshorttv.ai.AiToolDefinition;
+import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
+import com.antshorttv.workflowagent.WorkflowAgentProperties;
+import com.antshorttv.workflowagent.agent.WorkflowAgentCommand;
+import com.antshorttv.workflowagent.agent.WorkflowAgentRecord;
+import com.antshorttv.workflowagent.agent.WorkflowAgentService;
+import com.antshorttv.workflowagent.skill.WorkflowSkillService;
+import com.antshorttv.workflowagent.skill.WorkflowSkillView;
+import com.antshorttv.workflowagent.tool.ToolExecutionContext;
+import com.antshorttv.workflowagent.tool.ToolFailurePolicy;
+import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
+import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
+import com.antshorttv.workflowagent.tool.WorkflowToolSchemaValidator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+
+@Service
+public class WorkflowAgentRunner {
+    private static final Set<String> TRUSTED_SCOPE_ARGUMENTS = Set.of(
+        "tenantId", "userId", "projectId", "episodeId", "taskId", "permissions"
+    );
+
+    private final WorkflowAgentService agents;
+    private final WorkflowSkillService skills;
+    private final WorkflowToolRegistry tools;
+    private final WorkflowToolSchemaValidator schemaValidator;
+    private final AiInvocationService invocation;
+    private final WorkflowAgentRunRepository runs;
+    private final WorkflowAgentScopeGuard scopeGuard;
+    private final WorkflowAgentProperties properties;
+    private final ObjectMapper json;
+
+    public WorkflowAgentRunner(
+        WorkflowAgentService agents,
+        WorkflowSkillService skills,
+        WorkflowToolRegistry tools,
+        WorkflowToolSchemaValidator schemaValidator,
+        AiInvocationService invocation,
+        WorkflowAgentRunRepository runs,
+        WorkflowAgentScopeGuard scopeGuard,
+        WorkflowAgentProperties properties,
+        ObjectMapper json
+    ) {
+        this.agents = agents;
+        this.skills = skills;
+        this.tools = tools;
+        this.schemaValidator = schemaValidator;
+        this.invocation = invocation;
+        this.runs = runs;
+        this.scopeGuard = scopeGuard;
+        this.properties = properties;
+        this.json = json;
+    }
+
+    public WorkflowAgentRunResult runFormal(WorkflowAgentRunInput input) {
+        WorkflowAgentRecord agent = agents.loadForRun(input.agentCode());
+        return execute(agent, "FORMAL", input);
+    }
+
+    public WorkflowAgentRunResult runTest(WorkflowAgentCommand temporary, WorkflowAgentRunInput input) {
+        agents.validate(temporary, false);
+        WorkflowAgentRecord agent = new WorkflowAgentRecord(
+            null,
+            temporary.code() == null || temporary.code().isBlank() ? "temporary-agent" : temporary.code(),
+            temporary.name(), temporary.description(), temporary.systemPrompt(), temporary.modelId(),
+            temporary.temperature(), temporary.maxTokens(), temporary.maxSteps(), temporary.status(),
+            0L, input.userId(), input.userId(), LocalDateTime.now(), LocalDateTime.now(),
+            temporary.skillCodes() == null ? List.of() : List.copyOf(temporary.skillCodes()),
+            temporary.toolCodes() == null ? List.of() : List.copyOf(temporary.toolCodes())
+        );
+        return execute(agent, "TEST", input);
+    }
+
+    private WorkflowAgentRunResult execute(
+        WorkflowAgentRecord agent,
+        String runType,
+        WorkflowAgentRunInput input
+    ) {
+        requireInput(input);
+        scopeGuard.requireAuthorized(input, agent.toolCodes());
+        List<WorkflowAgentSkillSnapshot> skillSnapshots = loadSkills(agent.skillCodes());
+        List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
+        String prompt = composePrompt(agent, skillSnapshots);
+        Long runId = runs.start(new WorkflowAgentRunStart(
+            agent.id(), agent.code(), runType, input.tenantId(), input.userId(), input.projectId(),
+            input.episodeId(), input.taskId(), agent.modelId(), agent.temperature(), agent.maxTokens(),
+            agent.maxSteps(), prompt, skillSnapshots, agent.toolCodes()
+        ));
+        Instant deadline = Instant.now().plusSeconds(properties.getRunTimeoutSeconds());
+        try {
+            return runLoop(runId, agent, input, prompt, allowedTools, deadline);
+        } catch (BusinessException exception) {
+            runs.fail(runId, exception.getErrorCode().name(), exception.getMessage());
+            throw exception;
+        } catch (RuntimeException exception) {
+            runs.fail(runId, ErrorCode.WORKFLOW_AGENT_TOOL_INVALID.name(), safeMessage(exception));
+            throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
+                "Agent 运行失败：" + safeMessage(exception));
+        }
+    }
+
+    private WorkflowAgentRunResult runLoop(
+        Long runId,
+        WorkflowAgentRecord agent,
+        WorkflowAgentRunInput input,
+        String prompt,
+        List<WorkflowToolDefinition> allowedTools,
+        Instant deadline
+    ) {
+        List<AiChatMessage> messages = new ArrayList<>();
+        messages.add(AiChatMessage.system(prompt));
+        messages.add(AiChatMessage.user(input.input()));
+        List<AiToolDefinition> providerTools = allowedTools.stream().map(this::providerTool).toList();
+        Set<String> allowlist = new HashSet<>(agent.toolCodes());
+        ToolExecutionContext context = new ToolExecutionContext(
+            input.tenantId(), input.userId(), input.projectId(), input.episodeId(), input.taskId(),
+            Set.of(), deadline
+        );
+        int stepNo = 0;
+        String traceId = "workflow-agent-" + UUID.randomUUID();
+        for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
+            requireBeforeDeadline(deadline);
+            AiInvocationResult<AiTextResponse> result;
+            int modelStep = ++stepNo;
+            try {
+                result = invocation.invokeText(AiInvocationRequest.text()
+                    .tenantId(input.tenantId())
+                    .userId(input.userId())
+                    .projectId(input.projectId())
+                    .taskId(input.taskId())
+                    .modelId(agent.modelId())
+                    .businessSceneCode("workflow_agent")
+                    .traceId(traceId)
+                    .phase("AGENT_STEP_" + modelRound)
+                    .idempotencyKey("agent-run-" + runId + "-model-" + modelRound)
+                    .requestSummary("Agent " + agent.code() + " round " + modelRound)
+                    .textRequest(new AiTextRequest(
+                        null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
+                        null, remainingSeconds(deadline), 0,
+                        messages, providerTools
+                    ))
+                    .build());
+            } catch (AiGatewayException exception) {
+                runs.recordFailedModelStep(runId, modelStep, exception.getAiCallLogId(),
+                    exception.getErrorCode().name(), exception.getMessage());
+                throw exception;
+            }
+            AiTextResponse response = result.response();
+            List<AiToolCall> calls = response == null ? List.of() : response.toolCalls();
+            String finalContent = response == null ? null : response.content();
+            runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
+            if (calls.isEmpty()) {
+                String output = finalContent == null ? "" : finalContent;
+                runs.complete(runId, output);
+                return new WorkflowAgentRunResult(runId, output);
+            }
+            messages.add(AiChatMessage.assistantToolCalls(calls));
+            for (AiToolCall call : calls) {
+                if (stepNo >= agent.maxSteps()) {
+                    throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
+                        "Agent 已达到最大执行步数 " + agent.maxSteps() + "，停止执行后续工具。");
+                }
+                requireBeforeDeadline(deadline);
+                int toolStep = ++stepNo;
+                if (!allowlist.contains(call.code())) {
+                    BusinessException error = new BusinessException(
+                        ErrorCode.WORKFLOW_AGENT_TOOL_UNAUTHORIZED,
+                        "模型请求了未授权工具：" + call.code()
+                    );
+                    runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
+                        error.getErrorCode().name(), error.getMessage());
+                    throw error;
+                }
+                WorkflowToolDefinition definition = tools.require(call.code());
+                try {
+                    JsonNode arguments = parseArguments(call.argumentsJson());
+                    rejectTrustedScope(arguments);
+                    schemaValidator.validate(definition.inputSchema(), arguments);
+                    JsonNode output = definition.executor().execute(context, arguments);
+                    requireBeforeDeadline(deadline);
+                    schemaValidator.validate(definition.outputSchema(), output);
+                    String serialized = json.writeValueAsString(output);
+                    runs.recordToolStep(runId, toolStep, call.code(), call.argumentsJson(), serialized);
+                    messages.add(AiChatMessage.toolResult(call.id(), serialized));
+                } catch (Exception exception) {
+                    BusinessException normalized = normalizeToolFailure(exception);
+                    runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
+                        normalized.getErrorCode().name(), normalized.getMessage());
+                    if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL) {
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
+                    } else {
+                        throw normalized;
+                    }
+                }
+            }
+        }
+        throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
+            "Agent 已达到最大执行步数 " + agent.maxSteps() + "，仍未产生最终结果。");
+    }
+
+    private List<WorkflowAgentSkillSnapshot> loadSkills(List<String> codes) {
+        return codes.stream().map(code -> {
+            WorkflowSkillView skill = skills.detail(code);
+            return new WorkflowAgentSkillSnapshot(skill.code(), skill.name(), skill.revision(), skill.content());
+        }).toList();
+    }
+
+    private String composePrompt(
+        WorkflowAgentRecord agent,
+        List<WorkflowAgentSkillSnapshot> skillSnapshots
+    ) {
+        StringBuilder prompt = new StringBuilder()
+            .append("# Workflow Agent\n\n")
+            .append("code: ").append(agent.code()).append("\n\n")
+            .append(agent.systemPrompt().strip()).append("\n");
+        if (!skillSnapshots.isEmpty()) {
+            prompt.append("\n# Associated Skills (ordered)\n");
+            for (WorkflowAgentSkillSnapshot skill : skillSnapshots) {
+                prompt.append("\n## Skill: ").append(skill.code())
+                    .append(" (revision ").append(skill.revision()).append(")\n\n")
+                    .append(skill.content().strip()).append("\n");
+            }
+        }
+        return prompt.toString();
+    }
+
+    private AiToolDefinition providerTool(WorkflowToolDefinition tool) {
+        return new AiToolDefinition(tool.code(), tool.description(), json.convertValue(
+            tool.inputSchema(), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}
+        ));
+    }
+
+    private JsonNode parseArguments(String value) {
+        try {
+            JsonNode arguments = json.readTree(value == null || value.isBlank() ? "{}" : value);
+            if (!arguments.isObject()) {
+                throw new IllegalArgumentException("工具参数必须是 JSON object。");
+            }
+            return arguments;
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("工具参数不是合法 JSON。", exception);
+        }
+    }
+
+    private void rejectTrustedScope(JsonNode arguments) {
+        TRUSTED_SCOPE_ARGUMENTS.forEach(field -> {
+            if (arguments.has(field)) {
+                throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
+                    "工具参数不得提供服务端作用域字段：" + field);
+            }
+        });
+    }
+
+    private void requireBeforeDeadline(Instant deadline) {
+        if (!Instant.now().isBefore(deadline)) {
+            throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TIMEOUT,
+                "Agent 执行超时（" + Duration.ofSeconds(properties.getRunTimeoutSeconds()).toSeconds() + " 秒）。");
+        }
+    }
+
+    private int remainingSeconds(Instant deadline) {
+        long seconds = Duration.between(Instant.now(), deadline).toSeconds();
+        return Math.toIntExact(Math.max(1, Math.min(Integer.MAX_VALUE, seconds)));
+    }
+
+    private void requireInput(WorkflowAgentRunInput input) {
+        if (input == null || input.userId() == null || input.tenantId() == null
+            || input.agentCode() == null || input.agentCode().isBlank()
+            || input.input() == null || input.input().isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Agent 运行参数不完整。");
+        }
+    }
+
+    private BusinessException normalizeToolFailure(Exception exception) {
+        if (exception instanceof BusinessException business) {
+            return business;
+        }
+        return new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
+            "工具调用失败：" + safeMessage(exception));
+    }
+
+    private String writeError(BusinessException error) {
+        try {
+            return json.writeValueAsString(Map.of(
+                "ok", false,
+                "errorCode", error.getErrorCode().name(),
+                "message", error.getMessage()
+            ));
+        } catch (JsonProcessingException exception) {
+            return "{\"ok\":false}";
+        }
+    }
+
+    private String safeMessage(Throwable throwable) {
+        String message = throwable.getMessage();
+        return message == null || message.isBlank() ? throwable.getClass().getSimpleName() : message;
+    }
+}

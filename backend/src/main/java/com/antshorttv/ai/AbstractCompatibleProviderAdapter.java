@@ -60,6 +60,10 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             }
             JsonNode usage = root.path("usage");
             String finishReason = root.path("choices").path(0).path("finish_reason").asText(null);
+            List<AiToolCall> toolCalls = parseToolCalls(root.path("choices").path(0).path("message"));
+            if (!toolCalls.isEmpty() && content != null && content.isBlank()) {
+                content = null;
+            }
             return new AiTextResponse(
                 content,
                 root.path("id").asText(null),
@@ -69,7 +73,8 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
                 elapsed(started),
                 Map.of("provider", provider.getCode()),
                 finishReason,
-                "length".equalsIgnoreCase(finishReason)
+                "length".equalsIgnoreCase(finishReason),
+                toolCalls
             );
         } catch (AiGatewayException exception) {
             throw exception;
@@ -268,11 +273,9 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
     }
 
     private Map<String, Object> chatPayload(AiModelEntity model, AiTextRequest request) {
-        List<Map<String, String>> messages = new ArrayList<>();
-        if (request.systemPrompt() != null && !request.systemPrompt().isBlank()) {
-            messages.add(Map.of("role", "system", "content", request.systemPrompt()));
-        }
-        messages.add(Map.of("role", "user", "content", request.userPrompt() == null ? "" : request.userPrompt()));
+        List<Map<String, Object>> messages = request.messages().isEmpty()
+            ? legacyMessages(request)
+            : request.messages().stream().map(this::messagePayload).toList();
         Map<String, Object> payload = new java.util.LinkedHashMap<>();
         payload.put("model", model.getModelCode());
         payload.put("messages", messages);
@@ -288,7 +291,58 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         if (Boolean.TRUE.equals(request.jsonMode())) {
             payload.put("response_format", Map.of("type", "json_object"));
         }
+        if (!request.tools().isEmpty()) {
+            payload.put("tools", request.tools().stream().map(tool -> Map.of(
+                "type", "function",
+                "function", Map.of(
+                    "name", tool.code(),
+                    "description", tool.description(),
+                    "parameters", tool.inputSchema()
+                )
+            )).toList());
+        }
         return payload;
+    }
+
+    private List<Map<String, Object>> legacyMessages(AiTextRequest request) {
+        List<Map<String, Object>> messages = new ArrayList<>();
+        if (request.systemPrompt() != null && !request.systemPrompt().isBlank()) {
+            messages.add(Map.of("role", "system", "content", request.systemPrompt()));
+        }
+        messages.add(Map.of("role", "user", "content", request.userPrompt() == null ? "" : request.userPrompt()));
+        return messages;
+    }
+
+    private Map<String, Object> messagePayload(AiChatMessage message) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("role", message.role().name().toLowerCase(java.util.Locale.ROOT));
+        if (message.content() != null) {
+            payload.put("content", message.content());
+        }
+        if (message.toolCallId() != null) {
+            payload.put("tool_call_id", message.toolCallId());
+        }
+        if (!message.toolCalls().isEmpty()) {
+            payload.put("tool_calls", message.toolCalls().stream().map(call -> Map.of(
+                "id", call.id(),
+                "type", "function",
+                "function", Map.of("name", call.code(), "arguments", call.argumentsJson())
+            )).toList());
+        }
+        return payload;
+    }
+
+    private List<AiToolCall> parseToolCalls(JsonNode message) {
+        List<AiToolCall> calls = new ArrayList<>();
+        for (JsonNode call : message.path("tool_calls")) {
+            JsonNode function = call.path("function");
+            String id = call.path("id").asText(null);
+            String code = function.path("name").asText(null);
+            if (id != null && code != null) {
+                calls.add(new AiToolCall(id, code, function.path("arguments").asText("{}")));
+            }
+        }
+        return List.copyOf(calls);
     }
 
     private Map<String, Object> imagePayload(AiModelEntity model, AiImageRequest request) {

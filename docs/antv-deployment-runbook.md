@@ -89,11 +89,45 @@ The host uses this layout:
 /opt/antv/releases/<timestamp>-<commit>/backend/ant-short-tv-backend-0.1.0-SNAPSHOT.jar
 /opt/antv/releases/<timestamp>-<commit>/backend/env -> /opt/antv/shared/env
 /opt/antv/releases/<timestamp>-<commit>/frontend/dist/
+/opt/antv/shared/workflow-skills/<skill-code>/SKILL.md
 /opt/antv/current -> /opt/antv/releases/<timestamp>-<commit>
 ```
 
 `antv.service` starts the backend JAR from `/opt/antv/current/backend`; Nginx
 serves `/opt/antv/current/frontend/dist` and proxies `/api/` to `127.0.0.1:8080`.
+
+### Persistent Workflow Skill storage
+
+Agent（新）loads Skill（新）from a writable filesystem root. Production must set
+the following absolute path in `/opt/antv/shared/env`; the application refuses
+to start with a relative path under the `prod` or `production` profile and also
+checks writable atomic replacement during startup.
+
+```dotenv
+AI_WORKFLOW_SKILL_ROOT=/opt/antv/shared/workflow-skills
+```
+
+Create the directory once with ownership matching `User=` in `antv.service`.
+Do not place the root below `/opt/antv/releases` and do not copy release-bundled
+sample Skills over it.
+
+```bash
+sudo install -d -m 750 -o <service-user> -g <service-group> /opt/antv/shared/workflow-skills
+sudo -u <service-user> test -r /opt/antv/shared/workflow-skills
+sudo -u <service-user> test -w /opt/antv/shared/workflow-skills
+```
+
+Before every release, back up the Skill root together with the database backup.
+Keep both artifacts under the same timestamp so Agent associations and Skill
+files can be restored consistently.
+
+```bash
+backup=/opt/antv/backups/<timestamp>
+sudo install -d -m 750 "$backup"
+sudo tar -C /opt/antv/shared -czf "$backup/workflow-skills.tar.gz" workflow-skills
+# Create and verify the matching MySQL backup using the production database procedure.
+sudo tar -tzf "$backup/workflow-skills.tar.gz" >/dev/null
+```
 
 ## Deploy
 
@@ -137,12 +171,20 @@ sudo systemctl restart antv.service
 
 ## Post-Deploy Checks
 
+On first deployment of Agent（新）/Skill（新）, keep traffic controlled while the
+backend starts. Flyway must apply V70 before V71: V70 creates independent Agent,
+association, run/audit, and permission structures; V71 creates episode script
+versions used by `save_episode_script`. Do not manually run either migration
+out of order. Confirm Flyway reaches V71 before deploying the matching frontend.
+
 ```bash
 systemctl is-active antv.service
 readlink -f /opt/antv/current
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/api/currentUser
 curl -k -sS -o /dev/null -w '%{http_code}\n' https://antv.aixmax.cn/
 curl -k -sS -D - https://antv.aixmax.cn/api/auth/bootstrap | sed -n '1,20p'
+test -d /opt/antv/shared/workflow-skills
+sudo -u <service-user> test -w /opt/antv/shared/workflow-skills
 ```
 
 Expected results are `active`, the new release path, `401` for the protected
@@ -152,7 +194,31 @@ Chinese error text. If `/actuator/health` is not exposed, do not treat its 404
 as a deployment failure; use the service state and protected API response as
 the backend checks.
 
+After signing in as a platform administrator, perform this Agent（新） smoke
+test before reopening normal traffic:
+
+1. Confirm the model-management page still shows the five legacy tabs, followed
+   by Agent（新） and Skill（新） according to the new independent permissions.
+2. Create a Skill with a unique code and valid complete `SKILL.md`; edit its body
+   and verify the next detail read returns the new revision without a restart.
+3. Create an enabled Agent using a real enabled text model, associate that Skill,
+   and allow `read_project_context`, `read_episode_script`,
+   `validate_screenplay_format`, and `save_episode_script` as needed.
+4. Run the Agent test drawer against a dedicated smoke-test project/episode.
+   Verify the step timeline contains linked model calls, allowed tools only,
+   redacted inputs/results, and a final output.
+5. For a save test, verify a new `script_episode_version` row becomes current,
+   the prior version remains queryable, and the Agent run finishes `SUCCESS`.
+6. Confirm legacy Agent/Skill pages and an existing legacy script analysis flow
+   still load and execute unchanged.
+
 ## Rollback
+
+For this additive change, roll back the application first. Hide or disable the
+two new frontend tabs/formal-run entry, point `current` to the preceding release,
+and restart `antv.service`. Leave V70/V71 tables and
+`/opt/antv/shared/workflow-skills` in place; the previous application ignores
+them, and retaining them avoids losing configuration or audit evidence.
 
 If the new release fails a health check, point `current` back to the preceding
 release and restart the backend:
@@ -161,6 +227,12 @@ release and restart the backend:
 sudo ln -sfnT /opt/antv/releases/<previous-release> /opt/antv/current
 sudo systemctl restart antv.service
 ```
+
+Only restore the database and matching `workflow-skills.tar.gz` if configuration
+or Skill data itself was corrupted. Stop writes first, restore both from the same
+timestamp, verify Agent-to-Skill references, then restart. Never delete the V70
+or V71 tables as part of routine application rollback, and never replace the
+shared Skill root with files from an older release directory.
 
 Do not delete the failed release until the rollback is verified. Retain the
 current release and at least one prior release; remove older releases only

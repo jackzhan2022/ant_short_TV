@@ -827,4 +827,60 @@ class SchemaMigrationTest {
         assertThat(uniquenessConstraints).isEqualTo(4);
         assertThat(legacyImageColumns).isEqualTo(6);
     }
+
+    @Test
+    void flywayCreatesIndependentWorkflowAgentSchemaAndPermissionsWithoutChangingLegacyDefinitions() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        Integer workflowTableCount = jdbc.queryForObject("""
+            select count(distinct lower(table_name))
+              from information_schema.tables
+             where lower(table_name) in (
+               'ai_workflow_agent', 'ai_workflow_agent_skill', 'ai_workflow_agent_tool',
+               'ai_workflow_agent_run', 'ai_workflow_agent_run_step'
+             )
+            """, Integer.class);
+        Integer optimisticLockColumns = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where lower(table_name) = 'ai_workflow_agent'
+               and lower(column_name) in ('revision', 'created_by', 'updated_by', 'created_at', 'updated_at')
+            """, Integer.class);
+        Integer associationOrderColumn = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where lower(table_name) = 'ai_workflow_agent_skill'
+               and lower(column_name) = 'load_order'
+            """, Integer.class);
+        Integer permissionCount = jdbc.queryForObject("""
+            select count(*)
+              from platform_permission
+             where code in (
+               'PLATFORM_AI_WORKFLOW_AGENT_VIEW', 'PLATFORM_AI_WORKFLOW_AGENT_EDIT',
+               'PLATFORM_AI_WORKFLOW_SKILL_VIEW', 'PLATFORM_AI_WORKFLOW_SKILL_EDIT'
+             )
+            """, Integer.class);
+        Integer adminGrantCount = jdbc.queryForObject("""
+            select count(*)
+              from platform_role_permission role_permission
+              join platform_role role on role.id = role_permission.role_id
+              join platform_permission permission on permission.id = role_permission.permission_id
+             where role.code = 'PLATFORM_ADMIN'
+               and permission.code in (
+                 'PLATFORM_AI_WORKFLOW_AGENT_VIEW', 'PLATFORM_AI_WORKFLOW_AGENT_EDIT',
+                 'PLATFORM_AI_WORKFLOW_SKILL_VIEW', 'PLATFORM_AI_WORKFLOW_SKILL_EDIT'
+               )
+            """, Integer.class);
+        Integer legacyDefinitionTableCount = jdbc.queryForObject("""
+            select count(*)
+              from information_schema.tables
+             where lower(table_name) in ('ai_agent_definition', 'ai_skill_definition', 'ai_agent_skill')
+            """, Integer.class);
+
+        assertThat(workflowTableCount).isEqualTo(5);
+        assertThat(optimisticLockColumns).isEqualTo(5);
+        assertThat(associationOrderColumn).isEqualTo(1);
+        assertThat(permissionCount).isEqualTo(4);
+        assertThat(adminGrantCount).isEqualTo(4);
+        assertThat(legacyDefinitionTableCount).isEqualTo(3);
+    }
 }

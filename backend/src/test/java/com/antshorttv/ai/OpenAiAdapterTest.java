@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -60,6 +62,75 @@ class OpenAiAdapterTest {
             assertThat(response.completionTokens()).isEqualTo(3);
             assertThat(response.totalTokens()).isEqualTo(10);
             assertThat(response.finishReason()).isEqualTo("stop");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void sendsNativeToolsAndConversationAndParsesAssistantToolCalls() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = """
+                {
+                  "id":"chatcmpl-tool",
+                  "choices":[{
+                    "finish_reason":"tool_calls",
+                    "message":{"content":null,"tool_calls":[{
+                      "id":"call-1","type":"function",
+                      "function":{"name":"read_episode_script","arguments":"{\\"episodeNo\\":2}"}
+                    }]}
+                  }],
+                  "usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            AiTextRequest request = new AiTextRequest(
+                null, null, 0.2, 512, null, false, null, 10, 0,
+                List.of(
+                    AiChatMessage.system("你是编剧。"),
+                    AiChatMessage.user("读取第二集"),
+                    AiChatMessage.assistantToolCalls(List.of(
+                        new AiToolCall("previous-call", "read_project_context", "{}")
+                    )),
+                    AiChatMessage.toolResult("previous-call", "{\"title\":\"测试项目\"}")
+                ),
+                List.of(new AiToolDefinition(
+                    "read_episode_script", "读取当前剧集", Map.of(
+                        "type", "object",
+                        "properties", Map.of("episodeNo", Map.of("type", "integer")),
+                        "required", List.of("episodeNo")
+                    )
+                ))
+            );
+
+            AiTextResponse response = adapter.text(
+                provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-test", "TEXT"), request, "agent-run-1-step-2"
+            );
+
+            var sent = new ObjectMapper().readTree(requestBody.get());
+            assertThat(sent.path("tools").get(0).path("type").asText()).isEqualTo("function");
+            assertThat(sent.path("tools").get(0).path("function").path("name").asText())
+                .isEqualTo("read_episode_script");
+            assertThat(sent.path("messages").get(3).path("role").asText()).isEqualTo("tool");
+            assertThat(sent.path("messages").get(3).path("tool_call_id").asText())
+                .isEqualTo("previous-call");
+            assertThat(response.content()).isNull();
+            assertThat(response.toolCalls()).containsExactly(
+                new AiToolCall("call-1", "read_episode_script", "{\"episodeNo\":2}")
+            );
+            assertThat(response.finishReason()).isEqualTo("tool_calls");
         } finally {
             server.stop(0);
         }

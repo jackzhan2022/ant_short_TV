@@ -75,6 +75,12 @@ commercial:
 
 ai:
   secret-key: ${AI_SECRET_KEY:}
+  workflow-agent:
+    skill-root: ${AI_WORKFLOW_SKILL_ROOT:skills}
+    max-skill-file-bytes: ${AI_WORKFLOW_MAX_SKILL_FILE_BYTES:1048576}
+    max-steps: ${AI_WORKFLOW_MAX_STEPS:20}
+    run-timeout-seconds: ${AI_WORKFLOW_RUN_TIMEOUT_SECONDS:300}
+    max-log-payload-bytes: ${AI_WORKFLOW_MAX_LOG_PAYLOAD_BYTES:262144}
   testing:
     mock-provider-enabled: ${AI_TESTING_MOCK_PROVIDER_ENABLED:false}
   execution:

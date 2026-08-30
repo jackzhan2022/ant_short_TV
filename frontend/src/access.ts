@@ -17,7 +17,8 @@ export default function access(
   const tenantPermissions = initialState?.tenantPermissions ?? [];
   const platformPermissions = initialState?.platformPermissions ?? [];
   const hasActiveTenant =
-    Boolean(currentUser) && initialState?.selectedTenant?.membership?.status === 'ACTIVE';
+    Boolean(currentUser) &&
+    initialState?.selectedTenant?.membership?.status === 'ACTIVE';
   return {
     canAdmin: currentUser && currentUser.access === 'admin',
     canManageRoles: currentUser && tenantPermissions.includes('ROLE:VIEW'),
@@ -25,7 +26,8 @@ export default function access(
     canViewStyleLibrary: Boolean(currentUser),
     canUseVideoScriptDecomposition:
       currentUser &&
-      hasActiveTenant && tenantPermissions.includes('AI_SERVICE:USE'),
+      hasActiveTenant &&
+      tenantPermissions.includes('AI_SERVICE:USE'),
     canViewScriptReview: hasActiveTenant,
     canViewProjects: hasActiveTenant,
     canCreateProject:
@@ -38,28 +40,35 @@ export default function access(
         platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW') ||
-        platformPermissions.includes('PLATFORM_AI_AGENT_VIEW')),
+        platformPermissions.includes('PLATFORM_AI_AGENT_VIEW') ||
+        platformPermissions.includes('PLATFORM_AI_WORKFLOW_AGENT_VIEW') ||
+        platformPermissions.includes('PLATFORM_AI_WORKFLOW_SKILL_VIEW')),
     canManageBilling:
       currentUser && tenantPermissions.includes('BILLING:MANAGE'),
     canViewCommercial: hasActiveTenant,
     canViewCommercialPackages:
-      currentUser && platformPermissions.includes('PLATFORM_COMMERCIAL_ORDER_VIEW'),
+      currentUser &&
+      platformPermissions.includes('PLATFORM_COMMERCIAL_ORDER_VIEW'),
     canEditCommercialPackages:
-      currentUser && platformPermissions.includes('PLATFORM_COMMERCIAL_PACKAGE_EDIT'),
+      currentUser &&
+      platformPermissions.includes('PLATFORM_COMMERCIAL_PACKAGE_EDIT'),
     canViewPlatformAiProviders:
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
     canCreatePlatformAiProviders:
-      currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_CREATE'),
+      currentUser &&
+      platformPermissions.includes('PLATFORM_AI_PROVIDER_CREATE'),
     canEditPlatformAiProviders:
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_EDIT'),
     canEnablePlatformAiProviders:
-      currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_ENABLE'),
+      currentUser &&
+      platformPermissions.includes('PLATFORM_AI_PROVIDER_ENABLE'),
     canTestPlatformAiProviders:
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_TEST'),
     canViewPlatformAiModels:
       currentUser && platformPermissions.includes('PLATFORM_AI_MODEL_VIEW'),
     canViewModelBilling:
-      currentUser && platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW'),
+      currentUser &&
+      platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW'),
     canPublishModelBilling:
       currentUser &&
       platformPermissions.includes('PLATFORM_AI_PRICE_PUBLISH') &&
@@ -72,6 +81,18 @@ export default function access(
       currentUser && platformPermissions.includes('PLATFORM_AI_MODEL_ENABLE'),
     canViewBuiltInAiAgents:
       currentUser && platformPermissions.includes('PLATFORM_AI_AGENT_VIEW'),
+    canViewWorkflowAgents:
+      currentUser &&
+      platformPermissions.includes('PLATFORM_AI_WORKFLOW_AGENT_VIEW'),
+    canEditWorkflowAgents:
+      currentUser &&
+      platformPermissions.includes('PLATFORM_AI_WORKFLOW_AGENT_EDIT'),
+    canViewWorkflowSkills:
+      currentUser &&
+      platformPermissions.includes('PLATFORM_AI_WORKFLOW_SKILL_VIEW'),
+    canEditWorkflowSkills:
+      currentUser &&
+      platformPermissions.includes('PLATFORM_AI_WORKFLOW_SKILL_EDIT'),
     canViewProjectAiConfig:
       currentUser && tenantPermissions.includes('PROJECT_AI_CONFIG_VIEW'),
     canEditProjectAiConfig:
@@ -96,12 +117,14 @@ export default function access(
       tenantPermissions.includes('ELEMENT:AI_EXTRACT') &&
       tenantPermissions.includes('AI_SERVICE:USE'),
     canEditElements: currentUser && tenantPermissions.includes('ELEMENT:EDIT'),
-    canViewStoryboards: currentUser && tenantPermissions.includes('STORYBOARD:VIEW'),
+    canViewStoryboards:
+      currentUser && tenantPermissions.includes('STORYBOARD:VIEW'),
     canAiBreakdownStoryboards:
       currentUser &&
       tenantPermissions.includes('STORYBOARD:AI_BREAKDOWN') &&
       tenantPermissions.includes('AI_SERVICE:USE'),
-    canEditStoryboards: currentUser && tenantPermissions.includes('STORYBOARD:EDIT'),
+    canEditStoryboards:
+      currentUser && tenantPermissions.includes('STORYBOARD:EDIT'),
     canAiGeneratePrompts:
       currentUser &&
       tenantPermissions.includes('PROMPT:AI_GENERATE') &&
@@ -139,6 +162,7 @@ export default function access(
     canDeleteEpisodeVersions:
       currentUser && tenantPermissions.includes('EPISODE_VERSION:DELETE'),
     canSaveEpisodeVersions:
-      currentUser && tenantPermissions.includes('EPISODE_VERSION:SAVE_MATERIAL'),
+      currentUser &&
+      tenantPermissions.includes('EPISODE_VERSION:SAVE_MATERIAL'),
   };
 }

@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
     canViewPlatformAiModels: true,
     canViewAiCallLogs: true,
     canViewBuiltInAiAgents: true,
+    canViewWorkflowAgents: true,
+    canViewWorkflowSkills: true,
   },
 }));
 
@@ -28,15 +30,25 @@ vi.mock('antd', () => ({
 }));
 
 vi.mock('@ant-design/pro-components', () => ({
-  PageContainer: ({ children }: any) => <main data-testid="model-management-page">{children}</main>,
+  PageContainer: ({ children }: any) => (
+    <main data-testid="model-management-page">{children}</main>
+  ),
 }));
 
-vi.mock('../providers', () => ({ default: () => <div>service-provider-page</div> }));
+vi.mock('../providers', () => ({
+  default: () => <div>service-provider-page</div>,
+}));
 vi.mock('../models', () => ({ default: () => <div>ai-model-page</div> }));
 vi.mock('../logs', () => ({ default: () => <div>call-log-page</div> }));
 vi.mock('../agents', () => ({
   AgentTabContent: () => <div>agent-page</div>,
   SkillTabContent: () => <div>skill-page</div>,
+}));
+vi.mock('../workflow-agents', () => ({
+  default: () => <div>workflow-agent-page</div>,
+}));
+vi.mock('../workflow-skills', () => ({
+  default: () => <div>workflow-skill-page</div>,
 }));
 
 import ModelManagementPage from './index';
@@ -48,17 +60,35 @@ describe('ModelManagementPage', () => {
     mocks.access.canViewPlatformAiModels = true;
     mocks.access.canViewAiCallLogs = true;
     mocks.access.canViewBuiltInAiAgents = true;
+    mocks.access.canViewWorkflowAgents = true;
+    mocks.access.canViewWorkflowSkills = true;
   });
 
   it('opens the first authorized tab and renders all authorized tabs', () => {
     render(<ModelManagementPage />);
 
     expect(screen.getByTestId('model-management-page')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '模型服务商' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'AI 大模型' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '调用日志' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Agent 管理' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Skill 管理' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '模型服务商' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'AI 大模型' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '调用日志' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Agent 管理' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Skill 管理' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Agent（新）' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Skill（新）' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('service-provider-page')).toBeInTheDocument();
   });
 
@@ -76,17 +106,48 @@ describe('ModelManagementPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Skill 管理' }));
     expect(screen.getByText('skill-page')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Agent（新）' }));
+    expect(screen.getByText('workflow-agent-page')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skill（新）' }));
+    expect(screen.getByText('workflow-skill-page')).toBeInTheDocument();
   });
 
   it('opens the first permitted tab without URL fallback', () => {
     mocks.access.canViewPlatformAiProviders = false;
     mocks.access.canViewAiCallLogs = false;
     mocks.access.canViewBuiltInAiAgents = false;
+    mocks.access.canViewWorkflowAgents = false;
+    mocks.access.canViewWorkflowSkills = false;
 
     render(<ModelManagementPage />);
 
-    expect(screen.queryByRole('button', { name: '模型服务商' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '调用日志' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '模型服务商' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '调用日志' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText('ai-model-page')).toBeInTheDocument();
+  });
+
+  it('uses the first authorized new module when legacy tabs are unavailable', () => {
+    mocks.access.canViewPlatformAiProviders = false;
+    mocks.access.canViewPlatformAiModels = false;
+    mocks.access.canViewAiCallLogs = false;
+    mocks.access.canViewBuiltInAiAgents = false;
+    mocks.access.canViewWorkflowAgents = false;
+    mocks.access.canViewWorkflowSkills = true;
+
+    render(<ModelManagementPage />);
+
+    expect(
+      screen.getByRole('button', { name: 'Skill（新）' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Agent（新）' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('workflow-skill-page')).toBeInTheDocument();
   });
 });

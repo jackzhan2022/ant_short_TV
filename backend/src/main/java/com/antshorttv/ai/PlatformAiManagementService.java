@@ -377,7 +377,7 @@ public class PlatformAiManagementService {
     }
 
     private void ensureDefaultCapability(AiModelEntity model, LocalDateTime now) {
-        String capability = switch (model.getServiceType()) {
+        String generationCapability = switch (model.getServiceType()) {
             case "TEXT" -> "TEXT_GENERATION";
             case "IMAGE" -> "IMAGE_GENERATION";
             case "VIDEO" -> "VIDEO_GENERATION";
@@ -385,6 +385,13 @@ public class PlatformAiManagementService {
             case "AUDIO", "VOICE" -> "AUDIO_GENERATION";
             default -> model.getServiceType() + "_GENERATION";
         };
+        upsertCapability(model, generationCapability, now);
+        if ("TEXT".equals(model.getServiceType())) {
+            upsertCapability(model, "TOOL_CALLING", now);
+        }
+    }
+
+    private void upsertCapability(AiModelEntity model, String capability, LocalDateTime now) {
         AiModelCapabilityEntity entity = capabilityMapper.selectOne(new LambdaQueryWrapper<AiModelCapabilityEntity>()
             .eq(AiModelCapabilityEntity::getModelId, model.getId())
             .eq(AiModelCapabilityEntity::getCapability, capability)
