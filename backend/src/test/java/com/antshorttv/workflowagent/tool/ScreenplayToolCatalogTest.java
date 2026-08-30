@@ -19,6 +19,7 @@ class ScreenplayToolCatalogTest {
             "read_adjacent_episodes",
             "read_episode_script",
             "read_project_context",
+            "read_project_full_script",
             "read_script_analysis",
             "read_script_assets",
             "save_episode_script",
@@ -29,5 +30,11 @@ class ScreenplayToolCatalogTest {
             assertThat(tool.outputSchema().path("type").asText()).isEqualTo("object");
         });
         assertThat(registry.require("save_episode_script").riskLevel()).isEqualTo(ToolRiskLevel.WRITE);
+        WorkflowToolDefinition fullScript = registry.require("read_project_full_script");
+        assertThat(fullScript.riskLevel()).isEqualTo(ToolRiskLevel.READ_ONLY);
+        assertThat(fullScript.inputSchema().path("properties")).isEmpty();
+        assertThat(fullScript.outputSchema().path("properties").path("episodes")
+            .path("items").path("required"))
+            .extracting(node -> node.asText()).contains("episodeId", "episodeNo", "content");
     }
 }

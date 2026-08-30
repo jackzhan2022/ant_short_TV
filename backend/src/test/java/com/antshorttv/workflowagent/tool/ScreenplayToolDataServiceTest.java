@@ -94,6 +94,30 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void readsTheCompleteProjectScriptInEpisodeOrder() {
+        jdbc.update("update script_episode set content = 'Current Content 3' where project_id = ? and episode_no = 3",
+            projectId);
+
+        JsonNode fullScript = service.readProjectFullScript(context);
+
+        assertThat(fullScript.path("episodes")).hasSize(3);
+        assertThat(fullScript.path("episodes").get(0).path("episodeNo").asInt()).isEqualTo(1);
+        assertThat(fullScript.path("episodes").get(2).path("episodeNo").asInt()).isEqualTo(3);
+        assertThat(fullScript.path("episodes").get(2).path("content").asText())
+            .isEqualTo("Current Content 3");
+        verify(permissionGuard).require(tenantId, projectId, "SCRIPT:VIEW");
+    }
+
+    @Test
+    void returnsAnEmptyEpisodeArrayWhenProjectHasNoEpisodes() {
+        jdbc.update("delete from script_episode where project_id = ?", projectId);
+
+        JsonNode fullScript = service.readProjectFullScript(context);
+
+        assertThat(fullScript.path("episodes")).isEmpty();
+    }
+
+    @Test
     void validatesScreenplayFormatWithoutAccessingAnotherScope() {
         JsonNode valid = service.validateScreenplayFormat("""
             ## S01 | 内景 · 咖啡厅 | 黄昏

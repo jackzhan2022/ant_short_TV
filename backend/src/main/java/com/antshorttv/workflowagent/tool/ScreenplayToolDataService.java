@@ -92,6 +92,20 @@ public class ScreenplayToolDataService {
         return episodeDetail(rows.get(0));
     }
 
+    public JsonNode readProjectFullScript(ToolExecutionContext context) {
+        requireProject(context, "SCRIPT:VIEW");
+        ObjectNode result = json.createObjectNode();
+        ArrayNode episodes = result.putArray("episodes");
+        jdbc.queryForList("""
+            select id, episode_no, title, summary, content, status
+              from script_episode
+             where tenant_id = ? and project_id = ? and retired_at is null
+             order by episode_no, id
+            """, context.tenantId(), context.projectId())
+            .forEach(row -> episodes.add(episodeDetail(row)));
+        return result;
+    }
+
     public JsonNode readAdjacentEpisodes(ToolExecutionContext context) {
         requireEpisode(context);
         JsonNode current = readEpisodeScript(context);

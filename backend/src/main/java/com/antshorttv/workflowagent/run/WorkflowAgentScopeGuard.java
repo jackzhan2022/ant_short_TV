@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkflowAgentScopeGuard {
     private static final Set<String> PROJECT_TOOLS = Set.of(
-        "read_project_context", "list_episode_scripts", "read_episode_script",
+        "read_project_context", "list_episode_scripts", "read_episode_script", "read_project_full_script",
         "read_adjacent_episodes", "read_script_analysis", "read_script_assets",
         "save_episode_script"
     );

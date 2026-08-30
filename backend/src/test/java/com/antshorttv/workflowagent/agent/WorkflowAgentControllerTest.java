@@ -60,7 +60,7 @@ class WorkflowAgentControllerTest {
         mockMvc.perform(get("/api/platform/ai/agent-tools")
                 .with(SessionTestSupport.authenticated(credential)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.length()", is(8)));
+            .andExpect(jsonPath("$.data.length()", is(9)));
         MvcResult created = mockMvc.perform(post("/api/platform/ai/workflow-agents")
                 .with(SessionTestSupport.authenticated(credential))
                 .contentType(MediaType.APPLICATION_JSON)

@@ -30,6 +30,14 @@ public class ScreenplayToolConfiguration {
     }
 
     @Bean
+    WorkflowToolDefinition readProjectFullScriptTool(ScreenplayToolDataService data, ObjectMapper json) {
+        return definition("read_project_full_script", "读取整部剧本",
+            "按剧集顺序读取当前项目全部有效剧集的完整剧本，并保留每集边界。",
+            emptyInput(json), fullScriptOutput(json), ToolRiskLevel.READ_ONLY,
+            executor((context, arguments) -> data.readProjectFullScript(context)));
+    }
+
+    @Bean
     WorkflowToolDefinition readAdjacentEpisodesTool(ScreenplayToolDataService data, ObjectMapper json) {
         return definition("read_adjacent_episodes", "读取相邻剧集", "读取当前剧集的上一集和下一集。",
             emptyInput(json), adjacentOutput(json), ToolRiskLevel.READ_ONLY,
@@ -136,6 +144,14 @@ public class ScreenplayToolConfiguration {
         for (String field : new String[]{"title", "summary", "status"}) {
             fields.set(field, nullableType(json, "string"));
         }
+        return schema;
+    }
+
+    private ObjectNode fullScriptOutput(ObjectMapper json) {
+        ObjectNode schema = objectSchema(json);
+        schema.putArray("required").add("episodes");
+        ((ObjectNode) schema.path("properties")).putObject("episodes").put("type", "array")
+            .set("items", episodeOutput(json));
         return schema;
     }
 
