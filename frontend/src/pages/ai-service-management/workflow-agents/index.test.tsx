@@ -172,6 +172,22 @@ describe('WorkflowAgentsPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('explains tools on the prompt helper button', async () => {
+    render(
+      <App>
+        <WorkflowAgentsPage />
+      </App>,
+    );
+    await screen.findByText('编剧 Agent');
+    fireEvent.click(screen.getByRole('button', { name: /编辑/ }));
+
+    fireEvent.mouseEnter(
+      await screen.findByRole('button', { name: '读取剧集' }),
+    );
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('读取当前剧集');
+  });
+
   it('runs unsaved form values without saving the Agent', async () => {
     render(
       <App>

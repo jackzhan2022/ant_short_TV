@@ -22,6 +22,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -380,9 +381,12 @@ const WorkflowAgentsPage = () => {
         render: (codes: string[]) => (
           <Space wrap>
             {codes.map((code) => (
-              <Tag color="blue" key={code}>
-                {code}
-              </Tag>
+              <Tooltip
+                key={code}
+                title={tools.find((tool) => tool.code === code)?.description}
+              >
+                <Tag color="blue">{code}</Tag>
+              </Tooltip>
             ))}
           </Space>
         ),
@@ -473,7 +477,7 @@ const WorkflowAgentsPage = () => {
         ),
       },
     ],
-    [editable, load, models],
+    [editable, load, models, tools],
   );
 
   return (
@@ -622,9 +626,23 @@ const WorkflowAgentsPage = () => {
             <Select
               mode="multiple"
               options={tools.map((tool) => ({
-                label: `${tool.name} · ${tool.code}`,
+                label: (
+                  <Tooltip title={tool.description}>
+                    <span>{`${tool.name} · ${tool.code}`}</span>
+                  </Tooltip>
+                ),
                 value: tool.code,
               }))}
+              tagRender={({ closable, label, onClose, value }) => {
+                const tool = tools.find((item) => item.code === value);
+                return (
+                  <Tooltip title={tool?.description}>
+                    <Tag closable={closable} onClose={onClose}>
+                      {label}
+                    </Tag>
+                  </Tooltip>
+                );
+              }}
             />
           </Form.Item>
           <Form.Item
@@ -642,9 +660,9 @@ const WorkflowAgentsPage = () => {
           <Typography.Title level={5}>插入工具调用说明</Typography.Title>
           <Space wrap>
             {tools.map((tool) => (
-              <Button key={tool.code} onClick={() => insertTool(tool)}>
-                {tool.name}
-              </Button>
+              <Tooltip key={tool.code} title={tool.description}>
+                <Button onClick={() => insertTool(tool)}>{tool.name}</Button>
+              </Tooltip>
             ))}
           </Space>
           <Space
