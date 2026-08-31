@@ -81,6 +81,16 @@ ai:
     max-steps: ${AI_WORKFLOW_MAX_STEPS:20}
     run-timeout-seconds: ${AI_WORKFLOW_RUN_TIMEOUT_SECONDS:300}
     max-log-payload-bytes: ${AI_WORKFLOW_MAX_LOG_PAYLOAD_BYTES:262144}
+    split-chunk-target-min: ${AI_WORKFLOW_SPLIT_CHUNK_TARGET_MIN:15000}
+    split-chunk-target-max: ${AI_WORKFLOW_SPLIT_CHUNK_TARGET_MAX:20000}
+    split-chunk-hard-max: ${AI_WORKFLOW_SPLIT_CHUNK_HARD_MAX:24000}
+    split-chunk-overlap: ${AI_WORKFLOW_SPLIT_CHUNK_OVERLAP:1500}
+    split-chunk-concurrency: ${AI_WORKFLOW_SPLIT_CHUNK_CONCURRENCY:3}
+    global-understanding-enabled: ${AI_WORKFLOW_GLOBAL_UNDERSTANDING_ENABLED:false}
+    episode-splitting-enabled: ${AI_WORKFLOW_EPISODE_SPLITTING_ENABLED:false}
+    episode-summary-enabled: ${AI_WORKFLOW_EPISODE_SUMMARY_ENABLED:false}
+    asset-recognition-enabled: ${AI_WORKFLOW_ASSET_RECOGNITION_ENABLED:false}
+    fanout-concurrency: ${AI_WORKFLOW_FANOUT_CONCURRENCY:3}
   testing:
     mock-provider-enabled: ${AI_TESTING_MOCK_PROVIDER_ENABLED:false}
   execution:

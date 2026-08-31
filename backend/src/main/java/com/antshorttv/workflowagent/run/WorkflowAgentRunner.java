@@ -22,6 +22,7 @@ import com.antshorttv.workflowagent.tool.ToolFailurePolicy;
 import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
 import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
 import com.antshorttv.workflowagent.tool.WorkflowToolSchemaValidator;
+import com.antshorttv.workflowagent.tool.WorkflowToolRunState;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,7 +40,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class WorkflowAgentRunner {
     private static final Set<String> TRUSTED_SCOPE_ARGUMENTS = Set.of(
-        "tenantId", "userId", "projectId", "episodeId", "taskId", "permissions"
+        "tenantId", "userId", "projectId", "episodeId", "scriptId", "taskId",
+        "analysisStageId", "agentRunId", "permissions"
     );
 
     private final WorkflowAgentService agents;
@@ -75,8 +77,20 @@ public class WorkflowAgentRunner {
     }
 
     public WorkflowAgentRunResult runFormal(WorkflowAgentRunInput input) {
-        WorkflowAgentRecord agent = agents.loadForRun(input.agentCode());
-        return execute(agent, "FORMAL", input);
+        return runFormal(freezeFormal(input.agentCode()), input);
+    }
+
+    public WorkflowAgentExecutionPlan freezeFormal(String agentCode) {
+        WorkflowAgentRecord agent = agents.loadForRun(agentCode);
+        return new WorkflowAgentExecutionPlan(agent, loadSkills(agent.skillCodes()));
+    }
+
+    public WorkflowAgentRunResult runFormal(WorkflowAgentExecutionPlan plan, WorkflowAgentRunInput input) {
+        if (!plan.agent().code().equals(input.agentCode())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                "冻结的 Agent 配置与运行 code 不匹配。");
+        }
+        return execute(plan.agent(), "FORMAL", input, plan.skillSnapshots());
     }
 
     public WorkflowAgentRunResult runTest(WorkflowAgentCommand temporary, WorkflowAgentRunInput input) {
@@ -90,27 +104,35 @@ public class WorkflowAgentRunner {
             temporary.skillCodes() == null ? List.of() : List.copyOf(temporary.skillCodes()),
             temporary.toolCodes() == null ? List.of() : List.copyOf(temporary.toolCodes())
         );
-        return execute(agent, "TEST", input);
+        return execute(agent, "TEST", input, null);
     }
 
     private WorkflowAgentRunResult execute(
         WorkflowAgentRecord agent,
         String runType,
-        WorkflowAgentRunInput input
+        WorkflowAgentRunInput input,
+        List<WorkflowAgentSkillSnapshot> frozenSkills
     ) {
         requireInput(input);
         scopeGuard.requireAuthorized(input, agent.toolCodes());
-        List<WorkflowAgentSkillSnapshot> skillSnapshots = loadSkills(agent.skillCodes());
+        List<WorkflowAgentSkillSnapshot> skillSnapshots = frozenSkills == null
+            ? loadSkills(agent.skillCodes()) : List.copyOf(frozenSkills);
         List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
         String prompt = composePrompt(agent, skillSnapshots);
+        Long effectiveModelId = input.modelIdOverride() == null ? agent.modelId() : input.modelIdOverride();
+        if (input.modelIdOverride() != null) {
+            agents.requireToolCallingModel(effectiveModelId);
+        }
         Long runId = runs.start(new WorkflowAgentRunStart(
             agent.id(), agent.code(), runType, input.tenantId(), input.userId(), input.projectId(),
-            input.episodeId(), input.taskId(), agent.modelId(), agent.temperature(), agent.maxTokens(),
-            agent.maxSteps(), prompt, skillSnapshots, agent.toolCodes()
+            input.episodeId(), input.scriptId(), input.taskId(), input.analysisStageId(), effectiveModelId,
+            agent.temperature(), agent.maxTokens(), agent.maxSteps(), prompt, skillSnapshots,
+            agent.toolCodes()
         ));
         Instant deadline = Instant.now().plusSeconds(properties.getRunTimeoutSeconds());
         try {
-            return runLoop(runId, agent, input, prompt, allowedTools, deadline);
+            return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline,
+                WorkflowAgentRunContract.forAgent(agent.code()));
         } catch (BusinessException exception) {
             runs.fail(runId, exception.getErrorCode().name(), exception.getMessage());
             throw exception;
@@ -124,20 +146,27 @@ public class WorkflowAgentRunner {
     private WorkflowAgentRunResult runLoop(
         Long runId,
         WorkflowAgentRecord agent,
+        Long modelId,
         WorkflowAgentRunInput input,
         String prompt,
         List<WorkflowToolDefinition> allowedTools,
-        Instant deadline
+        Instant deadline,
+        WorkflowAgentRunContract contract
     ) {
         List<AiChatMessage> messages = new ArrayList<>();
         messages.add(AiChatMessage.system(prompt));
         messages.add(AiChatMessage.user(input.input()));
         List<AiToolDefinition> providerTools = allowedTools.stream().map(this::providerTool).toList();
         Set<String> allowlist = new HashSet<>(agent.toolCodes());
+        WorkflowToolRunState runState = new WorkflowToolRunState();
+        List<WorkflowAgentModelCall> modelCalls = new ArrayList<>();
+        Set<String> trustedPermissions = input.executionId() == null
+            ? Set.of()
+            : Set.of("SCRIPT:VIEW", "SCRIPT:EDIT");
         ToolExecutionContext context = new ToolExecutionContext(
-            input.tenantId(), input.userId(), input.projectId(), input.episodeId(), input.taskId(),
-            Set.of(), deadline
-        );
+            input.tenantId(), input.userId(), input.projectId(), input.episodeId(), input.scriptId(),
+            input.taskId(), input.analysisStageId(), runId, input.executionId(), input.attemptId(),
+            input.executionVersion(), trustedPermissions, deadline, runState);
         int stepNo = 0;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
@@ -150,9 +179,12 @@ public class WorkflowAgentRunner {
                     .userId(input.userId())
                     .projectId(input.projectId())
                     .taskId(input.taskId())
-                    .modelId(agent.modelId())
+                    .modelId(modelId)
                     .businessSceneCode("workflow_agent")
                     .traceId(traceId)
+                    .executionId(input.executionId())
+                    .attemptId(input.attemptId())
+                    .executionVersion(input.executionVersion())
                     .phase("AGENT_STEP_" + modelRound)
                     .idempotencyKey("agent-run-" + runId + "-model-" + modelRound)
                     .requestSummary("Agent " + agent.code() + " round " + modelRound)
@@ -168,13 +200,17 @@ public class WorkflowAgentRunner {
                 throw exception;
             }
             AiTextResponse response = result.response();
+            modelCalls.add(new WorkflowAgentModelCall(
+                result.aiCallLogId(), result.resolvedModelId(), result.providerId(),
+                result.providerRequestId(), result.transportOutcome(), result.businessOutcome()));
             List<AiToolCall> calls = response == null ? List.of() : response.toolCalls();
             String finalContent = response == null ? null : response.content();
             runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
             if (calls.isEmpty()) {
+                contract.requireComplete(runState);
                 String output = finalContent == null ? "" : finalContent;
                 runs.complete(runId, output);
-                return new WorkflowAgentRunResult(runId, output);
+                return new WorkflowAgentRunResult(runId, output, modelCalls);
             }
             messages.add(AiChatMessage.assistantToolCalls(calls));
             for (AiToolCall call : calls) {
@@ -193,8 +229,10 @@ public class WorkflowAgentRunner {
                         error.getErrorCode().name(), error.getMessage());
                     throw error;
                 }
+                contract.requireNext(runState, call.code());
                 WorkflowToolDefinition definition = tools.require(call.code());
                 try {
+                    requireBoundedSavePayload(call.code(), call.argumentsJson());
                     JsonNode arguments = parseArguments(call.argumentsJson());
                     rejectTrustedScope(arguments);
                     schemaValidator.validate(definition.inputSchema(), arguments);
@@ -203,6 +241,11 @@ public class WorkflowAgentRunner {
                     schemaValidator.validate(definition.outputSchema(), output);
                     String serialized = json.writeValueAsString(output);
                     runs.recordToolStep(runId, toolStep, call.code(), call.argumentsJson(), serialized);
+                    runState.recordSuccess(call.code());
+                    if (contract.isTerminal(call.code())) {
+                        runs.complete(runId, serialized);
+                        return new WorkflowAgentRunResult(runId, serialized, modelCalls);
+                    }
                     messages.add(AiChatMessage.toolResult(call.id(), serialized));
                 } catch (Exception exception) {
                     BusinessException normalized = normalizeToolFailure(exception);
@@ -262,6 +305,11 @@ public class WorkflowAgentRunner {
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("工具参数不是合法 JSON。", exception);
         }
+    }
+
+    private void requireBoundedSavePayload(String toolCode, String argumentsJson) {
+        WorkflowAgentPayloadGuard.requireBounded(
+            toolCode, argumentsJson, properties.getMaxLogPayloadBytes());
     }
 
     private void rejectTrustedScope(JsonNode arguments) {

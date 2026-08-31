@@ -102,8 +102,8 @@
 - [x] 10.4 Add repository tests and implement persisted split snapshots, chunk units, mode/fallback reason, monotonic progress, successful-unit reuse, cancellation, and stale-source invalidation.
 - [x] 10.5 Add failing structure-index tests for explicit headings, heading-free scenes, paragraph and line signals, long single paragraphs, Unicode-safe hard cuts, 15K–20K targets, 24K caps, and roughly 1.5K overlap.
 - [x] 10.6 Implement the deterministic `ScriptSplitChunkPlanner` and trusted `read_script_structure` tool without promoting structural or fixed-length cuts to formal episode boundaries.
-- [ ] 10.7 Add failing chunk-analysis tests for bounded concurrency, audited model calls, verified local-to-absolute markers, overlap deduplication, repeated source text, compact trusted-anchor output, partial failure, and failed-only retry.
-- [ ] 10.8 Implement `ScriptSplitChunkAnalyzer` and `analyze_script_chunks` as one logical tool backed by internal model calls and persisted chunk results.
+- [x] 10.7 Add failing chunk-analysis tests for bounded concurrency, audited model calls, verified local-to-absolute markers, overlap deduplication, repeated source text, compact trusted-anchor output, partial failure, and failed-only retry.
+- [x] 10.8 Implement `ScriptSplitChunkAnalyzer` and `analyze_script_chunks` as one logical tool backed by internal model calls and persisted chunk results.
 - [ ] 10.9 Add failing dynamic-contract and runner tests for normal and fallback tool sequences, context preflight, context errors, `finish_reason=length`, empty/no-save responses, clean fallback context, single fallback transition, validation-error exclusion, and one terminal save.
 - [ ] 10.10 Implement the split-specific execution strategy while keeping the generic workflow runner unchanged for other Agents; record mode, fallback reason, model calls, token usage, and phase-specific idempotency.
 - [ ] 10.11 Add API and workbench tests for restored split mode, fallback reason, chunk totals/completion/failures, current action, and one visible splitting stage, then implement the response and UI fields.

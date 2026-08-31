@@ -14,6 +14,8 @@ import com.antshorttv.script.ScriptEpisodeSummaryRepository;
 import com.antshorttv.script.EpisodeAssetPersistenceService;
 import com.antshorttv.script.ScriptSplitChunkPlanner;
 import com.antshorttv.script.ScriptSplitSnapshotStore;
+import com.antshorttv.script.ScriptSplitChunkAnalyzer;
+import com.antshorttv.workflowagent.WorkflowAgentProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -47,6 +49,8 @@ public class ScreenplayToolDataService {
     private final EpisodeAssetPersistenceService episodeAssets;
     private final ScriptSplitChunkPlanner splitChunkPlanner;
     private final ScriptSplitSnapshotStore splitSnapshotStore;
+    private final ScriptSplitChunkAnalyzer splitChunkAnalyzer;
+    private final WorkflowAgentProperties workflowAgentProperties;
     private final EpisodeSplitBoundaryResolver splitBoundaryResolver = new EpisodeSplitBoundaryResolver();
 
     public ScreenplayToolDataService(
@@ -60,7 +64,9 @@ public class ScreenplayToolDataService {
         ScriptEpisodeSummaryRepository episodeSummaries,
         EpisodeAssetPersistenceService episodeAssets,
         ScriptSplitChunkPlanner splitChunkPlanner,
-        ScriptSplitSnapshotStore splitSnapshotStore
+        ScriptSplitSnapshotStore splitSnapshotStore,
+        ScriptSplitChunkAnalyzer splitChunkAnalyzer,
+        WorkflowAgentProperties workflowAgentProperties
     ) {
         this.jdbc = jdbc;
         this.permissionGuard = permissionGuard;
@@ -73,6 +79,8 @@ public class ScreenplayToolDataService {
         this.episodeAssets = episodeAssets;
         this.splitChunkPlanner = splitChunkPlanner;
         this.splitSnapshotStore = splitSnapshotStore;
+        this.splitChunkAnalyzer = splitChunkAnalyzer;
+        this.workflowAgentProperties = workflowAgentProperties;
     }
 
     public JsonNode readProjectContext(ToolExecutionContext context) {
@@ -234,8 +242,11 @@ public class ScreenplayToolDataService {
         }
         String source = rows.get(0);
         String contentHash = sha256(source);
-        var plans = splitChunkPlanner.plan(source,
-            new ScriptSplitChunkPlanner.ChunkSettings(15_000, 20_000, 24_000, 1_500));
+        var plans = splitChunkPlanner.plan(source, new ScriptSplitChunkPlanner.ChunkSettings(
+            workflowAgentProperties.getSplitChunkTargetMin(),
+            workflowAgentProperties.getSplitChunkTargetMax(),
+            workflowAgentProperties.getSplitChunkHardMax(),
+            workflowAgentProperties.getSplitChunkOverlap()));
         var seeds = plans.stream().map(plan -> new ScriptSplitSnapshotStore.SplitChunkSeed(
             plan.chunkNo(), plan.coreStart(), plan.coreEnd(), plan.contextStart(), plan.contextEnd(),
             sha256(source.substring(plan.contextStart(), plan.contextEnd())))).toList();
@@ -273,14 +284,21 @@ public class ScreenplayToolDataService {
 
     public JsonNode analyzeScriptChunks(ToolExecutionContext context) {
         long snapshotId = context.runState().require("splitSnapshotId", Long.class);
-        ScriptSplitSnapshotStore.SplitSnapshot snapshot = splitSnapshotStore.require(snapshotId);
-        ObjectNode result = json.createObjectNode();
-        result.put("total", snapshot.total());
-        result.put("completed", snapshot.completed());
-        result.put("failed", snapshot.failed());
-        result.putArray("candidates");
-        result.putArray("anchors");
-        result.putArray("aiCallLogIds");
+        long modelId = jdbc.queryForObject(
+            "select model_id from ai_workflow_agent_run where id = ?", Long.class,
+            context.agentRunId());
+        var analyzed = splitChunkAnalyzer.analyze(
+            new ScriptSplitChunkAnalyzer.AnalysisContext(
+                context.tenantId(), context.userId(), context.projectId(), context.taskId(),
+                modelId, context.agentRunId(), context.executionId(), context.attemptId(),
+                context.executionVersion()), snapshotId);
+        ObjectNode result = json.valueToTree(analyzed);
+        result.put("failed", splitSnapshotStore.require(snapshotId).failed());
+        int bytes = result.toString().getBytes(StandardCharsets.UTF_8).length;
+        if (bytes > workflowAgentProperties.getMaxLogPayloadBytes()) {
+            throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
+                "分块候选结果超过安全日志上限。");
+        }
         return result;
     }
 

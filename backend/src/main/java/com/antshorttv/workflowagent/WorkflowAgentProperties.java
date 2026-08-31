@@ -28,6 +28,22 @@ public class WorkflowAgentProperties {
     @Min(1024)
     private long maxLogPayloadBytes = 262_144L;
 
+    @Min(1)
+    @Max(16)
+    private int splitChunkConcurrency = 3;
+
+    @Min(1000)
+    private int splitChunkTargetMin = 15_000;
+
+    @Min(1000)
+    private int splitChunkTargetMax = 20_000;
+
+    @Min(1000)
+    private int splitChunkHardMax = 24_000;
+
+    @Min(0)
+    private int splitChunkOverlap = 1_500;
+
     public Path getSkillRoot() {
         return skillRoot;
     }
@@ -67,4 +83,15 @@ public class WorkflowAgentProperties {
     public void setMaxLogPayloadBytes(long maxLogPayloadBytes) {
         this.maxLogPayloadBytes = maxLogPayloadBytes;
     }
+
+    public int getSplitChunkConcurrency() { return splitChunkConcurrency; }
+    public void setSplitChunkConcurrency(int value) { this.splitChunkConcurrency = value; }
+    public int getSplitChunkTargetMin() { return splitChunkTargetMin; }
+    public void setSplitChunkTargetMin(int value) { this.splitChunkTargetMin = value; }
+    public int getSplitChunkTargetMax() { return splitChunkTargetMax; }
+    public void setSplitChunkTargetMax(int value) { this.splitChunkTargetMax = value; }
+    public int getSplitChunkHardMax() { return splitChunkHardMax; }
+    public void setSplitChunkHardMax(int value) { this.splitChunkHardMax = value; }
+    public int getSplitChunkOverlap() { return splitChunkOverlap; }
+    public void setSplitChunkOverlap(int value) { this.splitChunkOverlap = value; }
 }

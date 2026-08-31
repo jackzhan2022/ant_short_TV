@@ -119,6 +119,17 @@ public class ScriptSplitSnapshotStore {
             row.getObject("ai_call_log_id", Long.class), row.getString("candidate_json")), snapshotId);
     }
 
+    public List<SplitChunk> successfulChunks(long snapshotId) {
+        return jdbc.query("""
+            select * from script_split_chunk
+             where snapshot_id = ? and status = 'SUCCEEDED' order by chunk_no
+            """, (row, index) -> chunk(row.getLong("id"), row.getLong("snapshot_id"),
+            row.getInt("chunk_no"), row.getInt("core_start"), row.getInt("core_end"),
+            row.getInt("context_start"), row.getInt("context_end"),
+            row.getString("content_hash"), row.getString("status"),
+            row.getObject("ai_call_log_id", Long.class), row.getString("candidate_json")), snapshotId);
+    }
+
     public SplitSnapshot require(long snapshotId) {
         return jdbc.queryForObject("select * from script_split_snapshot where id = ?",
             (row, index) -> new SplitSnapshot(
