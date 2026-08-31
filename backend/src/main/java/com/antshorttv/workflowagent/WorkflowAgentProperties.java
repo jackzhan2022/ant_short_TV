@@ -44,6 +44,15 @@ public class WorkflowAgentProperties {
     @Min(0)
     private int splitChunkOverlap = 1_500;
 
+    @Min(1)
+    private int splitSafeContextTokens = 800_000;
+
+    @Min(0)
+    private int splitPromptReserveTokens = 12_000;
+
+    @Min(0)
+    private int splitToolReserveTokens = 24_000;
+
     public Path getSkillRoot() {
         return skillRoot;
     }
@@ -94,4 +103,10 @@ public class WorkflowAgentProperties {
     public void setSplitChunkHardMax(int value) { this.splitChunkHardMax = value; }
     public int getSplitChunkOverlap() { return splitChunkOverlap; }
     public void setSplitChunkOverlap(int value) { this.splitChunkOverlap = value; }
+    public int getSplitSafeContextTokens() { return splitSafeContextTokens; }
+    public void setSplitSafeContextTokens(int value) { this.splitSafeContextTokens = value; }
+    public int getSplitPromptReserveTokens() { return splitPromptReserveTokens; }
+    public void setSplitPromptReserveTokens(int value) { this.splitPromptReserveTokens = value; }
+    public int getSplitToolReserveTokens() { return splitToolReserveTokens; }
+    public void setSplitToolReserveTokens(int value) { this.splitToolReserveTokens = value; }
 }

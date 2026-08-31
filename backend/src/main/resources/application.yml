@@ -86,6 +86,9 @@ ai:
     split-chunk-hard-max: ${AI_WORKFLOW_SPLIT_CHUNK_HARD_MAX:24000}
     split-chunk-overlap: ${AI_WORKFLOW_SPLIT_CHUNK_OVERLAP:1500}
     split-chunk-concurrency: ${AI_WORKFLOW_SPLIT_CHUNK_CONCURRENCY:3}
+    split-safe-context-tokens: ${AI_WORKFLOW_SPLIT_SAFE_CONTEXT_TOKENS:800000}
+    split-prompt-reserve-tokens: ${AI_WORKFLOW_SPLIT_PROMPT_RESERVE_TOKENS:12000}
+    split-tool-reserve-tokens: ${AI_WORKFLOW_SPLIT_TOOL_RESERVE_TOKENS:24000}
     global-understanding-enabled: ${AI_WORKFLOW_GLOBAL_UNDERSTANDING_ENABLED:false}
     episode-splitting-enabled: ${AI_WORKFLOW_EPISODE_SPLITTING_ENABLED:false}
     episode-summary-enabled: ${AI_WORKFLOW_EPISODE_SUMMARY_ENABLED:false}

@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -53,6 +54,32 @@ public class WorkflowAgentRunner {
     private final WorkflowAgentScopeGuard scopeGuard;
     private final WorkflowAgentProperties properties;
     private final ObjectMapper json;
+    private final EpisodeSplittingRunPolicy splitPolicy;
+
+    @Autowired
+    public WorkflowAgentRunner(
+        WorkflowAgentService agents,
+        WorkflowSkillService skills,
+        WorkflowToolRegistry tools,
+        WorkflowToolSchemaValidator schemaValidator,
+        AiInvocationService invocation,
+        WorkflowAgentRunRepository runs,
+        WorkflowAgentScopeGuard scopeGuard,
+        WorkflowAgentProperties properties,
+        ObjectMapper json,
+        EpisodeSplittingRunPolicy splitPolicy
+    ) {
+        this.agents = agents;
+        this.skills = skills;
+        this.tools = tools;
+        this.schemaValidator = schemaValidator;
+        this.invocation = invocation;
+        this.runs = runs;
+        this.scopeGuard = scopeGuard;
+        this.properties = properties;
+        this.json = json;
+        this.splitPolicy = splitPolicy;
+    }
 
     public WorkflowAgentRunner(
         WorkflowAgentService agents,
@@ -65,15 +92,8 @@ public class WorkflowAgentRunner {
         WorkflowAgentProperties properties,
         ObjectMapper json
     ) {
-        this.agents = agents;
-        this.skills = skills;
-        this.tools = tools;
-        this.schemaValidator = schemaValidator;
-        this.invocation = invocation;
-        this.runs = runs;
-        this.scopeGuard = scopeGuard;
-        this.properties = properties;
-        this.json = json;
+        this(agents, skills, tools, schemaValidator, invocation, runs, scopeGuard,
+            properties, json, null);
     }
 
     public WorkflowAgentRunResult runFormal(WorkflowAgentRunInput input) {
@@ -153,12 +173,18 @@ public class WorkflowAgentRunner {
         Instant deadline,
         WorkflowAgentRunContract contract
     ) {
+        WorkflowToolRunState runState = new WorkflowToolRunState();
+        boolean splitting = EpisodeSplittingRunPolicy.AGENT_CODE.equals(agent.code());
+        if (splitting && splitPolicy != null) {
+            splitPolicy.preflight(input).ifPresent(reason ->
+                runState.beginSplitFallback(reason.name()));
+        }
         List<AiChatMessage> messages = new ArrayList<>();
         messages.add(AiChatMessage.system(prompt));
-        messages.add(AiChatMessage.user(input.input()));
+        messages.add(AiChatMessage.user("CHUNK_FALLBACK".equals(runState.splitMode())
+            ? fallbackInstruction(runState.splitFallbackReason()) : input.input()));
         List<AiToolDefinition> providerTools = allowedTools.stream().map(this::providerTool).toList();
         Set<String> allowlist = new HashSet<>(agent.toolCodes());
-        WorkflowToolRunState runState = new WorkflowToolRunState();
         List<WorkflowAgentModelCall> modelCalls = new ArrayList<>();
         Set<String> trustedPermissions = input.executionId() == null
             ? Set.of()
@@ -185,18 +211,28 @@ public class WorkflowAgentRunner {
                     .executionId(input.executionId())
                     .attemptId(input.attemptId())
                     .executionVersion(input.executionVersion())
-                    .phase("AGENT_STEP_" + modelRound)
-                    .idempotencyKey("agent-run-" + runId + "-model-" + modelRound)
+                    .phase(("CHUNK_FALLBACK".equals(runState.splitMode())
+                        ? "AGENT_FALLBACK_STEP_" : "AGENT_STEP_") + modelRound)
+                    .idempotencyKey("agent-run-" + runId
+                        + ("CHUNK_FALLBACK".equals(runState.splitMode()) ? "-fallback-" : "-model-")
+                        + modelRound)
                     .requestSummary("Agent " + agent.code() + " round " + modelRound)
                     .textRequest(new AiTextRequest(
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
                         null, remainingSeconds(deadline), 0,
-                        messages, providerTools
+                        messages, providerTools, splitting ? "disabled" : null
                     ))
                     .build());
             } catch (AiGatewayException exception) {
                 runs.recordFailedModelStep(runId, modelStep, exception.getAiCallLogId(),
                     exception.getErrorCode().name(), exception.getMessage());
+                if (splitting && splitPolicy != null) {
+                    var fallback = splitPolicy.classifyGateway(exception, runState);
+                    if (fallback.isPresent()) {
+                        beginFallback(messages, prompt, runState, fallback.get());
+                        continue;
+                    }
+                }
                 throw exception;
             }
             AiTextResponse response = result.response();
@@ -207,6 +243,13 @@ public class WorkflowAgentRunner {
             String finalContent = response == null ? null : response.content();
             runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
             if (calls.isEmpty()) {
+                if (splitting && splitPolicy != null) {
+                    var fallback = splitPolicy.classify(response, runState);
+                    if (fallback.isPresent()) {
+                        beginFallback(messages, prompt, runState, fallback.get());
+                        continue;
+                    }
+                }
                 contract.requireComplete(runState);
                 String output = finalContent == null ? "" : finalContent;
                 runs.complete(runId, output);
@@ -305,6 +348,24 @@ public class WorkflowAgentRunner {
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("工具参数不是合法 JSON。", exception);
         }
+    }
+
+    private void beginFallback(
+        List<AiChatMessage> messages,
+        String prompt,
+        WorkflowToolRunState state,
+        EpisodeSplittingRunPolicy.FallbackReason reason
+    ) {
+        state.beginSplitFallback(reason.name());
+        messages.clear();
+        messages.add(AiChatMessage.system(prompt));
+        messages.add(AiChatMessage.user(fallbackInstruction(reason.name())));
+    }
+
+    private String fallbackInstruction(String reason) {
+        return "全文边界分析未完成，原因：" + reason
+            + "。立即调用 read_script_structure，随后调用 analyze_script_chunks，"
+            + "最后仅用可信候选调用 save_episode_splitting。";
     }
 
     private void requireBoundedSavePayload(String toolCode, String argumentsJson) {

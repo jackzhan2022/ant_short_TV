@@ -249,6 +249,178 @@ class WorkflowAgentRunnerTest {
         assertThat(start.getValue().agentId()).isNull();
     }
 
+    @Test
+    void globalUnderstandingRequiresOrderedReadAndTerminalSave() throws Exception {
+        WorkflowToolDefinition read = new WorkflowToolDefinition(
+            "read_current_script", "读取当前剧本", "读取当前剧本",
+            json.readTree("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.READ_ONLY,
+            ToolFailurePolicy.TERMINAL, executorReturning("{\"content\":\"正文\"}"));
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_global_understanding", "保存全局理解", "保存全局理解",
+            json.readTree("{\"type\":\"object\"}"), json.readTree("{\"type\":\"object\"}"),
+            ToolRiskLevel.WRITE, ToolFailurePolicy.TERMINAL,
+            executorReturning("{\"saved\":true,\"globalUnderstandingId\":88}"));
+        runner = runnerWith(List.of(read, save), 30);
+        when(skills.detail("short-drama-analysis-foundation")).thenReturn(new WorkflowSkillView(
+            "short-drama-analysis-foundation", "基础", "基础约束", "当前稿规则", "foundation-v1", List.of()));
+        when(skills.detail("short-drama-global-understanding-framework")).thenReturn(new WorkflowSkillView(
+            "short-drama-global-understanding-framework", "框架", "字段框架", "全局字段规则", "framework-v1", List.of()));
+        when(agents.loadForRun("short-drama-global-understanding")).thenReturn(new WorkflowAgentRecord(
+            4L, "short-drama-global-understanding", "剧情全局理解", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 4, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(
+                "short-drama-analysis-foundation",
+                "short-drama-global-understanding-framework"),
+            List.of("read_current_script", "save_global_understanding")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("read", "read_current_script", "{}")), 801L))
+            .thenReturn(result(null, List.of(new AiToolCall(
+                "save", "save_global_understanding", "{\"schemaVersion\":1,\"content\":{}}")), 802L));
+
+        WorkflowAgentRunResult completed = runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-global-understanding", "执行", 7L, 25L, null, 77L, null, null, 9L,
+            501L, 502L, 3, 18L));
+
+        assertThat(completed.output()).contains("\"saved\":true");
+        assertThat(completed.modelCalls()).hasSize(2);
+        var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
+        verify(runs).start(start.capture());
+        assertThat(start.getValue().skillSnapshots())
+            .extracting(WorkflowAgentSkillSnapshot::code)
+            .containsExactly("short-drama-analysis-foundation", "short-drama-global-understanding-framework");
+        assertThat(start.getValue().modelId()).isEqualTo(18L);
+        verify(agents).requireToolCallingModel(18L);
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
+        assertThat(requests.getAllValues()).allSatisfy(request -> {
+            assertThat(request.executionId()).isEqualTo(501L);
+            assertThat(request.attemptId()).isEqualTo(502L);
+            assertThat(request.executionVersion()).isEqualTo(3);
+            assertThat(request.modelId()).isEqualTo(18L);
+        });
+        verify(runs).complete(101L, "{\"saved\":true,\"globalUnderstandingId\":88}");
+    }
+
+    @Test
+    void globalUnderstandingCannotFinishWithoutRequiredSave() {
+        runner = runnerWith(List.of(
+            tool("read_current_script"), tool("save_global_understanding")), 30);
+        when(agents.loadForRun("short-drama-global-understanding")).thenReturn(new WorkflowAgentRecord(
+            4L, "short-drama-global-understanding", "剧情全局理解", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 4, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_script", "save_global_understanding")));
+        when(invocation.invokeText(any())).thenReturn(result("已完成", List.of(), 803L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-global-understanding", "执行", 7L, 25L, null, 77L, null, null, 9L)))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("必须调用");
+    }
+
+    @Test
+    void globalUnderstandingRejectsSaveBeforeRead() {
+        runner = runnerWith(List.of(
+            tool("read_current_script"), tool("save_global_understanding")), 30);
+        when(agents.loadForRun("short-drama-global-understanding")).thenReturn(globalAgent());
+        when(invocation.invokeText(any())).thenReturn(result(null, List.of(new AiToolCall(
+            "save", "save_global_understanding", "{\"schemaVersion\":1,\"content\":{}}")), 804L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-global-understanding", "执行", 7L, 25L, null, 77L, null, null, 9L)))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("按顺序");
+    }
+
+    @Test
+    void globalUnderstandingStopsAtTheFirstTerminalSave() throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_global_understanding", "保存全局理解", "保存全局理解",
+            json.readTree("{\"type\":\"object\"}"), json.readTree("{\"type\":\"object\"}"),
+            ToolRiskLevel.WRITE, ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    saves.incrementAndGet();
+                    try {
+                        return json.readTree("{\"saved\":true}");
+                    } catch (java.io.IOException exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                }
+            });
+        runner = runnerWith(List.of(tool("read_current_script"), save), 30);
+        when(agents.loadForRun("short-drama-global-understanding")).thenReturn(globalAgent());
+        when(invocation.invokeText(any())).thenReturn(result(null, List.of(
+            new AiToolCall("read", "read_current_script", "{}"),
+            new AiToolCall("save-1", "save_global_understanding", "{\"schemaVersion\":1,\"content\":{}}"),
+            new AiToolCall("save-2", "save_global_understanding", "{\"schemaVersion\":1,\"content\":{}}")
+        ), 805L));
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-global-understanding", "执行", 7L, 25L, null, 77L, null, null, 9L));
+
+        assertThat(saves).hasValue(1);
+    }
+
+    @Test
+    void globalUnderstandingRejectsAnOversizedSavePayloadBeforeExecution() throws Exception {
+        WorkflowAgentProperties properties = new WorkflowAgentProperties();
+        properties.setRunTimeoutSeconds(30);
+        properties.setMaxLogPayloadBytes(80);
+        runner = new WorkflowAgentRunner(
+            agents, skills, new WorkflowToolRegistry(List.of(
+                tool("read_current_script"), tool("save_global_understanding"))),
+            new WorkflowToolSchemaValidator(), invocation, runs, scopeGuard, properties, json);
+        when(agents.loadForRun("short-drama-global-understanding")).thenReturn(globalAgent());
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("read", "read_current_script", "{}")), 806L))
+            .thenReturn(result(null, List.of(new AiToolCall(
+                "save", "save_global_understanding",
+                "{\"schemaVersion\":1,\"content\":{\"synopsis\":\"" + "x".repeat(200) + "\"}}")), 807L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-global-understanding", "执行", 7L, 25L, null, 77L, null, null, 9L)))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("负载");
+    }
+
+    @Test
+    void splittingClearsFullContextAndCompletesTheFallbackSequenceAfterTruncation() {
+        WorkflowAgentProperties properties = new WorkflowAgentProperties();
+        properties.setRunTimeoutSeconds(30);
+        EpisodeSplittingRunPolicy policy = new EpisodeSplittingRunPolicy(properties, input -> "small");
+        runner = new WorkflowAgentRunner(
+            agents, skills, new WorkflowToolRegistry(List.of(
+                tool("read_current_script"), tool("read_script_structure"),
+                tool("analyze_script_chunks"), tool("save_episode_splitting"))),
+            new WorkflowToolSchemaValidator(), invocation, runs, scopeGuard, properties, json, policy);
+        when(agents.loadForRun("short-drama-episode-splitting")).thenReturn(splitAgent());
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("read", "read_current_script", "{}")), 901L))
+            .thenReturn(truncated(902L))
+            .thenReturn(result(null, List.of(new AiToolCall("structure", "read_script_structure", "{}")), 903L))
+            .thenReturn(result(null, List.of(new AiToolCall("analyze", "analyze_script_chunks", "{}")), 904L))
+            .thenReturn(result(null, List.of(new AiToolCall("save", "save_episode_splitting", "{}")), 905L));
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-episode-splitting", "FULL_INPUT", 7L, 25L, null, 77L,
+            null, null, 9L));
+
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(5)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(2).textRequest().messages())
+            .extracting(AiChatMessage::content).doesNotContain("FULL_INPUT");
+        assertThat(requests.getAllValues().get(2).textRequest().messages().get(1).content())
+            .contains("read_script_structure", "OUTPUT_TRUNCATED");
+        assertThat(requests.getAllValues()).allSatisfy(request ->
+            assertThat(request.textRequest().thinkingMode()).isEqualTo("disabled"));
+    }
+
     private WorkflowAgentRecord agent(int maxSteps, List<String> skillCodes, List<String> toolCodes) {
         return new WorkflowAgentRecord(3L, "screenplay-agent", "编剧", "", "遵循工作流。", 8L,
             new BigDecimal("0.2"), 2048, maxSteps, "ENABLED", 0L, 9L, 9L,
@@ -291,5 +463,45 @@ class WorkflowAgentRunnerTest {
         } catch (java.io.IOException exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    private WorkflowAgentRecord globalAgent() {
+        return new WorkflowAgentRecord(
+            4L, "short-drama-global-understanding", "剧情全局理解", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 4, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_script", "save_global_understanding"));
+    }
+
+    private WorkflowAgentRecord splitAgent() {
+        return new WorkflowAgentRecord(
+            5L, "short-drama-episode-splitting", "剧集智能拆分", "", "执行", 8L,
+            new BigDecimal("0.2"), 16384, 10, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
+                "read_current_script", "read_script_structure", "analyze_script_chunks",
+                "save_episode_splitting"));
+    }
+
+    private AiInvocationResult<AiTextResponse> truncated(Long logId) {
+        AiTextResponse response = new AiTextResponse(
+            "partial", "provider-1", 1, 1, 2, 10L, Map.of(), "length", true, List.of());
+        return new AiInvocationResult<>(AiCapability.TEXT, "workflow_agent", response, "partial", logId,
+            "provider-1", 8L, 2L, "DeepSeek", 1, 1, 2, 10L, "SUCCESS", null, null);
+    }
+
+    private WorkflowToolExecutor executorReturning(String value) {
+        return new WorkflowToolExecutor() {
+            @Override
+            public com.fasterxml.jackson.databind.JsonNode execute(
+                com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                com.fasterxml.jackson.databind.JsonNode arguments
+            ) {
+                try {
+                    return json.readTree(value);
+                } catch (java.io.IOException exception) {
+                    throw new IllegalStateException(exception);
+                }
+            }
+        };
     }
 }

@@ -34,7 +34,7 @@ class RemainingAnalysisAgentBootstrapTest {
         assertDefinition(EpisodeSplittingAgentBootstrap.AGENT_CODE, modelId,
             List.of("short-drama-analysis-foundation", "short-drama-episode-splitting-framework"),
             List.of("read_current_script", "read_script_structure", "analyze_script_chunks",
-                "save_episode_splitting"), 16384, 8);
+                "save_episode_splitting"), 16384, 10);
         assertDefinition(EpisodeSummaryAgentBootstrap.AGENT_CODE, modelId,
             List.of("short-drama-analysis-foundation", "short-drama-episode-summary-framework"),
             List.of("read_current_episode", "save_episode_summary"), 16384, 4);
