@@ -88,8 +88,8 @@
 
 - [x] 9.1 Run focused migration, repository, tool schema, scope, Agent runner, split, summary, matcher, finalizer, coordinator, controller, and frontend test suites and resolve all failures.
 - [x] 9.2 Run the full backend test suite plus frontend type-check, Jest tests, Biome lint, and Ant Design lint required by the repository.
-- [ ] 9.3 Add end-to-end coverage for a multi-episode script proving AI-only split, stable episode IDs, per-episode summaries, cross-episode character reuse, multiple looks, prop-state binding, progress restoration, and formal page reads.
-- [ ] 9.4 Add failure end-to-end coverage for stale source, invalid split coverage, ambiguous asset match, one failed child Run, targeted retry, transaction rollback, and no premature retirement.
+- [x] 9.3 Add end-to-end coverage for a multi-episode script proving AI-only split, stable episode IDs, per-episode summaries, cross-episode character reuse, multiple looks, prop-state binding, progress restoration, and formal page reads.
+- [x] 9.4 Add failure end-to-end coverage for stale source, invalid split coverage, ambiguous asset match, one failed child Run, targeted retry, transaction rollback, and no premature retirement.
 - [x] 9.5 Verify model compatibility and realistic token, timeout, concurrency, call-count, billing, and payload limits with the configured DeepSeek-compatible tool-calling path.
 - [x] 9.6 Document new environment flags, concurrency/retry defaults, formal table ownership, legacy compatibility reads, rollout order, monitored error codes, and rollback procedure.
 - [x] 9.7 Enable and smoke-test the three adapters sequentially—split, summary, recognition—in a non-production environment before production rollout.
