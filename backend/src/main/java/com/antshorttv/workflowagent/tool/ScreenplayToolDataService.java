@@ -3,10 +3,24 @@ package com.antshorttv.workflowagent.tool;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.rbac.ProjectPermissionGuard;
+import com.antshorttv.script.ScriptGlobalUnderstandingDocument;
+import com.antshorttv.script.ScriptGlobalUnderstandingRepository;
+import com.antshorttv.script.GlobalUnderstandingProgress;
+import com.antshorttv.script.EpisodeSplitBoundaryResolver;
+import com.antshorttv.script.ScriptEpisodeResponse;
+import com.antshorttv.script.ScriptEpisodeService;
+import com.antshorttv.script.ScriptEpisodeSummaryDocument;
+import com.antshorttv.script.ScriptEpisodeSummaryRepository;
+import com.antshorttv.script.EpisodeAssetPersistenceService;
+import com.antshorttv.script.ScriptSplitChunkPlanner;
+import com.antshorttv.script.ScriptSplitSnapshotStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -26,17 +40,39 @@ public class ScreenplayToolDataService {
     private final ProjectPermissionGuard permissionGuard;
     private final ObjectMapper json;
     private final EpisodeScriptCurrentSelector currentSelector;
+    private final ScriptGlobalUnderstandingRepository globalUnderstanding;
+    private final GlobalUnderstandingProgressWriter progressWriter;
+    private final ScriptEpisodeService episodeService;
+    private final ScriptEpisodeSummaryRepository episodeSummaries;
+    private final EpisodeAssetPersistenceService episodeAssets;
+    private final ScriptSplitChunkPlanner splitChunkPlanner;
+    private final ScriptSplitSnapshotStore splitSnapshotStore;
+    private final EpisodeSplitBoundaryResolver splitBoundaryResolver = new EpisodeSplitBoundaryResolver();
 
     public ScreenplayToolDataService(
         JdbcTemplate jdbc,
         ProjectPermissionGuard permissionGuard,
         ObjectMapper json,
-        EpisodeScriptCurrentSelector currentSelector
+        EpisodeScriptCurrentSelector currentSelector,
+        ScriptGlobalUnderstandingRepository globalUnderstanding,
+        GlobalUnderstandingProgressWriter progressWriter,
+        ScriptEpisodeService episodeService,
+        ScriptEpisodeSummaryRepository episodeSummaries,
+        EpisodeAssetPersistenceService episodeAssets,
+        ScriptSplitChunkPlanner splitChunkPlanner,
+        ScriptSplitSnapshotStore splitSnapshotStore
     ) {
         this.jdbc = jdbc;
         this.permissionGuard = permissionGuard;
         this.json = json;
         this.currentSelector = currentSelector;
+        this.globalUnderstanding = globalUnderstanding;
+        this.progressWriter = progressWriter;
+        this.episodeService = episodeService;
+        this.episodeSummaries = episodeSummaries;
+        this.episodeAssets = episodeAssets;
+        this.splitChunkPlanner = splitChunkPlanner;
+        this.splitSnapshotStore = splitSnapshotStore;
     }
 
     public JsonNode readProjectContext(ToolExecutionContext context) {
@@ -153,6 +189,443 @@ public class ScreenplayToolDataService {
         result.set("scenes", assets("scene_asset", context));
         result.set("props", assets("prop_asset", context));
         return result;
+    }
+
+    public JsonNode readCurrentScript(ToolExecutionContext context) {
+        requireScript(context, "SCRIPT:VIEW");
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            select content, updated_at from script
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+            """, context.tenantId(), context.projectId(), context.scriptId());
+        if (rows.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "当前剧本不存在。");
+        }
+        String content = String.valueOf(rows.get(0).getOrDefault("content", ""));
+        if (content.length() > 2_000_000) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前剧本超过 Agent 可读取的长度限制。");
+        }
+        String hash = sha256(content);
+        context.runState().put("currentScriptHash", hash);
+        GlobalUnderstandingProgress analyzing = GlobalUnderstandingProgress.analyzing();
+        updateAnalysisProgress(context, analyzing.percent(), analyzing.action());
+        ObjectNode result = json.createObjectNode();
+        result.put("content", content);
+        result.put("contentHash", hash);
+        Object updatedAt = rows.get(0).get("updated_at");
+        if (updatedAt == null) {
+            result.putNull("updatedAt");
+        } else {
+            result.put("updatedAt", String.valueOf(updatedAt));
+        }
+        return result;
+    }
+
+    public JsonNode readScriptStructure(ToolExecutionContext context) {
+        requireScript(context, "SCRIPT:VIEW");
+        if (context.agentRunId() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少可信 Agent Run 作用域。");
+        }
+        List<String> rows = jdbc.queryForList("""
+            select content from script
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+            """, String.class, context.tenantId(), context.projectId(), context.scriptId());
+        if (rows.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "当前剧本不存在。");
+        }
+        String source = rows.get(0);
+        String contentHash = sha256(source);
+        var plans = splitChunkPlanner.plan(source,
+            new ScriptSplitChunkPlanner.ChunkSettings(15_000, 20_000, 24_000, 1_500));
+        var seeds = plans.stream().map(plan -> new ScriptSplitSnapshotStore.SplitChunkSeed(
+            plan.chunkNo(), plan.coreStart(), plan.coreEnd(), plan.contextStart(), plan.contextEnd(),
+            sha256(source.substring(plan.contextStart(), plan.contextEnd())))).toList();
+        var scope = new ScriptSplitSnapshotStore.SplitScope(
+            context.tenantId(), context.projectId(), context.scriptId(), context.agentRunId());
+        splitSnapshotStore.markStaleForDifferentHash(scope, contentHash);
+        long snapshotId = splitSnapshotStore.createOrResume(
+            scope, contentHash, "RUNTIME_FALLBACK", "structure-v1", seeds);
+        String snapshotKey = sha256(context.agentRunId() + ":" + snapshotId + ":" + contentHash);
+        context.runState().put("splitSnapshotId", snapshotId);
+        context.runState().put("splitContentHash", contentHash);
+        context.runState().put("splitSnapshotKey", snapshotKey);
+
+        ObjectNode result = json.createObjectNode();
+        result.put("contentHash", contentHash);
+        result.put("snapshotKey", snapshotKey);
+        result.put("totalChunks", plans.size());
+        ArrayNode chunks = result.putArray("chunks");
+        ArrayNode anchors = result.putArray("anchors");
+        for (var plan : plans) {
+            ObjectNode chunk = chunks.addObject();
+            chunk.put("chunkNo", plan.chunkNo());
+            chunk.put("coreStart", plan.coreStart());
+            chunk.put("coreEnd", plan.coreEnd());
+            chunk.put("boundarySignal", plan.boundarySignal());
+            for (var anchor : plan.anchors()) {
+                ObjectNode value = anchors.addObject();
+                value.put("offset", anchor.offset());
+                value.put("marker", anchor.marker());
+                value.put("signal", anchor.signal());
+            }
+        }
+        return result;
+    }
+
+    public JsonNode analyzeScriptChunks(ToolExecutionContext context) {
+        long snapshotId = context.runState().require("splitSnapshotId", Long.class);
+        ScriptSplitSnapshotStore.SplitSnapshot snapshot = splitSnapshotStore.require(snapshotId);
+        ObjectNode result = json.createObjectNode();
+        result.put("total", snapshot.total());
+        result.put("completed", snapshot.completed());
+        result.put("failed", snapshot.failed());
+        result.putArray("candidates");
+        result.putArray("anchors");
+        result.putArray("aiCallLogIds");
+        return result;
+    }
+
+    public JsonNode readCurrentEpisode(ToolExecutionContext context) {
+        requireEpisode(context);
+        if (context.scriptId() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少可信剧本作用域。");
+        }
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            select id, stable_key, episode_no, title, content, content_fingerprint
+              from script_episode
+             where tenant_id = ? and project_id = ? and script_id = ? and id = ?
+               and status = 'ACTIVE' and retired_at is null
+            """, context.tenantId(), context.projectId(), context.scriptId(), context.episodeId());
+        if (rows.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "当前正式剧集不存在或已退役。");
+        }
+        Map<String, Object> row = rows.get(0);
+        String content = String.valueOf(row.getOrDefault("content", ""));
+        if (content.length() > 200_000) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前剧集内容过长，无法交给 Agent 处理。");
+        }
+        String fingerprint = String.valueOf(row.getOrDefault("content_fingerprint", sha256(content)));
+        context.runState().put("currentEpisodeId", context.episodeId());
+        context.runState().put("currentEpisodeScriptId", context.scriptId());
+        context.runState().put("currentEpisodeFingerprint", fingerprint);
+        context.runState().put("currentEpisodeContentHash", sha256(content));
+        ObjectNode result = json.createObjectNode();
+        put(result, "episodeKey", row.get("stable_key"));
+        result.put("episodeNo", ((Number) row.get("episode_no")).intValue());
+        put(result, "title", row.get("title"));
+        result.put("content", content);
+        result.put("contentFingerprint", fingerprint);
+        ObjectNode catalog = result.putObject("assetCatalog");
+        catalog.set("characters", currentScriptAssets(context, "character_asset", "CHARACTER", "c_"));
+        catalog.set("scenes", currentScriptAssets(context, "scene_asset", "SCENE", "s_"));
+        catalog.set("props", currentScriptAssets(context, "prop_asset", "PROP", "p_"));
+        return result;
+    }
+
+    private ArrayNode currentScriptAssets(
+        ToolExecutionContext context,
+        String table,
+        String assetType,
+        String keyPrefix
+    ) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+            "select id, name, normalized_name, content_json from " + table
+                + " where tenant_id = ? and project_id = ? and script_id = ? and deleted_at is null"
+                + " order by id limit 201",
+            context.tenantId(), context.projectId(), context.scriptId());
+        if (rows.size() > 200) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前剧本资产目录过大，无法交给 Agent 处理。");
+        }
+        ArrayNode values = json.createArrayNode();
+        for (Map<String, Object> row : rows) {
+            long assetId = number(row.get("id"));
+            ObjectNode item = values.addObject();
+            item.put("assetKey", keyPrefix + assetId);
+            put(item, "name", row.get("name"));
+            put(item, "normalizedName", row.get("normalized_name"));
+            ArrayNode aliasValues = item.putArray("aliases");
+            Object rawAssetContent = row.get("content_json");
+            if (rawAssetContent != null) {
+                try {
+                    JsonNode storedAliases = json.readTree(String.valueOf(rawAssetContent)).path("aliases");
+                    for (JsonNode alias : storedAliases) {
+                        String aliasName = alias.isTextual() ? alias.asText() : alias.path("name").asText();
+                        if (!aliasName.isBlank()) aliasValues.add(aliasName);
+                    }
+                } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+                    throw new IllegalStateException("资产元数据损坏。", exception);
+                }
+            }
+            ArrayNode variants = item.putArray("variants");
+            List<Map<String, Object>> variantRows = jdbc.queryForList("""
+                select id, name, content_json
+                  from asset_visual_variant
+                 where tenant_id = ? and project_id = ? and asset_type = ? and asset_id = ?
+                   and deleted_at is null
+                 order by id limit 51
+                """, context.tenantId(), context.projectId(), assetType, assetId);
+            if (variantRows.size() > 50) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前剧本资产形态目录过大，无法交给 Agent 处理。");
+            }
+            for (Map<String, Object> variant : variantRows) {
+                ObjectNode variantItem = variants.addObject();
+                variantItem.put("variantKey", "v_" + number(variant.get("id")));
+                put(variantItem, "name", variant.get("name"));
+                Object rawContent = variant.get("content_json");
+                if (rawContent != null) {
+                    try {
+                        variantItem.set("content", json.readTree(String.valueOf(rawContent)));
+                    } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+                        throw new IllegalStateException("资产形态元数据损坏。", exception);
+                    }
+                }
+            }
+        }
+        return values;
+    }
+
+    @Transactional
+    public JsonNode saveGlobalUnderstanding(
+        ToolExecutionContext context,
+        int schemaVersion,
+        JsonNode content
+    ) {
+        context.requireBeforeDeadline();
+        requireScript(context, "SCRIPT:EDIT");
+        String expectedHash;
+        try {
+            expectedHash = context.runState().require("currentScriptHash", String.class);
+        } catch (IllegalStateException exception) {
+            throw new BusinessException(ErrorCode.REQUIRED_TOOL_NOT_CALLED,
+                "保存前必须先读取当前剧本。");
+        }
+        GlobalUnderstandingProgress saving = GlobalUnderstandingProgress.saving();
+        progressWriter.update(context, saving.percent(), saving.action());
+        List<Map<String, Object>> scripts = jdbc.queryForList("""
+            select content from script
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+             for update
+            """, context.tenantId(), context.projectId(), context.scriptId());
+        if (scripts.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "当前剧本不存在。");
+        }
+        String actualHash = sha256(String.valueOf(scripts.get(0).getOrDefault("content", "")));
+        if (!expectedHash.equals(actualHash)) {
+            throw new BusinessException(ErrorCode.SCRIPT_CONTENT_CHANGED,
+                "剧本在分析过程中发生变化，请重新读取后再分析。");
+        }
+        long id = globalUnderstanding.upsert(new ScriptGlobalUnderstandingDocument(
+            null, context.tenantId(), context.projectId(), context.scriptId(), schemaVersion,
+            content.deepCopy(), actualHash, context.agentRunId(), context.userId(), context.userId(),
+            null, null));
+        String stageStatus = null;
+        if (context.analysisStageId() != null) {
+            GlobalUnderstandingProgress committed = GlobalUnderstandingProgress.committed();
+            int updated = jdbc.update("""
+                update script_analysis_stage
+                   set status = 'SUCCEEDED', progress_percent = ?, completed_units = 1,
+                       total_units = 1, current_action = ?, retryable = false,
+                       error_code = null, error_message = null, finished_at = now(), updated_at = now()
+                 where id = ? and task_id = ? and stage_code = 'GLOBAL_UNDERSTANDING'
+                """, committed.percent(), committed.action(), context.analysisStageId(), context.taskId());
+            if (updated != 1) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "剧情全局理解阶段不匹配。");
+            }
+            jdbc.update("""
+                insert into script_analysis_result
+                  (task_id, stage_id, result_type, schema_version, status, raw_response,
+                   normalized_json, created_at, updated_at)
+                values (?, ?, 'GLOBAL_UNDERSTANDING', ?, 'SUCCEEDED', ?, ?, now(), now())
+                """, context.taskId(), context.analysisStageId(), String.valueOf(schemaVersion),
+                content.toString(), content.toString());
+            stageStatus = "SUCCEEDED";
+        }
+        ObjectNode result = json.createObjectNode();
+        result.put("saved", true);
+        result.put("globalUnderstandingId", id);
+        result.put("scriptId", context.scriptId());
+        result.put("contentHash", actualHash);
+        if (stageStatus == null) {
+            result.putNull("stageStatus");
+        } else {
+            result.put("stageStatus", stageStatus);
+        }
+        return result;
+    }
+
+    @Transactional
+    public JsonNode saveEpisodeSplitting(
+        ToolExecutionContext context,
+        int schemaVersion,
+        JsonNode episodeBoundaries
+    ) {
+        context.requireBeforeDeadline();
+        requireScript(context, "SCRIPT:EDIT");
+        String expectedHash;
+        try {
+            expectedHash = context.runState().require("currentScriptHash", String.class);
+        } catch (IllegalStateException exception) {
+            throw new BusinessException(ErrorCode.REQUIRED_TOOL_NOT_CALLED,
+                "保存分集前必须先读取当前剧本。");
+        }
+        List<Map<String, Object>> scripts = jdbc.queryForList("""
+            select content, current_version_id from script
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+             for update
+            """, context.tenantId(), context.projectId(), context.scriptId());
+        if (scripts.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "当前剧本不存在。");
+        }
+        Map<String, Object> script = scripts.get(0);
+        String source = String.valueOf(script.getOrDefault("content", ""));
+        String actualHash = sha256(source);
+        if (!expectedHash.equals(actualHash)) {
+            throw new BusinessException(ErrorCode.SCRIPT_CONTENT_CHANGED,
+                "剧本在分集过程中发生变化，请重新读取后再分析。");
+        }
+        List<EpisodeSplitBoundaryResolver.Boundary> boundaries = new java.util.ArrayList<>();
+        episodeBoundaries.forEach(item -> boundaries.add(new EpisodeSplitBoundaryResolver.Boundary(
+            item.path("title").asText(), item.path("startMarker").asText(), item.path("endMarker").asText())));
+        List<ScriptEpisodeResponse> extracted;
+        try {
+            extracted = splitBoundaryResolver.resolve(source, boundaries);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, exception.getMessage());
+        }
+        Object currentVersion = script.get("current_version_id");
+        Long scriptVersionId = currentVersion instanceof Number number ? number.longValue() : null;
+        List<ScriptEpisodeResponse> saved = episodeService.reconcileAndPersist(
+            context.tenantId(), context.projectId(), context.scriptId(), scriptVersionId,
+            context.agentRunId(), extracted);
+
+        ObjectNode snapshot = json.createObjectNode();
+        snapshot.put("schemaVersion", schemaVersion);
+        snapshot.put("contentHash", actualHash);
+        ArrayNode snapshotEpisodes = snapshot.putArray("episodes");
+        saved.forEach(episode -> snapshotEpisodes.addObject()
+            .put("episodeId", episode.episodeId())
+            .put("episodeNo", episode.episodeNo())
+            .put("title", episode.title()));
+        Long resultId = null;
+        String stageStatus = null;
+        if (context.analysisStageId() != null) {
+            int updated = jdbc.update("""
+                update script_analysis_stage
+                   set status = 'SUCCEEDED', progress_percent = 100, completed_units = 1,
+                       total_units = 1, current_action = '剧集智能拆分已保存', retryable = false,
+                       error_code = null, error_message = null, finished_at = now(), updated_at = now()
+                 where id = ? and task_id = ? and stage_code = 'EPISODE_SPLITTING'
+                """, context.analysisStageId(), context.taskId());
+            if (updated != 1) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "剧集智能拆分阶段不匹配。");
+            }
+            jdbc.update("""
+                insert into script_analysis_result
+                  (task_id, stage_id, result_type, schema_version, status, raw_response,
+                   normalized_json, created_at, updated_at)
+                values (?, ?, 'EPISODE_SPLITTING', ?, 'SUCCEEDED', ?, ?, now(), now())
+                """, context.taskId(), context.analysisStageId(), String.valueOf(schemaVersion),
+                episodeBoundaries.toString(), snapshot.toString());
+            resultId = jdbc.queryForObject(
+                "select max(id) from script_analysis_result where task_id = ? and stage_id = ?",
+                Long.class, context.taskId(), context.analysisStageId());
+            stageStatus = "SUCCEEDED";
+        }
+        ObjectNode result = json.createObjectNode();
+        result.put("saved", true);
+        result.put("scriptId", context.scriptId());
+        result.put("contentHash", actualHash);
+        result.put("episodeCount", saved.size());
+        result.set("episodes", snapshotEpisodes.deepCopy());
+        if (resultId == null) result.putNull("resultId"); else result.put("resultId", resultId);
+        if (stageStatus == null) result.putNull("stageStatus"); else result.put("stageStatus", stageStatus);
+        return result;
+    }
+
+    @Transactional
+    public JsonNode saveEpisodeSummary(
+        ToolExecutionContext context,
+        int schemaVersion,
+        String summary,
+        JsonNode highlights,
+        JsonNode endingHook
+    ) {
+        context.requireBeforeDeadline();
+        requireScript(context, "SCRIPT:EDIT");
+        Long expectedEpisodeId;
+        String expectedFingerprint;
+        String expectedContentHash;
+        try {
+            expectedEpisodeId = context.runState().require("currentEpisodeId", Long.class);
+            expectedFingerprint = context.runState().require("currentEpisodeFingerprint", String.class);
+            expectedContentHash = context.runState().require("currentEpisodeContentHash", String.class);
+        } catch (IllegalStateException exception) {
+            throw new BusinessException(ErrorCode.REQUIRED_TOOL_NOT_CALLED,
+                "保存概要前必须先读取当前剧集。");
+        }
+        if (!expectedEpisodeId.equals(context.episodeId())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "读取剧集与保存作用域不一致。");
+        }
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            select stable_key, content, content_fingerprint from script_episode
+             where id = ? and tenant_id = ? and project_id = ? and script_id = ?
+               and status = 'ACTIVE' and retired_at is null for update
+            """, context.episodeId(), context.tenantId(), context.projectId(), context.scriptId());
+        if (rows.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "当前正式剧集不存在或已退役。");
+        }
+        Map<String, Object> episode = rows.get(0);
+        String actualFingerprint = String.valueOf(episode.get("content_fingerprint"));
+        String actualContentHash = sha256(String.valueOf(episode.getOrDefault("content", "")));
+        if (!expectedFingerprint.equals(actualFingerprint) || !expectedContentHash.equals(actualContentHash)) {
+            throw new BusinessException(ErrorCode.EPISODE_CONTENT_CHANGED,
+                "剧集在概要生成过程中发生变化，请重新读取后再分析。");
+        }
+        ObjectNode content = json.createObjectNode();
+        content.put("summary", summary);
+        content.set("highlights", highlights.deepCopy());
+        if (endingHook == null || endingHook.isNull()) {
+            content.putNull("endingHook");
+        } else {
+            content.put("endingHook", endingHook.asText());
+        }
+        long summaryId = episodeSummaries.upsert(new ScriptEpisodeSummaryDocument(
+            null, context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(),
+            schemaVersion, content, "AI", context.agentRunId(), context.userId(), context.userId(),
+            null, null));
+        jdbc.update("update script_episode set summary = ?, updated_at = now() where id = ?",
+            summary, context.episodeId());
+        ObjectNode result = json.createObjectNode();
+        result.put("saved", true);
+        result.put("summaryId", summaryId);
+        put(result, "episodeKey", episode.get("stable_key"));
+        result.put("contentFingerprint", actualFingerprint);
+        return result;
+    }
+
+    public JsonNode saveEpisodeAssets(ToolExecutionContext context, JsonNode payload) {
+        context.requireBeforeDeadline();
+        requireScript(context, "SCRIPT:EDIT");
+        return episodeAssets.save(context, payload);
+    }
+
+    private void updateAnalysisProgress(
+        ToolExecutionContext context,
+        int progress,
+        String action
+    ) {
+        if (context.analysisStageId() == null || context.taskId() == null) {
+            return;
+        }
+        jdbc.update("""
+            update script_analysis_stage
+               set progress_percent = ?, current_action = ?, updated_at = now()
+             where id = ? and task_id = ? and stage_code = 'GLOBAL_UNDERSTANDING'
+            """, progress, action, context.analysisStageId(), context.taskId());
+        jdbc.update("""
+            update script_analysis_task
+               set current_action = ?, overall_progress = ?, updated_at = now()
+             where id = ?
+            """, action, Math.max(1, progress / 4), context.taskId());
     }
 
     public JsonNode validateScreenplayFormat(String content) {
@@ -279,13 +752,35 @@ public class ScreenplayToolDataService {
             || context.projectId() == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少可信执行作用域。");
         }
-        permissionGuard.require(context.tenantId(), context.projectId(), permission);
+        boolean trustedBackgroundRun = context.agentRunId() != null
+            && context.analysisStageId() != null
+            && context.taskId() != null;
+        if (!trustedBackgroundRun || !context.permissions().contains(permission)) {
+            permissionGuard.require(context.tenantId(), context.projectId(), permission);
+        }
     }
 
     private void requireEpisode(ToolExecutionContext context) {
         requireProject(context, "SCRIPT:VIEW");
         if (context.episodeId() == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少可信剧集作用域。");
+        }
+    }
+
+    private void requireScript(ToolExecutionContext context, String permission) {
+        requireProject(context, permission);
+        if (context.scriptId() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少可信剧本作用域。");
+        }
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
     }
 

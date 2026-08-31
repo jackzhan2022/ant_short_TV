@@ -97,11 +97,11 @@
 ## 10. Full-script-first splitting and automatic chunk fallback
 
 - [x] 10.1 Add failing compatible-provider request tests for an optional thinking-mode control and implement DeepSeek `thinking.type=disabled` emission without sending the vendor field to unrelated models.
-- [ ] 10.2 Add failing split prompt and bootstrap tests that prohibit visible analysis/source repetition, retain boundary-only output, and replace the temporary 32K brute-force configuration with measured full-path and fallback budgets.
-- [ ] 10.3 Add failing migration tests and an additive migration for `script_split_snapshot` and `script_split_chunk`, including tenant/script/hash scope, parent Run, offsets, statuses, bounded candidates, call references, progress, and stale/retry indexes.
-- [ ] 10.4 Add repository tests and implement persisted split snapshots, chunk units, mode/fallback reason, monotonic progress, successful-unit reuse, cancellation, and stale-source invalidation.
-- [ ] 10.5 Add failing structure-index tests for explicit headings, heading-free scenes, paragraph and line signals, long single paragraphs, Unicode-safe hard cuts, 15K–20K targets, 24K caps, and roughly 1.5K overlap.
-- [ ] 10.6 Implement the deterministic `ScriptSplitChunkPlanner` and trusted `read_script_structure` tool without promoting structural or fixed-length cuts to formal episode boundaries.
+- [x] 10.2 Add failing split prompt and bootstrap tests that prohibit visible analysis/source repetition, retain boundary-only output, and replace the temporary 32K brute-force configuration with measured full-path and fallback budgets.
+- [x] 10.3 Add failing migration tests and an additive migration for `script_split_snapshot` and `script_split_chunk`, including tenant/script/hash scope, parent Run, offsets, statuses, bounded candidates, call references, progress, and stale/retry indexes.
+- [x] 10.4 Add repository tests and implement persisted split snapshots, chunk units, mode/fallback reason, monotonic progress, successful-unit reuse, cancellation, and stale-source invalidation.
+- [x] 10.5 Add failing structure-index tests for explicit headings, heading-free scenes, paragraph and line signals, long single paragraphs, Unicode-safe hard cuts, 15K–20K targets, 24K caps, and roughly 1.5K overlap.
+- [x] 10.6 Implement the deterministic `ScriptSplitChunkPlanner` and trusted `read_script_structure` tool without promoting structural or fixed-length cuts to formal episode boundaries.
 - [ ] 10.7 Add failing chunk-analysis tests for bounded concurrency, audited model calls, verified local-to-absolute markers, overlap deduplication, repeated source text, compact trusted-anchor output, partial failure, and failed-only retry.
 - [ ] 10.8 Implement `ScriptSplitChunkAnalyzer` and `analyze_script_chunks` as one logical tool backed by internal model calls and persisted chunk results.
 - [ ] 10.9 Add failing dynamic-contract and runner tests for normal and fallback tool sequences, context preflight, context errors, `finish_reason=length`, empty/no-save responses, clean fallback context, single fallback transition, validation-error exclusion, and one terminal save.
