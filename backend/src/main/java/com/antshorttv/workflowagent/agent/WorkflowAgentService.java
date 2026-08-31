@@ -54,6 +54,10 @@ public class WorkflowAgentService {
         return repository.get(code);
     }
 
+    public WorkflowAgentModel requireToolCallingModel(Long modelId) {
+        return models.requireEnabledTextModel(modelId);
+    }
+
     public WorkflowAgentRecord create(WorkflowAgentCommand command) {
         validate(command, true);
         return repository.create(normalize(command), principal.require().userId());

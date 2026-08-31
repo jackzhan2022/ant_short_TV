@@ -24,6 +24,10 @@ public class ScriptAnalysisExecutionCoordinator {
     private final ProjectAiConfigService projectAiConfigService;
     private final AiExecutionService executionService;
     private final AiExecutionResponseMapper responseMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.workflowagent.agent.WorkflowAgentModelLookup workflowAgentModelLookup;
+    @org.springframework.beans.factory.annotation.Value("${ai.workflow-agent.global-understanding-enabled:false}")
+    private boolean globalUnderstandingAgentEnabled;
 
     public ScriptAnalysisExecutionCoordinator(
         ScriptAnalysisTaskMapper taskMapper,
@@ -86,6 +90,9 @@ public class ScriptAnalysisExecutionCoordinator {
             throw new IllegalStateException("Script analysis version is unavailable.");
         }
         Long modelId = projectAiConfigService.resolveModelId(current.getTenantId(), current.getProjectId(), "TEXT");
+        if (globalUnderstandingAgentEnabled) {
+            workflowAgentModelLookup.requireEnabledTextModel(modelId);
+        }
         int maximumCalls = maximumCallCount(version.getContent());
         AiExecutionTaskEntity execution = executionService.createWithReservation(
             new AiExecutionCreateCommand(
@@ -107,9 +114,8 @@ public class ScriptAnalysisExecutionCoordinator {
     }
 
     int maximumCallCount(String content) {
-        // Reserve a fixed four-call budget for the analysis workflow. Episode
-        // summaries are requested in one batch, so the actual usage may settle
-        // below this ceiling and the unused reservation is released.
-        return 4;
+        // The Agent path uses two model rounds (read, then terminal save), one more
+        // than the legacy global-understanding stage.
+        return globalUnderstandingAgentEnabled ? 5 : 4;
     }
 }

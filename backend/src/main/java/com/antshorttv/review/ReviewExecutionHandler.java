@@ -20,6 +20,7 @@ import com.antshorttv.points.AiPointReservationEntity;
 import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.AiSettlementOutcome;
+import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -89,8 +90,11 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
             if (invocation != null) {
                 markAttempt(context, invocation);
                 recordUsageAndCost(context, invocation);
+            } else if (!outcome.modelCalls().isEmpty()) {
+                markWorkflowAttempt(context, outcome.modelCalls().get(outcome.modelCalls().size() - 1));
+                recordWorkflowUsageAndCost(context, outcome.modelCalls());
             }
-            settle(context, invocation);
+            settle(context, invocation, !outcome.modelCalls().isEmpty());
             return new AiExecutionHandlerResult("REVIEW_TASK", context.task().businessId);
         } catch (ReviewInvocationException exception) {
             markAttempt(context, exception.invocation());
@@ -125,6 +129,37 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
             .set("transport_outcome", invocation.transportOutcome())
             .set("business_outcome", invocation.businessOutcome())
             .eq("id", context.claim().attemptId()));
+    }
+
+    private void markWorkflowAttempt(AiExecutionContext context, WorkflowAgentModelCall call) {
+        attemptMapper.update(null, new UpdateWrapper<AiExecutionAttemptEntity>()
+            .set("provider_contacted", true)
+            .set("provider_contacted_at", LocalDateTime.now())
+            .set("provider_id", call.providerId())
+            .set("model_id", call.modelId())
+            .set("provider_request_id", call.providerRequestId())
+            .set("ai_call_log_id", call.callLogId())
+            .set("transport_outcome", call.transportOutcome())
+            .set("business_outcome", call.businessOutcome())
+            .eq("id", context.claim().attemptId()));
+    }
+
+    private void recordWorkflowUsageAndCost(AiExecutionContext context, java.util.List<WorkflowAgentModelCall> calls) {
+        for (WorkflowAgentModelCall call : calls) {
+            usageAccountingService.record(AiUsageCommand.requestDerived(
+                new AiUsageContext(context.task().tenantId, context.task().id,
+                    context.claim().attemptId(), call.callLogId(), call.modelId()),
+                AiUsageMetric.CALL, "1", Map.of(), LocalDateTime.now()));
+        }
+        var cost = usageAccountingService.priceExecution(context.task().id, Set.of(AiUsageMetric.CALL));
+        try {
+            executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+                .set("usage_cost_status", cost.status().name())
+                .set("provider_cost_summary_json", objectMapper.writeValueAsString(cost.totalsByCurrency()))
+                .eq("id", context.task().id));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to persist review cost summary.", exception);
+        }
     }
 
     private void recordUsageAndCost(AiExecutionContext context, AiInvocationResult<AiTextResponse> invocation) {
@@ -163,12 +198,12 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         attemptMapper.update(null, update);
     }
 
-    private void settle(AiExecutionContext context, AiInvocationResult<AiTextResponse> invocation) {
+    private void settle(AiExecutionContext context, AiInvocationResult<AiTextResponse> invocation, boolean workflowContacted) {
         AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(context.task().id);
         AiPointReservationEntity settled = settlementService.finalizeOutcome(
             reservation.id,
             AiSettlementOutcome.SUCCESS,
-            callUsage(invocation != null),
+            callUsage(invocation != null || workflowContacted),
             context.claim().attemptId(),
             invocation == null ? null : invocation.aiCallLogId(),
             "execution:%d:v%d:success".formatted(context.task().id, context.task().executionVersion)

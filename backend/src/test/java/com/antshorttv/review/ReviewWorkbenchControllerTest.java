@@ -62,6 +62,89 @@ class ReviewWorkbenchControllerTest {
     private TeamPointService teamPointService;
 
     @Test
+    void retriesOnlyFailedDeepUnitsThenAggregationAndSupportsFullRegeneration() throws Exception {
+        String token = registerUser("13800017010", "Review Retry");
+        Long tenantId = createTenant(token, "剧本审核重试团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 10);
+        Long modelId = jdbcTemplate.queryForObject(
+            "select id from ai_model where code <> 'review-test-text-model' order by id limit 1", Long.class);
+
+        MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
+                .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE,
+                    "没有分集标题的完整剧本正文".getBytes()))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andReturn();
+        Long projectId = readLong(imported, "$.data.project.id");
+        Long versionId = readLong(imported, "$.data.versions[0].id");
+        MvcResult created = mockMvc.perform(post("/api/script-review/projects/%d/tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"versionId":%d,"reviewMode":"DEEP","selectedDimensions":["台词合理性"],
+                     "reviewScopeType":"ALL","reviewScope":{}}
+                    """.formatted(versionId)))
+            .andExpect(status().isAccepted()).andReturn();
+        Long executionId = readLong(created, "$.data.id");
+        Long taskId = readLong(created, "$.data.businessId");
+        jdbcTemplate.update("""
+            insert into review_fanout_snapshot
+              (tenant_id, project_id, task_id, script_version_id, attempt_no, agent_code,
+               agent_revision, skill_revisions_json, model_id, review_mode,
+               selected_dimensions_json, review_scope_json, version_hash, scope_hash,
+               dimensions_hash, unit_set_hash, status, total_units, completed_units,
+               failed_units, max_concurrency, aggregation_status, created_at, updated_at)
+            values (?, ?, ?, ?, 1, 'script-review', 1, '[]', ?, 'DEEP',
+                    '["台词合理性"]', '{}', 'version', 'scope', 'dimensions', 'units',
+                    'PARTIAL_FAILED', 1, 0, 1, 2, 'PENDING', now(), now())
+            """, tenantId, projectId, taskId, versionId, modelId);
+        Long snapshotId = jdbcTemplate.queryForObject(
+            "select max(id) from review_fanout_snapshot where task_id = ?", Long.class, taskId);
+        jdbcTemplate.update("""
+            insert into review_fanout_unit
+              (snapshot_id, unit_no, unit_key, scope_json, start_offset, end_offset,
+               content_fingerprint, status, attempt_no, candidate_saved, created_at, updated_at)
+            values (?, 1, 'offset-0-12', '{}', 0, 12, 'fingerprint', 'FAILED', 1, false, now(), now())
+            """, snapshotId);
+        jdbcTemplate.update("update review_task set status='FAILED', fanout_snapshot_id=? where id=?",
+            snapshotId, taskId);
+        jdbcTemplate.update("update ai_execution_task set status='FAILED' where id=?", executionId);
+
+        mockMvc.perform(post("/api/script-review/tasks/%d/retry".formatted(taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isAccepted());
+        assertThat(jdbcTemplate.queryForObject("select retry_kind from review_task where id=?", String.class, taskId))
+            .isEqualTo("FAILED_UNITS");
+
+        jdbcTemplate.update("update review_fanout_unit set status='SUCCEEDED', candidate_saved=true where snapshot_id=?",
+            snapshotId);
+        jdbcTemplate.update("update review_task set status='FAILED' where id=?", taskId);
+        jdbcTemplate.update("update ai_execution_task set status='FAILED' where id=?", executionId);
+        mockMvc.perform(post("/api/script-review/tasks/%d/retry".formatted(taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isAccepted());
+        assertThat(jdbcTemplate.queryForObject("select retry_kind from review_task where id=?", String.class, taskId))
+            .isEqualTo("AGGREGATION_ONLY");
+
+        jdbcTemplate.update("update review_task set status='FAILED' where id=?", taskId);
+        jdbcTemplate.update("update ai_execution_task set status='FAILED' where id=?", executionId);
+        mockMvc.perform(post("/api/script-review/tasks/%d/retry?fullRegeneration=true".formatted(taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isAccepted());
+        assertThat(jdbcTemplate.queryForObject("select retry_kind from review_task where id=?", String.class, taskId))
+            .isEqualTo("FULL_REGENERATION");
+        assertThat(jdbcTemplate.queryForObject("select fanout_snapshot_id from review_task where id=?", Long.class, taskId))
+            .isNull();
+        assertThat(jdbcTemplate.queryForObject("select status from review_fanout_snapshot where id=?", String.class, snapshotId))
+            .isEqualTo("STALE");
+    }
+
+    @Test
     void importsStandaloneScriptAndCreatesIdempotentReviewTask() throws Exception {
         String token = registerUser("13800017001", "Review Owner");
         Long tenantId = createTenant(token, "剧本审核团队");

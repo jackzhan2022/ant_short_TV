@@ -90,21 +90,23 @@ vi.mock('antd', () => {
       Group: ({ value = [], options = [], onChange, disabled }: any) => (
         <div>
           {options.map((option: any) => {
-            const checked = value.includes(option.value);
+            const optionValue = typeof option === 'string' ? option : option.value;
+            const optionLabel = typeof option === 'string' ? option : option.label;
+            const checked = value.includes(optionValue);
             return (
-              <label key={option.value}>
+              <label key={optionValue}>
                 <input
                   type="checkbox"
                   checked={checked}
                   disabled={disabled}
                   onChange={() => {
                     const next = checked
-                      ? value.filter((item: any) => item !== option.value)
-                      : [...value, option.value];
+                      ? value.filter((item: any) => item !== optionValue)
+                      : [...value, optionValue];
                     onChange?.(next);
                   }}
                 />
-                <span>{option.label}</span>
+                <span>{optionLabel}</span>
               </label>
             );
           })}
@@ -485,6 +487,8 @@ describe('ScriptReviewPage', () => {
     expect(screen.getByText('当前版本 V2')).toBeInTheDocument();
     expect(screen.getByText('第 1 轮 · 已完成')).toBeInTheDocument();
     expect(screen.getByText('问题 2 · 已处理 1')).toBeInTheDocument();
+    expect(screen.getByText('整体良好')).toBeInTheDocument();
+    expect(screen.getByText('PASS')).toBeInTheDocument();
   });
 
   it('uses selected hit fragments for batch repair and keeps processed issues folded away', async () => {
@@ -526,5 +530,187 @@ describe('ScriptReviewPage', () => {
       );
     });
     expect(screen.getByText('execution-701-SUCCEEDED')).toBeInTheDocument();
+  });
+
+  it('submits a single QUICK dimension with an explicit trusted scene scope', async () => {
+    render(<ScriptReviewPage />);
+
+    await screen.findByText('本轮审核配置');
+    fireEvent.click(screen.getByLabelText('人物关系一致性'));
+    fireEvent.click(screen.getByLabelText('人物认知一致性'));
+    const scopeSelect = screen.getAllByRole('combobox').find((element) =>
+      Array.from((element as HTMLSelectElement).options).some(
+        (option) => option.value === 'SCENES',
+      ),
+    );
+    expect(scopeSelect).toBeDefined();
+    if (!scopeSelect) throw new Error('Scene scope select is missing');
+    fireEvent.change(scopeSelect, { target: { value: 'SCENES' } });
+    fireEvent.change(await screen.findByPlaceholderText('输入场次编号，用逗号分隔，如 1-2, 2-1'), {
+      target: { value: '1-2, 2-1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '创建审核任务' }));
+
+    await waitFor(() => {
+      expect(mocks.createReviewTask).toHaveBeenCalledWith(1, {
+        versionId: 2,
+        reviewMode: 'QUICK',
+        selectedDimensions: ['台词合理性'],
+        reviewScopeType: 'SCENES',
+        reviewScope: { sceneKeys: ['1-2', '2-1'] },
+      });
+    });
+  });
+
+  it('submits the default ordered multi-dimension QUICK review', async () => {
+    render(<ScriptReviewPage />);
+
+    await screen.findByText('本轮审核配置');
+    fireEvent.click(screen.getByRole('button', { name: '创建审核任务' }));
+
+    await waitFor(() => {
+      expect(mocks.createReviewTask).toHaveBeenCalledWith(1, {
+        versionId: 2,
+        reviewMode: 'QUICK',
+        selectedDimensions: ['台词合理性', '人物关系一致性', '人物认知一致性'],
+        reviewScopeType: 'ALL',
+        reviewScope: {},
+      });
+    });
+  });
+
+  it('restores DEEP progress, stale state, and targeted retry actions', async () => {
+    mocks.queryReviewProject.mockResolvedValueOnce({
+      data: {
+        project: {
+          id: 1,
+          name: '审稿样例',
+          sourceType: 'TEXT',
+          currentVersionId: 2,
+          lastTaskId: 9,
+          status: 'ACTIVE',
+          versionCount: 2,
+          latestRoundNo: 2,
+        },
+        versions: [
+          {
+            id: 2,
+            projectId: 1,
+            versionNo: 2,
+            sourceType: 'MANUAL_EDIT',
+            content: '无分集标题剧本正文',
+          },
+        ],
+        tasks: [
+          {
+            id: 9,
+            projectId: 1,
+            scriptVersionId: 2,
+            roundNo: 2,
+            reviewMode: 'DEEP',
+            selectedDimensions: ['台词合理性', '人物关系一致性'],
+            reviewScopeType: 'ALL',
+            reviewScope: {},
+            status: 'FAILED',
+            currentStage: 'DEEP_UNITS',
+            overallProgress: 60,
+            currentAction: '深度审核单元 2/4',
+            workflowAgentCode: 'script-review',
+            workflowPhase: 'DEEP_CHILD',
+            retryKind: 'FAILED_UNITS',
+            stale: true,
+            issues: [],
+            fanout: {
+              snapshotId: 90,
+              status: 'PARTIAL_FAILED',
+              totalUnits: 4,
+              completedUnits: 2,
+              failedUnits: 1,
+              currentUnitId: 903,
+              aggregationStatus: 'PENDING',
+              units: [
+                { id: 903, unitNo: 3, unitKey: 'offset-20-30', status: 'FAILED', candidateSaved: false },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    mocks.retryReviewTask.mockResolvedValue({
+      data: { id: 702, businessId: 9, status: 'PENDING', progress: 0 },
+    });
+
+    render(<ScriptReviewPage />);
+
+    expect(await screen.findByText('深度单元 2/4 · 失败 1 · 聚合 PENDING · 当前单元 3')).toBeInTheDocument();
+    expect(screen.getByText('输入已变化')).toBeInTheDocument();
+    expect(screen.getByText('Skill：台词合理性')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试失败单元' }));
+    await waitFor(() => expect(mocks.retryReviewTask).toHaveBeenCalledWith(9));
+  });
+
+  it('retries only DEEP aggregation when child candidates are complete', async () => {
+    mocks.queryReviewProject.mockResolvedValueOnce({
+      data: {
+        project: {
+          id: 1,
+          name: '审稿样例',
+          sourceType: 'TEXT',
+          currentVersionId: 2,
+          lastTaskId: 10,
+          status: 'ACTIVE',
+          versionCount: 2,
+          latestRoundNo: 3,
+        },
+        versions: [
+          {
+            id: 2,
+            projectId: 1,
+            versionNo: 2,
+            sourceType: 'MANUAL_EDIT',
+            content: '无分集标题剧本正文',
+          },
+        ],
+        tasks: [
+          {
+            id: 10,
+            projectId: 1,
+            scriptVersionId: 2,
+            roundNo: 3,
+            reviewMode: 'DEEP',
+            selectedDimensions: ['剧情逻辑与因果'],
+            reviewScopeType: 'ALL',
+            reviewScope: {},
+            status: 'FAILED',
+            currentStage: 'DEEP_AGGREGATION',
+            overallProgress: 90,
+            currentAction: '聚合失败，可仅重试聚合',
+            workflowAgentCode: 'script-review',
+            workflowPhase: 'DEEP_AGGREGATION',
+            retryKind: 'AGGREGATION_ONLY',
+            stale: false,
+            issues: [],
+            fanout: {
+              snapshotId: 91,
+              status: 'FAILED',
+              totalUnits: 4,
+              completedUnits: 4,
+              failedUnits: 0,
+              aggregationStatus: 'FAILED',
+              units: [],
+            },
+          },
+        ],
+      },
+    });
+    mocks.retryReviewTask.mockResolvedValue({
+      data: { id: 703, businessId: 10, status: 'PENDING', progress: 0 },
+    });
+
+    render(<ScriptReviewPage />);
+
+    expect(await screen.findByText('深度单元 4/4 · 聚合 FAILED')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '仅重试聚合' }));
+    await waitFor(() => expect(mocks.retryReviewTask).toHaveBeenCalledWith(10));
   });
 });

@@ -3,6 +3,7 @@ package com.antshorttv.script;
 import com.antshorttv.common.ApiResponse;
 import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.execution.AiExecutionResponse;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -123,6 +124,51 @@ public class ScriptWorkflowController {
         HttpServletRequest request
     ) {
         return accepted(scriptWorkflowService.submitExtractElements(tenantId(request), projectId, body, request));
+    }
+
+    @PostMapping("/script-analysis/current/regenerate-episodes")
+    @RequireProjectPermission("AI_SERVICE:USE")
+    public ApiResponse<WorkflowAgentRunResult> regenerateEpisodes(
+        @PathVariable Long projectId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.regenerateEpisodeSplitting(
+            tenantId(request), projectId));
+    }
+
+    @PutMapping("/episodes/{episodeId}/summary")
+    @RequireProjectPermission("SCRIPT:EDIT")
+    public ApiResponse<ScriptEpisodeSummaryDocument> updateEpisodeSummary(
+        @PathVariable Long projectId,
+        @PathVariable Long episodeId,
+        @Valid @RequestBody SaveEpisodeSummaryRequest body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.updateEpisodeSummary(
+            tenantId(request), projectId, episodeId, body));
+    }
+
+    @PostMapping("/episodes/{episodeId}/summary/regenerate")
+    @RequireProjectPermission("AI_SERVICE:USE")
+    public ApiResponse<WorkflowAgentRunResult> regenerateEpisodeSummary(
+        @PathVariable Long projectId,
+        @PathVariable Long episodeId,
+        @Valid @RequestBody RegenerateEpisodeSummaryRequest body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.regenerateEpisodeSummary(
+            tenantId(request), projectId, episodeId, Boolean.TRUE.equals(body.overwrite())));
+    }
+
+    @PostMapping("/episodes/{episodeId}/assets/regenerate")
+    @RequireProjectPermission("AI_SERVICE:USE")
+    public ApiResponse<WorkflowAgentRunResult> regenerateEpisodeAssets(
+        @PathVariable Long projectId,
+        @PathVariable Long episodeId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.regenerateEpisodeAssets(
+            tenantId(request), projectId, episodeId));
     }
 
     @GetMapping("/asset-candidates")

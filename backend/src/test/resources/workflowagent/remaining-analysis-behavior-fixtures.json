@@ -1,0 +1,139 @@
+{
+  "episodeBoundarySelection": {
+    "script": "序幕：雨夜。\n第一场：林小满逃进仓库。\n第二场：她发现钥匙。\n尾声：门外响起脚步。",
+    "expectedInvariants": [
+      "every non-whitespace source character belongs to exactly one episode",
+      "episode bodies are exact source substrings",
+      "preamble and tail are not dropped",
+      "repeated markers are rejected instead of guessed"
+    ]
+  },
+  "summaryFidelity": {
+    "episode": "林小满逃进仓库，发现染血钥匙。门外响起脚步，她熄灭手电。",
+    "expectedFacts": ["林小满进入仓库", "发现染血钥匙", "门外脚步构成结尾悬念"],
+    "forbiddenFacts": ["顾言在门外", "钥匙能打开保险柜"]
+  },
+  "stableEntityNaming": {
+    "existingCatalog": [{"assetKey": "c_1", "name": "林小满", "aliases": ["小满"]}],
+    "episodeMentions": ["林小满", "小满", "林小姐"],
+    "expected": "reuse c_1 when an exact canonical name or stored alias establishes identity"
+  },
+  "sameNameAmbiguity": {
+    "existingCatalog": [
+      {"assetKey": "c_1", "name": "老周", "content": {"identity": "保安"}},
+      {"assetKey": "c_2", "name": "老周", "content": {"identity": "司机"}}
+    ],
+    "episode": "老周把门锁上。",
+    "expected": "fail with both safe candidate keys; never fuzzy auto-merge"
+  },
+  "characterLooks": {
+    "episode": "林小满脱下湿透的校服，换上酒店服务员制服混入宴会厅。",
+    "expectedLooks": ["湿透校服", "酒店服务员制服"],
+    "boundary": "visible production appearance changes create looks; emotion or pose alone does not"
+  },
+  "propStates": {
+    "episode": "她捡起完整的玉佩。争夺中玉佩摔成两半，她仍攥着其中一半。",
+    "expectedProp": "玉佩",
+    "expectedVariants": ["完整", "断裂"],
+    "boundary": "states remain variants of one prop and never become derived prop relations"
+  },
+  "assetRecognitionCases": [
+    {"id":"validated-opaque-key-reuse","episode":"沈知夏把辞职信放在桌上。","catalog":[{"assetKey":"c_A7","name":"沈知夏"}],"expectedKey":"c_A7"},
+    {"id":"exact-normalized-canonical-match","episode":"她拖着 红 色行李箱 走进大厅。","catalog":[{"assetKey":"p_R1","name":"红色行李箱","normalizedName":"红色行李箱"}],"modelSuppliedKey":null,"expectedResolvedKey":"p_R1"},
+    {"id":"exact-explicit-alias-match","episode":"小满关掉手电。","catalog":[{"assetKey":"c_1","name":"林小满","aliases":["小满"]}],"expectedKey":"c_1"},
+    {"id":"same-name-ambiguity-safe-candidates","episode":"老周把门锁上。","catalog":[{"assetKey":"c_guard","name":"老周","identity":"保安"},{"assetKey":"c_driver","name":"老周","identity":"司机"}],"expectedError":"ENTITY_MATCH_AMBIGUOUS","expectedCandidates":["c_guard","c_driver"],"transactionDelta":0},
+    {"id":"no-fuzzy-auto-merge","episode":"林晓满第一次来公司报到。","catalog":[{"assetKey":"c_1","name":"林小满"}],"forbiddenKey":"c_1"},
+    {"id":"nickname-and-title-one-character","episode":"管家周启明递上钥匙。林小满喊道：周叔，等等。周管家停下脚步。","expectedCharacterGroups":[["周启明","周叔","周管家"]]},
+    {"id":"scene-time-atmosphere-not-new-location","episode":"清晨，旧宅客厅洒满阳光。深夜，同一间旧宅客厅只亮着冷灯。","expectedSceneCount":1},
+    {"id":"generic-props-distinguished-by-owner","episode":"林小满的手机震动。顾言的手机随即响起。","expectedProps":[{"owner":"林小满","distinctIdentity":true},{"owner":"顾言","distinctIdentity":true}]},
+    {"id":"visible-character-look-boundary","episode":"林小满穿着湿透校服，随后换上酒店服务员制服。她神色慌张又强装镇定。","expectedLooks":["湿透校服","酒店服务员制服"],"forbiddenLooks":["慌张","镇定"]},
+    {"id":"visible-prop-state-boundary","episode":"她捡起完整的玉佩。争夺中玉佩摔成两半。","expectedPropCount":1,"expectedVariants":["完整","断裂"]},
+    {"id":"no-derived-prop-relationship","episode":"阿九砸碎玻璃瓶，捡起玻璃片割断绳索。","independentGlassShardAllowed":true,"forbiddenFields":["derivedFrom","parentPropKey","sourcePropKey","components","relations"]},
+    {"id":"evidence-current-episode-only","episode":"桌上放着一把铜钥匙。秦舟拿起钥匙藏进口袋。","interference":"钥匙能打开地下室保险柜；秦舟还携带手枪。","forbiddenAssets":["地下室","保险柜","手枪"],"evidenceMustBeSubstringForEveryItem":true}
+  ],
+  "summaryCases": [
+    {
+      "id": "chronology-and-causality",
+      "episode": "上午，乔穗把偷拍视频藏进储物柜。保安发现柜门未锁并通知经理，经理因此封锁商场。突然停电，乔穗趁乱取走视频后离开。",
+      "expectedOrder": ["藏视频", "保安发现", "通知并封锁", "停电", "取回并离开"],
+      "forbiddenFacts": ["乔穗制造停电"],
+      "expectedEndingHook": null
+    },
+    {
+      "id": "two-to-five-nonduplicate-highlights",
+      "episode": "秦泽拒签离婚协议。律师出示秘密转账记录。秦泽承认挪用资金。苏言收回公司控制权。",
+      "highlightFactIds": ["REFUSAL", "EVIDENCE_ADMISSION", "CONTROL_RECOVERY"],
+      "highlightMin": 2,
+      "highlightMax": 5
+    },
+    {
+      "id": "resolved-ending-needs-null-hook",
+      "episode": "唐果完成决赛甜点并获得冠军。她与师姐握手和解。主持人宣布比赛结束。",
+      "expectedEndingHook": null,
+      "forbiddenFacts": ["海外邀请", "师姐报复", "新的挑战"]
+    },
+    {
+      "id": "ordinary-ending-vs-evidenced-hook",
+      "ordinary": "警方追回失物并结案。程雨签字后离开警局。",
+      "hooked": "警方追回失物并结案。程雨刚走出警局，手机收到陌生短信：你们追回的不是原件。",
+      "hookEvidence": ["陌生短信", "不是原件"]
+    },
+    {
+      "id": "episode-only-ignore-other-context",
+      "episode": "林小满逃进仓库，发现染血钥匙。门外响起脚步，她熄灭手电。",
+      "interference": "上一集顾言跟踪林小满；全局理解称钥匙能打开保险柜。",
+      "forbiddenFacts": ["顾言在门外", "顾言跟踪", "上一集", "保险柜", "钥匙能打开"]
+    },
+    {
+      "id": "summary-only-no-asset-output",
+      "episode": "林小满换上服务员制服，用房卡进入后厨，却发现保险柜已经被搬空。",
+      "allowedTopLevelKeys": ["summary", "highlights", "endingHook"],
+      "forbiddenTopLevelKeys": ["characters", "characterLooks", "scenes", "props", "propStates", "assets", "relationships", "tenantId", "projectId", "episodeId", "scriptId", "analysisStageId", "agentRunId"]
+    }
+  ],
+  "episodeSplittingCases": [
+    {
+      "id": "no-explicit-headings-cliffhanger",
+      "source": "凌晨，秦遥在便利店值班。\n陌生人留下红色信封。\n照片背面写着：凶手就在你身边。\n\n翌日，审讯室。\n周警官看到照片背面的警号。",
+      "expectedEpisodeCount": 2,
+      "invariants": ["AI is invoked", "cut follows the cliffhanger", "no one-episode fallback"]
+    },
+    {
+      "id": "repeated-boundary-marker",
+      "source": "许棠第一次来到旧宅。她推开门。\n第二天她重返旧宅。她推开门。录音机正在转动。\n暴雨夜她第三次来到旧宅。她推开门。警灯扫进来。",
+      "expectedEpisodeCount": 3,
+      "invariants": ["markers include unique context", "no occurrence guessing"]
+    },
+    {
+      "id": "preamble-before-first-heading",
+      "source": "片名：《回声》\n人物：沈真、陆屿\n【序幕】空船撞上码头。\n第1集 风暴将至\n沈真捡起录音笔。\n第2集 失踪坐标\n陆屿发现航海图。",
+      "expectedEpisodeCount": 2,
+      "invariants": ["preamble belongs to episode one", "first non-whitespace is covered"]
+    },
+    {
+      "id": "trailing-whitespace-and-formatting",
+      "source": "第1集\r\n1-1 厨房 夜 内\r\n  林岚：别开灯。\r\n灯灭。CUT TO BLACK。\r\n\r\n   \t",
+      "expectedEpisodeCount": 1,
+      "invariants": ["CRLF and indentation remain exact", "whitespace tail creates no episode"]
+    },
+    {
+      "id": "no-model-rewrite",
+      "source": "第1集\n老仓库（废弃） 夜 内\n阿九：你、你别过来...\n铁门“哐当”一声  合上。",
+      "expectedEpisodeCount": 1,
+      "invariants": ["payload has no content or body", "punctuation and double spaces remain exact"]
+    },
+    {
+      "id": "gap-or-overlap-at-transition",
+      "source": "她把钥匙放在桌上。\n三天后，法院门口。记者蜂拥而至。\n宣判结束，顾川走下台阶。\n手机响起，失踪者发来定位。",
+      "expectedEpisodeCount": 2,
+      "invariants": ["transition belongs to exactly one episode", "coverage bitmap has no zero or duplicate"]
+    },
+    {
+      "id": "title-quality-and-scene-numbering",
+      "source": "第3集\n3-1 婚宴 日 内\n苏禾发现欠条。\n3-2 走廊 日 内\n她取消婚礼。\n第4集\n4-1 仓库 夜 内\n录音被调包。\n第5集\n5-1 直播间 夜 内\n苏禾公开原始录音。",
+      "expectedEpisodeCount": 3,
+      "titleKeywordAllowlist": [["欠条", "婚宴", "取消婚礼"], ["仓库", "录音"], ["直播", "原始录音"]],
+      "invariants": ["scene numbers are not episodes", "titles are distinct and factual"]
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -284,6 +285,11 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         }
         if (request.maxTokens() != null) {
             payload.put("max_tokens", request.maxTokens());
+        }
+        String modelCode = model.getModelCode() == null
+            ? "" : model.getModelCode().toLowerCase(Locale.ROOT);
+        if (request.thinkingMode() != null && modelCode.startsWith("deepseek-")) {
+            payload.put("thinking", Map.of("type", request.thinkingMode()));
         }
         if (request.topP() != null) {
             payload.put("top_p", request.topP());

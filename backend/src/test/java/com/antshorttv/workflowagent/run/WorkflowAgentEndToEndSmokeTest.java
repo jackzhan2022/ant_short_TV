@@ -53,6 +53,7 @@ class WorkflowAgentEndToEndSmokeTest {
     private long tenantId;
     private long userId;
     private long projectId;
+    private long scriptId;
     private long episodeId;
     private long modelId;
     private String skillCode;
@@ -94,7 +95,7 @@ class WorkflowAgentEndToEndSmokeTest {
             values (?, ?, 'Agent Smoke Script', 'MANUAL_EDIT', 'full script', 'DRAFT', ?,
                     now(), now())
             """, tenantId, projectId, userId);
-        long scriptId = jdbc.queryForObject(
+        scriptId = jdbc.queryForObject(
             "select id from script where project_id = ?", Long.class, projectId);
         jdbc.update("""
             insert into script_version
@@ -150,7 +151,8 @@ class WorkflowAgentEndToEndSmokeTest {
             .thenReturn(modelResult("剧集改写并保存成功。", List.of()));
 
         WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
-            agentCode, "改写当前剧集", tenantId, projectId, episodeId, null, userId
+            agentCode, "改写当前剧集", tenantId, projectId, episodeId,
+            scriptId, null, null, userId
         ));
 
         assertThat(result.output()).isEqualTo("剧集改写并保存成功。");
@@ -162,7 +164,7 @@ class WorkflowAgentEndToEndSmokeTest {
              where episode_id = ? and is_current = true
             """, Integer.class, episodeId)).isEqualTo(1);
 
-        WorkflowAgentRunDetail audit = runRepository.detail(result.runId());
+        WorkflowAgentRunDetail audit = runRepository.detail(tenantId, result.runId());
         assertThat(audit.status()).isEqualTo("SUCCESS");
         assertThat(audit.agentCode()).isEqualTo(agentCode);
         assertThat(audit.skillSnapshots()).extracting(WorkflowAgentSkillSnapshot::code)

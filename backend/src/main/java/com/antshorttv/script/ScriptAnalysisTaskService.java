@@ -90,7 +90,7 @@ public class ScriptAnalysisTaskService {
         task.setStatus("PENDING");
         task.setCurrentStage(STAGES.get(0).code());
         task.setOverallProgress(0);
-        task.setCurrentAction("等待开始剧情全局理解");
+        task.setCurrentAction(GlobalUnderstandingProgress.waiting().action());
         task.setIdempotencyKey(idempotencyKey);
         task.setCreatedBy(createdBy);
         task.setCreatedAt(now);
@@ -106,7 +106,9 @@ public class ScriptAnalysisTaskService {
             stage.setProgressPercent(0);
             stage.setCompletedUnits(0);
             stage.setTotalUnits(0);
-            stage.setCurrentAction(definition.waitingAction());
+            stage.setCurrentAction(definition.code().equals("GLOBAL_UNDERSTANDING")
+                ? GlobalUnderstandingProgress.waiting().action()
+                : definition.waitingAction());
             stage.setAttemptNo(0);
             stage.setRetryable(false);
             stage.setCreatedAt(now);
@@ -153,7 +155,9 @@ public class ScriptAnalysisTaskService {
             stage.setCompletedUnits(0);
             stage.setTotalUnits(0);
             stage.setCurrentAction(stage.getStageOrder().equals(target.order())
-                ? target.waitingAction()
+                ? (target.code().equals("GLOBAL_UNDERSTANDING")
+                    ? GlobalUnderstandingProgress.retrying().action()
+                    : target.waitingAction())
                 : "等待上一阶段完成");
             stage.setErrorCode(null);
             stage.setErrorMessage(null);

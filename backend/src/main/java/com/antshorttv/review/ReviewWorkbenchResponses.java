@@ -54,12 +54,42 @@ record ReviewTaskResponse(
     String currentAction,
     String errorCode,
     String errorMessage,
+    String workflowAgentCode,
+    Long workflowAgentRevision,
+    Long workflowAgentRunId,
+    String workflowPhase,
+    Integer workflowAttemptNo,
+    Long fanoutSnapshotId,
+    Long aggregationRunId,
+    String retryKind,
+    Boolean stale,
+    ReviewFanoutProgressResponse fanout,
     LocalDateTime completedAt,
     LocalDateTime canceledAt,
     ReviewReviewSummaryResponse summary,
     List<ReviewIssueResponse> issues
 ) {
 }
+
+record ReviewFanoutProgressResponse(
+    String status,
+    Integer totalUnits,
+    Integer completedUnits,
+    Integer failedUnits,
+    Long currentUnitId,
+    String aggregationStatus,
+    List<ReviewUnitProgressResponse> units
+) {}
+
+record ReviewUnitProgressResponse(
+    Long id,
+    Integer unitNo,
+    String unitKey,
+    String status,
+    Boolean candidateSaved,
+    String errorCode,
+    String errorMessage
+) {}
 
 record ReviewReviewSummaryResponse(
     String overallConclusion,

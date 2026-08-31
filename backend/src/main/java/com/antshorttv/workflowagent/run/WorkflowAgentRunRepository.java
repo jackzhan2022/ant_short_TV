@@ -42,10 +42,10 @@ public class WorkflowAgentRunRepository {
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                 insert into ai_workflow_agent_run
-                  (agent_id, agent_code, run_type, tenant_id, user_id, project_id, episode_id,
-                   task_id, status, model_id, temperature, max_tokens, max_steps, prompt_snapshot,
+                  (agent_id, agent_code, run_type, tenant_id, user_id, project_id, episode_id, script_id,
+                   task_id, analysis_stage_id, status, model_id, temperature, max_tokens, max_steps, prompt_snapshot,
                    skill_snapshot_json, tool_codes_json, started_at, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?, ?, ?, ?, ?, ?, ?, now(), now())
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?, ?, ?, ?, ?, ?, ?, now(), now())
                 """, Statement.RETURN_GENERATED_KEYS);
             statement.setObject(1, start.agentId());
             statement.setString(2, start.agentCode());
@@ -54,14 +54,16 @@ public class WorkflowAgentRunRepository {
             statement.setLong(5, start.userId());
             statement.setObject(6, start.projectId());
             statement.setObject(7, start.episodeId());
-            statement.setObject(8, start.taskId());
-            statement.setLong(9, start.modelId());
-            statement.setBigDecimal(10, start.temperature());
-            statement.setInt(11, start.maxTokens());
-            statement.setInt(12, start.maxSteps());
-            statement.setString(13, payload(start.promptSnapshot()));
-            statement.setString(14, skillPayload(start.skillSnapshots()));
-            statement.setString(15, payload(write(start.toolCodes())));
+            statement.setObject(8, start.scriptId());
+            statement.setObject(9, start.taskId());
+            statement.setObject(10, start.analysisStageId());
+            statement.setLong(11, start.modelId());
+            statement.setBigDecimal(12, start.temperature());
+            statement.setInt(13, start.maxTokens());
+            statement.setInt(14, start.maxSteps());
+            statement.setString(15, payload(start.promptSnapshot()));
+            statement.setString(16, skillPayload(start.skillSnapshots()));
+            statement.setString(17, payload(write(start.toolCodes())));
             return statement;
         }, keys);
         Number id = keys.getKey();
@@ -124,6 +126,39 @@ public class WorkflowAgentRunRepository {
             """, payload(output), runId);
     }
 
+    public void reconcileCommitted(Long runId, String output) {
+        jdbc.update("""
+            update ai_workflow_agent_run
+               set status = 'SUCCESS', final_output = ?, error_code = null, error_message = null,
+                   finished_at = coalesce(finished_at, now())
+             where id = ?
+            """, payload(output), runId);
+    }
+
+    public boolean belongsToStage(Long runId, Long tenantId, Long taskId, Long analysisStageId) {
+        Integer count = jdbc.queryForObject("""
+            select count(*) from ai_workflow_agent_run
+             where id = ? and tenant_id = ? and task_id = ? and analysis_stage_id = ?
+            """, Integer.class, runId, tenantId, taskId, analysisStageId);
+        return count != null && count == 1;
+    }
+
+    public List<WorkflowAgentModelCall> modelCalls(Long runId, Long tenantId) {
+        return jdbc.query("""
+            select log.id, log.model_id, log.provider_id, log.provider_request_id,
+                   log.transport_outcome, log.business_outcome
+              from ai_workflow_agent_run_step step
+              join ai_workflow_agent_run run on run.id = step.run_id
+              join ai_call_log log on log.id = step.ai_call_log_id
+             where step.run_id = ? and run.tenant_id = ? and step.step_type = 'MODEL'
+             order by step.step_no
+            """, (row, index) -> new WorkflowAgentModelCall(
+            row.getLong("id"), nullableLong(row, "model_id"), nullableLong(row, "provider_id"),
+            row.getString("provider_request_id"), row.getString("transport_outcome"),
+            row.getString("business_outcome")
+        ), runId, tenantId);
+    }
+
     public void fail(Long runId, String errorCode, String errorMessage) {
         jdbc.update("""
             update ai_workflow_agent_run
@@ -132,15 +167,17 @@ public class WorkflowAgentRunRepository {
             """, errorCode, payload(errorMessage), runId);
     }
 
-    public List<WorkflowAgentRunSummary> list(String agentCode, int limit) {
+    public List<WorkflowAgentRunSummary> list(Long tenantId, String agentCode, int limit) {
         int boundedLimit = Math.max(1, Math.min(200, limit));
         String sql = """
             select id, agent_code, run_type, status, project_id, episode_id, final_output,
                    error_code, error_message, started_at, finished_at
               from ai_workflow_agent_run
-            """ + (agentCode == null || agentCode.isBlank() ? "" : " where agent_code = ?")
+            """ + (agentCode == null || agentCode.isBlank()
+            ? " where tenant_id = ?" : " where tenant_id = ? and agent_code = ?")
             + " order by id desc limit " + boundedLimit;
-        Object[] arguments = agentCode == null || agentCode.isBlank() ? new Object[0] : new Object[]{agentCode};
+        Object[] arguments = agentCode == null || agentCode.isBlank()
+            ? new Object[]{tenantId} : new Object[]{tenantId, agentCode};
         return jdbc.query(sql, (row, index) -> new WorkflowAgentRunSummary(
             row.getLong("id"), row.getString("agent_code"), row.getString("run_type"),
             row.getString("status"), nullableLong(row, "project_id"), nullableLong(row, "episode_id"),
@@ -149,39 +186,45 @@ public class WorkflowAgentRunRepository {
         ), arguments);
     }
 
-    public WorkflowAgentRunDetail detail(Long runId) {
+    public WorkflowAgentRunDetail detail(Long tenantId, Long runId) {
         List<WorkflowAgentRunDetail> rows = jdbc.query("""
             select id, agent_id, agent_code, run_type, tenant_id, user_id, project_id, episode_id,
-                   task_id, status, model_id, temperature, max_tokens, max_steps, prompt_snapshot,
+                   script_id, task_id, analysis_stage_id, status, model_id, temperature, max_tokens,
+                   max_steps, prompt_snapshot,
                    skill_snapshot_json, tool_codes_json, final_output, error_code, error_message,
                    started_at, finished_at
-              from ai_workflow_agent_run where id = ?
+              from ai_workflow_agent_run where tenant_id = ? and id = ?
             """, (row, index) -> new WorkflowAgentRunDetail(
             row.getLong("id"), nullableLong(row, "agent_id"), row.getString("agent_code"),
             row.getString("run_type"), nullableLong(row, "tenant_id"), row.getLong("user_id"),
-            nullableLong(row, "project_id"), nullableLong(row, "episode_id"), nullableLong(row, "task_id"),
+            nullableLong(row, "project_id"), nullableLong(row, "episode_id"), nullableLong(row, "script_id"),
+            nullableLong(row, "task_id"), nullableLong(row, "analysis_stage_id"),
             row.getString("status"), row.getLong("model_id"), row.getBigDecimal("temperature"),
             row.getInt("max_tokens"), row.getInt("max_steps"), row.getString("prompt_snapshot"),
             readSkills(row.getString("skill_snapshot_json")), readStrings(row.getString("tool_codes_json")),
             row.getString("final_output"), row.getString("error_code"), row.getString("error_message"),
             timestamp(row, "started_at"), timestamp(row, "finished_at"), List.of()
-        ), runId);
+        ), tenantId, runId);
         if (rows.isEmpty()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Agent 运行记录不存在。");
         }
         WorkflowAgentRunDetail run = rows.get(0);
         List<WorkflowAgentRunStepView> steps = jdbc.query("""
-            select step_no, step_type, status, ai_call_log_id, tool_code, input_json, output_json,
-                   error_code, error_message, started_at, finished_at
-              from ai_workflow_agent_run_step where run_id = ? order by step_no
+            select step.step_no, step.step_type, step.status, step.ai_call_log_id, step.tool_code,
+                   step.input_json, step.output_json, step.error_code, step.error_message,
+                   step.started_at, step.finished_at
+              from ai_workflow_agent_run_step step
+              join ai_workflow_agent_run run on run.id = step.run_id
+             where step.run_id = ? and run.tenant_id = ? order by step.step_no
             """, (row, index) -> new WorkflowAgentRunStepView(
             row.getInt("step_no"), row.getString("step_type"), row.getString("status"),
             nullableLong(row, "ai_call_log_id"), row.getString("tool_code"), row.getString("input_json"),
             row.getString("output_json"), row.getString("error_code"), row.getString("error_message"),
             timestamp(row, "started_at"), timestamp(row, "finished_at")
-        ), runId);
+        ), runId, tenantId);
         return new WorkflowAgentRunDetail(run.id(), run.agentId(), run.agentCode(), run.runType(),
-            run.tenantId(), run.userId(), run.projectId(), run.episodeId(), run.taskId(), run.status(),
+            run.tenantId(), run.userId(), run.projectId(), run.episodeId(), run.scriptId(), run.taskId(),
+            run.analysisStageId(), run.status(),
             run.modelId(), run.temperature(), run.maxTokens(), run.maxSteps(), run.promptSnapshot(),
             run.skillSnapshots(), run.toolCodes(), run.finalOutput(), run.errorCode(), run.errorMessage(),
             run.startedAt(), run.finishedAt(), steps);

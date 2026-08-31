@@ -40,6 +40,7 @@ class ScriptEpisodeEntity extends TenantProjectRecord {
     private String reconciliationStatus;
     private String status;
     private LocalDateTime retiredAt;
+    private Long generatedByRunId;
 
     public Long getScriptId() { return scriptId; }
     public void setScriptId(Long scriptId) { this.scriptId = scriptId; }
@@ -65,6 +66,37 @@ class ScriptEpisodeEntity extends TenantProjectRecord {
     public void setStatus(String status) { this.status = status; }
     public LocalDateTime getRetiredAt() { return retiredAt; }
     public void setRetiredAt(LocalDateTime retiredAt) { this.retiredAt = retiredAt; }
+    public Long getGeneratedByRunId() { return generatedByRunId; }
+    public void setGeneratedByRunId(Long generatedByRunId) { this.generatedByRunId = generatedByRunId; }
+}
+
+@TableName("script_episode_summary")
+class ScriptEpisodeSummaryEntity extends TenantProjectRecord {
+    private Long scriptId;
+    private Long episodeId;
+    private Integer schemaVersion;
+    private String contentJson;
+    private String source;
+    private Long generatedByRunId;
+    private Long createdBy;
+    private Long updatedBy;
+
+    public Long getScriptId() { return scriptId; }
+    public void setScriptId(Long scriptId) { this.scriptId = scriptId; }
+    public Long getEpisodeId() { return episodeId; }
+    public void setEpisodeId(Long episodeId) { this.episodeId = episodeId; }
+    public Integer getSchemaVersion() { return schemaVersion; }
+    public void setSchemaVersion(Integer schemaVersion) { this.schemaVersion = schemaVersion; }
+    public String getContentJson() { return contentJson; }
+    public void setContentJson(String contentJson) { this.contentJson = contentJson; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+    public Long getGeneratedByRunId() { return generatedByRunId; }
+    public void setGeneratedByRunId(Long generatedByRunId) { this.generatedByRunId = generatedByRunId; }
+    public Long getCreatedBy() { return createdBy; }
+    public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
+    public Long getUpdatedBy() { return updatedBy; }
+    public void setUpdatedBy(Long updatedBy) { this.updatedBy = updatedBy; }
 }
 
 @TableName("script_asset_normalization_run")
@@ -243,6 +275,8 @@ class AssetVisualVariantEntity extends TenantProjectRecord {
     private Boolean isPrimary;
     private Long createdBy;
     private LocalDateTime deletedAt;
+    private String contentJson;
+    private Long generatedByRunId;
 
     public String getAssetType() { return assetType; }
     public void setAssetType(String assetType) { this.assetType = assetType; }
@@ -274,6 +308,10 @@ class AssetVisualVariantEntity extends TenantProjectRecord {
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public LocalDateTime getDeletedAt() { return deletedAt; }
     public void setDeletedAt(LocalDateTime deletedAt) { this.deletedAt = deletedAt; }
+    public String getContentJson() { return contentJson; }
+    public void setContentJson(String contentJson) { this.contentJson = contentJson; }
+    public Long getGeneratedByRunId() { return generatedByRunId; }
+    public void setGeneratedByRunId(Long generatedByRunId) { this.generatedByRunId = generatedByRunId; }
 }
 
 @TableName("asset_visual_variant_episode")
@@ -287,6 +325,8 @@ class AssetVisualVariantEpisodeEntity extends TenantProjectRecord {
     private String bindingStatus;
     private Long createdBy;
     private LocalDateTime retiredAt;
+    private Long generatedByRunId;
+    private String contentJson;
 
     public Long getScriptId() { return scriptId; }
     public void setScriptId(Long scriptId) { this.scriptId = scriptId; }
@@ -306,4 +346,8 @@ class AssetVisualVariantEpisodeEntity extends TenantProjectRecord {
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public LocalDateTime getRetiredAt() { return retiredAt; }
     public void setRetiredAt(LocalDateTime retiredAt) { this.retiredAt = retiredAt; }
+    public Long getGeneratedByRunId() { return generatedByRunId; }
+    public void setGeneratedByRunId(Long generatedByRunId) { this.generatedByRunId = generatedByRunId; }
+    public String getContentJson() { return contentJson; }
+    public void setContentJson(String contentJson) { this.contentJson = contentJson; }
 }

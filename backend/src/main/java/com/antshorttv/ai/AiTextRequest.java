@@ -1,6 +1,7 @@
 package com.antshorttv.ai;
 
 import java.util.List;
+import java.util.Set;
 
 public record AiTextRequest(
     String systemPrompt,
@@ -13,11 +14,22 @@ public record AiTextRequest(
     Integer timeoutSeconds,
     Integer retryCount,
     List<AiChatMessage> messages,
-    List<AiToolDefinition> tools
+    List<AiToolDefinition> tools,
+    String thinkingMode
 ) {
     public AiTextRequest {
         messages = messages == null ? List.of() : List.copyOf(messages);
         tools = tools == null ? List.of() : List.copyOf(tools);
+        if (thinkingMode != null && !Set.of("enabled", "disabled").contains(thinkingMode)) {
+            throw new IllegalArgumentException("thinkingMode 必须为 enabled 或 disabled。");
+        }
+    }
+
+    public AiTextRequest(String systemPrompt, String userPrompt, Double temperature, Integer maxTokens,
+        Double topP, Boolean jsonMode, Object responseSchema, Integer timeoutSeconds, Integer retryCount,
+        List<AiChatMessage> messages, List<AiToolDefinition> tools) {
+        this(systemPrompt, userPrompt, temperature, maxTokens, topP, jsonMode, responseSchema,
+            timeoutSeconds, retryCount, messages, tools, null);
     }
 
     public AiTextRequest(String systemPrompt, String userPrompt, Double temperature, Integer maxTokens,

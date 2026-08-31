@@ -1,0 +1,10 @@
+{
+  "fixtures": [
+    {"id":"valid_issue","dimension":"台词合理性","expected":"report","evidence":"你从未见过他——上一场两人已见面"},
+    {"id":"false_positive","dimension":"人物动机","expected":"ignore","evidence":"人物沉默但正文未说明原因"},
+    {"id":"uncertain_evidence","dimension":"时间线连续性","expected":"uncertain","evidence":"仅出现‘后来’，无明确时长"},
+    {"id":"multi_hit","dimension":"道具连续性","expected":"merge","evidence":"钥匙在三处呈现同一丢失根因"},
+    {"id":"dimension_isolation","dimension":"台词合理性","expected":"exclude_other_dimensions","evidence":"只审核台词"},
+    {"id":"cross_episode","dimension":"伏笔回收","expected":"aggregate","evidence":"第一单元埋设，末单元未回收"}
+  ]
+}

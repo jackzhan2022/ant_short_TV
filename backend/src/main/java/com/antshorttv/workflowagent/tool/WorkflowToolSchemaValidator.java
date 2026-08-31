@@ -20,11 +20,12 @@ public class WorkflowToolSchemaValidator {
         if (value == null || value.isNull()) {
             return;
         }
+        validateBounds(schema, value, path);
         if (value.isObject() && schema.has("properties")) {
             Set<String> required = new HashSet<>();
             schema.path("required").forEach(item -> required.add(item.asText()));
             required.forEach(field -> {
-                if (!value.has(field) || value.get(field).isNull()) {
+                if (!value.has(field)) {
                     throw new IllegalArgumentException(path + "." + field + " is required");
                 }
             });
@@ -43,6 +44,29 @@ public class WorkflowToolSchemaValidator {
             for (int index = 0; index < value.size(); index++) {
                 validateAt(schema.get("items"), value.get(index), path + "[" + index + "]", false);
             }
+        }
+    }
+
+    private void validateBounds(JsonNode schema, JsonNode value, String path) {
+        if (value.isNumber()) {
+            if (schema.has("minimum") && value.decimalValue().compareTo(schema.path("minimum").decimalValue()) < 0) {
+                throw new IllegalArgumentException(path + " is below minimum " + schema.path("minimum"));
+            }
+            if (schema.has("maximum") && value.decimalValue().compareTo(schema.path("maximum").decimalValue()) > 0) {
+                throw new IllegalArgumentException(path + " exceeds maximum " + schema.path("maximum"));
+            }
+        }
+        if (value.isTextual() && schema.has("maxLength")
+            && value.textValue().length() > schema.path("maxLength").asInt()) {
+            throw new IllegalArgumentException(path + " exceeds maxLength " + schema.path("maxLength").asInt());
+        }
+        if (value.isArray() && schema.has("maxItems")
+            && value.size() > schema.path("maxItems").asInt()) {
+            throw new IllegalArgumentException(path + " exceeds maxItems " + schema.path("maxItems").asInt());
+        }
+        if (value.isArray() && schema.has("minItems")
+            && value.size() < schema.path("minItems").asInt()) {
+            throw new IllegalArgumentException(path + " is below minItems " + schema.path("minItems").asInt());
         }
     }
 

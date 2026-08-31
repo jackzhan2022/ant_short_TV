@@ -6,7 +6,43 @@ public record WorkflowAgentRunInput(
     Long tenantId,
     Long projectId,
     Long episodeId,
+    Long scriptId,
     Long taskId,
-    Long userId
+    Long analysisStageId,
+    Long userId,
+    Long executionId,
+    Long attemptId,
+    Integer executionVersion,
+    Long modelIdOverride,
+    com.antshorttv.workflowagent.tool.ReviewToolScope reviewScope
 ) {
+    public WorkflowAgentRunInput(
+        String agentCode, String input, Long tenantId, Long projectId, Long episodeId,
+        Long scriptId, Long taskId, Long analysisStageId, Long userId, Long executionId,
+        Long attemptId, Integer executionVersion, Long modelIdOverride
+    ) {
+        this(agentCode, input, tenantId, projectId, episodeId, scriptId, taskId, analysisStageId,
+            userId, executionId, attemptId, executionVersion, modelIdOverride, null);
+    }
+
+    public WorkflowAgentRunInput(
+        String agentCode, String input, Long tenantId, Long projectId, Long episodeId,
+        Long scriptId, Long taskId, Long analysisStageId, Long userId
+    ) {
+        this(agentCode, input, tenantId, projectId, episodeId, scriptId, taskId,
+            analysisStageId, userId, null, null, null, null, null);
+    }
+
+    public WorkflowAgentRunInput(
+        String agentCode,
+        String input,
+        Long tenantId,
+        Long projectId,
+        Long episodeId,
+        Long taskId,
+        Long userId
+    ) {
+        this(agentCode, input, tenantId, projectId, episodeId, null, taskId, null, userId,
+            null, null, null, null, null);
+    }
 }

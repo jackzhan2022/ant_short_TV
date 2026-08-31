@@ -61,15 +61,18 @@ public class WorkflowAgentRunController {
     @RequirePlatformPermission(WorkflowAiPermissions.AGENT_VIEW)
     public ApiResponse<List<WorkflowAgentRunSummary>> list(
         @RequestParam(required = false) String agentCode,
-        @RequestParam(defaultValue = "50") int limit
+        @RequestParam(defaultValue = "50") int limit,
+        HttpServletRequest request
     ) {
-        return ApiResponse.success(runs.list(agentCode, limit));
+        var tenant = tenantContextResolver.require(request);
+        return ApiResponse.success(runs.list(tenant.tenantId(), agentCode, limit));
     }
 
     @GetMapping("/{runId}")
     @RequirePlatformPermission(WorkflowAiPermissions.AGENT_VIEW)
-    public ApiResponse<WorkflowAgentRunDetail> detail(@PathVariable Long runId) {
-        return ApiResponse.success(runs.detail(runId));
+    public ApiResponse<WorkflowAgentRunDetail> detail(@PathVariable Long runId, HttpServletRequest request) {
+        var tenant = tenantContextResolver.require(request);
+        return ApiResponse.success(runs.detail(tenant.tenantId(), runId));
     }
 
     public record FormalRunRequest(
@@ -77,10 +80,12 @@ public class WorkflowAgentRunController {
         @NotBlank String input,
         Long projectId,
         Long episodeId,
+        Long scriptId,
         Long taskId
     ) {
         WorkflowAgentRunInput toInput(Long tenantId, Long userId) {
-            return new WorkflowAgentRunInput(agentCode, input, tenantId, projectId, episodeId, taskId, userId);
+            return new WorkflowAgentRunInput(
+                agentCode, input, tenantId, projectId, episodeId, scriptId, taskId, null, userId);
         }
     }
 
@@ -99,6 +104,7 @@ public class WorkflowAgentRunController {
         @NotBlank String input,
         Long projectId,
         Long episodeId,
+        Long scriptId,
         Long taskId
     ) {
         WorkflowAgentCommand toCommand() {
@@ -109,7 +115,7 @@ public class WorkflowAgentRunController {
         WorkflowAgentRunInput toInput(Long tenantId, Long userId) {
             return new WorkflowAgentRunInput(
                 code == null || code.isBlank() ? "temporary-agent" : code,
-                input, tenantId, projectId, episodeId, taskId, userId
+                input, tenantId, projectId, episodeId, scriptId, taskId, null, userId
             );
         }
     }

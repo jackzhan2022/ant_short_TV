@@ -3,7 +3,12 @@ package com.antshorttv.script;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,7 +34,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ScriptAnalysisExecutionServiceTest {
@@ -219,6 +226,100 @@ class ScriptAnalysisExecutionServiceTest {
         assertThat(root.path("episodes").get(0).path("summary").asText()).isEqualTo("第1集概要");
         assertThat(root.path("episodes").get(1).path("endingHook").asText()).isEqualTo("钩子2");
         verify(aiInvocationService, times(1)).invokeText(any());
+    }
+
+    @Test
+    void invokesAllFourWorkflowAgentsInOrderAndStopsAfterAnEarlierFailure() {
+        ScriptAnalysisTaskEntity task = task(91L, 2L, 3L);
+        ScriptVersionEntity version = version(6L, "当前剧本");
+        ScriptEntity script = new ScriptEntity();
+        script.setId(5L);
+        script.setCurrentVersionId(6L);
+        List<ScriptAnalysisStageEntity> stages = List.of(
+            stage(1L, "GLOBAL_UNDERSTANDING", 1, "PENDING"),
+            stage(2L, "EPISODE_SPLITTING", 2, "PENDING"),
+            stage(3L, "EPISODE_SUMMARY", 3, "PENDING"),
+            stage(4L, "CHARACTER_SCENE_RECOGNITION", 4, "PENDING")
+        );
+        when(taskMapper.selectById(91L)).thenReturn(task);
+        when(versionMapper.selectById(6L)).thenReturn(version);
+        when(stageMapper.selectByTask(91L)).thenReturn(stages);
+        when(scriptMapper.selectById(5L)).thenReturn(script);
+        when(projectAiConfigService.resolveModelId(2L, 3L, "TEXT")).thenReturn(99L);
+
+        GlobalUnderstandingAgentAdapter global = mock(GlobalUnderstandingAgentAdapter.class);
+        EpisodeSplittingAgentAdapter splitting = mock(EpisodeSplittingAgentAdapter.class);
+        EpisodeSummaryAgentAdapter summary = mock(EpisodeSummaryAgentAdapter.class);
+        AssetRecognitionAgentAdapter recognition = mock(AssetRecognitionAgentAdapter.class);
+        AssetRecognitionFinalizer finalizer = mock(AssetRecognitionFinalizer.class);
+        EpisodeFanoutCoordinator fanout = mock(EpisodeFanoutCoordinator.class);
+        when(global.enabled()).thenReturn(true);
+        when(splitting.enabled()).thenReturn(true);
+        when(summary.enabled()).thenReturn(true);
+        when(recognition.enabled()).thenReturn(true);
+        when(global.execute(any(), any(), any(), any()))
+            .thenReturn(new GlobalUnderstandingAgentAdapter.Execution(
+                objectMapper.createObjectNode(), 11L, List.of()));
+        when(splitting.execute(any(), any(), any(), any()))
+            .thenReturn(new EpisodeSplittingAgentAdapter.Execution(List.of(), 12L, List.of()));
+        when(summary.executeChild(any(), any(), any(), any(), any(), any()))
+            .thenReturn(new EpisodeSummaryAgentAdapter.Execution(null, 13L, List.of()));
+        when(recognition.executeChild(any(), any(), any(), any(), any()))
+            .thenReturn(new AssetRecognitionAgentAdapter.Execution(14L, List.of()));
+        doAnswer(invocation -> {
+            ScriptAnalysisTaskEntity currentTask = invocation.getArgument(0);
+            ScriptAnalysisStageEntity currentStage = invocation.getArgument(1);
+            EpisodeFanoutCoordinator.ChildExecutor child = invocation.getArgument(5);
+            EpisodeFanoutCoordinator.Finalizer finish = invocation.getArgument(6);
+            com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan frozenPlan = null;
+            if ("EPISODE_SUMMARY".equals(currentStage.getStageCode())) {
+                frozenPlan = mock(com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan.class);
+                com.antshorttv.workflowagent.agent.WorkflowAgentRecord frozenAgent =
+                    mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);
+                when(frozenPlan.agent()).thenReturn(frozenAgent);
+                when(frozenAgent.modelId()).thenReturn(99L);
+            }
+            child.run(frozenPlan, currentTask, currentStage, null,
+                new EpisodeFanoutCoordinator.EpisodeUnit(100L, "episode-1", "fp", "ACTIVE"));
+            finish.finish(currentStage.getId());
+            return new EpisodeFanoutCoordinator.Result(currentStage.getId(),
+                new EpisodeFanoutCoordinator.Progress(1, 1, 0, 0, 0, "SUCCEEDED"), List.of());
+        }).when(fanout).execute(any(), any(), any(), anyString(), anyBoolean(), any(), any());
+        ReflectionTestUtils.setField(service, "globalUnderstandingAgentAdapter", global);
+        ReflectionTestUtils.setField(service, "episodeSplittingAgentAdapter", splitting);
+        ReflectionTestUtils.setField(service, "episodeSummaryAgentAdapter", summary);
+        ReflectionTestUtils.setField(service, "assetRecognitionAgentAdapter", recognition);
+        ReflectionTestUtils.setField(service, "assetRecognitionFinalizer", finalizer);
+        ReflectionTestUtils.setField(service, "episodeFanoutCoordinator", fanout);
+
+        service.executeTask(91L);
+
+        InOrder order = inOrder(global, splitting, summary, recognition);
+        order.verify(global).execute(any(), any(), any(), any());
+        order.verify(splitting).execute(any(), any(), any(), any());
+        order.verify(summary).executeChild(any(), any(), any(), any(), any(), any());
+        order.verify(recognition).executeChild(any(), any(), any(), any(), any());
+
+        ScriptAnalysisExecutionService failingService = new ScriptAnalysisExecutionService(
+            taskMapper, stageMapper, resultMapper, scriptMapper, versionMapper, scriptElementDraftService,
+            aiInvocationService, projectAiConfigService, teamPointService, objectMapper);
+        when(global.execute(any(), any(), any(), any())).thenThrow(new IllegalStateException("global failed"));
+        task.setStatus("PENDING");
+        task.setCompletedAt(null);
+        stages.forEach(item -> item.setStatus("PENDING"));
+        ReflectionTestUtils.setField(failingService, "globalUnderstandingAgentAdapter", global);
+        ReflectionTestUtils.setField(failingService, "episodeSplittingAgentAdapter", splitting);
+        ReflectionTestUtils.setField(failingService, "episodeSummaryAgentAdapter", summary);
+        ReflectionTestUtils.setField(failingService, "assetRecognitionAgentAdapter", recognition);
+        ReflectionTestUtils.setField(failingService, "assetRecognitionFinalizer", finalizer);
+        ReflectionTestUtils.setField(failingService, "episodeFanoutCoordinator", fanout);
+
+        assertThatThrownBy(() -> failingService.executeTask(91L))
+            .isInstanceOf(IllegalStateException.class);
+        verify(splitting, times(1)).execute(any(), any(), any(), any());
+        verify(summary, times(1)).executeChild(any(), any(), any(), any(), any(), any());
+        verify(recognition, times(1)).executeChild(any(), any(), any(), any(), any());
+        assertThat(stages.get(1).getStatus()).isEqualTo("PENDING");
     }
 
     @SuppressWarnings("unchecked")

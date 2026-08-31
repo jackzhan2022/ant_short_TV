@@ -51,7 +51,7 @@ class WorkflowAgentRunControllerTest {
         String credential = register("13800000999", "Workflow Run Admin");
         when(runner.runFormal(any())).thenReturn(new WorkflowAgentRunResult(101L, "正式结果"));
         when(runner.runTest(any(), any())).thenReturn(new WorkflowAgentRunResult(102L, "测试结果"));
-        when(runs.list("screenplay-agent", 20)).thenReturn(List.of(new WorkflowAgentRunSummary(
+        when(runs.list(7L, "screenplay-agent", 20)).thenReturn(List.of(new WorkflowAgentRunSummary(
             101L, "screenplay-agent", "FORMAL", "SUCCESS", 25L, 91L, "正式结果", null, null,
             LocalDateTime.now(), LocalDateTime.now()
         )));

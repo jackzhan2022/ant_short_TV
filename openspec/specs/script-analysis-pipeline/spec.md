@@ -36,41 +36,56 @@ The system SHALL NOT create a new analysis task when a user later edits and save
 - **AND** does not create or schedule another analysis task
 
 ### Requirement: Execute the four analysis stages in order
-The system SHALL execute the stages in this order: global story understanding, intelligent episode splitting, episode summary extraction, and character/scene recognition.
+The system SHALL execute the stages in this order: global story understanding, intelligent episode splitting, episode summary extraction, and character/scene/prop recognition. Each stage SHALL invoke its enabled workflow Agent, and the latter three Agents SHALL read their own current trusted source rather than consume a prior stage's normalized JSON as model input.
 
-#### Scenario: Advance after successful stage
-- **WHEN** a stage produces a valid result
+#### Scenario: Advance after committed formal output
+- **WHEN** a stage completes its required terminal save contract and formal coverage validation
 - **THEN** the system marks that stage succeeded
-- **AND** starts the next stage with the previous result as input
+- **AND** starts the next configured stage
 
 #### Scenario: Preserve failed stage
-- **WHEN** a stage fails
-- **THEN** the system marks the stage failed with an actionable error
+- **WHEN** a stage fails before its formal completion condition
+- **THEN** the system marks that stage failed or partially failed with an actionable error
 - **AND** does not mark later stages successful
-- **AND** preserves all earlier successful results
-
-### Requirement: Isolate results by script version
-The system SHALL bind every analysis task and result to the script version that triggered it.
-
-#### Scenario: Submit a newer version while analysis is running
-- **WHEN** a user submits a newer script version before the prior analysis completes
-- **THEN** the system creates an independent analysis task for the newer version
-- **AND** results from the older task SHALL NOT overwrite the newer version
+- **AND** preserves all earlier committed formal data
 
 ### Requirement: Support retry from a failed stage
-The system SHALL allow an authorized user to retry a failed stage without resetting successful earlier stages.
+The system SHALL allow an authorized user to retry a failed stage without resetting successful earlier stages, and SHALL allow each workflow Agent to be explicitly rerun independently against its current required source.
 
 #### Scenario: Retry failed intelligent splitting
 - **WHEN** intelligent episode splitting fails and the user requests a retry
-- **THEN** the system creates or resumes an execution attempt for that stage
-- **AND** reuses the latest successful global understanding
-- **AND** leaves later stages waiting until splitting succeeds
+- **THEN** the system creates a new split Agent Run against the current script
+- **AND** does not require or inject the latest global-understanding result
+
+#### Scenario: Retry failed per-episode work
+- **WHEN** a fan-out stage has failed episode units
+- **THEN** the system retries only failed, missing, or stale units unless full regeneration was explicitly requested
 
 ### Requirement: Preserve structured intermediate results
-The system SHALL store the structured result and raw diagnostic response for each completed AI stage.
+The system SHALL retain bounded structured and raw diagnostic results for each Agent execution while treating successfully committed domain rows as the authoritative completed analysis output.
 
 #### Scenario: Retrieve a completed analysis
-- **WHEN** an authorized user opens analysis details for a script version
-- **THEN** the response includes each stage status, result, current action, error information, and associated execution metadata
+- **WHEN** an authorized user opens current analysis details
+- **THEN** the response includes stage status, Agent Run references, current action, error information, and formal result references
+- **AND** the workbench reads completed global understanding, episodes, summaries, and assets from their formal repositories
 - **AND** sensitive provider credentials are excluded
+
+### Requirement: Determine stage completion from current formal coverage
+The system SHALL consider a stage complete only when its current Agent contract and formal-data coverage checks pass for the current script state.
+
+#### Scenario: Model returns valid-looking JSON without a save
+- **WHEN** an Agent invocation returns content but never commits its required save tool
+- **THEN** the stage does not succeed
+
+#### Scenario: Current episode lacks required downstream data
+- **WHEN** a summary or recognition stage is marked successful but a current active episode lacks the corresponding committed unit
+- **THEN** the completion check rejects the stale stage state
+
+### Requirement: Bind new Agent output to current script state
+The new splitting, summary, and recognition Agents SHALL use trusted `script_id`, current source hashes, and current stable `episode_id` values as their business scope rather than historical `script_version_id` ownership.
+
+#### Scenario: Ordinary script save is followed by explicit reanalysis
+- **WHEN** a user edits the current script and explicitly reruns an Agent
+- **THEN** the Agent reads the newly saved current source
+- **AND** can replace the corresponding current formal output without requiring version rollback
 

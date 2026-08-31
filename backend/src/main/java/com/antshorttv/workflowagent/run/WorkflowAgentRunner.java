@@ -22,6 +22,7 @@ import com.antshorttv.workflowagent.tool.ToolFailurePolicy;
 import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
 import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
 import com.antshorttv.workflowagent.tool.WorkflowToolSchemaValidator;
+import com.antshorttv.workflowagent.tool.WorkflowToolRunState;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,12 +35,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
 public class WorkflowAgentRunner {
     private static final Set<String> TRUSTED_SCOPE_ARGUMENTS = Set.of(
-        "tenantId", "userId", "projectId", "episodeId", "taskId", "permissions"
+        "tenantId", "userId", "projectId", "episodeId", "scriptId", "taskId",
+        "analysisStageId", "agentRunId", "permissions"
     );
 
     private final WorkflowAgentService agents;
@@ -51,6 +54,32 @@ public class WorkflowAgentRunner {
     private final WorkflowAgentScopeGuard scopeGuard;
     private final WorkflowAgentProperties properties;
     private final ObjectMapper json;
+    private final EpisodeSplittingRunPolicy splitPolicy;
+
+    @Autowired
+    public WorkflowAgentRunner(
+        WorkflowAgentService agents,
+        WorkflowSkillService skills,
+        WorkflowToolRegistry tools,
+        WorkflowToolSchemaValidator schemaValidator,
+        AiInvocationService invocation,
+        WorkflowAgentRunRepository runs,
+        WorkflowAgentScopeGuard scopeGuard,
+        WorkflowAgentProperties properties,
+        ObjectMapper json,
+        EpisodeSplittingRunPolicy splitPolicy
+    ) {
+        this.agents = agents;
+        this.skills = skills;
+        this.tools = tools;
+        this.schemaValidator = schemaValidator;
+        this.invocation = invocation;
+        this.runs = runs;
+        this.scopeGuard = scopeGuard;
+        this.properties = properties;
+        this.json = json;
+        this.splitPolicy = splitPolicy;
+    }
 
     public WorkflowAgentRunner(
         WorkflowAgentService agents,
@@ -63,20 +92,25 @@ public class WorkflowAgentRunner {
         WorkflowAgentProperties properties,
         ObjectMapper json
     ) {
-        this.agents = agents;
-        this.skills = skills;
-        this.tools = tools;
-        this.schemaValidator = schemaValidator;
-        this.invocation = invocation;
-        this.runs = runs;
-        this.scopeGuard = scopeGuard;
-        this.properties = properties;
-        this.json = json;
+        this(agents, skills, tools, schemaValidator, invocation, runs, scopeGuard,
+            properties, json, null);
     }
 
     public WorkflowAgentRunResult runFormal(WorkflowAgentRunInput input) {
-        WorkflowAgentRecord agent = agents.loadForRun(input.agentCode());
-        return execute(agent, "FORMAL", input);
+        return runFormal(freezeFormal(input.agentCode()), input);
+    }
+
+    public WorkflowAgentExecutionPlan freezeFormal(String agentCode) {
+        WorkflowAgentRecord agent = agents.loadForRun(agentCode);
+        return new WorkflowAgentExecutionPlan(agent, loadSkills(agent.skillCodes()));
+    }
+
+    public WorkflowAgentRunResult runFormal(WorkflowAgentExecutionPlan plan, WorkflowAgentRunInput input) {
+        if (!plan.agent().code().equals(input.agentCode())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                "冻结的 Agent 配置与运行 code 不匹配。");
+        }
+        return execute(plan.agent(), "FORMAL", input, plan.skillSnapshots());
     }
 
     public WorkflowAgentRunResult runTest(WorkflowAgentCommand temporary, WorkflowAgentRunInput input) {
@@ -90,27 +124,36 @@ public class WorkflowAgentRunner {
             temporary.skillCodes() == null ? List.of() : List.copyOf(temporary.skillCodes()),
             temporary.toolCodes() == null ? List.of() : List.copyOf(temporary.toolCodes())
         );
-        return execute(agent, "TEST", input);
+        return execute(agent, "TEST", input, null);
     }
 
     private WorkflowAgentRunResult execute(
         WorkflowAgentRecord agent,
         String runType,
-        WorkflowAgentRunInput input
+        WorkflowAgentRunInput input,
+        List<WorkflowAgentSkillSnapshot> frozenSkills
     ) {
         requireInput(input);
         scopeGuard.requireAuthorized(input, agent.toolCodes());
-        List<WorkflowAgentSkillSnapshot> skillSnapshots = loadSkills(agent.skillCodes());
+        List<WorkflowAgentSkillSnapshot> skillSnapshots = frozenSkills == null
+            ? loadSkills(agent.skillCodes()) : List.copyOf(frozenSkills);
         List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
         String prompt = composePrompt(agent, skillSnapshots);
+        Long effectiveModelId = input.modelIdOverride() == null ? agent.modelId() : input.modelIdOverride();
+        if (input.modelIdOverride() != null) {
+            agents.requireToolCallingModel(effectiveModelId);
+        }
         Long runId = runs.start(new WorkflowAgentRunStart(
             agent.id(), agent.code(), runType, input.tenantId(), input.userId(), input.projectId(),
-            input.episodeId(), input.taskId(), agent.modelId(), agent.temperature(), agent.maxTokens(),
-            agent.maxSteps(), prompt, skillSnapshots, agent.toolCodes()
+            input.episodeId(), input.scriptId(), input.taskId(), input.analysisStageId(), effectiveModelId,
+            agent.temperature(), agent.maxTokens(), agent.maxSteps(), prompt, skillSnapshots,
+            agent.toolCodes()
         ));
         Instant deadline = Instant.now().plusSeconds(properties.getRunTimeoutSeconds());
         try {
-            return runLoop(runId, agent, input, prompt, allowedTools, deadline);
+            return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline,
+                WorkflowAgentRunContract.forAgent(agent.code(),
+                    input.reviewScope() == null ? null : input.reviewScope().phase()));
         } catch (BusinessException exception) {
             runs.fail(runId, exception.getErrorCode().name(), exception.getMessage());
             throw exception;
@@ -124,20 +167,32 @@ public class WorkflowAgentRunner {
     private WorkflowAgentRunResult runLoop(
         Long runId,
         WorkflowAgentRecord agent,
+        Long modelId,
         WorkflowAgentRunInput input,
         String prompt,
         List<WorkflowToolDefinition> allowedTools,
-        Instant deadline
+        Instant deadline,
+        WorkflowAgentRunContract contract
     ) {
+        WorkflowToolRunState runState = new WorkflowToolRunState();
+        boolean splitting = EpisodeSplittingRunPolicy.AGENT_CODE.equals(agent.code());
+        if (splitting && splitPolicy != null) {
+            splitPolicy.preflight(input).ifPresent(reason ->
+                runState.beginSplitFallback(reason.name()));
+        }
         List<AiChatMessage> messages = new ArrayList<>();
         messages.add(AiChatMessage.system(prompt));
-        messages.add(AiChatMessage.user(input.input()));
-        List<AiToolDefinition> providerTools = allowedTools.stream().map(this::providerTool).toList();
+        messages.add(AiChatMessage.user("CHUNK_FALLBACK".equals(runState.splitMode())
+            ? fallbackInstruction(runState.splitFallbackReason()) : input.input()));
         Set<String> allowlist = new HashSet<>(agent.toolCodes());
+        List<WorkflowAgentModelCall> modelCalls = new ArrayList<>();
+        Set<String> trustedPermissions = input.executionId() == null
+            ? Set.of()
+            : Set.of("SCRIPT:VIEW", "SCRIPT:EDIT");
         ToolExecutionContext context = new ToolExecutionContext(
-            input.tenantId(), input.userId(), input.projectId(), input.episodeId(), input.taskId(),
-            Set.of(), deadline
-        );
+            input.tenantId(), input.userId(), input.projectId(), input.episodeId(), input.scriptId(),
+            input.taskId(), input.analysisStageId(), runId, input.executionId(), input.attemptId(),
+            input.executionVersion(), trustedPermissions, deadline, runState, input.reviewScope());
         int stepNo = 0;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
@@ -150,31 +205,66 @@ public class WorkflowAgentRunner {
                     .userId(input.userId())
                     .projectId(input.projectId())
                     .taskId(input.taskId())
-                    .modelId(agent.modelId())
+                    .modelId(modelId)
                     .businessSceneCode("workflow_agent")
                     .traceId(traceId)
-                    .phase("AGENT_STEP_" + modelRound)
-                    .idempotencyKey("agent-run-" + runId + "-model-" + modelRound)
+                    .executionId(input.executionId())
+                    .attemptId(input.attemptId())
+                    .executionVersion(input.executionVersion())
+                    .phase(("CHUNK_FALLBACK".equals(runState.splitMode())
+                        ? "AGENT_FALLBACK_STEP_" : "AGENT_STEP_") + modelRound)
+                    .idempotencyKey("agent-run-" + runId
+                        + ("CHUNK_FALLBACK".equals(runState.splitMode()) ? "-fallback-" : "-model-")
+                        + modelRound)
                     .requestSummary("Agent " + agent.code() + " round " + modelRound)
                     .textRequest(new AiTextRequest(
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
                         null, remainingSeconds(deadline), 0,
-                        messages, providerTools
+                        messages, activeProviderTools(allowedTools, splitting, runState),
+                        splitting ? "disabled" : null
                     ))
                     .build());
             } catch (AiGatewayException exception) {
                 runs.recordFailedModelStep(runId, modelStep, exception.getAiCallLogId(),
                     exception.getErrorCode().name(), exception.getMessage());
+                if (splitting && splitPolicy != null) {
+                    var fallback = splitPolicy.classifyGateway(exception, runState);
+                    if (fallback.isPresent()) {
+                        beginFallback(messages, prompt, runState, fallback.get());
+                        continue;
+                    }
+                }
                 throw exception;
             }
             AiTextResponse response = result.response();
+            modelCalls.add(new WorkflowAgentModelCall(
+                result.aiCallLogId(), result.resolvedModelId(), result.providerId(),
+                result.providerRequestId(), result.transportOutcome(), result.businessOutcome()));
             List<AiToolCall> calls = response == null ? List.of() : response.toolCalls();
             String finalContent = response == null ? null : response.content();
             runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
             if (calls.isEmpty()) {
+                if (splitting && splitPolicy != null) {
+                    var fallback = splitPolicy.classify(response, runState);
+                    if (fallback.isPresent()) {
+                        beginFallback(messages, prompt, runState, fallback.get());
+                        continue;
+                    }
+                }
+                try {
+                    contract.requireComplete(runState);
+                } catch (BusinessException error) {
+                    if (splitting && "CHUNK_FALLBACK".equals(runState.splitMode())) {
+                        messages.add(AiChatMessage.user(
+                            "分块候选分析已完成，但流程尚未落库。立即调用 save_episode_splitting，"
+                                + "不得输出普通文本结束流程。"));
+                        continue;
+                    }
+                    throw error;
+                }
                 String output = finalContent == null ? "" : finalContent;
                 runs.complete(runId, output);
-                return new WorkflowAgentRunResult(runId, output);
+                return new WorkflowAgentRunResult(runId, output, modelCalls);
             }
             messages.add(AiChatMessage.assistantToolCalls(calls));
             for (AiToolCall call : calls) {
@@ -193,8 +283,20 @@ public class WorkflowAgentRunner {
                         error.getErrorCode().name(), error.getMessage());
                     throw error;
                 }
+                try {
+                    contract.requireNext(runState, call.code());
+                } catch (BusinessException error) {
+                    runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
+                        error.getErrorCode().name(), error.getMessage());
+                    if (splitting && "CHUNK_FALLBACK".equals(runState.splitMode())) {
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(error)));
+                        continue;
+                    }
+                    throw error;
+                }
                 WorkflowToolDefinition definition = tools.require(call.code());
                 try {
+                    requireBoundedSavePayload(call.code(), call.argumentsJson());
                     JsonNode arguments = parseArguments(call.argumentsJson());
                     rejectTrustedScope(arguments);
                     schemaValidator.validate(definition.inputSchema(), arguments);
@@ -203,12 +305,18 @@ public class WorkflowAgentRunner {
                     schemaValidator.validate(definition.outputSchema(), output);
                     String serialized = json.writeValueAsString(output);
                     runs.recordToolStep(runId, toolStep, call.code(), call.argumentsJson(), serialized);
+                    runState.recordSuccess(call.code());
+                    if (contract.isTerminal(call.code())) {
+                        runs.complete(runId, serialized);
+                        return new WorkflowAgentRunResult(runId, serialized, modelCalls);
+                    }
                     messages.add(AiChatMessage.toolResult(call.id(), serialized));
                 } catch (Exception exception) {
                     BusinessException normalized = normalizeToolFailure(exception);
                     runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
                         normalized.getErrorCode().name(), normalized.getMessage());
-                    if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL) {
+                    if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL
+                        || isCorrectableSplitBoundaryFailure(call.code(), normalized)) {
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
                     } else {
                         throw normalized;
@@ -262,6 +370,51 @@ public class WorkflowAgentRunner {
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("工具参数不是合法 JSON。", exception);
         }
+    }
+
+    private List<AiToolDefinition> activeProviderTools(
+        List<WorkflowToolDefinition> allowedTools,
+        boolean splitting,
+        WorkflowToolRunState state
+    ) {
+        if (!splitting) {
+            return allowedTools.stream().map(this::providerTool).toList();
+        }
+        Set<String> activeCodes = "CHUNK_FALLBACK".equals(state.splitMode())
+            ? Set.of("read_script_structure", "analyze_script_chunks", "save_episode_splitting")
+            : Set.of("read_current_script", "save_episode_splitting");
+        return allowedTools.stream()
+            .filter(tool -> activeCodes.contains(tool.code()))
+            .map(this::providerTool)
+            .toList();
+    }
+
+    private boolean isCorrectableSplitBoundaryFailure(String toolCode, BusinessException error) {
+        return "save_episode_splitting".equals(toolCode)
+            && error.getErrorCode() == ErrorCode.VALIDATION_ERROR;
+    }
+
+    private void beginFallback(
+        List<AiChatMessage> messages,
+        String prompt,
+        WorkflowToolRunState state,
+        EpisodeSplittingRunPolicy.FallbackReason reason
+    ) {
+        state.beginSplitFallback(reason.name());
+        messages.clear();
+        messages.add(AiChatMessage.system(prompt));
+        messages.add(AiChatMessage.user(fallbackInstruction(reason.name())));
+    }
+
+    private String fallbackInstruction(String reason) {
+        return "全文边界分析未完成，原因：" + reason
+            + "。立即调用 read_script_structure，随后调用 analyze_script_chunks，"
+            + "最后仅用可信候选调用 save_episode_splitting。";
+    }
+
+    private void requireBoundedSavePayload(String toolCode, String argumentsJson) {
+        WorkflowAgentPayloadGuard.requireBounded(
+            toolCode, argumentsJson, properties.getMaxLogPayloadBytes());
     }
 
     private void rejectTrustedScope(JsonNode arguments) {

@@ -34,6 +34,20 @@ export type ScriptEpisode = {
   episodeNo: number;
   title: string;
   content: string;
+  summary?: string | null;
+  contentFingerprint?: string | null;
+  generatedByRunId?: number | null;
+  formalSummary?: {
+    id: number;
+    schemaVersion: number;
+    content: {
+      summary: string;
+      highlights: string[];
+      endingHook?: string | null;
+    };
+    source: string;
+    generatedByRunId?: number | null;
+  } | null;
 };
 
 export type VisualVariant = {
@@ -178,6 +192,16 @@ export type ScriptWorkspace = {
   storyboards: StoryboardShot[];
   episodes?: ScriptEpisode[];
   analysis?: ScriptAnalysisTask | null;
+  globalUnderstanding?: ScriptGlobalUnderstanding | null;
+};
+
+export type ScriptGlobalUnderstanding = {
+  id: number;
+  schemaVersion: number;
+  content: Record<string, unknown>;
+  analyzedContentHash: string;
+  lastAgentRunId?: number | null;
+  updatedAt: string;
 };
 
 export type ScriptAnalysisStage = {
@@ -192,6 +216,7 @@ export type ScriptAnalysisStage = {
   errorCode?: string | null;
   errorMessage?: string | null;
   retryable?: boolean;
+  agentRunId?: number | null;
   resultJson?: string | null;
   providerRequestId?: string | null;
   aiCallLogId?: number | null;
@@ -199,6 +224,39 @@ export type ScriptAnalysisStage = {
   resultErrorCode?: string | null;
   resultErrorMessage?: string | null;
   resultRetryable?: boolean | null;
+  fanout?: EpisodeFanoutProgress | null;
+  splitProgress?: EpisodeSplitProgress | null;
+};
+
+export type EpisodeSplitProgress = {
+  mode: 'FULL' | 'CHUNK_FALLBACK';
+  fallbackReason?: string | null;
+  totalChunks: number;
+  completedChunks: number;
+  failedChunks: number;
+  stale: boolean;
+};
+
+export type EpisodeFanoutUnit = {
+  episodeId: number;
+  episodeKey: string;
+  status: string;
+  childRunId?: number | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+};
+
+export type EpisodeFanoutProgress = {
+  snapshotId: number;
+  status: string;
+  total: number;
+  completed: number;
+  failed: number;
+  currentEpisodeId?: number | null;
+  currentEpisodeKey?: string | null;
+  retryable: boolean;
+  stale: boolean;
+  units: EpisodeFanoutUnit[];
 };
 
 export type ScriptAnalysisTask = {
@@ -367,6 +425,47 @@ export const reanalyzeScriptVersion = async (
 ) =>
   request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/script-analysis/versions/${versionId}/reanalyze`,
+    { method: 'POST' },
+  );
+
+export type SaveEpisodeSummaryValues = {
+  summary: string;
+  highlights: string[];
+  endingHook?: string | null;
+  overwrite: boolean;
+};
+
+export const regenerateEpisodeSplitting = async (projectId: number) =>
+  request<ApiResponse<unknown>>(
+    `/api/projects/${projectId}/script-analysis/current/regenerate-episodes`,
+    { method: 'POST' },
+  );
+
+export const updateEpisodeSummary = async (
+  projectId: number,
+  episodeId: number,
+  values: SaveEpisodeSummaryValues,
+) =>
+  request<ApiResponse<ScriptEpisode['formalSummary']>>(
+    `/api/projects/${projectId}/episodes/${episodeId}/summary`,
+    { method: 'PUT', data: values },
+  );
+
+export const regenerateEpisodeSummary = async (
+  projectId: number,
+  episodeId: number,
+) =>
+  request<ApiResponse<unknown>>(
+    `/api/projects/${projectId}/episodes/${episodeId}/summary/regenerate`,
+    { method: 'POST', data: { overwrite: true } },
+  );
+
+export const regenerateEpisodeAssets = async (
+  projectId: number,
+  episodeId: number,
+) =>
+  request<ApiResponse<unknown>>(
+    `/api/projects/${projectId}/episodes/${episodeId}/assets/regenerate`,
     { method: 'POST' },
   );
 
