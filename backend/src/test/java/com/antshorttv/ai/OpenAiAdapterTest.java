@@ -68,6 +68,43 @@ class OpenAiAdapterTest {
     }
 
     @Test
+    void sendsThinkingModeOnlyToDeepSeekModels() throws Exception {
+        CopyOnWriteArrayList<String> requestBodies = new CopyOnWriteArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = """
+                {"id":"chatcmpl-thinking","choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            String baseUrl = "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort());
+            AiTextRequest disabled = new AiTextRequest(
+                null, null, 0.2, 8192, null, false, null, 10, 0,
+                List.of(AiChatMessage.user("split")), List.of(), "disabled"
+            );
+
+            adapter.text(provider(), config(baseUrl, "sk-real-123"),
+                model("deepseek-v4-flash", "TEXT"), disabled, "split-1");
+            adapter.text(provider(), config(baseUrl, "sk-real-123"),
+                model("gpt-test", "TEXT"), disabled, "split-2");
+
+            ObjectMapper mapper = new ObjectMapper();
+            assertThat(mapper.readTree(requestBodies.get(0)).path("thinking").path("type").asText())
+                .isEqualTo("disabled");
+            assertThat(mapper.readTree(requestBodies.get(1)).has("thinking")).isFalse();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void sendsNativeToolsAndConversationAndParsesAssistantToolCalls() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

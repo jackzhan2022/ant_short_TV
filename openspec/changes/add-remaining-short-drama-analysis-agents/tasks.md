@@ -96,7 +96,7 @@
 
 ## 10. Full-script-first splitting and automatic chunk fallback
 
-- [ ] 10.1 Add failing compatible-provider request tests for an optional thinking-mode control and implement DeepSeek `thinking.type=disabled` emission without sending the vendor field to unrelated models.
+- [x] 10.1 Add failing compatible-provider request tests for an optional thinking-mode control and implement DeepSeek `thinking.type=disabled` emission without sending the vendor field to unrelated models.
 - [ ] 10.2 Add failing split prompt and bootstrap tests that prohibit visible analysis/source repetition, retain boundary-only output, and replace the temporary 32K brute-force configuration with measured full-path and fallback budgets.
 - [ ] 10.3 Add failing migration tests and an additive migration for `script_split_snapshot` and `script_split_chunk`, including tenant/script/hash scope, parent Run, offsets, statuses, bounded candidates, call references, progress, and stale/retry indexes.
 - [ ] 10.4 Add repository tests and implement persisted split snapshots, chunk units, mode/fallback reason, monotonic progress, successful-unit reuse, cancellation, and stale-source invalidation.
