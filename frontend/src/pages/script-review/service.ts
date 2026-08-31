@@ -81,6 +81,32 @@ export type ReviewTask = {
   currentAction?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  workflowAgentCode?: string | null;
+  workflowAgentRevision?: number | null;
+  workflowAgentRunId?: number | null;
+  workflowPhase?: 'QUICK' | 'DEEP_CHILD' | 'DEEP_AGGREGATION' | null;
+  workflowAttemptNo?: number | null;
+  fanoutSnapshotId?: number | null;
+  aggregationRunId?: number | null;
+  retryKind?: 'WHOLE_TASK' | 'FAILED_UNITS' | 'AGGREGATION_ONLY' | null;
+  stale?: boolean;
+  fanout?: {
+    status: string;
+    totalUnits: number;
+    completedUnits: number;
+    failedUnits: number;
+    currentUnitId?: number | null;
+    aggregationStatus?: string | null;
+    units: Array<{
+      id: number;
+      unitNo: number;
+      unitKey: string;
+      status: string;
+      candidateSaved: boolean;
+      errorCode?: string | null;
+      errorMessage?: string | null;
+    }>;
+  } | null;
   completedAt?: string | null;
   canceledAt?: string | null;
   summary?: {
@@ -215,11 +241,12 @@ export const cancelReviewTask = (taskId: number) =>
     },
   );
 
-export const retryReviewTask = (taskId: number) =>
+export const retryReviewTask = (taskId: number, fullRegeneration = false) =>
   request<ApiResponse<API.AiExecutionResponse>>(
     `/api/script-review/tasks/${taskId}/retry`,
     {
       method: 'POST',
+      params: { fullRegeneration },
     },
   );
 

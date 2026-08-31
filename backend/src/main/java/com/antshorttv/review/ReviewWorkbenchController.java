@@ -15,8 +15,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -128,10 +128,12 @@ public class ReviewWorkbenchController {
     @PostMapping("/tasks/{taskId}/retry")
     public ResponseEntity<ApiResponse<AiExecutionResponse>> retryTask(
         @PathVariable Long taskId,
+        @RequestParam(defaultValue = "false") boolean fullRegeneration,
         HttpServletRequest request
     ) {
         return ResponseEntity.status(202)
-            .body(ApiResponse.success(reviewWorkbenchService.retryTask(tenantId(request), taskId)));
+            .body(ApiResponse.success(reviewWorkbenchService.retryTask(
+                tenantId(request), taskId, fullRegeneration)));
     }
 
     @PostMapping("/tasks/{taskId}/batch-repair")

@@ -27,6 +27,7 @@ import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.script.ScriptEpisodeParser;
 import com.antshorttv.script.ScriptEpisodeResponse;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -109,6 +110,12 @@ public class ReviewWorkbenchService {
     private final AiExecutionResponseMapper executionResponseMapper;
     private final AiPointReservationMapper pointReservationMapper;
     private final AiPointSettlementService pointSettlementService;
+    private final ReviewContentService reviewContentService;
+    private final ReviewFanoutSnapshotMapper fanoutSnapshotMapper;
+    private final ReviewFanoutUnitMapper fanoutUnitMapper;
+    private final ReviewQuickAgentAdapter reviewQuickAgentAdapter;
+    private final ReviewDeepAgentCoordinator reviewDeepAgentCoordinator;
+    private final int quickSafeCharacters;
     private final Path exportRoot;
 
     public ReviewWorkbenchService(
@@ -131,6 +138,12 @@ public class ReviewWorkbenchService {
         AiExecutionResponseMapper executionResponseMapper,
         AiPointReservationMapper pointReservationMapper,
         AiPointSettlementService pointSettlementService,
+        ReviewContentService reviewContentService,
+        ReviewFanoutSnapshotMapper fanoutSnapshotMapper,
+        ReviewFanoutUnitMapper fanoutUnitMapper,
+        ReviewQuickAgentAdapter reviewQuickAgentAdapter,
+        ReviewDeepAgentCoordinator reviewDeepAgentCoordinator,
+        @Value("${review.workflow.quick-safe-characters:80000}") int quickSafeCharacters,
         @Value("${review.export-root:storage/review-exports}") String exportRoot
     ) {
         this.tenantContextResolver = tenantContextResolver;
@@ -152,6 +165,12 @@ public class ReviewWorkbenchService {
         this.executionResponseMapper = executionResponseMapper;
         this.pointReservationMapper = pointReservationMapper;
         this.pointSettlementService = pointSettlementService;
+        this.reviewContentService = reviewContentService;
+        this.fanoutSnapshotMapper = fanoutSnapshotMapper;
+        this.fanoutUnitMapper = fanoutUnitMapper;
+        this.reviewQuickAgentAdapter = reviewQuickAgentAdapter;
+        this.reviewDeepAgentCoordinator = reviewDeepAgentCoordinator;
+        this.quickSafeCharacters = Math.min(50000, quickSafeCharacters);
         this.exportRoot = Path.of(exportRoot).toAbsolutePath().normalize();
     }
 
@@ -266,6 +285,14 @@ public class ReviewWorkbenchService {
         task.setSelectedDimensionsJson(serialize(dimensions));
         task.setReviewScopeType(scopeType);
         task.setReviewScopeJson(scopeJson);
+        ReviewContentService.FrozenReview frozen = reviewContentService.freeze(
+            version.getContent(), scopeType, request.reviewScope() == null ? Map.of() : request.reviewScope(), dimensions);
+        if ("QUICK".equals(reviewMode)) {
+            reviewContentService.requireQuickBudget(frozen, quickSafeCharacters);
+        }
+        task.setVersionHash(frozen.versionHash());
+        task.setScopeHash(frozen.scopeHash());
+        task.setDimensionsHash(frozen.dimensionsHash());
         task.setStatus("PENDING");
         task.setCurrentStage("GLOBAL_INDEX");
         task.setOverallProgress(0);
@@ -289,7 +316,6 @@ public class ReviewWorkbenchService {
         );
         task.setExecutionId(execution.id);
         taskMapper.updateById(task);
-
         project.setLastTaskId(task.getId());
         project.setUpdatedAt(now);
         projectMapper.updateById(project);
@@ -329,6 +355,14 @@ public class ReviewWorkbenchService {
         task.setCanceledAt(now);
         task.setUpdatedAt(now);
         taskMapper.updateById(task);
+        if (task.getFanoutSnapshotId() != null) {
+            fanoutUnitMapper.update(null, new UpdateWrapper<ReviewFanoutUnitEntity>()
+                .set("status", "CANCELED").set("updated_at", now)
+                .eq("snapshot_id", task.getFanoutSnapshotId()).in("status", "PENDING", "RUNNING"));
+            fanoutSnapshotMapper.update(null, new UpdateWrapper<ReviewFanoutSnapshotEntity>()
+                .set("status", "CANCELED").set("aggregation_status", "CANCELED")
+                .set("canceled_at", now).set("updated_at", now).eq("id", task.getFanoutSnapshotId()));
+        }
         AiExecutionTaskEntity execution = executionService.cancel(task.getExecutionId());
         AiPointReservationEntity reservation = pointReservationMapper.selectByExecutionId(execution.id);
         if (reservation != null && "RESERVED".equals(reservation.status)) {
@@ -347,6 +381,11 @@ public class ReviewWorkbenchService {
 
     @Transactional
     public AiExecutionResponse retryTask(Long tenantId, Long taskId) {
+        return retryTask(tenantId, taskId, false);
+    }
+
+    @Transactional
+    public AiExecutionResponse retryTask(Long tenantId, Long taskId, boolean fullRegeneration) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewTaskEntity task = requireTask(context.tenantId(), taskId);
         requireAccessibleProject(context, task.getProjectId(), "AI_SERVICE:USE");
@@ -354,7 +393,26 @@ public class ReviewWorkbenchService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "只有失败任务可以重试。");
         }
         LocalDateTime now = LocalDateTime.now();
+        String retryKind = fullRegeneration ? "FULL_REGENERATION" : "WHOLE_TASK";
+        if ("DEEP".equals(task.getReviewMode()) && task.getFanoutSnapshotId() != null) {
+            ReviewFanoutSnapshotEntity snapshot = fanoutSnapshotMapper.selectById(task.getFanoutSnapshotId());
+            if (fullRegeneration) {
+                fanoutSnapshotMapper.update(null, new UpdateWrapper<ReviewFanoutSnapshotEntity>()
+                    .set("status", "STALE").set("updated_at", now).eq("id", task.getFanoutSnapshotId()));
+                taskMapper.update(null, new UpdateWrapper<ReviewTaskEntity>()
+                    .set("fanout_snapshot_id", null)
+                    .set("aggregation_run_id", null)
+                    .eq("id", task.getId()));
+                task.setFanoutSnapshotId(null);
+                task.setAggregationRunId(null);
+            } else {
+                boolean unitsComplete = snapshot != null && fanoutUnitMapper.selectOrdered(snapshot.getId()).stream()
+                    .allMatch(unit -> "SUCCEEDED".equals(unit.getStatus()) && Boolean.TRUE.equals(unit.getCandidateSaved()));
+                retryKind = unitsComplete ? "AGGREGATION_ONLY" : "FAILED_UNITS";
+            }
+        }
         task.setStatus("PENDING");
+        task.setRetryKind(retryKind);
         task.setCurrentStage("GLOBAL_INDEX");
         task.setCurrentAction("等待重新开始");
         task.setErrorCode(null);
@@ -404,6 +462,17 @@ public class ReviewWorkbenchService {
         task.setSelectedDimensionsJson(serialize(dimensions));
         task.setReviewScopeType(scopeType);
         task.setReviewScopeJson(scopeJson);
+        ReviewScriptVersionEntity version = requireVersion(
+            context.tenantId(), task.getProjectId(), task.getScriptVersionId());
+        ReviewContentService.FrozenReview frozen = reviewContentService.freeze(
+            version.getContent(), scopeType, scope, dimensions);
+        if ("QUICK".equals(reviewMode)) {
+            reviewContentService.requireQuickBudget(frozen, quickSafeCharacters);
+        }
+        task.setVersionHash(frozen.versionHash());
+        task.setScopeHash(frozen.scopeHash());
+        task.setDimensionsHash(frozen.dimensionsHash());
+        task.setStale(false);
         task.setIdempotencyKey(idempotencyKey);
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);
@@ -607,6 +676,16 @@ public class ReviewWorkbenchService {
             if ("CANCELED".equals(taskMapper.selectById(taskId).getStatus())) {
                 return ReviewExecutionOutcome.empty();
             }
+            if ("QUICK".equals(task.getReviewMode()) && reviewQuickAgentAdapter.enabled()) {
+                ReviewQuickAgentAdapter.Execution agent = reviewQuickAgentAdapter.execute(
+                    task, executionContext, resolveDefaultTextModelId(task.getTenantId()));
+                return new ReviewExecutionOutcome(null, agent.modelCalls());
+            }
+            if ("DEEP".equals(task.getReviewMode()) && reviewDeepAgentCoordinator.enabled()) {
+                ReviewDeepAgentCoordinator.Execution agent = reviewDeepAgentCoordinator.execute(
+                    task, executionContext, resolveDefaultTextModelId(task.getTenantId()));
+                return new ReviewExecutionOutcome(null, agent.modelCalls());
+            }
             ReviewInvocationOutcome review = invokeAiReview(
                 task, version, globalIndex, scopedContent, executionContext
             );
@@ -635,7 +714,8 @@ public class ReviewWorkbenchService {
                 failed.setStatus("FAILED");
                 failed.setCurrentStage("FAILED");
                 failed.setCurrentAction("审核失败");
-                failed.setErrorCode(exception.getClass().getSimpleName());
+                failed.setErrorCode(exception instanceof BusinessException business
+                    ? business.getErrorCode().name() : ErrorCode.WORKFLOW_AGENT_TOOL_INVALID.name());
                 failed.setErrorMessage(trimError(exception.getMessage()));
                 failed.setUpdatedAt(LocalDateTime.now());
                 taskMapper.updateById(failed);
@@ -994,22 +1074,9 @@ public class ReviewWorkbenchService {
     }
 
     private String scopeContent(String content, ReviewTaskEntity task) {
-        Map<String, Object> scope = deserializeObject(task.getReviewScopeJson());
-        if (scope.isEmpty()) {
-            return content;
-        }
-        if ("EPISODES".equals(task.getReviewScopeType())) {
-            List<Integer> episodeNos = extractIntegerList(scope.get("episodeNos"));
-            if (episodeNos.isEmpty()) {
-                return content;
-            }
-            Set<Integer> allowed = new LinkedHashSet<>(episodeNos);
-            return ScriptEpisodeParser.parse(content).stream()
-                .filter(item -> allowed.contains(item.episodeNo()))
-                .map(item -> "第%d集\n%s".formatted(item.episodeNo(), item.content()))
-                .collect(Collectors.joining("\n\n"));
-        }
-        return content;
+        return reviewContentService.freeze(content, task.getReviewScopeType(),
+            deserializeObject(task.getReviewScopeJson()),
+            deserializeStringList(task.getSelectedDimensionsJson())).content();
     }
 
     private ReviewTaskEntity requireTask(Long tenantId, Long taskId) {
@@ -1086,6 +1153,18 @@ public class ReviewWorkbenchService {
             summary = readSummary(task.getResultJson());
         }
         List<ReviewIssueResponse> issues = includeIssues ? issueMapper.selectByTask(task.getId()).stream().map(this::toIssueResponse).toList() : List.of();
+        ReviewFanoutProgressResponse fanout = null;
+        if (task.getFanoutSnapshotId() != null) {
+            ReviewFanoutSnapshotEntity snapshot = fanoutSnapshotMapper.selectById(task.getFanoutSnapshotId());
+            if (snapshot != null) {
+                fanout = new ReviewFanoutProgressResponse(snapshot.getStatus(), snapshot.getTotalUnits(),
+                    snapshot.getCompletedUnits(), snapshot.getFailedUnits(), snapshot.getCurrentUnitId(),
+                    snapshot.getAggregationStatus(), fanoutUnitMapper.selectOrdered(snapshot.getId()).stream()
+                        .map(unit -> new ReviewUnitProgressResponse(unit.getId(), unit.getUnitNo(), unit.getUnitKey(),
+                            unit.getStatus(), unit.getCandidateSaved(), unit.getErrorCode(), unit.getErrorMessage()))
+                        .toList());
+            }
+        }
         return new ReviewTaskResponse(
             task.getId(),
             task.getProjectId(),
@@ -1101,6 +1180,16 @@ public class ReviewWorkbenchService {
             task.getCurrentAction(),
             task.getErrorCode(),
             task.getErrorMessage(),
+            task.getWorkflowAgentCode(),
+            task.getWorkflowAgentRevision(),
+            task.getWorkflowAgentRunId(),
+            task.getWorkflowPhase(),
+            task.getWorkflowAttemptNo(),
+            task.getFanoutSnapshotId(),
+            task.getAggregationRunId(),
+            task.getRetryKind(),
+            task.getStale(),
+            fanout,
             task.getCompletedAt(),
             task.getCanceledAt(),
             summary,
@@ -1407,11 +1496,12 @@ public class ReviewWorkbenchService {
         if (dimensions == null) {
             return List.of();
         }
-        return dimensions.stream()
+        List<String> normalized = dimensions.stream()
             .map(item -> item == null ? "" : item.trim())
             .filter(item -> !item.isBlank())
             .distinct()
             .toList();
+        return ReviewDimension.parseAll(normalized).stream().map(ReviewDimension::label).toList();
     }
 
     private String resolveImportedContent(MultipartFile file, String content) {

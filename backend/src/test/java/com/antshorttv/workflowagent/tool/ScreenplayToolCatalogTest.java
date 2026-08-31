@@ -24,6 +24,10 @@ class ScreenplayToolCatalogTest {
             "read_episode_script",
             "read_project_context",
             "read_project_full_script",
+            "read_review_content",
+            "read_review_context",
+            "read_review_issue_history",
+            "read_review_unit_results",
             "read_script_analysis",
             "read_script_assets",
             "read_script_structure",
@@ -32,6 +36,8 @@ class ScreenplayToolCatalogTest {
             "save_episode_splitting",
             "save_episode_summary",
             "save_global_understanding",
+            "save_review_result",
+            "save_review_unit_result",
             "validate_screenplay_format"
         ));
         assertThat(registry.catalog()).allSatisfy(tool -> {

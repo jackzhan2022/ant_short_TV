@@ -152,7 +152,8 @@ public class WorkflowAgentRunner {
         Instant deadline = Instant.now().plusSeconds(properties.getRunTimeoutSeconds());
         try {
             return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline,
-                WorkflowAgentRunContract.forAgent(agent.code()));
+                WorkflowAgentRunContract.forAgent(agent.code(),
+                    input.reviewScope() == null ? null : input.reviewScope().phase()));
         } catch (BusinessException exception) {
             runs.fail(runId, exception.getErrorCode().name(), exception.getMessage());
             throw exception;
@@ -191,7 +192,7 @@ public class WorkflowAgentRunner {
         ToolExecutionContext context = new ToolExecutionContext(
             input.tenantId(), input.userId(), input.projectId(), input.episodeId(), input.scriptId(),
             input.taskId(), input.analysisStageId(), runId, input.executionId(), input.attemptId(),
-            input.executionVersion(), trustedPermissions, deadline, runState);
+            input.executionVersion(), trustedPermissions, deadline, runState, input.reviewScope());
         int stepNo = 0;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {

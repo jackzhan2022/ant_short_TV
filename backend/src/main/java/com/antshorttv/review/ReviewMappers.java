@@ -111,3 +111,51 @@ interface ReviewExportRecordMapper extends BaseMapper<ReviewExportRecordEntity> 
             .orderByDesc(ReviewExportRecordEntity::getCreatedAt));
     }
 }
+
+@Mapper
+interface ReviewFanoutSnapshotMapper extends BaseMapper<ReviewFanoutSnapshotEntity> {
+    default ReviewFanoutSnapshotEntity selectAttempt(Long taskId, Integer attemptNo) {
+        return selectOne(new LambdaQueryWrapper<ReviewFanoutSnapshotEntity>()
+            .eq(ReviewFanoutSnapshotEntity::getTaskId, taskId)
+            .eq(ReviewFanoutSnapshotEntity::getAttemptNo, attemptNo)
+            .last("limit 1"));
+    }
+
+    default ReviewFanoutSnapshotEntity selectLatestMatching(
+        Long taskId, String versionHash, String scopeHash, String dimensionsHash
+    ) {
+        return selectOne(new LambdaQueryWrapper<ReviewFanoutSnapshotEntity>()
+            .eq(ReviewFanoutSnapshotEntity::getTaskId, taskId)
+            .eq(ReviewFanoutSnapshotEntity::getVersionHash, versionHash)
+            .eq(ReviewFanoutSnapshotEntity::getScopeHash, scopeHash)
+            .eq(ReviewFanoutSnapshotEntity::getDimensionsHash, dimensionsHash)
+            .orderByDesc(ReviewFanoutSnapshotEntity::getAttemptNo)
+            .last("limit 1"));
+    }
+}
+
+@Mapper
+interface ReviewFanoutUnitMapper extends BaseMapper<ReviewFanoutUnitEntity> {
+    default List<ReviewFanoutUnitEntity> selectOrdered(Long snapshotId) {
+        return selectList(new LambdaQueryWrapper<ReviewFanoutUnitEntity>()
+            .eq(ReviewFanoutUnitEntity::getSnapshotId, snapshotId)
+            .orderByAsc(ReviewFanoutUnitEntity::getUnitNo)
+            .orderByAsc(ReviewFanoutUnitEntity::getId));
+    }
+}
+
+@Mapper
+interface ReviewUnitResultMapper extends BaseMapper<ReviewUnitResultEntity> {
+    default ReviewUnitResultEntity selectCurrent(Long snapshotId, Long unitId) {
+        return selectOne(new LambdaQueryWrapper<ReviewUnitResultEntity>()
+            .eq(ReviewUnitResultEntity::getSnapshotId, snapshotId)
+            .eq(ReviewUnitResultEntity::getUnitId, unitId)
+            .last("limit 1"));
+    }
+
+    default List<ReviewUnitResultEntity> selectOrdered(Long snapshotId) {
+        return selectList(new LambdaQueryWrapper<ReviewUnitResultEntity>()
+            .eq(ReviewUnitResultEntity::getSnapshotId, snapshotId)
+            .orderByAsc(ReviewUnitResultEntity::getUnitId));
+    }
+}

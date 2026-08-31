@@ -93,6 +93,9 @@ ai:
     episode-splitting-enabled: ${AI_WORKFLOW_EPISODE_SPLITTING_ENABLED:false}
     episode-summary-enabled: ${AI_WORKFLOW_EPISODE_SUMMARY_ENABLED:false}
     asset-recognition-enabled: ${AI_WORKFLOW_ASSET_RECOGNITION_ENABLED:false}
+    review-bootstrap-enabled: ${AI_WORKFLOW_REVIEW_BOOTSTRAP_ENABLED:true}
+    review-quick-enabled: ${AI_WORKFLOW_REVIEW_QUICK_ENABLED:false}
+    review-deep-enabled: ${AI_WORKFLOW_REVIEW_DEEP_ENABLED:false}
     fanout-concurrency: ${AI_WORKFLOW_FANOUT_CONCURRENCY:3}
   testing:
     mock-provider-enabled: ${AI_TESTING_MOCK_PROVIDER_ENABLED:false}
@@ -114,3 +117,10 @@ ai:
     poll-fixed-delay-ms: ${AI_VIDEO_POLL_FIXED_DELAY_MS:15000}
     scheduler:
       enabled: ${AI_VIDEO_SCHEDULER_ENABLED:true}
+
+review:
+  workflow:
+    quick-safe-characters: ${REVIEW_WORKFLOW_QUICK_SAFE_CHARACTERS:50000}
+    deep-unit-characters: ${REVIEW_WORKFLOW_DEEP_UNIT_CHARACTERS:24000}
+    deep-unit-overlap: ${REVIEW_WORKFLOW_DEEP_UNIT_OVERLAP:1200}
+    deep-max-concurrency: ${REVIEW_WORKFLOW_DEEP_MAX_CONCURRENCY:3}

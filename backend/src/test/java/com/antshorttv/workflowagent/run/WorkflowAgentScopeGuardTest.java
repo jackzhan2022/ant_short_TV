@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.rbac.ProjectPermissionGuard;
+import com.antshorttv.workflowagent.tool.ReviewToolScope;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -102,5 +103,46 @@ class WorkflowAgentScopeGuardTest {
                 List.of("read_current_episode", save)))
                 .isInstanceOf(BusinessException.class).hasMessageContaining("剧集");
         }
+    }
+
+    @Test
+    void authorizesQuickReviewFromTrustedExecutionAndRejectsOutOfPhaseTools() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class),
+            any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1, 0);
+        WorkflowAgentRunInput input = reviewInput(new ReviewToolScope(
+            301L, 302L, null, null, 1, "QUICK", List.of("台词合理性")));
+
+        guard.requireAuthorized(input, List.of(
+            "read_review_context", "read_review_content", "save_review_result"));
+        assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("save_review_unit_result")))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
+    }
+
+    @Test
+    void rejectsForeignReviewTaskVersionSnapshotAndUnitScopes() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(0);
+        WorkflowAgentRunInput foreignTask = reviewInput(new ReviewToolScope(
+            301L, 999L, null, null, 1, "QUICK", List.of("台词合理性")));
+        assertThatThrownBy(() -> guard.requireAuthorized(foreignTask, List.of("read_review_context")))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("不匹配");
+    }
+
+    @Test
+    void deepChildRequiresItsOwnSnapshotUnitAndPhaseAllowlist() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
+        WorkflowAgentRunInput input = reviewInput(new ReviewToolScope(
+            301L, 302L, 303L, 304L, 1, "DEEP_CHILD", List.of("道具连续性")));
+        guard.requireAuthorized(input, List.of(
+            "read_review_context", "read_review_content", "save_review_unit_result"));
+        assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("read_review_unit_results")))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
+        assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("save_review_result")))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
+    }
+
+    private WorkflowAgentRunInput reviewInput(ReviewToolScope scope) {
+        return new WorkflowAgentRunInput(
+            "script-review", "run", 7L, 301L, null, null, 305L, null, 9L,
+            501L, 502L, 3, 8L, scope);
     }
 }

@@ -92,6 +92,7 @@ const ScriptReviewPage = () => {
   );
   const [reviewMode, setReviewMode] = useState('QUICK');
   const [scopeType, setScopeType] = useState('ALL');
+  const [scopeValues, setScopeValues] = useState('');
   const [hitSelections, setHitSelections] = useState<Record<number, number[]>>(
     {},
   );
@@ -241,6 +242,20 @@ const ScriptReviewPage = () => {
       message.warning('请选择版本和至少一个审核维度');
       return;
     }
+    const selectedScopeValues = scopeValues
+      .split(/[,，\n]/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (scopeType !== 'ALL' && selectedScopeValues.length === 0) {
+      message.warning(scopeType === 'EPISODES' ? '请输入要审核的集数' : '请输入要审核的场次编号');
+      return;
+    }
+    const reviewScope =
+      scopeType === 'EPISODES'
+        ? { episodeNos: selectedScopeValues }
+        : scopeType === 'SCENES'
+          ? { sceneKeys: selectedScopeValues }
+          : {};
     setSaving(true);
     try {
       const response = await createReviewTask(selectedProjectId, {
@@ -248,6 +263,7 @@ const ScriptReviewPage = () => {
         reviewMode,
         selectedDimensions: dimensions,
         reviewScopeType: scopeType,
+        reviewScope,
       });
       setSelectedTaskId(response.data?.businessId);
       message.success('审核任务已创建，后台会持续更新进度');
@@ -512,6 +528,11 @@ const ScriptReviewPage = () => {
                             { label: '深度审核', value: 'DEEP' },
                           ]}
                         />
+                        {reviewMode === 'QUICK' ? (
+                          <Typography.Text type="secondary">
+                            快速审核会一次覆盖完整所选范围；范围过大时请缩小范围或改用深度审核。
+                          </Typography.Text>
+                        ) : null}
                         <Select
                           value={scopeType}
                           onChange={setScopeType}
@@ -522,6 +543,18 @@ const ScriptReviewPage = () => {
                             { label: '指定场', value: 'SCENES' },
                           ]}
                         />
+                        {scopeType !== 'ALL' ? (
+                          <Input
+                            value={scopeValues}
+                            onChange={(event) => setScopeValues(event.target.value)}
+                            disabled={taskLocked}
+                            placeholder={
+                              scopeType === 'EPISODES'
+                                ? '输入集数，用逗号分隔，如 1, 2, 3'
+                                : '输入场次编号，用逗号分隔，如 1-2, 2-1'
+                            }
+                          />
+                        ) : null}
                         <Button
                           type="primary"
                           icon={<AuditOutlined />}
@@ -557,6 +590,39 @@ const ScriptReviewPage = () => {
                         <Typography.Text type="secondary">
                           {task.currentAction ?? '等待任务执行'}
                         </Typography.Text>
+                        {task.workflowAgentCode ? (
+                          <div style={{ marginTop: 8 }}>
+                            <Space wrap>
+                              <Tag color="geekblue">Agent：剧本审核</Tag>
+                              <Tag>{task.workflowPhase ?? task.reviewMode}</Tag>
+                              {task.selectedDimensions.map((dimension) => (
+                                <Tag key={dimension}>Skill：{dimension}</Tag>
+                              ))}
+                              {task.retryKind ? <Tag>重试：{task.retryKind}</Tag> : null}
+                              {task.stale ? <Tag color="orange">输入已变化</Tag> : null}
+                            </Space>
+                          </div>
+                        ) : null}
+                        {task.fanout ? (
+                          <div style={{ marginTop: 8 }}>
+                            <Typography.Text type="secondary">
+                              深度单元 {task.fanout.completedUnits}/{task.fanout.totalUnits}
+                              {task.fanout.failedUnits > 0
+                                ? ` · 失败 ${task.fanout.failedUnits}`
+                                : ''}
+                              {task.fanout.aggregationStatus
+                                ? ` · 聚合 ${task.fanout.aggregationStatus}`
+                                : ''}
+                              {task.fanout.currentUnitId
+                                ? ` · 当前单元 ${
+                                    task.fanout.units.find(
+                                      (unit) => unit.id === task.fanout?.currentUnitId,
+                                    )?.unitNo ?? task.fanout.currentUnitId
+                                  }`
+                                : ''}
+                            </Typography.Text>
+                          </div>
+                        ) : null}
                         <div style={{ marginTop: 8 }}>
                           <Space>
                             {['PENDING', 'RUNNING'].includes(task.status) && (
@@ -580,7 +646,11 @@ const ScriptReviewPage = () => {
                                   );
                                 }}
                               >
-                                重试
+                                {task.retryKind === 'AGGREGATION_ONLY'
+                                  ? '仅重试聚合'
+                                  : task.retryKind === 'FAILED_UNITS'
+                                    ? '重试失败单元'
+                                    : '重试'}
                               </Button>
                             )}
                           </Space>

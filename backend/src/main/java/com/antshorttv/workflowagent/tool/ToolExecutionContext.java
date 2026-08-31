@@ -19,7 +19,8 @@ public record ToolExecutionContext(
     Integer executionVersion,
     Set<String> permissions,
     Instant deadline,
-    WorkflowToolRunState runState
+    WorkflowToolRunState runState,
+    ReviewToolScope reviewScope
 ) {
     public ToolExecutionContext {
         permissions = permissions == null ? Set.of() : Set.copyOf(permissions);
@@ -28,11 +29,20 @@ public record ToolExecutionContext(
 
     public ToolExecutionContext(
         Long tenantId, Long userId, Long projectId, Long episodeId, Long scriptId,
+        Long taskId, Long analysisStageId, Long agentRunId, Long executionId, Long attemptId,
+        Integer executionVersion, Set<String> permissions, Instant deadline, WorkflowToolRunState runState
+    ) {
+        this(tenantId, userId, projectId, episodeId, scriptId, taskId, analysisStageId, agentRunId,
+            executionId, attemptId, executionVersion, permissions, deadline, runState, null);
+    }
+
+    public ToolExecutionContext(
+        Long tenantId, Long userId, Long projectId, Long episodeId, Long scriptId,
         Long taskId, Long analysisStageId, Long agentRunId, Set<String> permissions,
         Instant deadline, WorkflowToolRunState runState
     ) {
         this(tenantId, userId, projectId, episodeId, scriptId, taskId, analysisStageId,
-            agentRunId, null, null, null, permissions, deadline, runState);
+            agentRunId, null, null, null, permissions, deadline, runState, null);
     }
 
     public ToolExecutionContext(
@@ -40,7 +50,7 @@ public record ToolExecutionContext(
         Set<String> permissions
     ) {
         this(tenantId, userId, projectId, episodeId, null, taskId, null, null, null, null, null,
-            permissions, null, new WorkflowToolRunState());
+            permissions, null, new WorkflowToolRunState(), null);
     }
 
     public ToolExecutionContext(
@@ -48,7 +58,7 @@ public record ToolExecutionContext(
         Set<String> permissions, Instant deadline
     ) {
         this(tenantId, userId, projectId, episodeId, null, taskId, null, null, null, null, null,
-            permissions, deadline, new WorkflowToolRunState());
+            permissions, deadline, new WorkflowToolRunState(), null);
     }
 
     public void requireBeforeDeadline() {

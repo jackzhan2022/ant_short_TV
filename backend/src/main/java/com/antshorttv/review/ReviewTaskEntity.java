@@ -27,6 +27,18 @@ public class ReviewTaskEntity {
     private String errorMessage;
     private String idempotencyKey;
     private Long executionId;
+    private String workflowAgentCode;
+    private Long workflowAgentRevision;
+    private Long workflowAgentRunId;
+    private String workflowPhase;
+    private Integer workflowAttemptNo;
+    private String versionHash;
+    private String scopeHash;
+    private String dimensionsHash;
+    private Long fanoutSnapshotId;
+    private Long aggregationRunId;
+    private String retryKind;
+    private Boolean stale;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -71,6 +83,30 @@ public class ReviewTaskEntity {
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
     public Long getExecutionId() { return executionId; }
     public void setExecutionId(Long executionId) { this.executionId = executionId; }
+    public String getWorkflowAgentCode() { return workflowAgentCode; }
+    public void setWorkflowAgentCode(String workflowAgentCode) { this.workflowAgentCode = workflowAgentCode; }
+    public Long getWorkflowAgentRevision() { return workflowAgentRevision; }
+    public void setWorkflowAgentRevision(Long workflowAgentRevision) { this.workflowAgentRevision = workflowAgentRevision; }
+    public Long getWorkflowAgentRunId() { return workflowAgentRunId; }
+    public void setWorkflowAgentRunId(Long workflowAgentRunId) { this.workflowAgentRunId = workflowAgentRunId; }
+    public String getWorkflowPhase() { return workflowPhase; }
+    public void setWorkflowPhase(String workflowPhase) { this.workflowPhase = workflowPhase; }
+    public Integer getWorkflowAttemptNo() { return workflowAttemptNo; }
+    public void setWorkflowAttemptNo(Integer workflowAttemptNo) { this.workflowAttemptNo = workflowAttemptNo; }
+    public String getVersionHash() { return versionHash; }
+    public void setVersionHash(String versionHash) { this.versionHash = versionHash; }
+    public String getScopeHash() { return scopeHash; }
+    public void setScopeHash(String scopeHash) { this.scopeHash = scopeHash; }
+    public String getDimensionsHash() { return dimensionsHash; }
+    public void setDimensionsHash(String dimensionsHash) { this.dimensionsHash = dimensionsHash; }
+    public Long getFanoutSnapshotId() { return fanoutSnapshotId; }
+    public void setFanoutSnapshotId(Long fanoutSnapshotId) { this.fanoutSnapshotId = fanoutSnapshotId; }
+    public Long getAggregationRunId() { return aggregationRunId; }
+    public void setAggregationRunId(Long aggregationRunId) { this.aggregationRunId = aggregationRunId; }
+    public String getRetryKind() { return retryKind; }
+    public void setRetryKind(String retryKind) { this.retryKind = retryKind; }
+    public Boolean getStale() { return stale; }
+    public void setStale(Boolean stale) { this.stale = stale; }
     public Long getCreatedBy() { return createdBy; }
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }

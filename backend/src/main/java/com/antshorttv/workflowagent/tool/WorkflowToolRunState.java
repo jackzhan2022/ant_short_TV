@@ -26,6 +26,11 @@ public final class WorkflowToolRunState {
         return type.cast(value);
     }
 
+    public <T> T get(String key, Class<T> type) {
+        Object value = attributes.get(key);
+        return type.isInstance(value) ? type.cast(value) : null;
+    }
+
     public void recordSuccess(String toolCode) {
         successfulToolCodes.add(toolCode);
     }
