@@ -85,6 +85,62 @@ class ScriptSplitChunkAnalyzerTest {
             org.mockito.ArgumentMatchers.eq("CHUNK_ANALYSIS_FAILED"), any());
     }
 
+    @Test
+    void recomputesAnIncorrectModelOffsetFromAUniqueMarkerAndNormalizesLineEndings() {
+        String source = "序章\r\n---\r\n第二集：重逢\r\n正文";
+        ScriptSplitSnapshotStore store = mock(ScriptSplitSnapshotStore.class);
+        when(store.require(13L)).thenReturn(new ScriptSplitSnapshotStore.SplitSnapshot(
+            13, 101, "hash", "CHUNK_FALLBACK", "OUTPUT_TRUNCATED", "RUNNING", 1, 0, 0));
+        when(store.successfulChunks(13L)).thenReturn(List.of());
+        when(store.retryableChunks(13L)).thenReturn(List.of(
+            new ScriptSplitSnapshotStore.SplitChunk(
+                1, 13, 1, 0, source.length(), 0, source.length(), "hash", "PENDING", null, null)));
+        AiInvocationService invocation = mock(AiInvocationService.class);
+        when(invocation.invokeText(any())).thenReturn(result(
+            "{\"candidates\":[{\"marker\":\"---\\n第二集：重逢\",\"localOffset\":0}]}", 10));
+        ScriptSplitChunkAnalyzer analyzer = new ScriptSplitChunkAnalyzer(
+            store, snapshotId -> source, invocation, new ObjectMapper(),
+            new WorkflowAgentProperties());
+
+        ScriptSplitChunkAnalyzer.ChunkAnalysisResult result = analyzer.analyze(
+            new ScriptSplitChunkAnalyzer.AnalysisContext(1, 2, 3, null, 7, 101), 13);
+
+        assertThat(result.candidates()).singleElement().satisfies(candidate -> {
+            assertThat(candidate.absoluteOffset()).isEqualTo(4);
+            assertThat(candidate.marker()).isEqualTo("---\r\n第二集：重逢");
+        });
+    }
+
+    @Test
+    void keepsVerifiedCandidatesWhenTheSameChunkAlsoContainsAnInvalidSuggestion() {
+        String source = "第一集\n正文\n第二集\n正文";
+        ScriptSplitSnapshotStore store = mock(ScriptSplitSnapshotStore.class);
+        when(store.require(14L)).thenReturn(new ScriptSplitSnapshotStore.SplitSnapshot(
+            14, 102, "hash", "CHUNK_FALLBACK", "OUTPUT_TRUNCATED", "RUNNING", 1, 0, 0));
+        when(store.successfulChunks(14L)).thenReturn(List.of());
+        when(store.retryableChunks(14L)).thenReturn(List.of(
+            new ScriptSplitSnapshotStore.SplitChunk(
+                1, 14, 1, 0, source.length(), 0, source.length(), "hash", "PENDING", null, null)));
+        AiInvocationService invocation = mock(AiInvocationService.class);
+        when(invocation.invokeText(any())).thenReturn(result("""
+            {"candidates":[
+              {"marker":"第二集","localOffset":0},
+              {"marker":"不存在的场次","localOffset":0}
+            ]}
+            """, 11));
+        ScriptSplitChunkAnalyzer analyzer = new ScriptSplitChunkAnalyzer(
+            store, snapshotId -> source, invocation, new ObjectMapper(),
+            new WorkflowAgentProperties());
+
+        ScriptSplitChunkAnalyzer.ChunkAnalysisResult result = analyzer.analyze(
+            new ScriptSplitChunkAnalyzer.AnalysisContext(1, 2, 3, null, 7, 102), 14);
+
+        assertThat(result.candidates()).extracting(
+            ScriptSplitChunkAnalyzer.BoundaryCandidate::marker).containsExactly("第二集");
+        verify(store).markChunkSucceeded(org.mockito.ArgumentMatchers.eq(14L),
+            org.mockito.ArgumentMatchers.eq(1), org.mockito.ArgumentMatchers.eq(11L), any());
+    }
+
     private ScriptSplitSnapshotStore.SplitChunk chunk(int no, int start, int end) {
         return new ScriptSplitSnapshotStore.SplitChunk(
             no, 11, no, start, end, start, end, "hash-" + no, "PENDING", null, null);

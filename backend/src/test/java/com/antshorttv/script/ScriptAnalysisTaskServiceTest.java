@@ -81,7 +81,7 @@ class ScriptAnalysisTaskServiceTest {
         assertThat(stageCaptor.getAllValues()).extracting(ScriptAnalysisStageEntity::getStageOrder)
             .containsExactly(1, 2, 3, 4);
         assertThat(stageCaptor.getAllValues()).extracting(ScriptAnalysisStageEntity::getCurrentAction)
-            .containsExactly("正在理解剧情全局", "正在智能拆分剧集", "正在提炼剧集概要", "正在识别角色和场景");
+            .containsExactly("等待开始剧情全局理解", "正在智能拆分剧集", "正在提炼剧集概要", "正在识别角色和场景");
     }
 
     @Test

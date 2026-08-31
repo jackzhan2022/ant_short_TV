@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.lang.reflect.Modifier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +45,16 @@ class ScriptSplitSnapshotStoreTest {
             """, tenantId, projectId, modelId);
         long runId = jdbc.queryForObject("select max(id) from ai_workflow_agent_run", Long.class);
         scope = new ScriptSplitSnapshotStore.SplitScope(tenantId, projectId, scriptId, runId);
+    }
+
+    @Test
+    void chunkProgressMutationsAreSerializedToAvoidParentRefreshDeadlocks() throws Exception {
+        assertThat(Modifier.isSynchronized(ScriptSplitSnapshotStore.class
+            .getMethod("markChunkSucceeded", long.class, int.class, Long.class,
+                com.fasterxml.jackson.databind.JsonNode.class).getModifiers())).isTrue();
+        assertThat(Modifier.isSynchronized(ScriptSplitSnapshotStore.class
+            .getMethod("markChunkFailed", long.class, int.class, String.class, String.class)
+            .getModifiers())).isTrue();
     }
 
     @Test

@@ -171,25 +171,80 @@ public class ScriptSplitChunkAnalyzer {
             JsonNode root = json.readTree(content == null ? "" : content);
             if (!root.path("candidates").isArray()) throw new IllegalArgumentException("候选数组缺失。");
             List<BoundaryCandidate> result = new ArrayList<>();
+            String body = source.substring(chunk.contextStart(), chunk.contextEnd());
             for (JsonNode item : root.path("candidates")) {
-                String marker = item.path("marker").asText();
-                int localOffset = item.path("localOffset").asInt(-1);
-                int absoluteOffset = chunk.contextStart() + localOffset;
-                if (marker.isBlank() || marker.length() > 2000 || localOffset < 0
-                    || absoluteOffset < chunk.contextStart()
-                    || absoluteOffset + marker.length() > chunk.contextEnd()
-                    || !source.startsWith(marker, absoluteOffset)) {
-                    throw new IllegalArgumentException("候选原文标记无效。");
+                try {
+                    String marker = item.path("marker").asText();
+                    int localOffset = item.path("localOffset").asInt(-1);
+                    if (marker.isBlank() || marker.length() > 2000 || localOffset < 0) {
+                        throw new IllegalArgumentException("候选原文标记无效。");
+                    }
+                    MarkerLocation location = body.startsWith(marker, localOffset)
+                        ? new MarkerLocation(localOffset, localOffset + marker.length())
+                        : locateUniqueMarker(body, marker);
+                    int absoluteOffset = chunk.contextStart() + location.start();
+                    String trustedMarker = body.substring(location.start(), location.endExclusive());
+                    result.add(new BoundaryCandidate(trustedMarker, absoluteOffset,
+                        item.path("type").asText("UNKNOWN"), item.path("rationale").asText(""),
+                        Math.max(0, Math.min(1, item.path("confidence").asDouble(0))),
+                        List.of(chunk.chunkNo())));
+                } catch (IllegalArgumentException ignored) {
+                    // An unverified suggestion is excluded; verified candidates in the same
+                    // chunk remain usable. A wholly invalid non-empty response still fails below.
                 }
-                result.add(new BoundaryCandidate(marker, absoluteOffset,
-                    item.path("type").asText("UNKNOWN"), item.path("rationale").asText(""),
-                    Math.max(0, Math.min(1, item.path("confidence").asDouble(0))),
-                    List.of(chunk.chunkNo())));
+            }
+            if (root.path("candidates").size() > 0 && result.isEmpty()) {
+                throw new IllegalArgumentException("候选原文标记均无效。");
             }
             return result;
         } catch (Exception exception) {
             throw new IllegalArgumentException("分块模型响应无效。", exception);
         }
+    }
+
+    private MarkerLocation locateUniqueMarker(String source, String marker) {
+        int exact = source.indexOf(marker);
+        if (exact >= 0) {
+            if (source.indexOf(marker, exact + 1) >= 0) {
+                throw new IllegalArgumentException("候选原文标记重复。");
+            }
+            return new MarkerLocation(exact, exact + marker.length());
+        }
+        NormalizedLineText normalizedSource = normalizeLineEndings(source, true);
+        NormalizedLineText normalizedMarker = normalizeLineEndings(marker, false);
+        int first = normalizedSource.text().indexOf(normalizedMarker.text());
+        if (first < 0) {
+            throw new IllegalArgumentException("候选原文标记不存在。");
+        }
+        if (normalizedSource.text().indexOf(normalizedMarker.text(), first + 1) >= 0) {
+            throw new IllegalArgumentException("候选原文标记重复。");
+        }
+        int last = first + normalizedMarker.text().length() - 1;
+        return new MarkerLocation(
+            normalizedSource.starts().get(first), normalizedSource.ends().get(last));
+    }
+
+    private NormalizedLineText normalizeLineEndings(String value, boolean retainOffsets) {
+        StringBuilder normalized = new StringBuilder();
+        List<Integer> starts = new ArrayList<>();
+        List<Integer> ends = new ArrayList<>();
+        for (int index = 0; index < value.length(); index++) {
+            int start = index;
+            char character = value.charAt(index);
+            if (character == '\r') {
+                if (index + 1 < value.length() && value.charAt(index + 1) == '\n') {
+                    index++;
+                }
+                character = '\n';
+            }
+            normalized.append(character);
+            if (retainOffsets) {
+                starts.add(start);
+                ends.add(index + 1);
+            }
+        }
+        return new NormalizedLineText(
+            normalized.toString(), List.copyOf(starts), List.copyOf(ends));
     }
 
     private List<BoundaryCandidate> parsePersisted(JsonNode value) {
@@ -250,4 +305,6 @@ public class ScriptSplitChunkAnalyzer {
     private record ChunkOutcome(
         List<BoundaryCandidate> candidates, Long aiCallLogId, String errorCode
     ) {}
+    private record MarkerLocation(int start, int endExclusive) {}
+    private record NormalizedLineText(String text, List<Integer> starts, List<Integer> ends) {}
 }

@@ -11,8 +11,125 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @SpringBootTest
 class SchemaMigrationTest {
 
+    @Test
+    void flywayCreatesEpisodeSplitFallbackPersistence() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) in ('script_split_snapshot', 'script_split_chunk')
+            """, Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    void flywayCreatesFormalEpisodeSummaryAndScriptScopedAgentAssetMetadata() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer summaryTable = jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) = 'script_episode_summary'
+            """, Integer.class);
+        Integer summaryColumns = jdbc.queryForObject("""
+            select count(distinct lower(column_name)) from information_schema.columns
+             where lower(table_name) = 'script_episode_summary'
+               and lower(column_name) in (
+                 'id', 'tenant_id', 'project_id', 'script_id', 'episode_id',
+                 'schema_version', 'content_json', 'source', 'generated_by_run_id',
+                 'created_by', 'updated_by', 'created_at', 'updated_at'
+               )
+            """, Integer.class);
+        Integer summaryUnique = jdbc.queryForObject("""
+            select count(*) from information_schema.table_constraints
+             where lower(table_name) = 'script_episode_summary'
+               and lower(constraint_name) = 'uk_script_episode_summary_episode'
+               and constraint_type = 'UNIQUE'
+            """, Integer.class);
+        Integer assetMetadataColumns = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) in ('character_asset', 'scene_asset', 'prop_asset')
+               and lower(column_name) in (
+                 'script_id', 'normalized_name', 'content_json', 'source', 'generated_by_run_id'
+               )
+            """, Integer.class);
+        Integer variantMetadataColumns = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where (lower(table_name) = 'asset_visual_variant'
+                    and lower(column_name) in ('content_json', 'generated_by_run_id'))
+                or (lower(table_name) = 'asset_visual_variant_episode'
+                    and lower(column_name) = 'generated_by_run_id')
+            """, Integer.class);
+        Integer episodeProvenance = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'script_episode'
+               and lower(column_name) = 'generated_by_run_id'
+            """, Integer.class);
+        Integer nullableLegacyVersion = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'script_episode'
+               and lower(column_name) = 'script_version_id'
+               and is_nullable = 'YES'
+            """, Integer.class);
+        Integer scriptAssetIndexes = jdbc.queryForObject("""
+            select count(distinct lower(index_name)) from information_schema.indexes
+             where lower(index_name) in (
+               'idx_character_asset_script_name',
+               'idx_scene_asset_script_name',
+               'idx_prop_asset_script_name'
+             )
+            """, Integer.class);
+
+        assertThat(summaryTable).isEqualTo(1);
+        assertThat(summaryColumns).isEqualTo(13);
+        assertThat(summaryUnique).isEqualTo(1);
+        assertThat(assetMetadataColumns).isEqualTo(15);
+        assertThat(variantMetadataColumns).isEqualTo(3);
+        assertThat(episodeProvenance).isEqualTo(1);
+        assertThat(nullableLegacyVersion).isEqualTo(1);
+        assertThat(scriptAssetIndexes).isEqualTo(3);
+    }
+
     @Autowired
     private DataSource dataSource;
+
+    @Test
+    void flywayCreatesScriptLevelGlobalUnderstandingDocument() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer tableCount = jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) = 'script_global_understanding'
+            """, Integer.class);
+        Integer columnCount = jdbc.queryForObject("""
+            select count(distinct lower(column_name)) from information_schema.columns
+             where lower(table_name) = 'script_global_understanding'
+               and lower(column_name) in (
+                 'id', 'tenant_id', 'project_id', 'script_id', 'schema_version',
+                 'content_json', 'analyzed_content_hash', 'last_agent_run_id',
+                 'created_by', 'updated_by', 'created_at', 'updated_at'
+               )
+            """, Integer.class);
+        Integer forbiddenVersionColumn = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'script_global_understanding'
+               and lower(column_name) = 'script_version_id'
+            """, Integer.class);
+        Integer uniqueConstraint = jdbc.queryForObject("""
+            select count(*) from information_schema.table_constraints
+             where lower(table_name) = 'script_global_understanding'
+               and lower(constraint_name) = 'uk_script_global_understanding_script'
+               and constraint_type = 'UNIQUE'
+            """, Integer.class);
+        Integer foreignKeys = jdbc.queryForObject("""
+            select count(*) from information_schema.table_constraints
+             where lower(table_name) = 'script_global_understanding'
+               and constraint_type = 'FOREIGN KEY'
+            """, Integer.class);
+
+        assertThat(tableCount).isEqualTo(1);
+        assertThat(columnCount).isEqualTo(12);
+        assertThat(forbiddenVersionColumn).isZero();
+        assertThat(uniqueConstraint).isEqualTo(1);
+        assertThat(foreignKeys).isEqualTo(3);
+    }
 
     @Test
     void flywayCreatesModelPointPricingAndFrozenExecutionReferences() {
@@ -937,5 +1054,44 @@ class SchemaMigrationTest {
         assertThat(uniqueConstraints).isEqualTo(1);
         assertThat(foreignKeys).isGreaterThanOrEqualTo(3);
         assertThat(historicalColumns).isEqualTo(6);
+    }
+
+    @Test
+    void flywayCreatesPersistedEpisodeFanoutSnapshotsAndUnits() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) in ('script_analysis_fanout_snapshot', 'script_analysis_fanout_unit')
+            """, Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where (lower(table_name) = 'script_analysis_fanout_snapshot'
+                    and lower(column_name) in ('stage_id', 'attempt_no', 'agent_revision', 'model_id',
+                                               'episode_set_hash', 'total_units', 'completed_units',
+                                               'failed_units', 'status'))
+                or (lower(table_name) = 'script_analysis_fanout_unit'
+                    and lower(column_name) in ('snapshot_id', 'episode_id', 'episode_key',
+                                               'content_fingerprint', 'status', 'child_run_id',
+                                               'error_code', 'error_message'))
+            """, Integer.class)).isEqualTo(17);
+    }
+
+    @Test
+    void flywayCreatesFormalEpisodeAssetCoverageAndIdentityLocks() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) in ('script_episode_asset_analysis', 'script_asset_identity_lock')
+            """, Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'asset_visual_variant_episode'
+               and lower(column_name) = 'content_json'
+            """, Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.table_constraints
+             where lower(table_name) = 'script_asset_identity_lock'
+               and constraint_type = 'UNIQUE'
+            """, Integer.class)).isEqualTo(1);
     }
 }

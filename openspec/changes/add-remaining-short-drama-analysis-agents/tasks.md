@@ -90,9 +90,9 @@
 - [x] 9.2 Run the full backend test suite plus frontend type-check, Jest tests, Biome lint, and Ant Design lint required by the repository.
 - [ ] 9.3 Add end-to-end coverage for a multi-episode script proving AI-only split, stable episode IDs, per-episode summaries, cross-episode character reuse, multiple looks, prop-state binding, progress restoration, and formal page reads.
 - [ ] 9.4 Add failure end-to-end coverage for stale source, invalid split coverage, ambiguous asset match, one failed child Run, targeted retry, transaction rollback, and no premature retirement.
-- [ ] 9.5 Verify model compatibility and realistic token, timeout, concurrency, call-count, billing, and payload limits with the configured DeepSeek-compatible tool-calling path.
+- [x] 9.5 Verify model compatibility and realistic token, timeout, concurrency, call-count, billing, and payload limits with the configured DeepSeek-compatible tool-calling path.
 - [x] 9.6 Document new environment flags, concurrency/retry defaults, formal table ownership, legacy compatibility reads, rollout order, monitored error codes, and rollback procedure.
-- [ ] 9.7 Enable and smoke-test the three adapters sequentially—split, summary, recognition—in a non-production environment before production rollout.
+- [x] 9.7 Enable and smoke-test the three adapters sequentially—split, summary, recognition—in a non-production environment before production rollout.
 
 ## 10. Full-script-first splitting and automatic chunk fallback
 
@@ -107,5 +107,5 @@
 - [x] 10.9 Add failing dynamic-contract and runner tests for normal and fallback tool sequences, context preflight, context errors, `finish_reason=length`, empty/no-save responses, clean fallback context, single fallback transition, validation-error exclusion, and one terminal save.
 - [x] 10.10 Implement the split-specific execution strategy while keeping the generic workflow runner unchanged for other Agents; record mode, fallback reason, model calls, token usage, and phase-specific idempotency.
 - [x] 10.11 Add API and workbench tests for restored split mode, fallback reason, chunk totals/completion/failures, current action, and one visible splitting stage, then implement the response and UI fields.
-- [ ] 10.12 Run focused backend and frontend tests, then full repository verification, and document the new context threshold, chunk sizing, concurrency, retry, thinking-mode, rollout, monitoring, and rollback settings.
-- [ ] 10.13 Run project 26 against the latest DeepSeek-compatible model, first verify the non-thinking full path, then force and verify chunk fallback, exact full-text coverage, one formal save, stable episode IDs, restored progress, billing, and downstream summary/recognition startup.
+- [x] 10.12 Run focused backend and frontend tests, then full repository verification, and document the new context threshold, chunk sizing, concurrency, retry, thinking-mode, rollout, monitoring, and rollback settings.
+- [x] 10.13 Run project 26 against the latest DeepSeek-compatible model, first verify the non-thinking full path, then force and verify chunk fallback, exact full-text coverage, one formal save, stable episode IDs, restored progress, billing, and downstream summary/recognition startup.

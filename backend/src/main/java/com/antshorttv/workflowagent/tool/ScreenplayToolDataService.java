@@ -15,6 +15,7 @@ import com.antshorttv.script.EpisodeAssetPersistenceService;
 import com.antshorttv.script.ScriptSplitChunkPlanner;
 import com.antshorttv.script.ScriptSplitSnapshotStore;
 import com.antshorttv.script.ScriptSplitChunkAnalyzer;
+import com.antshorttv.script.TrustedEpisodeBoundaryBuilder;
 import com.antshorttv.workflowagent.WorkflowAgentProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,6 +52,7 @@ public class ScreenplayToolDataService {
     private final ScriptSplitSnapshotStore splitSnapshotStore;
     private final ScriptSplitChunkAnalyzer splitChunkAnalyzer;
     private final WorkflowAgentProperties workflowAgentProperties;
+    private final TrustedEpisodeBoundaryBuilder trustedEpisodeBoundaryBuilder;
     private final EpisodeSplitBoundaryResolver splitBoundaryResolver = new EpisodeSplitBoundaryResolver();
 
     public ScreenplayToolDataService(
@@ -66,7 +68,8 @@ public class ScreenplayToolDataService {
         ScriptSplitChunkPlanner splitChunkPlanner,
         ScriptSplitSnapshotStore splitSnapshotStore,
         ScriptSplitChunkAnalyzer splitChunkAnalyzer,
-        WorkflowAgentProperties workflowAgentProperties
+        WorkflowAgentProperties workflowAgentProperties,
+        TrustedEpisodeBoundaryBuilder trustedEpisodeBoundaryBuilder
     ) {
         this.jdbc = jdbc;
         this.permissionGuard = permissionGuard;
@@ -81,6 +84,7 @@ public class ScreenplayToolDataService {
         this.splitSnapshotStore = splitSnapshotStore;
         this.splitChunkAnalyzer = splitChunkAnalyzer;
         this.workflowAgentProperties = workflowAgentProperties;
+        this.trustedEpisodeBoundaryBuilder = trustedEpisodeBoundaryBuilder;
     }
 
     public JsonNode readProjectContext(ToolExecutionContext context) {
@@ -253,12 +257,17 @@ public class ScreenplayToolDataService {
         var scope = new ScriptSplitSnapshotStore.SplitScope(
             context.tenantId(), context.projectId(), context.scriptId(), context.agentRunId());
         splitSnapshotStore.markStaleForDifferentHash(scope, contentHash);
+        String fallbackReason = context.runState().splitFallbackReason();
+        if (fallbackReason == null || fallbackReason.isBlank()) {
+            fallbackReason = "RUNTIME_FALLBACK";
+        }
         long snapshotId = splitSnapshotStore.createOrResume(
-            scope, contentHash, "RUNTIME_FALLBACK", "structure-v1", seeds);
+            scope, contentHash, fallbackReason, "structure-v1", seeds);
         String snapshotKey = sha256(context.agentRunId() + ":" + snapshotId + ":" + contentHash);
         context.runState().put("splitSnapshotId", snapshotId);
         context.runState().put("splitContentHash", contentHash);
         context.runState().put("splitSnapshotKey", snapshotKey);
+        context.runState().put("currentScriptHash", contentHash);
 
         ObjectNode result = json.createObjectNode();
         result.put("contentHash", contentHash);
@@ -294,6 +303,15 @@ public class ScreenplayToolDataService {
                 context.executionVersion()), snapshotId);
         ObjectNode result = json.valueToTree(analyzed);
         result.put("failed", splitSnapshotStore.require(snapshotId).failed());
+        String source = jdbc.queryForObject("""
+            select content from script
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+            """, String.class, context.tenantId(), context.projectId(), context.scriptId());
+        trustedEpisodeBoundaryBuilder.build(source, analyzed.anchors()).ifPresent(boundaries -> {
+            JsonNode trusted = json.valueToTree(boundaries);
+            context.runState().put("trustedSplitBoundaries", trusted);
+            result.set("recommendedEpisodes", trusted);
+        });
         int bytes = result.toString().getBytes(StandardCharsets.UTF_8).length;
         if (bytes > workflowAgentProperties.getMaxLogPayloadBytes()) {
             throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
@@ -500,8 +518,16 @@ public class ScreenplayToolDataService {
             throw new BusinessException(ErrorCode.SCRIPT_CONTENT_CHANGED,
                 "剧本在分集过程中发生变化，请重新读取后再分析。");
         }
+        JsonNode effectiveBoundaries = episodeBoundaries;
+        if ("CHUNK_FALLBACK".equals(context.runState().splitMode())) {
+            try {
+                effectiveBoundaries = context.runState().require("trustedSplitBoundaries", JsonNode.class);
+            } catch (IllegalStateException ignored) {
+                // Heading-free scripts continue to use the model-selected verified candidates.
+            }
+        }
         List<EpisodeSplitBoundaryResolver.Boundary> boundaries = new java.util.ArrayList<>();
-        episodeBoundaries.forEach(item -> boundaries.add(new EpisodeSplitBoundaryResolver.Boundary(
+        effectiveBoundaries.forEach(item -> boundaries.add(new EpisodeSplitBoundaryResolver.Boundary(
             item.path("title").asText(), item.path("startMarker").asText(), item.path("endMarker").asText())));
         List<ScriptEpisodeResponse> extracted;
         try {
@@ -542,7 +568,7 @@ public class ScreenplayToolDataService {
                    normalized_json, created_at, updated_at)
                 values (?, ?, 'EPISODE_SPLITTING', ?, 'SUCCEEDED', ?, ?, now(), now())
                 """, context.taskId(), context.analysisStageId(), String.valueOf(schemaVersion),
-                episodeBoundaries.toString(), snapshot.toString());
+                effectiveBoundaries.toString(), snapshot.toString());
             resultId = jdbc.queryForObject(
                 "select max(id) from script_analysis_result where task_id = ? and stage_id = ?",
                 Long.class, context.taskId(), context.analysisStageId());

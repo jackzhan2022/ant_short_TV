@@ -102,6 +102,7 @@ public class ScreenplayToolConfiguration {
         for (String name : new String[]{"candidates", "anchors", "aiCallLogIds"}) {
             fields.putObject(name).put("type", "array");
         }
+        fields.putObject("recommendedEpisodes").put("type", "array");
         return definition("analyze_script_chunks", "分析剧本分块",
             "分析已建立的可信剧本分块并返回紧凑边界候选。",
             emptyInput(json), output, ToolRiskLevel.READ_ONLY,

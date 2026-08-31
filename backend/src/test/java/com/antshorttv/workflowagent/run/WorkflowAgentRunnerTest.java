@@ -16,6 +16,7 @@ import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.AiToolCall;
 import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
 import com.antshorttv.workflowagent.WorkflowAgentProperties;
 import com.antshorttv.workflowagent.agent.WorkflowAgentRecord;
 import com.antshorttv.workflowagent.agent.WorkflowAgentCommand;
@@ -353,7 +354,8 @@ class WorkflowAgentRunnerTest {
                     }
                 }
             });
-        runner = runnerWith(List.of(tool("read_current_script"), save), 30);
+        runner = runnerWith(List.of(tool("read_current_script"), tool("read_script_structure"),
+            tool("analyze_script_chunks"), save), 30);
         when(agents.loadForRun("short-drama-global-understanding")).thenReturn(globalAgent());
         when(invocation.invokeText(any())).thenReturn(result(null, List.of(
             new AiToolCall("read", "read_current_script", "{}"),
@@ -405,20 +407,95 @@ class WorkflowAgentRunnerTest {
             .thenReturn(truncated(902L))
             .thenReturn(result(null, List.of(new AiToolCall("structure", "read_script_structure", "{}")), 903L))
             .thenReturn(result(null, List.of(new AiToolCall("analyze", "analyze_script_chunks", "{}")), 904L))
-            .thenReturn(result(null, List.of(new AiToolCall("save", "save_episode_splitting", "{}")), 905L));
+            .thenReturn(result("候选分析完成", List.of(), 905L))
+            .thenReturn(result(null, List.of(new AiToolCall("save", "save_episode_splitting", "{}")), 906L));
 
         runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-episode-splitting", "FULL_INPUT", 7L, 25L, null, 77L,
             null, null, 9L));
 
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(5)).invokeText(requests.capture());
+        verify(invocation, org.mockito.Mockito.times(6)).invokeText(requests.capture());
         assertThat(requests.getAllValues().get(2).textRequest().messages())
             .extracting(AiChatMessage::content).doesNotContain("FULL_INPUT");
         assertThat(requests.getAllValues().get(2).textRequest().messages().get(1).content())
             .contains("read_script_structure", "OUTPUT_TRUNCATED");
+        assertThat(requests.getAllValues().get(0).textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("read_current_script", "save_episode_splitting");
+        assertThat(requests.getAllValues().get(2).textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("read_script_structure", "analyze_script_chunks", "save_episode_splitting");
         assertThat(requests.getAllValues()).allSatisfy(request ->
             assertThat(request.textRequest().thinkingMode()).isEqualTo("disabled"));
+    }
+
+    @Test
+    void splittingReturnsBoundaryValidationErrorsToTheModelForOneCorrectiveSave() throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_episode_splitting", "保存分集", "保存分集",
+            json.readTree("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.TERMINAL,
+            new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    if (saves.incrementAndGet() == 1) {
+                        throw new BusinessException(ErrorCode.VALIDATION_ERROR, "边界标记无法唯一定位");
+                    }
+                    return json.createObjectNode().put("saved", true);
+                }
+            });
+        runner = runnerWith(List.of(tool("read_current_script"), tool("read_script_structure"),
+            tool("analyze_script_chunks"), save), 30);
+        when(agents.loadForRun("short-drama-episode-splitting")).thenReturn(splitAgent());
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("read", "read_current_script", "{}")), 911L))
+            .thenReturn(result(null, List.of(new AiToolCall("bad", "save_episode_splitting", "{}")), 912L))
+            .thenReturn(result(null, List.of(new AiToolCall("fixed", "save_episode_splitting", "{}")), 913L));
+
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-episode-splitting", "执行", 7L, 25L, null, 77L,
+            null, null, 9L));
+
+        assertThat(result.runId()).isEqualTo(101L);
+        assertThat(saves).hasValue(2);
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(any());
+    }
+
+    @Test
+    void splittingReturnsAnOutOfSequenceFallbackToolToTheModelForCorrection() {
+        WorkflowAgentProperties properties = new WorkflowAgentProperties();
+        properties.setRunTimeoutSeconds(30);
+        properties.setSplitSafeContextTokens(1);
+        EpisodeSplittingRunPolicy policy = new EpisodeSplittingRunPolicy(properties, input -> "long script");
+        runner = new WorkflowAgentRunner(
+            agents, skills, new WorkflowToolRegistry(List.of(
+                tool("read_current_script"), tool("read_script_structure"),
+                tool("analyze_script_chunks"), tool("save_episode_splitting"))),
+            new WorkflowToolSchemaValidator(), invocation, runs, scopeGuard, properties, json, policy);
+        when(agents.loadForRun("short-drama-episode-splitting")).thenReturn(splitAgent());
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("wrong", "read_current_script", "{}")), 921L))
+            .thenReturn(result(null, List.of(new AiToolCall("structure", "read_script_structure", "{}")), 922L))
+            .thenReturn(result(null, List.of(new AiToolCall("analyze", "analyze_script_chunks", "{}")), 923L))
+            .thenReturn(result(null, List.of(new AiToolCall("save", "save_episode_splitting", "{}")), 924L));
+
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-episode-splitting", "执行", 7L, 25L, null, 77L,
+            null, null, 9L));
+
+        assertThat(result.runId()).isEqualTo(101L);
+        verify(invocation, org.mockito.Mockito.times(4)).invokeText(any());
+        verify(runs).recordFailedToolStep(org.mockito.ArgumentMatchers.eq(101L),
+            org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.eq("read_current_script"),
+            org.mockito.ArgumentMatchers.eq("{}"),
+            org.mockito.ArgumentMatchers.eq(ErrorCode.REQUIRED_TOOL_NOT_CALLED.name()),
+            org.mockito.ArgumentMatchers.anyString());
     }
 
     private WorkflowAgentRecord agent(int maxSteps, List<String> skillCodes, List<String> toolCodes) {
@@ -476,7 +553,7 @@ class WorkflowAgentRunnerTest {
     private WorkflowAgentRecord splitAgent() {
         return new WorkflowAgentRecord(
             5L, "short-drama-episode-splitting", "剧集智能拆分", "", "执行", 8L,
-            new BigDecimal("0.2"), 16384, 10, "ENABLED", 0L, 9L, 9L,
+            new BigDecimal("0.2"), 16384, 16, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
                 "read_current_script", "read_script_structure", "analyze_script_chunks",
                 "save_episode_splitting"));

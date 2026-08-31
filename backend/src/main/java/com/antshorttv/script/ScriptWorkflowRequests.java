@@ -3,6 +3,7 @@ package com.antshorttv.script;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 record GenerateScriptRequest(
@@ -34,6 +35,17 @@ record SaveScriptRequest(
     @NotBlank @Size(max = 200000) String content,
     @Size(max = 32) String status
 ) {
+}
+
+record SaveEpisodeSummaryRequest(
+    @NotBlank @Size(max = 20000) String summary,
+    @NotNull @Size(min = 2, max = 5) java.util.List<@NotBlank @Size(max = 1000) String> highlights,
+    @Size(max = 2000) String endingHook,
+    @NotNull Boolean overwrite
+) {
+}
+
+record RegenerateEpisodeSummaryRequest(@NotNull Boolean overwrite) {
 }
 
 record UpdateScriptElementRequest(

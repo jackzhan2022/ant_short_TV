@@ -62,6 +62,9 @@ class ScreenplayToolCatalogTest {
         assertThat(structure.outputSchema().path("required"))
             .extracting(JsonNode::asText)
             .contains("contentHash", "snapshotKey", "totalChunks", "chunks", "anchors");
-        assertThat(registry.require("analyze_script_chunks").inputSchema().path("properties")).isEmpty();
+        WorkflowToolDefinition chunkAnalysis = registry.require("analyze_script_chunks");
+        assertThat(chunkAnalysis.inputSchema().path("properties")).isEmpty();
+        assertThat(chunkAnalysis.outputSchema().path("properties").path("recommendedEpisodes").path("type").asText())
+            .isEqualTo("array");
     }
 }

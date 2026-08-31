@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.Mapper;
 interface ScriptEpisodeMapper extends BaseMapper<ScriptEpisodeEntity> {}
 
 @Mapper
+interface ScriptEpisodeSummaryMapper extends BaseMapper<ScriptEpisodeSummaryEntity> {}
+
+@Mapper
 interface ScriptAssetNormalizationRunMapper extends BaseMapper<ScriptAssetNormalizationRunEntity> {}
 
 @Mapper

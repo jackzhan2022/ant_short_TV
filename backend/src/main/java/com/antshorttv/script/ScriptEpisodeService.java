@@ -15,10 +15,16 @@ public class ScriptEpisodeService {
     private final ScriptEpisodeMapper episodeMapper;
     private final JdbcTemplate jdbc;
     private final ScriptEpisodeReconciler reconciler;
+    private final ScriptEpisodeSummaryRepository summaryRepository;
 
-    public ScriptEpisodeService(ScriptEpisodeMapper episodeMapper, JdbcTemplate jdbc) {
+    public ScriptEpisodeService(
+        ScriptEpisodeMapper episodeMapper,
+        JdbcTemplate jdbc,
+        ScriptEpisodeSummaryRepository summaryRepository
+    ) {
         this.episodeMapper = episodeMapper;
         this.jdbc = jdbc;
+        this.summaryRepository = summaryRepository;
         this.reconciler = new ScriptEpisodeReconciler();
     }
 
@@ -28,6 +34,18 @@ public class ScriptEpisodeService {
         Long projectId,
         Long scriptId,
         Long scriptVersionId,
+        List<ScriptEpisodeResponse> parsedEpisodes
+    ) {
+        return reconcileAndPersist(tenantId, projectId, scriptId, scriptVersionId, null, parsedEpisodes);
+    }
+
+    @Transactional
+    public List<ScriptEpisodeResponse> reconcileAndPersist(
+        Long tenantId,
+        Long projectId,
+        Long scriptId,
+        Long scriptVersionId,
+        Long generatedByRunId,
         List<ScriptEpisodeResponse> parsedEpisodes
     ) {
         List<ScriptEpisodeEntity> current = activeEntities(tenantId, projectId, scriptId);
@@ -50,7 +68,7 @@ public class ScriptEpisodeService {
                 episodeMapper.updateById(retired);
                 jdbc.update("""
                     update asset_visual_variant_episode
-                       set binding_status = 'REVIEW_REQUIRED', retired_at = ?, updated_at = ?
+                       set binding_status = 'RETIRED', retired_at = ?, updated_at = ?
                      where tenant_id = ? and project_id = ? and episode_id = ? and retired_at is null
                     """, now, now, tenantId, projectId, retired.getId());
             }
@@ -77,6 +95,7 @@ public class ScriptEpisodeService {
             entity.setReconciliationStatus(item.status());
             entity.setStatus("AMBIGUOUS".equals(item.status()) ? "NEEDS_REVIEW" : "ACTIVE");
             entity.setRetiredAt(null);
+            entity.setGeneratedByRunId(generatedByRunId);
             entity.setUpdatedAt(now);
             if (entity.getId() == null) {
                 entity.setCreatedAt(now);
@@ -90,9 +109,11 @@ public class ScriptEpisodeService {
     }
 
     public List<ScriptEpisodeResponse> currentEpisodes(Long tenantId, Long projectId, Long scriptId) {
+        Map<Long, ScriptEpisodeSummaryDocument> summaries = summaryRepository.findCurrentByScript(tenantId, scriptId);
         return activeEntities(tenantId, projectId, scriptId).stream()
             .map(item -> new ScriptEpisodeResponse(
-                item.getId(), item.getEpisodeNo(), item.getTitle(), item.getContent(), item.getSummary()))
+                item.getId(), item.getEpisodeNo(), item.getTitle(), item.getContent(), item.getSummary(),
+                item.getContentFingerprint(), item.getGeneratedByRunId(), summaries.get(item.getId())))
             .toList();
     }
 

@@ -183,7 +183,6 @@ public class WorkflowAgentRunner {
         messages.add(AiChatMessage.system(prompt));
         messages.add(AiChatMessage.user("CHUNK_FALLBACK".equals(runState.splitMode())
             ? fallbackInstruction(runState.splitFallbackReason()) : input.input()));
-        List<AiToolDefinition> providerTools = allowedTools.stream().map(this::providerTool).toList();
         Set<String> allowlist = new HashSet<>(agent.toolCodes());
         List<WorkflowAgentModelCall> modelCalls = new ArrayList<>();
         Set<String> trustedPermissions = input.executionId() == null
@@ -220,7 +219,8 @@ public class WorkflowAgentRunner {
                     .textRequest(new AiTextRequest(
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
                         null, remainingSeconds(deadline), 0,
-                        messages, providerTools, splitting ? "disabled" : null
+                        messages, activeProviderTools(allowedTools, splitting, runState),
+                        splitting ? "disabled" : null
                     ))
                     .build());
             } catch (AiGatewayException exception) {
@@ -250,7 +250,17 @@ public class WorkflowAgentRunner {
                         continue;
                     }
                 }
-                contract.requireComplete(runState);
+                try {
+                    contract.requireComplete(runState);
+                } catch (BusinessException error) {
+                    if (splitting && "CHUNK_FALLBACK".equals(runState.splitMode())) {
+                        messages.add(AiChatMessage.user(
+                            "分块候选分析已完成，但流程尚未落库。立即调用 save_episode_splitting，"
+                                + "不得输出普通文本结束流程。"));
+                        continue;
+                    }
+                    throw error;
+                }
                 String output = finalContent == null ? "" : finalContent;
                 runs.complete(runId, output);
                 return new WorkflowAgentRunResult(runId, output, modelCalls);
@@ -272,7 +282,17 @@ public class WorkflowAgentRunner {
                         error.getErrorCode().name(), error.getMessage());
                     throw error;
                 }
-                contract.requireNext(runState, call.code());
+                try {
+                    contract.requireNext(runState, call.code());
+                } catch (BusinessException error) {
+                    runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
+                        error.getErrorCode().name(), error.getMessage());
+                    if (splitting && "CHUNK_FALLBACK".equals(runState.splitMode())) {
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(error)));
+                        continue;
+                    }
+                    throw error;
+                }
                 WorkflowToolDefinition definition = tools.require(call.code());
                 try {
                     requireBoundedSavePayload(call.code(), call.argumentsJson());
@@ -294,7 +314,8 @@ public class WorkflowAgentRunner {
                     BusinessException normalized = normalizeToolFailure(exception);
                     runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
                         normalized.getErrorCode().name(), normalized.getMessage());
-                    if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL) {
+                    if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL
+                        || isCorrectableSplitBoundaryFailure(call.code(), normalized)) {
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
                     } else {
                         throw normalized;
@@ -348,6 +369,28 @@ public class WorkflowAgentRunner {
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("工具参数不是合法 JSON。", exception);
         }
+    }
+
+    private List<AiToolDefinition> activeProviderTools(
+        List<WorkflowToolDefinition> allowedTools,
+        boolean splitting,
+        WorkflowToolRunState state
+    ) {
+        if (!splitting) {
+            return allowedTools.stream().map(this::providerTool).toList();
+        }
+        Set<String> activeCodes = "CHUNK_FALLBACK".equals(state.splitMode())
+            ? Set.of("read_script_structure", "analyze_script_chunks", "save_episode_splitting")
+            : Set.of("read_current_script", "save_episode_splitting");
+        return allowedTools.stream()
+            .filter(tool -> activeCodes.contains(tool.code()))
+            .map(this::providerTool)
+            .toList();
+    }
+
+    private boolean isCorrectableSplitBoundaryFailure(String toolCode, BusinessException error) {
+        return "save_episode_splitting".equals(toolCode)
+            && error.getErrorCode() == ErrorCode.VALIDATION_ERROR;
     }
 
     private void beginFallback(

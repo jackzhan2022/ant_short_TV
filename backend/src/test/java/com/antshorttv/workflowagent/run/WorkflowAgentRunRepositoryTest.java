@@ -35,7 +35,7 @@ class WorkflowAgentRunRepositoryTest {
         repository.recordModelStep(runId, 3, 502L, List.of(), "改写完成");
         repository.complete(runId, "改写完成");
 
-        WorkflowAgentRunDetail detail = repository.detail(runId);
+        WorkflowAgentRunDetail detail = repository.detail(7L, runId);
         assertThat(detail.status()).isEqualTo("SUCCESS");
         assertThat(detail.promptSnapshot()).contains("[REDACTED]").doesNotContain("top-secret", "sk-abcdef");
         assertThat(detail.skillSnapshots()).singleElement().satisfies(snapshot ->
@@ -50,8 +50,11 @@ class WorkflowAgentRunRepositoryTest {
             .contains("改写完成", "toolCalls", "content");
         assertThat(detail.finalOutput()).isEqualTo("改写完成");
         assertThat(detail.finishedAt()).isNotNull();
-        assertThat(repository.list("temporary-agent", 20)).extracting(WorkflowAgentRunSummary::id)
+        assertThat(repository.list(7L, "temporary-agent", 20)).extracting(WorkflowAgentRunSummary::id)
             .contains(runId);
+        assertThat(repository.list(8L, "temporary-agent", 20)).isEmpty();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> repository.detail(8L, runId))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
     }
 
     @Test
@@ -65,7 +68,7 @@ class WorkflowAgentRunRepositoryTest {
             "VALIDATION_ERROR", "内容无效");
         repository.fail(runId, "VALIDATION_ERROR", "内容无效");
 
-        WorkflowAgentRunDetail detail = repository.detail(runId);
+        WorkflowAgentRunDetail detail = repository.detail(7L, runId);
         assertThat(detail.status()).isEqualTo("FAILED");
         assertThat(detail.errorCode()).isEqualTo("VALIDATION_ERROR");
         assertThat(detail.steps()).singleElement().satisfies(step -> {
@@ -85,7 +88,7 @@ class WorkflowAgentRunRepositoryTest {
             List.of()
         ));
 
-        WorkflowAgentRunDetail detail = repository.detail(runId);
+        WorkflowAgentRunDetail detail = repository.detail(7L, runId);
         assertThat(detail.skillSnapshots()).singleElement().satisfies(snapshot ->
             assertThat(snapshot.content()).endsWith("...[TRUNCATED]"));
     }

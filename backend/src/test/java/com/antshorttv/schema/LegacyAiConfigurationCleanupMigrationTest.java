@@ -22,7 +22,7 @@ class LegacyAiConfigurationCleanupMigrationTest {
 
         migrate(dataSource, null);
 
-        assertThat(latestVersion(jdbc)).isEqualTo("80");
+        assertThat(latestVersion(jdbc)).isEqualTo("83");
         assertThat(tableCount(jdbc, "ai_service_config")).isZero();
         assertThat(tableCount(jdbc, "ai_service_test_log")).isZero();
         assertThat(columnCount(jdbc, "ai_image_task", "service_config_id")).isZero();

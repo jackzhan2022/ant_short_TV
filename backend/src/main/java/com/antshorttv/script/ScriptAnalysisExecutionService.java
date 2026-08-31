@@ -10,6 +10,7 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.execution.AiExecutionContext;
 import com.antshorttv.points.TeamPointService;
 import com.antshorttv.security.TenantContext;
+import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -27,12 +28,21 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class ScriptAnalysisExecutionService {
+    private static final Logger LOG = LoggerFactory.getLogger(ScriptAnalysisExecutionService.class);
     @Autowired private ScriptAnalysisConfigSnapshotService configSnapshotService;
     @Autowired(required = false) private ScriptEpisodeService scriptEpisodeService;
     @Autowired(required = false) private ScriptAssetNormalizationService assetNormalizationService;
+    @Autowired(required = false) private GlobalUnderstandingAgentAdapter globalUnderstandingAgentAdapter;
+    @Autowired(required = false) private EpisodeSplittingAgentAdapter episodeSplittingAgentAdapter;
+    @Autowired(required = false) private EpisodeSummaryAgentAdapter episodeSummaryAgentAdapter;
+    @Autowired(required = false) private EpisodeFanoutCoordinator episodeFanoutCoordinator;
+    @Autowired(required = false) private AssetRecognitionAgentAdapter assetRecognitionAgentAdapter;
+    @Autowired(required = false) private AssetRecognitionFinalizer assetRecognitionFinalizer;
     private final ScriptAnalysisTaskMapper taskMapper;
     private final ScriptAnalysisStageMapper stageMapper;
     private final ScriptAnalysisResultMapper resultMapper;
@@ -137,9 +147,85 @@ public class ScriptAnalysisExecutionService {
         String requestId = null;
         Long durationMs = null;
         try {
-            if ("EPISODE_SPLITTING".equals(stage.getStageCode())) {
+            if ("GLOBAL_UNDERSTANDING".equals(stage.getStageCode())) {
+                LOG.info("Global-understanding stage adapterPresent={}, enabled={}",
+                    globalUnderstandingAgentAdapter != null,
+                    globalUnderstandingAgentAdapter != null && globalUnderstandingAgentAdapter.enabled());
+            }
+            if ("GLOBAL_UNDERSTANDING".equals(stage.getStageCode())
+                && globalUnderstandingAgentAdapter != null
+                && globalUnderstandingAgentAdapter.enabled()) {
+                GlobalUnderstandingProgress reading = GlobalUnderstandingProgress.reading();
+                stage.setProgressPercent(reading.percent());
+                stage.setCurrentAction(reading.action());
+                stage.setUpdatedAt(LocalDateTime.now());
+                stageMapper.updateById(stage);
+                GlobalUnderstandingAgentAdapter.Execution execution =
+                    globalUnderstandingAgentAdapter.execute(task, stage, executionContext, frozenModelId(task));
+                execution.modelCalls().forEach(tracker::record);
+                stage.setStatus("SUCCEEDED");
+                GlobalUnderstandingProgress committed = GlobalUnderstandingProgress.committed();
+                stage.setProgressPercent(committed.percent());
+                stage.setCompletedUnits(1);
+                stage.setTotalUnits(1);
+                stage.setCurrentAction(committed.action());
+                stage.setFinishedAt(LocalDateTime.now());
+                stage.setRetryable(false);
+                task.setOverallProgress(25);
+                task.setUpdatedAt(LocalDateTime.now());
+                taskMapper.updateById(task);
+                return;
+            } else if ("EPISODE_SPLITTING".equals(stage.getStageCode())
+                && episodeSplittingAgentAdapter != null
+                && episodeSplittingAgentAdapter.enabled()) {
+                EpisodeSplittingAgentAdapter.Execution execution = episodeSplittingAgentAdapter.execute(
+                    task, stage, executionContext, frozenModelId(task));
+                execution.modelCalls().forEach(tracker::record);
+                stage.setStatus("SUCCEEDED");
+                stage.setProgressPercent(100);
+                stage.setCompletedUnits(1);
+                stage.setTotalUnits(1);
+                stage.setCurrentAction("剧集智能拆分已保存");
+                stage.setFinishedAt(LocalDateTime.now());
+                stage.setRetryable(false);
+                stage.setUpdatedAt(LocalDateTime.now());
+                stageMapper.updateById(stage);
+                task.setOverallProgress(50);
+                task.setUpdatedAt(LocalDateTime.now());
+                taskMapper.updateById(task);
+                return;
+            } else if ("EPISODE_SPLITTING".equals(stage.getStageCode())) {
                 normalizedJson = splitEpisodes(task, version, executionContext, tracker);
                 rawResponse = normalizedJson;
+            } else if ("EPISODE_SUMMARY".equals(stage.getStageCode())
+                && episodeSummaryAgentAdapter != null && episodeSummaryAgentAdapter.enabled()
+                && episodeFanoutCoordinator != null) {
+                EpisodeFanoutCoordinator.Result fanout = episodeFanoutCoordinator.execute(
+                    task, stage, executionContext,
+                    com.antshorttv.workflowagent.agent.EpisodeSummaryAgentBootstrap.AGENT_CODE,
+                    false,
+                    (plan, currentTask, currentStage, currentExecution, episode) -> {
+                        EpisodeSummaryAgentAdapter.Execution child = episodeSummaryAgentAdapter.executeChild(
+                            plan, currentTask, currentStage, episode.episodeId(), currentExecution,
+                            plan.agent().modelId());
+                        return new EpisodeFanoutCoordinator.ChildResult(child.agentRunId(), child.modelCalls());
+                    },
+                    snapshotId -> { }
+                );
+                fanout.modelCalls().forEach(tracker::record);
+                stage.setStatus("SUCCEEDED");
+                stage.setProgressPercent(100);
+                stage.setCompletedUnits(fanout.progress().completed());
+                stage.setTotalUnits(fanout.progress().total());
+                stage.setCurrentAction("全部剧集概要已保存");
+                stage.setFinishedAt(LocalDateTime.now());
+                stage.setRetryable(false);
+                stage.setUpdatedAt(LocalDateTime.now());
+                stageMapper.updateById(stage);
+                task.setOverallProgress(75);
+                task.setUpdatedAt(LocalDateTime.now());
+                taskMapper.updateById(task);
+                return;
             } else if ("EPISODE_SUMMARY".equals(stage.getStageCode())) {
                 SummaryCall call = summarizeEpisodes(task, version, executionContext, tracker);
                 rawResponse = call.rawResponse();
@@ -147,6 +233,34 @@ public class ScriptAnalysisExecutionService {
                 callLogId = call.callLogId();
                 requestId = call.requestId();
                 durationMs = call.durationMs();
+            } else if ("CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode())
+                && assetRecognitionAgentAdapter != null && assetRecognitionAgentAdapter.enabled()
+                && episodeFanoutCoordinator != null && assetRecognitionFinalizer != null) {
+                EpisodeFanoutCoordinator.Result fanout = episodeFanoutCoordinator.execute(
+                    task, stage, executionContext,
+                    com.antshorttv.workflowagent.agent.AssetRecognitionAgentBootstrap.AGENT_CODE,
+                    false,
+                    (plan, currentTask, currentStage, currentExecution, episode) -> {
+                        AssetRecognitionAgentAdapter.Execution child = assetRecognitionAgentAdapter.executeChild(
+                            plan, currentTask, currentStage, episode.episodeId(), currentExecution);
+                        return new EpisodeFanoutCoordinator.ChildResult(child.agentRunId(), child.modelCalls());
+                    },
+                    assetRecognitionFinalizer::finish
+                );
+                fanout.modelCalls().forEach(tracker::record);
+                stage.setStatus("SUCCEEDED");
+                stage.setProgressPercent(100);
+                stage.setCompletedUnits(fanout.progress().completed());
+                stage.setTotalUnits(fanout.progress().total());
+                stage.setCurrentAction("全部剧集角色、场景和道具已保存");
+                stage.setFinishedAt(LocalDateTime.now());
+                stage.setRetryable(false);
+                stage.setUpdatedAt(LocalDateTime.now());
+                stageMapper.updateById(stage);
+                task.setOverallProgress(100);
+                task.setUpdatedAt(LocalDateTime.now());
+                taskMapper.updateById(task);
+                return;
             } else {
                 AiCall call = invoke(task, version, stage.getStageCode(), executionContext, tracker);
                 rawResponse = call.rawResponse();
@@ -297,6 +411,25 @@ public class ScriptAnalysisExecutionService {
             stage.setProgressPercent(Math.max(10, stage.getProgressPercent() == null ? 10 : stage.getProgressPercent()));
             stage.setErrorCode(errorCode);
             stage.setErrorMessage(errorMessage);
+            if (("EPISODE_SUMMARY".equals(stage.getStageCode())
+                || "CHARACTER_SCENE_RECOGNITION".equals(stage.getStageCode()))) {
+                ScriptAnalysisStageEntity persisted = stageMapper.selectById(stage.getId());
+                if (persisted != null) {
+                    stage.setCompletedUnits(persisted.getCompletedUnits());
+                    stage.setTotalUnits(persisted.getTotalUnits());
+                    stage.setProgressPercent(Math.max(stage.getProgressPercent(), persisted.getProgressPercent()));
+                }
+            }
+            if ("GLOBAL_UNDERSTANDING".equals(stage.getStageCode())) {
+                try {
+                    GlobalUnderstandingProgress failure = GlobalUnderstandingProgress.failed(
+                        com.antshorttv.common.ErrorCode.valueOf(errorCode));
+                    stage.setProgressPercent(failure.percent());
+                    stage.setCurrentAction(failure.action());
+                } catch (IllegalArgumentException ignored) {
+                    stage.setCurrentAction("剧情全局理解失败，可重试");
+                }
+            }
             stage.setRetryable(true);
             stage.setUpdatedAt(LocalDateTime.now());
             stageMapper.updateById(stage);
@@ -933,6 +1066,13 @@ public class ScriptAnalysisExecutionService {
         private void record(AiInvocationResult<AiTextResponse> invocation) {
             calls.add(new ScriptAnalysisCallEvidence(
                 invocation.aiCallLogId(), invocation.resolvedModelId(), invocation.providerId(),
+                invocation.providerRequestId(), invocation.transportOutcome(), invocation.businessOutcome()
+            ));
+        }
+
+        private void record(WorkflowAgentModelCall invocation) {
+            calls.add(new ScriptAnalysisCallEvidence(
+                invocation.callLogId(), invocation.modelId(), invocation.providerId(),
                 invocation.providerRequestId(), invocation.transportOutcome(), invocation.businessOutcome()
             ));
         }

@@ -72,7 +72,7 @@ public class ScriptSplitSnapshotStore {
     }
 
     @Transactional
-    public void markChunkSucceeded(
+    public synchronized void markChunkSucceeded(
         long snapshotId, int chunkNo, Long aiCallLogId, JsonNode candidates
     ) {
         jdbc.update("""
@@ -85,7 +85,9 @@ public class ScriptSplitSnapshotStore {
     }
 
     @Transactional
-    public void markChunkFailed(long snapshotId, int chunkNo, String errorCode, String errorMessage) {
+    public synchronized void markChunkFailed(
+        long snapshotId, int chunkNo, String errorCode, String errorMessage
+    ) {
         jdbc.update("""
             update script_split_chunk
                set status = 'FAILED', error_code = ?, error_message = ?, updated_at = now()

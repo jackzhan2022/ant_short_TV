@@ -123,9 +123,11 @@ class ScreenplayToolDataServiceTest {
                     0.2, 16384, 8, 'prompt', now(), now())
             """, tenantId, context.userId(), projectId, modelId);
         long runId = jdbc.queryForObject("select max(id) from ai_workflow_agent_run", Long.class);
+        WorkflowToolRunState runState = new WorkflowToolRunState();
+        runState.beginSplitFallback("CONTEXT_PREFLIGHT");
         ToolExecutionContext scoped = new ToolExecutionContext(
             tenantId, context.userId(), projectId, null, scriptId, null, null, runId,
-            Set.of("SCRIPT:VIEW"), null, new WorkflowToolRunState());
+            Set.of("SCRIPT:VIEW"), null, runState);
 
         JsonNode result = service.readScriptStructure(scoped);
 
@@ -134,6 +136,11 @@ class ScreenplayToolDataServiceTest {
         assertThat(result.path("totalChunks").asInt()).isGreaterThan(1);
         assertThat(result.toString()).doesNotContain(source);
         assertThat(scoped.runState().require("splitSnapshotId", Long.class)).isPositive();
+        assertThat(scoped.runState().require("currentScriptHash", String.class))
+            .isEqualTo(result.path("contentHash").asText());
+        assertThat(jdbc.queryForObject("""
+            select fallback_reason from script_split_snapshot where parent_run_id = ?
+            """, String.class, runId)).isEqualTo("CONTEXT_PREFLIGHT");
     }
 
     @Test
