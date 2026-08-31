@@ -16,7 +16,11 @@ import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import {
   queryScriptWorkspace,
   reanalyzeScript,
+  regenerateEpisodeAssets,
+  regenerateEpisodeSplitting,
+  regenerateEpisodeSummary,
   retryScriptAnalysis,
+  updateEpisodeSummary,
   type ScriptAnalysisStage,
   type ScriptWorkspace,
 } from './service';
@@ -279,7 +283,7 @@ export const ScriptAnalysisStateContainer = ({
   const title = isFailed ? '剧本解析失败' : '当前剧集解析中';
   const guidance = isFailed
     ? analysis.errorMessage || '解析过程中遇到问题，请重试。'
-    : '当前剧情正在解析中，请耐心等待...';
+    : analysis.currentAction || '当前剧情正在解析中，请耐心等待...';
   const stages: ScriptAnalysisStage[] = analysis.stages.length
     ? analysis.stages
     : Object.keys(analysisStageLabels).map((stageCode, index) => ({
@@ -334,6 +338,46 @@ export const ScriptAnalysisStateContainer = ({
                 <Typography.Text type="secondary" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
                   {analysisStageLabels[stage.stageCode] || stage.stageCode}
                 </Typography.Text>
+                {stage.fanout ? (
+                  <div style={{ marginTop: 6, fontSize: 11, color: 'var(--app-color-text-secondary)' }}>
+                    {stage.fanout.completed}/{stage.fanout.total} 集
+                    {stage.fanout.failed ? ` · ${stage.fanout.failed} 集失败` : ''}
+                    {stage.fanout.currentEpisodeKey ? ` · 当前 ${stage.fanout.currentEpisodeKey}` : ''}
+                  </div>
+                ) : null}
+                {stage.splitProgress?.mode === 'CHUNK_FALLBACK' ? (
+                  <div style={{ marginTop: 6, fontSize: 11, color: 'var(--app-color-text-secondary)' }}>
+                    <div>
+                      <span>
+                        分块分析 {stage.splitProgress.completedChunks}/{stage.splitProgress.totalChunks}
+                      </span>
+                      {stage.splitProgress.failedChunks ? (
+                        <span> · {stage.splitProgress.failedChunks} 块失败</span>
+                      ) : null}
+                    </div>
+                    <div>
+                      {stage.splitProgress.fallbackReason === 'OUTPUT_TRUNCATED'
+                        ? '全文输出达到上限，已自动切换'
+                        : stage.splitProgress.fallbackReason === 'CONTEXT_PREFLIGHT'
+                          ? '全文超过安全上下文，已自动切换'
+                          : stage.splitProgress.fallbackReason === 'CONTEXT_ERROR'
+                            ? '全文上下文调用失败，已自动切换'
+                            : '已自动切换到分块分析'}
+                    </div>
+                  </div>
+                ) : null}
+                {stage.fanout?.units?.some((unit) => unit.status === 'FAILED') ? (
+                  <div style={{ marginTop: 5 }}>
+                    {stage.fanout.units
+                      .filter((unit) => unit.status === 'FAILED')
+                      .slice(0, 3)
+                      .map((unit) => (
+                        <Tag key={unit.episodeId} color="error" style={{ margin: '2px' }}>
+                          {unit.episodeKey}失败
+                        </Tag>
+                      ))}
+                  </div>
+                ) : null}
                 {isFailed && stage.status === 'FAILED' && stage.retryable ? (
                   <div>
                     <Button type="link" size="small" icon={<ReloadOutlined />} onClick={() => onRetryStage(stage.stageCode)} style={{ padding: 0, marginTop: 8 }}>
@@ -363,6 +407,11 @@ const ProductionWorkbenchScript = () => {
   const [activeExecution, setActiveExecution] =
     useState<API.AiExecutionResponse>();
   const [executionBusy, setExecutionBusy] = useState(false);
+  const [summaryEditing, setSummaryEditing] = useState(false);
+  const [summarySaving, setSummarySaving] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState('');
+  const [highlightsDraft, setHighlightsDraft] = useState('');
+  const [endingHookDraft, setEndingHookDraft] = useState('');
 
   useEffect(() => {
     if (!projectId) {
@@ -499,6 +548,58 @@ const ProductionWorkbenchScript = () => {
       message.error('重新分析失败');
     }
   };
+  const currentEpisode = workspace?.episodes?.find(
+    (item) => item.episodeNo === currentEpisodeNo,
+  );
+  const beginSummaryEdit = () => {
+    const content = currentEpisode?.formalSummary?.content;
+    setSummaryDraft(content?.summary || '');
+    setHighlightsDraft((content?.highlights || []).join('\n'));
+    setEndingHookDraft(content?.endingHook || '');
+    setSummaryEditing(true);
+  };
+  const saveSummary = async () => {
+    if (!currentEpisode?.episodeId) return;
+    const highlights = highlightsDraft
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (!summaryDraft.trim() || highlights.length < 2 || highlights.length > 5) {
+      message.warning('概要不能为空，亮点需按行填写 2–5 条');
+      return;
+    }
+    setSummarySaving(true);
+    try {
+      await updateEpisodeSummary(projectId, currentEpisode.episodeId, {
+        summary: summaryDraft.trim(),
+        highlights,
+        endingHook: endingHookDraft.trim() || null,
+        overwrite: true,
+      });
+      await refreshWorkspace();
+      setSummaryEditing(false);
+      message.success('本集概要已保存为正式数据');
+    } catch {
+      message.error('本集概要保存失败');
+    } finally {
+      setSummarySaving(false);
+    }
+  };
+  const runDirectAgent = async (
+    action: () => Promise<unknown>,
+    successMessage: string,
+  ) => {
+    setExecutionBusy(true);
+    try {
+      await action();
+      await refreshWorkspace();
+      message.success(successMessage);
+    } catch {
+      message.error('Agent 运行失败');
+    } finally {
+      setExecutionBusy(false);
+    }
+  };
 
   if (!projectId) {
     return null;
@@ -594,8 +695,57 @@ const ProductionWorkbenchScript = () => {
 
         {analysis?.status === 'COMPLETED' ? (
           <div style={{ marginBottom: 14 }}>
-            <Button onClick={() => void reanalyzeCurrent()}>重新分析当前版本</Button>
+            <Flex gap={8} wrap>
+              <Button onClick={() => void reanalyzeCurrent()}>重新分析当前版本</Button>
+              <Button
+                loading={executionBusy || undefined}
+                onClick={() =>
+                  void runDirectAgent(
+                    () => regenerateEpisodeSplitting(projectId),
+                    '剧集拆分已按当前剧本覆盖生成',
+                  )
+                }
+              >
+                单独重跑剧集拆分
+              </Button>
+            </Flex>
+            <Typography.Text type="warning" style={{ display: 'block', marginTop: 6 }}>
+              重跑 Agent 会覆盖对应正式数据；用户后续仍可继续编辑。
+            </Typography.Text>
           </div>
+        ) : null}
+
+        {analysis?.status === 'COMPLETED' && workspace ? (
+          <section
+            aria-label="正式分析结果"
+            style={{
+              background: '#fff',
+              border: '1px solid var(--app-color-border)',
+              borderRadius: 8,
+              padding: 18,
+              marginBottom: 14,
+            }}
+          >
+            <Typography.Title level={5} style={{ marginTop: 0 }}>正式分析结果</Typography.Title>
+            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+              <div style={metricStyle}>
+                <span style={labelStyle}>剧情全局理解</span>
+                <div style={{ marginTop: 6, lineHeight: '22px' }}>
+                  {String(workspace.globalUnderstanding?.content?.logline || '暂无全局说明')}
+                </div>
+              </div>
+              <div style={metricStyle}>
+                <span style={labelStyle}>正式资产</span>
+                <div style={{ marginTop: 6, lineHeight: '22px' }}>
+                  角色 {workspace.characters.length} · 场景 {workspace.scenes.length} · 道具 {workspace.props.length}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, color: 'var(--app-color-text-secondary)' }}>
+                  角色形态 {workspace.characters.reduce((sum, item) => sum + (item.visual?.variantCount || 0), 0)} ·
+                  道具形态 {workspace.props.reduce((sum, item) => sum + (item.visual?.variantCount || 0), 0)}
+                </div>
+              </div>
+            </div>
+          </section>
         ) : null}
 
         {analysis && analysis.status !== 'COMPLETED' ? null : <section
@@ -757,6 +907,52 @@ const ProductionWorkbenchScript = () => {
           </div>
 
           <Typography.Text strong>当前集剧情正文</Typography.Text>
+          {currentEpisode?.formalSummary ? (
+            <div style={{ margin: '0 0 12px', padding: 12, borderRadius: 8, background: 'var(--app-color-bg-layout)' }}>
+              {summaryEditing ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <Input.TextArea aria-label="概要" value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} autoSize={{ minRows: 3 }} />
+                  <Input.TextArea aria-label="亮点" value={highlightsDraft} onChange={(event) => setHighlightsDraft(event.target.value)} autoSize={{ minRows: 2 }} placeholder="每行一条亮点，共 2–5 条" />
+                  <Input.TextArea aria-label="结尾钩子" value={endingHookDraft} onChange={(event) => setEndingHookDraft(event.target.value)} autoSize={{ minRows: 1 }} placeholder="没有明确证据可留空" />
+                  <Flex gap={8}>
+                    <Button type="primary" loading={summarySaving || undefined} onClick={() => void saveSummary()}>保存概要</Button>
+                    <Button onClick={() => setSummaryEditing(false)}>取消</Button>
+                  </Flex>
+                </div>
+              ) : (
+                <>
+                  <div>{currentEpisode.formalSummary.content.summary}</div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: 'var(--app-color-text-secondary)' }}>
+                    亮点：{listText(currentEpisode.formalSummary.content.highlights)}
+                    {' · '}钩子：{currentEpisode.formalSummary.content.endingHook || '-'}
+                  </div>
+                  <Flex gap={8} wrap style={{ marginTop: 8 }}>
+                    <Button size="small" onClick={beginSummaryEdit}>编辑概要</Button>
+                    <Button
+                      size="small"
+                      loading={executionBusy || undefined}
+                      onClick={() => currentEpisode.episodeId && void runDirectAgent(
+                        () => regenerateEpisodeSummary(projectId, currentEpisode.episodeId as number),
+                        '本集概要已覆盖生成',
+                      )}
+                    >
+                      AI 重生成本集概要
+                    </Button>
+                    <Button
+                      size="small"
+                      loading={executionBusy || undefined}
+                      onClick={() => currentEpisode.episodeId && void runDirectAgent(
+                        () => regenerateEpisodeAssets(projectId, currentEpisode.episodeId as number),
+                        '本集角色、场景、道具已重新识别',
+                      )}
+                    >
+                      AI 重识别本集资产
+                    </Button>
+                  </Flex>
+                </>
+              )}
+            </div>
+          ) : null}
           <Input.TextArea
             value={activeEpisode?.copy || ''}
             readOnly

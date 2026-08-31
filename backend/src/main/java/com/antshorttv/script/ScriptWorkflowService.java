@@ -24,6 +24,10 @@ import com.antshorttv.points.TeamPointService;
 import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
+import com.antshorttv.workflowagent.agent.EpisodeSplittingAgentBootstrap;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import jakarta.servlet.http.HttpServletRequest;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -45,9 +49,15 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 @Service
 public class ScriptWorkflowService {
+    @Autowired(required = false)
+    private ScriptGlobalUnderstandingRepository globalUnderstandingRepository;
 
     @Autowired
     private ScriptEpisodeService scriptEpisodeService;
+    @Autowired
+    private ScriptEpisodeSummaryRepository scriptEpisodeSummaryRepository;
+    @Autowired
+    private WorkflowAgentRunner workflowAgentRunner;
 
     private final ProjectAccessResolver projectAccessResolver;
     private final ProjectPermissionGuard projectPermissionGuard;
@@ -573,12 +583,17 @@ public class ScriptWorkflowService {
             projectId,
             ScriptResponse.from(script),
             versions,
-            characters(tenantId, projectId),
-            scenes(tenantId, projectId),
-            props(tenantId, projectId),
+            characters(tenantId, projectId, script == null ? null : script.getId()),
+            scenes(tenantId, projectId, script == null ? null : script.getId()),
+            props(tenantId, projectId, script == null ? null : script.getId()),
             storyboards(tenantId, projectId),
             episodes,
-            analysis(tenantId, projectId, script)
+            analysis(tenantId, projectId, script),
+            script == null || globalUnderstandingRepository == null
+                ? null
+                : globalUnderstandingRepository.findCurrent(tenantId, script.getId())
+                    .map(ScriptGlobalUnderstandingResponse::from)
+                    .orElse(null)
         );
     }
 
@@ -661,13 +676,87 @@ public class ScriptWorkflowService {
     private ScriptAnalysisTaskResponse analysisResponse(ScriptAnalysisTaskEntity task) {
         List<ScriptAnalysisStageEntity> stages = scriptAnalysisStageMapper.selectByTask(task.getId());
         Map<Long, ScriptAnalysisResultEntity> results = new LinkedHashMap<>();
+        Map<Long, Long> agentRuns = new LinkedHashMap<>();
+        Map<Long, EpisodeFanoutProgressResponse> fanouts = new LinkedHashMap<>();
+        Map<Long, EpisodeSplitProgressResponse> splitProgress = new LinkedHashMap<>();
         for (ScriptAnalysisStageEntity stage : stages) {
             ScriptAnalysisResultEntity result = scriptAnalysisResultMapper.selectLatestByStage(stage.getId());
             if (result != null) {
                 results.put(stage.getId(), result);
             }
+            List<Long> runIds = jdbcTemplate.queryForList("""
+                select id from ai_workflow_agent_run
+                 where analysis_stage_id = ?
+                 order by created_at desc, id desc
+                 limit 1
+                """, Long.class, stage.getId());
+            if (!runIds.isEmpty()) {
+                agentRuns.put(stage.getId(), runIds.get(0));
+            }
+            EpisodeFanoutProgressResponse fanout = fanoutProgress(stage.getId());
+            if (fanout != null) fanouts.put(stage.getId(), fanout);
+            if ("EPISODE_SPLITTING".equals(stage.getStageCode())) {
+                splitProgress.put(stage.getId(), splitProgress(agentRuns.get(stage.getId())));
+            }
         }
-        return ScriptAnalysisTaskResponse.from(task, stages, results);
+        return ScriptAnalysisTaskResponse.from(
+            task, stages, results, agentRuns, fanouts, splitProgress);
+    }
+
+    private EpisodeSplitProgressResponse splitProgress(Long runId) {
+        if (runId == null) {
+            return new EpisodeSplitProgressResponse("FULL", null, 0, 0, 0, false);
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+            select mode, fallback_reason, status, total_chunks, completed_chunks, failed_chunks
+              from script_split_snapshot where parent_run_id = ?
+             order by created_at desc, id desc limit 1
+            """, runId);
+        if (rows.isEmpty()) {
+            return new EpisodeSplitProgressResponse("FULL", null, 0, 0, 0, false);
+        }
+        Map<String, Object> row = rows.get(0);
+        return new EpisodeSplitProgressResponse(
+            String.valueOf(row.get("mode")),
+            row.get("fallback_reason") == null ? null : String.valueOf(row.get("fallback_reason")),
+            ((Number) row.get("total_chunks")).intValue(),
+            ((Number) row.get("completed_chunks")).intValue(),
+            ((Number) row.get("failed_chunks")).intValue(),
+            "STALE".equals(String.valueOf(row.get("status"))));
+    }
+
+    private EpisodeFanoutProgressResponse fanoutProgress(Long stageId) {
+        List<Map<String, Object>> snapshots = jdbcTemplate.queryForList("""
+            select id, status, total_units, completed_units, failed_units, episode_set_hash
+              from script_analysis_fanout_snapshot
+             where stage_id = ? order by attempt_no desc, id desc limit 1
+            """, stageId);
+        if (snapshots.isEmpty()) return null;
+        Map<String, Object> snapshot = snapshots.get(0);
+        long snapshotId = ((Number) snapshot.get("id")).longValue();
+        List<EpisodeFanoutUnitResponse> units = jdbcTemplate.queryForList("""
+            select episode_id, episode_key, status, child_run_id, error_code, error_message
+              from script_analysis_fanout_unit where snapshot_id = ? order by id
+            """, snapshotId).stream().map(row -> new EpisodeFanoutUnitResponse(
+                ((Number) row.get("episode_id")).longValue(), String.valueOf(row.get("episode_key")),
+                String.valueOf(row.get("status")),
+                row.get("child_run_id") instanceof Number number ? number.longValue() : null,
+                row.get("error_code") == null ? null : String.valueOf(row.get("error_code")),
+                row.get("error_message") == null ? null : String.valueOf(row.get("error_message"))
+            )).toList();
+        EpisodeFanoutUnitResponse current = units.stream()
+            .filter(unit -> "RUNNING".equals(unit.status())).findFirst().orElse(null);
+        String status = String.valueOf(snapshot.get("status"));
+        return new EpisodeFanoutProgressResponse(
+            snapshotId, status,
+            ((Number) snapshot.get("total_units")).intValue(),
+            ((Number) snapshot.get("completed_units")).intValue(),
+            ((Number) snapshot.get("failed_units")).intValue(),
+            current == null ? null : current.episodeId(),
+            current == null ? null : current.episodeKey(),
+            units.stream().anyMatch(unit -> "FAILED".equals(unit.status())
+                || "PENDING".equals(unit.status()) || "STALE".equals(unit.status())),
+            "STALE".equals(status), units);
     }
 
     @Transactional
@@ -824,6 +913,101 @@ public class ScriptWorkflowService {
             ErrorCode.AI_EXECUTION_STATUS_INVALID,
             "资产提取必须通过异步执行入口提交，以保留归一化与调用证据。"
         );
+    }
+
+    public WorkflowAgentRunResult regenerateEpisodeSplitting(Long tenantId, Long projectId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "AI_SERVICE:USE", projectId);
+        requirePermission(context, "SCRIPT:EDIT", projectId);
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
+        if (script == null || script.getContent() == null || script.getContent().isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前项目没有可智能拆分的剧本。");
+        }
+        return workflowAgentRunner.runFormal(new WorkflowAgentRunInput(
+            EpisodeSplittingAgentBootstrap.AGENT_CODE,
+            "基于当前剧本重新生成并覆盖正式剧集。",
+            tenantId, projectId, null, script.getId(), null, null, context.userId()));
+    }
+
+    @Transactional
+    public ScriptEpisodeSummaryDocument updateEpisodeSummary(
+        Long tenantId,
+        Long projectId,
+        Long episodeId,
+        SaveEpisodeSummaryRequest request
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "SCRIPT:EDIT", projectId);
+        Map<String, Object> episode = requireCurrentEpisode(tenantId, projectId, episodeId);
+        Long scriptId = ((Number) episode.get("script_id")).longValue();
+        if (scriptEpisodeSummaryRepository.findCurrent(tenantId, scriptId, episodeId).isPresent()
+            && !Boolean.TRUE.equals(request.overwrite())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "覆盖现有剧集概要前必须明确确认 overwrite。");
+        }
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode content = mapper.createObjectNode();
+        content.put("summary", request.summary());
+        content.set("highlights", mapper.valueToTree(request.highlights()));
+        if (request.endingHook() == null) content.putNull("endingHook");
+        else content.put("endingHook", request.endingHook());
+        scriptEpisodeSummaryRepository.upsert(new ScriptEpisodeSummaryDocument(
+            null, tenantId, projectId, scriptId, episodeId, 1, content, "USER", null,
+            context.userId(), context.userId(), null, null));
+        jdbcTemplate.update("update script_episode set summary = ?, updated_at = now() where id = ?",
+            request.summary(), episodeId);
+        return scriptEpisodeSummaryRepository.findCurrent(tenantId, scriptId, episodeId).orElseThrow();
+    }
+
+    public WorkflowAgentRunResult regenerateEpisodeSummary(
+        Long tenantId,
+        Long projectId,
+        Long episodeId,
+        boolean overwrite
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "AI_SERVICE:USE", projectId);
+        requirePermission(context, "SCRIPT:EDIT", projectId);
+        Map<String, Object> episode = requireCurrentEpisode(tenantId, projectId, episodeId);
+        Long scriptId = ((Number) episode.get("script_id")).longValue();
+        if (scriptEpisodeSummaryRepository.findCurrent(tenantId, scriptId, episodeId).isPresent() && !overwrite) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "重新生成将覆盖现有概要，请明确确认 overwrite。");
+        }
+        return workflowAgentRunner.runFormal(new WorkflowAgentRunInput(
+            com.antshorttv.workflowagent.agent.EpisodeSummaryAgentBootstrap.AGENT_CODE,
+            "读取当前剧集并重新生成、覆盖正式概要。",
+            tenantId, projectId, episodeId, scriptId, null, null, context.userId()));
+    }
+
+    public WorkflowAgentRunResult regenerateEpisodeAssets(
+        Long tenantId,
+        Long projectId,
+        Long episodeId
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "AI_SERVICE:USE", projectId);
+        requirePermission(context, "SCRIPT:EDIT", projectId);
+        Map<String, Object> episode = requireCurrentEpisode(tenantId, projectId, episodeId);
+        Long scriptId = ((Number) episode.get("script_id")).longValue();
+        return workflowAgentRunner.runFormal(new WorkflowAgentRunInput(
+            com.antshorttv.workflowagent.agent.AssetRecognitionAgentBootstrap.AGENT_CODE,
+            "读取当前剧集并重新识别、匹配、覆盖本集正式角色、变装、场景、道具及形态绑定。",
+            tenantId, projectId, episodeId, scriptId, null, null, context.userId()));
+    }
+
+    private Map<String, Object> requireCurrentEpisode(Long tenantId, Long projectId, Long episodeId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+            select id, script_id from script_episode
+             where id = ? and tenant_id = ? and project_id = ?
+               and status = 'ACTIVE' and retired_at is null
+            """, episodeId, tenantId, projectId);
+        if (rows.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "当前正式剧集不存在。");
+        }
+        return rows.get(0);
     }
 
     public ScriptAssetCandidateReviewService.CandidatePage assetCandidates(
@@ -1103,12 +1287,13 @@ public class ScriptWorkflowService {
         projectPermissionGuard.require(context.tenantId(), projectId, permissionCode);
     }
 
-    private List<CharacterAssetResponse> characters(Long tenantId, Long projectId) {
+    private List<CharacterAssetResponse> characters(Long tenantId, Long projectId, Long scriptId) {
         return jdbcTemplate.query("""
             select id, name, role_type, gender, age_range, identity, personality, appearance, prompt,
                    status, merge_target_id, main_image_url
               from character_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
+               and (script_id = ? or script_id is null)
              order by id
             """, (rs, rowNum) -> new CharacterAssetResponse(
                 rs.getLong("id"),
@@ -1123,15 +1308,16 @@ public class ScriptWorkflowService {
                 rs.getString("status"),
                 rs.getObject("merge_target_id", Long.class),
                 assetVisualWorkspace(tenantId, projectId, "CHARACTER", rs.getLong("id"))
-            ), tenantId, projectId);
+            ), tenantId, projectId, scriptId);
     }
 
-    private List<SceneAssetResponse> scenes(Long tenantId, Long projectId) {
+    private List<SceneAssetResponse> scenes(Long tenantId, Long projectId, Long scriptId) {
         return jdbcTemplate.query("""
             select id, name, scene_type, time_atmosphere, description, visual_style, prompt,
                    status, merge_target_id, main_image_url
               from scene_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
+               and (script_id = ? or script_id is null)
              order by id
             """, (rs, rowNum) -> new SceneAssetResponse(
                 rs.getLong("id"),
@@ -1144,15 +1330,16 @@ public class ScriptWorkflowService {
                 rs.getString("status"),
                 rs.getObject("merge_target_id", Long.class),
                 assetVisualWorkspace(tenantId, projectId, "SCENE", rs.getLong("id"))
-            ), tenantId, projectId);
+            ), tenantId, projectId, scriptId);
     }
 
-    private List<PropAssetResponse> props(Long tenantId, Long projectId) {
+    private List<PropAssetResponse> props(Long tenantId, Long projectId, Long scriptId) {
         return jdbcTemplate.query("""
             select id, name, prop_type, appearance, plot_function, prompt,
                    status, merge_target_id, main_image_url
               from prop_asset
              where tenant_id = ? and project_id = ? and deleted_at is null
+               and (script_id = ? or script_id is null)
              order by id
             """, (rs, rowNum) -> new PropAssetResponse(
                 rs.getLong("id"),
@@ -1164,7 +1351,7 @@ public class ScriptWorkflowService {
                 rs.getString("status"),
                 rs.getObject("merge_target_id", Long.class),
                 assetVisualWorkspace(tenantId, projectId, "PROP", rs.getLong("id"))
-            ), tenantId, projectId);
+            ), tenantId, projectId, scriptId);
     }
 
     private AssetVisualWorkspace assetVisualWorkspace(

@@ -155,8 +155,27 @@ record ScriptWorkspaceResponse(
     List<PropAssetResponse> props,
     List<StoryboardResponse> storyboards,
     List<ScriptEpisodeResponse> episodes,
-    ScriptAnalysisTaskResponse analysis
+    ScriptAnalysisTaskResponse analysis,
+    ScriptGlobalUnderstandingResponse globalUnderstanding
 ) {
+}
+
+record ScriptGlobalUnderstandingResponse(
+    Long id,
+    Integer schemaVersion,
+    com.fasterxml.jackson.databind.JsonNode content,
+    String analyzedContentHash,
+    Long lastAgentRunId,
+    java.time.LocalDateTime updatedAt
+) {
+    static ScriptGlobalUnderstandingResponse from(ScriptGlobalUnderstandingDocument document) {
+        if (document == null) {
+            return null;
+        }
+        return new ScriptGlobalUnderstandingResponse(
+            document.id(), document.schemaVersion(), document.content(),
+            document.analyzedContentHash(), document.lastAgentRunId(), document.updatedAt());
+    }
 }
 
 record ScriptAnalysisTaskResponse(
@@ -175,6 +194,36 @@ record ScriptAnalysisTaskResponse(
         List<ScriptAnalysisStageEntity> stages,
         Map<Long, ScriptAnalysisResultEntity> resultsByStageId
     ) {
+        return from(task, stages, resultsByStageId, Map.of(), Map.of());
+    }
+
+    static ScriptAnalysisTaskResponse from(
+        ScriptAnalysisTaskEntity task,
+        List<ScriptAnalysisStageEntity> stages,
+        Map<Long, ScriptAnalysisResultEntity> resultsByStageId,
+        Map<Long, Long> agentRunsByStageId
+    ) {
+        return from(task, stages, resultsByStageId, agentRunsByStageId, Map.of());
+    }
+
+    static ScriptAnalysisTaskResponse from(
+        ScriptAnalysisTaskEntity task,
+        List<ScriptAnalysisStageEntity> stages,
+        Map<Long, ScriptAnalysisResultEntity> resultsByStageId,
+        Map<Long, Long> agentRunsByStageId,
+        Map<Long, EpisodeFanoutProgressResponse> fanoutByStageId
+    ) {
+        return from(task, stages, resultsByStageId, agentRunsByStageId, fanoutByStageId, Map.of());
+    }
+
+    static ScriptAnalysisTaskResponse from(
+        ScriptAnalysisTaskEntity task,
+        List<ScriptAnalysisStageEntity> stages,
+        Map<Long, ScriptAnalysisResultEntity> resultsByStageId,
+        Map<Long, Long> agentRunsByStageId,
+        Map<Long, EpisodeFanoutProgressResponse> fanoutByStageId,
+        Map<Long, EpisodeSplitProgressResponse> splitProgressByStageId
+    ) {
         if (task == null) {
             return null;
         }
@@ -187,7 +236,9 @@ record ScriptAnalysisTaskResponse(
             task.getCurrentAction(),
             task.getErrorCode(),
             task.getErrorMessage(),
-            stages.stream().map(stage -> ScriptAnalysisStageResponse.from(stage, resultsByStageId.get(stage.getId()))).toList()
+            stages.stream().map(stage -> ScriptAnalysisStageResponse.from(
+                stage, resultsByStageId.get(stage.getId()), agentRunsByStageId.get(stage.getId()),
+                fanoutByStageId.get(stage.getId()), splitProgressByStageId.get(stage.getId()))).toList()
         );
     }
 }
@@ -204,15 +255,45 @@ record ScriptAnalysisStageResponse(
     String errorCode,
     String errorMessage,
     Boolean retryable,
+    Long agentRunId,
     String resultJson,
     String providerRequestId,
     Long aiCallLogId,
     Long durationMs,
     String resultErrorCode,
     String resultErrorMessage,
-    Boolean resultRetryable
+    Boolean resultRetryable,
+    EpisodeFanoutProgressResponse fanout,
+    EpisodeSplitProgressResponse splitProgress
 ) {
     static ScriptAnalysisStageResponse from(ScriptAnalysisStageEntity stage, ScriptAnalysisResultEntity result) {
+        return from(stage, result, null, null, null);
+    }
+
+    static ScriptAnalysisStageResponse from(
+        ScriptAnalysisStageEntity stage,
+        ScriptAnalysisResultEntity result,
+        Long agentRunId
+    ) {
+        return from(stage, result, agentRunId, null, null);
+    }
+
+    static ScriptAnalysisStageResponse from(
+        ScriptAnalysisStageEntity stage,
+        ScriptAnalysisResultEntity result,
+        Long agentRunId,
+        EpisodeFanoutProgressResponse fanout
+    ) {
+        return from(stage, result, agentRunId, fanout, null);
+    }
+
+    static ScriptAnalysisStageResponse from(
+        ScriptAnalysisStageEntity stage,
+        ScriptAnalysisResultEntity result,
+        Long agentRunId,
+        EpisodeFanoutProgressResponse fanout,
+        EpisodeSplitProgressResponse splitProgress
+    ) {
         return new ScriptAnalysisStageResponse(
             stage.getId(),
             stage.getStageCode(),
@@ -225,13 +306,47 @@ record ScriptAnalysisStageResponse(
             stage.getErrorCode(),
             stage.getErrorMessage(),
             stage.getRetryable(),
+            agentRunId,
             result == null ? null : result.getNormalizedJson(),
             result == null ? null : result.getProviderRequestId(),
             result == null ? null : result.getAiCallLogId(),
             result == null ? null : result.getDurationMs(),
             result == null ? null : result.getErrorCode(),
             result == null ? null : result.getErrorMessage(),
-            result == null ? null : result.getRetryable()
+            result == null ? null : result.getRetryable(),
+            fanout,
+            splitProgress
         );
     }
 }
+
+record EpisodeFanoutProgressResponse(
+    Long snapshotId,
+    String status,
+    Integer total,
+    Integer completed,
+    Integer failed,
+    Long currentEpisodeId,
+    String currentEpisodeKey,
+    Boolean retryable,
+    Boolean stale,
+    List<EpisodeFanoutUnitResponse> units
+) {}
+
+record EpisodeSplitProgressResponse(
+    String mode,
+    String fallbackReason,
+    Integer totalChunks,
+    Integer completedChunks,
+    Integer failedChunks,
+    Boolean stale
+) {}
+
+record EpisodeFanoutUnitResponse(
+    Long episodeId,
+    String episodeKey,
+    String status,
+    Long childRunId,
+    String errorCode,
+    String errorMessage
+) {}

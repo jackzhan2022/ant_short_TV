@@ -7,6 +7,10 @@ const mocks = vi.hoisted(() => ({
   queryProject: vi.fn(),
   retryScriptAnalysis: vi.fn(),
   reanalyzeScript: vi.fn(),
+  regenerateEpisodeSplitting: vi.fn(),
+  regenerateEpisodeSummary: vi.fn(),
+  regenerateEpisodeAssets: vi.fn(),
+  updateEpisodeSummary: vi.fn(),
   pollExecution: vi.fn(),
 }));
 
@@ -64,6 +68,10 @@ vi.mock('./service', () => ({
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   retryScriptAnalysis: mocks.retryScriptAnalysis,
   reanalyzeScript: mocks.reanalyzeScript,
+  regenerateEpisodeSplitting: mocks.regenerateEpisodeSplitting,
+  regenerateEpisodeSummary: mocks.regenerateEpisodeSummary,
+  regenerateEpisodeAssets: mocks.regenerateEpisodeAssets,
+  updateEpisodeSummary: mocks.updateEpisodeSummary,
 }));
 
 vi.mock('@/services/ai-execution/task', () => ({
@@ -282,6 +290,14 @@ describe('ProductionWorkbenchScript', () => {
               completedUnits: 1,
               totalUnits: 1,
               currentAction: '已完成',
+              splitProgress: {
+                mode: 'CHUNK_FALLBACK',
+                fallbackReason: 'OUTPUT_TRUNCATED',
+                totalChunks: 12,
+                completedChunks: 7,
+                failedChunks: 1,
+                stale: false,
+              },
               resultJson:
                 '{"episodes":[{"episodeNo":1,"title":"第一集","content":"开端","summary":"主角回家","endingHook":"门后有人"},{"episodeNo":2,"title":"第二集","content":"冲突","summary":"家人阻拦","endingHook":"协议出现"}]}',
             },
@@ -294,6 +310,22 @@ describe('ProductionWorkbenchScript', () => {
               completedUnits: 0,
               totalUnits: 1,
               currentAction: '正在提炼每集概要',
+              fanout: {
+                snapshotId: 88,
+                status: 'RUNNING',
+                total: 3,
+                completed: 1,
+                failed: 1,
+                currentEpisodeId: 102,
+                currentEpisodeKey: 'episode-2',
+                retryable: true,
+                stale: false,
+                units: [
+                  { episodeId: 101, episodeKey: 'episode-1', status: 'SUCCEEDED', childRunId: 701 },
+                  { episodeId: 102, episodeKey: 'episode-2', status: 'RUNNING', childRunId: 702 },
+                  { episodeId: 103, episodeKey: 'episode-3', status: 'FAILED', errorCode: 'AI_PROVIDER_TIMEOUT' },
+                ],
+              },
             },
             {
               id: 4,
@@ -317,8 +349,12 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('剧集智能拆分')).toBeInTheDocument();
     expect(screen.getByText('剧集概要提炼')).toBeInTheDocument();
     expect(screen.getByText('角色场景识别')).toBeInTheDocument();
-    expect(screen.getByText('当前剧情正在解析中，请耐心等待...')).toBeInTheDocument();
+    expect(screen.getByText('正在提炼每集概要')).toBeInTheDocument();
     expect(screen.getByText('45%')).toBeInTheDocument();
+    expect(screen.getByText(/1\/3 集/)).toBeInTheDocument();
+    expect(screen.getByText('episode-3失败')).toBeInTheDocument();
+    expect(screen.getByText('分块分析 7/12')).toBeInTheDocument();
+    expect(screen.getByText('全文输出达到上限，已自动切换')).toBeInTheDocument();
     expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
     expect(screen.queryByText('分集剧情')).not.toBeInTheDocument();
   });
@@ -336,6 +372,10 @@ describe('ProductionWorkbenchScript', () => {
         },
       },
     });
+    mocks.regenerateEpisodeSplitting.mockResolvedValue({ data: {} });
+    mocks.regenerateEpisodeSummary.mockResolvedValue({ data: {} });
+    mocks.regenerateEpisodeAssets.mockResolvedValue({ data: {} });
+    mocks.updateEpisodeSummary.mockResolvedValue({ data: {} });
     render(<ProductionWorkbenchScript />);
     expect((await screen.findAllByText('模型服务暂时不可用')).length).toBeGreaterThan(0);
     expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
@@ -356,11 +396,12 @@ describe('ProductionWorkbenchScript', () => {
         currentVersionId: 7,
       },
       versions: [],
-      characters: [],
+      characters: [{ id: 1, name: '林晚', visual: { variantCount: 2 } }],
       scenes: [],
       props: [],
       storyboards: [],
-      episodes: [{ episodeNo: 1, title: '第1集', content: '一段剧本。' }],
+      episodes: [{ episodeId: 21, episodeNo: 1, title: '第1集', content: '一段剧本。', formalSummary: { id: 9, schemaVersion: 1, source: 'AI', content: { summary: '林晚回家', highlights: ['雨夜', '归来'], endingHook: '门后有人' } } }],
+      globalUnderstanding: { id: 5, schemaVersion: 1, content: { logline: '林晚雨夜归家' }, analyzedContentHash: 'hash', updatedAt: '' },
       analysis: {
         id: 99,
         scriptVersionId: 7,
@@ -390,5 +431,35 @@ describe('ProductionWorkbenchScript', () => {
       ).toBeGreaterThanOrEqual(2);
     });
     expect(screen.getByText('execution-501-SUCCEEDED')).toBeInTheDocument();
+    expect(screen.getByText('林晚雨夜归家')).toBeInTheDocument();
+    expect(screen.getByText(/角色 1 · 场景 0 · 道具 0/)).toBeInTheDocument();
+    expect(screen.getByText('林晚回家')).toBeInTheDocument();
+  });
+
+  it('edits formal summaries and runs episode-scoped agents with overwrite warning', async () => {
+    const completedWorkspace = {
+      projectId: 1,
+      script: { id: 11, projectId: 1, title: '分析剧本', sourceType: 'MANUAL_EDIT', content: '一段剧本。', status: 'DRAFT', currentVersionId: 7 },
+      versions: [], characters: [], scenes: [], props: [], storyboards: [],
+      episodes: [{ episodeId: 21, episodeNo: 1, title: '第1集', content: '一段剧本。', formalSummary: { id: 9, schemaVersion: 1, source: 'AI', content: { summary: '旧概要', highlights: ['雨夜', '归来'], endingHook: '旧钩子' } } }],
+      analysis: { id: 99, scriptVersionId: 7, status: 'COMPLETED', currentStage: null, overallProgress: 100, currentAction: '分析已完成', stages: [] },
+    };
+    mocks.queryScriptWorkspace.mockResolvedValue({ data: completedWorkspace });
+    render(<ProductionWorkbenchScript />);
+
+    expect(await screen.findByText(/重跑 Agent 会覆盖对应正式数据/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '编辑概要' }));
+    fireEvent.change(screen.getByLabelText('概要'), { target: { value: '新概要' } });
+    fireEvent.change(screen.getByLabelText('亮点'), { target: { value: '亮点一\n亮点二' } });
+    fireEvent.change(screen.getByLabelText('结尾钩子'), { target: { value: '新钩子' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存概要' }));
+    await waitFor(() => expect(mocks.updateEpisodeSummary).toHaveBeenCalledWith(1, 21, {
+      summary: '新概要', highlights: ['亮点一', '亮点二'], endingHook: '新钩子', overwrite: true,
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI 重生成本集概要' }));
+    await waitFor(() => expect(mocks.regenerateEpisodeSummary).toHaveBeenCalledWith(1, 21));
+    fireEvent.click(screen.getByRole('button', { name: 'AI 重识别本集资产' }));
+    await waitFor(() => expect(mocks.regenerateEpisodeAssets).toHaveBeenCalledWith(1, 21));
   });
 });
