@@ -195,6 +195,8 @@ public class WorkflowAgentRunner {
             input.executionVersion(), trustedPermissions, deadline, runState, input.reviewScope());
         int stepNo = 0;
         boolean reviewTruncationRecovery = false;
+        boolean reviewEvidenceRefreshPending = false;
+        boolean reviewEvidenceRefreshUsed = false;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
             requireBeforeDeadline(deadline);
@@ -222,7 +224,7 @@ public class WorkflowAgentRunner {
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
                         null, remainingSeconds(deadline), 0,
                         messages, activeProviderTools(allowedTools, splitting, runState,
-                            agent.code(), contract, reviewTruncationRecovery),
+                            agent.code(), contract, reviewTruncationRecovery, reviewEvidenceRefreshPending),
                         disableThinking(agent.code(), splitting) ? "disabled" : null
                     ))
                     .build());
@@ -321,6 +323,12 @@ public class WorkflowAgentRunner {
                     String serialized = json.writeValueAsString(output);
                     runs.recordToolStep(runId, toolStep, call.code(), call.argumentsJson(), serialized);
                     runState.recordSuccess(call.code());
+                    if (reviewEvidenceRefreshPending && "read_review_content".equals(call.code())) {
+                        reviewEvidenceRefreshPending = false;
+                        messages.add(AiChatMessage.user(
+                            "已重新读取当前审核单元正文。现在只允许调用 save_review_unit_result；"
+                                + "候选最多 20 个，删除不能逐字验证的候选，字段务必精简。"));
+                    }
                     if (contract.isTerminal(call.code())) {
                         runs.complete(runId, serialized);
                         return new WorkflowAgentRunResult(runId, serialized, modelCalls);
@@ -330,6 +338,23 @@ public class WorkflowAgentRunner {
                     BusinessException normalized = normalizeToolFailure(exception);
                     runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
                         normalized.getErrorCode().name(), normalized.getMessage());
+                    if (reviewTruncationRecovery && isReviewEvidenceValidationFailure(call.code(), normalized)) {
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
+                        if (!reviewEvidenceRefreshUsed) {
+                            reviewEvidenceRefreshUsed = true;
+                            reviewEvidenceRefreshPending = true;
+                            messages.add(AiChatMessage.user(
+                                "保存候选因证据无法验证被拒绝。现在只允许调用一次 read_review_content，"
+                                    + "重新读取当前审核单元的可信正文与位置锚点；不得读取整本剧本，"
+                                    + "不得调用其他工具。随后只允许调用 save_review_unit_result，"
+                                    + "候选最多 20 个，并删除不能逐字验证的候选。"));
+                        } else {
+                            messages.add(AiChatMessage.user(
+                                "证据仍无法验证。不得再次读取正文；删除所有不能逐字验证的候选，"
+                                    + "可保存空 candidates。现在只允许调用 save_review_unit_result。"));
+                        }
+                        break;
+                    }
                     if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL
                         || isCorrectableSplitBoundaryFailure(call.code(), normalized)) {
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
@@ -393,8 +418,15 @@ public class WorkflowAgentRunner {
         WorkflowToolRunState state,
         String agentCode,
         WorkflowAgentRunContract contract,
-        boolean reviewTruncationRecovery
+        boolean reviewTruncationRecovery,
+        boolean reviewEvidenceRefreshPending
     ) {
+        if ("script-review".equals(agentCode) && reviewEvidenceRefreshPending) {
+            return allowedTools.stream()
+                .filter(tool -> "read_review_content".equals(tool.code()))
+                .map(this::providerTool)
+                .toList();
+        }
         if ("script-review".equals(agentCode) && reviewTruncationRecovery) {
             Set<String> activeCodes = new HashSet<>(remainingContractTools(contract, state));
             return allowedTools.stream()
@@ -427,6 +459,12 @@ public class WorkflowAgentRunner {
     private boolean isTruncated(AiTextResponse response) {
         return response != null
             && (response.truncated() || "length".equalsIgnoreCase(response.finishReason()));
+    }
+
+    private boolean isReviewEvidenceValidationFailure(String toolCode, BusinessException error) {
+        return "save_review_unit_result".equals(toolCode)
+            && error.getErrorCode() == ErrorCode.VALIDATION_ERROR
+            && "审核证据无法在当前范围正文中验证。".equals(error.getMessage());
     }
 
     private boolean disableThinking(String agentCode, boolean splitting) {
