@@ -221,7 +221,7 @@ public class WorkflowAgentRunner {
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
                         null, remainingSeconds(deadline), 0,
                         messages, activeProviderTools(allowedTools, splitting, runState),
-                        splitting ? "disabled" : null
+                        disableThinking(agent.code(), splitting) ? "disabled" : null
                     ))
                     .build());
             } catch (AiGatewayException exception) {
@@ -250,6 +250,15 @@ public class WorkflowAgentRunner {
                         beginFallback(messages, prompt, runState, fallback.get());
                         continue;
                     }
+                }
+                if ("script-review".equals(agent.code())
+                    && response != null
+                    && (response.truncated()
+                        || "length".equalsIgnoreCase(response.finishReason()))) {
+                    messages.add(AiChatMessage.user(
+                        "模型输出已截断，审核契约尚未完成。不得输出普通文本；"
+                            + "立即调用尚未完成的可信读取工具，完成后调用保存工具。"));
+                    continue;
                 }
                 try {
                     contract.requireComplete(runState);
@@ -388,6 +397,10 @@ public class WorkflowAgentRunner {
             .filter(tool -> activeCodes.contains(tool.code()))
             .map(this::providerTool)
             .toList();
+    }
+
+    private boolean disableThinking(String agentCode, boolean splitting) {
+        return splitting || "script-review".equals(agentCode);
     }
 
     private boolean isCorrectableSplitBoundaryFailure(String toolCode, BusinessException error) {
