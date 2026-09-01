@@ -376,6 +376,58 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void scriptReviewDiscardsTruncatedPartialToolCallsBeforeValidation() throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition context = reviewTool("read_review_context",
+            executorReturning("{\"projectId\":25}"));
+        WorkflowToolDefinition content = reviewTool("read_review_content",
+            executorReturning("{\"content\":\"正文\"}"));
+        WorkflowToolDefinition history = reviewTool("read_review_issue_history",
+            executorReturning("{\"issues\":[]}"));
+        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
+            @Override
+            public com.fasterxml.jackson.databind.JsonNode execute(
+                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
+                com.fasterxml.jackson.databind.JsonNode arguments
+            ) {
+                saves.incrementAndGet();
+                return json.createObjectNode().put("saved", true);
+            }
+        });
+        runner = runnerWith(List.of(context, content, history, save), 30);
+        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
+            6L, "script-review", "剧本审核", "", "执行审核", 8L,
+            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
+                "read_review_context", "read_review_content", "read_review_issue_history",
+                "save_review_unit_result")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(
+                new AiToolCall("context", "read_review_context", "{}"),
+                new AiToolCall("content", "read_review_content", "{}"),
+                new AiToolCall("history", "read_review_issue_history", "{}")), 641L))
+            .thenReturn(truncatedPartialSave(642L))
+            .thenReturn(result(null, List.of(new AiToolCall(
+                "save", "save_review_unit_result", "{}")), 643L));
+
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
+            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
+            null, null, null, null,
+            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
+
+        assertThat(result.output()).contains("\"saved\":true");
+        assertThat(saves).hasValue(1);
+        verify(runs, never()).recordFailedToolStep(101L, 6, "save_review_unit_result",
+            "{\"candidates\":[", ErrorCode.WORKFLOW_AGENT_TOOL_INVALID.name(),
+            "工具调用失败：工具参数不是合法 JSON。");
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(2).textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("save_review_unit_result");
+    }
+
+    @Test
     void enforcesTotalTimeoutBeforeProviderContact() {
         runner = runnerWith(List.of(tool("read_episode_script")), 0);
 
@@ -735,6 +787,16 @@ class WorkflowAgentRunnerTest {
         AiTextResponse response = new AiTextResponse(
             "", "provider-1", 17131, 16384, 33515, 152789L,
             Map.of(), "length", true, List.of());
+        return new AiInvocationResult<>(AiCapability.TEXT, "workflow_agent", response, "", logId,
+            "provider-1", 8L, 2L, "DeepSeek", 17131, 16384, 33515, 152789L,
+            "SUCCESS", null, null);
+    }
+
+    private AiInvocationResult<AiTextResponse> truncatedPartialSave(Long logId) {
+        AiTextResponse response = new AiTextResponse(
+            "", "provider-1", 17131, 16384, 33515, 152789L,
+            Map.of(), "length", true, List.of(new AiToolCall(
+                "partial", "save_review_unit_result", "{\"candidates\":[")));
         return new AiInvocationResult<>(AiCapability.TEXT, "workflow_agent", response, "", logId,
             "provider-1", 8L, 2L, "DeepSeek", 17131, 16384, 33515, 152789L,
             "SUCCESS", null, null);

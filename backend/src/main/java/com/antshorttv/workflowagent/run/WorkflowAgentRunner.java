@@ -245,6 +245,18 @@ public class WorkflowAgentRunner {
             List<AiToolCall> calls = response == null ? List.of() : response.toolCalls();
             String finalContent = response == null ? null : response.content();
             runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
+            if ("script-review".equals(agent.code()) && isTruncated(response)) {
+                reviewTruncationRecovery = true;
+                List<String> remainingTools = remainingContractTools(contract, runState);
+                messages.add(AiChatMessage.user(
+                    "模型输出已截断，审核契约尚未完成。已经成功的读取工具不得重复调用；"
+                        + "现在只允许按顺序调用这些尚未完成的工具："
+                        + String.join(" -> ", remainingTools) + "。不得输出普通文本。"
+                        + (remainingTools.size() == 1 && contract.isTerminal(remainingTools.get(0))
+                            ? "直接调用保存工具；候选最多 20 个，每条只保留必要证据与命中，字段务必简洁。"
+                            : "完成剩余可信读取后立即调用保存工具。")));
+                continue;
+            }
             if (calls.isEmpty()) {
                 if (splitting && splitPolicy != null) {
                     var fallback = splitPolicy.classify(response, runState);
@@ -252,21 +264,6 @@ public class WorkflowAgentRunner {
                         beginFallback(messages, prompt, runState, fallback.get());
                         continue;
                     }
-                }
-                if ("script-review".equals(agent.code())
-                    && response != null
-                    && (response.truncated()
-                        || "length".equalsIgnoreCase(response.finishReason()))) {
-                    reviewTruncationRecovery = true;
-                    List<String> remainingTools = remainingContractTools(contract, runState);
-                    messages.add(AiChatMessage.user(
-                        "模型输出已截断，审核契约尚未完成。已经成功的读取工具不得重复调用；"
-                            + "现在只允许按顺序调用这些尚未完成的工具："
-                            + String.join(" -> ", remainingTools) + "。不得输出普通文本。"
-                            + (remainingTools.size() == 1 && contract.isTerminal(remainingTools.get(0))
-                                ? "直接调用保存工具；候选最多 20 个，每条只保留必要证据与命中，字段务必简洁。"
-                                : "完成剩余可信读取后立即调用保存工具。")));
-                    continue;
                 }
                 try {
                     contract.requireComplete(runState);
@@ -425,6 +422,11 @@ public class WorkflowAgentRunner {
         return contract.requiredToolSequence().stream()
             .filter(toolCode -> !completed.contains(toolCode))
             .toList();
+    }
+
+    private boolean isTruncated(AiTextResponse response) {
+        return response != null
+            && (response.truncated() || "length".equalsIgnoreCase(response.finishReason()));
     }
 
     private boolean disableThinking(String agentCode, boolean splitting) {
