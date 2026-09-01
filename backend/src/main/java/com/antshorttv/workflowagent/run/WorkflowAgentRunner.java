@@ -323,6 +323,7 @@ public class WorkflowAgentRunner {
                     String serialized = json.writeValueAsString(output);
                     runs.recordToolStep(runId, toolStep, call.code(), call.argumentsJson(), serialized);
                     runState.recordSuccess(call.code());
+                    messages.add(AiChatMessage.toolResult(call.id(), serialized));
                     if (reviewEvidenceRefreshPending && "read_review_content".equals(call.code())) {
                         reviewEvidenceRefreshPending = false;
                         messages.add(AiChatMessage.user(
@@ -333,7 +334,6 @@ public class WorkflowAgentRunner {
                         runs.complete(runId, serialized);
                         return new WorkflowAgentRunResult(runId, serialized, modelCalls);
                     }
-                    messages.add(AiChatMessage.toolResult(call.id(), serialized));
                 } catch (Exception exception) {
                     BusinessException normalized = normalizeToolFailure(exception);
                     runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.antshorttv.ai.AiCapability;
 import com.antshorttv.ai.AiChatMessage;
+import com.antshorttv.ai.AiChatRole;
 import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiTextResponse;
@@ -496,6 +497,10 @@ class WorkflowAgentRunnerTest {
         assertThat(requests.getAllValues().get(4).textRequest().tools())
             .extracting(com.antshorttv.ai.AiToolDefinition::code)
             .containsExactly("save_review_unit_result");
+        List<AiChatMessage> finalMessages = requests.getAllValues().get(4).textRequest().messages();
+        assertThat(finalMessages.get(finalMessages.size() - 2).role()).isEqualTo(AiChatRole.TOOL);
+        assertThat(finalMessages.get(finalMessages.size() - 2).toolCallId()).isEqualTo("refresh-content");
+        assertThat(finalMessages.get(finalMessages.size() - 1).role()).isEqualTo(AiChatRole.USER);
     }
 
     @Test
