@@ -77,11 +77,26 @@ class ReviewToolWriteServiceTest {
     }
 
     @Test
-    void rejectsAbsentEvidenceAndRollsBackWholeUnitPayload() throws Exception {
-        assertThatThrownBy(() -> writes.saveUnitResult(childContext(), unitPayload("正文中不存在")))
-            .isInstanceOf(BusinessException.class).hasMessageContaining("证据");
-        assertThat(jdbc.queryForObject("select count(*) from review_unit_result", Integer.class)).isZero();
-        assertThat(jdbc.queryForObject("select candidate_saved from review_fanout_unit where id = 98705", Boolean.class)).isFalse();
+    void discardsAnUnverifiableLegacyCandidateAndSavesTheRemainingUnitResult() throws Exception {
+        JsonNode saved = writes.saveUnitResult(childContext(), unitPayload("正文中不存在"));
+
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        String candidates = jdbc.queryForObject(
+            "select candidates_json from review_unit_result where snapshot_id = 98704", String.class);
+        assertThat(json.readTree(candidates)).isEmpty();
+        assertThat(jdbc.queryForObject("select candidate_saved from review_fanout_unit where id = 98705", Boolean.class)).isTrue();
+    }
+
+    @Test
+    void savesUnitCandidateWithServerExtractedEvidenceFromOffsets() throws Exception {
+        JsonNode saved = writes.saveUnitResult(childContext(), unitPayloadWithOffsets());
+
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        String candidates = jdbc.queryForObject(
+            "select candidates_json from review_unit_result where snapshot_id = 98704", String.class);
+        JsonNode candidate = json.readTree(candidates).get(0);
+        assertThat(candidate.path("evidence")).extracting(JsonNode::asText).containsExactly("顾言：再见");
+        assertThat(candidate.path("hits").get(0).path("excerpt").asText()).isEqualTo("顾言：再见");
     }
 
     @Test
@@ -150,6 +165,20 @@ class ReviewToolWriteServiceTest {
             """.formatted(frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash(),
                 ReviewContentService.hash(script), frozen.segments().get(0).anchor(), excerpt,
                 frozen.segments().get(0).anchor(), excerpt));
+    }
+
+    private JsonNode unitPayloadWithOffsets() throws Exception {
+        int start = script.indexOf("顾言：再见");
+        int end = start + "顾言：再见".length();
+        return json.readTree("""
+            {"versionHash":"%s","scopeHash":"%s","dimensionsHash":"%s",
+             "contentFingerprint":"%s","coverage":{"complete":true,"anchors":["%s"]},
+             "candidates":[{"dimension":"台词合理性","severity":"LOW","title":"告别突兀",
+               "problem":"缺少回应","evidence":["模型改写的说明"],"suggestion":"补反应",
+               "hits":[{"anchor":"%s","excerpt":"模型改写","startOffset":%d,"endOffset":%d}]}]}
+            """.formatted(frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash(),
+                ReviewContentService.hash(script), frozen.segments().get(0).anchor(),
+                frozen.segments().get(0).anchor(), start, end));
     }
 
     private JsonNode formalPayload() throws Exception {

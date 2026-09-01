@@ -32,6 +32,10 @@ class ScriptReviewToolCatalogTest {
         assertThat(registry.require("read_review_content").inputSchema().path("properties").path("limit").path("maximum").asInt()).isEqualTo(50000);
         assertThat(registry.require("read_review_issue_history").inputSchema().path("properties").path("pageSize").path("maximum").asInt()).isEqualTo(100);
         assertThat(registry.require("save_review_unit_result").inputSchema().path("properties").path("candidates").path("maxItems").asInt()).isEqualTo(100);
+        var hitProperties = registry.require("save_review_unit_result").inputSchema().path("properties")
+            .path("candidates").path("items").path("properties").path("hits").path("items").path("properties");
+        assertThat(hitProperties.path("startOffset").path("minimum").asInt()).isZero();
+        assertThat(hitProperties.path("endOffset").path("minimum").asInt()).isOne();
         assertThat(registry.require("save_review_result").inputSchema().path("properties").path("issues").path("maxItems").asInt()).isEqualTo(500);
     }
 

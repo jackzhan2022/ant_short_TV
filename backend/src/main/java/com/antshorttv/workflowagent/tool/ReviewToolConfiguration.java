@@ -40,7 +40,7 @@ public class ReviewToolConfiguration {
         fields.putObject("contentFingerprint").put("type", "string").put("minLength", 1).put("maxLength", 128);
         fields.set("coverage", coverage(json));
         fields.set("candidates", issueArray(json, 100));
-        return definition("save_review_unit_result", "保存审核单元候选", "验证并原子覆盖当前深度审核单元候选，不生成正式问题。",
+        return definition("save_review_unit_result", "保存审核单元候选", "验证并原子覆盖当前深度审核单元候选，不生成正式问题。命中请优先提供 startOffset/endOffset（相对 read_review_content 返回正文的零基区间），服务端会提取可信原文。",
             input, saveOutput(json, "unitSaved"), ToolRiskLevel.WRITE,
             executor((context, args) -> data.saveUnitResult(context, args)));
     }
@@ -173,6 +173,10 @@ public class ReviewToolConfiguration {
         hit.putArray("required").add("anchor").add("excerpt");
         ((ObjectNode) hit.path("properties")).putObject("anchor").put("type", "string").put("maxLength", 160);
         ((ObjectNode) hit.path("properties")).putObject("excerpt").put("type", "string").put("minLength", 1).put("maxLength", 2000);
+        ((ObjectNode) hit.path("properties")).putObject("startOffset").put("type", "integer").put("minimum", 0)
+            .put("description", "命中在 read_review_content 返回正文中的零基起始偏移；与 endOffset 一起提供时由服务端提取可信原文。");
+        ((ObjectNode) hit.path("properties")).putObject("endOffset").put("type", "integer").put("minimum", 1)
+            .put("description", "命中在 read_review_content 返回正文中的结束偏移（不含该位置）。");
         ((ObjectNode) hit.path("properties")).putObject("episode").put("type", "integer").put("minimum", 1);
         ((ObjectNode) hit.path("properties")).putObject("scene").put("type", "string").put("maxLength", 64);
         ((ObjectNode) hit.path("properties")).putObject("shot").put("type", "integer").put("minimum", 1);
