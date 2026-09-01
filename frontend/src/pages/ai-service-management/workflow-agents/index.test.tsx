@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   queryTools: vi.fn(),
   queryModels: vi.fn(),
   runTemporary: vi.fn(),
+  queryRuns: vi.fn(),
   queryRun: vi.fn(),
   updateAgent: vi.fn(),
 }));
@@ -26,6 +27,7 @@ vi.mock('../workflow-service', async () => {
     queryWorkflowSkills: mocks.querySkills,
     queryWorkflowTools: mocks.queryTools,
     runTemporaryWorkflowAgent: mocks.runTemporary,
+    queryWorkflowAgentRuns: mocks.queryRuns,
     queryWorkflowAgentRun: mocks.queryRun,
     updateWorkflowAgent: mocks.updateAgent,
   };
@@ -108,6 +110,20 @@ describe('WorkflowAgentsPage', () => {
     mocks.runTemporary.mockResolvedValue({
       success: true,
       data: { runId: 10, output: 'ok' },
+    });
+    mocks.queryRuns.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 49,
+          agentCode: 'screenplay-agent',
+          runType: 'FORMAL',
+          status: 'FAILED',
+          errorCode: 'REQUIRED_TOOL_NOT_CALLED',
+          errorMessage: '必须先完成可信读取',
+          startedAt: '2026-09-01 10:00:00',
+        },
+      ],
     });
     mocks.queryRun.mockResolvedValue({
       success: true,
@@ -221,5 +237,57 @@ describe('WorkflowAgentsPage', () => {
     expect(screen.getAllByText('read_episode_script').length).toBeGreaterThan(
       0,
     );
+  });
+
+  it('shows failure diagnostics and steps for a historical run', async () => {
+    mocks.queryRun.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: 49,
+        agentCode: 'screenplay-agent',
+        runType: 'FORMAL',
+        status: 'FAILED',
+        userId: 9,
+        modelId: 8,
+        temperature: 0.2,
+        maxTokens: 16384,
+        maxSteps: 20,
+        errorCode: 'REQUIRED_TOOL_NOT_CALLED',
+        errorMessage: '必须先完成可信读取',
+        finalOutput: '模型未能完成保存',
+        promptSnapshot: '审核提示词快照',
+        toolCodes: ['read_review_context', 'save_review_unit_result'],
+        skillSnapshots: [],
+        startedAt: '2026-09-01 10:00:00',
+        steps: [
+          {
+            stepNo: 2,
+            stepType: 'TOOL',
+            toolCode: 'save_review_unit_result',
+            status: 'FAILED',
+            errorCode: 'REQUIRED_TOOL_NOT_CALLED',
+            errorMessage: '必须先完成可信读取',
+            startedAt: '2026-09-01 10:00:01',
+          },
+        ],
+      },
+    });
+    render(
+      <App>
+        <WorkflowAgentsPage />
+      </App>,
+    );
+
+    await screen.findByText('编剧 Agent');
+    fireEvent.click(screen.getByRole('button', { name: /运行记录/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '详情' }));
+
+    expect(
+      await screen.findByText('REQUIRED_TOOL_NOT_CALLED'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('必须先完成可信读取').length).toBeGreaterThan(0);
+    expect(screen.getByText('模型未能完成保存')).toBeInTheDocument();
+    expect(screen.getByText('save_review_unit_result')).toBeInTheDocument();
+    expect(screen.getByText('审核提示词快照')).toBeInTheDocument();
   });
 });

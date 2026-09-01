@@ -283,18 +283,19 @@ public class WorkflowAgentRunner {
                         error.getErrorCode().name(), error.getMessage());
                     throw error;
                 }
+                WorkflowToolDefinition definition = tools.require(call.code());
                 try {
                     contract.requireNext(runState, call.code());
                 } catch (BusinessException error) {
                     runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
                         error.getErrorCode().name(), error.getMessage());
-                    if (splitting && "CHUNK_FALLBACK".equals(runState.splitMode())) {
+                    if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL
+                        || (splitting && "CHUNK_FALLBACK".equals(runState.splitMode()))) {
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(error)));
                         continue;
                     }
                     throw error;
                 }
-                WorkflowToolDefinition definition = tools.require(call.code());
                 try {
                     requireBoundedSavePayload(call.code(), call.argumentsJson());
                     JsonNode arguments = parseArguments(call.argumentsJson());

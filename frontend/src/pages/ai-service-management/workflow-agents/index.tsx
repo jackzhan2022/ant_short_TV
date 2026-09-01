@@ -753,9 +753,70 @@ const WorkflowAgentsPage = () => {
           ]}
         />
         {historyDetail && (
-          <Typography.Paragraph copyable style={{ whiteSpace: 'pre-wrap' }}>
-            {historyDetail.promptSnapshot}
-          </Typography.Paragraph>
+          <Space
+            orientation="vertical"
+            style={{ width: '100%', marginTop: 16 }}
+            size="large"
+          >
+            <Descriptions
+              bordered
+              size="small"
+              column={2}
+              items={[
+                {
+                  key: 'status',
+                  label: '状态',
+                  children: historyDetail.status,
+                },
+                {
+                  key: 'run',
+                  label: '运行 ID',
+                  children: historyDetail.id,
+                },
+                {
+                  key: 'errorCode',
+                  label: '错误码',
+                  children: historyDetail.errorCode || '-',
+                },
+                {
+                  key: 'errorMessage',
+                  label: '错误信息',
+                  children: historyDetail.errorMessage || '-',
+                },
+                {
+                  key: 'output',
+                  label: '最终输出',
+                  children: historyDetail.finalOutput || '-',
+                  span: 2,
+                },
+              ]}
+            />
+            <Table
+              rowKey="stepNo"
+              pagination={false}
+              dataSource={historyDetail.steps}
+              columns={[
+                { title: '步骤', dataIndex: 'stepNo', width: 70 },
+                { title: '类型', dataIndex: 'stepType', width: 90 },
+                { title: '工具', dataIndex: 'toolCode' },
+                { title: '状态', dataIndex: 'status', width: 90 },
+                {
+                  title: '结果/错误',
+                  render: (_, step) =>
+                    step.errorMessage || step.outputJson || '-',
+                },
+              ]}
+            />
+            <div>
+              <Typography.Title level={5}>提示词快照</Typography.Title>
+              <Typography.Paragraph
+                copyable
+                style={{ whiteSpace: 'pre-wrap' }}
+              >
+                {historyDetail.promptSnapshot}
+              </Typography.Paragraph>
+            </div>
+          </Space>
         )}
       </Drawer>
     </>

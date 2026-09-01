@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(async ({ onOk }) => onOk?.()),
   queryReviewProjects: vi.fn(),
   queryReviewProject: vi.fn(),
+  queryReviewTask: vi.fn(),
   queryReviewVersionHistory: vi.fn(),
   importReviewProject: vi.fn(),
   saveReviewVersion: vi.fn(),
@@ -217,6 +218,7 @@ vi.mock('./service', () => ({
   exportReviewReport: mocks.exportReviewReport,
   importReviewProject: mocks.importReviewProject,
   queryReviewProject: mocks.queryReviewProject,
+  queryReviewTask: mocks.queryReviewTask,
   queryReviewProjects: mocks.queryReviewProjects,
   queryReviewVersionHistory: mocks.queryReviewVersionHistory,
   resolveReviewIssue: mocks.resolveReviewIssue,
@@ -240,6 +242,7 @@ vi.mock('@/components/AiExecutionStatus', () => ({
 describe('ScriptReviewPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.queryReviewTask.mockResolvedValue({ data: undefined });
     mocks.queryReviewProjects.mockResolvedValue({
       data: [
         {
@@ -468,6 +471,27 @@ describe('ScriptReviewPage', () => {
       status: 'SUCCEEDED',
       progress: 100,
     });
+  });
+
+  it('loads issue details for a summarized selected task', async () => {
+    mocks.queryReviewProject.mockResolvedValueOnce({
+      data: {
+        project: { id: 1, name: '审稿样例', sourceType: 'TEXT', currentVersionId: 2, lastTaskId: 7, status: 'ACTIVE', versionCount: 1, latestRoundNo: 1 },
+        versions: [{ id: 2, projectId: 1, versionNo: 1, sourceType: 'IMPORT', content: '第1集\n正文' }],
+        tasks: [{ id: 7, projectId: 1, scriptVersionId: 2, roundNo: 1, reviewMode: 'QUICK', selectedDimensions: ['台词合理性'], reviewScopeType: 'ALL', reviewScope: {}, status: 'COMPLETED', overallProgress: 100, issues: [] }],
+      },
+    });
+    mocks.queryReviewTask.mockResolvedValueOnce({
+      data: {
+        id: 7, projectId: 1, scriptVersionId: 2, roundNo: 1, reviewMode: 'QUICK', selectedDimensions: ['台词合理性'], reviewScopeType: 'ALL', reviewScope: {}, status: 'COMPLETED', overallProgress: 100,
+        issues: [{ id: 21, taskId: 7, scriptVersionId: 2, roundNo: 1, issueNo: 'R1-01', dimension: '台词合理性', severity: 'MEDIUM', title: '真实问题', position: {}, excerpt: '正文', problem: '存在问题', evidence: ['正文'], suggestion: '调整', status: 'new', manuallyResolved: false, hits: [] }],
+      },
+    });
+
+    render(<ScriptReviewPage />);
+
+    await waitFor(() => expect(mocks.queryReviewTask).toHaveBeenCalledWith(7));
+    expect(await screen.findByText('真实问题')).toBeInTheDocument();
   });
 
   it('highlights issue hits in the editor and shows version history', async () => {

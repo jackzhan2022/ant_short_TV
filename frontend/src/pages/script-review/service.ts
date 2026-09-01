@@ -200,6 +200,9 @@ export const queryReviewProject = (projectId: number) =>
     `/api/script-review/projects/${projectId}`,
   );
 
+export const queryReviewTask = (taskId: number) =>
+  request<ApiResponse<ReviewTask>>(`/api/script-review/tasks/${taskId}`);
+
 export const saveReviewVersion = (
   projectId: number,
   content: string,

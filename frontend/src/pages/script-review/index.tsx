@@ -37,6 +37,7 @@ import type {
   ReviewIssue,
   ReviewProject,
   ReviewProjectDetail,
+  ReviewTask,
 } from './service';
 import {
   batchRepairReview,
@@ -46,6 +47,7 @@ import {
   importReviewProject,
   queryReviewProject,
   queryReviewProjects,
+  queryReviewTask,
   queryReviewVersionHistory,
   resolveReviewIssue,
   retryReviewTask,
@@ -84,6 +86,11 @@ const ScriptReviewPage = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<number>();
   const [selectedVersionId, setSelectedVersionId] = useState<number>();
   const [selectedTaskId, setSelectedTaskId] = useState<number>();
+  const [taskDetails, setTaskDetails] = useState<Record<number, ReviewTask>>(
+    {},
+  );
+  const [taskDetailLoading, setTaskDetailLoading] = useState(false);
+  const [taskDetailError, setTaskDetailError] = useState(false);
   const [content, setContent] = useState('');
   const [projectName, setProjectName] = useState('');
   const [uploadFile, setUploadFile] = useState<UploadFile>();
@@ -103,10 +110,13 @@ const ScriptReviewPage = () => {
     useState<API.AiExecutionResponse>();
   const editorRef = useRef<any>(null);
 
-  const selectedTask = useMemo(
+  const selectedTaskSummary = useMemo(
     () => detail?.tasks.find((task) => task.id === selectedTaskId),
     [detail?.tasks, selectedTaskId],
   );
+  const selectedTask = selectedTaskId
+    ? (taskDetails[selectedTaskId] ?? selectedTaskSummary)
+    : undefined;
   const visibleIssues =
     selectedTask?.issues.filter((issue) => !issue.manuallyResolved) ?? [];
   const processedIssues =
@@ -154,6 +164,7 @@ const ScriptReviewPage = () => {
       const response = await queryReviewProject(projectId);
       const nextDetail = response.data;
       if (!nextDetail) return;
+      setTaskDetails({});
       setDetail(nextDetail);
       const versionId =
         nextDetail.project.currentVersionId ?? nextDetail.versions[0]?.id;
@@ -187,6 +198,43 @@ const ScriptReviewPage = () => {
       );
     }
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedTaskId || !selectedTaskSummary) {
+      setTaskDetailLoading(false);
+      setTaskDetailError(false);
+      return;
+    }
+    if (selectedTaskSummary.issues.length > 0 || taskDetails[selectedTaskId]) {
+      setTaskDetailLoading(false);
+      setTaskDetailError(false);
+      return;
+    }
+
+    let active = true;
+    setTaskDetailLoading(true);
+    setTaskDetailError(false);
+    queryReviewTask(selectedTaskId)
+      .then((response) => {
+        if (!active || !response.data) return;
+        setTaskDetails((current) => ({
+          ...current,
+          [selectedTaskId]: response.data,
+        }));
+      })
+      .catch(() => {
+        if (!active) return;
+        setTaskDetailError(true);
+        message.error('加载审核问题失败');
+      })
+      .finally(() => {
+        if (active) setTaskDetailLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [message, selectedTaskId, selectedTaskSummary, taskDetails]);
 
   const refresh = async () => {
     await loadProjects();
@@ -684,8 +732,13 @@ const ScriptReviewPage = () => {
                         '问题会按维度聚合，支持多命中片段和人工处理。'}
                     </Typography.Paragraph>
                     <List
+                      loading={taskDetailLoading}
                       dataSource={visibleIssues}
-                      locale={{ emptyText: '当前没有未处理问题' }}
+                      locale={{
+                        emptyText: taskDetailError
+                          ? '审核问题加载失败，请刷新重试'
+                          : '当前没有未处理问题',
+                      }}
                       renderItem={(issue) => (
                         <List.Item
                           actions={[

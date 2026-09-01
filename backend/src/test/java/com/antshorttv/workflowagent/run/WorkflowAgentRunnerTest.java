@@ -23,6 +23,7 @@ import com.antshorttv.workflowagent.agent.WorkflowAgentCommand;
 import com.antshorttv.workflowagent.agent.WorkflowAgentService;
 import com.antshorttv.workflowagent.skill.WorkflowSkillService;
 import com.antshorttv.workflowagent.skill.WorkflowSkillView;
+import com.antshorttv.workflowagent.tool.ReviewToolScope;
 import com.antshorttv.workflowagent.tool.ToolFailurePolicy;
 import com.antshorttv.workflowagent.tool.ToolRiskLevel;
 import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
@@ -217,6 +218,56 @@ class WorkflowAgentRunnerTest {
         verify(runs).recordFailedToolStep(org.mockito.ArgumentMatchers.eq(101L),
             org.mockito.ArgumentMatchers.eq(2), org.mockito.ArgumentMatchers.eq("recoverable_read"),
             org.mockito.ArgumentMatchers.eq("{}"), any(), any());
+    }
+
+    @Test
+    void returnsRecoverableReviewContractOrderFailureToModelForCorrection() throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition context = reviewTool("read_review_context",
+            executorReturning("{\"projectId\":25}"));
+        WorkflowToolDefinition content = reviewTool("read_review_content",
+            executorReturning("{\"content\":\"正文\"}"));
+        WorkflowToolDefinition history = reviewTool("read_review_issue_history",
+            executorReturning("{\"issues\":[]}"));
+        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
+            @Override
+            public com.fasterxml.jackson.databind.JsonNode execute(
+                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
+                com.fasterxml.jackson.databind.JsonNode arguments
+            ) {
+                saves.incrementAndGet();
+                return json.createObjectNode().put("saved", true);
+            }
+        });
+        runner = runnerWith(List.of(context, content, history, save), 30);
+        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
+            6L, "script-review", "剧本审核", "", "执行审核", 8L,
+            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
+                "read_review_context", "read_review_content", "read_review_issue_history",
+                "save_review_unit_result")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall(
+                "premature-save", "save_review_unit_result", "{}")), 611L))
+            .thenReturn(result(null, List.of(
+                new AiToolCall("context", "read_review_context", "{}"),
+                new AiToolCall("content", "read_review_content", "{}"),
+                new AiToolCall("history", "read_review_issue_history", "{}")), 612L))
+            .thenReturn(result(null, List.of(new AiToolCall(
+                "corrected-save", "save_review_unit_result", "{}")), 613L));
+
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
+            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
+            null, null, null, null,
+            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
+
+        assertThat(result.output()).contains("\"saved\":true");
+        assertThat(saves).hasValue(1);
+        verify(runs).recordFailedToolStep(101L, 2, "save_review_unit_result", "{}",
+            ErrorCode.REQUIRED_TOOL_NOT_CALLED.name(),
+            "必须先读取审核上下文，并完成全部可信读取后再保存：read_review_context -> "
+                + "read_review_content -> read_review_issue_history -> save_review_unit_result");
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(any());
     }
 
     @Test
@@ -540,6 +591,15 @@ class WorkflowAgentRunnerTest {
         } catch (java.io.IOException exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    private WorkflowToolDefinition reviewTool(String code, WorkflowToolExecutor executor)
+        throws Exception {
+        return new WorkflowToolDefinition(
+            code, code, code,
+            json.readTree("{\"type\":\"object\"}"), json.readTree("{\"type\":\"object\"}"),
+            code.startsWith("save_") ? ToolRiskLevel.WRITE : ToolRiskLevel.READ_ONLY,
+            ToolFailurePolicy.RETURN_TO_MODEL, executor);
     }
 
     private WorkflowAgentRecord globalAgent() {
