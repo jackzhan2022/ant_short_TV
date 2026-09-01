@@ -146,6 +146,7 @@ public class ReviewToolWriteService {
             requireFullyRead(context, ReviewContentService.hash(state.frozen().content()), state.frozen().content().length());
         }
 
+        clearCurrentTaskSnapshot(state.task().getId());
         List<Prior> previous = previousIssues(state);
         Set<String> matched = new HashSet<>();
         int index = 1;
@@ -186,6 +187,15 @@ public class ReviewToolWriteService {
         result.put("saved", true);
         result.put("formalSaved", task.getId());
         return result;
+    }
+
+    private void clearCurrentTaskSnapshot(Long taskId) {
+        events.delete(new LambdaQueryWrapper<ReviewIssueEventEntity>()
+            .eq(ReviewIssueEventEntity::getTaskId, taskId));
+        hits.delete(new LambdaQueryWrapper<ReviewIssueHitEntity>()
+            .eq(ReviewIssueHitEntity::getTaskId, taskId));
+        issues.delete(new LambdaQueryWrapper<ReviewIssueEntity>()
+            .eq(ReviewIssueEntity::getTaskId, taskId));
     }
 
     private void verifyHashes(ReviewToolReadService.State state, JsonNode arguments) {
