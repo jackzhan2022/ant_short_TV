@@ -67,13 +67,13 @@ public class ReviewToolWriteService {
                 && segment.startOffset() < unit.getEndOffset())
             .map(ReviewContentService.Segment::anchor)
             .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        validateIssues(arguments.path("candidates"), state, content, unitAnchors, 100);
+        ArrayNode candidates = normalizedUnitCandidates(arguments.path("candidates"), state, content, unitAnchors);
         String coverage = stringify(arguments.path("coverage"));
-        String candidates = stringify(arguments.path("candidates"));
+        String serializedCandidates = stringify(candidates);
         fanout.replaceCandidate(new ReviewFanoutRepository.CandidateDraft(scope.snapshotId(), scope.unitId(),
             context.agentRunId(), scope.attemptNo(), state.frozen().versionHash(), state.frozen().scopeHash(),
-            state.frozen().dimensionsHash(), unit.getContentFingerprint(), coverage, candidates,
-            ReviewContentService.hash(coverage + "\n" + candidates)));
+            state.frozen().dimensionsHash(), unit.getContentFingerprint(), coverage, serializedCandidates,
+            ReviewContentService.hash(coverage + "\n" + serializedCandidates)));
         fanout.transitionUnit(scope.unitId(), ReviewUnitStatus.RUNNING, ReviewUnitStatus.SUCCEEDED);
         ObjectNode result = json.createObjectNode();
         result.put("saved", true);
@@ -236,6 +236,39 @@ public class ReviewToolWriteService {
             String identity = normalize(dimension) + "|" + normalize(title) + "|" + String.join(",", anchors);
             if (!identities.add(identity)) throw invalid("审核结果包含重复问题。");
         }
+    }
+
+    private ArrayNode normalizedUnitCandidates(JsonNode drafts, ReviewToolReadService.State state,
+        String content, Set<String> unitAnchors) {
+        if (!drafts.isArray() || drafts.size() > 100) throw invalid("审核问题列表格式或数量无效。");
+        ArrayNode accepted = json.createArrayNode();
+        for (JsonNode draft : drafts) {
+            if (!draft.isObject()) continue;
+            ObjectNode candidate = ((ObjectNode) draft).deepCopy();
+            JsonNode hits = candidate.path("hits");
+            if (hits.isArray()) {
+                ArrayNode evidence = json.createArrayNode();
+                boolean extracted = false;
+                for (JsonNode hit : hits) {
+                    if (!hit.isObject() || !hit.hasNonNull("startOffset") || !hit.hasNonNull("endOffset")) continue;
+                    int start = hit.path("startOffset").asInt(-1);
+                    int end = hit.path("endOffset").asInt(-1);
+                    if (start < 0 || end <= start || end > content.length()) continue;
+                    String excerpt = content.substring(start, end);
+                    ((ObjectNode) hit).put("excerpt", excerpt);
+                    evidence.add(excerpt);
+                    extracted = true;
+                }
+                if (extracted) candidate.set("evidence", evidence);
+            }
+            try {
+                validateIssues(json.createArrayNode().add(candidate), state, content, unitAnchors, 1);
+                accepted.add(candidate);
+            } catch (BusinessException ignored) {
+                // One unverified candidate must not prevent the reviewed unit from being saved.
+            }
+        }
+        return accepted;
     }
 
     private void requireExcerpt(String content, String excerpt) {
