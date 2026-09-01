@@ -54,4 +54,7 @@ export default {
   'menu.ai-service-management.model-management': 'Model Management',
   'menu.ai-service-management.logs': 'Call Logs',
   'menu.style-library': 'Pustaka Gaya',
+  'menu.commercial-management': 'Komersial',
+  'menu.commercial-management.packages': 'Paket',
+  'menu.commercial-management.tenants': 'Penyewa',
 };

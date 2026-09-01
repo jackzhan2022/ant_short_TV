@@ -53,4 +53,7 @@ export default {
   'menu.ai-service-management.model-management': 'Model Management',
   'menu.ai-service-management.logs': 'Call Logs',
   'menu.style-library': 'スタイルライブラリ',
+  'menu.commercial-management': '商用管理',
+  'menu.commercial-management.packages': 'パッケージ管理',
+  'menu.commercial-management.tenants': 'テナント管理',
 };

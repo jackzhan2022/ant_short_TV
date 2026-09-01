@@ -53,4 +53,7 @@ export default {
   'menu.ai-service-management.model-management': 'Model Management',
   'menu.ai-service-management.logs': 'Call Logs',
   'menu.style-library': 'স্টাইল লাইব্রেরি',
+  'menu.commercial-management': 'বাণিজ্যিক',
+  'menu.commercial-management.packages': 'প্যাকেজ',
+  'menu.commercial-management.tenants': 'টেন্যান্ট',
 };

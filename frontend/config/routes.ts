@@ -111,10 +111,10 @@ export default [
     path: '/commercial-management',
     name: 'commercial-management',
     icon: 'shop',
-    access: 'canViewCommercialPackages',
     routes: [
       { path: '/commercial-management', redirect: '/commercial-management/packages' },
-      { path: '/commercial-management/packages', name: 'packages', component: './commercial-management/packages' },
+      { path: '/commercial-management/packages', name: 'packages', access: 'canViewCommercialPackages', component: './commercial-management/packages' },
+      { path: '/commercial-management/tenants', name: 'tenants', access: 'canViewPlatformTenants', component: './commercial-management/tenants' },
     ],
   },
   {

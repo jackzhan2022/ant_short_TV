@@ -52,6 +52,11 @@ export default function access(
     canEditCommercialPackages:
       currentUser &&
       platformPermissions.includes('PLATFORM_COMMERCIAL_PACKAGE_EDIT'),
+    canViewPlatformTenants:
+      currentUser && platformPermissions.includes('PLATFORM_TENANT_VIEW'),
+    canEditPlatformTenantStatus:
+      currentUser &&
+      platformPermissions.includes('PLATFORM_TENANT_STATUS_EDIT'),
     canViewPlatformAiProviders:
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
     canCreatePlatformAiProviders:

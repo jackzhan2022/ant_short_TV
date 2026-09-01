@@ -841,6 +841,39 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void flywayAddsPlatformTenantManagementSchemaAndPermissions() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer detailColumnCount = jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'operation_log'
+               and lower(column_name) = 'detail_json'
+            """, Integer.class);
+        Integer permissionCount = jdbc.queryForObject("""
+            select count(*) from platform_permission
+             where code in ('PLATFORM_TENANT_VIEW', 'PLATFORM_TENANT_STATUS_EDIT')
+            """, Integer.class);
+        Integer adminGrantCount = jdbc.queryForObject("""
+            select count(*)
+              from platform_role_permission role_permission
+              join platform_role role on role.id = role_permission.role_id
+              join platform_permission permission on permission.id = role_permission.permission_id
+             where role.code = 'PLATFORM_ADMIN'
+               and permission.code in ('PLATFORM_TENANT_VIEW', 'PLATFORM_TENANT_STATUS_EDIT')
+            """, Integer.class);
+        Integer aggregateIndexCount = jdbc.queryForObject("""
+            select count(distinct lower(index_name)) from information_schema.indexes
+             where (lower(table_name) = 'tenant' and lower(index_name) = 'idx_tenant_platform_list')
+                or (lower(table_name) = 'tenant_member' and lower(index_name) = 'idx_tenant_member_tenant_status')
+            """, Integer.class);
+
+        assertThat(detailColumnCount).isEqualTo(1);
+        assertThat(permissionCount).isEqualTo(2);
+        assertThat(adminGrantCount).isEqualTo(2);
+        assertThat(aggregateIndexCount).isEqualTo(2);
+    }
+
+    @Test
     void flywaySeedsDisabledVolcengineArkSeedanceModels() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         Integer providerCount = jdbc.queryForObject("""

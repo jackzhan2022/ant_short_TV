@@ -72,4 +72,5 @@ export default {
   'menu.projects.list': 'Project List',
   'menu.commercial-management': 'Commercial',
   'menu.commercial-management.packages': 'Packages',
+  'menu.commercial-management.tenants': 'Tenants',
 };

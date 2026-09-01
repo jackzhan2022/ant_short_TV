@@ -17,6 +17,7 @@ public class OperationLogEntity {
     private String result;
     private String ip;
     private String userAgent;
+    private String detailJson;
     private LocalDateTime createdAt;
 
     public Long getId() {
@@ -81,6 +82,14 @@ public class OperationLogEntity {
 
     public void setUserAgent(String userAgent) {
         this.userAgent = userAgent;
+    }
+
+    public String getDetailJson() {
+        return detailJson;
+    }
+
+    public void setDetailJson(String detailJson) {
+        this.detailJson = detailJson;
     }
 
     public LocalDateTime getCreatedAt() {

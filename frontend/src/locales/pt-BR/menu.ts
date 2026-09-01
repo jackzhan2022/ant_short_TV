@@ -55,4 +55,7 @@ export default {
   'menu.ai-service-management.model-management': 'Model Management',
   'menu.ai-service-management.logs': 'Call Logs',
   'menu.style-library': 'Biblioteca de estilos',
+  'menu.commercial-management': 'Comercial',
+  'menu.commercial-management.packages': 'Pacotes',
+  'menu.commercial-management.tenants': 'Locatários',
 };

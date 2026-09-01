@@ -32,3 +32,28 @@ describe('AI service management routes', () => {
     });
   });
 });
+
+describe('commercial management routes', () => {
+  it('guards package and tenant pages with independent permissions', () => {
+    const commercial = routes.find(
+      (route) => route.path === '/commercial-management',
+    );
+    const children = commercial?.routes ?? [];
+
+    expect(commercial?.access).toBeUndefined();
+    expect(
+      children.find(
+        (route) => route.path === '/commercial-management/packages',
+      ),
+    ).toMatchObject({ access: 'canViewCommercialPackages' });
+    expect(
+      children.find(
+        (route) => route.path === '/commercial-management/tenants',
+      ),
+    ).toMatchObject({
+      name: 'tenants',
+      access: 'canViewPlatformTenants',
+      component: './commercial-management/tenants',
+    });
+  });
+});

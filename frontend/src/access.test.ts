@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest';
 import access from './access';
 
 describe('access', () => {
+  it('separates platform tenant view and status permissions', () => {
+    const viewer = access({
+      currentUser: { userid: '1', name: 'Viewer', access: 'user' },
+      platformPermissions: ['PLATFORM_TENANT_VIEW'],
+    });
+    const operator = access({
+      currentUser: { userid: '2', name: 'Operator', access: 'user' },
+      platformPermissions: [
+        'PLATFORM_TENANT_VIEW',
+        'PLATFORM_TENANT_STATUS_EDIT',
+      ],
+    });
+
+    expect(viewer.canViewPlatformTenants).toBe(true);
+    expect(viewer.canEditPlatformTenantStatus).toBe(false);
+    expect(operator.canViewPlatformTenants).toBe(true);
+    expect(operator.canEditPlatformTenantStatus).toBe(true);
+  });
   it('should return canAdmin true when user has admin access', () => {
     const initialState = {
       currentUser: {
