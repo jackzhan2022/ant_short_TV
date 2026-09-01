@@ -194,6 +194,7 @@ public class WorkflowAgentRunner {
             input.taskId(), input.analysisStageId(), runId, input.executionId(), input.attemptId(),
             input.executionVersion(), trustedPermissions, deadline, runState, input.reviewScope());
         int stepNo = 0;
+        boolean reviewTruncationRecovery = false;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
             requireBeforeDeadline(deadline);
@@ -220,7 +221,8 @@ public class WorkflowAgentRunner {
                     .textRequest(new AiTextRequest(
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
                         null, remainingSeconds(deadline), 0,
-                        messages, activeProviderTools(allowedTools, splitting, runState),
+                        messages, activeProviderTools(allowedTools, splitting, runState,
+                            agent.code(), contract, reviewTruncationRecovery),
                         disableThinking(agent.code(), splitting) ? "disabled" : null
                     ))
                     .build());
@@ -255,9 +257,15 @@ public class WorkflowAgentRunner {
                     && response != null
                     && (response.truncated()
                         || "length".equalsIgnoreCase(response.finishReason()))) {
+                    reviewTruncationRecovery = true;
+                    List<String> remainingTools = remainingContractTools(contract, runState);
                     messages.add(AiChatMessage.user(
-                        "模型输出已截断，审核契约尚未完成。不得输出普通文本；"
-                            + "立即调用尚未完成的可信读取工具，完成后调用保存工具。"));
+                        "模型输出已截断，审核契约尚未完成。已经成功的读取工具不得重复调用；"
+                            + "现在只允许按顺序调用这些尚未完成的工具："
+                            + String.join(" -> ", remainingTools) + "。不得输出普通文本。"
+                            + (remainingTools.size() == 1 && contract.isTerminal(remainingTools.get(0))
+                                ? "直接调用保存工具；候选最多 20 个，每条只保留必要证据与命中，字段务必简洁。"
+                                : "完成剩余可信读取后立即调用保存工具。")));
                     continue;
                 }
                 try {
@@ -385,8 +393,18 @@ public class WorkflowAgentRunner {
     private List<AiToolDefinition> activeProviderTools(
         List<WorkflowToolDefinition> allowedTools,
         boolean splitting,
-        WorkflowToolRunState state
+        WorkflowToolRunState state,
+        String agentCode,
+        WorkflowAgentRunContract contract,
+        boolean reviewTruncationRecovery
     ) {
+        if ("script-review".equals(agentCode) && reviewTruncationRecovery) {
+            Set<String> activeCodes = new HashSet<>(remainingContractTools(contract, state));
+            return allowedTools.stream()
+                .filter(tool -> activeCodes.contains(tool.code()))
+                .map(this::providerTool)
+                .toList();
+        }
         if (!splitting) {
             return allowedTools.stream().map(this::providerTool).toList();
         }
@@ -396,6 +414,16 @@ public class WorkflowAgentRunner {
         return allowedTools.stream()
             .filter(tool -> activeCodes.contains(tool.code()))
             .map(this::providerTool)
+            .toList();
+    }
+
+    private List<String> remainingContractTools(
+        WorkflowAgentRunContract contract,
+        WorkflowToolRunState state
+    ) {
+        Set<String> completed = new HashSet<>(state.successfulToolCodes());
+        return contract.requiredToolSequence().stream()
+            .filter(toolCode -> !completed.contains(toolCode))
             .toList();
     }
 

@@ -324,6 +324,58 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void scriptReviewTruncationRecoveryExposesOnlyUnfinishedContractTools() throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition context = reviewTool("read_review_context",
+            executorReturning("{\"projectId\":25}"));
+        WorkflowToolDefinition content = reviewTool("read_review_content",
+            executorReturning("{\"content\":\"正文\"}"));
+        WorkflowToolDefinition history = reviewTool("read_review_issue_history",
+            executorReturning("{\"issues\":[]}"));
+        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
+            @Override
+            public com.fasterxml.jackson.databind.JsonNode execute(
+                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
+                com.fasterxml.jackson.databind.JsonNode arguments
+            ) {
+                saves.incrementAndGet();
+                return json.createObjectNode().put("saved", true);
+            }
+        });
+        runner = runnerWith(List.of(context, content, history, save), 30);
+        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
+            6L, "script-review", "剧本审核", "", "执行审核", 8L,
+            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
+                "read_review_context", "read_review_content", "read_review_issue_history",
+                "save_review_unit_result")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(
+                new AiToolCall("context", "read_review_context", "{}"),
+                new AiToolCall("content", "read_review_content", "{}"),
+                new AiToolCall("history", "read_review_issue_history", "{}")), 631L))
+            .thenReturn(truncatedEmpty(632L))
+            .thenReturn(result(null, List.of(new AiToolCall(
+                "save", "save_review_unit_result", "{}")), 633L));
+
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
+            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
+            null, null, null, null,
+            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
+
+        assertThat(result.output()).contains("\"saved\":true");
+        assertThat(saves).hasValue(1);
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(2).textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("save_review_unit_result");
+        assertThat(requests.getAllValues().get(2).textRequest().messages())
+            .extracting(AiChatMessage::content)
+            .anySatisfy(message -> assertThat(message).contains("save_review_unit_result"));
+    }
+
+    @Test
     void enforcesTotalTimeoutBeforeProviderContact() {
         runner = runnerWith(List.of(tool("read_episode_script")), 0);
 
