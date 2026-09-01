@@ -18,7 +18,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.annotation.Propagation;
 
 @SpringBootTest
 @Transactional
@@ -112,6 +111,20 @@ class ReviewToolWriteServiceTest {
     }
 
     @Test
+    void replacesStaleFormalIssuesWhenSavingTheSameTaskAgain() throws Exception {
+        jdbc.update("insert into review_issue (tenant_id, project_id, task_id, script_version_id, round_no, issue_no, dimension, severity, title, status, manually_resolved, created_at, updated_at) values (98700,98701,98703,98702,1,'R1-01','台词合理性','LOW','过期问题','new',false,now(),now())");
+        jdbc.update("update review_task set review_mode = 'QUICK' where id = 98703");
+
+        JsonNode result = writes.saveResult(quickContext(insertRun("REVIEW_QUICK")), formalPayload());
+
+        assertThat(result.path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from review_issue where task_id = 98703", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("select title from review_issue where task_id = 98703", String.class)).isEqualTo("告别突兀");
+        assertThat(jdbc.queryForObject("select count(*) from review_issue_hit where task_id = 98703", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("select count(*) from review_issue_event where task_id = 98703", Integer.class)).isOne();
+    }
+
+    @Test
     void rejectsStaleHashesUnselectedDimensionInvalidSeverityAndDuplicateIdentity() throws Exception {
         jdbc.update("update review_task set review_mode = 'QUICK' where id = 98703");
         long quickRun = insertRun("REVIEW_QUICK");
@@ -123,36 +136,16 @@ class ReviewToolWriteServiceTest {
     }
 
     @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void rollsBackFormalIssueHitEventAndTaskWhenPersistenceFailsMidTransaction() throws Exception {
-        try {
-            jdbc.update("insert into review_issue (tenant_id, project_id, task_id, script_version_id, round_no, issue_no, dimension, severity, title, status, manually_resolved, created_at, updated_at) values (98700,98701,98703,98702,1,'R1-02','台词合理性','LOW','冲突占位','new',false,now(),now())");
-            jdbc.update("update review_task set review_mode = 'QUICK' where id = 98703");
-            long run = insertRun("REVIEW_QUICK");
-            com.fasterxml.jackson.databind.node.ObjectNode payload = (com.fasterxml.jackson.databind.node.ObjectNode) formalPayload();
-            com.fasterxml.jackson.databind.node.ArrayNode issueList = (com.fasterxml.jackson.databind.node.ArrayNode) payload.path("issues");
-            com.fasterxml.jackson.databind.node.ObjectNode second = issueList.get(0).deepCopy();
-            second.put("title", "另一个问题");
-            second.put("problem", "另一个说明");
-            issueList.add(second);
+    void keepsTheExistingSnapshotWhenFormalResultValidationFails() throws Exception {
+        jdbc.update("insert into review_issue (tenant_id, project_id, task_id, script_version_id, round_no, issue_no, dimension, severity, title, status, manually_resolved, created_at, updated_at) values (98700,98701,98703,98702,1,'R1-01','台词合理性','LOW','保留问题','new',false,now(),now())");
+        jdbc.update("update review_task set review_mode = 'QUICK' where id = 98703");
+        com.fasterxml.jackson.databind.node.ObjectNode stale = (com.fasterxml.jackson.databind.node.ObjectNode) formalPayload();
+        stale.put("versionHash", "0".repeat(64));
 
-            assertThatThrownBy(() -> writes.saveResult(quickContext(run), payload)).isInstanceOf(RuntimeException.class);
-            assertThat(jdbc.queryForObject("select count(*) from review_issue where task_id=98703", Integer.class)).isOne();
-            assertThat(jdbc.queryForObject("select count(*) from review_issue_hit where task_id=98703", Integer.class)).isZero();
-            assertThat(jdbc.queryForObject("select count(*) from review_issue_event where task_id=98703", Integer.class)).isZero();
-            assertThat(jdbc.queryForObject("select status from review_task where id=98703", String.class)).isEqualTo("RUNNING");
-        } finally {
-            jdbc.update("delete from review_issue_event where task_id=98703");
-            jdbc.update("delete from review_issue_hit where task_id=98703");
-            jdbc.update("delete from review_issue where task_id=98703");
-            jdbc.update("delete from review_unit_result where snapshot_id=98704");
-            jdbc.update("delete from review_fanout_unit where snapshot_id=98704");
-            jdbc.update("delete from review_fanout_snapshot where id=98704");
-            jdbc.update("delete from ai_workflow_agent_run where task_id=98703");
-            jdbc.update("delete from review_task where id=98703");
-            jdbc.update("delete from review_script_version where id=98702");
-            jdbc.update("delete from review_project where id=98701");
-        }
+        assertThatThrownBy(() -> writes.saveResult(quickContext(insertRun("REVIEW_QUICK")), stale))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("变化");
+        assertThat(jdbc.queryForObject("select count(*) from review_issue where task_id = 98703", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("select title from review_issue where task_id = 98703", String.class)).isEqualTo("保留问题");
     }
 
     private JsonNode unitPayload(String excerpt) throws Exception {
