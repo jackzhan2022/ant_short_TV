@@ -78,8 +78,8 @@ vi.mock('antd', () => {
         {loading ? 'loading' : null}
       </button>
     ),
-    Card: ({ children, extra, title }: any) => (
-      <section>
+    Card: ({ children, extra, title, onClick }: any) => (
+      <section onClick={onClick}>
         <header>
           {title}
           {extra}
@@ -156,6 +156,15 @@ vi.mock('antd', () => {
         Item: ListItem,
       },
     ),
+    Modal: ({ children, open, title, onCancel, onOk }: any) =>
+      open ? (
+        <section>
+          <h2>{title}</h2>
+          {children}
+          <button type="button" onClick={onCancel}>取消</button>
+          <button type="button" onClick={onOk}>开始审核</button>
+        </section>
+      ) : null,
     Progress: ({ percent }: any) => <div>{percent}%</div>,
     Radio: {
       Group: ({ value, options = [], onChange, disabled }: any) => (
@@ -360,6 +369,39 @@ describe('ScriptReviewPage', () => {
               },
             ],
           },
+          {
+            id: 8,
+            projectId: 1,
+            scriptVersionId: 2,
+            roundNo: 2,
+            reviewMode: 'QUICK',
+            selectedDimensions: ['剧情逻辑与因果'],
+            reviewScopeType: 'ALL',
+            reviewScope: {},
+            status: 'COMPLETED',
+            overallProgress: 100,
+            currentAction: '复审已完成',
+            issues: [
+              {
+                id: 21,
+                taskId: 8,
+                scriptVersionId: 2,
+                roundNo: 2,
+                issueNo: 'R2-01',
+                dimension: '剧情逻辑与因果',
+                severity: 'P1',
+                title: '因果链缺失',
+                position: {},
+                excerpt: '周野说：我会回来。',
+                problem: '人物离开的原因未交代',
+                evidence: [],
+                suggestion: '补充离开动机',
+                status: 'persists',
+                manuallyResolved: false,
+                hits: [],
+              },
+            ],
+          },
         ],
       },
     });
@@ -491,7 +533,7 @@ describe('ScriptReviewPage', () => {
     render(<ScriptReviewPage />);
 
     await waitFor(() => expect(mocks.queryReviewTask).toHaveBeenCalledWith(7));
-    expect(await screen.findByText('真实问题')).toBeInTheDocument();
+    expect((await screen.findAllByText('真实问题')).length).toBeGreaterThan(0);
   });
 
   it('highlights issue hits in the editor and shows version history', async () => {
@@ -502,7 +544,7 @@ describe('ScriptReviewPage', () => {
 
     const editor = screen
       .getAllByRole('textbox')
-      .filter((node) => node.tagName === 'TEXTAREA')[1] as HTMLTextAreaElement;
+      .filter((node) => node.tagName === 'TEXTAREA')[0] as HTMLTextAreaElement;
     await waitFor(() => {
       expect(editor.value).toContain('林晚说：别走。');
       expect(editor.selectionStart).toBeGreaterThanOrEqual(0);
@@ -513,6 +555,56 @@ describe('ScriptReviewPage', () => {
     expect(screen.getByText('问题 2 · 已处理 1')).toBeInTheDocument();
     expect(screen.getByText('整体良好')).toBeInTheDocument();
     expect(screen.getByText('PASS')).toBeInTheDocument();
+  });
+
+  it('loads history for the version selected in the editor', async () => {
+    render(<ScriptReviewPage />);
+
+    await screen.findByText('版本历史');
+    fireEvent.change(screen.getAllByRole('combobox')[0], {
+      target: { value: '1' },
+    });
+
+    await waitFor(() => {
+      expect(mocks.queryReviewVersionHistory).toHaveBeenCalledWith(1, 1);
+    });
+  });
+
+  it('selects the first issue when switching review rounds', async () => {
+    render(<ScriptReviewPage />);
+
+    fireEvent.click(await screen.findByText('第 2 轮 · QUICK'));
+    expect((await screen.findAllByText('因果链缺失')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('人物离开的原因未交代')).not.toHaveLength(0);
+  });
+
+  it('opens review configuration in a modal before creating a task', async () => {
+    render(<ScriptReviewPage />);
+
+    expect(await screen.findByRole('button', { name: '发起审核' })).toBeInTheDocument();
+    expect(screen.queryByText('新建审核任务')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '发起审核' }));
+    expect(screen.getByText('新建审核任务')).toBeInTheDocument();
+  });
+
+  it('shows the selected issue in the issue detail panel', async () => {
+    render(<ScriptReviewPage />);
+
+    fireEvent.click((await screen.findAllByText('人名混乱'))[0]);
+    expect(screen.getByText('问题详情')).toBeInTheDocument();
+    expect(screen.getAllByText('同一句台词里称呼不一致')).not.toHaveLength(0);
+  });
+
+  it('filters the problem queue between pending and processed issues', async () => {
+    render(<ScriptReviewPage />);
+
+    expect(await screen.findByRole('button', { name: '未处理 (1)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '已处理 (1)' }));
+    expect(screen.getAllByText('已处理问题')).not.toHaveLength(0);
+    expect(screen.queryAllByText('人名混乱')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '未处理 (1)' }));
+    expect(screen.getAllByText('人名混乱')).not.toHaveLength(0);
   });
 
   it('uses selected hit fragments for batch repair and keeps processed issues folded away', async () => {
@@ -532,16 +624,15 @@ describe('ScriptReviewPage', () => {
         selectedHitIds: [102],
       });
     });
-    expect(screen.getByText('已处理 (1)')).toBeInTheDocument();
-    expect(screen.getByText('R1-02')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '已处理 (1)' })).toBeInTheDocument();
   });
 
   it('follows the shared review execution and selects its domain task', async () => {
     render(<ScriptReviewPage />);
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '创建审核任务' }),
-    );
+    await screen.findByText('审核问题');
+    fireEvent.click(await screen.findByRole('button', { name: '发起审核' }));
+    fireEvent.click(screen.getByRole('button', { name: '开始审核' }));
 
     await waitFor(() => {
       expect(mocks.pollExecution).toHaveBeenCalledWith(
@@ -559,7 +650,7 @@ describe('ScriptReviewPage', () => {
   it('submits a single QUICK dimension with an explicit trusted scene scope', async () => {
     render(<ScriptReviewPage />);
 
-    await screen.findByText('本轮审核配置');
+    fireEvent.click(await screen.findByRole('button', { name: '发起审核' }));
     fireEvent.click(screen.getByLabelText('人物关系一致性'));
     fireEvent.click(screen.getByLabelText('人物认知一致性'));
     const scopeSelect = screen.getAllByRole('combobox').find((element) =>
@@ -573,7 +664,7 @@ describe('ScriptReviewPage', () => {
     fireEvent.change(await screen.findByPlaceholderText('输入场次编号，用逗号分隔，如 1-2, 2-1'), {
       target: { value: '1-2, 2-1' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '创建审核任务' }));
+    fireEvent.click(screen.getByRole('button', { name: '开始审核' }));
 
     await waitFor(() => {
       expect(mocks.createReviewTask).toHaveBeenCalledWith(1, {
@@ -589,8 +680,9 @@ describe('ScriptReviewPage', () => {
   it('submits the default ordered multi-dimension QUICK review', async () => {
     render(<ScriptReviewPage />);
 
-    await screen.findByText('本轮审核配置');
-    fireEvent.click(screen.getByRole('button', { name: '创建审核任务' }));
+    await screen.findByText('审核问题');
+    fireEvent.click(await screen.findByRole('button', { name: '发起审核' }));
+    fireEvent.click(screen.getByRole('button', { name: '开始审核' }));
 
     await waitFor(() => {
       expect(mocks.createReviewTask).toHaveBeenCalledWith(1, {

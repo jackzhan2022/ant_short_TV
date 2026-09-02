@@ -227,6 +227,13 @@ export default [
     component: './short-drama-creation',
   },
   {
+    path: '/script-review-library',
+    name: 'script-review-library',
+    icon: 'folderOpen',
+    access: 'canViewScriptReview',
+    component: './script-review-library',
+  },
+  {
     path: '/script-review',
     name: 'script-review',
     icon: 'audit',

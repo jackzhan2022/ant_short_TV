@@ -1,16 +1,13 @@
 import {
   AuditOutlined,
   CheckCircleOutlined,
-  CloudUploadOutlined,
   DownloadOutlined,
-  FileTextOutlined,
   LockOutlined,
   ReloadOutlined,
   SaveOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import type { UploadFile } from 'antd';
 import {
   App,
   Button,
@@ -20,6 +17,7 @@ import {
   Empty,
   Input,
   List,
+  Modal,
   Progress,
   Radio,
   Row,
@@ -27,7 +25,6 @@ import {
   Space,
   Tag,
   Typography,
-  Upload,
 } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
@@ -35,7 +32,6 @@ import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import { statusText } from '@/utils/fieldDictionary';
 import type {
   ReviewIssue,
-  ReviewProject,
   ReviewProjectDetail,
   ReviewTask,
 } from './service';
@@ -44,7 +40,6 @@ import {
   cancelReviewTask,
   createReviewTask,
   exportReviewReport,
-  importReviewProject,
   queryReviewProject,
   queryReviewProjects,
   queryReviewTask,
@@ -81,9 +76,13 @@ const statusColor = (status: string) => {
 
 const ScriptReviewPage = () => {
   const { message, modal } = App.useApp();
-  const [projects, setProjects] = useState<ReviewProject[]>([]);
   const [detail, setDetail] = useState<ReviewProjectDetail>();
-  const [selectedProjectId, setSelectedProjectId] = useState<number>();
+  const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>(() => {
+    const projectId = Number(
+      new URLSearchParams(window.location.search).get('projectId'),
+    );
+    return Number.isFinite(projectId) && projectId > 0 ? projectId : undefined;
+  });
   const [selectedVersionId, setSelectedVersionId] = useState<number>();
   const [selectedTaskId, setSelectedTaskId] = useState<number>();
   const [taskDetails, setTaskDetails] = useState<Record<number, ReviewTask>>(
@@ -91,15 +90,18 @@ const ScriptReviewPage = () => {
   );
   const [taskDetailLoading, setTaskDetailLoading] = useState(false);
   const [taskDetailError, setTaskDetailError] = useState(false);
+  const [selectedIssueId, setSelectedIssueId] = useState<number>();
   const [content, setContent] = useState('');
-  const [projectName, setProjectName] = useState('');
-  const [uploadFile, setUploadFile] = useState<UploadFile>();
   const [dimensions, setDimensions] = useState<string[]>(
     DIMENSIONS.slice(0, 3),
   );
   const [reviewMode, setReviewMode] = useState('QUICK');
   const [scopeType, setScopeType] = useState('ALL');
   const [scopeValues, setScopeValues] = useState('');
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [issueFilter, setIssueFilter] = useState<'PENDING' | 'PROCESSED'>(
+    'PENDING',
+  );
   const [hitSelections, setHitSelections] = useState<Record<number, number[]>>(
     {},
   );
@@ -121,6 +123,11 @@ const ScriptReviewPage = () => {
     selectedTask?.issues.filter((issue) => !issue.manuallyResolved) ?? [];
   const processedIssues =
     selectedTask?.issues.filter((issue) => issue.manuallyResolved) ?? [];
+  const queueIssues =
+    issueFilter === 'PENDING' ? visibleIssues : processedIssues;
+  const selectedIssue = selectedTask?.issues.find(
+    (issue) => issue.id === selectedIssueId,
+  );
   const currentVersion = detail?.versions.find(
     (version) => version.id === selectedVersionId,
   );
@@ -138,7 +145,10 @@ const ScriptReviewPage = () => {
     hit: ReviewIssue['hits'][number],
   ) => {
     const target = hit.excerpt?.trim() || issue.excerpt?.trim();
-    if (!target) return;
+    if (!target) {
+      message.warning('当前问题没有可定位的原文片段');
+      return;
+    }
     const textarea = resolveTextarea();
     const start = content.indexOf(target);
     if (textarea?.focus) {
@@ -146,13 +156,14 @@ const ScriptReviewPage = () => {
     }
     if (textarea?.setSelectionRange && start >= 0) {
       textarea.setSelectionRange(start, start + target.length);
+      return;
     }
+    message.warning('当前版本未找到可高亮的命中片段');
   };
 
   const loadProjects = async () => {
     const response = await queryReviewProjects();
     const nextProjects = response.data ?? [];
-    setProjects(nextProjects);
     if (!selectedProjectId && nextProjects[0]) {
       setSelectedProjectId(nextProjects[0].id);
     }
@@ -171,6 +182,12 @@ const ScriptReviewPage = () => {
       setSelectedVersionId(versionId);
       const taskId = nextDetail.project.lastTaskId ?? nextDetail.tasks[0]?.id;
       setSelectedTaskId(taskId);
+      const task = nextDetail.tasks.find((item) => item.id === taskId);
+      setSelectedIssueId(
+        task?.issues.find((issue) => !issue.manuallyResolved)?.id ??
+          task?.issues[0]?.id,
+      );
+      setIssueFilter('PENDING');
       setContent(
         nextDetail.versions.find((version) => version.id === versionId)
           ?.content ?? '',
@@ -241,32 +258,6 @@ const ScriptReviewPage = () => {
     if (selectedProjectId) await loadProject(selectedProjectId);
   };
 
-  const importProject = async () => {
-    if (!content.trim() && !uploadFile?.originFileObj) {
-      message.warning('请上传剧本文件或粘贴剧本内容');
-      return;
-    }
-    setSaving(true);
-    try {
-      const response = await importReviewProject(
-        projectName,
-        content,
-        uploadFile?.originFileObj,
-      );
-      const projectId = response.data?.project.id;
-      if (projectId) {
-        setSelectedProjectId(projectId);
-        setProjectName('');
-        setContent('');
-        setUploadFile(undefined);
-        message.success('已创建独立剧本审核项目');
-      }
-      await refresh();
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const saveVersion = async () => {
     if (!selectedProjectId || !content.trim()) return;
     setSaving(true);
@@ -314,6 +305,7 @@ const ScriptReviewPage = () => {
         reviewScope,
       });
       setSelectedTaskId(response.data?.businessId);
+      setReviewModalOpen(false);
       message.success('审核任务已创建，后台会持续更新进度');
       await followReviewExecution(response.data);
     } finally {
@@ -359,7 +351,7 @@ const ScriptReviewPage = () => {
       return;
     }
     modal.confirm({
-      title: `批量修复 ${issue.issueNo}`,
+      title: `修订预览 ${issue.issueNo}`,
       content: (
         <Space vertical style={{ width: '100%' }}>
           <Typography.Text>
@@ -371,7 +363,7 @@ const ScriptReviewPage = () => {
           </Typography.Text>
         </Space>
       ),
-      okText: '确认修复',
+      okText: '确认应用修订',
       cancelText: '取消',
       onOk: async () => {
         await batchRepairReview(selectedTask.id, {
@@ -401,87 +393,92 @@ const ScriptReviewPage = () => {
     }
   };
 
+  const selectIssueFilter = (filter: 'PENDING' | 'PROCESSED') => {
+    setIssueFilter(filter);
+    const issues = filter === 'PENDING' ? visibleIssues : processedIssues;
+    setSelectedIssueId(issues[0]?.id);
+  };
+
   return (
     <PageContainer
       title="剧本审核工作台"
       extra={[
+        <Button
+          key="create-review"
+          icon={<AuditOutlined />}
+          type="primary"
+          onClick={() => setReviewModalOpen(true)}
+        >
+          发起审核
+        </Button>,
         <Button key="refresh" icon={<ReloadOutlined />} onClick={refresh}>
           刷新
         </Button>,
       ]}
     >
       <Row gutter={[16, 16]}>
-        <Col xs={24} lg={7}>
-          <Card title="独立剧本" extra={<AuditOutlined />}>
-            <Space vertical style={{ width: '100%' }} size="middle">
-              <Input
-                value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
-                placeholder="新剧本名称"
-                prefix={<FileTextOutlined />}
-              />
-              <Upload.Dragger
-                accept=".doc,.docx,.txt,.md,.markdown"
-                maxCount={1}
-                beforeUpload={() => false}
-                fileList={uploadFile ? [uploadFile] : []}
-                onChange={({ fileList }) => setUploadFile(fileList[0])}
-                onRemove={() => setUploadFile(undefined)}
-              >
-                <CloudUploadOutlined style={{ fontSize: 28 }} />
-                <div>上传 Word / TXT / Markdown</div>
-              </Upload.Dragger>
-              <Input.TextArea
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                placeholder="也可以直接粘贴剧本内容"
-                autoSize={{ minRows: 5, maxRows: 12 }}
-              />
-              <Button
-                type="primary"
-                block
-                icon={<CloudUploadOutlined />}
-                loading={saving}
-                onClick={importProject}
-              >
-                导入为独立剧本
-              </Button>
-              <List
-                size="small"
-                dataSource={projects}
-                locale={{ emptyText: <Empty description="暂无审核项目" /> }}
-                renderItem={(project) => (
-                  <List.Item
-                    onClick={() => setSelectedProjectId(project.id)}
-                    style={{
-                      cursor: 'pointer',
-                      padding: '10px 8px',
-                      background:
-                        project.id === selectedProjectId
-                          ? 'var(--app-color-primary-bg)'
-                          : undefined,
-                    }}
-                  >
-                    <Space vertical size={0}>
-                      <Typography.Text strong>{project.name}</Typography.Text>
-                      <Typography.Text type="secondary">
-                        V{project.versionCount} · 第 {project.latestRoundNo} 轮
-                      </Typography.Text>
-                    </Space>
-                  </List.Item>
-                )}
-              />
-            </Space>
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={17}>
+        <Col xs={24}>
           {!detail ? (
             <Card>
               <Empty description="请选择或导入一个独立剧本" />
             </Card>
           ) : (
-            <Space vertical style={{ width: '100%' }} size="middle">
+            <Row gutter={[16, 16]}>
+              <Col xs={24} xl={5}>
+                <Card title="问题队列" loading={loading}>
+                  {!selectedTask ? (
+                    <Empty description="创建审核任务后显示问题队列" />
+                  ) : (
+                    <Space vertical style={{ width: '100%' }}>
+                      <Space wrap>
+                        <Button
+                          type={issueFilter === 'PENDING' ? 'primary' : 'default'}
+                          onClick={() => selectIssueFilter('PENDING')}
+                        >
+                          未处理 ({visibleIssues.length})
+                        </Button>
+                        <Button
+                          type={issueFilter === 'PROCESSED' ? 'primary' : 'default'}
+                          onClick={() => selectIssueFilter('PROCESSED')}
+                        >
+                          已处理 ({processedIssues.length})
+                        </Button>
+                      </Space>
+                      <List
+                        size="small"
+                        dataSource={queueIssues}
+                        locale={{ emptyText: '当前筛选下没有问题' }}
+                        renderItem={(issue) => (
+                          <List.Item
+                            style={{
+                              cursor: 'pointer',
+                              background:
+                                issue.id === selectedIssueId
+                                  ? 'var(--app-color-primary-bg)'
+                                  : undefined,
+                            }}
+                            onClick={() => setSelectedIssueId(issue.id)}
+                          >
+                            <Space vertical size={0}>
+                              <Space wrap>
+                                <Tag color={statusColor(issue.severity)}>
+                                  {issue.issueNo}
+                                </Tag>
+                                <Tag>{issue.dimension}</Tag>
+                              </Space>
+                              <Typography.Text strong>{issue.title}</Typography.Text>
+                              <Typography.Text type="secondary">
+                                {issue.problem}
+                              </Typography.Text>
+                            </Space>
+                          </List.Item>
+                        )}
+                      />
+                    </Space>
+                  )}
+                </Card>
+              </Col>
+              <Col xs={24} xl={12}>
               <Card
                 title={detail.project.name}
                 extra={
@@ -489,13 +486,21 @@ const ScriptReviewPage = () => {
                     <Select
                       value={selectedVersionId}
                       style={{ width: 150 }}
-                      onChange={(versionId) => {
-                        setSelectedVersionId(versionId);
+                      onChange={async (versionId) => {
+                        const nextVersionId = Number(versionId);
+                        setSelectedVersionId(nextVersionId);
                         setContent(
                           detail.versions.find(
-                            (version) => version.id === versionId,
+                            (version) => version.id === nextVersionId,
                           )?.content ?? '',
                         );
+                        if (selectedProjectId) {
+                          const response = await queryReviewVersionHistory(
+                            selectedProjectId,
+                            nextVersionId,
+                          );
+                          setVersionHistory(response.data);
+                        }
                       }}
                       options={detail.versions.map((version) => ({
                         value: version.id,
@@ -554,65 +559,6 @@ const ScriptReviewPage = () => {
                     </Space>
                   </Col>
                   <Col xs={24} xl={9}>
-                    <Card size="small" title="本轮审核配置">
-                      <Space vertical style={{ width: '100%' }}>
-                        <Checkbox.Group
-                          value={dimensions}
-                          onChange={(values) =>
-                            setDimensions(values as string[])
-                          }
-                          disabled={taskLocked}
-                          options={DIMENSIONS}
-                        />
-                        <Radio.Group
-                          value={reviewMode}
-                          onChange={(event) =>
-                            setReviewMode(event.target.value)
-                          }
-                          disabled={taskLocked}
-                          optionType="button"
-                          options={[
-                            { label: '快速审核', value: 'QUICK' },
-                            { label: '深度审核', value: 'DEEP' },
-                          ]}
-                        />
-                        {reviewMode === 'QUICK' ? (
-                          <Typography.Text type="secondary">
-                            快速审核会一次覆盖完整所选范围；范围过大时请缩小范围或改用深度审核。
-                          </Typography.Text>
-                        ) : null}
-                        <Select
-                          value={scopeType}
-                          onChange={setScopeType}
-                          disabled={taskLocked}
-                          options={[
-                            { label: '整本剧本', value: 'ALL' },
-                            { label: '指定集', value: 'EPISODES' },
-                            { label: '指定场', value: 'SCENES' },
-                          ]}
-                        />
-                        {scopeType !== 'ALL' ? (
-                          <Input
-                            value={scopeValues}
-                            onChange={(event) => setScopeValues(event.target.value)}
-                            disabled={taskLocked}
-                            placeholder={
-                              scopeType === 'EPISODES'
-                                ? '输入集数，用逗号分隔，如 1, 2, 3'
-                                : '输入场次编号，用逗号分隔，如 1-2, 2-1'
-                            }
-                          />
-                        ) : null}
-                        <Button
-                          type="primary"
-                          icon={<AuditOutlined />}
-                          loading={saving}
-                          onClick={startReview}
-                        >
-                          创建审核任务
-                        </Button>
-                      </Space>
-                    </Card>
                     {activeExecution ? (
                       <div style={{ marginTop: 12 }}>
                         <AiExecutionStatus
@@ -626,7 +572,14 @@ const ScriptReviewPage = () => {
                         key={task.id}
                         size="small"
                         style={{ marginTop: 12, cursor: 'pointer' }}
-                        onClick={() => setSelectedTaskId(task.id)}
+                        onClick={() => {
+                          setSelectedTaskId(task.id);
+                          setIssueFilter('PENDING');
+                          setSelectedIssueId(
+                            task.issues.find((issue) => !issue.manuallyResolved)
+                              ?.id ?? task.issues[0]?.id,
+                          );
+                        }}
                         title={`第 ${task.roundNo} 轮 · ${task.reviewMode}`}
                         extra={
                           <Tag color={statusColor(task.status)}>
@@ -708,7 +661,9 @@ const ScriptReviewPage = () => {
                   </Col>
                 </Row>
               </Card>
+              </Col>
 
+              <Col xs={24} xl={7}>
               <Card
                 title={
                   <Space>
@@ -731,34 +686,87 @@ const ScriptReviewPage = () => {
                       {selectedTask.summary?.summary ||
                         '问题会按维度聚合，支持多命中片段和人工处理。'}
                     </Typography.Paragraph>
+                    {selectedIssue ? (
+                      <Card size="small" title="问题详情">
+                        <Space vertical style={{ width: '100%' }}>
+                          <Space wrap>
+                            <Tag color={statusColor(selectedIssue.severity)}>
+                              {selectedIssue.issueNo}
+                            </Tag>
+                            <Tag>{selectedIssue.dimension}</Tag>
+                            <Typography.Text strong>
+                              {selectedIssue.title}
+                            </Typography.Text>
+                          </Space>
+                          <Typography.Text>{selectedIssue.problem}</Typography.Text>
+                          <Typography.Text type="secondary">
+                            原文：{selectedIssue.excerpt || '未提供片段'}
+                          </Typography.Text>
+                          {selectedIssue.suggestion ? (
+                            <Typography.Text type="success">
+                              建议：{selectedIssue.suggestion}
+                            </Typography.Text>
+                          ) : null}
+                          {!selectedIssue.manuallyResolved ? (
+                            <Space>
+                              <Button
+                                icon={<CheckCircleOutlined />}
+                                onClick={() => confirmResolve(selectedIssue)}
+                              >
+                                已处理
+                              </Button>
+                              <Button
+                                type="primary"
+                                onClick={() => applyRepair(selectedIssue)}
+                              >
+                                预览修订
+                              </Button>
+                            </Space>
+                          ) : (
+                            <Typography.Text type="success">
+                              已于 {selectedIssue.manuallyResolvedAt ?? '当前轮次'} 人工处理
+                            </Typography.Text>
+                          )}
+                        </Space>
+                      </Card>
+                    ) : null}
                     <List
                       loading={taskDetailLoading}
-                      dataSource={visibleIssues}
+                      dataSource={queueIssues}
                       locale={{
                         emptyText: taskDetailError
                           ? '审核问题加载失败，请刷新重试'
-                          : '当前没有未处理问题',
+                          : issueFilter === 'PENDING'
+                            ? '当前没有未处理问题'
+                            : '暂无人工处理记录',
                       }}
                       renderItem={(issue) => (
                         <List.Item
-                          actions={[
-                            <Button
-                              key="resolve"
-                              size="small"
-                              icon={<CheckCircleOutlined />}
-                              onClick={() => confirmResolve(issue)}
-                            >
-                              已处理
-                            </Button>,
-                            <Button
-                              key="repair"
-                              size="small"
-                              type="primary"
-                              onClick={() => applyRepair(issue)}
-                            >
-                              批量修复
-                            </Button>,
-                          ]}
+                          actions={
+                            issue.manuallyResolved
+                              ? []
+                              : [
+                                  <Button
+                                    key="repair"
+                                    size="small"
+                                    type="primary"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      applyRepair(issue);
+                                    }}
+                                  >
+                                    批量修复
+                                  </Button>,
+                                ]
+                          }
+                          style={{
+                            cursor: 'pointer',
+                            background:
+                              issue.id === selectedIssueId
+                                ? 'var(--app-color-primary-bg)'
+                                : undefined,
+                          }}
+                          onClick={() => setSelectedIssueId(issue.id)}
                         >
                           <List.Item.Meta
                             title={
@@ -829,27 +837,6 @@ const ScriptReviewPage = () => {
                         </List.Item>
                       )}
                     />
-                    <Card
-                      size="small"
-                      title={`已处理 (${processedIssues.length})`}
-                    >
-                      <List
-                        size="small"
-                        dataSource={processedIssues}
-                        locale={{ emptyText: '暂无人工处理记录' }}
-                        renderItem={(issue) => (
-                          <List.Item>
-                            <Space>
-                              <Tag color="green">{issue.issueNo}</Tag>
-                              <span>{issue.title}</span>
-                              <Typography.Text type="secondary">
-                                {issue.manuallyResolvedAt}
-                              </Typography.Text>
-                            </Space>
-                          </List.Item>
-                        )}
-                      />
-                    </Card>
                     {versionHistory && (
                       <Card size="small" title="版本历史">
                         <Space vertical style={{ width: '100%' }}>
@@ -885,10 +872,65 @@ const ScriptReviewPage = () => {
                   </Space>
                 )}
               </Card>
-            </Space>
+              </Col>
+            </Row>
           )}
         </Col>
       </Row>
+      <Modal
+        centered
+        confirmLoading={saving}
+        okText="开始审核"
+        open={reviewModalOpen}
+        title="新建审核任务"
+        width={680}
+        onCancel={() => setReviewModalOpen(false)}
+        onOk={startReview}
+      >
+        <Space vertical size="middle" style={{ width: '100%' }}>
+          <Typography.Text>
+            审核版本：V{currentVersion?.versionNo ?? '-'}
+          </Typography.Text>
+          <Checkbox.Group
+            value={dimensions}
+            onChange={(values) => setDimensions(values as string[])}
+            disabled={taskLocked}
+            options={DIMENSIONS}
+          />
+          <Radio.Group
+            value={reviewMode}
+            onChange={(event) => setReviewMode(event.target.value)}
+            disabled={taskLocked}
+            optionType="button"
+            options={[
+              { label: '快速审核', value: 'QUICK' },
+              { label: '深度审核', value: 'DEEP' },
+            ]}
+          />
+          <Select
+            value={scopeType}
+            onChange={setScopeType}
+            disabled={taskLocked}
+            options={[
+              { label: '整本剧本', value: 'ALL' },
+              { label: '指定集', value: 'EPISODES' },
+              { label: '指定场', value: 'SCENES' },
+            ]}
+          />
+          {scopeType !== 'ALL' ? (
+            <Input
+              value={scopeValues}
+              onChange={(event) => setScopeValues(event.target.value)}
+              disabled={taskLocked}
+              placeholder={
+                scopeType === 'EPISODES'
+                  ? '输入集数，用逗号分隔，如 1, 2, 3'
+                  : '输入场次编号，用逗号分隔，如 1-2, 2-1'
+              }
+            />
+          ) : null}
+        </Space>
+      </Modal>
     </PageContainer>
   );
 };

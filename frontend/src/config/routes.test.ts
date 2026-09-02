@@ -17,6 +17,18 @@ describe('video script decomposition route', () => {
   });
 });
 
+describe('script review library route', () => {
+  it('exposes the library separately while keeping the workbench route available', () => {
+    expect(routes.find((item) => item.path === '/script-review-library')).toMatchObject({
+      path: '/script-review-library',
+      name: 'script-review-library',
+      component: './script-review-library',
+      access: 'canViewScriptReview',
+    });
+    expect(routes.find((item) => item.path === '/script-review')).toBeDefined();
+  });
+});
+
 describe('short drama creation route', () => {
   it('is an independent first-level menu route', () => {
     const route = routes.find((item) => item.path === '/short-drama-creation');
