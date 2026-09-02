@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkant_short_tv_frontend=self.webpackChunkant_short_tv_frontend||[]).push([[6390],{96390:function(e,n,t){t.r(n),t.d(n,{default:function(){return s}});var f=t(67294),u=t(92016),o=t(85893);function s(){var E=(0,u.useOutletContext)();return(0,o.jsx)(u.Outlet,{context:E})}}}]);
