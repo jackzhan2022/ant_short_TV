@@ -18,14 +18,17 @@ describe('video script decomposition route', () => {
 });
 
 describe('script review library route', () => {
-  it('exposes the library separately while keeping the workbench route available', () => {
+  it('uses the library as the visible script review menu entry', () => {
     expect(routes.find((item) => item.path === '/script-review-library')).toMatchObject({
       path: '/script-review-library',
-      name: 'script-review-library',
+      name: 'script-review',
       component: './script-review-library',
       access: 'canViewScriptReview',
     });
-    expect(routes.find((item) => item.path === '/script-review')).toBeDefined();
+    expect(routes.find((item) => item.path === '/script-review')).toMatchObject({
+      hideInMenu: true,
+      component: './script-review',
+    });
   });
 });
 

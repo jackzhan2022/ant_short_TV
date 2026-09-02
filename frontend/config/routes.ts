@@ -228,7 +228,7 @@ export default [
   },
   {
     path: '/script-review-library',
-    name: 'script-review-library',
+    name: 'script-review',
     icon: 'folderOpen',
     access: 'canViewScriptReview',
     component: './script-review-library',
@@ -237,6 +237,7 @@ export default [
     path: '/script-review',
     name: 'script-review',
     icon: 'audit',
+    hideInMenu: true,
     access: 'canViewScriptReview',
     component: './script-review',
   },
