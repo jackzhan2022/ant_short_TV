@@ -17,6 +17,7 @@ vi.mock('@ant-design/pro-components', () => ({
 }));
 vi.mock('antd', () => ({
   App: { useApp: () => ({ message: mocks.message }) },
+  Badge: ({ count }: any) => <span>{count}</span>,
   Button: ({ children, onClick }: any) => <button type="button" onClick={onClick}>{children}</button>,
   Card: ({ children, title }: any) => <section><h2>{title}</h2>{children}</section>,
   Empty: ({ description }: any) => <div>{description}</div>,
@@ -47,8 +48,19 @@ vi.mock('../script-review/service', () => ({
 describe('ScriptReviewLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.queryReviewProjects.mockResolvedValue({ data: [{ id: 1, name: '待处理剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 2, latestRoundNo: 1 }] });
-    mocks.queryReviewProject.mockResolvedValue({ data: { project: { id: 1 }, versions: [], tasks: [{ status: 'COMPLETED', issues: [{ manuallyResolved: false }] }] } });
+    mocks.queryReviewProjects.mockResolvedValue({ data: [
+      { id: 1, name: '待处理剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 2, latestRoundNo: 1 },
+      { id: 2, name: '已完成剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 1, latestRoundNo: 1 },
+    ] });
+    mocks.queryReviewProject.mockImplementation((id) => Promise.resolve({
+      data: {
+        project: { id },
+        versions: [],
+        tasks: id === 1
+          ? [{ status: 'COMPLETED', issues: [{ manuallyResolved: false }] }]
+          : [{ status: 'COMPLETED', issues: [] }],
+      },
+    }));
   });
 
   it('opens an import modal and navigates to the selected project workbench', async () => {
@@ -59,5 +71,16 @@ describe('ScriptReviewLibraryPage', () => {
     expect(screen.getByText('新建独立剧本')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '处理问题' }));
     expect(mocks.push).toHaveBeenCalledWith('/script-review?projectId=1');
+  });
+
+  it('filters projects from the left review-status navigation', async () => {
+    render(<ScriptReviewLibraryPage />);
+    expect(await screen.findByText('审核状态')).toBeInTheDocument();
+    expect(screen.getByText('已完成剧本')).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /审核完成/ })[0]);
+
+    expect(screen.getByText('已完成剧本')).toBeInTheDocument();
+    expect(screen.queryByText('待处理剧本')).not.toBeInTheDocument();
   });
 });

@@ -8,13 +8,13 @@ import { history } from '@umijs/max';
 import type { UploadFile } from 'antd';
 import {
   App,
+  Badge,
   Button,
   Card,
   Empty,
   Input,
   List,
   Modal,
-  Select,
   Space,
   Tag,
   Typography,
@@ -93,6 +93,23 @@ const ScriptReviewLibraryPage = () => {
     () => filterLibraryProjects(items.map((item) => item.project), states, query, filter),
     [filter, items, query, states],
   );
+  const stateFilters = useMemo(
+    () => [
+      { key: undefined, label: '全部剧本', count: items.length },
+      ...([
+        ['NOT_REVIEWED', '未审核'],
+        ['RUNNING', '审核中'],
+        ['ACTION_REQUIRED', '待处理'],
+        ['READY_FOR_REVIEW', '待复审'],
+        ['COMPLETED', '审核完成'],
+      ] as const).map(([key, label]) => ({
+        key,
+        label,
+        count: [...states.values()].filter((state) => state.key === key).length,
+      })),
+    ],
+    [items.length, states],
+  );
 
   const closeImport = () => {
     setImportOpen(false);
@@ -142,31 +159,46 @@ const ScriptReviewLibraryPage = () => {
         </Button>,
       ]}
     >
-      <Card>
-        <Space vertical size="middle" style={{ width: '100%' }}>
-          <Space wrap>
+      <div style={{ display: 'grid', gridTemplateColumns: '240px minmax(0, 1fr)', gap: 16 }}>
+        <Card size="small">
+          <Space vertical size="middle" style={{ width: '100%' }}>
+            <Typography.Text strong>查找剧本</Typography.Text>
             <Input.Search
               allowClear
               placeholder="搜索剧本名称"
-              style={{ width: 280 }}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
-            <Select
-              allowClear
-              placeholder="全部状态"
-              style={{ width: 150 }}
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { value: 'NOT_REVIEWED', label: '未审核' },
-                { value: 'RUNNING', label: '审核中' },
-                { value: 'ACTION_REQUIRED', label: '待处理' },
-                { value: 'READY_FOR_REVIEW', label: '待复审' },
-                { value: 'COMPLETED', label: '审核完成' },
-              ]}
-            />
+            <Typography.Text strong>审核状态</Typography.Text>
+            <Space vertical size={4} style={{ width: '100%' }}>
+              {stateFilters.map((item) => (
+                <Button
+                  block
+                  key={item.key ?? 'ALL'}
+                  style={{ display: 'flex', justifyContent: 'space-between', textAlign: 'left' }}
+                  type={filter === item.key ? 'primary' : 'text'}
+                  onClick={() => setFilter(item.key)}
+                >
+                  {item.label}
+                  <Badge count={item.count} showZero />
+                </Button>
+              ))}
+            </Space>
           </Space>
+        </Card>
+        <Card size="small" styles={{ body: { padding: 0 } }}>
+          <div
+            style={{
+              alignItems: 'center',
+              borderBottom: '1px solid #f0f0f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              padding: '12px 16px',
+            }}
+          >
+            <Typography.Text strong>剧本列表</Typography.Text>
+            <Typography.Text type="secondary">按最近操作排序</Typography.Text>
+          </div>
           <List
             dataSource={projects}
             locale={{ emptyText: <Empty description="暂无独立剧本" /> }}
@@ -185,32 +217,46 @@ const ScriptReviewLibraryPage = () => {
                       {state?.actionLabel ?? '进入审核'}
                     </Button>,
                   ]}
+                  style={{ padding: '16px' }}
                 >
-                  <List.Item.Meta
-                    avatar={<FileTextOutlined />}
-                    title={project.name}
-                    description={
-                      <Space wrap>
+                  <div
+                    style={{
+                      alignItems: 'center',
+                      display: 'grid',
+                      flex: 1,
+                      gap: 16,
+                      gridTemplateColumns: 'minmax(220px, 2fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(120px, 1fr)',
+                    }}
+                  >
+                    <List.Item.Meta
+                      avatar={<FileTextOutlined style={{ color: '#1677ff' }} />}
+                      title={project.name}
+                      description={
                         <Typography.Text type="secondary">
-                          V{project.versionCount} · 第 {project.latestRoundNo} 轮
+                          {project.sourceFileName || '直接录入'} · V{project.versionCount}
                         </Typography.Text>
-                        <Tag color={state ? stateColor[state.key] : 'default'}>
-                          {state?.label ?? '未审核'}
-                        </Tag>
-                        {state?.outstandingIssueCount ? (
-                          <Typography.Text type="danger">
-                            待处理 {state.outstandingIssueCount} 项
-                          </Typography.Text>
-                        ) : null}
-                      </Space>
-                    }
-                  />
+                      }
+                    />
+                    <Typography.Text type="secondary">第 {project.latestRoundNo} 轮审核</Typography.Text>
+                    <Tag color={state ? stateColor[state.key] : 'default'}>
+                      {state?.label ?? '未审核'}
+                    </Tag>
+                    {state?.outstandingIssueCount ? (
+                      <Typography.Text type="danger">
+                        待处理 {state.outstandingIssueCount} 项
+                      </Typography.Text>
+                    ) : (
+                      <Typography.Text type="secondary">
+                        {state?.key === 'COMPLETED' ? '审核结果已生成' : '暂无待处理问题'}
+                      </Typography.Text>
+                    )}
+                  </div>
                 </List.Item>
               );
             }}
           />
-        </Space>
-      </Card>
+        </Card>
+      </div>
       <Modal
         centered
         confirmLoading={saving}
