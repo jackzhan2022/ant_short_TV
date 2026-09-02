@@ -1,7 +1,6 @@
 package com.antshorttv.inspiration;
 
 import com.antshorttv.common.ApiResponse;
-import java.util.List;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
@@ -9,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -21,8 +21,11 @@ public class InspirationCreationController {
     }
 
     @GetMapping
-    public ApiResponse<List<InspirationCreationListResponse>> list() {
-        return ApiResponse.success(service.list());
+    public ApiResponse<InspirationCreationPageResponse> list(
+        @RequestParam(defaultValue = "1") Integer page,
+        @RequestParam(defaultValue = "8") Integer pageSize
+    ) {
+        return ApiResponse.success(service.list(page, pageSize));
     }
 
     @GetMapping("/{id}")

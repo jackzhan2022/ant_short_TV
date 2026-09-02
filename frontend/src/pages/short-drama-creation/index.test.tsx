@@ -13,6 +13,32 @@ const mocks = vi.hoisted(() => ({
   queryTenantMembers: vi.fn(),
 }));
 
+const intersectionObservers = vi.hoisted(() => [] as IntersectionObserverCallback[]);
+
+class MockIntersectionObserver {
+  constructor(callback: IntersectionObserverCallback) {
+    intersectionObservers.push(callback);
+  }
+
+  disconnect() {}
+
+  observe() {}
+
+  unobserve() {}
+
+  takeRecords() {
+    return [];
+  }
+
+  root = null;
+
+  rootMargin = '';
+
+  thresholds = [];
+}
+
+vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
+
 vi.mock('@umijs/max', () => ({
   history: {
     push: mocks.historyPush,
@@ -43,12 +69,15 @@ vi.mock('@ant-design/pro-components', () => ({
 describe('ShortDramaCreationPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    intersectionObservers.length = 0;
     mocks.getCurrentTenantId.mockReturnValue(9);
     mocks.queryTenantMembers.mockResolvedValue({
       data: [{ userId: 1, nickname: '负责人A' }],
     });
-    mocks.queryInspirationCreations.mockResolvedValue({
-      data: [
+    mocks.queryInspirationCreations.mockImplementation(({ page = 1 } = {}) =>
+      Promise.resolve({
+        data: page === 1 ? {
+          records: [
         {
           id: 101,
           externalId: '864900000000000001',
@@ -56,7 +85,7 @@ describe('ShortDramaCreationPage', () => {
           taskType: 'STORY',
           title: '线上灵感 A',
           authorName: '管理员',
-          localUrl: '/api/inspiration-creations/101/file',
+          url: '/api/inspiration-creations/101/file',
           mimeType: 'image/png',
           sortOrder: 1,
           sourceCreatedAt: '2026-08-22T10:00:00',
@@ -68,13 +97,33 @@ describe('ShortDramaCreationPage', () => {
           taskType: 'STORY',
           title: '线上灵感 B',
           authorName: '管理员',
-          localUrl: '/api/inspiration-creations/102/file',
+          url: '/api/inspiration-creations/102/file',
           mimeType: 'image/png',
           sortOrder: 2,
           sourceCreatedAt: '2026-08-22T10:10:00',
         },
-      ],
-    });
+          ],
+          total: 9,
+          current: 1,
+          pageSize: 8,
+        } : {
+          records: [{
+            id: 103,
+            externalId: '864900000000000003',
+            creationType: 'IMAGE',
+            taskType: 'STORY',
+            title: '线上灵感 C',
+            authorName: '管理员',
+            url: '/api/inspiration-creations/103/file',
+            mimeType: 'image/png',
+            sortOrder: 3,
+          }],
+          total: 9,
+          current: 2,
+          pageSize: 8,
+        },
+      }),
+    );
     mocks.queryInspirationCreationDetail.mockResolvedValue({
       data: {
         id: 101,
@@ -83,11 +132,11 @@ describe('ShortDramaCreationPage', () => {
         taskType: 'STORY',
         title: '线上灵感 A',
         authorName: '管理员',
-        localUrl: '/api/inspiration-creations/101/file',
+        url: '/api/inspiration-creations/101/file',
         mimeType: 'image/png',
         sortOrder: 1,
         sourceCreatedAt: '2026-08-22T10:00:00',
-        detailJson: '{"prompt":"被误解的女主多年后带着证据回归。"}',
+        detailJson: { prompt: '被误解的女主多年后带着证据回归。' },
       },
     });
     mocks.queryStyleLibrary.mockResolvedValue({
@@ -125,7 +174,7 @@ describe('ShortDramaCreationPage', () => {
     expect(screen.getByText('线上灵感 B')).toBeInTheDocument();
     expect(screen.queryByText('豪门继承人归来')).not.toBeInTheDocument();
     expect(screen.queryByText('3D风格-高清真实渲染')).not.toBeInTheDocument();
-    expect(mocks.queryInspirationCreations).toHaveBeenCalledWith();
+    expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({ page: 1, pageSize: 8 });
     expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({});
   });
 
@@ -138,9 +187,7 @@ describe('ShortDramaCreationPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '线上灵感 A' }));
 
-    expect(mocks.queryInspirationCreationDetail).toHaveBeenCalledWith(
-      '864900000000000001',
-    );
+    expect(mocks.queryInspirationCreationDetail).toHaveBeenCalledWith(101);
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toBeInTheDocument();
     expect(screen.getByText('素材提示词')).toBeInTheDocument();
@@ -149,6 +196,20 @@ describe('ShortDramaCreationPage', () => {
       'src',
       '/api/inspiration-creations/101/file',
     );
+  });
+
+  it('loads the next inspiration page when the gallery bottom becomes visible', async () => {
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+
+    await screen.findByText('线上灵感 A');
+    intersectionObservers.at(-1)?.([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
+
+    expect(await screen.findByText('线上灵感 C')).toBeInTheDocument();
+    expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({ page: 2, pageSize: 8 });
   });
 
   it('opens the settings page from the first page start button', async () => {

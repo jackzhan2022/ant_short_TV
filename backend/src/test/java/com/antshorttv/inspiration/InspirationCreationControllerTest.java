@@ -66,15 +66,18 @@ class InspirationCreationControllerTest {
         InspirationCreationEntity failed = creation("external-2", "FAILED", 1);
         mapper.insert(failed);
 
-        mockMvc.perform(get("/api/inspiration-creations")
+        mockMvc.perform(get("/api/inspiration-creations?page=1&pageSize=1")
                 .cookie(sessionCookie))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(1)))
-            .andExpect(jsonPath("$.data[0].externalId", is("external-1")))
-            .andExpect(jsonPath("$.data[0].title", is("第一条")))
-            .andExpect(jsonPath("$.data[0].authorName", is("管理员")))
-            .andExpect(jsonPath("$.data[0].url", is("/api/inspiration-creations/%d/file".formatted(first.getId()))))
-            .andExpect(jsonPath("$.data[0].detailJson").doesNotExist());
+            .andExpect(jsonPath("$.data.records", hasSize(1)))
+            .andExpect(jsonPath("$.data.total", is(1)))
+            .andExpect(jsonPath("$.data.current", is(1)))
+            .andExpect(jsonPath("$.data.pageSize", is(1)))
+            .andExpect(jsonPath("$.data.records[0].externalId", is("external-1")))
+            .andExpect(jsonPath("$.data.records[0].title", is("第一条")))
+            .andExpect(jsonPath("$.data.records[0].authorName", is("管理员")))
+            .andExpect(jsonPath("$.data.records[0].url", is("/api/inspiration-creations/%d/file".formatted(first.getId()))))
+            .andExpect(jsonPath("$.data.records[0].detailJson").doesNotExist());
     }
 
     @Test

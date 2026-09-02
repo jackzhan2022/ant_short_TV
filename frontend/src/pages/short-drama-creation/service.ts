@@ -12,20 +12,29 @@ export type InspirationCreation = {
   taskType?: string;
   title?: string;
   authorName?: string;
-  localUrl: string;
+  url: string;
   mimeType?: string;
   sortOrder?: number;
   sourceCreatedAt?: string;
 };
 
 export type InspirationCreationDetail = InspirationCreation & {
-  detailJson?: string;
+  detailJson?: Record<string, unknown>;
 };
 
-export const queryInspirationCreations = async () =>
-  request<ApiResponse<InspirationCreation[]>>('/api/inspiration-creations');
+export type InspirationCreationPage = {
+  records: InspirationCreation[];
+  total: number;
+  current: number;
+  pageSize: number;
+};
 
-export const queryInspirationCreationDetail = async (externalId: string) =>
+export const queryInspirationCreations = async (params: {
+  page: number;
+  pageSize: number;
+}) => request<ApiResponse<InspirationCreationPage>>('/api/inspiration-creations', { params });
+
+export const queryInspirationCreationDetail = async (id: number) =>
   request<ApiResponse<InspirationCreationDetail>>(
-    `/api/inspiration-creations/${externalId}`,
+    `/api/inspiration-creations/${id}`,
   );

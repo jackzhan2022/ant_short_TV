@@ -2,6 +2,7 @@ package com.antshorttv.inspiration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.LocalDateTime;
+import java.util.List;
 
 record InspirationCreationListResponse(
     Long id,
@@ -67,4 +68,12 @@ record InspirationCreationDetailResponse(
             detailJson
         );
     }
+}
+
+record InspirationCreationPageResponse(
+    List<InspirationCreationListResponse> records,
+    long total,
+    int current,
+    int pageSize
+) {
 }

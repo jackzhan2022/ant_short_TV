@@ -27,7 +27,7 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import type { TenantMember } from '@/services/account-team/types';
@@ -56,6 +56,7 @@ const inspirationTabs = [
   { key: 'domestic', label: '国内剧', icon: <VideoCameraOutlined /> },
   { key: 'overseas', label: '海外剧', icon: <GlobalOutlined /> },
 ] as const;
+const inspirationPageSize = 8;
 
 const readFileAsText = async (file: File) => {
   if ('text' in file) {
@@ -75,7 +76,10 @@ const resolvePromptText = (detail?: InspirationCreationDetail) => {
     return detail?.title || '暂无提示词';
   }
   try {
-    const parsed = JSON.parse(detail.detailJson) as Record<string, unknown>;
+    const parsed =
+      typeof detail.detailJson === 'string'
+        ? (JSON.parse(detail.detailJson) as Record<string, unknown>)
+        : detail.detailJson;
     const candidates = [
       parsed.prompt,
       parsed.materialPrompt,
@@ -89,7 +93,7 @@ const resolvePromptText = (detail?: InspirationCreationDetail) => {
     );
     return prompt?.trim() || detail.title || '暂无提示词';
   } catch {
-    return detail.detailJson;
+    return detail.title || '暂无提示词';
   }
 };
 
@@ -108,11 +112,15 @@ const ShortDramaCreationPage = () => {
     InspirationCreation[]
   >([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
+  const [inspirationLoading, setInspirationLoading] = useState(false);
+  const [inspirationHasMore, setInspirationHasMore] = useState(true);
+  const [inspirationPage, setInspirationPage] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedInspiration, setSelectedInspiration] =
     useState<InspirationCreationDetail>();
   const [members, setMembers] = useState<TenantMember[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const inspirationBottomRef = useRef<HTMLDivElement>(null);
   const [projectForm, setProjectForm] = useState<Partial<ProjectFormValues>>({
     coverSource: 'FIRST_FRAME',
     aspectRatio: '16:9',
@@ -120,6 +128,25 @@ const ShortDramaCreationPage = () => {
     scriptType: 'PREMIUM_DRAMA',
     breakdownStrength: 'MEDIUM',
   });
+
+  const loadInspirationPage = useCallback(async (page: number, append = false) => {
+    setInspirationLoading(true);
+    try {
+      const response = await queryInspirationCreations({
+        page,
+        pageSize: inspirationPageSize,
+      });
+      const data = response.data;
+      const records = data?.records || [];
+      setInspirationGallery((current) => (append ? [...current, ...records] : records));
+      setInspirationPage(data?.current || page);
+      setInspirationHasMore((data?.current || page) * (data?.pageSize || inspirationPageSize) < (data?.total || 0));
+    } catch {
+      message.error('灵感广场加载失败');
+    } finally {
+      setInspirationLoading(false);
+    }
+  }, [message]);
 
   useEffect(() => {
     if (!tenantId) {
@@ -130,16 +157,14 @@ const ShortDramaCreationPage = () => {
     Promise.all([
       queryTenantMembers(tenantId),
       queryStyleLibrary({}),
-      queryInspirationCreations(),
     ])
-      .then(([memberResponse, styleResponse, inspirationResponse]) => {
+      .then(([memberResponse, styleResponse]) => {
         if (!active) {
           return;
         }
         const stylesData = styleResponse.data || [];
         setMembers(memberResponse.data || []);
         setStyleGallery(stylesData);
-        setInspirationGallery(inspirationResponse.data || []);
         setSelectedStyle(stylesData[0]);
         if (stylesData[0]) {
           setCoverPreviewUrl(stylesData[0].imageUrl);
@@ -171,16 +196,33 @@ const ShortDramaCreationPage = () => {
     };
   }, [tenantId, message]);
 
+  useEffect(() => {
+    void loadInspirationPage(1);
+  }, [loadInspirationPage]);
+
+  useEffect(() => {
+    const target = inspirationBottomRef.current;
+    if (!target || !inspirationHasMore || inspirationLoading) {
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        void loadInspirationPage(inspirationPage + 1, true);
+      }
+    }, { rootMargin: '240px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [inspirationHasMore, inspirationLoading, inspirationPage, loadInspirationPage]);
+
   const updateForm = (next: Partial<ProjectFormValues>) => {
     setProjectForm((current) => ({ ...current, ...next }));
   };
 
   const openInspirationDetail = async (item: InspirationCreation) => {
-    const externalId = item.externalId || String(item.id);
     setSelectedInspiration(item);
     setDetailLoading(true);
     try {
-      const response = await queryInspirationCreationDetail(externalId);
+      const response = await queryInspirationCreationDetail(item.id);
       setSelectedInspiration(response.data || item);
     } catch {
       message.error('灵感详情加载失败');
@@ -358,7 +400,7 @@ const ShortDramaCreationPage = () => {
 
       <section className={styles.inspirationSection}>
         <Typography.Text className={styles.sectionTitle}>灵感广场</Typography.Text>
-        <Spin spinning={galleryLoading}>
+        <Spin spinning={inspirationLoading && !inspirationGallery.length}>
           {inspirationGallery.length ? (
             <div className={styles.inspirationGrid}>
               {inspirationGallery.map((item) => {
@@ -375,9 +417,9 @@ const ShortDramaCreationPage = () => {
                     type="button"
                   >
                     {isVideo ? (
-                      <video muted playsInline preload="metadata" src={item.localUrl} />
+                      <video muted playsInline preload="metadata" src={item.url} />
                     ) : (
-                      <img alt={title} src={item.localUrl} />
+                      <img alt={title} src={item.url} />
                     )}
                     <span className={styles.inspirationOverlay}>
                       <strong>{title}</strong>
@@ -388,6 +430,11 @@ const ShortDramaCreationPage = () => {
             </div>
           ) : (
             <Empty description="暂无灵感内容" />
+          )}
+          {inspirationHasMore && (
+            <div className={styles.inspirationLoadMore} ref={inspirationBottomRef}>
+              {inspirationLoading ? '加载中...' : ''}
+            </div>
           )}
         </Spin>
       </section>
@@ -584,24 +631,24 @@ const ShortDramaCreationPage = () => {
           <Spin spinning={detailLoading}>
             <div className={styles.detailMedia}>
               {selectedInspiration.mimeType?.startsWith('video/') ? (
-                <video controls src={selectedInspiration.localUrl}>
+                <video controls src={selectedInspiration.url}>
                   <track kind="captions" />
                 </video>
               ) : (
                 <img
                   alt={selectedInspiration.title || '灵感素材'}
-                  src={selectedInspiration.localUrl}
+                  src={selectedInspiration.url}
                 />
               )}
             </div>
             <div className={styles.detailInfoPanel}>
               <div className={styles.detailThumb}>
                 {selectedInspiration.mimeType?.startsWith('video/') ? (
-                  <video muted playsInline src={selectedInspiration.localUrl} />
+                  <video muted playsInline src={selectedInspiration.url} />
                 ) : (
                   <img
                     alt={selectedInspiration.title || '灵感缩略图'}
-                    src={selectedInspiration.localUrl}
+                    src={selectedInspiration.url}
                   />
                 )}
               </div>

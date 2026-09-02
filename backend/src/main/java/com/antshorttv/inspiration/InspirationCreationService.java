@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class InspirationCreationService {
+    private static final int DEFAULT_PAGE_SIZE = 8;
+    private static final int MAX_PAGE_SIZE = 40;
     private final InspirationCreationMapper mapper;
     private final InspirationCreationMediaStorage mediaStorage;
     private final ObjectMapper objectMapper;
@@ -29,15 +31,20 @@ public class InspirationCreationService {
         this.currentPrincipal = currentPrincipal;
     }
 
-    public List<InspirationCreationListResponse> list() {
+    public InspirationCreationPageResponse list(Integer page, Integer pageSize) {
         currentPrincipal.require();
-        return mapper.selectList(new LambdaQueryWrapper<InspirationCreationEntity>()
-                .eq(InspirationCreationEntity::getImportStatus, InspirationCreationImportStatus.IMPORTED.name())
-                .orderByAsc(InspirationCreationEntity::getSortOrder)
-                .orderByAsc(InspirationCreationEntity::getId))
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safePageSize = pageSize == null || pageSize < 1
+            ? DEFAULT_PAGE_SIZE
+            : Math.min(pageSize, MAX_PAGE_SIZE);
+        LambdaQueryWrapper<InspirationCreationEntity> query = importedQuery();
+        Long total = mapper.selectCount(query);
+        List<InspirationCreationListResponse> records = mapper.selectList(importedQuery()
+                .last("limit %d offset %d".formatted(safePageSize, (safePage - 1) * safePageSize)))
             .stream()
             .map(InspirationCreationListResponse::from)
             .toList();
+        return new InspirationCreationPageResponse(records, total == null ? 0 : total, safePage, safePageSize);
     }
 
     public InspirationCreationDetailResponse detail(Long id) {
@@ -63,6 +70,13 @@ public class InspirationCreationService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "灵感案例不存在。");
         }
         return entity;
+    }
+
+    private LambdaQueryWrapper<InspirationCreationEntity> importedQuery() {
+        return new LambdaQueryWrapper<InspirationCreationEntity>()
+            .eq(InspirationCreationEntity::getImportStatus, InspirationCreationImportStatus.IMPORTED.name())
+            .orderByAsc(InspirationCreationEntity::getSortOrder)
+            .orderByAsc(InspirationCreationEntity::getId);
     }
 
     private JsonNode detailJson(InspirationCreationEntity entity) {
