@@ -68,6 +68,10 @@ vi.mock('antd', () => ({
       {children}
     </button>
   ),
+  Drawer: ({ children, open, title }: any) =>
+    open ? <section aria-label={title}>{children}</section> : null,
+  Modal: ({ children, open, title }: any) =>
+    open ? <section aria-label={title}>{children}</section> : null,
   Empty: ({ description }: any) => <div>{description || '暂无数据'}</div>,
   Flex: ({ children }: any) => <div>{children}</div>,
   Input: Object.assign(
@@ -137,7 +141,26 @@ const workspace = {
           },
         ],
         generationSummary: { COMPLETED: 1, FAILED: 1 },
-        episodeBindings: [],
+        episodeBindings: [
+          {
+            id: 31,
+            variantId: 11,
+            episodeId: 101,
+            episodeNo: 1,
+            episodeTitle: '骗局开始',
+            preferred: true,
+            status: 'ACTIVE',
+          },
+          {
+            id: 32,
+            variantId: 12,
+            episodeId: 102,
+            episodeNo: 2,
+            episodeTitle: '真相浮现',
+            preferred: true,
+            status: 'ACTIVE',
+          },
+        ],
         resolvedImageUrl: '/daily.png',
         resolvedImageSource: 'PRIMARY_VARIANT',
       },
@@ -230,15 +253,23 @@ describe('ProductionWorkbenchSettings', () => {
     mocks.bindVisualVariantEpisodes.mockResolvedValue({ data: [] });
   });
 
-  it('shows normalized candidates separately from canonical assets', async () => {
+  it('keeps normalized candidates out of the formal asset grid until the review drawer opens', async () => {
     render(<ProductionWorkbenchSettings />);
 
-    expect(await screen.findByText('待审核识别结果')).toBeInTheDocument();
-    expect(screen.getByText('林夏')).toBeInTheDocument();
-    expect(screen.getByText('name不能为空')).toBeInTheDocument();
-    expect(screen.getByText(/建议合并到/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: '审核资产 2' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('林夏')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '审核资产 2' }));
+    expect(screen.getByText('审核队列')).toBeInTheDocument();
+    expect(screen.getByText('候选信息与正式资产对比')).toBeInTheDocument();
+    expect(screen.getAllByText('林夏').length).toBeGreaterThan(0);
+    expect(screen.getByText('建议合并至「斌斌」')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '审核候选22' }));
+    expect(screen.getAllByText('name不能为空').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '审核候选林夏' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '合并林夏' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认合并' }));
     await waitFor(() => {
       expect(mocks.decideAssetCandidate).toHaveBeenCalledWith(
         1,
@@ -251,16 +282,45 @@ describe('ProductionWorkbenchSettings', () => {
     });
   });
 
-  it('manages visual variants and stable episode bindings from an asset card', async () => {
+  it('manages visual variants and shows their existing episode bindings on the preview', async () => {
     render(<ProductionWorkbenchSettings />);
 
-    expect(await screen.findByText('2 个视觉形象')).toBeInTheDocument();
-    expect(screen.getByText('主形象：日常形象')).toBeInTheDocument();
-    expect(screen.getByText('来源：主形象')).toBeInTheDocument();
+    expect(await screen.findByText(/变装 2 个/)).toBeInTheDocument();
+    expect(screen.getByText('关联 2 集')).toHaveAttribute(
+      'title',
+      expect.stringContaining('婚礼礼服：第2集'),
+    );
+    expect(screen.queryByText('主形象：日常形象')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '确认斌斌' }),
+    ).not.toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
+    expect(
+      screen.getByRole('button', { name: '确认斌斌' }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
 
-    expect(screen.getByText('婚礼礼服')).toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: '视觉形象画廊' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '选择日常形象' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '选择婚礼礼服' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
+    expect(screen.getAllByText('婚礼礼服').length).toBeGreaterThan(0);
     expect(screen.getByText('生成超时')).toBeInTheDocument();
+    expect(screen.getByLabelText('婚礼礼服关联剧集')).toHaveTextContent('2');
+    expect(screen.getByLabelText('婚礼礼服关联剧集')).toHaveAttribute(
+      'title',
+      '第2集 真相浮现',
+    );
+    expect(
+      screen.queryByRole('button', { name: '绑定婚礼礼服到剧集' }),
+    ).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('新视觉形象名称'), {
       target: { value: '雨夜造型' },
     });
@@ -273,26 +333,26 @@ describe('ProductionWorkbenchSettings', () => {
         expect.objectContaining({ name: '雨夜造型' }),
       );
     });
-
-    fireEvent.click(
-      screen.getAllByRole('checkbox', { name: '第1集 骗局开始' })[1],
-    );
-    fireEvent.click(screen.getByRole('button', { name: '绑定婚礼礼服到剧集' }));
-    await waitFor(() => {
-      expect(mocks.bindVisualVariantEpisodes).toHaveBeenCalledWith(1, 12, {
-        episodeIds: [101],
-        preferred: true,
-      });
-    });
   });
 
-  it('renders restored setting assets instead of the old image task table', async () => {
+  it('renders the reference-style asset workbench instead of the old image task table', async () => {
     render(<ProductionWorkbenchSettings />);
 
-    expect(await screen.findByText('设定资产')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/请确保角色、场景及道具已全部生成。/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('正式资产库')).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /角色/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /角色/ })).toHaveAttribute(
+      'style',
+      expect.stringContaining('var(--app-color-primary)'),
+    );
     expect(screen.getByRole('tab', { name: /场景/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /道具/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('toolbar', { name: '角色资产操作' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('角色设定')).not.toBeInTheDocument();
     expect(screen.getAllByText('斌斌').length).toBeGreaterThan(0);
     expect(screen.queryByText('地下停车场')).not.toBeInTheDocument();
     expect(screen.queryByText('灰色轿车后备箱')).not.toBeInTheDocument();
@@ -308,6 +368,8 @@ describe('ProductionWorkbenchSettings', () => {
 
     await screen.findAllByText('斌斌');
     fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
     fireEvent.click(screen.getByRole('button', { name: '确认斌斌' }));
 
     await waitFor(() => {

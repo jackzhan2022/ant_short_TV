@@ -820,7 +820,7 @@ const ProductionWorkbenchScript = () => {
             <Tooltip title="上一组剧集">
               <button type="button" aria-label="上一组剧集" onClick={() => episodeSelectorRef.current?.scrollBy({ left: -320, behavior: 'smooth' })} style={{ width: 32, height: 32, padding: 0, borderRadius: 4, border: '1px solid var(--app-color-border)', background: '#fff', color: 'var(--app-color-text-secondary)', cursor: 'pointer' }}><LeftOutlined /></button>
             </Tooltip>
-            <div ref={episodeSelectorRef} aria-label="分集选择器" style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', scrollBehavior: 'smooth', padding: '1px 0' }}>
+            <section ref={episodeSelectorRef} aria-label="分集选择器" style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', scrollBehavior: 'smooth', padding: '1px 0' }}>
               {episodeBlocks.map((item) => {
                 const active = item.episodeNo === currentEpisodeNo;
                 return (
@@ -846,7 +846,7 @@ const ProductionWorkbenchScript = () => {
                   </button>
                 );
               })}
-            </div>
+            </section>
             <Tooltip title="下一组剧集">
               <button type="button" aria-label="下一组剧集" onClick={() => episodeSelectorRef.current?.scrollBy({ left: 320, behavior: 'smooth' })} style={{ width: 32, height: 32, padding: 0, borderRadius: 4, border: '1px solid var(--app-color-border)', background: '#fff', color: 'var(--app-color-text-secondary)', cursor: 'pointer' }}><RightOutlined /></button>
             </Tooltip>

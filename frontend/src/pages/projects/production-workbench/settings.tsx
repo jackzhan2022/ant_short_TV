@@ -3,16 +3,24 @@ import {
   DeleteOutlined,
   EditOutlined,
   RobotOutlined,
-  SearchOutlined,
 } from '@ant-design/icons';
 import { useIntl, useParams } from '@umijs/max';
-import { App, Button, Empty, Flex, Input, Tag, Typography } from 'antd';
+import {
+  App,
+  Button,
+  Drawer,
+  Empty,
+  Flex,
+  Input,
+  Modal,
+  Tag,
+  Typography,
+} from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import {
   type AssetCandidate,
-  bindVisualVariantEpisodes,
   type CharacterAsset,
   confirmScriptElement,
   createAiImageTask,
@@ -87,16 +95,42 @@ const getDescription = (type: ElementType, item: AssetRecord) => {
   return prop.appearance || prop.plotFunction || prop.prompt;
 };
 
-const getSearchText = (type: ElementType, item: AssetRecord) =>
-  [item.name, getSummary(type, item), getDescription(type, item), item.prompt]
-    .filter(Boolean)
-    .join(' ');
-
 const assetSections = [
   { type: 'CHARACTER' as const, title: '角色设定' },
   { type: 'SCENE' as const, title: '场景设定' },
   { type: 'PROP' as const, title: '道具设定' },
 ];
+
+type CandidateFilter = 'ALL' | 'MERGE' | 'NEW' | 'INVALID';
+
+const getCandidateErrors = (candidate: AssetCandidate) => {
+  try {
+    const parsed = JSON.parse(candidate.validationErrorsJson || '[]');
+    return Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
+  } catch {
+    return [candidate.validationErrorsJson || '字段校验失败'];
+  }
+};
+
+const getCandidateFields = (candidate: AssetCandidate) => {
+  try {
+    const parsed: unknown = JSON.parse(candidate.candidateJson || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return [];
+    }
+    return Object.entries(parsed)
+      .filter(([, value]) => value != null && value !== '')
+      .slice(0, 3)
+      .map(([key, value]) => [key, String(value)] as const);
+  } catch {
+    return [];
+  }
+};
+
+const getCandidateCategory = (candidate: AssetCandidate): CandidateFilter => {
+  if (candidate.validationStatus !== 'VALID') return 'INVALID';
+  return candidate.proposedTargetId ? 'MERGE' : 'NEW';
+};
 
 const AssetCard = ({
   item,
@@ -112,159 +146,236 @@ const AssetCard = ({
   onDelete: (type: ElementType, id: number) => void;
   onSave: (type: ElementType, item: AssetRecord) => void;
   onManageVisual: (type: ElementType, item: AssetRecord) => void;
-}) => (
-  <article
-    style={{
-      minHeight: 252,
-      border: '1px solid var(--app-color-border)',
-      borderRadius: 10,
-      background: '#fff',
-      boxShadow: '0 8px 20px rgba(26, 39, 76, 0.05)',
-      overflow: 'hidden',
-    }}
-  >
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 252,
-      }}
-    >
-      <div
-        style={{
-          display: 'grid',
-          placeItems: 'end start',
-          minHeight: 112,
-          padding: '16px 18px',
-          background:
-            type === 'CHARACTER'
-              ? 'linear-gradient(135deg, #fff7d9 0%, #e9efff 100%)'
-              : type === 'SCENE'
-                ? 'linear-gradient(135deg, #dceafa 0%, #f8fbff 100%)'
-                : 'linear-gradient(135deg, #f4edff 0%, #eaf7f1 100%)',
-          color: 'var(--app-color-primary)',
-          fontSize: 34,
-          fontWeight: 700,
-        }}
-      >
-        {item.visual?.resolvedImageUrl ? (
-          <img
-            src={item.visual.resolvedImageUrl}
-            alt={`${item.name}当前视觉形象`}
-            style={{ width: '100%', height: 112, objectFit: 'cover' }}
-          />
-        ) : (
-          item.name.slice(0, 1)
-        )}
-      </div>
-      <div style={{ padding: '13px 16px 14px' }}>
-        <Flex justify="space-between" align="flex-start" gap={12}>
-          <div>
-            <Typography.Text
-              strong
-              style={{ fontSize: 15, color: 'var(--app-color-text)' }}
-            >
-              {item.name}
-            </Typography.Text>
-            <div style={{ marginTop: 7 }}>
-              <Tag color="blue">{elementLabels[type]}</Tag>
-              {getSummary(type, item) && (
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {getSummary(type, item)}
-                </Typography.Text>
-              )}
-            </div>
-          </div>
-          <Flex gap={4}>
-            <Button
-              type="text"
-              size="small"
-              icon={<CheckOutlined />}
-              aria-label={`确认${item.name}`}
-              onClick={() => onConfirm(type, item.id)}
-            />
-            <Button
-              type="text"
-              size="small"
-              icon={<EditOutlined />}
-              aria-label={`保存${item.name}`}
-              onClick={() => onSave(type, item)}
-            />
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              aria-label={`删除${item.name}`}
-              onClick={() => onDelete(type, item.id)}
-            />
-          </Flex>
-        </Flex>
-        <Typography.Paragraph
-          style={{
-            margin: '10px 0 0',
-            color: 'var(--app-color-text-secondary)',
-            fontSize: 13,
-            lineHeight: '22px',
-            height: 44,
-            overflow: 'hidden',
-          }}
-        >
-          {getDescription(type, item) || '暂无设定描述'}
-        </Typography.Paragraph>
+}) => {
+  const [imageHovered, setImageHovered] = useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const bindings = item.visual?.episodeBindings ?? [];
+  const variantEpisodes = (item.visual?.variants ?? []).flatMap((variant) => {
+    const episodeNos = [
+      ...new Set(
+        bindings
+          .filter(
+            (binding) =>
+              binding.variantId === variant.id && binding.status === 'ACTIVE',
+          )
+          .map((binding) => binding.episodeNo),
+      ),
+    ];
+    return episodeNos.length
+      ? [
+          {
+            id: variant.id,
+            label: `${variant.name}：第${episodeNos.join('、')}集`,
+          },
+        ]
+      : [];
+  });
+  const episodeCount = new Set(
+    bindings
+      .filter((binding) => binding.status === 'ACTIVE')
+      .map((binding) => binding.episodeId),
+  ).size;
+  const pendingCount = (item.visual?.variants ?? []).filter(
+    (variant) =>
+      variant.generationStatus === 'NOT_STARTED' ||
+      variant.generationStatus === 'FAILED',
+  ).length;
+  const visualLabel = type === 'CHARACTER' ? '变装' : '视觉形象';
+
+  return (
+    <article style={{ minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div
+          data-testid={`asset-image-${type}-${item.id}`}
+          onMouseEnter={() => setImageHovered(true)}
+          onMouseLeave={() => {
+            setImageHovered(false);
+            setActionMenuOpen(false);
+          }}
           style={{
-            marginTop: 6,
-            color: 'var(--app-color-text-tertiary)',
-            fontSize: 12,
-            lineHeight: '20px',
-            whiteSpace: 'nowrap',
+            display: 'grid',
+            placeItems: 'end start',
+            position: 'relative',
+            aspectRatio: '2 / 1',
+            padding: item.visual?.resolvedImageUrl ? 0 : '16px 18px',
+            border: '1px solid var(--app-color-border-secondary)',
+            borderRadius: 8,
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            background: 'var(--app-color-fill-secondary)',
+            color: 'var(--app-color-text-tertiary)',
+            fontSize: 34,
+            fontWeight: 700,
           }}
         >
-          {item.prompt || '暂无提示词'}
-        </div>
-        <Flex
-          justify="space-between"
-          align="center"
-          gap={8}
-          style={{ marginTop: 9 }}
-        >
-          <div
-            style={{ fontSize: 12, color: 'var(--app-color-text-secondary)' }}
+          {item.visual?.resolvedImageUrl ? (
+            <img
+              src={item.visual.resolvedImageUrl}
+              alt={`${item.name}当前视觉形象`}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            item.name.slice(0, 1)
+          )}
+          <span
+            style={{
+              position: 'absolute',
+              top: 8,
+              left: 8,
+              padding: '3px 8px',
+              borderRadius: 4,
+              background: 'var(--app-color-text)',
+              color: 'var(--app-color-bg-container)',
+              fontSize: 12,
+              fontWeight: 500,
+              opacity: 0.7,
+            }}
           >
-            <div>{item.visual?.variantCount ?? 0} 个视觉形象</div>
-            <div>
-              {item.visual?.primaryVariant
-                ? `主形象：${item.visual.primaryVariant.name}`
-                : '尚未设置主形象'}
+            {item.status === 'CONFIRMED' ? '已确认' : '待确认'}
+          </span>
+          {imageHovered || actionMenuOpen ? (
+            <div style={{ position: 'absolute', top: 8, right: 8 }}>
+              <Button
+                size="small"
+                aria-label={`${item.name}资产操作`}
+                icon={<EditOutlined />}
+                onClick={() => setActionMenuOpen((open) => !open)}
+              >
+                操作
+              </Button>
+              {actionMenuOpen ? (
+                <Flex
+                  vertical
+                  gap={4}
+                  style={{
+                    position: 'absolute',
+                    top: 34,
+                    right: 0,
+                    minWidth: 104,
+                    padding: 4,
+                    background: 'var(--app-color-bg-elevated)',
+                    border: '1px solid var(--app-color-border)',
+                    borderRadius: 6,
+                    boxShadow: '0 4px 14px rgb(41 43 61 / 12%)',
+                  }}
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CheckOutlined />}
+                    aria-label={`确认${item.name}`}
+                    onClick={() => onConfirm(type, item.id)}
+                  >
+                    确认资产
+                  </Button>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    aria-label={`保存${item.name}`}
+                    onClick={() => onSave(type, item)}
+                  >
+                    保存修改
+                  </Button>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    aria-label={`删除${item.name}`}
+                    onClick={() => onDelete(type, item.id)}
+                  >
+                    删除资产
+                  </Button>
+                </Flex>
+              ) : null}
             </div>
-            {item.visual?.resolvedImageSource ? (
-              <div>
-                来源：
-                {item.visual.resolvedImageSource === 'EPISODE_PREFERRED'
-                  ? '剧集首选'
-                  : item.visual.resolvedImageSource === 'PRIMARY_VARIANT'
-                    ? '主形象'
-                    : item.visual.resolvedImageSource === 'LEGACY_FALLBACK'
-                      ? '旧图片回退'
-                      : '未解析'}
-              </div>
-            ) : null}
-          </div>
-          <Button
-            size="small"
-            onClick={() => onManageVisual(type, item)}
-            aria-label={`管理${item.name}视觉形象`}
+          ) : null}
+          {pendingCount ? (
+            <span
+              style={{
+                position: 'absolute',
+                bottom: 7,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                padding: '3px 10px',
+                borderRadius: 6,
+                background: 'var(--app-color-text)',
+                color: 'var(--app-color-primary-hover)',
+                fontSize: 12,
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {pendingCount} 个变装待生成
+            </span>
+          ) : null}
+        </div>
+        <div style={{ padding: '10px 0 0' }}>
+          <Typography.Text
+            strong
+            ellipsis={{ tooltip: item.name }}
+            style={{
+              display: 'block',
+              fontSize: 14,
+              color: 'var(--app-color-text)',
+            }}
           >
-            视觉形象
-          </Button>
-        </Flex>
+            {item.name}
+          </Typography.Text>
+          <div
+            style={{
+              display: '-webkit-box',
+              marginTop: 4,
+              overflow: 'hidden',
+              color: 'var(--app-color-text-secondary)',
+              fontSize: 12,
+              lineHeight: '19px',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+            }}
+          >
+            <span style={{ color: 'var(--app-color-text)' }}>
+              {visualLabel} {item.visual?.variantCount ?? 0} 个
+            </span>
+            <span
+              style={{ padding: '0 6px', color: 'var(--app-color-border)' }}
+            >
+              |
+            </span>
+            {getDescription(type, item) ||
+              getSummary(type, item) ||
+              '暂无设定描述'}
+          </div>
+          <Flex justify="space-between" align="center" style={{ marginTop: 8 }}>
+            <span
+              title={
+                variantEpisodes.length
+                  ? variantEpisodes.map((variant) => variant.label).join('\n')
+                  : '尚未关联剧集'
+              }
+              style={{
+                color: 'var(--app-color-text-tertiary)',
+                fontSize: 12,
+                cursor: variantEpisodes.length ? 'help' : 'default',
+              }}
+            >
+              关联 {episodeCount} 集
+            </span>
+            <Button
+              type="text"
+              size="small"
+              onClick={() => onManageVisual(type, item)}
+              aria-label={`管理${item.name}视觉形象`}
+              style={{ padding: 0, color: 'var(--app-color-primary)' }}
+            >
+              视觉形象
+            </Button>
+          </Flex>
+        </div>
       </div>
-    </div>
-  </article>
-);
+    </article>
+  );
+};
 
 const ProductionWorkbenchSettings = () => {
   const params = useParams<{ id: string }>();
@@ -276,13 +387,15 @@ const ProductionWorkbenchSettings = () => {
   const [workspace, setWorkspace] = useState<ScriptWorkspace>(() =>
     emptyWorkspace(projectId || 0),
   );
-  const [loading, setLoading] = useState(false);
-  const [keyword, setKeyword] = useState('');
   const [activeType, setActiveType] = useState<ElementType>('CHARACTER');
   const [processingAction, setProcessingAction] = useState<string>();
   const [activeExecution, setActiveExecution] =
     useState<API.AiExecutionResponse>();
   const [candidates, setCandidates] = useState<AssetCandidate[]>([]);
+  const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false);
+  const [candidateFilter, setCandidateFilter] =
+    useState<CandidateFilter>('ALL');
+  const [activeCandidateId, setActiveCandidateId] = useState<number>();
   const [candidateTargets, setCandidateTargets] = useState<
     Record<number, number | undefined>
   >({});
@@ -290,10 +403,9 @@ const ProductionWorkbenchSettings = () => {
     type: ElementType;
     item: AssetRecord;
   }>();
+  const [selectedVisualVariantId, setSelectedVisualVariantId] =
+    useState<number>();
   const [newVariantName, setNewVariantName] = useState('');
-  const [selectedEpisodes, setSelectedEpisodes] = useState<
-    Record<number, number[]>
-  >({});
 
   const reload = async () => {
     const [workspaceResponse, candidateResponse] = await Promise.all([
@@ -310,7 +422,6 @@ const ProductionWorkbenchSettings = () => {
       return;
     }
     let active = true;
-    setLoading(true);
     Promise.all([
       queryScriptWorkspace(projectId),
       queryAssetCandidates(projectId, { reviewStatus: 'PENDING_REVIEW' }),
@@ -324,11 +435,6 @@ const ProductionWorkbenchSettings = () => {
       .catch(() => {
         if (active) {
           messageRef.current.error('设定页加载失败');
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
         }
       });
     return () => {
@@ -345,15 +451,20 @@ const ProductionWorkbenchSettings = () => {
     [workspace.characters, workspace.props, workspace.scenes],
   );
 
-  const filterAssets = (type: ElementType, items: AssetRecord[]) => {
-    const normalizedKeyword = keyword.trim().toLowerCase();
-    if (!normalizedKeyword) {
-      return items;
-    }
-    return items.filter((item) =>
-      getSearchText(type, item).toLowerCase().includes(normalizedKeyword),
-    );
-  };
+  const activeAssets = assetsByType[activeType];
+  const activeGeneration = activeAssets.reduce(
+    (summary, item) => {
+      Object.entries(item.visual?.generationSummary ?? {}).forEach(
+        ([status, count]) => {
+          if (status === 'COMPLETED') summary.completed += count;
+          else if (status === 'FAILED') summary.failed += count;
+          else summary.generating += count;
+        },
+      );
+      return summary;
+    },
+    { completed: 0, generating: 0, failed: 0 },
+  );
 
   const applyWorkspace = (
     nextWorkspace: ScriptWorkspace | undefined,
@@ -544,37 +655,26 @@ const ProductionWorkbenchSettings = () => {
     <div
       style={{
         minHeight: 'calc(100vh - 100px)',
-        padding: '18px 28px 70px',
+        padding: '24px 64px 96px',
         background: 'var(--app-color-bg-layout)',
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ maxWidth: 1540, margin: '0 auto' }}>
-        <Flex
-          justify="space-between"
-          align="center"
-          style={{ marginBottom: 18 }}
+      <div style={{ width: '100%', margin: '0 auto' }}>
+        <section
+          style={{
+            marginBottom: 16,
+            padding: '10px 16px',
+            background: 'var(--app-color-primary-bg)',
+            border: '1px solid var(--app-color-primary-bg)',
+            borderRadius: 8,
+            color: 'var(--app-color-primary)',
+            fontSize: 13,
+            lineHeight: '20px',
+          }}
         >
-          <div>
-            <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
-              设定资产
-            </Typography.Title>
-            <Typography.Text type="secondary">
-              {loading
-                ? '正在加载设定内容...'
-                : '角色、场景、道具统一管理，确认后进入分镜'}
-            </Typography.Text>
-          </div>
-          <div
-            style={{ color: 'var(--app-color-text-secondary)', fontSize: 13 }}
-          >
-            共{' '}
-            {workspace.characters.length +
-              workspace.scenes.length +
-              workspace.props.length}{' '}
-            项设定
-          </div>
-        </Flex>
+          请确保角色、场景及道具已全部生成。点击角色图片可配置【变装】，未配置的变装将导致分镜无参考图可用，直接影响视频准确性。
+        </section>
 
         {activeExecution ? (
           <div
@@ -590,454 +690,864 @@ const ProductionWorkbenchSettings = () => {
           </div>
         ) : null}
 
-        {candidates.length ? (
-          <section
-            style={{
-              marginBottom: 18,
-              padding: 16,
-              background: '#fff',
-              border: '1px solid var(--app-color-border)',
-              borderRadius: 10,
-            }}
-          >
-            <Typography.Title level={5} style={{ marginTop: 0 }}>
-              {formatMessage({
-                id: 'pages.productionWorkbench.assets.reviewQueue',
-                defaultMessage: '待审核识别结果',
-              })}
-            </Typography.Title>
-            <Typography.Paragraph type="secondary">
-              AI
-              原始结果不会直接写入正式资产库。请先检查无效字段、重复分组和建议合并目标。
-            </Typography.Paragraph>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {candidates.map((candidate) => {
-                const typeAssets = assetsByType[candidate.assetType];
-                let errors: string[] = [];
-                try {
-                  const parsed = JSON.parse(
-                    candidate.validationErrorsJson || '[]',
-                  );
-                  errors = Array.isArray(parsed)
-                    ? parsed.map(String)
-                    : [String(parsed)];
-                } catch {
-                  errors = [candidate.validationErrorsJson || '字段校验失败'];
-                }
-                return (
+        <Drawer
+          title={formatMessage({
+            id: 'pages.productionWorkbench.assets.reviewQueue',
+            defaultMessage: '待审核识别结果',
+          })}
+          placement="right"
+          width={760}
+          open={reviewDrawerOpen}
+          onClose={() => setReviewDrawerOpen(false)}
+          styles={{ body: { padding: 0 } }}
+        >
+          {(() => {
+            const filteredCandidates = candidates.filter(
+              (candidate) =>
+                candidateFilter === 'ALL' ||
+                getCandidateCategory(candidate) === candidateFilter,
+            );
+            const activeCandidate =
+              filteredCandidates.find(
+                (candidate) => candidate.id === activeCandidateId,
+              ) ??
+              filteredCandidates[0] ??
+              candidates[0];
+            if (!activeCandidate) {
+              return <Empty description="暂无待审核资产" />;
+            }
+            const typeAssets = assetsByType[activeCandidate.assetType];
+            const targetAsset = typeAssets.find(
+              (asset) => asset.id === activeCandidate.proposedTargetId,
+            );
+            const targetRecord = targetAsset as unknown as
+              | Record<string, unknown>
+              | undefined;
+            const candidateFields = getCandidateFields(activeCandidate);
+            const errors = getCandidateErrors(activeCandidate);
+            const category = getCandidateCategory(activeCandidate);
+            const categoryLabel =
+              category === 'MERGE'
+                ? '建议合并'
+                : category === 'NEW'
+                  ? '可新建'
+                  : '字段异常';
+            const candidateName =
+              activeCandidate.name ||
+              `未命名${elementLabels[activeCandidate.assetType]}`;
+            const summary = candidateFields.length
+              ? candidateFields
+                  .map(([key, value]) => `${key}：${value}`)
+                  .join('；')
+              : activeCandidate.aliases.map((alias) => alias.name).join('；') ||
+                '暂无可展示的候选摘要';
+            const categoryCount = (filter: CandidateFilter) =>
+              filter === 'ALL'
+                ? candidates.length
+                : candidates.filter(
+                    (candidate) => getCandidateCategory(candidate) === filter,
+                  ).length;
+            const comparisonRows = [
+              ['名称', targetAsset?.name || '—', candidateName],
+              [
+                '匹配依据',
+                activeCandidate.matchType || '—',
+                activeCandidate.matchConfidence != null
+                  ? `${Math.round(activeCandidate.matchConfidence * 100)}%`
+                  : '—',
+              ],
+              ...candidateFields.map(([key, value]) => [
+                key,
+                String(targetRecord?.[key] ?? '—'),
+                value,
+              ]),
+            ];
+            return (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '218px minmax(0, 1fr)',
+                  height: 'calc(100vh - 64px)',
+                }}
+              >
+                <aside
+                  style={{
+                    overflow: 'auto',
+                    background: 'var(--app-color-bg-layout)',
+                    borderRight: '1px solid var(--app-color-border)',
+                  }}
+                >
                   <div
-                    key={candidate.id}
                     style={{
-                      border: '1px solid var(--app-color-border-secondary)',
-                      borderRadius: 8,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1,
                       padding: 12,
+                      background: 'var(--app-color-bg-layout)',
+                      borderBottom:
+                        '1px solid var(--app-color-border-secondary)',
                     }}
                   >
-                    <Flex justify="space-between" align="center" gap={12}>
-                      <div>
-                        <Typography.Text strong>
-                          {candidate.name ||
-                            `未命名${elementLabels[candidate.assetType]}`}
-                        </Typography.Text>
-                        <Tag
-                          color={
-                            candidate.validationStatus === 'VALID'
-                              ? 'green'
-                              : 'red'
-                          }
+                    <Typography.Text strong style={{ fontSize: 13 }}>
+                      审核队列
+                    </Typography.Text>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 6,
+                        marginTop: 10,
+                      }}
+                    >
+                      {(
+                        [
+                          ['ALL', '全部'],
+                          ['MERGE', '建议合并'],
+                          ['NEW', '可新建'],
+                          ['INVALID', '异常'],
+                        ] as const
+                      ).map(([filter, label]) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => setCandidateFilter(filter)}
+                          style={{
+                            height: 28,
+                            border: 0,
+                            borderRadius: 5,
+                            background:
+                              candidateFilter === filter
+                                ? 'var(--app-color-primary-bg)'
+                                : 'transparent',
+                            color:
+                              candidateFilter === filter
+                                ? 'var(--app-color-primary)'
+                                : 'var(--app-color-text-secondary)',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                          }}
                         >
-                          {candidate.validationStatus === 'VALID'
-                            ? '可审核'
-                            : '字段无效'}
-                        </Tag>
-                        {candidate.duplicateGroupKey ? (
-                          <Tag>重复组：{candidate.duplicateGroupKey}</Tag>
-                        ) : null}
-                        {candidate.proposedTargetId ? (
-                          <span style={{ fontSize: 12 }}>
-                            建议合并到 #{candidate.proposedTargetId}
-                            {candidate.matchConfidence != null
-                              ? `（${Math.round(candidate.matchConfidence * 100)}%）`
-                              : ''}
-                          </span>
-                        ) : null}
-                        {errors.map((error) => (
-                          <div
-                            key={error}
+                          {label} {categoryCount(filter)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {filteredCandidates.map((candidate) => {
+                    const candidateCategory = getCandidateCategory(candidate);
+                    const selected = candidate.id === activeCandidate.id;
+                    const label =
+                      candidateCategory === 'MERGE'
+                        ? '建议合并'
+                        : candidateCategory === 'NEW'
+                          ? '可新建'
+                          : '字段异常';
+                    return (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        aria-label={`审核候选${candidate.name || candidate.id}`}
+                        onClick={() => setActiveCandidateId(candidate.id)}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          padding: '10px 12px',
+                          border: 0,
+                          borderLeft: selected
+                            ? '2px solid var(--app-color-primary)'
+                            : '2px solid transparent',
+                          background: selected
+                            ? 'var(--app-color-bg-container)'
+                            : 'transparent',
+                          color: 'var(--app-color-text)',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Flex justify="space-between" gap={6}>
+                          <span
                             style={{
-                              color: 'var(--app-color-error)',
-                              fontSize: 12,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              fontSize: 13,
                             }}
                           >
-                            {error}
-                          </div>
-                        ))}
-                      </div>
-                      <Flex gap={6} wrap>
-                        <Button
-                          size="small"
-                          disabled={candidate.validationStatus !== 'VALID'}
-                          onClick={() =>
-                            decideCandidate(candidate, 'ACCEPT_NEW')
-                          }
-                          aria-label={`新建${candidate.name || candidate.id}`}
-                        >
-                          接受为新资产
-                        </Button>
-                        {candidate.proposedTargetId ? (
-                          <Button
-                            size="small"
-                            onClick={() =>
-                              decideCandidate(candidate, 'ACCEPT_MERGE')
-                            }
-                            aria-label={`合并${candidate.name || candidate.id}`}
+                            {candidate.name ||
+                              `未命名${elementLabels[candidate.assetType]}`}
+                          </span>
+                          <span
+                            style={{
+                              flex: '0 0 auto',
+                              color:
+                                candidateCategory === 'INVALID'
+                                  ? 'var(--app-color-primary-active)'
+                                  : 'var(--app-color-primary)',
+                              fontSize: 11,
+                            }}
                           >
-                            接受合并
-                          </Button>
-                        ) : null}
-                        <select
-                          aria-label={`重定向${candidate.name || candidate.id}`}
-                          value={candidateTargets[candidate.id] ?? ''}
-                          onChange={(event) =>
-                            setCandidateTargets((current) => ({
-                              ...current,
-                              [candidate.id]: event.target.value
-                                ? Number(event.target.value)
-                                : undefined,
-                            }))
-                          }
+                            {label}
+                          </span>
+                        </Flex>
+                        <span
+                          style={{
+                            display: 'block',
+                            marginTop: 3,
+                            overflow: 'hidden',
+                            color: 'var(--app-color-text-tertiary)',
+                            fontSize: 12,
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
                         >
-                          <option value="">选择正式资产</option>
-                          {typeAssets.map((asset) => (
-                            <option key={asset.id} value={asset.id}>
-                              {asset.name}
-                            </option>
-                          ))}
-                        </select>
-                        <Button
-                          size="small"
-                          disabled={!candidateTargets[candidate.id]}
-                          onClick={() => decideCandidate(candidate, 'RETARGET')}
-                        >
-                          重定向合并
-                        </Button>
-                        <Button
-                          size="small"
-                          danger
-                          onClick={() => decideCandidate(candidate, 'REJECT')}
-                        >
-                          拒绝
-                        </Button>
-                      </Flex>
-                    </Flex>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-
-        {visualAsset ? (
-          <section
-            style={{
-              marginBottom: 18,
-              padding: 16,
-              background: '#fff',
-              border: '1px solid var(--app-color-primary)',
-              borderRadius: 10,
-            }}
-          >
-            <Flex justify="space-between" align="center">
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                {visualAsset.item.name} ·{' '}
-                {formatMessage({
-                  id: 'pages.productionWorkbench.assets.variantsAndBindings',
-                  defaultMessage: '视觉形象与剧集绑定',
-                })}
-              </Typography.Title>
-              <Button size="small" onClick={() => setVisualAsset(undefined)}>
-                关闭
-              </Button>
-            </Flex>
-            <Flex gap={8} style={{ margin: '12px 0' }}>
-              <Input
-                aria-label="新视觉形象名称"
-                value={newVariantName}
-                onChange={(event) => setNewVariantName(event.target.value)}
-                placeholder="例如：婚礼礼服、雨夜造型"
-              />
-              <Button type="primary" onClick={addVariant}>
-                新增视觉形象
-              </Button>
-            </Flex>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {(visualAsset.item.visual?.variants ?? []).map((variant) => (
-                <div
-                  key={variant.id}
-                  style={{
-                    border: '1px solid var(--app-color-border-secondary)',
-                    borderRadius: 8,
-                    padding: 12,
-                  }}
+                          {candidate.matchConfidence != null
+                            ? `匹配度 ${Math.round(candidate.matchConfidence * 100)}%`
+                            : candidate.validationStatus === 'VALID'
+                              ? '无重复候选'
+                              : errors.join('；')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </aside>
+                <section
+                  style={{ overflow: 'auto', padding: '20px 24px 30px' }}
                 >
                   <Flex justify="space-between" align="flex-start" gap={12}>
                     <div>
-                      <Typography.Text strong>{variant.name}</Typography.Text>
-                      {variant.primary ? <Tag color="blue">主形象</Tag> : null}
-                      <Tag
-                        color={
-                          variant.generationStatus === 'FAILED'
-                            ? 'red'
-                            : variant.usable
-                              ? 'green'
-                              : 'default'
-                        }
-                      >
-                        {variant.generationStatus}
-                      </Tag>
-                      {variant.errorMessage ? (
-                        <div style={{ color: 'var(--app-color-error)' }}>
-                          {variant.errorMessage}
-                        </div>
-                      ) : null}
-                      <Input
-                        defaultValue={variant.prompt || ''}
-                        aria-label={`${variant.name}提示词`}
-                        placeholder="视觉生成提示词"
-                        onBlur={(event) => {
-                          if (event.target.value !== (variant.prompt || '')) {
-                            void mutateVariant(
-                              () =>
-                                updateVisualVariant(projectId, variant.id, {
-                                  ...variant,
-                                  prompt: event.target.value,
-                                }),
-                              '视觉形象已保存',
-                            );
-                          }
-                        }}
-                        style={{ marginTop: 8 }}
-                      />
-                    </div>
-                    <Flex gap={6} wrap>
-                      {!variant.primary ? (
-                        <Button
-                          size="small"
-                          onClick={() =>
-                            mutateVariant(
-                              () =>
-                                selectPrimaryVisualVariant(
-                                  projectId,
-                                  variant.id,
-                                ),
-                              '主形象已更新',
-                            )
-                          }
+                      <Flex gap={8} align="center">
+                        <Tag color="blue">
+                          {elementLabels[activeCandidate.assetType]}
+                        </Tag>
+                        <Typography.Text
+                          type="secondary"
+                          style={{ fontSize: 12 }}
                         >
-                          设为主形象
-                        </Button>
-                      ) : null}
-                      <Button
-                        size="small"
-                        onClick={() => generateVariant(variant)}
+                          {activeCandidate.matchConfidence != null
+                            ? `匹配度 ${Math.round(activeCandidate.matchConfidence * 100)}%`
+                            : categoryLabel}
+                        </Typography.Text>
+                      </Flex>
+                      <Typography.Title
+                        level={4}
+                        style={{ margin: '7px 0 5px' }}
                       >
-                        {variant.generationStatus === 'FAILED'
-                          ? '重新生成'
-                          : '生成图片'}
-                      </Button>
-                      <Button
-                        size="small"
-                        danger
-                        onClick={() =>
-                          mutateVariant(
-                            () => deleteVisualVariant(projectId, variant.id),
-                            '视觉形象已删除',
-                          )
-                        }
-                      >
-                        删除
-                      </Button>
-                    </Flex>
-                  </Flex>
-                  <fieldset style={{ marginTop: 10, border: 0, padding: 0 }}>
-                    <legend
-                      style={{
-                        fontSize: 12,
-                        color: 'var(--app-color-text-secondary)',
+                        {candidateName}
+                      </Typography.Title>
+                    </div>
+                    <Button
+                      type="text"
+                      size="small"
+                      onClick={() => {
+                        const index = filteredCandidates.findIndex(
+                          (candidate) => candidate.id === activeCandidate.id,
+                        );
+                        const next =
+                          filteredCandidates[index + 1] ??
+                          filteredCandidates[0];
+                        setActiveCandidateId(next?.id);
                       }}
                     >
-                      作为以下剧集的首选形象
-                    </legend>
-                    <Flex gap={12} wrap>
-                      {(workspace.episodes ?? []).map((episode) => {
-                        const episodeId = episode.episodeId;
-                        if (!episodeId) return null;
-                        return (
-                          <label key={episodeId}>
-                            <input
-                              type="checkbox"
-                              aria-label={`第${episode.episodeNo}集 ${episode.title}`}
-                              checked={(
-                                selectedEpisodes[variant.id] ?? []
-                              ).includes(episodeId)}
-                              onChange={(event) =>
-                                setSelectedEpisodes((current) => ({
-                                  ...current,
-                                  [variant.id]: event.target.checked
-                                    ? [
-                                        ...(current[variant.id] ?? []),
-                                        episodeId,
-                                      ]
-                                    : (current[variant.id] ?? []).filter(
-                                        (id) => id !== episodeId,
-                                      ),
-                                }))
-                              }
-                            />
-                            第{episode.episodeNo}集 {episode.title}
-                          </label>
-                        );
-                      })}
-                    </Flex>
+                      下一条
+                    </Button>
+                  </Flex>
+                  <Typography.Paragraph
+                    type="secondary"
+                    style={{ margin: 0, fontSize: 13, lineHeight: '21px' }}
+                  >
+                    {summary}
+                  </Typography.Paragraph>
+                  <div
+                    style={{
+                      marginTop: 18,
+                      padding: 12,
+                      background: 'var(--app-color-primary-bg)',
+                      border: '1px solid var(--app-color-primary-bg)',
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Typography.Text strong style={{ fontSize: 13 }}>
+                      {category === 'MERGE' && targetAsset
+                        ? `建议合并至「${targetAsset.name}」`
+                        : category === 'NEW'
+                          ? '建议作为新资产入库'
+                          : '需补充字段后重新提取'}
+                    </Typography.Text>
+                    <Typography.Text
+                      type="secondary"
+                      style={{ display: 'block', marginTop: 2, fontSize: 12 }}
+                    >
+                      {category === 'MERGE'
+                        ? '名称与现有资产匹配，请核对候选字段后确认。'
+                        : category === 'NEW'
+                          ? '未发现可合并的正式资产。'
+                          : errors.join('；')}
+                    </Typography.Text>
+                  </div>
+                  <Typography.Text
+                    strong
+                    style={{ display: 'block', marginTop: 20, fontSize: 14 }}
+                  >
+                    候选信息与正式资产对比
+                  </Typography.Text>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      overflow: 'hidden',
+                      border: '1px solid var(--app-color-border-secondary)',
+                      borderRadius: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '86px 1fr 1fr',
+                        gap: 10,
+                        padding: '9px 12px',
+                        background: 'var(--app-color-bg-layout)',
+                        color: 'var(--app-color-text-tertiary)',
+                        fontSize: 12,
+                      }}
+                    >
+                      <span>字段</span>
+                      <span>正式资产</span>
+                      <span>候选识别</span>
+                    </div>
+                    {comparisonRows.map(([label, current, next]) => (
+                      <div
+                        key={`${label}-${next}`}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '86px 1fr 1fr',
+                          gap: 10,
+                          padding: '9px 12px',
+                          borderTop:
+                            '1px solid var(--app-color-border-secondary)',
+                          fontSize: 12,
+                        }}
+                      >
+                        <span
+                          style={{ color: 'var(--app-color-text-tertiary)' }}
+                        >
+                          {label}
+                        </span>
+                        <span
+                          style={{ color: 'var(--app-color-text-secondary)' }}
+                        >
+                          {current}
+                        </span>
+                        <span>{next}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 10,
+                      marginTop: 18,
+                    }}
+                  >
                     <Button
-                      size="small"
-                      aria-label={`绑定${variant.name}到剧集`}
-                      style={{ marginTop: 8 }}
+                      type="primary"
+                      disabled={category === 'INVALID'}
+                      loading={
+                        processingAction === `candidate-${activeCandidate.id}`
+                      }
                       onClick={() =>
-                        mutateVariant(
-                          () =>
-                            bindVisualVariantEpisodes(projectId, variant.id, {
-                              episodeIds: selectedEpisodes[variant.id] ?? [],
-                              preferred: true,
-                            }),
-                          '剧集绑定已保存',
+                        decideCandidate(
+                          activeCandidate,
+                          category === 'MERGE' ? 'ACCEPT_MERGE' : 'ACCEPT_NEW',
                         )
                       }
                     >
-                      保存剧集绑定
+                      {category === 'MERGE' ? '确认合并' : '作为新资产入库'}
                     </Button>
-                  </fieldset>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
+                    <Button
+                      disabled={category === 'INVALID'}
+                      onClick={() =>
+                        decideCandidate(activeCandidate, 'ACCEPT_NEW')
+                      }
+                      aria-label={`新建${activeCandidate.name || activeCandidate.id}`}
+                    >
+                      {category === 'MERGE' ? '作为新资产入库' : '查看相似资产'}
+                    </Button>
+                  </div>
+                  <Flex justify="center" gap={16} style={{ marginTop: 12 }}>
+                    <select
+                      aria-label={`重定向${activeCandidate.name || activeCandidate.id}`}
+                      value={candidateTargets[activeCandidate.id] ?? ''}
+                      onChange={(event) =>
+                        setCandidateTargets((current) => ({
+                          ...current,
+                          [activeCandidate.id]: event.target.value
+                            ? Number(event.target.value)
+                            : undefined,
+                        }))
+                      }
+                    >
+                      <option value="">更改合并目标</option>
+                      {typeAssets.map((asset) => (
+                        <option key={asset.id} value={asset.id}>
+                          {asset.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="text"
+                      size="small"
+                      disabled={
+                        category === 'INVALID' ||
+                        !candidateTargets[activeCandidate.id]
+                      }
+                      onClick={() =>
+                        decideCandidate(activeCandidate, 'RETARGET')
+                      }
+                    >
+                      重定向合并
+                    </Button>
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      onClick={() => decideCandidate(activeCandidate, 'REJECT')}
+                    >
+                      拒绝候选
+                    </Button>
+                  </Flex>
+                </section>
+              </div>
+            );
+          })()}
+        </Drawer>
+
+        {visualAsset
+          ? (() => {
+              const variants = visualAsset.item.visual?.variants ?? [];
+              const selectedVariant =
+                variants.find(
+                  (variant) => variant.id === selectedVisualVariantId,
+                ) ??
+                variants.find((variant) => variant.primary) ??
+                variants[0];
+              const selectedVariantEpisodes = selectedVariant
+                ? (visualAsset.item.visual?.episodeBindings ?? [])
+                    .filter(
+                      (binding) =>
+                        binding.variantId === selectedVariant.id &&
+                        binding.status === 'ACTIVE',
+                    )
+                    .sort((left, right) => left.episodeNo - right.episodeNo)
+                : [];
+              const episodeNumberLabel = selectedVariantEpisodes
+                .map((binding) => binding.episodeNo)
+                .join(' ');
+              const episodeTooltip = selectedVariantEpisodes
+                .map(
+                  (binding) =>
+                    `第${binding.episodeNo}集${binding.episodeTitle ? ` ${binding.episodeTitle}` : ''}`,
+                )
+                .join('、');
+              return (
+                <Modal
+                  title="视觉形象画廊"
+                  open
+                  width={920}
+                  footer={null}
+                  onCancel={() => setVisualAsset(undefined)}
+                >
+                  <Typography.Title level={5} style={{ margin: '0 0 16px' }}>
+                    {visualAsset.item.name} · 视觉形象管理
+                  </Typography.Title>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '220px minmax(0, 1fr)',
+                      gap: 20,
+                      minHeight: 440,
+                    }}
+                  >
+                    <aside
+                      style={{
+                        paddingRight: 16,
+                        borderRight:
+                          '1px solid var(--app-color-border-secondary)',
+                      }}
+                    >
+                      <Flex gap={8} style={{ marginBottom: 12 }}>
+                        <Input
+                          aria-label="新视觉形象名称"
+                          value={newVariantName}
+                          onChange={(event) =>
+                            setNewVariantName(event.target.value)
+                          }
+                          placeholder="新增变装名称"
+                        />
+                        <Button
+                          type="primary"
+                          aria-label="新增视觉形象"
+                          onClick={addVariant}
+                        >
+                          新增
+                        </Button>
+                      </Flex>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: 8,
+                        }}
+                      >
+                        {variants.map((variant) => {
+                          const selected = variant.id === selectedVariant?.id;
+                          return (
+                            <button
+                              key={variant.id}
+                              type="button"
+                              aria-label={`选择${variant.name}`}
+                              onClick={() =>
+                                setSelectedVisualVariantId(variant.id)
+                              }
+                              style={{
+                                padding: 0,
+                                overflow: 'hidden',
+                                border: selected
+                                  ? '2px solid var(--app-color-primary)'
+                                  : '1px solid var(--app-color-border-secondary)',
+                                borderRadius: 6,
+                                background: 'var(--app-color-bg-container)',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  aspectRatio: '1 / 1',
+                                  placeItems: 'center',
+                                  overflow: 'hidden',
+                                  background: 'var(--app-color-fill-secondary)',
+                                  color: 'var(--app-color-text-tertiary)',
+                                  fontSize: 22,
+                                }}
+                              >
+                                {variant.currentImageUrl ? (
+                                  <img
+                                    src={variant.currentImageUrl}
+                                    alt={`${variant.name}缩略图`}
+                                    style={{
+                                      width: '100%',
+                                      height: '100%',
+                                      objectFit: 'cover',
+                                    }}
+                                  />
+                                ) : (
+                                  variant.name.slice(0, 1)
+                                )}
+                              </div>
+                              <span
+                                style={{
+                                  display: 'block',
+                                  padding: '5px 6px',
+                                  overflow: 'hidden',
+                                  color: 'var(--app-color-text)',
+                                  fontSize: 12,
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {variant.name}
+                                {variant.primary ? ' · 主图' : ''}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </aside>
+                    {selectedVariant ? (
+                      <section>
+                        <div
+                          style={{
+                            display: 'grid',
+                            placeItems: 'center',
+                            position: 'relative',
+                            height: 230,
+                            overflow: 'hidden',
+                            border:
+                              '1px solid var(--app-color-border-secondary)',
+                            borderRadius: 8,
+                            background: 'var(--app-color-fill-secondary)',
+                            color: 'var(--app-color-text-tertiary)',
+                            fontSize: 48,
+                          }}
+                        >
+                          {selectedVariant.currentImageUrl ? (
+                            <img
+                              src={selectedVariant.currentImageUrl}
+                              alt={`${selectedVariant.name}预览图`}
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'contain',
+                              }}
+                            />
+                          ) : (
+                            selectedVariant.name.slice(0, 1)
+                          )}
+                          <span
+                            role="status"
+                            aria-label={`${selectedVariant.name}关联剧集`}
+                            title={episodeTooltip || '暂未关联剧集'}
+                            style={{
+                              position: 'absolute',
+                              top: 10,
+                              left: 10,
+                              maxWidth: 'calc(100% - 20px)',
+                              overflow: 'hidden',
+                              padding: '4px 8px',
+                              borderRadius: 4,
+                              background: 'rgb(0 0 0 / 52%)',
+                              color: 'var(--app-color-bg-container)',
+                              fontSize: 12,
+                              lineHeight: '18px',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {episodeNumberLabel || '未关联'}
+                          </span>
+                        </div>
+                        <Flex
+                          justify="space-between"
+                          align="center"
+                          style={{ marginTop: 14 }}
+                        >
+                          <div>
+                            <Typography.Text strong>
+                              {selectedVariant.name}
+                            </Typography.Text>
+                            {selectedVariant.primary ? (
+                              <Tag color="blue">主形象</Tag>
+                            ) : null}
+                            <Tag>{selectedVariant.generationStatus}</Tag>
+                          </div>
+                          <Flex gap={8}>
+                            {!selectedVariant.primary ? (
+                              <Button
+                                size="small"
+                                onClick={() =>
+                                  mutateVariant(
+                                    () =>
+                                      selectPrimaryVisualVariant(
+                                        projectId,
+                                        selectedVariant.id,
+                                      ),
+                                    '主形象已更新',
+                                  )
+                                }
+                              >
+                                设为主形象
+                              </Button>
+                            ) : null}
+                            <Button
+                              size="small"
+                              onClick={() => generateVariant(selectedVariant)}
+                            >
+                              {selectedVariant.generationStatus === 'FAILED'
+                                ? '重新生成'
+                                : '生成图片'}
+                            </Button>
+                            <Button
+                              size="small"
+                              danger
+                              onClick={() =>
+                                mutateVariant(
+                                  () =>
+                                    deleteVisualVariant(
+                                      projectId,
+                                      selectedVariant.id,
+                                    ),
+                                  '视觉形象已删除',
+                                )
+                              }
+                            >
+                              删除
+                            </Button>
+                          </Flex>
+                        </Flex>
+                        {selectedVariant.errorMessage ? (
+                          <Typography.Text
+                            type="danger"
+                            style={{ display: 'block', marginTop: 6 }}
+                          >
+                            {selectedVariant.errorMessage}
+                          </Typography.Text>
+                        ) : null}
+                        <Input
+                          defaultValue={selectedVariant.prompt || ''}
+                          aria-label={`${selectedVariant.name}提示词`}
+                          placeholder="视觉生成提示词"
+                          onBlur={(event) => {
+                            if (
+                              event.target.value !==
+                              (selectedVariant.prompt || '')
+                            ) {
+                              void mutateVariant(
+                                () =>
+                                  updateVisualVariant(
+                                    projectId,
+                                    selectedVariant.id,
+                                    {
+                                      ...selectedVariant,
+                                      prompt: event.target.value,
+                                    },
+                                  ),
+                                '视觉形象已保存',
+                              );
+                            }
+                          }}
+                          style={{ marginTop: 12 }}
+                        />
+                      </section>
+                    ) : (
+                      <Empty description="暂无视觉形象" />
+                    )}
+                  </div>
+                </Modal>
+              );
+            })()
+          : null}
 
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            borderBottom: '1px solid var(--app-color-border)',
-            marginBottom: 16,
+            justifyContent: 'space-between',
+            gap: 32,
+            minHeight: 60,
+            margin: '20px 0 16px',
+            padding: '0 2px',
           }}
         >
-          {assetSections.map((section) => {
-            const count = assetsByType[section.type].length;
-            const completed = assetsByType[section.type].filter(
-              (item) => item.status === 'CONFIRMED',
-            ).length;
-            const active = activeType === section.type;
-            return (
-              <button
-                key={section.type}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setActiveType(section.type)}
-                style={{
-                  border: 0,
-                  borderBottom: active
-                    ? '2px solid var(--app-color-primary)'
-                    : '2px solid transparent',
-                  background: 'transparent',
-                  color: active
-                    ? 'var(--app-color-primary-active)'
-                    : 'var(--app-color-text-secondary)',
-                  padding: '10px 14px',
-                  cursor: 'pointer',
-                  fontWeight: active ? 600 : 400,
-                }}
-              >
-                {elementLabels[section.type]}
-                <span
+          <div
+            role="tablist"
+            style={{ display: 'flex', alignSelf: 'stretch', gap: 28 }}
+          >
+            {assetSections.map((section) => {
+              const count = assetsByType[section.type].length;
+              const completed = assetsByType[section.type].filter(
+                (item) => item.status === 'CONFIRMED',
+              ).length;
+              const active = activeType === section.type;
+              return (
+                <button
+                  key={section.type}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActiveType(section.type)}
                   style={{
-                    marginLeft: 6,
-                    fontSize: 12,
+                    border: 0,
+                    borderRadius: 0,
+                    alignSelf: 'stretch',
+                    background: 'transparent',
                     color: active
                       ? 'var(--app-color-primary)'
-                      : 'var(--app-color-text-tertiary)',
+                      : 'var(--app-color-text-secondary)',
+                    boxShadow: active
+                      ? 'inset 0 -2px 0 var(--app-color-primary)'
+                      : 'none',
+                    padding: '0 2px',
+                    cursor: 'pointer',
+                    fontWeight: active ? 600 : 400,
+                    fontSize: 18,
                   }}
                 >
-                  {completed}/{count}
-                </span>
-              </button>
-            );
-          })}
+                  {elementLabels[section.type]}
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      fontSize: 12,
+                      color: active
+                        ? 'var(--app-color-primary)'
+                        : 'var(--app-color-text-tertiary)',
+                    }}
+                  >
+                    {completed}/{count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div
+            role="toolbar"
+            aria-label={`${elementLabels[activeType]}资产操作`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 14,
+              color: 'var(--app-color-text-secondary)',
+              fontSize: 13,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span>
+              {elementLabels[activeType]}总计 {activeAssets.length}
+            </span>
+            <span style={{ color: 'var(--app-color-border)' }}>|</span>
+            <span>已完成 {activeGeneration.completed}</span>
+            <span style={{ color: 'var(--app-color-border)' }}>|</span>
+            <span>生成中 {activeGeneration.generating}</span>
+            <span style={{ color: 'var(--app-color-border)' }}>|</span>
+            <span>失败 {activeGeneration.failed}</span>
+            {candidates.length ? (
+              <Button
+                type="text"
+                size="small"
+                onClick={() => setReviewDrawerOpen(true)}
+              >
+                审核资产 {candidates.length}
+              </Button>
+            ) : null}
+            <Button
+              type="text"
+              size="small"
+              icon={<CheckOutlined />}
+              disabled={
+                !activeAssets.some((item) => item.status !== 'CONFIRMED')
+              }
+              loading={processingAction === `confirm-all-${activeType}`}
+              onClick={() => confirmAssets(activeType, activeAssets)}
+            >
+              批量确认
+            </Button>
+            <Button
+              type="text"
+              size="small"
+              icon={<RobotOutlined />}
+              aria-label={`AI提取${elementLabels[activeType]}`}
+              loading={processingAction === `extract-${activeType}`}
+              onClick={() => extractAssets(activeType)}
+            >
+              批量生成
+            </Button>
+          </div>
         </div>
 
         {(() => {
           const section =
             assetSections.find((item) => item.type === activeType) ??
             assetSections[0];
-          const items = filterAssets(section.type, assetsByType[section.type]);
+          const items = assetsByType[section.type];
           return (
             <section>
-              <Flex
-                justify="space-between"
-                align="center"
-                style={{ marginBottom: 14 }}
-              >
-                <div>
-                  <Typography.Text strong style={{ fontSize: 16 }}>
-                    {section.title}
-                  </Typography.Text>
-                  <span
-                    style={{
-                      marginLeft: 10,
-                      color: 'var(--app-color-text-tertiary)',
-                      fontSize: 13,
-                    }}
-                  >
-                    {items.length} 项
-                  </span>
-                </div>
-                <Flex gap={8}>
-                  <Input
-                    aria-label="搜索设定资产"
-                    prefix={<SearchOutlined />}
-                    value={keyword}
-                    onChange={(event) => setKeyword(event.target.value)}
-                    placeholder="搜索名称、类型、提示词"
-                    style={{ width: 250, height: 34, borderRadius: 8 }}
-                  />
-                  <Button
-                    icon={<CheckOutlined />}
-                    disabled={
-                      !items.some((item) => item.status !== 'CONFIRMED')
-                    }
-                    loading={processingAction === `confirm-all-${section.type}`}
-                    onClick={() => confirmAssets(section.type, items)}
-                  >
-                    批量确认
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<RobotOutlined />}
-                    loading={processingAction === `extract-${section.type}`}
-                    onClick={() => extractAssets(section.type)}
-                  >
-                    AI提取{elementLabels[section.type]}
-                  </Button>
-                </Flex>
-              </Flex>
               {items.length ? (
                 <div
                   style={{
                     display: 'grid',
                     gridTemplateColumns:
-                      'repeat(auto-fill, minmax(280px, 1fr))',
-                    gap: 16,
+                      'repeat(auto-fill, minmax(360px, 1fr))',
+                    gap: 20,
                   }}
                 >
                   {items.map((item) => (
@@ -1050,20 +1560,9 @@ const ProductionWorkbenchSettings = () => {
                       onSave={saveAsset}
                       onManageVisual={(type, item) => {
                         setVisualAsset({ type, item });
-                        const bindings = item.visual?.episodeBindings ?? [];
-                        setSelectedEpisodes(
-                          Object.fromEntries(
-                            (item.visual?.variants ?? []).map((variant) => [
-                              variant.id,
-                              bindings
-                                .filter(
-                                  (binding) =>
-                                    binding.variantId === variant.id &&
-                                    binding.preferred,
-                                )
-                                .map((binding) => binding.episodeId),
-                            ]),
-                          ),
+                        setSelectedVisualVariantId(
+                          item.visual?.primaryVariant?.id ??
+                            item.visual?.variants?.[0]?.id,
                         );
                       }}
                     />
@@ -1073,7 +1572,7 @@ const ProductionWorkbenchSettings = () => {
                 <div
                   style={{
                     padding: '56px 0',
-                    background: '#fff',
+                    background: 'var(--app-color-bg-container)',
                     border: '1px dashed var(--app-color-border-secondary)',
                     borderRadius: 10,
                   }}
