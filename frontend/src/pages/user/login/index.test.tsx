@@ -367,14 +367,24 @@ describe('Login Page', () => {
     expect(registerLink).toHaveAttribute('href', '/user/register');
   });
 
-  it('renders the login background video', () => {
+  it('keeps a branded fallback visible until the login video has a frame', () => {
     render(<Login />);
 
     const video = screen.getByTestId('login-background-video');
 
+    expect(screen.getByTestId('login-background-fallback')).toBeInTheDocument();
+    expect(video).toHaveStyle({ opacity: '0' });
     expect(video).toHaveAttribute(
       'src',
       'https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4',
     );
+
+    fireEvent.loadedData(video);
+
+    expect(video).toHaveStyle({ opacity: '1' });
+
+    fireEvent.error(video);
+
+    expect(video).toHaveStyle({ opacity: '0' });
   });
 });
