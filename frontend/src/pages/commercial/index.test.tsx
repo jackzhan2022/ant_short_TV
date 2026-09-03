@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -32,7 +32,7 @@ vi.mock('antd', () => ({
   List: Object.assign(({ dataSource = [], renderItem, children }: any) => <div>{children}{dataSource.map((item: any, index: number) => <div key={item.id ?? index}>{renderItem(item)}</div>)}</div>, {
     Item: Object.assign(({ children }: any) => <div>{children}</div>, { Meta: ({ title, description }: any) => <div>{title}{description}</div> }),
   }),
-  Modal: ({ children, open, title }: any) => open ? <section aria-label={title}>{children}</section> : null,
+  Modal: ({ children, open, title }: any) => open ? <section role="dialog" aria-label={title}>{children}</section> : null,
   QRCode: ({ value }: any) => <div data-testid="qr-code">{value}</div>,
   Space: ({ children }: any) => <div>{children}</div>,
   Spin: ({ children }: any) => <div>{children}</div>,
@@ -40,7 +40,7 @@ vi.mock('antd', () => ({
   Table: ({ dataSource = [], columns = [] }: any) => <div>{dataSource.map((record: any) => <div key={record.id}>{columns.map((column: any, index: number) => <span key={column.dataIndex ?? index}>{column.render ? column.render(record[column.dataIndex], record) : record[column.dataIndex]}</span>)}</div>)}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Tabs: ({ items, onChange }: any) => <div>{items.map((item: any) => <button type="button" key={item.key} onClick={() => onChange(item.key)}>{item.label}</button>)}</div>,
-  Typography: { Text: ({ children }: any) => <span>{children}</span>, Title: ({ children }: any) => <h1>{children}</h1> },
+  Typography: { Text: ({ children }: any) => <span>{children}</span>, Title: ({ children }: any) => <h1>{children}</h1>, Paragraph: ({ children }: any) => <p>{children}</p> },
 }));
 vi.mock('@ant-design/icons', () => ({ CheckOutlined: () => null, LeftOutlined: () => null, LockOutlined: () => null, WalletOutlined: () => null }));
 
@@ -72,6 +72,38 @@ describe('CommercialPage', () => {
     expect(mocks.grants).toHaveBeenCalledWith(10);
   });
 
+  it('opens the package selection dialog from a purchase entry', async () => {
+    mocks.catalog.mockResolvedValue({ data: [{ packageId: 2, packageVersionId: 12, packageType: 'POINT_PACKAGE', name: '积分增强包', price: 59, currency: 'CNY', entitlements: [{ type: 'ONE_TIME_POINTS', value: 2000 }] }] });
+
+    render(<CommercialPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '购买套餐' }));
+
+    expect(screen.getByRole('dialog', { name: '选择套餐' })).toBeInTheDocument();
+    expect(screen.getByText('积分增强包')).toBeInTheDocument();
+  });
+
+  it('shows a pending order continuation without automatically displaying its QR code', async () => {
+    mocks.orders.mockResolvedValue({ data: [{
+      id: 42,
+      merchantOrderNo: 'COM-42',
+      status: 'PENDING_PAYMENT',
+      amount: 59,
+      currency: 'CNY',
+      codeUrl: 'weixin://wxpay/code-42',
+      expiresAt: '2099-08-26T22:00:00',
+    }] });
+
+    render(<CommercialPage />);
+
+    const continuePayment = await screen.findByRole('button', { name: '继续支付' });
+    expect(screen.queryByTestId('qr-code')).toBeNull();
+
+    fireEvent.click(continuePayment);
+
+    expect(screen.getByTestId('qr-code')).toHaveTextContent('weixin://wxpay/code-42');
+  });
+
   it('renders the payment QR code and stops polling after completion', async () => {
     const pendingOrder = {
       id: 41,
@@ -88,9 +120,12 @@ describe('CommercialPage', () => {
     await screen.findAllByText('专业版月卡');
 
     vi.useFakeTimers();
-    fireEvent.click(screen.getByRole('button', { name: '立即购买' }));
+    fireEvent.click(screen.getByRole('button', { name: '购买套餐' }));
+    fireEvent.click(screen.getByRole('button', { name: '月度会员' }));
+    fireEvent.click(screen.getByRole('button', { name: '订购专业版月卡' }));
     await act(async () => Promise.resolve());
     expect(screen.getByTestId('qr-code')).toHaveTextContent('weixin://wxpay/code-41');
+    expect(within(screen.getByRole('dialog', { name: '扫码支付' })).getByText('专业版月卡')).toBeInTheDocument();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
@@ -102,5 +137,63 @@ describe('CommercialPage', () => {
       await vi.advanceTimersByTimeAsync(6000);
     });
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the selected package name while a refreshed order remains pending', async () => {
+    const pendingOrder = {
+      id: 44,
+      merchantOrderNo: 'COM-44',
+      status: 'PENDING_PAYMENT',
+      amount: 99,
+      currency: 'CNY',
+      codeUrl: 'weixin://wxpay/code-44',
+      expiresAt: '2099-08-26T22:00:00',
+    };
+    mocks.create.mockResolvedValue({ data: pendingOrder });
+    mocks.refresh.mockResolvedValue({ data: pendingOrder });
+    render(<CommercialPage />);
+    await screen.findAllByText('专业版月卡');
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '购买套餐' }));
+    fireEvent.click(screen.getByRole('button', { name: '月度会员' }));
+    fireEvent.click(screen.getByRole('button', { name: '订购专业版月卡' }));
+    await act(async () => Promise.resolve());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(within(screen.getByRole('dialog', { name: '扫码支付' })).getByText('专业版月卡')).toBeInTheDocument();
+  });
+
+  it('returns to package selection after a refreshed order expires', async () => {
+    const pendingOrder = {
+      id: 43,
+      merchantOrderNo: 'COM-43',
+      status: 'PENDING_PAYMENT',
+      amount: 99,
+      currency: 'CNY',
+      codeUrl: 'weixin://wxpay/code-43',
+      expiresAt: '2099-08-26T22:00:00',
+    };
+    mocks.create.mockResolvedValue({ data: pendingOrder });
+    mocks.refresh.mockResolvedValue({ data: { ...pendingOrder, status: 'EXPIRED' } });
+    render(<CommercialPage />);
+    await screen.findAllByText('专业版月卡');
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '购买套餐' }));
+    fireEvent.click(screen.getByRole('button', { name: '月度会员' }));
+    fireEvent.click(screen.getByRole('button', { name: '订购专业版月卡' }));
+    await act(async () => Promise.resolve());
+    expect(screen.getByTestId('qr-code')).toHaveTextContent('weixin://wxpay/code-43');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(screen.queryByTestId('qr-code')).toBeNull();
+    expect(screen.getByRole('dialog', { name: '选择套餐' })).toBeInTheDocument();
   });
 });
