@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchScript from './script';
 
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   regenerateEpisodeAssets: vi.fn(),
   updateEpisodeSummary: vi.fn(),
   pollExecution: vi.fn(),
+  confirm: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -22,6 +23,7 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
   },
+  Modal: { confirm: mocks.confirm },
   Button: ({ children, ...props }: any) => (
     <button {...props}>{children}</button>
   ),
@@ -57,6 +59,7 @@ vi.mock('antd', () => ({
   Progress: ({ percent }: any) => <div>{percent}%</div>,
   Skeleton: () => <div>loading skeleton</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
+  Tooltip: ({ children }: any) => <>{children}</>,
   Typography: {
     Paragraph: ({ children }: any) => <p>{children}</p>,
     Text: ({ children }: any) => <span>{children}</span>,
@@ -182,22 +185,36 @@ describe('ProductionWorkbenchScript', () => {
     });
   });
 
-  it('renders the restored script page without a character list', async () => {
+  it('renders the script workspace as a project-centric review page', async () => {
     render(<ProductionWorkbenchScript />);
 
     expect(await screen.findByText('线上剧本内容')).toBeInTheDocument();
-    expect(screen.getByText('剧本类型')).toBeInTheDocument();
-    expect(screen.getByText('大纲')).toBeInTheDocument();
+    expect(screen.getAllByText('剧本类型').length).toBeGreaterThan(0);
+    expect(screen.getByText('AI短剧')).toBeInTheDocument();
+    expect(screen.getByText('故事概览')).toBeInTheDocument();
+    expect(screen.getByText('人物小传')).toBeInTheDocument();
+    expect(screen.queryAllByText('9:16')).toHaveLength(0);
+    expect(screen.queryAllByText('720p')).toHaveLength(0);
+    expect(screen.queryAllByText('写实都市')).toHaveLength(0);
     expect(screen.getByText('分集剧情')).toBeInTheDocument();
     expect(screen.getByText('当前集剧情正文')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2' })).toBeInTheDocument();
+    const episodeSelector = screen.getByLabelText('分集选择器');
+    const scrollBy = vi.fn();
+    Object.assign(episodeSelector, { scrollBy });
+    fireEvent.click(screen.getByRole('button', { name: '下一组剧集' }));
+    expect(scrollBy).toHaveBeenCalledWith({ left: 320, behavior: 'smooth' });
+    fireEvent.click(screen.getByRole('button', { name: '上一组剧集' }));
+    expect(scrollBy).toHaveBeenCalledWith({ left: -320, behavior: 'smooth' });
     expect(
-      screen.getByRole('button', { name: '第1集 致命捉迷藏' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: '第2集 夜色警报' }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: '第1集 致命捉迷藏' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    expect(screen.getByDisplayValue('家人开始寻找失踪的孩子。')).toBeInTheDocument();
     expect(screen.queryByText('人物列表')).not.toBeInTheDocument();
-    expect(screen.queryByText('人物小传')).not.toBeInTheDocument();
+    expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
+    expect(screen.queryByText('大纲')).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1);
@@ -229,7 +246,7 @@ describe('ProductionWorkbenchScript', () => {
     render(<ProductionWorkbenchScript />);
 
     expect(
-      await screen.findByRole('button', { name: '第1集' }),
+      await screen.findByRole('button', { name: '1' }),
     ).toBeInTheDocument();
     expect(
       screen.getAllByDisplayValue('一段没有集标题的剧本。').length,
@@ -237,6 +254,30 @@ describe('ProductionWorkbenchScript', () => {
     expect(
       screen.queryByRole('button', { name: '第2集' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows six character profiles by default and expands the rest on demand', async () => {
+    mocks.queryScriptWorkspace.mockResolvedValue({
+      data: {
+        projectId: 1,
+        script: { id: 11, projectId: 1, title: '人物剧本', sourceType: 'MANUAL_EDIT', content: '正文', status: 'DRAFT', currentVersionId: 1 },
+        versions: [],
+        characters: Array.from({ length: 7 }, (_, index) => ({
+          id: index + 1,
+          name: `人物${index + 1}`,
+          visual: { variantCount: 0, variants: [], episodeBindings: [] },
+        })),
+        scenes: [], props: [], storyboards: [], episodes: [{ episodeNo: 1, title: '第1集', content: '正文' }], analysis: null,
+      },
+    });
+
+    render(<ProductionWorkbenchScript />);
+
+    expect(await screen.findByText('人物6')).toBeInTheDocument();
+    expect(screen.queryByText('人物7')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看更多人物' }));
+    expect(screen.getByText('人物7')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收起人物' })).toBeInTheDocument();
   });
 
   it('renders four analysis stages with percentages and intermediate result access', async () => {
@@ -396,7 +437,24 @@ describe('ProductionWorkbenchScript', () => {
         currentVersionId: 7,
       },
       versions: [],
-      characters: [{ id: 1, name: '林晚', visual: { variantCount: 2 } }],
+      characters: [{
+        id: 1,
+        name: '林晚',
+        identity: '归来的姐姐',
+        personality: ['冷静', '坚韧'],
+        appearance: '雨夜归来，神情疲惫',
+        visual: {
+          variantCount: 2,
+          variants: [
+            { id: 101, name: '林晚-雨夜装', usable: true },
+            { id: 102, name: '林晚-居家装', usable: true },
+          ],
+          episodeBindings: [
+            { id: 1, variantId: 101, episodeNo: 1, episodeTitle: '第1集', preferred: true, status: 'ACTIVE' },
+            { id: 2, variantId: 102, episodeNo: 2, episodeTitle: '第2集', preferred: true, status: 'ACTIVE' },
+          ],
+        },
+      }],
       scenes: [],
       props: [],
       storyboards: [],
@@ -416,9 +474,17 @@ describe('ProductionWorkbenchScript', () => {
 
     render(<ProductionWorkbenchScript />);
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '重新分析当前版本' }),
-    );
+    const episodeHeader = (await screen.findByText('分集剧情')).parentElement;
+    expect(
+      within(episodeHeader as HTMLElement).getByRole('button', { name: '单独重跑剧集拆分' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('当前第1集')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '重新AI分析' }));
+    expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({
+      title: '重新AI分析',
+      content: '重新分析会覆盖对应正式数据；用户后续仍可继续编辑。',
+    }));
+    await mocks.confirm.mock.calls[0][0].onOk();
 
     await waitFor(() => {
       expect(mocks.pollExecution).toHaveBeenCalledWith(
@@ -431,7 +497,10 @@ describe('ProductionWorkbenchScript', () => {
       ).toBeGreaterThanOrEqual(2);
     });
     expect(screen.getByText('execution-501-SUCCEEDED')).toBeInTheDocument();
-    expect(screen.getByText('林晚雨夜归家')).toBeInTheDocument();
+    expect(screen.getAllByText('林晚雨夜归家').length).toBeGreaterThan(0);
+    expect(screen.getByText('角色变装列表')).toBeInTheDocument();
+    expect(screen.getByText('林晚-雨夜装')).toBeInTheDocument();
+    expect(screen.getByText('第1集')).toBeInTheDocument();
     expect(screen.getByText(/角色 1 · 场景 0 · 道具 0/)).toBeInTheDocument();
     expect(screen.getByText('林晚回家')).toBeInTheDocument();
   });
@@ -447,7 +516,8 @@ describe('ProductionWorkbenchScript', () => {
     mocks.queryScriptWorkspace.mockResolvedValue({ data: completedWorkspace });
     render(<ProductionWorkbenchScript />);
 
-    expect(await screen.findByText(/重跑 Agent 会覆盖对应正式数据/)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '重新AI分析' })).toBeInTheDocument();
+    expect(screen.queryByText(/重跑 Agent 会覆盖对应正式数据/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '编辑概要' }));
     fireEvent.change(screen.getByLabelText('概要'), { target: { value: '新概要' } });
     fireEvent.change(screen.getByLabelText('亮点'), { target: { value: '亮点一\n亮点二' } });

@@ -1,15 +1,17 @@
-import { CheckOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, LeftOutlined, ReloadOutlined, RightOutlined, UserOutlined } from '@ant-design/icons';
 import { useParams } from '@umijs/max';
 import {
   App,
   Button,
   Flex,
   Input,
+  Modal,
   Skeleton,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { queryProject } from '@/services/account-team/project';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
@@ -33,6 +35,7 @@ type EpisodeBlock = {
 
 type ProjectLite = {
   tenantId?: number;
+  coverUrl?: string | null;
   aspectRatio?: string | null;
   fileFormat?: string | null;
   scriptType?: string | null;
@@ -203,34 +206,6 @@ const renderResultSummary = (stageCode: string, resultJson?: string | null) => {
       {resultJson}
     </pre>
   );
-};
-
-const collectOutline = (workspace: ScriptWorkspace) => {
-  const contentLines = (workspace.script?.content || '')
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const headings = contentLines.filter((line) => /^第\d+集/.test(line));
-  if (headings.length) {
-    return headings.slice(0, 8);
-  }
-  if (workspace.storyboards.length) {
-    return Array.from(
-      new Map(
-        workspace.storyboards
-          .slice()
-          .sort(
-            (left, right) =>
-              left.episodeNo - right.episodeNo || left.shotNo - right.shotNo,
-          )
-          .map((item) => [
-            item.episodeNo,
-            `第${item.episodeNo}集 · ${item.visualDescription || item.dialogue || '待补全'}`,
-          ]),
-      ).values(),
-    ).slice(0, 8);
-  }
-  return contentLines.slice(0, 8);
 };
 
 const getEpisodeBlocks = (workspace: ScriptWorkspace): EpisodeBlock[] => {
@@ -404,6 +379,8 @@ const ProductionWorkbenchScript = () => {
   const [project, setProject] = useState<ProjectLite>();
   const [loading, setLoading] = useState(false);
   const [currentEpisodeNo, setCurrentEpisodeNo] = useState(1);
+  const [showAllCharacters, setShowAllCharacters] = useState(false);
+  const episodeSelectorRef = useRef<HTMLDivElement>(null);
   const [activeExecution, setActiveExecution] =
     useState<API.AiExecutionResponse>();
   const [executionBusy, setExecutionBusy] = useState(false);
@@ -475,21 +452,6 @@ const ProductionWorkbenchScript = () => {
     }
   }, [message, workspace?.analysis?.errorMessage, workspace?.analysis?.status]);
 
-  const outline = useMemo(
-    () =>
-      collectOutline(
-        workspace || {
-          projectId,
-          script: null,
-          versions: [],
-          characters: [],
-          scenes: [],
-          props: [],
-          storyboards: [],
-        },
-      ),
-    [projectId, workspace],
-  );
   const episodeBlocks = useMemo(
     () =>
       getEpisodeBlocks(
@@ -547,6 +509,17 @@ const ProductionWorkbenchScript = () => {
     } catch {
       message.error('重新分析失败');
     }
+  };
+
+  const showReanalyzeConfirm = () => {
+    Modal.confirm({
+      title: '重新AI分析',
+      content: '重新分析会覆盖对应正式数据；用户后续仍可继续编辑。',
+      okText: '确认重分析',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: reanalyzeCurrent,
+    });
   };
   const currentEpisode = workspace?.episodes?.find(
     (item) => item.episodeNo === currentEpisodeNo,
@@ -609,12 +582,12 @@ const ProductionWorkbenchScript = () => {
     <div
       style={{
         minHeight: 'calc(100vh - 100px)',
-        padding: '16px 28px 68px',
+        padding: '48px 0 88px',
         boxSizing: 'border-box',
         background: 'var(--app-color-bg-layout)',
       }}
     >
-      <div style={{ maxWidth: 1500, margin: '0 auto' }}>
+      <div style={{ width: 1000, margin: '0 auto' }}>
         <Flex
           justify="space-between"
           align="center"
@@ -630,11 +603,9 @@ const ProductionWorkbenchScript = () => {
                 : '剧本信息、正文、大纲与分集剧情'}
             </Typography.Text>
           </div>
-          <Flex gap={8}>
-            <Tag color="blue">{project?.aspectRatio || '-'}</Tag>
-            <Tag>720p</Tag>
-            <Tag>{project?.visualStyle || '-'}</Tag>
-          </Flex>
+          {analysis?.status === 'COMPLETED' ? (
+            <Button onClick={showReanalyzeConfirm}>重新AI分析</Button>
+          ) : null}
         </Flex>
 
         {loading && !workspace ? (
@@ -693,27 +664,98 @@ const ProductionWorkbenchScript = () => {
           </section>
         ) : null}
 
-        {analysis?.status === 'COMPLETED' ? (
-          <div style={{ marginBottom: 14 }}>
-            <Flex gap={8} wrap>
-              <Button onClick={() => void reanalyzeCurrent()}>重新分析当前版本</Button>
-              <Button
-                loading={executionBusy || undefined}
-                onClick={() =>
-                  void runDirectAgent(
-                    () => regenerateEpisodeSplitting(projectId),
-                    '剧集拆分已按当前剧本覆盖生成',
-                  )
-                }
-              >
-                单独重跑剧集拆分
-              </Button>
-            </Flex>
-            <Typography.Text type="warning" style={{ display: 'block', marginTop: 6 }}>
-              重跑 Agent 会覆盖对应正式数据；用户后续仍可继续编辑。
-            </Typography.Text>
-          </div>
-        ) : null}
+        {analysis && analysis.status !== 'COMPLETED' ? null : (
+          <>
+            <section style={{ display: 'grid', gridTemplateColumns: '160px minmax(0, 1fr)', gap: 32, minHeight: 220, marginBottom: 48 }}>
+              <div style={{ width: 160, height: 220, overflow: 'hidden', borderRadius: 8, background: 'var(--app-color-bg-container)', boxShadow: '0 4px 12px rgb(0 0 0 / 10%)' }}>
+                {project?.coverUrl ? <img src={project.coverUrl} alt="项目封面" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+              </div>
+              <div>
+                <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+                  <Typography.Title level={3} style={{ margin: 0, fontSize: 24 }}>{script?.title || '未命名剧本'}</Typography.Title>
+                  <Button>补充剧本</Button>
+                </Flex>
+                <div style={{ color: 'var(--app-color-text-secondary)', fontSize: 12, marginBottom: 16 }}>
+                  {episodeBlocks.length} 集　|　{project?.aspectRatio || '-'}　|　720p　|　{project?.visualStyle || '-'}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <Tag color="blue">{scriptTypeText[project?.scriptType || ''] || '剧本'}</Tag>
+                  <Tag>{fileFormatText[project?.fileFormat || ''] || '剧本格式'}</Tag>
+                  <Tag>{breakdownStrengthText[project?.breakdownStrength || ''] || '标准解析'}</Tag>
+                </div>
+              </div>
+            </section>
+
+            <section style={{ marginBottom: 48 }}>
+              <Typography.Title level={5} style={{ margin: '0 0 12px', fontSize: 16 }}>剧本类型</Typography.Title>
+              <div style={{ border: '1px solid var(--app-color-border-secondary)', borderRadius: 8, background: '#fff', padding: '16px 12px' }}>
+                <div style={{ fontWeight: 600 }}>AI短剧</div>
+                <div style={{ marginTop: 4, color: 'var(--app-color-text-secondary)', fontSize: 13 }}>根据剧本内容智能规划叙事镜头，分角色演绎故事</div>
+              </div>
+            </section>
+
+            <section style={{ marginBottom: 48 }}>
+              <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}><Typography.Title level={5} style={{ margin: 0, fontSize: 16 }}>故事概览</Typography.Title><Typography.Text type="secondary">AI 全局理解结果</Typography.Text></Flex>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, border: '1px solid var(--app-color-border-secondary)', borderRadius: 8, background: '#fff', padding: '12px 24px' }}>
+                {[
+                  ['一句话梗概', String(workspace?.globalUnderstanding?.content?.logline || '暂无全局说明')],
+                  ['核心冲突', String(workspace?.globalUnderstanding?.content?.coreConflict || '-')],
+                  ['主题', listText(workspace?.globalUnderstanding?.content?.themes)],
+                  ['人物关系', listText(workspace?.globalUnderstanding?.content?.relationships)],
+                  ['结尾钩子', String(workspace?.globalUnderstanding?.content?.endingHook || '-')],
+                ].map(([label, value]) => <div key={label} style={{ gridColumn: label === '一句话梗概' ? '1 / -1' : undefined, display: 'grid', gridTemplateColumns: '94px 1fr', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--app-color-border-secondary)', fontSize: 13, lineHeight: '22px' }}><span style={{ color: 'var(--app-color-text-tertiary)' }}>{label}</span><span>{value}</span></div>)}
+              </div>
+            </section>
+
+            <section style={{ marginBottom: 48 }}>
+              <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}><Typography.Title level={5} style={{ margin: 0, fontSize: 16 }}>人物小传</Typography.Title><Typography.Text type="secondary">已有角色信息与视觉资产</Typography.Text></Flex>
+              {workspace?.characters.length ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '24px 32px' }}>
+                  {(showAllCharacters ? workspace.characters : workspace.characters.slice(0, 6)).map((character) => {
+                    const variants = character.visual?.variants || [];
+                    const bindings = character.visual?.episodeBindings || [];
+                    return (
+                      <article key={character.id} style={{ padding: 12, border: '1px solid var(--app-color-border-secondary)', borderRadius: 8, background: '#fff' }}>
+                        <div style={{ marginBottom: 8, fontWeight: 600 }}>{character.name}</div>
+                        <div style={{ minHeight: 48, padding: '6px 10px', borderRadius: 6, background: 'var(--app-color-bg-layout)', color: 'var(--app-color-text-secondary)', fontSize: 12, lineHeight: '19px' }}>
+                          身份：{character.identity || '-'}；性格：{character.personality?.join('、') || '-'}；简介：{character.appearance || '-'}
+                        </div>
+                        <div style={{ margin: '12px 0 8px', fontSize: 13, fontWeight: 600 }}>角色变装列表</div>
+                        {variants.length ? (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                            {variants.map((variant) => {
+                              const episodeNos = bindings
+                                .filter((binding) => binding.variantId === variant.id && binding.status === 'ACTIVE')
+                                .map((binding) => binding.episodeNo);
+                              return (
+                                <div key={variant.id} style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr) auto', alignItems: 'center', gap: 6, minWidth: 0, padding: '6px 8px', border: '1px solid var(--app-color-border-secondary)', borderRadius: 6, fontSize: 12 }}>
+                                  <span style={{ display: 'grid', width: 24, height: 24, placeItems: 'center', borderRadius: 6, background: 'var(--app-color-primary-bg)', color: 'var(--app-color-primary)' }}><UserOutlined /></span>
+                                  <Typography.Text ellipsis={{ tooltip: variant.name }} style={{ minWidth: 0, fontSize: 12 }}>{variant.name}</Typography.Text>
+                                  <span style={{ color: 'var(--app-color-text-secondary)', whiteSpace: 'nowrap' }}>{episodeNos.length ? `第${episodeNos.join('、')}集` : '未绑定'}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>暂无变装资产，已生成 {character.visual?.variantCount || 0} 个角色形态。</Typography.Text>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : <Typography.Text type="secondary">暂无角色数据，完成角色场景识别后将在此展示。</Typography.Text>}
+              {(workspace?.characters.length || 0) > 6 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 24 }}>
+                  <span style={{ flex: 1, height: 1, background: 'var(--app-color-border-secondary)' }} />
+                  <Button type="text" onClick={() => setShowAllCharacters((current) => !current)}>
+                    {showAllCharacters ? '收起人物' : '查看更多人物'}
+                  </Button>
+                  <span style={{ flex: 1, height: 1, background: 'var(--app-color-border-secondary)' }} />
+                </div>
+              ) : null}
+            </section>
+          </>
+        )}
 
         {analysis?.status === 'COMPLETED' && workspace ? (
           <section
@@ -754,156 +796,60 @@ const ProductionWorkbenchScript = () => {
             border: '1px solid var(--app-color-border)',
             borderRadius: 8,
             padding: 18,
-            marginBottom: 14,
-          }}
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-              gap: 12,
-              marginBottom: 14,
-            }}
-          >
-            <div style={metricStyle}>
-              <span style={labelStyle}>剧本名称</span>
-              <div style={valueStyle}>{script?.title || '未命名剧本'}</div>
-            </div>
-            <div style={metricStyle}>
-              <span style={labelStyle}>剧本类型</span>
-              <div style={valueStyle}>
-                {fileFormatText[project?.fileFormat || ''] || '-'}
-              </div>
-            </div>
-            <div style={metricStyle}>
-              <span style={labelStyle}>剧本状态</span>
-              <div style={valueStyle}>
-                {scriptTypeText[project?.scriptType || ''] || '-'}
-              </div>
-            </div>
-            <div style={metricStyle}>
-              <span style={labelStyle}>解析力度</span>
-              <div style={valueStyle}>
-                {breakdownStrengthText[project?.breakdownStrength || ''] || '-'}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 10, color: 'var(--app-color-text-tertiary)', fontSize: 12 }}>
-            当前版本{' '}
-            {script?.currentVersionId ? `#${script.currentVersionId}` : '-'}
-          </div>
-
-          {analysis && analysis.status !== 'COMPLETED' ? null : <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1.42fr) minmax(310px, 0.58fr)',
-              gap: 14,
-              alignItems: 'start',
-            }}
-          >
-            <div>
-              <Typography.Text strong>线上剧本正文</Typography.Text>
-              <Input.TextArea
-                value={script?.content || ''}
-                readOnly
-                autoSize={{ minRows: 20, maxRows: 30 }}
-                placeholder="暂无线上剧本内容"
-                style={{
-                  marginTop: 8,
-                  background: 'var(--app-color-bg-container)',
-                  borderColor: 'var(--app-color-border-secondary)',
-                  borderRadius: 8,
-                  color: 'var(--app-color-text)',
-                  fontSize: 14,
-                  lineHeight: '24px',
-                }}
-              />
-            </div>
-            <div>
-              <Typography.Text strong>大纲</Typography.Text>
-              <div
-                style={{
-                  marginTop: 8,
-                  padding: '14px 15px',
-                  minHeight: 528,
-                  borderRadius: 8,
-                  border: '1px solid var(--app-color-border-secondary)',
-                  background: 'var(--app-color-bg-container)',
-                }}
-              >
-                {outline.length ? (
-                  outline.map((item) => (
-                    <div
-                      key={item}
-                      style={{
-                        fontSize: 13,
-                        lineHeight: '22px',
-                        marginBottom: 9,
-                        color: 'var(--app-color-text)',
-                      }}
-                    >
-                      {item}
-                    </div>
-                  ))
-                ) : loading ? (
-                  <Skeleton active paragraph={{ rows: 6 }} />
-                ) : (
-                  <Typography.Text type="secondary">暂无大纲</Typography.Text>
-                )}
-              </div>
-            </div>
-          </div>}
-        </section>}
-
-        {analysis && analysis.status !== 'COMPLETED' ? null : <section
-          style={{
-            background: '#fff',
-            border: '1px solid var(--app-color-border)',
-            borderRadius: 8,
-            padding: 18,
           }}
         >
           <Flex justify="space-between" align="center">
             <Typography.Title level={5} style={{ margin: 0, fontSize: 16 }}>
               分集剧情
             </Typography.Title>
-            <Typography.Text type="secondary">
-              当前第{currentEpisodeNo}集
-            </Typography.Text>
+            {analysis?.status === 'COMPLETED' ? (
+              <Button
+                loading={executionBusy || undefined}
+                onClick={() =>
+                  void runDirectAgent(
+                    () => regenerateEpisodeSplitting(projectId),
+                    '剧集拆分已按当前剧本覆盖生成',
+                  )
+                }
+              >
+                单独重跑剧集拆分
+              </Button>
+            ) : null}
           </Flex>
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 6,
-              margin: '14px 0',
-            }}
-          >
-            {episodeBlocks.map((item) => {
-              const active = item.episodeNo === currentEpisodeNo;
-              return (
-                <button
-                  key={item.episodeNo}
-                  type="button"
-                  onClick={() => setCurrentEpisodeNo(item.episodeNo)}
-                  style={{
-                    height: 28,
-                    minWidth: 64,
-                    padding: '0 12px',
-                    borderRadius: 14,
-                    border: active ? '1px solid var(--app-color-primary)' : '1px solid var(--app-color-border)',
-                    background: active ? 'var(--app-color-primary-bg)' : '#fff',
-                    color: active ? '#334be4' : 'var(--app-color-text-secondary)',
-                    fontSize: 12,
-                    fontWeight: active ? 700 : 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {item.title}
-                </button>
-              );
-            })}
+          <div style={{ display: 'grid', gridTemplateColumns: '32px minmax(0, 1fr) 32px', gap: 8, alignItems: 'center', margin: '14px 0' }}>
+            <Tooltip title="上一组剧集">
+              <button type="button" aria-label="上一组剧集" onClick={() => episodeSelectorRef.current?.scrollBy({ left: -320, behavior: 'smooth' })} style={{ width: 32, height: 32, padding: 0, borderRadius: 4, border: '1px solid var(--app-color-border)', background: '#fff', color: 'var(--app-color-text-secondary)', cursor: 'pointer' }}><LeftOutlined /></button>
+            </Tooltip>
+            <div ref={episodeSelectorRef} aria-label="分集选择器" style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', scrollBehavior: 'smooth', padding: '1px 0' }}>
+              {episodeBlocks.map((item) => {
+                const active = item.episodeNo === currentEpisodeNo;
+                return (
+                  <button
+                    key={item.episodeNo}
+                    type="button"
+                    onClick={() => setCurrentEpisodeNo(item.episodeNo)}
+                    style={{
+                      flex: '0 0 32px',
+                      width: 32,
+                      height: 32,
+                      padding: 0,
+                      borderRadius: 4,
+                      border: active ? '1px solid var(--app-color-primary)' : '1px solid var(--app-color-border)',
+                      background: active ? 'var(--app-color-primary-bg)' : '#fff',
+                      color: active ? '#334be4' : 'var(--app-color-text-secondary)',
+                      fontSize: 12,
+                      fontWeight: active ? 700 : 500,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {item.episodeNo}
+                  </button>
+                );
+              })}
+            </div>
+            <Tooltip title="下一组剧集">
+              <button type="button" aria-label="下一组剧集" onClick={() => episodeSelectorRef.current?.scrollBy({ left: 320, behavior: 'smooth' })} style={{ width: 32, height: 32, padding: 0, borderRadius: 4, border: '1px solid var(--app-color-border)', background: '#fff', color: 'var(--app-color-text-secondary)', cursor: 'pointer' }}><RightOutlined /></button>
+            </Tooltip>
           </div>
 
           <Typography.Text strong>当前集剧情正文</Typography.Text>
