@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -291,6 +292,7 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         if (request.thinkingMode() != null && modelCode.startsWith("deepseek-")) {
             payload.put("thinking", Map.of("type", request.thinkingMode()));
         }
+        configuredReasoningEffort(model).ifPresent(effort -> payload.put("reasoning_effort", effort));
         if (request.topP() != null) {
             payload.put("top_p", request.topP());
         }
@@ -308,6 +310,20 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             )).toList());
         }
         return payload;
+    }
+
+    private java.util.Optional<String> configuredReasoningEffort(AiModelEntity model) {
+        if (model.getConfigJson() == null || model.getConfigJson().isBlank()) {
+            return java.util.Optional.empty();
+        }
+        try {
+            String effort = objectMapper.readTree(model.getConfigJson()).path("reasoningEffort").asText();
+            return Set.of("low", "medium", "high").contains(effort)
+                ? java.util.Optional.of(effort)
+                : java.util.Optional.empty();
+        } catch (JsonProcessingException ignored) {
+            return java.util.Optional.empty();
+        }
     }
 
     private List<Map<String, Object>> legacyMessages(AiTextRequest request) {
