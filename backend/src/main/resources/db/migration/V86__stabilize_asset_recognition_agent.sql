@@ -1,3 +1,6 @@
+create index idx_script_analysis_fanout_stage
+  on script_analysis_fanout_snapshot (stage_id);
+
 alter table script_analysis_fanout_snapshot
   drop index uk_script_analysis_fanout_attempt;
 
