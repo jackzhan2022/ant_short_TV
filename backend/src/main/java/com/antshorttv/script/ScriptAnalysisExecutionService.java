@@ -201,13 +201,13 @@ public class ScriptAnalysisExecutionService {
                 && episodeSummaryAgentAdapter != null && episodeSummaryAgentAdapter.enabled()
                 && episodeFanoutCoordinator != null) {
                 EpisodeFanoutCoordinator.Result fanout = episodeFanoutCoordinator.execute(
-                    task, stage, executionContext,
+                    task, stage, executionContext, frozenModelId(task),
                     com.antshorttv.workflowagent.agent.EpisodeSummaryAgentBootstrap.AGENT_CODE,
                     false,
                     (plan, currentTask, currentStage, currentExecution, episode) -> {
                         EpisodeSummaryAgentAdapter.Execution child = episodeSummaryAgentAdapter.executeChild(
                             plan, currentTask, currentStage, episode.episodeId(), currentExecution,
-                            plan.agent().modelId());
+                            frozenModelId(currentTask));
                         return new EpisodeFanoutCoordinator.ChildResult(child.agentRunId(), child.modelCalls());
                     },
                     snapshotId -> { }
@@ -237,12 +237,13 @@ public class ScriptAnalysisExecutionService {
                 && assetRecognitionAgentAdapter != null && assetRecognitionAgentAdapter.enabled()
                 && episodeFanoutCoordinator != null && assetRecognitionFinalizer != null) {
                 EpisodeFanoutCoordinator.Result fanout = episodeFanoutCoordinator.execute(
-                    task, stage, executionContext,
+                    task, stage, executionContext, frozenModelId(task),
                     com.antshorttv.workflowagent.agent.AssetRecognitionAgentBootstrap.AGENT_CODE,
                     false,
                     (plan, currentTask, currentStage, currentExecution, episode) -> {
                         AssetRecognitionAgentAdapter.Execution child = assetRecognitionAgentAdapter.executeChild(
-                            plan, currentTask, currentStage, episode.episodeId(), currentExecution);
+                            plan, currentTask, currentStage, episode.episodeId(), currentExecution,
+                            frozenModelId(currentTask));
                         return new EpisodeFanoutCoordinator.ChildResult(child.agentRunId(), child.modelCalls());
                     },
                     assetRecognitionFinalizer::finish

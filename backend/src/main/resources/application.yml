@@ -96,7 +96,7 @@ ai:
     review-bootstrap-enabled: ${AI_WORKFLOW_REVIEW_BOOTSTRAP_ENABLED:true}
     review-quick-enabled: ${AI_WORKFLOW_REVIEW_QUICK_ENABLED:false}
     review-deep-enabled: ${AI_WORKFLOW_REVIEW_DEEP_ENABLED:false}
-    fanout-concurrency: ${AI_WORKFLOW_FANOUT_CONCURRENCY:3}
+    fanout-concurrency: ${AI_WORKFLOW_FANOUT_CONCURRENCY:2}
   testing:
     mock-provider-enabled: ${AI_TESTING_MOCK_PROVIDER_ENABLED:false}
   execution:

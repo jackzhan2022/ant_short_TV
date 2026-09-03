@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -749,6 +750,69 @@ class WorkflowAgentRunnerTest {
         assertThat(result.runId()).isEqualTo(101L);
         assertThat(saves).hasValue(2);
         verify(invocation, org.mockito.Mockito.times(3)).invokeText(any());
+    }
+
+    @Test
+    void assetRecognitionAllowsExactlyOneCorrectiveSaveAndOnlyExposesTheNextTool() throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_episode_assets", "保存资产", "保存资产",
+            json.readTree("{\"type\":\"object\"}"), json.readTree("{\"type\":\"object\"}"),
+            ToolRiskLevel.WRITE, ToolFailurePolicy.RETURN_TO_MODEL,
+            new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    saves.incrementAndGet();
+                    throw new BusinessException(ErrorCode.VALIDATION_ERROR, "evidence invalid");
+                }
+            });
+        runner = runnerWith(List.of(tool("read_current_episode"), save), 30);
+        when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 6, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", "save_episode_assets")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("read", "read_current_episode", "{}")), 931L))
+            .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_assets", "{}")), 932L))
+            .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_assets", "{}")), 933L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L)))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("evidence invalid");
+
+        assertThat(saves).hasValue(2);
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(1).textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("save_episode_assets");
+        assertThat(requests.getAllValues()).allSatisfy(request -> {
+            assertThat(request.textRequest().maxTokens()).isEqualTo(4096);
+            assertThat(request.textRequest().retryCount()).isEqualTo(1);
+        });
+    }
+
+    @Test
+    void stopsBeforeAnotherProviderRoundWhenTheUnifiedExecutionIsCanceled() {
+        doNothing().doNothing().doNothing()
+            .doThrow(new BusinessException(ErrorCode.VALIDATION_ERROR, "执行已取消"))
+            .when(scopeGuard).requireExecutionActive(any());
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("read", "read_episode_script", "{}")), 934L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "screenplay-agent", "读取", 7L, 25L, 91L, 77L, null, null, 9L,
+            700L, 701L, 1, 8L)))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("取消");
+
+        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
     }
 
     @Test

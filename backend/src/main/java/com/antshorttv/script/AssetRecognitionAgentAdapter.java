@@ -34,7 +34,8 @@ public class AssetRecognitionAgentAdapter {
         ScriptAnalysisTaskEntity task,
         ScriptAnalysisStageEntity stage,
         Long episodeId,
-        AiExecutionContext executionContext
+        AiExecutionContext executionContext,
+        Long modelId
     ) {
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             AssetRecognitionAgentBootstrap.AGENT_CODE,
@@ -44,7 +45,7 @@ public class AssetRecognitionAgentAdapter {
             executionContext == null ? null : executionContext.task().id,
             executionContext == null ? null : executionContext.claim().attemptId(),
             executionContext == null ? null : executionContext.task().executionVersion,
-            plan.agent().modelId());
+            modelId);
         WorkflowAgentRunResult run = runner.runFormal(plan, input);
         if (!assets.hasCoverage(task.getTenantId(), task.getScriptId(), episodeId, run.runId())) {
             throw new IllegalStateException("Agent 未提交本次剧集正式资产识别结果。");

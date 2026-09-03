@@ -31,11 +31,12 @@ class AssetRecognitionAgentAdapterTest {
         when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(true);
 
         AssetRecognitionAgentAdapter.Execution result = adapter.executeChild(
-            plan, task(), stage(), 101L, null);
+            plan, task(), stage(), 101L, null, 99L);
 
         ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
         verify(runner).runFormal(any(WorkflowAgentExecutionPlan.class), input.capture());
         assertThat(input.getValue().episodeId()).isEqualTo(101L);
+        assertThat(input.getValue().modelIdOverride()).isEqualTo(99L);
         assertThat(input.getValue().input()).doesNotContain("概要", "全局理解");
         assertThat(result.agentRunId()).isEqualTo(77L);
     }
@@ -47,7 +48,7 @@ class AssetRecognitionAgentAdapterTest {
             .thenReturn(new WorkflowAgentRunResult(77L, "识别完成"));
         when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(false);
 
-        assertThatThrownBy(() -> adapter.executeChild(plan(), task(), stage(), 101L, null))
+        assertThatThrownBy(() -> adapter.executeChild(plan(), task(), stage(), 101L, null, 99L))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("正式资产识别结果");
     }
 

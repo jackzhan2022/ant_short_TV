@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.mockito.ArgumentCaptor;
+
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.workflowagent.tool.ReviewToolScope;
@@ -86,6 +88,35 @@ class WorkflowAgentScopeGuardTest {
             .isEqualTo("EPISODE_SUMMARY");
         assertThat(WorkflowAgentScopeGuard.expectedStageCode("short-drama-asset-recognition"))
             .isEqualTo("CHARACTER_SCENE_RECOGNITION");
+    }
+
+    @Test
+    void executionActivityIsBoundToTheCurrentStartedAttempt() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class),
+            eq(501L), eq(3), eq(502L))).thenReturn(1);
+        WorkflowAgentRunInput input = new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "run", 7L, 25L, 31L, 77L, 41L, 42L, 9L,
+            501L, 502L, 3, 8L);
+
+        guard.requireExecutionActive(input);
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForObject(sql.capture(), eq(Integer.class),
+            eq(501L), eq(3), eq(502L));
+        assertThat(sql.getValue()).contains("attempt.status = 'STARTED'");
+    }
+
+    @Test
+    void rejectsAnExpiredAttemptAfterAnotherAttemptRestartsTheExecution() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class),
+            eq(501L), eq(3), eq(502L))).thenReturn(0);
+        WorkflowAgentRunInput input = new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "run", 7L, 25L, 31L, 77L, 41L, 42L, 9L,
+            501L, 502L, 3, 8L);
+
+        assertThatThrownBy(() -> guard.requireExecutionActive(input))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("执行权已失效");
     }
 
     @Test

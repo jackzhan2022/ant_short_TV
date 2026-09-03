@@ -41,14 +41,23 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
         ScriptAnalysisStageEntity stage,
         String agentCode,
         WorkflowAgentExecutionPlan plan,
+        Long effectiveModelId,
         List<EpisodeFanoutCoordinator.EpisodeUnit> episodes,
         String episodeSetHash,
         boolean fullRegeneration
     ) {
         Integer attempt = stage.getAttemptNo() == null ? 1 : stage.getAttemptNo();
-        List<Long> sameAttempt = jdbc.queryForList(
-            "select id from script_analysis_fanout_snapshot where stage_id = ? and attempt_no = ?",
-            Long.class, stage.getId(), attempt);
+        jdbc.queryForObject(
+            "select id from script_analysis_stage where id = ? for update",
+            Long.class,
+            stage.getId()
+        );
+        List<Long> sameAttempt = jdbc.queryForList("""
+            select id from script_analysis_fanout_snapshot
+             where stage_id = ? and attempt_no = ? and agent_code = ?
+               and agent_revision = ? and model_id = ?
+            """, Long.class, stage.getId(), attempt, agentCode,
+            plan.agent().revision(), effectiveModelId);
         if (!sameAttempt.isEmpty()) {
             return sameAttempt.get(0);
         }
@@ -56,16 +65,26 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
             List<Long> reusable = jdbc.queryForList("""
                 select id from script_analysis_fanout_snapshot
                  where stage_id = ? and agent_code = ? and episode_set_hash = ?
+                   and agent_revision = ? and model_id = ?
                    and status in ('RUNNING', 'PARTIAL_FAILED', 'FAILED')
                  order by id desc limit 1
-                """, Long.class, stage.getId(), agentCode, episodeSetHash);
+                """, Long.class, stage.getId(), agentCode, episodeSetHash,
+                plan.agent().revision(), effectiveModelId);
             if (!reusable.isEmpty()) {
+                long snapshotId = reusable.get(0);
                 jdbc.update("""
                     update script_analysis_fanout_snapshot
                        set attempt_no = ?, status = 'RUNNING', updated_at = now()
                      where id = ?
-                    """, attempt, reusable.get(0));
-                return reusable.get(0);
+                    """, attempt, snapshotId);
+                jdbc.update("""
+                    update script_analysis_fanout_unit
+                       set status = 'STALE', finished_at = now(), updated_at = now(),
+                           error_code = 'EXECUTION_INTERRUPTED',
+                           error_message = '上一执行轮次在单集处理期间中断，已回收等待重试。'
+                     where snapshot_id = ? and status = 'RUNNING'
+                    """, snapshotId);
+                return snapshotId;
             }
         }
         KeyHolder keys = new GeneratedKeyHolder();
@@ -86,7 +105,7 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
             statement.setInt(7, attempt);
             statement.setString(8, agentCode);
             statement.setLong(9, plan.agent().revision());
-            statement.setLong(10, plan.agent().modelId());
+            statement.setLong(10, effectiveModelId);
             statement.setString(11, episodeSetHash);
             statement.setInt(12, episodes.size());
             return statement;
@@ -115,32 +134,43 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
                 row.getString("content_fingerprint"), row.getString("status")), snapshotId);
     }
 
-    @Override public void markRunning(long snapshotId, Long episodeId) {
-        jdbc.update("""
+    @Override
+    @Transactional
+    public int markRunning(long snapshotId, Long episodeId) {
+        int updated = jdbc.update("""
             update script_analysis_fanout_unit
                set status = 'RUNNING', attempt_no = attempt_no + 1, error_code = null,
                    error_message = null, started_at = now(), finished_at = null, updated_at = now()
              where snapshot_id = ? and episode_id = ? and status in ('PENDING', 'FAILED', 'STALE')
             """, snapshotId, episodeId);
+        if (updated != 1) return 0;
+        Integer attemptNo = jdbc.queryForObject("""
+            select attempt_no from script_analysis_fanout_unit
+             where snapshot_id = ? and episode_id = ?
+            """, Integer.class, snapshotId, episodeId);
+        return attemptNo == null ? 0 : attemptNo;
     }
 
-    @Override public void markSucceeded(long snapshotId, Long episodeId, Long childRunId) {
+    @Override public void markSucceeded(
+        long snapshotId, Long episodeId, int unitAttemptNo, Long childRunId
+    ) {
         jdbc.update("""
             update script_analysis_fanout_unit
                set status = 'SUCCEEDED', child_run_id = ?, error_code = null, error_message = null,
                    finished_at = now(), updated_at = now()
              where snapshot_id = ? and episode_id = ?
-            """, childRunId, snapshotId, episodeId);
+               and status = 'RUNNING' and attempt_no = ?
+            """, childRunId, snapshotId, episodeId, unitAttemptNo);
     }
 
     @Override public void markFailed(
-        long snapshotId, Long episodeId, String errorCode, String errorMessage
+        long snapshotId, Long episodeId, int unitAttemptNo, String errorCode, String errorMessage
     ) {
         jdbc.update("""
             update script_analysis_fanout_unit
                set status = 'FAILED', error_code = ?, error_message = ?, finished_at = now(), updated_at = now()
-             where snapshot_id = ? and episode_id = ?
-            """, errorCode, errorMessage, snapshotId, episodeId);
+             where snapshot_id = ? and episode_id = ? and status = 'RUNNING' and attempt_no = ?
+            """, errorCode, errorMessage, snapshotId, episodeId, unitAttemptNo);
     }
 
     @Override public EpisodeFanoutCoordinator.Progress progress(long snapshotId) {
@@ -195,14 +225,17 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
             """, snapshotId);
     }
 
-    @Override public boolean cancellationRequested(long snapshotId) {
+    @Override public boolean cancellationRequested(long snapshotId, Long executionId) {
         Integer count = jdbc.queryForObject("""
             select count(*) from script_analysis_fanout_snapshot fanout
               join script_analysis_stage stage on stage.id = fanout.stage_id
               join script_analysis_task task on task.id = fanout.task_id
              where fanout.id = ? and (fanout.status = 'CANCELLED'
-               or stage.status = 'CANCELLED' or task.status = 'CANCELLED')
-            """, Integer.class, snapshotId);
+               or stage.status = 'CANCELLED' or task.status = 'CANCELLED'
+               or (? is not null and exists (
+                   select 1 from ai_execution_task execution
+                    where execution.id = ? and execution.status = 'CANCELED')))
+            """, Integer.class, snapshotId, executionId, executionId);
         return count != null && count > 0;
     }
 

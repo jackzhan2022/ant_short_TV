@@ -109,6 +109,23 @@ public class WorkflowAgentScopeGuard {
         }
     }
 
+    public void requireExecutionActive(WorkflowAgentRunInput input) {
+        if (input.executionId() == null) return;
+        Integer count = jdbc.queryForObject("""
+            select count(*)
+              from ai_execution_task execution
+              join ai_execution_attempt attempt
+                on attempt.execution_id = execution.id
+               and attempt.execution_version = execution.execution_version
+             where execution.id = ? and execution.execution_version = ?
+               and execution.status = 'RUNNING'
+               and attempt.id = ? and attempt.status = 'STARTED'
+            """, Integer.class, input.executionId(), input.executionVersion(), input.attemptId());
+        if (count == null || count != 1) {
+            throw invalid("统一执行任务已取消或执行权已失效。");
+        }
+    }
+
     private void requireTrustedReviewScope(WorkflowAgentRunInput input, List<String> toolCodes) {
         if (!"script-review".equals(input.agentCode()) || input.reviewScope() == null
             || input.executionId() == null || input.attemptId() == null

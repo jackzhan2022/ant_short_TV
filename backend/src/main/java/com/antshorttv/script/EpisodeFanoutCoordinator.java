@@ -38,6 +38,7 @@ public class EpisodeFanoutCoordinator {
         ScriptAnalysisTaskEntity task,
         ScriptAnalysisStageEntity stage,
         AiExecutionContext executionContext,
+        Long effectiveModelId,
         String agentCode,
         boolean fullRegeneration,
         ChildExecutor childExecutor,
@@ -51,8 +52,9 @@ public class EpisodeFanoutCoordinator {
         WorkflowAgentExecutionPlan plan = runner.freezeFormal(agentCode);
         String snapshotHash = episodeSetHash(episodes);
         long snapshotId = store.openSnapshot(
-            task, stage, agentCode, plan, episodes, snapshotHash, fullRegeneration);
-        if (store.cancellationRequested(snapshotId)) {
+            task, stage, agentCode, plan, effectiveModelId, episodes, snapshotHash, fullRegeneration);
+        Long executionId = executionContext == null ? null : executionContext.task().id;
+        if (store.cancellationRequested(snapshotId, executionId)) {
             store.cancel(snapshotId);
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "逐集 Agent 阶段已取消。");
         }
@@ -62,11 +64,16 @@ public class EpisodeFanoutCoordinator {
         try {
             List<CompletableFuture<Void>> futures = runnable.stream().map(unit ->
                 CompletableFuture.runAsync(() -> runUnit(
-                    snapshotId, plan, task, stage, executionContext, unit, childExecutor, calls), executor)
+                    snapshotId, plan, task, stage, executionContext, executionId,
+                    unit, childExecutor, calls), executor)
             ).toList();
             futures.forEach(CompletableFuture::join);
         } finally {
             executor.shutdownNow();
+        }
+        if (store.cancellationRequested(snapshotId, executionId)) {
+            store.cancel(snapshotId);
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "逐集 Agent 阶段已取消。");
         }
         Progress progress = store.progress(snapshotId);
         store.updateParentProgress(snapshotId, progress);
@@ -91,23 +98,31 @@ public class EpisodeFanoutCoordinator {
         ScriptAnalysisTaskEntity task,
         ScriptAnalysisStageEntity stage,
         AiExecutionContext executionContext,
+        Long executionId,
         EpisodeUnit unit,
         ChildExecutor childExecutor,
         List<WorkflowAgentModelCall> calls
     ) {
-        if (store.cancellationRequested(snapshotId)) {
+        if (store.cancellationRequested(snapshotId, executionId)) {
             store.cancel(snapshotId);
             return;
         }
-        store.markRunning(snapshotId, unit.episodeId());
+        int unitAttemptNo = store.markRunning(snapshotId, unit.episodeId());
+        if (unitAttemptNo == 0) {
+            return;
+        }
         try {
             ChildResult result = childExecutor.run(plan, task, stage, executionContext, unit);
             calls.addAll(result.modelCalls());
-            store.markSucceeded(snapshotId, unit.episodeId(), result.runId());
+            if (store.cancellationRequested(snapshotId, executionId)) {
+                store.cancel(snapshotId);
+                return;
+            }
+            store.markSucceeded(snapshotId, unit.episodeId(), unitAttemptNo, result.runId());
         } catch (RuntimeException exception) {
             String code = exception instanceof BusinessException business
                 ? business.getErrorCode().name() : "ANALYSIS_CHILD_FAILED";
-            store.markFailed(snapshotId, unit.episodeId(), code, safeMessage(exception));
+            store.markFailed(snapshotId, unit.episodeId(), unitAttemptNo, code, safeMessage(exception));
         } finally {
             store.updateParentProgress(snapshotId, store.progress(snapshotId));
         }

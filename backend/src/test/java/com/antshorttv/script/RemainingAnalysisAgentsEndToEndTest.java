@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -147,11 +148,11 @@ class RemainingAnalysisAgentsEndToEndTest {
         List<EpisodeFanoutCoordinator.EpisodeUnit> units = fanoutStore.currentEpisodes(
             tenantId, projectId, scriptId);
         long snapshotId = fanoutStore.openSnapshot(
-            scope.task(), scope.stage(), "short-drama-episode-summary", plan, units,
+            scope.task(), scope.stage(), "short-drama-episode-summary", plan, plan.agent().modelId(), units,
             EpisodeFanoutCoordinator.episodeSetHash(units), false);
         units.forEach(unit -> {
-            fanoutStore.markRunning(snapshotId, unit.episodeId());
-            fanoutStore.markSucceeded(snapshotId, unit.episodeId(), null);
+            int unitAttemptNo = fanoutStore.markRunning(snapshotId, unit.episodeId());
+            fanoutStore.markSucceeded(snapshotId, unit.episodeId(), unitAttemptNo, null);
         });
         EpisodeFanoutCoordinator.Progress restored = fanoutStore.progress(snapshotId);
         fanoutStore.updateParentProgress(snapshotId, restored);
@@ -231,7 +232,7 @@ class RemainingAnalysisAgentsEndToEndTest {
         AtomicInteger firstPass = new AtomicInteger();
         AtomicInteger finalized = new AtomicInteger();
         assertThatThrownBy(() -> fanoutCoordinator.execute(
-            scope.task(), scope.stage(), null, "short-drama-asset-recognition", false,
+            scope.task(), scope.stage(), null, plan.agent().modelId(), "short-drama-asset-recognition", false,
             (frozen, task, stage, execution, unit) -> {
                 firstPass.incrementAndGet();
                 if (unit.episodeId().equals(stableIds.get(1))) {
@@ -265,7 +266,7 @@ class RemainingAnalysisAgentsEndToEndTest {
             "select deleted_at is null from prop_asset where id = ?", Boolean.class, oldPropId)).isTrue();
 
         AtomicInteger retryRuns = new AtomicInteger();
-        fanoutCoordinator.execute(scope.task(), scope.stage(), null,
+        fanoutCoordinator.execute(scope.task(), scope.stage(), null, plan.agent().modelId(),
             "short-drama-asset-recognition", false,
             (frozen, task, stage, execution, unit) -> {
                 retryRuns.incrementAndGet();
@@ -274,6 +275,109 @@ class RemainingAnalysisAgentsEndToEndTest {
         assertThat(retryRuns.get()).isEqualTo(1);
         assertThat(finalized.get()).isEqualTo(1);
         assertThat(fanoutStore.progress(snapshotId).status()).isEqualTo("SUCCEEDED");
+    }
+
+    @Test
+    void snapshotsIsolateChangedAgentRevisionsAndSerializeConcurrentCreation() throws Exception {
+        ToolExecutionContext split = scriptContext();
+        tools.readCurrentScript(split);
+        tools.saveEpisodeSplitting(split, 1, boundaries());
+        AnalysisScope scope = createAnalysisScope("ASSET_RECOGNITION");
+        List<EpisodeFanoutCoordinator.EpisodeUnit> units = fanoutStore.currentEpisodes(
+            tenantId, projectId, scriptId);
+        String episodeSetHash = EpisodeFanoutCoordinator.episodeSetHash(units);
+
+        long first = fanoutStore.openSnapshot(scope.task(), scope.stage(),
+            "short-drama-asset-recognition", plan("short-drama-asset-recognition", 1L), modelId,
+            units, episodeSetHash, false);
+        long changedRevision = fanoutStore.openSnapshot(scope.task(), scope.stage(),
+            "short-drama-asset-recognition", plan("short-drama-asset-recognition", 2L), modelId,
+            units, episodeSetHash, false);
+
+        assertThat(changedRevision).isNotEqualTo(first);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from script_analysis_fanout_snapshot where stage_id = ?",
+            Integer.class, scope.stage().getId())).isEqualTo(2);
+
+        WorkflowAgentExecutionPlan concurrentPlan = plan("short-drama-asset-recognition", 3L);
+        CompletableFuture<Long> left = CompletableFuture.supplyAsync(() -> fanoutStore.openSnapshot(
+            scope.task(), scope.stage(), "short-drama-asset-recognition", concurrentPlan, modelId,
+            units, episodeSetHash, false));
+        CompletableFuture<Long> right = CompletableFuture.supplyAsync(() -> fanoutStore.openSnapshot(
+            scope.task(), scope.stage(), "short-drama-asset-recognition", concurrentPlan, modelId,
+            units, episodeSetHash, false));
+
+        assertThat(left.join()).isEqualTo(right.join());
+        assertThat(jdbc.queryForObject("""
+            select count(*) from script_analysis_fanout_snapshot
+             where stage_id = ? and attempt_no = 1 and agent_revision = 3 and model_id = ?
+            """, Integer.class, scope.stage().getId(), modelId)).isEqualTo(1);
+    }
+
+    @Test
+    void cancellationCannotBeOverwrittenByLateChildCompletion() throws Exception {
+        ToolExecutionContext split = scriptContext();
+        tools.readCurrentScript(split);
+        tools.saveEpisodeSplitting(split, 1, boundaries());
+        AnalysisScope scope = createAnalysisScope("ASSET_RECOGNITION");
+        List<EpisodeFanoutCoordinator.EpisodeUnit> units = fanoutStore.currentEpisodes(
+            tenantId, projectId, scriptId);
+        long snapshotId = fanoutStore.openSnapshot(scope.task(), scope.stage(),
+            "short-drama-asset-recognition", plan("short-drama-asset-recognition"), modelId,
+            units, EpisodeFanoutCoordinator.episodeSetHash(units), false);
+        Long episodeId = units.get(0).episodeId();
+
+        int canceledAttemptNo = fanoutStore.markRunning(snapshotId, episodeId);
+        assertThat(canceledAttemptNo).isPositive();
+        fanoutStore.cancel(snapshotId);
+        fanoutStore.markSucceeded(snapshotId, episodeId, canceledAttemptNo, null);
+        fanoutStore.markFailed(snapshotId, episodeId, canceledAttemptNo, "LATE_FAILURE", "late");
+
+        assertThat(jdbc.queryForObject("""
+            select status from script_analysis_fanout_unit
+             where snapshot_id = ? and episode_id = ?
+            """, String.class, snapshotId, episodeId)).isEqualTo("CANCELLED");
+    }
+
+    @Test
+    void aNewAttemptReclaimsRunningUnitsLeftByAnInterruptedWorker() throws Exception {
+        ToolExecutionContext split = scriptContext();
+        tools.readCurrentScript(split);
+        tools.saveEpisodeSplitting(split, 1, boundaries());
+        AnalysisScope scope = createAnalysisScope("ASSET_RECOGNITION");
+        List<EpisodeFanoutCoordinator.EpisodeUnit> units = fanoutStore.currentEpisodes(
+            tenantId, projectId, scriptId);
+        WorkflowAgentExecutionPlan plan = plan("short-drama-asset-recognition");
+        String episodeSetHash = EpisodeFanoutCoordinator.episodeSetHash(units);
+        long snapshotId = fanoutStore.openSnapshot(scope.task(), scope.stage(),
+            "short-drama-asset-recognition", plan, modelId, units, episodeSetHash, false);
+        Long interruptedEpisodeId = units.get(0).episodeId();
+        int interruptedAttemptNo = fanoutStore.markRunning(snapshotId, interruptedEpisodeId);
+        assertThat(interruptedAttemptNo).isPositive();
+
+        scope.stage().setAttemptNo(2);
+        long reused = fanoutStore.openSnapshot(scope.task(), scope.stage(),
+            "short-drama-asset-recognition", plan, modelId, units, episodeSetHash, false);
+
+        assertThat(reused).isEqualTo(snapshotId);
+        assertThat(fanoutStore.runnableUnits(snapshotId))
+            .extracting(EpisodeFanoutCoordinator.EpisodeUnit::episodeId)
+            .contains(interruptedEpisodeId);
+        assertThat(jdbc.queryForObject("""
+            select status from script_analysis_fanout_unit
+             where snapshot_id = ? and episode_id = ?
+            """, String.class, snapshotId, interruptedEpisodeId)).isEqualTo("STALE");
+
+        int replacementAttemptNo = fanoutStore.markRunning(snapshotId, interruptedEpisodeId);
+        assertThat(replacementAttemptNo).isGreaterThan(interruptedAttemptNo);
+        fanoutStore.markSucceeded(snapshotId, interruptedEpisodeId, interruptedAttemptNo, null);
+        fanoutStore.markFailed(snapshotId, interruptedEpisodeId, interruptedAttemptNo,
+            "STALE_RESULT", "旧 worker 返回");
+        assertThat(jdbc.queryForObject("""
+            select status from script_analysis_fanout_unit
+             where snapshot_id = ? and episode_id = ? and attempt_no = ?
+            """, String.class, snapshotId, interruptedEpisodeId, replacementAttemptNo))
+            .isEqualTo("RUNNING");
     }
 
     private JsonNode boundaries() throws Exception {
@@ -355,9 +459,13 @@ class RemainingAnalysisAgentsEndToEndTest {
     }
 
     private WorkflowAgentExecutionPlan plan(String agentCode) {
+        return plan(agentCode, 1L);
+    }
+
+    private WorkflowAgentExecutionPlan plan(String agentCode, Long revision) {
         return new WorkflowAgentExecutionPlan(new WorkflowAgentRecord(
             1L, agentCode, agentCode, null, "按当前正式数据执行", modelId,
-            new BigDecimal("0.2"), 4096, 8, "ENABLED", 1L, userId, userId,
+            new BigDecimal("0.2"), 4096, 8, "ENABLED", revision, userId, userId,
             LocalDateTime.now(), LocalDateTime.now(), List.of("foundation", "framework"),
             List.of("read_current_episode", "save")), List.of());
     }

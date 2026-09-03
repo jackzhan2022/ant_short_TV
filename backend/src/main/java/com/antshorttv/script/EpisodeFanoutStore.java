@@ -12,17 +12,19 @@ public interface EpisodeFanoutStore {
         ScriptAnalysisStageEntity stage,
         String agentCode,
         WorkflowAgentExecutionPlan plan,
+        Long effectiveModelId,
         List<EpisodeFanoutCoordinator.EpisodeUnit> episodes,
         String episodeSetHash,
         boolean fullRegeneration);
 
     List<EpisodeFanoutCoordinator.EpisodeUnit> runnableUnits(long snapshotId);
 
-    void markRunning(long snapshotId, Long episodeId);
+    int markRunning(long snapshotId, Long episodeId);
 
-    void markSucceeded(long snapshotId, Long episodeId, Long childRunId);
+    void markSucceeded(long snapshotId, Long episodeId, int unitAttemptNo, Long childRunId);
 
-    void markFailed(long snapshotId, Long episodeId, String errorCode, String errorMessage);
+    void markFailed(
+        long snapshotId, Long episodeId, int unitAttemptNo, String errorCode, String errorMessage);
 
     EpisodeFanoutCoordinator.Progress progress(long snapshotId);
 
@@ -32,7 +34,7 @@ public interface EpisodeFanoutStore {
 
     void complete(long snapshotId);
 
-    boolean cancellationRequested(long snapshotId);
+    boolean cancellationRequested(long snapshotId, Long executionId);
 
     void cancel(long snapshotId);
 }

@@ -245,7 +245,7 @@ public class ScreenplayToolConfiguration {
         outputFields.putObject("counts").put("type", "object");
         return definition("save_episode_assets", "保存本集角色场景道具",
             "原子匹配或创建正式资产、视觉形态及当前剧集绑定。",
-            episodeAssetsInput(json), output, ToolRiskLevel.WRITE,
+            episodeAssetsInput(json), output, ToolRiskLevel.WRITE, ToolFailurePolicy.RETURN_TO_MODEL,
             executor((context, arguments) -> data.saveEpisodeAssets(context, arguments)));
     }
 
@@ -398,6 +398,20 @@ public class ScreenplayToolConfiguration {
     ) {
         return new WorkflowToolDefinition(code, name, description, input, output, risk,
             ToolFailurePolicy.TERMINAL, executor);
+    }
+
+    private WorkflowToolDefinition definition(
+        String code,
+        String name,
+        String description,
+        JsonNode input,
+        JsonNode output,
+        ToolRiskLevel risk,
+        ToolFailurePolicy failurePolicy,
+        WorkflowToolExecutor executor
+    ) {
+        return new WorkflowToolDefinition(code, name, description, input, output, risk,
+            failurePolicy, executor);
     }
 
     private ObjectNode emptyInput(ObjectMapper json) {

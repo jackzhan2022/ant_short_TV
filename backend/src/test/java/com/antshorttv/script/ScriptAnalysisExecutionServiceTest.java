@@ -264,27 +264,23 @@ class ScriptAnalysisExecutionServiceTest {
             .thenReturn(new EpisodeSplittingAgentAdapter.Execution(List.of(), 12L, List.of()));
         when(summary.executeChild(any(), any(), any(), any(), any(), any()))
             .thenReturn(new EpisodeSummaryAgentAdapter.Execution(null, 13L, List.of()));
-        when(recognition.executeChild(any(), any(), any(), any(), any()))
+        when(recognition.executeChild(any(), any(), any(), any(), any(), any()))
             .thenReturn(new AssetRecognitionAgentAdapter.Execution(14L, List.of()));
         doAnswer(invocation -> {
             ScriptAnalysisTaskEntity currentTask = invocation.getArgument(0);
             ScriptAnalysisStageEntity currentStage = invocation.getArgument(1);
-            EpisodeFanoutCoordinator.ChildExecutor child = invocation.getArgument(5);
-            EpisodeFanoutCoordinator.Finalizer finish = invocation.getArgument(6);
+            EpisodeFanoutCoordinator.ChildExecutor child = invocation.getArgument(6);
+            EpisodeFanoutCoordinator.Finalizer finish = invocation.getArgument(7);
             com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan frozenPlan = null;
             if ("EPISODE_SUMMARY".equals(currentStage.getStageCode())) {
                 frozenPlan = mock(com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan.class);
-                com.antshorttv.workflowagent.agent.WorkflowAgentRecord frozenAgent =
-                    mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);
-                when(frozenPlan.agent()).thenReturn(frozenAgent);
-                when(frozenAgent.modelId()).thenReturn(99L);
             }
             child.run(frozenPlan, currentTask, currentStage, null,
                 new EpisodeFanoutCoordinator.EpisodeUnit(100L, "episode-1", "fp", "ACTIVE"));
             finish.finish(currentStage.getId());
             return new EpisodeFanoutCoordinator.Result(currentStage.getId(),
                 new EpisodeFanoutCoordinator.Progress(1, 1, 0, 0, 0, "SUCCEEDED"), List.of());
-        }).when(fanout).execute(any(), any(), any(), anyString(), anyBoolean(), any(), any());
+        }).when(fanout).execute(any(), any(), any(), any(), anyString(), anyBoolean(), any(), any());
         ReflectionTestUtils.setField(service, "globalUnderstandingAgentAdapter", global);
         ReflectionTestUtils.setField(service, "episodeSplittingAgentAdapter", splitting);
         ReflectionTestUtils.setField(service, "episodeSummaryAgentAdapter", summary);
@@ -298,7 +294,7 @@ class ScriptAnalysisExecutionServiceTest {
         order.verify(global).execute(any(), any(), any(), any());
         order.verify(splitting).execute(any(), any(), any(), any());
         order.verify(summary).executeChild(any(), any(), any(), any(), any(), any());
-        order.verify(recognition).executeChild(any(), any(), any(), any(), any());
+        order.verify(recognition).executeChild(any(), any(), any(), any(), any(), any());
 
         ScriptAnalysisExecutionService failingService = new ScriptAnalysisExecutionService(
             taskMapper, stageMapper, resultMapper, scriptMapper, versionMapper, scriptElementDraftService,
@@ -318,7 +314,7 @@ class ScriptAnalysisExecutionServiceTest {
             .isInstanceOf(IllegalStateException.class);
         verify(splitting, times(1)).execute(any(), any(), any(), any());
         verify(summary, times(1)).executeChild(any(), any(), any(), any(), any(), any());
-        verify(recognition, times(1)).executeChild(any(), any(), any(), any(), any());
+        verify(recognition, times(1)).executeChild(any(), any(), any(), any(), any(), any());
         assertThat(stages.get(1).getStatus()).isEqualTo("PENDING");
     }
 

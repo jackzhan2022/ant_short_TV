@@ -1107,6 +1107,13 @@ class SchemaMigrationTest {
                                                'content_fingerprint', 'status', 'child_run_id',
                                                'error_code', 'error_message'))
             """, Integer.class)).isEqualTo(17);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.key_column_usage
+             where lower(table_name) = 'script_analysis_fanout_snapshot'
+               and lower(constraint_name) = 'uk_script_analysis_fanout_attempt'
+               and lower(column_name) in
+                   ('stage_id', 'attempt_no', 'agent_code', 'agent_revision', 'model_id')
+            """, Integer.class)).isEqualTo(5);
     }
 
     @Test

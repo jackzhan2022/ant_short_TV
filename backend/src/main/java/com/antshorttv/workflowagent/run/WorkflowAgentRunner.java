@@ -18,6 +18,7 @@ import com.antshorttv.workflowagent.agent.WorkflowAgentService;
 import com.antshorttv.workflowagent.skill.WorkflowSkillService;
 import com.antshorttv.workflowagent.skill.WorkflowSkillView;
 import com.antshorttv.workflowagent.tool.ToolExecutionContext;
+import com.antshorttv.workflowagent.tool.EpisodeAssetsPayloadNormalizer;
 import com.antshorttv.workflowagent.tool.ToolFailurePolicy;
 import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
 import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
@@ -135,6 +136,7 @@ public class WorkflowAgentRunner {
     ) {
         requireInput(input);
         scopeGuard.requireAuthorized(input, agent.toolCodes());
+        scopeGuard.requireExecutionActive(input);
         List<WorkflowAgentSkillSnapshot> skillSnapshots = frozenSkills == null
             ? loadSkills(agent.skillCodes()) : List.copyOf(frozenSkills);
         List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
@@ -197,9 +199,11 @@ public class WorkflowAgentRunner {
         boolean reviewTruncationRecovery = false;
         boolean reviewEvidenceRefreshPending = false;
         boolean reviewEvidenceRefreshUsed = false;
+        boolean assetSaveCorrectionUsed = false;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
             requireBeforeDeadline(deadline);
+            scopeGuard.requireExecutionActive(input);
             AiInvocationResult<AiTextResponse> result;
             int modelStep = ++stepNo;
             try {
@@ -222,7 +226,8 @@ public class WorkflowAgentRunner {
                     .requestSummary("Agent " + agent.code() + " round " + modelRound)
                     .textRequest(new AiTextRequest(
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
-                        null, remainingSeconds(deadline), 0,
+                        null, remainingSeconds(deadline),
+                        "short-drama-asset-recognition".equals(agent.code()) ? 1 : 0,
                         messages, activeProviderTools(allowedTools, splitting, runState,
                             agent.code(), contract, reviewTruncationRecovery, reviewEvidenceRefreshPending),
                         disableThinking(agent.code(), splitting) ? "disabled" : null
@@ -289,6 +294,7 @@ public class WorkflowAgentRunner {
                         "Agent 已达到最大执行步数 " + agent.maxSteps() + "，停止执行后续工具。");
                 }
                 requireBeforeDeadline(deadline);
+                scopeGuard.requireExecutionActive(input);
                 int toolStep = ++stepNo;
                 if (!allowlist.contains(call.code())) {
                     BusinessException error = new BusinessException(
@@ -315,10 +321,14 @@ public class WorkflowAgentRunner {
                 try {
                     requireBoundedSavePayload(call.code(), call.argumentsJson());
                     JsonNode arguments = parseArguments(call.argumentsJson());
+                    if ("save_episode_assets".equals(call.code())) {
+                        arguments = EpisodeAssetsPayloadNormalizer.normalize(arguments);
+                    }
                     rejectTrustedScope(arguments);
                     schemaValidator.validate(definition.inputSchema(), arguments);
                     JsonNode output = definition.executor().execute(context, arguments);
                     requireBeforeDeadline(deadline);
+                    scopeGuard.requireExecutionActive(input);
                     schemaValidator.validate(definition.outputSchema(), output);
                     String serialized = json.writeValueAsString(output);
                     runs.recordToolStep(runId, toolStep, call.code(), call.argumentsJson(), serialized);
@@ -338,6 +348,15 @@ public class WorkflowAgentRunner {
                     BusinessException normalized = normalizeToolFailure(exception);
                     runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
                         normalized.getErrorCode().name(), normalized.getMessage());
+                    if ("save_episode_assets".equals(call.code())) {
+                        if (assetSaveCorrectionUsed) throw normalized;
+                        assetSaveCorrectionUsed = true;
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
+                        messages.add(AiChatMessage.user(
+                            "保存失败。仅修正错误中指出的字段并再次调用 save_episode_assets；"
+                                + "五个数组必须始终存在，证据必须逐字来自当前剧集，不得编造。"));
+                        break;
+                    }
                     if (reviewTruncationRecovery && isReviewEvidenceValidationFailure(call.code(), normalized)) {
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
                         if (!reviewEvidenceRefreshUsed) {
@@ -431,6 +450,15 @@ public class WorkflowAgentRunner {
             Set<String> activeCodes = new HashSet<>(remainingContractTools(contract, state));
             return allowedTools.stream()
                 .filter(tool -> activeCodes.contains(tool.code()))
+                .map(this::providerTool)
+                .toList();
+        }
+        if ("short-drama-asset-recognition".equals(agentCode)) {
+            List<String> remaining = remainingContractTools(contract, state);
+            if (remaining.isEmpty()) return List.of();
+            String next = remaining.get(0);
+            return allowedTools.stream()
+                .filter(tool -> next.equals(tool.code()))
                 .map(this::providerTool)
                 .toList();
         }

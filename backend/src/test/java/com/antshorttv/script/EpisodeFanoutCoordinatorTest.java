@@ -13,6 +13,9 @@ import static org.mockito.Mockito.when;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.execution.AiExecutionClaim;
+import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.workflowagent.agent.WorkflowAgentRecord;
 import com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
@@ -33,8 +36,9 @@ class EpisodeFanoutCoordinatorTest {
         List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
         when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
-        when(store.openSnapshot(any(), any(), any(), eq(plan), eq(units), any(), eq(false))).thenReturn(50L);
+        when(store.openSnapshot(any(), any(), any(), eq(plan), eq(99L), eq(units), any(), eq(false))).thenReturn(50L);
         when(store.runnableUnits(50L)).thenReturn(units);
+        when(store.markRunning(eq(50L), anyLong())).thenReturn(1);
         when(store.snapshotMatches(eq(50L), any())).thenReturn(true);
         AtomicInteger completed = new AtomicInteger();
         when(store.progress(50L)).thenAnswer(ignored -> new EpisodeFanoutCoordinator.Progress(
@@ -43,7 +47,7 @@ class EpisodeFanoutCoordinatorTest {
         AtomicInteger active = new AtomicInteger();
         AtomicInteger maximum = new AtomicInteger();
 
-        EpisodeFanoutCoordinator.Result result = coordinator.execute(task(), stage(), null,
+        EpisodeFanoutCoordinator.Result result = coordinator.execute(task(), stage(), null, 99L,
             "short-drama-episode-summary", false, (frozen, task, stage, execution, unit) -> {
                 assertThat(frozen).isSameAs(plan);
                 int current = active.incrementAndGet();
@@ -61,8 +65,9 @@ class EpisodeFanoutCoordinatorTest {
         assertThat(result.progress().completed()).isEqualTo(3);
         assertThat(maximum.get()).isLessThanOrEqualTo(2);
         verify(runner).freezeFormal("short-drama-episode-summary");
+        verify(store).openSnapshot(any(), any(), any(), eq(plan), eq(99L), eq(units), any(), eq(false));
         verify(store, times(3)).markRunning(eq(50L), anyLong());
-        verify(store, times(3)).markSucceeded(eq(50L), anyLong(), anyLong());
+        verify(store, times(3)).markSucceeded(eq(50L), anyLong(), eq(1), anyLong());
         verify(store).complete(50L);
     }
 
@@ -74,14 +79,15 @@ class EpisodeFanoutCoordinatorTest {
         EpisodeFanoutCoordinator.EpisodeUnit failed = units.get(1);
         when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
-        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(51L);
+        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(51L);
         when(store.runnableUnits(51L)).thenReturn(List.of(failed));
+        when(store.markRunning(51L, failed.episodeId())).thenReturn(1);
         when(store.progress(51L)).thenReturn(new EpisodeFanoutCoordinator.Progress(
             3, 3, 0, 0, 0, "SUCCEEDED"));
         when(store.snapshotMatches(eq(51L), any())).thenReturn(false);
         AtomicInteger runs = new AtomicInteger();
 
-        assertThatThrownBy(() -> coordinator.execute(task(), stage(), null,
+        assertThatThrownBy(() -> coordinator.execute(task(), stage(), null, 99L,
             "short-drama-episode-summary", false, (frozen, task, stage, execution, unit) -> {
                 runs.incrementAndGet();
                 return new EpisodeFanoutCoordinator.ChildResult(202L, List.of());
@@ -99,14 +105,15 @@ class EpisodeFanoutCoordinatorTest {
         List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
         when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
-        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(52L);
+        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(52L);
         when(store.runnableUnits(52L)).thenReturn(List.of(units.get(0)));
+        when(store.markRunning(52L, units.get(0).episodeId())).thenReturn(1);
         when(store.progress(52L)).thenReturn(new EpisodeFanoutCoordinator.Progress(
             3, 2, 1, 0, 0, "PARTIAL_FAILED"));
         when(store.snapshotMatches(eq(52L), any())).thenReturn(true);
         AtomicInteger finalized = new AtomicInteger();
 
-        assertThatThrownBy(() -> coordinator.execute(task(), stage(), null,
+        assertThatThrownBy(() -> coordinator.execute(task(), stage(), null, 99L,
             "short-drama-episode-summary", false,
             (frozen, task, stage, execution, unit) -> {
                 throw new IllegalStateException("provider failed");
@@ -116,9 +123,9 @@ class EpisodeFanoutCoordinatorTest {
             .isEqualTo(ErrorCode.ANALYSIS_AGENT_INCOMPLETE);
         assertThat(finalized.get()).isZero();
 
-        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), eq(true))).thenReturn(53L);
-        when(store.cancellationRequested(53L)).thenReturn(true);
-        assertThatThrownBy(() -> coordinator.execute(task(), stage(), null,
+        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(true))).thenReturn(53L);
+        when(store.cancellationRequested(53L, 700L)).thenReturn(true);
+        assertThatThrownBy(() -> coordinator.execute(task(), stage(), executionContext(), 99L,
             "short-drama-episode-summary", true,
             (frozen, task, stage, execution, unit) ->
                 new EpisodeFanoutCoordinator.ChildResult(1L, List.of()),
@@ -126,7 +133,34 @@ class EpisodeFanoutCoordinatorTest {
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("取消");
         verify(store).cancel(53L);
+        verify(store).cancellationRequested(53L, 700L);
         verify(store, never()).runnableUnits(53L);
+    }
+
+    @Test
+    void executesAUnitOnlyWhenItsAtomicClaimSucceeds() {
+        EpisodeFanoutCoordinator coordinator = new EpisodeFanoutCoordinator(store, runner, 1);
+        WorkflowAgentExecutionPlan plan = plan();
+        List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
+        EpisodeFanoutCoordinator.EpisodeUnit contested = units.get(0);
+        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
+        when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
+        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(54L);
+        when(store.runnableUnits(54L)).thenReturn(List.of(contested));
+        when(store.markRunning(54L, contested.episodeId())).thenReturn(0);
+        when(store.progress(54L)).thenReturn(new EpisodeFanoutCoordinator.Progress(
+            3, 3, 0, 0, 0, "SUCCEEDED"));
+        when(store.snapshotMatches(eq(54L), any())).thenReturn(true);
+        AtomicInteger runs = new AtomicInteger();
+
+        coordinator.execute(task(), stage(), null, 99L, "short-drama-episode-summary", false,
+            (frozen, task, stage, execution, unit) -> {
+                runs.incrementAndGet();
+                return new EpisodeFanoutCoordinator.ChildResult(1L, List.of());
+            }, snapshotId -> { });
+
+        assertThat(runs.get()).isZero();
+        verify(store, never()).markSucceeded(eq(54L), anyLong(), any(Integer.class), anyLong());
     }
 
     private WorkflowAgentExecutionPlan plan() {
@@ -154,5 +188,14 @@ class EpisodeFanoutCoordinatorTest {
         ScriptAnalysisStageEntity stage = new ScriptAnalysisStageEntity();
         stage.setId(5L); stage.setStageCode("EPISODE_SUMMARY"); stage.setAttemptNo(1);
         return stage;
+    }
+
+    private AiExecutionContext executionContext() {
+        AiExecutionTaskEntity execution = new AiExecutionTaskEntity();
+        execution.id = 700L;
+        execution.status = "RUNNING";
+        execution.executionVersion = 1;
+        return new AiExecutionContext(execution,
+            new AiExecutionClaim(700L, 701L, "claim", 1, "ANALYSIS"));
     }
 }
