@@ -2,6 +2,7 @@ package com.antshorttv.project;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import java.util.Collection;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -28,6 +29,16 @@ public interface ProjectMemberMapper extends BaseMapper<ProjectMemberEntity> {
             .eq("project_id", projectId)
             .eq("status", ProjectMemberStatus.ACTIVE.name())
             .orderByAsc("id"));
+    }
+
+    default List<ProjectMemberEntity> selectActiveByProjectIds(Long tenantId, Collection<Long> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) {
+            return List.of();
+        }
+        return selectList(new QueryWrapper<ProjectMemberEntity>()
+            .eq("tenant_id", tenantId)
+            .in("project_id", projectIds)
+            .eq("status", ProjectMemberStatus.ACTIVE.name()));
     }
 
     default long countActiveByProjectId(Long tenantId, Long projectId) {

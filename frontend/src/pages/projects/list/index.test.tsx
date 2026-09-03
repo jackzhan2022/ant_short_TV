@@ -30,10 +30,9 @@ vi.mock('./service', () => ({
 
 vi.mock('@ant-design/icons', () => ({
   EditOutlined: () => <span data-testid="edit-icon" />,
-  FolderOpenOutlined: () => <span data-testid="folder-icon" />,
   MoreOutlined: () => <span data-testid="more-icon" />,
   PlusOutlined: () => <span data-testid="plus-icon" />,
-  ProfileOutlined: () => <span data-testid="progress-icon" />,
+  TeamOutlined: () => <span data-testid="team-icon" />,
 }));
 
 vi.mock('antd', () => ({
@@ -116,15 +115,26 @@ describe('ProjectList', () => {
     });
   });
 
-  it('opens the production workbench script page from project entry', async () => {
+  it('opens the production workbench script page by clicking the project card', async () => {
     render(<ProjectList />);
 
     await screen.findByText('测试短剧');
-    fireEvent.click(screen.getByRole('button', { name: /进入/ }));
+    fireEvent.click(screen.getByRole('button', { name: '进入测试短剧' }));
 
     expect(mocks.historyPush).toHaveBeenCalledWith(
       '/projects/1/production-workbench/script',
     );
+  });
+
+  it('loads tenant members only when opening the project editor', async () => {
+    render(<ProjectList />);
+
+    await screen.findByText('测试短剧');
+    expect(mocks.queryTenantMembers).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    await waitFor(() => {
+      expect(mocks.queryTenantMembers).toHaveBeenCalledWith(9);
+    });
   });
 
   it('renders project cards with cover, status, owner and creation metadata', async () => {
@@ -159,22 +169,16 @@ describe('ProjectList', () => {
       'https://example.com/card.jpg',
     );
     expect(screen.getByText('已完成')).toBeInTheDocument();
-    expect(screen.getByText('负责人：张编剧')).toBeInTheDocument();
+    expect(screen.getByText('张编剧')).toBeInTheDocument();
     expect(screen.getByText(/2026-08-25/)).toBeInTheDocument();
-    expect(screen.getByText('4 位成员')).toBeInTheDocument();
-  });
-
-  it('opens the independent production workbench from project progress', async () => {
-    render(<ProjectList />);
-
-    await screen.findByText('测试短剧');
-    fireEvent.click(screen.getByRole('button', { name: /进度/ }));
-
-    await waitFor(() => {
-      expect(mocks.historyPush).toHaveBeenCalledWith(
-        '/projects/1/production-workbench',
-      );
-    });
+    expect(screen.getByLabelText('4 位成员')).toBeInTheDocument();
+    expect(screen.queryByText('短剧项目')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '进入' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '进度' }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens the independent short drama creation page from toolbar', async () => {
@@ -189,33 +193,41 @@ describe('ProjectList', () => {
   it('hides edit controls when the project capability denies editing', async () => {
     mocks.queryProjects.mockResolvedValue({
       success: true,
-      data: [{
-        id: 2,
-        name: '只读项目',
-        code: 'READ_ONLY',
-        status: 'IN_PROGRESS',
-        memberCount: 1,
-        capabilities: {
-          canView: true,
-          canEdit: false,
-          canDelete: false,
-          canManageMembers: false,
-          canManageRoles: false,
+      data: [
+        {
+          id: 2,
+          name: '只读项目',
+          code: 'READ_ONLY',
+          status: 'IN_PROGRESS',
+          memberCount: 1,
+          capabilities: {
+            canView: true,
+            canEdit: false,
+            canDelete: false,
+            canManageMembers: false,
+            canManageRoles: false,
+          },
         },
-      }],
+      ],
     });
 
     render(<ProjectList />);
 
     await screen.findByText('只读项目');
-    expect(screen.queryByRole('button', { name: /编辑/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /归档/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /编辑/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /归档/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('hides project creation without tenant PROJECT:CREATE permission', async () => {
     mocks.canCreateProject = false;
     render(<ProjectList />);
     await screen.findByText('测试短剧');
-    expect(screen.queryByRole('button', { name: /创建项目/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /创建项目/ }),
+    ).not.toBeInTheDocument();
   });
 });

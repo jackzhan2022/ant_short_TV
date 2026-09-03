@@ -184,9 +184,25 @@ public class ProjectService {
     }
 
     public List<ProjectResponse> list(Long tenantId) {
-        return projectAccessResolver.accessibleProjects(tenantId)
+        List<ProjectEntity> projects = projectAccessResolver.accessibleProjects(tenantId);
+        if (projects.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, UserEntity> owners = userMapper.selectBatchIds(
+            projects.stream().map(project -> project.ownerId).filter(java.util.Objects::nonNull).distinct().toList()
+        ).stream().collect(Collectors.toMap(UserEntity::getId, Function.identity()));
+        Map<Long, Long> memberCounts = projectMemberMapper.selectActiveByProjectIds(
+            tenantId,
+            projects.stream().map(project -> project.id).toList()
+        ).stream().collect(Collectors.groupingBy(member -> member.projectId, Collectors.counting()));
+        return projects
             .stream()
-            .map(project -> toProjectResponse(project, tenantId))
+            .map(project -> toProjectResponse(
+                project,
+                tenantId,
+                owners.get(project.ownerId),
+                memberCounts.getOrDefault(project.id, 0L)
+            ))
             .toList();
     }
 
@@ -702,6 +718,25 @@ public class ProjectService {
     private ProjectResponse toProjectResponse(ProjectEntity project, Long tenantId) {
         ProjectAccessContext access = projectAccessResolver.requireView(tenantId, project.id);
         UserEntity owner = userMapper.selectById(project.ownerId);
+        return toProjectResponse(project, access, owner, projectMemberMapper.countActiveByProjectId(tenantId, project.id));
+    }
+
+    private ProjectResponse toProjectResponse(
+        ProjectEntity project,
+        Long tenantId,
+        UserEntity owner,
+        long memberCount
+    ) {
+        ProjectAccessContext access = projectAccessResolver.requireView(tenantId, project.id);
+        return toProjectResponse(project, access, owner, memberCount);
+    }
+
+    private ProjectResponse toProjectResponse(
+        ProjectEntity project,
+        ProjectAccessContext access,
+        UserEntity owner,
+        long memberCount
+    ) {
         return new ProjectResponse(
             project.id,
             project.tenantId,
@@ -721,7 +756,7 @@ public class ProjectService {
             project.breakdownStrength,
             project.visualStyle,
             project.initialScriptContent,
-            projectMemberMapper.countActiveByProjectId(tenantId, project.id),
+            memberCount,
             access.source(),
             access.projectRole() == null ? null : access.projectRole().code,
             access.projectRole() == null ? null : access.projectRole().name,

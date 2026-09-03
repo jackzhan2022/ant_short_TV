@@ -1,9 +1,8 @@
 import {
   EditOutlined,
-  FolderOpenOutlined,
   MoreOutlined,
   PlusOutlined,
-  ProfileOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import {
   ModalForm,
@@ -16,14 +15,14 @@ import {
 import { history, useAccess } from '@umijs/max';
 import { App, Button, Empty, Tag } from 'antd';
 import { useEffect, useState } from 'react';
-import styles from './index.module.css';
 import { getCurrentTenantId } from '@/services/account-team/auth';
+import type { ProjectFormValues } from '@/services/account-team/project';
 import type {
   Project,
   ProjectStatus,
   TenantMember,
 } from '@/services/account-team/types';
-import type { ProjectFormValues } from '@/services/account-team/project';
+import styles from './index.module.css';
 import {
   queryProjects,
   queryTenantMembers,
@@ -51,10 +50,12 @@ const ProjectEditor = ({
   project,
   members,
   onDone,
+  onOpen,
 }: {
   project: Project;
   members: TenantMember[];
   onDone: () => void;
+  onOpen: () => void;
 }) => {
   const { message } = App.useApp();
   const memberOptions = members.map((member) => ({
@@ -66,7 +67,7 @@ const ProjectEditor = ({
     <ModalForm<ProjectFormValues>
       title="编辑项目"
       trigger={
-        <Button type="link" icon={<EditOutlined />}>
+        <Button type="link" icon={<EditOutlined />} onClick={onOpen}>
           编辑
         </Button>
       }
@@ -119,10 +120,12 @@ const ProjectCard = ({
   project,
   members,
   onDone,
+  onEditOpen,
 }: {
   project: Project;
   members: TenantMember[];
   onDone: () => void;
+  onEditOpen: () => void;
 }) => {
   const { message } = App.useApp();
   const openProject = () =>
@@ -130,85 +133,85 @@ const ProjectCard = ({
 
   return (
     <article className={styles.card}>
-      <button className={styles.coverButton} type="button" onClick={openProject}>
-        {project.coverUrl ? (
-          <img
-            className={styles.cover}
-            src={project.coverUrl}
-            alt={`${project.name}封面`}
-          />
-        ) : (
-          <div
-            className={styles.coverPlaceholder}
-            role="img"
-            aria-label={`${project.name}封面`}
-          >
-            <span>{project.name.slice(0, 1)}</span>
-          </div>
-        )}
-      </button>
-      <div className={styles.cardBody}>
-        <div className={styles.cardHeading}>
-          <button className={styles.titleButton} type="button" onClick={openProject}>
-            {project.name}
-          </button>
-          <details className={styles.moreMenu}>
-            <summary aria-label={`${project.name}更多操作`}>
-              <MoreOutlined />
-            </summary>
-            <div className={styles.menuPanel}>
-              {project.capabilities.canEdit && (
-                <>
-                  <ProjectEditor project={project} members={members} onDone={onDone} />
-                  <Button
-                    type="text"
-                    disabled={project.status === 'ARCHIVED'}
-                    onClick={async () => {
-                      const nextStatus =
-                        project.status === 'NOT_STARTED' ? 'IN_PROGRESS' : 'ARCHIVED';
-                      await updateProjectStatus(project.id, nextStatus);
-                      message.success('项目状态已更新');
-                      onDone();
-                    }}
-                  >
-                    {project.status === 'NOT_STARTED' ? '启动' : '归档'}
-                  </Button>
-                </>
-              )}
-              <span className={styles.projectCode}>{project.code}</span>
+      <button
+        className={styles.cardEntry}
+        type="button"
+        aria-label={`进入${project.name}`}
+        onClick={openProject}
+      >
+        <div className={styles.coverFrame}>
+          {project.coverUrl ? (
+            <img
+              className={styles.cover}
+              src={project.coverUrl}
+              alt={`${project.name}封面`}
+            />
+          ) : (
+            <div
+              className={styles.coverPlaceholder}
+              role="img"
+              aria-label={`${project.name}封面`}
+            >
+              <span>{project.name.slice(0, 1)}</span>
             </div>
-          </details>
+          )}
+          <Tag className={styles.statusTag} color={statusColor[project.status]}>
+            {statusText[project.status]}
+          </Tag>
         </div>
-        <div className={styles.cardTags}>
-          <Tag color={statusColor[project.status]}>{statusText[project.status]}</Tag>
-          <span className={styles.projectType}>短剧项目</span>
+        <div className={styles.cardBody}>
+          <div className={styles.cardHeading}>
+            <div className={styles.titleGroup}>
+              <span className={styles.projectTitle}>{project.name}</span>
+              <span
+                className={styles.memberCount}
+                role="status"
+                aria-label={`${project.memberCount} 位成员`}
+              >
+                <TeamOutlined />
+                {project.memberCount}
+              </span>
+            </div>
+          </div>
+          <div className={styles.metadata}>
+            <span>{project.ownerName || '未设置负责人'}</span>
+            <span>{formatCreatedAt(project.createdAt)}</span>
+          </div>
         </div>
-        <div className={styles.metadata}>
-          <span>{formatCreatedAt(project.createdAt)}</span>
-          <span>{project.memberCount} 位成员</span>
+      </button>
+      <details className={styles.moreMenu}>
+        <summary aria-label={`${project.name}更多操作`}>
+          <MoreOutlined />
+        </summary>
+        <div className={styles.menuPanel}>
+          {project.capabilities.canEdit && (
+            <>
+              <ProjectEditor
+                project={project}
+                members={members}
+                onDone={onDone}
+                onOpen={onEditOpen}
+              />
+              <Button
+                type="text"
+                disabled={project.status === 'ARCHIVED'}
+                onClick={async () => {
+                  const nextStatus =
+                    project.status === 'NOT_STARTED'
+                      ? 'IN_PROGRESS'
+                      : 'ARCHIVED';
+                  await updateProjectStatus(project.id, nextStatus);
+                  message.success('项目状态已更新');
+                  onDone();
+                }}
+              >
+                {project.status === 'NOT_STARTED' ? '启动' : '归档'}
+              </Button>
+            </>
+          )}
+          <span className={styles.projectCode}>{project.code}</span>
         </div>
-        {project.ownerName && (
-          <div className={styles.owner}>负责人：{project.ownerName}</div>
-        )}
-        <div className={styles.actions}>
-          <Button
-            type="link"
-            icon={<FolderOpenOutlined />}
-            onClick={openProject}
-          >
-            进入
-          </Button>
-          <Button
-            type="link"
-            icon={<ProfileOutlined />}
-            onClick={() =>
-              history.push(`/projects/${project.id}/production-workbench`)
-            }
-          >
-            进度
-          </Button>
-        </div>
-      </div>
+      </details>
     </article>
   );
 };
@@ -226,12 +229,6 @@ const ProjectList = () => {
       : { data: [] };
     setMembers(memberResponse.data as TenantMember[]);
   };
-
-  useEffect(() => {
-    if (tenantId) {
-      loadOptions();
-    }
-  }, [tenantId]);
 
   const loadProjects = async () => {
     setLoading(true);
@@ -282,6 +279,9 @@ const ProjectList = () => {
               project={project}
               members={members}
               onDone={loadProjects}
+              onEditOpen={() => {
+                void loadOptions();
+              }}
             />
           ))}
         </div>
