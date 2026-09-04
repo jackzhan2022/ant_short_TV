@@ -55,5 +55,6 @@ export default {
   'menu.style-library': 'کتابخانه سبک',
   'menu.commercial-management': 'تجاری',
   'menu.commercial-management.packages': 'بسته‌ها',
+  'menu.commercial-management.orders': 'سفارش‌ها',
   'menu.commercial-management.tenants': 'مستأجران',
 };

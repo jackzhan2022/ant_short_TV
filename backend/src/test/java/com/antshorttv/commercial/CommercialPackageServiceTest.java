@@ -118,6 +118,26 @@ class CommercialPackageServiceTest {
     }
 
     @Test
+    void listsPlatformOrdersWithTenantPackageAndPaymentDetails() {
+        CommercialPackageVersionResponse version = publishedPointPackage("PLATFORM_ORDER_PACK", "88.00", "880");
+        CommercialOrderResponse order = orderService.create(new CommercialOrderCommand(91L, 92L, version.versionId()));
+
+        PlatformCommercialOrderPageResponse page = orderService.listPlatform(
+            PlatformCommercialOrderQuery.of("PLATFORM_ORDER_PACK", "PENDING_PAYMENT", "POINT_PACKAGE", 1, 20));
+
+        assertThat(page.total()).isEqualTo(1);
+        PlatformCommercialOrderSummaryResponse item = page.records().get(0);
+        assertThat(item.id()).isEqualTo(order.id());
+        assertThat(item.packageName()).isEqualTo("PLATFORM_ORDER_PACK");
+        assertThat(item.payment().provider()).isEqualTo("WECHAT_NATIVE");
+
+        jdbc.update("update commercial_package_version set name=? where id=?", "后续改名", version.versionId());
+        assertThat(orderService.listPlatform(
+            PlatformCommercialOrderQuery.of("COM", "PENDING_PAYMENT", "POINT_PACKAGE", 1, 20))
+            .records().get(0).packageName()).isEqualTo("PLATFORM_ORDER_PACK");
+    }
+
+    @Test
     void confirmsPointPackageExactlyOnceAndRejectsAmountMismatch() {
         CommercialPackageVersionResponse draft = service.createDraft(new CommercialPackageDraftCommand(
             "GRANT_PACK", "POINT_PACKAGE", "发放积分包", null, null, null,

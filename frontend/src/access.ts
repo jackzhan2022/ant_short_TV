@@ -49,6 +49,9 @@ export default function access(
     canViewCommercialPackages:
       currentUser &&
       platformPermissions.includes('PLATFORM_COMMERCIAL_ORDER_VIEW'),
+    canViewCommercialOrders:
+      currentUser &&
+      platformPermissions.includes('PLATFORM_COMMERCIAL_ORDER_VIEW'),
     canEditCommercialPackages:
       currentUser &&
       platformPermissions.includes('PLATFORM_COMMERCIAL_PACKAGE_EDIT'),

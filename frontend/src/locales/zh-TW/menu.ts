@@ -58,5 +58,6 @@ export default {
   'menu.short-drama-creation': '短劇創作',
   'menu.commercial-management': '商業化管理',
   'menu.commercial-management.packages': '套餐管理',
+  'menu.commercial-management.orders': '訂單管理',
   'menu.commercial-management.tenants': '租戶管理',
 };

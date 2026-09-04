@@ -151,6 +151,7 @@ export const layout: RunTimeLayoutConfig = ({
         ]),
         group('commercial', '商业', [
           '/commercial-management/packages',
+          '/commercial-management/orders',
           '/commercial-management/tenants',
           '/ai-service-management/operations',
         ]),

@@ -57,5 +57,6 @@ export default {
   'menu.style-library': 'Biblioteca de estilos',
   'menu.commercial-management': 'Comercial',
   'menu.commercial-management.packages': 'Pacotes',
+  'menu.commercial-management.orders': 'Pedidos',
   'menu.commercial-management.tenants': 'Locatários',
 };

@@ -114,6 +114,7 @@ export default [
     routes: [
       { path: '/commercial-management', redirect: '/commercial-management/packages' },
       { path: '/commercial-management/packages', name: 'packages', access: 'canViewCommercialPackages', component: './commercial-management/packages' },
+      { path: '/commercial-management/orders', name: 'orders', access: 'canViewCommercialOrders', component: './commercial-management/orders' },
       { path: '/commercial-management/tenants', name: 'tenants', access: 'canViewPlatformTenants', component: './commercial-management/tenants' },
     ],
   },

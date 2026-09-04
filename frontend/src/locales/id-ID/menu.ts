@@ -56,5 +56,6 @@ export default {
   'menu.style-library': 'Pustaka Gaya',
   'menu.commercial-management': 'Komersial',
   'menu.commercial-management.packages': 'Paket',
+  'menu.commercial-management.orders': 'Pesanan',
   'menu.commercial-management.tenants': 'Penyewa',
 };

@@ -73,5 +73,6 @@ export default {
   'menu.projects.list': '项目列表',
   'menu.commercial-management': '商业化管理',
   'menu.commercial-management.packages': '套餐管理',
+  'menu.commercial-management.orders': '订单管理',
   'menu.commercial-management.tenants': '租户管理',
 };

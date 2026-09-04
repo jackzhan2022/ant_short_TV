@@ -55,5 +55,6 @@ export default {
   'menu.style-library': 'স্টাইল লাইব্রেরি',
   'menu.commercial-management': 'বাণিজ্যিক',
   'menu.commercial-management.packages': 'প্যাকেজ',
+  'menu.commercial-management.orders': 'অর্ডার',
   'menu.commercial-management.tenants': 'টেন্যান্ট',
 };
