@@ -146,6 +146,39 @@ class AiExecutionCoreServiceTest {
     }
 
     @Test
+    void canceledExecutionCanBeRestartedAsANewReservedExecution() {
+        long tenantId = 8613L;
+        long modelId = 999913L;
+        account(tenantId, "20");
+        costPrice(modelId, 1, "PUBLISHED", null);
+        pointPrice(modelId, 1, "PUBLISHED", null, "2");
+        AiExecutionTaskEntity original = executionService.createWithReservation(
+            billingCommand(tenantId, modelId, "canceled-analysis-original"),
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
+            Map.of()
+        );
+        executionService.cancel(original.id);
+
+        AiExecutionTaskEntity restarted = executionService.restartCanceledWithReservation(
+            original.id,
+            original.businessId,
+            modelId,
+            "canceled-analysis-restart",
+            "trace-canceled-analysis-restart",
+            Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
+            Map.of()
+        );
+
+        assertThat(restarted.id).isNotEqualTo(original.id);
+        assertThat(restarted.status).isEqualTo("PENDING");
+        assertThat(restarted.sourceExecutionId).isEqualTo(original.id);
+        assertThat(restarted.rootExecutionId).isEqualTo(original.id);
+        assertThat(restarted.executionVersion).isEqualTo(2);
+        assertThat(reservationMapper.selectCount(new QueryWrapper<AiPointReservationEntity>()
+            .in("execution_id", original.id, restarted.id))).isEqualTo(2);
+    }
+
+    @Test
     void creationIsIdempotentForTenantSceneAndClientKey() {
         AiExecutionCreateCommand command = command(8101L, "idempotent-create", false);
 

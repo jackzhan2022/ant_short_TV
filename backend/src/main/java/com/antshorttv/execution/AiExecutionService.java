@@ -193,6 +193,36 @@ public class AiExecutionService {
         Map<AiUsageMetric, BigDecimal> authorizedUsage,
         Map<String, String> dimensions
     ) {
+        return replaceWithReservation(
+            sourceId, businessId, requestedModelId, clientIdempotencyKey, traceId,
+            authorizedUsage, dimensions, AiExecutionStatus.SUCCEEDED);
+    }
+
+    @Transactional
+    public AiExecutionTaskEntity restartCanceledWithReservation(
+        Long sourceId,
+        Long businessId,
+        Long requestedModelId,
+        String clientIdempotencyKey,
+        String traceId,
+        Map<AiUsageMetric, BigDecimal> authorizedUsage,
+        Map<String, String> dimensions
+    ) {
+        return replaceWithReservation(
+            sourceId, businessId, requestedModelId, clientIdempotencyKey, traceId,
+            authorizedUsage, dimensions, AiExecutionStatus.CANCELED);
+    }
+
+    private AiExecutionTaskEntity replaceWithReservation(
+        Long sourceId,
+        Long businessId,
+        Long requestedModelId,
+        String clientIdempotencyKey,
+        String traceId,
+        Map<AiUsageMetric, BigDecimal> authorizedUsage,
+        Map<String, String> dimensions,
+        AiExecutionStatus requiredSourceStatus
+    ) {
         AiExecutionTaskEntity source = requireTask(sourceId);
         AiExecutionTaskEntity existing = findByIdempotency(
             source.tenantId, source.scene, clientIdempotencyKey);
@@ -201,7 +231,8 @@ public class AiExecutionService {
         }
         ModelBillingSnapshot billing = billingResolver.requireComplete(
             requestedModelId, authorizedUsage.keySet(), dimensions, LocalDateTime.now());
-        AiExecutionTaskEntity task = createRegeneration(source, businessId, requestedModelId, clientIdempotencyKey, traceId);
+        AiExecutionTaskEntity task = createReplacement(
+            source, businessId, requestedModelId, clientIdempotencyKey, traceId, requiredSourceStatus);
         var discount = entitlementResolver.resolveGlobalDiscount(task.tenantId, LocalDateTime.now());
         task.commercialSubscriptionId = discount.subscriptionId();
         task.commercialPackageVersionId = discount.packageVersionId();
@@ -257,8 +288,20 @@ public class AiExecutionService {
         String clientIdempotencyKey,
         String traceId
     ) {
-        if (!AiExecutionStatus.SUCCEEDED.name().equals(source.status)) {
-            throw invalidStatus("Only a succeeded execution can be regenerated.");
+        return createReplacement(
+            source, businessId, requestedModelId, clientIdempotencyKey, traceId, AiExecutionStatus.SUCCEEDED);
+    }
+
+    private AiExecutionTaskEntity createReplacement(
+        AiExecutionTaskEntity source,
+        Long businessId,
+        Long requestedModelId,
+        String clientIdempotencyKey,
+        String traceId,
+        AiExecutionStatus requiredSourceStatus
+    ) {
+        if (!requiredSourceStatus.name().equals(source.status)) {
+            throw invalidStatus("Execution cannot be replaced from status " + source.status);
         }
         AiExecutionTaskEntity existing = findByIdempotency(source.tenantId, source.scene, clientIdempotencyKey);
         if (existing != null) {

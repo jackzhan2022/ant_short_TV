@@ -75,6 +75,26 @@ public class ScriptAnalysisExecutionCoordinator {
         AiExecutionTaskEntity execution = executionService.requireTask(task.getExecutionId());
         if ("FAILED".equals(execution.status) || "TIMED_OUT".equals(execution.status)) {
             execution = executionService.retry(execution.id);
+        } else if ("CANCELED".equals(execution.status)) {
+            ScriptVersionEntity version = versionMapper.selectById(task.getScriptVersionId());
+            if (version == null || version.getContent() == null || version.getContent().isBlank()) {
+                throw new IllegalStateException("Script analysis version is unavailable.");
+            }
+            Long modelId = projectAiConfigService.resolveModelId(
+                task.getTenantId(), task.getProjectId(), "TEXT");
+            String restartKey = "script-analysis-resume-" + task.getId() + "-" + execution.id;
+            execution = executionService.restartCanceledWithReservation(
+                execution.id,
+                task.getId(),
+                modelId,
+                restartKey,
+                restartKey,
+                Map.of(AiUsageMetric.CALL, BigDecimal.valueOf(maximumCallCount(version.getContent()))),
+                Map.of()
+            );
+            task.setExecutionId(execution.id);
+            task.setUpdatedAt(LocalDateTime.now());
+            taskMapper.updateById(task);
         }
         return responseMapper.toResponse(execution);
     }
