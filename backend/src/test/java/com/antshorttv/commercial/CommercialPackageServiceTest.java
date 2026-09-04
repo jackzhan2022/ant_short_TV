@@ -76,6 +76,15 @@ class CommercialPackageServiceTest {
         ));
         assertThat(second.versionNo()).isEqualTo(first.versionNo() + 1);
 
+        CommercialPackageSummaryResponse summary = service.listPackages().stream()
+            .filter(item -> "POINT_PACK".equals(item.code()))
+            .findFirst()
+            .orElseThrow();
+        assertThat(summary.latestVersionNo()).isEqualTo(2);
+        assertThat(summary.latestName()).isEqualTo("积分包新版");
+        assertThat(summary.latestPrice()).isEqualByComparingTo("120.00");
+        assertThat(summary.latestStatus()).isEqualTo("DRAFT");
+
         assertThatThrownBy(() -> service.createDraft(new CommercialPackageDraftCommand(
             "BAD", "SUBSCRIPTION", "错误套餐", null, "MONTH", 1,
             BigDecimal.TEN, null, "CNY", LocalDateTime.now(), null,

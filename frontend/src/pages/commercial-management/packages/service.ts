@@ -7,6 +7,13 @@ export type CommercialPackageSummary = {
   code: string;
   packageType: 'POINT_PACKAGE' | 'SUBSCRIPTION';
   status: string;
+  latestVersionNo?: number;
+  latestName?: string;
+  latestPrice?: number;
+  latestCurrency?: string;
+  latestStatus?: 'DRAFT' | 'PUBLISHED' | 'OFF_SALE';
+  latestEntitlements?: CommercialEntitlement[];
+  updatedAt?: string;
 };
 export type CommercialPackageVersion = {
   packageId: number;
