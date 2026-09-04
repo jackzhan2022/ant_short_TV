@@ -352,8 +352,12 @@ class RemainingAnalysisAgentsEndToEndTest {
         long snapshotId = fanoutStore.openSnapshot(scope.task(), scope.stage(),
             "short-drama-asset-recognition", plan, modelId, units, episodeSetHash, false);
         Long interruptedEpisodeId = units.get(0).episodeId();
+        Long completedEpisodeId = units.get(1).episodeId();
         int interruptedAttemptNo = fanoutStore.markRunning(snapshotId, interruptedEpisodeId);
         assertThat(interruptedAttemptNo).isPositive();
+        int completedAttemptNo = fanoutStore.markRunning(snapshotId, completedEpisodeId);
+        fanoutStore.markSucceeded(snapshotId, completedEpisodeId, completedAttemptNo, createRun(
+            "short-drama-asset-recognition"));
 
         scope.stage().setAttemptNo(2);
         long reused = fanoutStore.openSnapshot(scope.task(), scope.stage(),
@@ -362,7 +366,11 @@ class RemainingAnalysisAgentsEndToEndTest {
         assertThat(reused).isEqualTo(snapshotId);
         assertThat(fanoutStore.runnableUnits(snapshotId))
             .extracting(EpisodeFanoutCoordinator.EpisodeUnit::episodeId)
-            .contains(interruptedEpisodeId);
+            .containsExactly(interruptedEpisodeId);
+        assertThat(jdbc.queryForObject("""
+            select status from script_analysis_fanout_unit
+             where snapshot_id = ? and episode_id = ?
+            """, String.class, snapshotId, completedEpisodeId)).isEqualTo("SUCCEEDED");
         assertThat(jdbc.queryForObject("""
             select status from script_analysis_fanout_unit
              where snapshot_id = ? and episode_id = ?

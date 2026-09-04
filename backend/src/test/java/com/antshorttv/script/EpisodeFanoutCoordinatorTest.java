@@ -163,6 +163,33 @@ class EpisodeFanoutCoordinatorTest {
         verify(store, never()).markSucceeded(eq(54L), anyLong(), any(Integer.class), anyLong());
     }
 
+    @Test
+    void publishesRecoveredProgressWhenOpeningAReplacementAttempt() {
+        EpisodeFanoutCoordinator coordinator = new EpisodeFanoutCoordinator(store, runner, 1);
+        WorkflowAgentExecutionPlan plan = plan();
+        List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
+        EpisodeFanoutCoordinator.Progress recovered = new EpisodeFanoutCoordinator.Progress(
+            3, 1, 1, 0, 1, "PENDING");
+        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
+        when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
+        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false)))
+            .thenReturn(55L);
+        when(store.progress(55L)).thenReturn(recovered);
+        when(store.runnableUnits(55L)).thenReturn(List.of());
+        when(store.snapshotMatches(eq(55L), any())).thenReturn(true);
+
+        assertThatThrownBy(() -> coordinator.execute(task(), stage(), null, 99L,
+            "short-drama-episode-summary", false,
+            (frozen, task, stage, execution, unit) ->
+                new EpisodeFanoutCoordinator.ChildResult(1L, List.of()),
+            snapshotId -> { }))
+            .isInstanceOf(BusinessException.class)
+            .extracting(error -> ((BusinessException) error).getErrorCode())
+            .isEqualTo(ErrorCode.ANALYSIS_AGENT_INCOMPLETE);
+
+        verify(store, times(2)).updateParentProgress(55L, recovered);
+    }
+
     private WorkflowAgentExecutionPlan plan() {
         return new WorkflowAgentExecutionPlan(new WorkflowAgentRecord(
             1L, "short-drama-episode-summary", "概要", null, "prompt", 2L,

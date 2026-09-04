@@ -799,6 +799,52 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void assetRecognitionCanCorrectMissingEvidenceOnceAndThenSucceed() throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_episode_assets", "保存资产", "保存资产",
+            json.readTree("{\"type\":\"object\"}"), json.readTree("{\"type\":\"object\"}"),
+            ToolRiskLevel.WRITE, ToolFailurePolicy.RETURN_TO_MODEL,
+            new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    if (saves.incrementAndGet() == 1) {
+                        throw new BusinessException(
+                            ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
+                            "工具调用失败：$.scenes[1].evidence is required");
+                    }
+                    return json.createObjectNode().put("saved", true);
+                }
+            });
+        runner = runnerWith(List.of(tool("read_current_episode"), save), 30);
+        when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 6, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", "save_episode_assets")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("read", "read_current_episode", "{}")), 941L))
+            .thenReturn(result(null, List.of(new AiToolCall("bad", "save_episode_assets", "{}")), 942L))
+            .thenReturn(result(null, List.of(new AiToolCall("fixed", "save_episode_assets", "{}")), 943L));
+
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L));
+
+        assertThat(result.runId()).isEqualTo(101L);
+        assertThat(saves).hasValue(2);
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(2).textRequest().messages())
+            .extracting(AiChatMessage::content)
+            .anySatisfy(message -> assertThat(message)
+                .contains("$.scenes[1].evidence is required"));
+    }
+
+    @Test
     void stopsBeforeAnotherProviderRoundWhenTheUnifiedExecutionIsCanceled() {
         doNothing().doNothing().doNothing()
             .doThrow(new BusinessException(ErrorCode.VALIDATION_ERROR, "执行已取消"))

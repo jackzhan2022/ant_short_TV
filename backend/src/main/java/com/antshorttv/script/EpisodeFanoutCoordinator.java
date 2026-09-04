@@ -53,6 +53,7 @@ public class EpisodeFanoutCoordinator {
         String snapshotHash = episodeSetHash(episodes);
         long snapshotId = store.openSnapshot(
             task, stage, agentCode, plan, effectiveModelId, episodes, snapshotHash, fullRegeneration);
+        store.updateParentProgress(snapshotId, store.progress(snapshotId));
         Long executionId = executionContext == null ? null : executionContext.task().id;
         if (store.cancellationRequested(snapshotId, executionId)) {
             store.cancel(snapshotId);

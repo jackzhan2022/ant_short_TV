@@ -84,6 +84,11 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
                            error_message = '上一执行轮次在单集处理期间中断，已回收等待重试。'
                      where snapshot_id = ? and status = 'RUNNING'
                     """, snapshotId);
+                jdbc.update("""
+                    update script_analysis_fanout_unit
+                       set status = 'STALE', updated_at = now()
+                     where snapshot_id = ? and status = 'FAILED'
+                    """, snapshotId);
                 return snapshotId;
             }
         }
@@ -188,7 +193,7 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
                 int running = row.getInt("running");
                 int pending = row.getInt("pending");
                 String status = completed == total ? "SUCCEEDED"
-                    : failed > 0 ? "PARTIAL_FAILED" : running > 0 ? "RUNNING" : "PENDING";
+                    : running > 0 ? "RUNNING" : pending > 0 ? "PENDING" : "PARTIAL_FAILED";
                 return new EpisodeFanoutCoordinator.Progress(total, completed, failed, running, pending, status);
             }, snapshotId);
     }
@@ -209,7 +214,8 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
                    current_action = ?, retryable = ?, updated_at = now()
              where id = (select fanout.stage_id from script_analysis_fanout_snapshot fanout where fanout.id = ?)
             """, percent, progress.completed(), progress.total(),
-            progress.failed() > 0 ? "部分剧集处理失败" : "正在逐集处理",
+            progress.running() > 0 || progress.pending() > 0
+                ? "正在逐集处理" : progress.failed() > 0 ? "部分剧集处理失败" : "逐集处理已完成",
             progress.failed() > 0, snapshotId);
         jdbc.update("""
             update script_analysis_fanout_snapshot

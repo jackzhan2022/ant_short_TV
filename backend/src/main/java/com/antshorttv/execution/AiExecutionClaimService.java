@@ -82,6 +82,25 @@ public class AiExecutionClaimService {
             .eq("claim_token", claimToken)) == 1;
     }
 
+    public void requireActive(AiExecutionClaim claim) {
+        if (claim == null) {
+            return;
+        }
+        Long activeTask = taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
+            .eq("id", claim.executionId())
+            .eq("execution_version", claim.executionVersion())
+            .eq("status", AiExecutionStatus.RUNNING.name())
+            .eq("claim_token", claim.claimToken()));
+        Long activeAttempt = attemptMapper.selectCount(new QueryWrapper<AiExecutionAttemptEntity>()
+            .eq("id", claim.attemptId())
+            .eq("execution_id", claim.executionId())
+            .eq("execution_version", claim.executionVersion())
+            .eq("status", AiExecutionAttemptStatus.STARTED.name()));
+        if (activeTask != 1L || activeAttempt != 1L) {
+            throw new AiExecutionClaimLostException(claim.executionId());
+        }
+    }
+
     @Transactional
     public void markSucceeded(
         Long executionId,

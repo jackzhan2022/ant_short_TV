@@ -105,6 +105,7 @@ ai:
       batch-size: ${AI_EXECUTION_DISPATCHER_BATCH_SIZE:20}
       fixed-delay-ms: ${AI_EXECUTION_DISPATCHER_FIXED_DELAY_MS:5000}
     claim-timeout: ${AI_EXECUTION_CLAIM_TIMEOUT:PT10M}
+    heartbeat-interval: ${AI_EXECUTION_HEARTBEAT_INTERVAL:PT1M}
     max-concurrent-per-tenant: ${AI_EXECUTION_MAX_CONCURRENT_PER_TENANT:5}
     worker-threads: ${AI_EXECUTION_WORKER_THREADS:4}
     queue-capacity: ${AI_EXECUTION_QUEUE_CAPACITY:100}

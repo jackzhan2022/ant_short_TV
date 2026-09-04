@@ -7,8 +7,11 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,6 +25,8 @@ import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.execution.AiExecutionClaim;
 import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionClaimLostException;
+import com.antshorttv.execution.AiExecutionClaimService;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.points.TeamPointService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -316,6 +321,44 @@ class ScriptAnalysisExecutionServiceTest {
         verify(summary, times(1)).executeChild(any(), any(), any(), any(), any(), any());
         verify(recognition, times(1)).executeChild(any(), any(), any(), any(), any(), any());
         assertThat(stages.get(1).getStatus()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void staleAttemptCannotPublishScriptAnalysisFailureAfterOwnershipLoss() {
+        ScriptAnalysisTaskEntity task = task(91L, 2L, 3L);
+        task.setStatus("PENDING");
+        ScriptVersionEntity version = version(6L, "当前剧本");
+        ScriptEntity script = new ScriptEntity();
+        script.setId(5L);
+        script.setCurrentVersionId(6L);
+        ScriptAnalysisStageEntity stage = stage(1L, "GLOBAL_UNDERSTANDING", 1, "PENDING");
+        when(taskMapper.selectById(91L)).thenReturn(task);
+        when(versionMapper.selectById(6L)).thenReturn(version);
+        when(stageMapper.selectByTask(91L)).thenReturn(List.of(stage));
+        when(scriptMapper.selectById(5L)).thenReturn(script);
+
+        GlobalUnderstandingAgentAdapter global = mock(GlobalUnderstandingAgentAdapter.class);
+        when(global.enabled()).thenReturn(true);
+        when(global.execute(any(), any(), any(), any()))
+            .thenThrow(new IllegalStateException("late stale failure"));
+        ReflectionTestUtils.setField(service, "globalUnderstandingAgentAdapter", global);
+
+        AiExecutionClaimService claims = mock(AiExecutionClaimService.class);
+        ReflectionTestUtils.setField(service, "executionClaimService", claims);
+        AiExecutionTaskEntity execution = new AiExecutionTaskEntity();
+        execution.id = 700L;
+        execution.executionVersion = 1;
+        AiExecutionClaim claim = new AiExecutionClaim(700L, 701L, "old-token", 1, "SUBMIT");
+        doNothing().doNothing().doThrow(new AiExecutionClaimLostException(700L))
+            .when(claims).requireActive(claim);
+
+        assertThatThrownBy(() -> service.executeTask(91L, new AiExecutionContext(execution, claim)))
+            .isInstanceOf(AiExecutionClaimLostException.class);
+
+        verify(resultMapper, never()).insert(any(ScriptAnalysisResultEntity.class));
+        verify(taskMapper, times(2)).updateById(task);
+        assertThat(task.getErrorCode()).isNull();
+        assertThat(task.getErrorMessage()).isNull();
     }
 
     @SuppressWarnings("unchecked")

@@ -8,6 +8,8 @@ import com.antshorttv.ai.AiTextResponse;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionClaimLostException;
+import com.antshorttv.execution.AiExecutionClaimService;
 import com.antshorttv.points.TeamPointService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
@@ -43,6 +45,7 @@ public class ScriptAnalysisExecutionService {
     @Autowired(required = false) private EpisodeFanoutCoordinator episodeFanoutCoordinator;
     @Autowired(required = false) private AssetRecognitionAgentAdapter assetRecognitionAgentAdapter;
     @Autowired(required = false) private AssetRecognitionFinalizer assetRecognitionFinalizer;
+    @Autowired(required = false) private AiExecutionClaimService executionClaimService;
     private final ScriptAnalysisTaskMapper taskMapper;
     private final ScriptAnalysisStageMapper stageMapper;
     private final ScriptAnalysisResultMapper resultMapper;
@@ -88,6 +91,7 @@ public class ScriptAnalysisExecutionService {
         if (task == null || "COMPLETED".equals(task.getStatus())) {
             return new ScriptAnalysisExecutionOutcome(List.of());
         }
+        requireExecutionActive(executionContext);
         ScriptVersionEntity version = versionMapper.selectById(task.getScriptVersionId());
         if (version == null || !task.getScriptVersionId().equals(version.getId())) {
             failTask(task, "SCRIPT_VERSION_NOT_FOUND", "分析绑定的剧本版本不存在。");
@@ -106,6 +110,7 @@ public class ScriptAnalysisExecutionService {
                 throw new IllegalStateException(task.getErrorMessage() == null ? "Script analysis failed." : task.getErrorMessage());
             }
         }
+        requireExecutionActive(executionContext);
         task.setStatus("COMPLETED");
         task.setCurrentStage(null);
         task.setCurrentAction("四阶段分析已完成");
@@ -123,6 +128,7 @@ public class ScriptAnalysisExecutionService {
         AiExecutionContext executionContext,
         InvocationTracker tracker
     ) {
+        requireExecutionActive(executionContext);
         if (!isCurrentVersion(task)) {
             failStaleStage(task, stage);
             return;
@@ -163,6 +169,7 @@ public class ScriptAnalysisExecutionService {
                 GlobalUnderstandingAgentAdapter.Execution execution =
                     globalUnderstandingAgentAdapter.execute(task, stage, executionContext, frozenModelId(task));
                 execution.modelCalls().forEach(tracker::record);
+                requireExecutionActive(executionContext);
                 stage.setStatus("SUCCEEDED");
                 GlobalUnderstandingProgress committed = GlobalUnderstandingProgress.committed();
                 stage.setProgressPercent(committed.percent());
@@ -181,6 +188,7 @@ public class ScriptAnalysisExecutionService {
                 EpisodeSplittingAgentAdapter.Execution execution = episodeSplittingAgentAdapter.execute(
                     task, stage, executionContext, frozenModelId(task));
                 execution.modelCalls().forEach(tracker::record);
+                requireExecutionActive(executionContext);
                 stage.setStatus("SUCCEEDED");
                 stage.setProgressPercent(100);
                 stage.setCompletedUnits(1);
@@ -213,6 +221,7 @@ public class ScriptAnalysisExecutionService {
                     snapshotId -> { }
                 );
                 fanout.modelCalls().forEach(tracker::record);
+                requireExecutionActive(executionContext);
                 stage.setStatus("SUCCEEDED");
                 stage.setProgressPercent(100);
                 stage.setCompletedUnits(fanout.progress().completed());
@@ -249,6 +258,7 @@ public class ScriptAnalysisExecutionService {
                     assetRecognitionFinalizer::finish
                 );
                 fanout.modelCalls().forEach(tracker::record);
+                requireExecutionActive(executionContext);
                 stage.setStatus("SUCCEEDED");
                 stage.setProgressPercent(100);
                 stage.setCompletedUnits(fanout.progress().completed());
@@ -311,6 +321,7 @@ public class ScriptAnalysisExecutionService {
                 normalizedJson = parsed.toString();
             }
             validateStageResult(stage.getStageCode(), parsed, version.getContent());
+            requireExecutionActive(executionContext);
             if (!isCurrentVersion(task)) {
                 failStaleStage(task, stage);
                 return;
@@ -386,7 +397,10 @@ public class ScriptAnalysisExecutionService {
             task.setOverallProgress(stage.getStageOrder() * 25);
             task.setUpdatedAt(LocalDateTime.now());
             taskMapper.updateById(task);
+        } catch (AiExecutionClaimLostException exception) {
+            throw exception;
         } catch (Exception exception) {
+            requireExecutionActive(executionContext);
             String errorCode = exception instanceof BusinessException businessException
                 ? businessException.getErrorCode().name()
                 : "AI_ANALYSIS_FAILED";
@@ -435,6 +449,15 @@ public class ScriptAnalysisExecutionService {
             stage.setUpdatedAt(LocalDateTime.now());
             stageMapper.updateById(stage);
             failTask(task, errorCode, errorMessage);
+        }
+    }
+
+    private void requireExecutionActive(AiExecutionContext context) {
+        if (context != null) {
+            if (executionClaimService == null) {
+                throw new IllegalStateException("AI execution claim service is unavailable.");
+            }
+            executionClaimService.requireActive(context.claim());
         }
     }
 
