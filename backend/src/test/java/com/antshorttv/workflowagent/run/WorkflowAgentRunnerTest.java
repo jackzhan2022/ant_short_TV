@@ -799,6 +799,36 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void storyboardAgentOnlyExposesTheNextRequiredTool() {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets",
+            "save_episode_storyboards");
+        runner = runnerWith(codes.stream().map(this::tool).toList(), 30);
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(new WorkflowAgentRecord(
+            7L, "short-drama-storyboard", "分镜规划", "", "执行", 8L,
+            new BigDecimal("0.2"), 8192, 12, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), codes));
+        AtomicInteger round = new AtomicInteger();
+        when(invocation.invokeText(any())).thenAnswer(ignored -> {
+            int index = round.getAndIncrement();
+            return result(null, List.of(
+                new AiToolCall("call-" + index, codes.get(index), "{}")), 950L + index);
+        });
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L));
+
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(codes.size())).invokeText(requests.capture());
+        for (int index = 0; index < codes.size(); index++) {
+            assertThat(requests.getAllValues().get(index).textRequest().tools())
+                .extracting(com.antshorttv.ai.AiToolDefinition::code)
+                .containsExactly(codes.get(index));
+        }
+    }
+
+    @Test
     void assetRecognitionCanCorrectMissingEvidenceOnceAndThenSucceed() throws Exception {
         AtomicInteger saves = new AtomicInteger();
         WorkflowToolDefinition save = new WorkflowToolDefinition(
