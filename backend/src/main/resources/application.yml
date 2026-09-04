@@ -93,6 +93,7 @@ ai:
     episode-splitting-enabled: ${AI_WORKFLOW_EPISODE_SPLITTING_ENABLED:false}
     episode-summary-enabled: ${AI_WORKFLOW_EPISODE_SUMMARY_ENABLED:false}
     asset-recognition-enabled: ${AI_WORKFLOW_ASSET_RECOGNITION_ENABLED:false}
+    storyboard-enabled: ${AI_WORKFLOW_STORYBOARD_ENABLED:false}
     review-bootstrap-enabled: ${AI_WORKFLOW_REVIEW_BOOTSTRAP_ENABLED:true}
     review-quick-enabled: ${AI_WORKFLOW_REVIEW_QUICK_ENABLED:false}
     review-deep-enabled: ${AI_WORKFLOW_REVIEW_DEEP_ENABLED:false}

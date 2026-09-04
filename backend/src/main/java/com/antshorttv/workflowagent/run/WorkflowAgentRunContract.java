@@ -37,6 +37,11 @@ public record WorkflowAgentRunContract(
                 List.of("read_current_episode", "save_episode_assets"),
                 "save_episode_assets"
             );
+            case "short-drama-storyboard" -> new WorkflowAgentRunContract(
+                List.of("read_current_episode", "read_adjacent_episodes", "read_script_analysis",
+                    "read_project_context", "read_script_assets", "save_episode_storyboards"),
+                "save_episode_storyboards"
+            );
             default -> NONE;
         };
     }

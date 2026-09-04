@@ -21,6 +21,18 @@ public interface StoryboardMapper extends BaseMapper<StoryboardEntity> {
             .eq("project_id", projectId)
             .isNull("deleted_at")
             .orderByAsc("episode_no")
+            .orderByAsc("storyboard_no")
             .orderByAsc("shot_no"));
+    }
+
+
+    default List<StoryboardEntity> selectActiveEpisode(Long tenantId, Long projectId, Long episodeId) {
+        return selectList(new QueryWrapper<StoryboardEntity>()
+            .eq("tenant_id", tenantId)
+            .eq("project_id", projectId)
+            .eq("episode_id", episodeId)
+            .isNull("deleted_at")
+            .orderByAsc("storyboard_no")
+            .orderByAsc("id"));
     }
 }

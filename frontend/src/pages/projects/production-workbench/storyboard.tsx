@@ -23,7 +23,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import type {
@@ -36,8 +36,11 @@ import type {
   ScriptEpisode,
   ScriptWorkspace,
   StoryboardShot,
+  StoryboardPromptDocument,
+  StoryboardPromptNode,
 } from './service';
 import {
+  breakdownStoryboards,
   cancelAiImageTask,
   cancelAiVideoTask,
   createAiImageTask,
@@ -55,7 +58,11 @@ import {
 
 type StoryboardDraft = Record<
   number,
-  { scriptText: string; videoPrompt: string }
+  {
+    scriptText: string;
+    videoPrompt: string;
+    promptDocument?: StoryboardPromptDocument | null;
+  }
 >;
 type StoryboardWithProps = StoryboardShot & { props?: string };
 
@@ -178,8 +185,11 @@ const parseStoryboardScriptText = (
   };
 };
 
-const getStoryboardPrompt = (storyboard: StoryboardShot) =>
-  [
+const getStoryboardPrompt = (storyboard: StoryboardShot) => {
+  if (storyboard.videoPrompt?.trim()) {
+    return storyboard.videoPrompt;
+  }
+  return [
     '画风：写实都市',
     '视频中不得出现任何字幕、文字叠加、纯画面，不要bgm，不要配乐。',
     '### 素材引用',
@@ -192,10 +202,10 @@ const getStoryboardPrompt = (storyboard: StoryboardShot) =>
     `镜头${storyboard.shotNo} ${storyboard.durationSeconds || 5}s`,
     storyboard.visualDescription,
     storyboard.dialogue,
-    storyboard.videoPrompt,
   ]
     .filter(Boolean)
     .join('\n');
+};
 
 const getStoryboardSavePayload = (
   storyboard: StoryboardShot,
@@ -209,8 +219,124 @@ const getStoryboardSavePayload = (
   durationSeconds: storyboard.durationSeconds,
   imagePrompt: storyboard.imagePrompt,
   videoPrompt: storyboard.videoPrompt,
+  promptDocument: storyboard.promptDocument || undefined,
   ...overrides,
 });
+
+const plainTextFromDocument = (document?: StoryboardPromptDocument | null) =>
+  document?.nodes
+    .map((node) => (node.type === 'text' ? node.text : node.displayName))
+    .join('') || '';
+
+const MaterialPromptEditor = ({
+  label,
+  value,
+  document,
+  onChange,
+  onBlur,
+}: {
+  label: string;
+  value: string;
+  document?: StoryboardPromptDocument | null;
+  onChange: (plainText: string, nextDocument: StoryboardPromptDocument) => void;
+  onBlur: () => void;
+}) => {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const initializedKey = useRef('');
+  const renderedNodes = useMemo<StoryboardPromptNode[]>(
+    () =>
+      document?.nodes?.length
+        ? document.nodes
+        : [{ type: 'text', text: value }],
+    [document?.nodes, value],
+  );
+  const renderedKey = JSON.stringify(renderedNodes);
+
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || initializedKey.current === renderedKey) return;
+    const fragment = window.document.createDocumentFragment();
+    renderedNodes.forEach((node) => {
+      if (node.type === 'text') {
+        fragment.append(window.document.createTextNode(node.text));
+        return;
+      }
+      const mention = window.document.createElement('span');
+      mention.contentEditable = 'false';
+      mention.dataset.assetType = node.assetType;
+      mention.dataset.assetId = String(node.assetId);
+      mention.dataset.variantId = String(node.variantId);
+      mention.dataset.displayName = node.displayName;
+      mention.textContent = node.displayName;
+      mention.style.cssText = [
+        'display:inline-block',
+        'padding:0 4px',
+        'margin:0 1px',
+        'border-radius:4px',
+        'background:var(--ant-color-primary-bg)',
+        'color:var(--ant-color-primary)',
+        'font-weight:600',
+      ].join(';');
+      fragment.append(mention);
+    });
+    editor.replaceChildren(fragment);
+    initializedKey.current = renderedKey;
+  }, [renderedKey, renderedNodes]);
+
+  const readDocument = () => {
+    const nodes: StoryboardPromptNode[] = [];
+    const appendText = (text: string) => {
+      if (!text) return;
+      const previous = nodes.at(-1);
+      if (previous?.type === 'text') previous.text += text;
+      else nodes.push({ type: 'text', text });
+    };
+    const walk = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        appendText(node.textContent || '');
+        return;
+      }
+      if (!(node instanceof HTMLElement)) return;
+      if (node.dataset.assetId && node.dataset.variantId && node.dataset.assetType) {
+        nodes.push({
+          type: 'mention',
+          assetType: node.dataset.assetType as 'CHARACTER' | 'SCENE' | 'PROP',
+          assetId: Number(node.dataset.assetId),
+          variantId: Number(node.dataset.variantId),
+          displayName: node.dataset.displayName || node.textContent || '',
+        });
+        return;
+      }
+      Array.from(node.childNodes).forEach(walk);
+      if (node.tagName === 'DIV') appendText('\n');
+      if (node.tagName === 'BR') appendText('\n');
+    };
+    Array.from(editorRef.current?.childNodes || []).forEach(walk);
+    const nextDocument: StoryboardPromptDocument = { version: 1, nodes };
+    initializedKey.current = JSON.stringify(nextDocument.nodes);
+    onChange(plainTextFromDocument(nextDocument), nextDocument);
+  };
+
+  return (
+    <div
+      ref={editorRef}
+      role="textbox"
+      aria-label={label}
+      aria-multiline="true"
+      contentEditable
+      suppressContentEditableWarning
+      onInput={readDocument}
+      onBlur={onBlur}
+      style={{
+        minHeight: 330,
+        whiteSpace: 'pre-wrap',
+        outline: 'none',
+        fontWeight: 600,
+        lineHeight: 1.7,
+      }}
+    />
+  );
+};
 
 const normalizeVideoDuration = (durationSeconds?: number) => {
   if (!durationSeconds) {
@@ -361,7 +487,7 @@ const StoryboardCard = ({
   episodes: ScriptEpisode[];
   imageTasks: AiImageTask[];
   videoTasks: AiVideoTask[];
-  draft: { scriptText: string; videoPrompt: string };
+  draft: StoryboardDraft[number];
   model: string;
   onDraftChange: (
     storyboardId: number,
@@ -794,15 +920,19 @@ const StoryboardCard = ({
                 引用角色、场景、道具、音色及参考素材，编辑更灵活，分镜更精准
               </span>
             </Flex>
-            <Input.TextArea
-              aria-label={`分镜${index + 1}视频提示词`}
+            <MaterialPromptEditor
+              label={`分镜${index + 1}视频提示词`}
               value={draft.videoPrompt}
-              onChange={(event) =>
-                onDraftChange(item.id, { videoPrompt: event.target.value })
+              document={draft.promptDocument}
+              onChange={(videoPrompt, promptDocument) =>
+                onDraftChange(item.id, { videoPrompt, promptDocument })
               }
-              autoSize={{ minRows: 14, maxRows: 22 }}
-              variant="borderless"
-              style={{ fontWeight: 600, lineHeight: 1.7, resize: 'none' }}
+              onBlur={() =>
+                onUpdateStoryboard(item, {
+                  videoPrompt: draft.videoPrompt,
+                  promptDocument: draft.promptDocument || undefined,
+                })
+              }
             />
             <Flex
               justify="space-between"
@@ -995,6 +1125,9 @@ const ProductionWorkbenchStoryboard = () => {
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [selectedModel, setSelectedModel] = useState('Doubao-Seedance-2.5');
   const [drafts, setDrafts] = useState<StoryboardDraft>({});
+  const [storyboardExecution, setStoryboardExecution] =
+    useState<API.AiExecutionResponse>();
+  const [storyboardBusy, setStoryboardBusy] = useState(false);
   const reservedShotNos = useRef<Record<number, number>>({});
   const [workspace, setWorkspace] = useState<ScriptWorkspace>({
     projectId: projectId || 0,
@@ -1028,6 +1161,10 @@ const ProductionWorkbenchStoryboard = () => {
           scenes: workspaceResponse.data?.scenes || [],
           props: workspaceResponse.data?.props || [],
           storyboards: workspaceResponse.data?.storyboards || [],
+          episodes: workspaceResponse.data?.episodes || [],
+          analysis: workspaceResponse.data?.analysis || null,
+          globalUnderstanding:
+            workspaceResponse.data?.globalUnderstanding || null,
         };
         setWorkspace(nextWorkspace);
         setImageTasks(imageTaskResponse.data || []);
@@ -1043,7 +1180,10 @@ const ProductionWorkbenchStoryboard = () => {
             message.error('视频任务状态刷新失败'),
           );
         }
-        const firstEpisode = nextWorkspace.storyboards[0]?.episodeNo || 1;
+        const firstEpisode =
+          nextWorkspace.episodes[0]?.episodeNo ||
+          nextWorkspace.storyboards[0]?.episodeNo ||
+          1;
         setActiveEpisode(firstEpisode);
         setDrafts(
           Object.fromEntries(
@@ -1052,6 +1192,7 @@ const ProductionWorkbenchStoryboard = () => {
               {
                 scriptText: getStoryboardScriptText(item),
                 videoPrompt: getStoryboardPrompt(item),
+                promptDocument: item.promptDocument,
               },
             ]),
           ),
@@ -1065,20 +1206,23 @@ const ProductionWorkbenchStoryboard = () => {
     return () => {
       active = false;
     };
-  }, [message, projectId]);
+  }, [projectId]);
 
   const characters = workspace.characters;
   const scenes = workspace.scenes;
   const props = workspace.props;
   const episodeNumbers = useMemo(() => {
-    const fromData = Array.from(
-      new Set(workspace.storyboards.map((item) => item.episodeNo)),
-    ).sort((a, b) => a - b);
-    return Array.from(
-      { length: Math.max(15, fromData.at(-1) || 0) },
-      (_, index) => index + 1,
+    const fromEpisodes = (workspace.episodes || []).map(
+      (item) => item.episodeNo,
     );
-  }, [workspace.storyboards]);
+    return Array.from(
+      new Set(
+        fromEpisodes.length
+          ? fromEpisodes
+          : workspace.storyboards.map((item) => item.episodeNo),
+      ),
+    ).sort((a, b) => a - b);
+  }, [workspace.episodes, workspace.storyboards]);
   const visibleStoryboards = workspace.storyboards.filter(
     (item) => item.episodeNo === activeEpisode,
   );
@@ -1092,6 +1236,7 @@ const ProductionWorkbenchStoryboard = () => {
       [storyboardId]: {
         scriptText: previous[storyboardId]?.scriptText || '',
         videoPrompt: previous[storyboardId]?.videoPrompt || '',
+        promptDocument: previous[storyboardId]?.promptDocument,
         ...values,
       },
     }));
@@ -1110,6 +1255,59 @@ const ProductionWorkbenchStoryboard = () => {
   const reloadImageTasks = async () => {
     const response = await queryAiImageTasks(projectId, undefined);
     setImageTasks(response.data || []);
+  };
+
+  const reloadWorkspace = async () => {
+    const response = await queryScriptWorkspace(projectId);
+    if (response.data) {
+      setWorkspace(response.data);
+      setDrafts(
+        Object.fromEntries(
+          response.data.storyboards.map((item) => [
+            item.id,
+            {
+              scriptText: getStoryboardScriptText(item),
+              videoPrompt: getStoryboardPrompt(item),
+              promptDocument: item.promptDocument,
+            },
+          ]),
+        ),
+      );
+    }
+  };
+
+  const generateEpisodeStoryboards = async () => {
+    const episode = workspace.episodes?.find(
+      (item) => item.episodeNo === activeEpisode,
+    );
+    if (!episode?.episodeId) {
+      message.warning('当前集不是可生成分镜的有效剧集');
+      return;
+    }
+    setStoryboardBusy(true);
+    try {
+      const response = await breakdownStoryboards(projectId, {
+        episodeId: episode.episodeId,
+      });
+      if (!response.data) throw new Error('missing execution');
+      setStoryboardExecution(response.data);
+      const tenantId = currentTenantId();
+      if (!tenantId) throw new Error('missing tenant');
+      const terminal = await aiExecutionTaskService.poll(
+        tenantId,
+        response.data.id || 0,
+        setStoryboardExecution,
+      );
+      setStoryboardExecution(terminal);
+      if (terminal.status === 'SUCCEEDED') {
+        await reloadWorkspace();
+        message.success('本集分镜已生成');
+      }
+    } catch {
+      message.error('本集分镜生成失败');
+    } finally {
+      setStoryboardBusy(false);
+    }
   };
 
   const currentTenantId = () => Number(localStorage.getItem('currentTenantId'));
@@ -1337,7 +1535,7 @@ const ProductionWorkbenchStoryboard = () => {
       ...storyboard,
       ...values,
     };
-    const nextVideoPrompt = getStoryboardPrompt(nextStoryboard);
+    const nextVideoPrompt = values.videoPrompt || getStoryboardPrompt(nextStoryboard);
     setWorkspace((previous) => ({
       ...previous,
       storyboards: previous.storyboards.map((item) =>
@@ -1349,6 +1547,8 @@ const ProductionWorkbenchStoryboard = () => {
       [storyboard.id]: {
         scriptText: getStoryboardScriptText(nextStoryboard),
         videoPrompt: nextVideoPrompt,
+        promptDocument:
+          values.promptDocument || storyboard.promptDocument || undefined,
       },
     }));
 
@@ -1536,10 +1736,25 @@ const ProductionWorkbenchStoryboard = () => {
         </Flex>
 
         <section style={{ marginTop: 18, paddingLeft: 2 }}>
-          <Typography.Title level={4} style={{ margin: 0, fontSize: 16 }}>
-            第{activeEpisode}集{' '}
-            {episodeTitles[activeEpisode] || `第${activeEpisode}集`}
-          </Typography.Title>
+          <Flex justify="space-between" align="center" gap={16} wrap>
+            <Typography.Title level={4} style={{ margin: 0, fontSize: 16 }}>
+              第{activeEpisode}集{' '}
+              {workspace.episodes?.find(
+                (episode) => episode.episodeNo === activeEpisode,
+              )?.title || episodeTitles[activeEpisode] || `第${activeEpisode}集`}
+            </Typography.Title>
+            <Button
+              type="primary"
+              icon={<ThunderboltOutlined />}
+              loading={storyboardBusy}
+              disabled={['PENDING', 'RUNNING'].includes(
+                storyboardExecution?.status || '',
+              )}
+              onClick={generateEpisodeStoryboards}
+            >
+              生成本集分镜
+            </Button>
+          </Flex>
           <Typography.Paragraph
             style={{
               margin: '14px 0 18px',
@@ -1553,6 +1768,9 @@ const ProductionWorkbenchStoryboard = () => {
               详情
             </Button>
           </Typography.Paragraph>
+          {storyboardExecution ? (
+            <AiExecutionStatus task={storyboardExecution} busy={storyboardBusy} />
+          ) : null}
         </section>
 
         {visibleStoryboards.length ? (
@@ -1572,6 +1790,7 @@ const ProductionWorkbenchStoryboard = () => {
                   drafts[item.id] || {
                     scriptText: getStoryboardScriptText(item),
                     videoPrompt: getStoryboardPrompt(item),
+                    promptDocument: item.promptDocument,
                   }
                 }
                 model={selectedModel}

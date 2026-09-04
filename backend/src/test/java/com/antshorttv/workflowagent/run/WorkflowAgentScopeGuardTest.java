@@ -79,6 +79,30 @@ class WorkflowAgentScopeGuardTest {
     }
 
     @Test
+    void storyboardAgentRequiresItsStoryboardOperationExecutionIdentity() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class),
+            eq(502L), eq(501L), eq(3), eq(7L), eq(25L), eq(9L), eq(41L), eq(7L), eq(25L), eq(77L)))
+            .thenReturn(1);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any())).thenReturn(1);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any(), any()))
+            .thenReturn(1);
+        WorkflowAgentRunInput input = new WorkflowAgentRunInput(
+            "short-drama-storyboard", "run", 7L, 25L, 31L, 77L, 41L, null, 9L,
+            501L, 502L, 3, 8L);
+
+        guard.requireAuthorized(input, List.of(
+            "read_current_episode", "read_adjacent_episodes", "read_script_analysis",
+            "read_project_context", "read_script_assets", "save_episode_storyboards"));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForObject(sql.capture(), eq(Integer.class),
+            eq(502L), eq(501L), eq(3), eq(7L), eq(25L), eq(9L), eq(41L), eq(7L), eq(25L), eq(77L));
+        assertThat(sql.getValue())
+            .contains("SCRIPT_AI_OPERATION", "STORYBOARD_BREAKDOWN", "operation.execution_id = execution.id");
+        verify(permissions, never()).require(any(), any(), anyString());
+    }
+
+    @Test
     void mapsEachAnalysisAgentToItsOwnStage() {
         assertThat(WorkflowAgentScopeGuard.expectedStageCode("short-drama-global-understanding"))
             .isEqualTo("GLOBAL_UNDERSTANDING");

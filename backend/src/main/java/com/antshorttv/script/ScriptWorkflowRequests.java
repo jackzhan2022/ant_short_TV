@@ -69,15 +69,14 @@ record UpdateScriptElementRequest(
 }
 
 record StoryboardBreakdownRequest(
-    @Size(max = 32) String scope,
-    @Min(1) @Max(200) Integer episodeNo,
-    @Size(max = 200000) String selectedText
+    @NotNull Long episodeId
 ) {
 }
 
 record SaveStoryboardRequest(
     @Min(1) @Max(200) Integer episodeNo,
     @Min(1) @Max(9999) Integer shotNo,
+    @Min(1) @Max(9999) Integer storyboardNo,
     @Size(max = 50) String sceneNo,
     @Size(max = 50) String shotType,
     @NotBlank @Size(max = 5000) String visualDescription,
@@ -90,6 +89,7 @@ record SaveStoryboardRequest(
     @Min(1) @Max(600) Integer durationSeconds,
     @Size(max = 5000) String imagePrompt,
     @Size(max = 5000) String videoPrompt,
+    com.fasterxml.jackson.databind.JsonNode promptDocument,
     @Size(max = 32) String status
 ) {
 }

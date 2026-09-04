@@ -662,19 +662,6 @@ class ScriptWorkflowControllerTest {
             projectId
         )).isGreaterThan(0);
 
-        Long storyboardExecutionId = submitAndRun(
-            token, tenantId, projectId, "/storyboards/ai-breakdown",
-            "{\"scope\":\"FULL\"}",
-            "async-storyboard"
-        );
-        assertExecutionSucceeded(storyboardExecutionId);
-        assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from storyboard where tenant_id = ? and project_id = ? and deleted_at is null",
-            Integer.class,
-            tenantId,
-            projectId
-        )).isEqualTo(3);
-
         Long promptExecutionId = submitAndRun(
             token, tenantId, projectId, "/prompts/ai-generate",
             "{\"targetType\":\"ALL\"}",
@@ -972,18 +959,6 @@ class ScriptWorkflowControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.characters[0].name", is("林晚")));
 
-        submitAndRun(
-            token, tenantId, projectId, "/storyboards/ai-breakdown",
-            "{\"scope\":\"FULL\"}",
-            "full-workflow-storyboard"
-        );
-        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(projectId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
-                .header("X-Tenant-Id", tenantId))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.storyboards", hasSize(3)))
-            .andExpect(jsonPath("$.data.storyboards[0].imagePrompt", Matchers.containsString("首帧")));
-
         MvcResult storyboardResult = mockMvc.perform(post("/api/projects/%d/storyboards".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
@@ -992,9 +967,9 @@ class ScriptWorkflowControllerTest {
                     {"episodeNo":1,"shotNo":9,"shotType":"特写","visualDescription":"股权协议签名特写","characters":"林晚","scene":"宴会厅","dialogue":"这一次轮到我了。","durationSeconds":4,"imagePrompt":"协议特写首帧","videoPrompt":"镜头推进"}
                     """))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.storyboards", hasSize(4)))
+            .andExpect(jsonPath("$.data.storyboards", hasSize(1)))
             .andReturn();
-        Long storyboardId = readLong(storyboardResult, "$.data.storyboards[3].id");
+        Long storyboardId = readLong(storyboardResult, "$.data.storyboards[0].id");
 
         mockMvc.perform(put("/api/projects/%d/storyboards/%d".formatted(projectId, storyboardId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -1004,7 +979,7 @@ class ScriptWorkflowControllerTest {
                     {"episodeNo":1,"shotNo":10,"shotType":"近景","visualDescription":"林晚抬眼看向众人","characters":"林晚","scene":"宴会厅","dialogue":"我回来了。","durationSeconds":5,"imagePrompt":"林晚近景首帧","videoPrompt":"慢慢推近","status":"CONFIRMED"}
                     """))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.storyboards[3].shotNo", is(10)));
+            .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(10)));
 
         submitAndRun(
             token, tenantId, projectId, "/prompts/ai-generate",
@@ -1023,7 +998,80 @@ class ScriptWorkflowControllerTest {
             Integer.class,
             tenantId
         );
-        org.assertj.core.api.Assertions.assertThat(callCount).isGreaterThanOrEqualTo(7);
+        org.assertj.core.api.Assertions.assertThat(callCount).isGreaterThanOrEqualTo(6);
+    }
+
+    @Test
+    void storyboardBreakdownRequiresOwnedActiveEpisodeAndIsIdempotent() throws Exception {
+        String token = registerUser("13800013032", "Storyboard Scope Owner");
+        Long tenantId = createTenant(token, "分镜范围团队");
+        Long ownerId = userIdByMobile("13800013032");
+        createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 5);
+        Long projectId = createProject(
+            token, tenantId, ownerId, "分镜范围项目", "STORYBOARD_SCOPE",
+            "第1集\n主角推开房门。"
+        );
+        mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"title":"分镜范围剧本","content":"第1集\\n主角推开房门。","status":"CONFIRMED"}
+                    """))
+            .andExpect(status().isOk());
+        Long episodeId = jdbcTemplate.queryForObject(
+            "select id from script_episode where tenant_id = ? and project_id = ? and retired_at is null",
+            Long.class, tenantId, projectId
+        );
+
+        mockMvc.perform(post("/api/projects/%d/storyboards/ai-breakdown".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"scope\":\"FULL\"}"))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/projects/%d/storyboards/ai-breakdown".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"episodeId\":999999999}"))
+            .andExpect(status().isBadRequest());
+
+        jdbcTemplate.update("update script_episode set status = 'RETIRED', retired_at = now() where id = ?", episodeId);
+        mockMvc.perform(post("/api/projects/%d/storyboards/ai-breakdown".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"episodeId\":%d}".formatted(episodeId)))
+            .andExpect(status().isBadRequest());
+        jdbcTemplate.update("update script_episode set status = 'ACTIVE', retired_at = null where id = ?", episodeId);
+
+        String body = "{\"episodeId\":%d}".formatted(episodeId);
+        MvcResult first = mockMvc.perform(post("/api/projects/%d/storyboards/ai-breakdown".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "storyboard-scope-once")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.status", is("PENDING")))
+            .andReturn();
+        MvcResult duplicate = mockMvc.perform(post("/api/projects/%d/storyboards/ai-breakdown".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "storyboard-scope-once")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted())
+            .andReturn();
+
+        assertThat(readLong(duplicate, "$.data.id")).isEqualTo(readLong(first, "$.data.id"));
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from script_ai_operation where tenant_id = ? and idempotency_key = ?",
+            Integer.class, tenantId, "storyboard-scope-once"
+        )).isEqualTo(1);
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

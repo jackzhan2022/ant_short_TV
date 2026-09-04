@@ -12,8 +12,15 @@ public class StoryboardEntity {
     public Long tenantId;
     public Long projectId;
     public Long scriptId;
+    public Long episodeId;
     public Integer episodeNo;
     public Integer shotNo;
+    public Integer storyboardNo;
+    public String shotPlanJson;
+    public String promptDocumentJson;
+    public String sourceFingerprint;
+    public Long generatedByRunId;
+    public String materialBindingStatus;
     public String visualDescription;
     public String characters;
     public String actions;

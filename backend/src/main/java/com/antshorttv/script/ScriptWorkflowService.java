@@ -58,6 +58,10 @@ public class ScriptWorkflowService {
     private ScriptEpisodeSummaryRepository scriptEpisodeSummaryRepository;
     @Autowired
     private WorkflowAgentRunner workflowAgentRunner;
+    @Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    @Autowired(required = false)
+    private StoryboardAgentAdapter storyboardAgentAdapter;
 
     private final ProjectAccessResolver projectAccessResolver;
     private final ProjectPermissionGuard projectPermissionGuard;
@@ -280,28 +284,15 @@ public class ScriptWorkflowService {
         if (operation.resultId != null) {
             return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
         }
-        ScriptEntity script = scriptMapper.selectById(operation.scriptId);
-        if (script == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "剧本不存在。");
+        if (storyboardAgentAdapter == null || !storyboardAgentAdapter.enabled()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜 Workflow Agent 尚未启用。");
         }
-        AiInvocationResult<AiTextResponse> invocation = invokeTextForExecution(
-            executionContext,
-            AiBusinessScene.STORYBOARD_BREAKDOWN,
-            script.getTitle(),
-            "拆解分镜成功"
-        );
-        transactionTemplate.executeWithoutResult(status -> {
-            requireActiveExecutionClaim(executionContext);
-            jdbcTemplate.update("""
-                update storyboard set deleted_at = now(), updated_at = now()
-                 where tenant_id = ? and project_id = ? and status = 'DRAFT' and deleted_at is null
-                """, operation.tenantId, operation.projectId);
-            insertStoryboard(operation.tenantId, operation.projectId, script.getId(), operation.createdBy, 1, 1, "场景一", "远景", "雨夜中，林家老宅大门外亮起冷光，主角拖着行李箱出现。", "主角", "主角停在门前，抬头看向门匾。", "三年前你们把我赶出去，今天我回来。", "林家老宅门口", "行李箱", "压抑、回归", 5, "首帧：雨夜豪门老宅门口，主角拖行李箱，冷色电影感", "竖屏短剧镜头，雨水落下，镜头缓慢推进", "DRAFT");
-            insertStoryboard(operation.tenantId, operation.projectId, script.getId(), operation.createdBy, 1, 2, "场景二", "中景", "宴会厅内笑声戛然而止，宾客同时回头。", "主角、旧日熟人", "旧日熟人后退半步，表情震惊。", "这不可能，她怎么会回来？", "宴会厅", "香槟杯", "震惊、反转", 6, "首帧：豪门宴会厅众人回头，主角站在入口", "竖屏短剧镜头，人群视线聚焦，轻微推拉", "DRAFT");
-            insertStoryboard(operation.tenantId, operation.projectId, script.getId(), operation.createdBy, 1, 3, "场景二", "特写", "旧股权协议末页的签名被主角按在灯光下。", "主角", "主角将协议推到桌面中央。", "属于我的，我一分都不会让。", "宴会厅", "旧股权协议", "强冲突、悬念", 4, "首帧：旧股权协议签名特写，手指压住纸张", "竖屏短剧镜头，特写切入，灯光扫过签名", "DRAFT");
-            markOperationResult(operation, "STORYBOARD_SET", script.getId());
-        });
-        return new ScriptAiOperationExecutionResult("STORYBOARD_SET", script.getId(), List.of(invocation));
+        requireActiveExecutionClaim(executionContext);
+        StoryboardAgentAdapter.Execution agent = storyboardAgentAdapter.execute(
+            operation, request.episodeId(), executionContext);
+        markOperationResult(operation, "STORYBOARD_SET", request.episodeId());
+        return new ScriptAiOperationExecutionResult(
+            "STORYBOARD_SET", request.episodeId(), List.of(), agent.modelCalls());
     }
 
     public ScriptAiOperationExecutionResult executeElementExtractionOperation(
@@ -510,6 +501,14 @@ public class ScriptWorkflowService {
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:AI_BREAKDOWN", projectId);
         ScriptEntity script = requireScript(tenantId, projectId);
+        Integer episodeCount = jdbcTemplate.queryForObject("""
+            select count(*) from script_episode
+             where id = ? and tenant_id = ? and project_id = ? and script_id = ?
+               and status = 'ACTIVE' and retired_at is null
+            """, Integer.class, request.episodeId(), tenantId, projectId, script.getId());
+        if (episodeCount == null || episodeCount != 1) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择当前项目的一集有效剧集。");
+        }
         return submitOperation(context, projectId, AiBusinessScene.STORYBOARD_BREAKDOWN, "STORYBOARD_BREAKDOWN", script.getId(), script.getCurrentVersionId(), request, servletRequest);
     }
 
@@ -1164,16 +1163,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:AI_BREAKDOWN", projectId);
-        ScriptEntity script = requireScript(tenantId, projectId);
-        jdbcTemplate.update("""
-            update storyboard set deleted_at = now(), updated_at = now()
-             where tenant_id = ? and project_id = ? and status = 'DRAFT' and deleted_at is null
-            """, tenantId, projectId);
-        insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 1, "场景一", "远景", "雨夜中，林家老宅大门外亮起冷光，主角拖着行李箱出现。", "主角", "主角停在门前，抬头看向门匾。", "三年前你们把我赶出去，今天我回来。", "林家老宅门口", "行李箱", "压抑、回归", 5, "首帧：雨夜豪门老宅门口，主角拖行李箱，冷色电影感", "竖屏短剧镜头，雨水落下，镜头缓慢推进", "DRAFT");
-        insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 2, "场景二", "中景", "宴会厅内笑声戛然而止，宾客同时回头。", "主角、旧日熟人", "旧日熟人后退半步，表情震惊。", "这不可能，她怎么会回来？", "宴会厅", "香槟杯", "震惊、反转", 6, "首帧：豪门宴会厅众人回头，主角站在入口", "竖屏短剧镜头，人群视线聚焦，轻微推拉", "DRAFT");
-        insertStoryboard(tenantId, projectId, script.getId(), context.userId(), 1, 3, "场景二", "特写", "旧股权协议末页的签名被主角按在灯光下。", "主角", "主角将协议推到桌面中央。", "属于我的，我一分都不会让。", "宴会厅", "旧股权协议", "强冲突、悬念", 4, "首帧：旧股权协议签名特写，手指压住纸张", "竖屏短剧镜头，特写切入，灯光扫过签名", "DRAFT");
-        callTextInvocation(context, projectId, AiBusinessScene.STORYBOARD_BREAKDOWN, script.getTitle(), "拆解分镜成功");
-        return workspace(tenantId, projectId);
+        throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请使用异步的生成本集分镜接口。");
     }
 
     @Transactional
@@ -1183,6 +1173,15 @@ public class ScriptWorkflowService {
         requirePermission(context, "STORYBOARD:EDIT", projectId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         insertStoryboard(tenantId, projectId, script == null ? null : script.getId(), context.userId(), request.episodeNo(), request.shotNo(), request.sceneNo(), request.shotType(), request.visualDescription(), request.characters(), request.actions(), request.dialogue(), request.scene(), request.props(), request.mood(), request.durationSeconds(), request.imagePrompt(), request.videoPrompt(), normalizeStatus(request.status()));
+        if (request.storyboardNo() != null || request.promptDocument() != null) {
+            jdbcTemplate.update("""
+                update storyboard set storyboard_no = coalesce(?, shot_no), prompt_document_json = ?, updated_at = now()
+                 where tenant_id = ? and project_id = ? and id = (
+                   select id from (select id from storyboard where tenant_id = ? and project_id = ?
+                     and deleted_at is null order by id desc limit 1) latest)
+                """, request.storyboardNo(), writeJson(request.promptDocument()), tenantId, projectId,
+                tenantId, projectId);
+        }
         return workspace(tenantId, projectId);
     }
 
@@ -1193,9 +1192,17 @@ public class ScriptWorkflowService {
         requirePermission(context, "STORYBOARD:EDIT", projectId);
         jdbcTemplate.update("""
             update storyboard
-               set episode_no = ?, shot_no = ?, scene_no = ?, shot_type = ?, visual_description = ?, characters = ?, actions = ?, dialogue = ?, scene = ?, props = ?, mood = ?, duration_seconds = ?, image_prompt = ?, video_prompt = ?, status = ?, updated_at = now()
+               set episode_no = ?, shot_no = ?, storyboard_no = coalesce(?, storyboard_no, shot_no),
+                   scene_no = ?, shot_type = ?, visual_description = ?, characters = ?, actions = ?,
+                   dialogue = ?, scene = ?, props = ?, mood = ?, duration_seconds = ?, image_prompt = ?,
+                   video_prompt = ?, prompt_document_json = coalesce(?, prompt_document_json), status = ?, updated_at = now()
              where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-            """, request.episodeNo(), request.shotNo(), blankToNull(request.sceneNo()), blankToNull(request.shotType()), request.visualDescription().trim(), blankToNull(request.characters()), blankToNull(request.actions()), blankToNull(request.dialogue()), blankToNull(request.scene()), blankToNull(request.props()), blankToNull(request.mood()), request.durationSeconds(), blankToNull(request.imagePrompt()), blankToNull(request.videoPrompt()), normalizeStatus(request.status()), tenantId, projectId, storyboardId);
+            """, request.episodeNo(), request.shotNo(), request.storyboardNo(), blankToNull(request.sceneNo()),
+            blankToNull(request.shotType()), request.visualDescription().trim(), blankToNull(request.characters()),
+            blankToNull(request.actions()), blankToNull(request.dialogue()), blankToNull(request.scene()),
+            blankToNull(request.props()), blankToNull(request.mood()), request.durationSeconds(),
+            blankToNull(request.imagePrompt()), blankToNull(request.videoPrompt()), writeJson(request.promptDocument()),
+            normalizeStatus(request.status()), tenantId, projectId, storyboardId);
         return workspace(tenantId, projectId);
     }
 
@@ -1380,13 +1387,19 @@ public class ScriptWorkflowService {
 
     private List<StoryboardResponse> storyboards(Long tenantId, Long projectId) {
         return jdbcTemplate.query("""
-            select id, shot_no, episode_no, shot_type, visual_description, characters, scene, dialogue, duration_seconds, image_prompt, video_prompt, first_frame_url, current_video_result_id, current_video_url
+            select id, shot_no, coalesce(storyboard_no, shot_no) storyboard_no, episode_id, episode_no,
+                   shot_type, visual_description, characters, scene, dialogue, duration_seconds,
+                   shot_plan_json, prompt_document_json, material_binding_status, source_fingerprint,
+                   generated_by_run_id, image_prompt, video_prompt, first_frame_url,
+                   current_video_result_id, current_video_url
               from storyboard
              where tenant_id = ? and project_id = ? and deleted_at is null
              order by episode_no, shot_no, id
             """, (rs, rowNum) -> new StoryboardResponse(
                 rs.getLong("id"),
                 rs.getInt("shot_no"),
+                rs.getInt("storyboard_no"),
+                rs.getObject("episode_id", Long.class),
                 rs.getInt("episode_no"),
                 rs.getString("shot_type"),
                 rs.getString("visual_description"),
@@ -1394,12 +1407,30 @@ public class ScriptWorkflowService {
                 rs.getString("scene"),
                 rs.getString("dialogue"),
                 rs.getObject("duration_seconds", Integer.class),
+                readJson(rs.getString("shot_plan_json")),
+                readJson(rs.getString("prompt_document_json")),
+                rs.getString("material_binding_status"),
+                rs.getString("source_fingerprint"),
+                rs.getObject("generated_by_run_id", Long.class),
                 rs.getString("image_prompt"),
                 rs.getString("video_prompt"),
                 materialFileAccessService.publicUrl(rs.getString("first_frame_url")),
                 rs.getObject("current_video_result_id", Long.class),
                 materialFileAccessService.publicUrl(rs.getString("current_video_url"))
             ), tenantId, projectId);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode readJson(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return objectMapper.readTree(value);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new IllegalStateException("分镜结构化数据损坏。", exception);
+        }
+    }
+
+    private String writeJson(com.fasterxml.jackson.databind.JsonNode value) {
+        return value == null ? null : value.toString();
     }
 
     private List<String> splitTags(String value) {

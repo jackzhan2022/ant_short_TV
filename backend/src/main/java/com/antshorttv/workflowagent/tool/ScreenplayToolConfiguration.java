@@ -249,6 +249,70 @@ public class ScreenplayToolConfiguration {
             executor((context, arguments) -> data.saveEpisodeAssets(context, arguments)));
     }
 
+    @Bean
+    WorkflowToolDefinition saveEpisodeStoryboardsTool(StoryboardToolDataService data, ObjectMapper json) {
+        ObjectNode output = objectSchema(json);
+        output.putArray("required").add("saved").add("episodeId")
+            .add("storyboardCount").add("storyboardIds");
+        ObjectNode fields = (ObjectNode) output.path("properties");
+        fields.putObject("saved").put("type", "boolean");
+        fields.putObject("episodeId").put("type", "integer");
+        fields.putObject("storyboardCount").put("type", "integer").put("minimum", 1);
+        fields.putObject("storyboardIds").put("type", "array").putObject("items").put("type", "integer");
+        return definition("save_episode_storyboards", "保存本集正式分镜",
+            "完整校验并原子覆盖当前有效剧集的正式多镜头分镜。",
+            episodeStoryboardsInput(json), output, ToolRiskLevel.WRITE,
+            ToolFailurePolicy.RETURN_TO_MODEL,
+            executor((context, arguments) -> data.saveEpisodeStoryboards(context, arguments)));
+    }
+
+    private ObjectNode episodeStoryboardsInput(ObjectMapper json) {
+        ObjectNode schema = objectSchema(json);
+        schema.putArray("required").add("schemaVersion").add("episodeFingerprint").add("storyboards");
+        ObjectNode fields = (ObjectNode) schema.path("properties");
+        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 1).put("maximum", 1);
+        fields.putObject("episodeFingerprint").put("type", "string").put("minLength", 1).put("maxLength", 128);
+        ObjectNode boards = fields.putObject("storyboards").put("type", "array")
+            .put("minItems", 1).put("maxItems", 200);
+        ObjectNode board = objectSchema(json);
+        board.putArray("required").add("storyboardNo").add("sourceStartMarker")
+            .add("sourceEndMarker").add("usedAssetKeys").add("shots");
+        ObjectNode boardFields = (ObjectNode) board.path("properties");
+        boardFields.putObject("storyboardNo").put("type", "integer").put("minimum", 1);
+        boardFields.putObject("sourceStartMarker").put("type", "string").put("minLength", 1).put("maxLength", 2000);
+        boardFields.putObject("sourceEndMarker").put("type", "string").put("minLength", 1).put("maxLength", 2000);
+        boardFields.set("time", nullableType(json, "string").put("maxLength", 100));
+        boardFields.set("lighting", nullableType(json, "string").put("maxLength", 1000));
+        boardFields.set("usedAssetKeys", materialGroups(json));
+        boardFields.set("unmatchedMaterials", materialGroups(json));
+        ObjectNode shots = boardFields.putObject("shots").put("type", "array")
+            .put("minItems", 2).put("maxItems", 20);
+        ObjectNode shot = objectSchema(json);
+        shot.putArray("required").add("shotNo").add("durationSeconds").add("positioning").add("action");
+        ObjectNode shotFields = (ObjectNode) shot.path("properties");
+        shotFields.putObject("shotNo").put("type", "integer").put("minimum", 1);
+        shotFields.putObject("durationSeconds").put("type", "number").put("minimum", 1.5).put("maximum", 4);
+        shotFields.putObject("positioning").put("type", "string").put("minLength", 1).put("maxLength", 1000);
+        shotFields.putObject("action").put("type", "string").put("minLength", 1).put("maxLength", 1000);
+        for (String field : new String[]{"dialogue", "narration", "innerOs"}) {
+            shotFields.set(field, nullableType(json, "string").put("maxLength", 5000));
+        }
+        shots.set("items", shot);
+        boards.set("items", board);
+        return schema;
+    }
+
+    private ObjectNode materialGroups(ObjectMapper json) {
+        ObjectNode groups = objectSchema(json);
+        groups.putArray("required").add("characters").add("scenes").add("props");
+        ObjectNode fields = (ObjectNode) groups.path("properties");
+        for (String field : new String[]{"characters", "scenes", "props"}) {
+            fields.putObject(field).put("type", "array").put("maxItems", 100)
+                .putObject("items").put("type", "string").put("minLength", 1).put("maxLength", 100);
+        }
+        return groups;
+    }
+
     private ObjectNode episodeAssetsInput(ObjectMapper json) {
         ObjectNode schema = objectSchema(json);
         schema.putArray("required").add("schemaVersion").add("characters")
@@ -486,7 +550,14 @@ public class ScreenplayToolConfiguration {
     private ObjectNode adjacentOutput(ObjectMapper json) {
         ObjectNode schema = objectSchema(json);
         ObjectNode fields = (ObjectNode) schema.path("properties");
-        ObjectNode episode = episodeOutput(json);
+        ObjectNode episode = objectSchema(json);
+        episode.putArray("required").add("episodeId").add("episodeNo");
+        ObjectNode episodeFields = (ObjectNode) episode.path("properties");
+        episodeFields.putObject("episodeId").put("type", "integer");
+        episodeFields.putObject("episodeNo").put("type", "integer");
+        for (String field : new String[]{"title", "summary", "status", "endingSummary", "openingSummary"}) {
+            episodeFields.set(field, nullableType(json, "string"));
+        }
         episode.set("type", json.createArrayNode().add("object").add("null"));
         fields.set("previous", episode);
         fields.set("next", episode.deepCopy());
@@ -498,6 +569,7 @@ public class ScreenplayToolConfiguration {
         schema.putArray("required").add("stages");
         ObjectNode fields = (ObjectNode) schema.path("properties");
         fields.set("task", nullableType(json, "object"));
+        fields.set("globalUnderstanding", nullableType(json, "object"));
         fields.putObject("stages").put("type", "array")
             .set("items", json.createObjectNode().put("type", "object"));
         return schema;

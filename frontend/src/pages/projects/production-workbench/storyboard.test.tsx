@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   createStoryboard: vi.fn(),
   updateStoryboard: vi.fn(),
   deleteStoryboard: vi.fn(),
+  breakdownStoryboards: vi.fn(),
   pollExecution: vi.fn(),
   cancelExecution: vi.fn(),
   retryExecution: vi.fn(),
@@ -77,6 +78,7 @@ vi.mock('./service', () => ({
   createStoryboard: mocks.createStoryboard,
   updateStoryboard: mocks.updateStoryboard,
   deleteStoryboard: mocks.deleteStoryboard,
+  breakdownStoryboards: mocks.breakdownStoryboards,
 }));
 
 vi.mock('./ShotProductionWorkspace', () => ({
@@ -299,6 +301,10 @@ const setupWorkspaceResponse = (
       characters: overrides?.characters ?? characters,
       scenes: overrides?.scenes ?? scenes,
       props: overrides?.props ?? props,
+      episodes: [
+        { episodeId: 1001, episodeNo: 1, title: '致命捉迷藏', content: '第一集正文' },
+        { episodeId: 1002, episodeNo: 2, title: '夜色警报', content: '第二集正文' },
+      ],
       storyboards: overrides?.storyboards ?? [
         {
           id: 101,
@@ -417,6 +423,9 @@ const setupWorkspaceResponse = (
   mocks.createAiVideoTask.mockResolvedValue({
     data: { id: 9002, storyboardId: 101, executionId: 7002, results: [] },
   });
+  mocks.breakdownStoryboards.mockResolvedValue({
+    data: { id: 7100, status: 'PENDING', progress: 0 },
+  });
   mocks.createAiImageTask.mockResolvedValue({
     data: {
       id: 1200,
@@ -533,7 +542,9 @@ describe('ProductionWorkbench script page', () => {
       screen.getAllByText('灰色轿车后备箱 - 灰色轿车后备箱').length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText('3D导演台').length).toBeGreaterThan(0);
-    expect(screen.getAllByDisplayValue(/素材引用/).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole('textbox', { name: /视频提示词/ })[0],
+    ).toHaveTextContent(/停车场首帧提示词|写实都市|镜头1/);
     expect(screen.getAllByText('当前分镜').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: '2' }));
@@ -551,9 +562,9 @@ describe('ProductionWorkbench script page', () => {
       expect(screen.getByLabelText('分镜1视频提示词')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText('分镜1视频提示词'), {
-      target: { value: '新的分镜视频提示词' },
-    });
+    const editor = screen.getByLabelText('分镜1视频提示词');
+    editor.textContent = '新的分镜视频提示词';
+    fireEvent.input(editor);
     fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
 
     await waitFor(() => {
@@ -569,6 +580,89 @@ describe('ProductionWorkbench script page', () => {
         1,
         7002,
         expect.any(Function),
+      );
+    });
+  });
+
+  it('submits only the selected active episode and refreshes after completion', async () => {
+    render(<ProductionWorkbench />);
+    await screen.findByRole('button', { name: /生成本集分镜/ });
+
+    fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
+
+    await waitFor(() => {
+      expect(mocks.breakdownStoryboards).toHaveBeenCalledWith(1, {
+        episodeId: 1001,
+      });
+      expect(mocks.pollExecution).toHaveBeenCalledWith(
+        1,
+        7100,
+        expect.any(Function),
+      );
+      expect(mocks.queryScriptWorkspace.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('keeps one rich prompt editor and does not rebind deleted material text', async () => {
+    const storyboard = {
+      id: 301,
+      shotNo: 1,
+      storyboardNo: 1,
+      episodeId: 1001,
+      episodeNo: 1,
+      shotType: '中景',
+      visualDescription: '李慧站在停车场。',
+      characters: '李慧',
+      scene: '停车场',
+      props: '',
+      dialogue: '',
+      durationSeconds: 13,
+      imagePrompt: '',
+      videoPrompt: '画风: 现代都市通用\n李慧\n镜头1 3s\n镜头2 3s',
+      promptDocument: {
+        version: 1,
+        nodes: [
+          { type: 'text', text: '画风: 现代都市通用\n' },
+          {
+            type: 'mention',
+            assetType: 'CHARACTER',
+            assetId: 3,
+            variantId: 33,
+            displayName: '李慧',
+          },
+          { type: 'text', text: '\n镜头1 3s\n镜头2 3s' },
+        ],
+      },
+      firstFrameUrl: null,
+      currentVideoUrl: null,
+    };
+    setupWorkspaceResponse({ storyboards: [storyboard] });
+    render(<ProductionWorkbench />);
+
+    const editor = await screen.findByRole('textbox', {
+      name: '分镜1视频提示词',
+    });
+    expect(screen.getAllByRole('textbox', { name: /视频提示词/ })).toHaveLength(1);
+    expect(editor.querySelector('[data-asset-id="3"]')).not.toBeNull();
+    expect(editor).toHaveTextContent('镜头1 3s');
+    expect(editor).toHaveTextContent('镜头2 3s');
+
+    editor.textContent = '李慧';
+    fireEvent.input(editor);
+    await waitFor(() => expect(editor).toHaveTextContent('李慧'));
+    fireEvent.blur(editor);
+
+    await waitFor(() => {
+      expect(mocks.updateStoryboard).toHaveBeenCalledWith(
+        1,
+        301,
+        expect.objectContaining({
+          videoPrompt: '李慧',
+          promptDocument: {
+            version: 1,
+            nodes: [{ type: 'text', text: '李慧' }],
+          },
+        }),
       );
     });
   });
@@ -701,7 +795,7 @@ describe('ProductionWorkbench script page', () => {
         props: '灰色轿车后备箱',
         durationSeconds: 5,
         imagePrompt: '停车场首帧提示词',
-        videoPrompt: expect.stringContaining('素材引用'),
+        videoPrompt: '画风：写实都市。镜头1 1s 远景摇镜停车场内灰色轿车。',
       });
     });
   });

@@ -19,20 +19,20 @@ public class WorkflowAgentScopeGuard {
         "read_adjacent_episodes", "read_script_analysis", "read_script_assets",
         "save_episode_script", "read_current_script", "save_global_understanding",
         "read_current_episode", "save_episode_splitting", "save_episode_summary",
-        "save_episode_assets", "read_script_structure", "analyze_script_chunks"
+        "save_episode_assets", "save_episode_storyboards", "read_script_structure", "analyze_script_chunks"
     );
     private static final Set<String> EPISODE_TOOLS = Set.of(
         "read_episode_script", "read_adjacent_episodes", "save_episode_script",
-        "read_current_episode", "save_episode_summary", "save_episode_assets"
+        "read_current_episode", "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
     );
     private static final Set<String> SCRIPT_TOOLS = Set.of(
         "read_current_script", "save_global_understanding", "read_current_episode",
-        "save_episode_splitting", "save_episode_summary", "save_episode_assets"
+        "save_episode_splitting", "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
         , "read_script_structure", "analyze_script_chunks"
     );
     private static final Set<String> WRITE_TOOLS = Set.of(
         "save_episode_script", "save_global_understanding", "save_episode_splitting",
-        "save_episode_summary", "save_episode_assets"
+        "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
     );
 
     private final ProjectPermissionGuard permissions;
@@ -205,6 +205,26 @@ public class WorkflowAgentScopeGuard {
     private void requireTrustedExecutionScope(WorkflowAgentRunInput input) {
         if (input.attemptId() == null || input.executionVersion() == null || input.taskId() == null) {
             throw invalid("后台 Agent 缺少可信执行身份。");
+        }
+        if ("short-drama-storyboard".equals(input.agentCode())) {
+            Integer count = jdbc.queryForObject("""
+                select count(*)
+                  from ai_execution_task execution
+                  join ai_execution_attempt attempt
+                    on attempt.id = ? and attempt.execution_id = execution.id
+                   and attempt.execution_version = execution.execution_version
+                  join script_ai_operation operation
+                    on operation.id = execution.business_id and operation.execution_id = execution.id
+                 where execution.id = ? and execution.execution_version = ?
+                   and execution.tenant_id = ? and execution.project_id = ? and execution.user_id = ?
+                   and execution.business_type = 'SCRIPT_AI_OPERATION'
+                   and operation.id = ? and operation.operation_type = 'STORYBOARD_BREAKDOWN'
+                   and operation.tenant_id = ? and operation.project_id = ? and operation.script_id = ?
+                """, Integer.class, input.attemptId(), input.executionId(), input.executionVersion(),
+                input.tenantId(), input.projectId(), input.userId(), input.taskId(), input.tenantId(),
+                input.projectId(), input.scriptId());
+            if (count == null || count != 1) throw invalid("分镜 Agent 执行身份与请求不匹配。");
+            return;
         }
         Integer count = jdbc.queryForObject("""
             select count(*)

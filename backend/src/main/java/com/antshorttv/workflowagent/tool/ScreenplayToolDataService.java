@@ -167,6 +167,13 @@ public class ScreenplayToolDataService {
     public JsonNode readScriptAnalysis(ToolExecutionContext context) {
         requireProject(context, "SCRIPT:VIEW");
         ObjectNode result = json.createObjectNode();
+        if (context.scriptId() != null) {
+            globalUnderstanding.findCurrent(context.tenantId(), context.scriptId())
+                .ifPresentOrElse(document -> result.set("globalUnderstanding", document.content()),
+                    () -> result.putNull("globalUnderstanding"));
+        } else {
+            result.putNull("globalUnderstanding");
+        }
         List<Map<String, Object>> tasks = jdbc.queryForList("""
             select id, status, overall_progress, current_stage, current_action,
                    error_code, error_message, created_at, updated_at
@@ -197,9 +204,15 @@ public class ScreenplayToolDataService {
     public JsonNode readScriptAssets(ToolExecutionContext context) {
         requireProject(context, "SCRIPT:VIEW");
         ObjectNode result = json.createObjectNode();
-        result.set("characters", assets("character_asset", context));
-        result.set("scenes", assets("scene_asset", context));
-        result.set("props", assets("prop_asset", context));
+        if (context.scriptId() == null) {
+            result.set("characters", assets("character_asset", context));
+            result.set("scenes", assets("scene_asset", context));
+            result.set("props", assets("prop_asset", context));
+        } else {
+            result.set("characters", currentScriptAssets(context, "character_asset", "CHARACTER", "c_"));
+            result.set("scenes", currentScriptAssets(context, "scene_asset", "SCENE", "s_"));
+            result.set("props", currentScriptAssets(context, "prop_asset", "PROP", "p_"));
+        }
         return result;
     }
 
@@ -344,6 +357,7 @@ public class ScreenplayToolDataService {
         context.runState().put("currentEpisodeScriptId", context.scriptId());
         context.runState().put("currentEpisodeFingerprint", fingerprint);
         context.runState().put("currentEpisodeContentHash", sha256(content));
+        context.runState().put("currentEpisodeContent", content);
         ObjectNode result = json.createObjectNode();
         put(result, "episodeKey", row.get("stable_key"));
         result.put("episodeNo", ((Number) row.get("episode_no")).intValue());
@@ -393,7 +407,7 @@ public class ScreenplayToolDataService {
             }
             ArrayNode variants = item.putArray("variants");
             List<Map<String, Object>> variantRows = jdbc.queryForList("""
-                select id, name, content_json
+                select id, name, content_json, is_primary
                   from asset_visual_variant
                  where tenant_id = ? and project_id = ? and asset_type = ? and asset_id = ?
                    and deleted_at is null
@@ -406,6 +420,14 @@ public class ScreenplayToolDataService {
                 ObjectNode variantItem = variants.addObject();
                 variantItem.put("variantKey", "v_" + number(variant.get("id")));
                 put(variantItem, "name", variant.get("name"));
+                variantItem.put("primary", Boolean.TRUE.equals(variant.get("is_primary")));
+                Integer episodeBound = jdbc.queryForObject("""
+                    select count(*) from asset_visual_variant_episode
+                     where tenant_id = ? and project_id = ? and script_id = ? and episode_id = ?
+                       and asset_type = ? and asset_id = ? and variant_id = ? and retired_at is null
+                    """, Integer.class, context.tenantId(), context.projectId(), context.scriptId(),
+                    context.episodeId(), assetType, assetId, number(variant.get("id")));
+                variantItem.put("episodeBound", episodeBound != null && episodeBound > 0);
                 Object rawContent = variant.get("content_json");
                 if (rawContent != null) {
                     try {
@@ -771,8 +793,19 @@ public class ScreenplayToolDataService {
         if (rows.isEmpty()) {
             result.putNull(field);
         } else {
-            result.set(field, episodeDetail(rows.get(0)));
+            result.set(field, adjacentSummary(rows.get(0), "previous".equals(field)));
         }
+    }
+
+    private ObjectNode adjacentSummary(Map<String, Object> row, boolean previous) {
+        ObjectNode item = episodeSummary(row);
+        Object value = row.get("summary");
+        if (previous) {
+            put(item, "endingSummary", value);
+        } else {
+            put(item, "openingSummary", value);
+        }
+        return item;
     }
 
     private ObjectNode episodeSummary(Map<String, Object> row) {

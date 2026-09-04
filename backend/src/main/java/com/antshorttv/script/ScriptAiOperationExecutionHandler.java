@@ -104,10 +104,11 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         markRunning(operation);
         try {
             ScriptAiOperationExecutionResult result = executeOperation(operation, context);
-            markAttempt(context, result.lastInvocation());
+            markAttempt(context, result);
             markSucceeded(operation, result);
-            recordUsageAndCost(context, result.invocations());
-            settle(context, result.lastInvocation(), AiSettlementOutcome.SUCCESS, result.invocations().size());
+            recordUsageAndCost(context, result);
+            settle(context, result.lastInvocation(), result.lastAgentModelCall(), AiSettlementOutcome.SUCCESS,
+                result.invocations().size() + result.agentModelCalls().size());
             return new AiExecutionHandlerResult(result.resultType(), result.resultId());
         } catch (AiExecutionClaimLostException exception) {
             markCanceled(operation);
@@ -117,6 +118,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             markFailed(operation, exception);
             settle(
                 context,
+                null,
                 null,
                 callLogId == null
                     ? AiSettlementOutcome.PROVIDER_REJECTION
@@ -196,15 +198,34 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             .eq("id", context.claim().attemptId()));
     }
 
+    private void markAttempt(AiExecutionContext context, ScriptAiOperationExecutionResult result) {
+        if (result.lastInvocation() != null) {
+            markAttempt(context, result.lastInvocation());
+            return;
+        }
+        var call = result.lastAgentModelCall();
+        if (call == null) return;
+        attemptMapper.update(null, new UpdateWrapper<AiExecutionAttemptEntity>()
+            .set("provider_contacted", true)
+            .set("provider_contacted_at", LocalDateTime.now())
+            .set("provider_id", call.providerId())
+            .set("model_id", call.modelId())
+            .set("provider_request_id", call.providerRequestId())
+            .set("ai_call_log_id", call.callLogId())
+            .set("transport_outcome", call.transportOutcome())
+            .set("business_outcome", call.businessOutcome())
+            .eq("id", context.claim().attemptId()));
+    }
+
     private void recordUsageAndCost(
         AiExecutionContext context,
-        List<AiInvocationResult<AiTextResponse>> invocations
+        ScriptAiOperationExecutionResult result
     ) {
-        if (invocations.isEmpty()) {
+        if (result.invocations().isEmpty() && result.agentModelCalls().isEmpty()) {
             return;
         }
         LocalDateTime observedAt = LocalDateTime.now();
-        for (AiInvocationResult<AiTextResponse> invocation : invocations) {
+        for (AiInvocationResult<AiTextResponse> invocation : result.invocations()) {
             usageAccountingService.record(AiUsageCommand.requestDerived(
                 new AiUsageContext(
                     context.task().tenantId,
@@ -218,6 +239,12 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
                 Map.of(),
                 observedAt
             ));
+        }
+        for (var call : result.agentModelCalls()) {
+            usageAccountingService.record(AiUsageCommand.requestDerived(
+                new AiUsageContext(context.task().tenantId, context.task().id,
+                    context.claim().attemptId(), call.callLogId(), call.modelId()),
+                AiUsageMetric.CALL, "1", Map.of(), observedAt));
         }
         AiExecutionCostSummary cost = usageAccountingService.priceExecution(
             context.task().id,
@@ -236,6 +263,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
     private void settle(
         AiExecutionContext context,
         AiInvocationResult<AiTextResponse> invocation,
+        com.antshorttv.workflowagent.run.WorkflowAgentModelCall agentCall,
         AiSettlementOutcome outcome,
         int providerCallCount
     ) {
@@ -248,7 +276,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             outcome,
             Map.of(AiUsageMetric.CALL, BigDecimal.valueOf(providerCallCount)),
             context.claim().attemptId(),
-            invocation == null ? null : invocation.aiCallLogId(),
+            invocation != null ? invocation.aiCallLogId() : agentCall == null ? null : agentCall.callLogId(),
             "execution:%d:v%d:%s".formatted(
                 context.task().id,
                 context.task().executionVersion,

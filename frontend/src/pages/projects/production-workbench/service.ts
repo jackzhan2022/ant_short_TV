@@ -163,6 +163,8 @@ export type AssetCandidateDecision = {
 export type StoryboardShot = {
   id: number;
   shotNo: number;
+  storyboardNo?: number;
+  episodeId?: number | null;
   episodeNo: number;
   shotType: string;
   visualDescription: string;
@@ -170,6 +172,11 @@ export type StoryboardShot = {
   scene: string;
   dialogue: string;
   durationSeconds: number;
+  shotPlan?: StoryboardShotPlan | null;
+  promptDocument?: StoryboardPromptDocument | null;
+  materialBindingStatus?: 'BOUND' | 'ASSET_PENDING' | 'LEGACY' | string;
+  sourceFingerprint?: string | null;
+  generatedByRunId?: number | null;
   imagePrompt: string;
   videoPrompt: string;
   firstFrameUrl?: string | null;
@@ -180,6 +187,39 @@ export type StoryboardShot = {
   currentSubtitleUrl?: string | null;
   currentShotResultId?: number | null;
   currentShotVideoUrl?: string | null;
+};
+
+export type StoryboardInternalShot = {
+  shotNo: number;
+  durationSeconds: number;
+  positioning: string;
+  action: string;
+  dialogue?: string | null;
+  narration?: string | null;
+  innerOs?: string | null;
+};
+
+export type StoryboardShotPlan = {
+  storyboardNo: number;
+  durationSeconds: number;
+  time?: string | null;
+  lighting?: string | null;
+  shots: StoryboardInternalShot[];
+};
+
+export type StoryboardPromptNode =
+  | { type: 'text'; text: string }
+  | {
+      type: 'mention';
+      assetType: 'CHARACTER' | 'SCENE' | 'PROP';
+      assetId: number;
+      variantId: number;
+      displayName: string;
+    };
+
+export type StoryboardPromptDocument = {
+  version: 1;
+  nodes: StoryboardPromptNode[];
 };
 
 export type ScriptWorkspace = {
@@ -318,6 +358,7 @@ export type UpdateScriptElementValues = {
 export type SaveStoryboardValues = {
   episodeNo?: number;
   shotNo?: number;
+  storyboardNo?: number;
   sceneNo?: string;
   shotType?: string;
   visualDescription: string;
@@ -330,6 +371,7 @@ export type SaveStoryboardValues = {
   durationSeconds?: number;
   imagePrompt?: string;
   videoPrompt?: string;
+  promptDocument?: StoryboardPromptDocument;
   status?: 'DRAFT' | 'CONFIRMED';
 };
 
@@ -660,7 +702,7 @@ export const deleteScriptElement = async (
 
 export const breakdownStoryboards = async (
   projectId: number,
-  values: { scope: string; episodeNo?: number; selectedText?: string },
+  values: { episodeId: number },
 ) =>
   request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/storyboards/ai-breakdown`,

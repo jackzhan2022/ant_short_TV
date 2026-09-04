@@ -113,6 +113,8 @@ record AssetVisualWorkspace(
 record StoryboardResponse(
     Long id,
     Integer shotNo,
+    Integer storyboardNo,
+    Long episodeId,
     Integer episodeNo,
     String shotType,
     String visualDescription,
@@ -120,6 +122,11 @@ record StoryboardResponse(
     String scene,
     String dialogue,
     Integer durationSeconds,
+    com.fasterxml.jackson.databind.JsonNode shotPlan,
+    com.fasterxml.jackson.databind.JsonNode promptDocument,
+    String materialBindingStatus,
+    String sourceFingerprint,
+    Long generatedByRunId,
     String imagePrompt,
     String videoPrompt,
     String firstFrameUrl,
@@ -130,6 +137,8 @@ record StoryboardResponse(
         return new StoryboardResponse(
             entity.id,
             entity.shotNo,
+            entity.storyboardNo == null ? entity.shotNo : entity.storyboardNo,
+            entity.episodeId,
             entity.episodeNo,
             null,
             entity.visualDescription,
@@ -137,12 +146,28 @@ record StoryboardResponse(
             entity.scene,
             null,
             entity.durationSeconds,
+            parseJson(entity.shotPlanJson),
+            parseJson(entity.promptDocumentJson),
+            entity.materialBindingStatus,
+            entity.sourceFingerprint,
+            entity.generatedByRunId,
             entity.imagePrompt,
             entity.videoPrompt,
             entity.firstFrameUrl,
             entity.currentVideoResultId,
             entity.currentVideoUrl
         );
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode parseJson(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(value);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            return null;
+        }
     }
 }
 
