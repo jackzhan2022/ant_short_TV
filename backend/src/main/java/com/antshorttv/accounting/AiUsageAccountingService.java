@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
 
@@ -60,6 +61,24 @@ public class AiUsageAccountingService {
         line.createdAt = LocalDateTime.now();
         usageLineMapper.insert(line);
         return line;
+    }
+
+    @Transactional
+    public AiUsageLineEntity recordIfAbsent(AiUsageCommand command) {
+        AiUsageContext context = command.context();
+        String dimensionsKey = AiAccountingJson.canonicalKey(command.dimensions());
+        AiUsageLineEntity existing = usageLineMapper.selectOne(new QueryWrapper<AiUsageLineEntity>()
+            .eq("tenant_id", context.tenantId())
+            .eq("execution_id", context.executionId())
+            .eq("attempt_id", context.attemptId())
+            .eq("ai_call_log_id", context.aiCallLogId())
+            .eq("model_id", context.modelId())
+            .eq("metric", command.metric().name())
+            .eq("source", command.source().name())
+            .eq("dimensions_key", dimensionsKey)
+            .isNull("adjustment_of_usage_line_id")
+            .last("limit 1"));
+        return existing == null ? record(command) : existing;
     }
 
     @Transactional

@@ -99,6 +99,21 @@ class AiUsageCostAccountingTest {
     }
 
     @Test
+    void recordsTheSameRequestDerivedCallOnlyOnceWhenRecoveryResumes() {
+        AiUsageCommand command = AiUsageCommand.requestDerived(
+            context(1011L, 110L), AiUsageMetric.CALL, "1", Map.of(), CONTACTED_AT);
+
+        AiUsageLineEntity first = accountingService.recordIfAbsent(command);
+        AiUsageLineEntity resumed = accountingService.recordIfAbsent(command);
+
+        assertThat(resumed.id).isEqualTo(first.id);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from ai_usage_line where execution_id = 1011 and ai_call_log_id = 1211",
+            Integer.class
+        )).isEqualTo(1);
+    }
+
+    @Test
     void extractsProviderRequestAndResultUsageWithExplicitSources() {
         AiUsageContext context = context(1010L, 110L);
 

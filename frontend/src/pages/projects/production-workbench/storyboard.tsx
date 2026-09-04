@@ -318,23 +318,27 @@ const MaterialPromptEditor = ({
   };
 
   return (
-    <div
-      ref={editorRef}
-      role="textbox"
-      aria-label={label}
-      aria-multiline="true"
-      contentEditable
-      suppressContentEditableWarning
-      onInput={readDocument}
-      onBlur={onBlur}
-      style={{
-        minHeight: 330,
-        whiteSpace: 'pre-wrap',
-        outline: 'none',
-        fontWeight: 600,
-        lineHeight: 1.7,
-      }}
-    />
+    <>
+      {/* biome-ignore lint/a11y/useSemanticElements: Rich-text material mentions require a contenteditable container. */}
+      <div
+        ref={editorRef}
+        role="textbox"
+        tabIndex={0}
+        aria-label={label}
+        aria-multiline="true"
+        contentEditable
+        suppressContentEditableWarning
+        onInput={readDocument}
+        onBlur={onBlur}
+        style={{
+          minHeight: 330,
+          whiteSpace: 'pre-wrap',
+          outline: 'none',
+          fontWeight: 600,
+          lineHeight: 1.7,
+        }}
+      />
+    </>
   );
 };
 

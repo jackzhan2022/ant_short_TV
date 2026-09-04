@@ -1067,7 +1067,14 @@ class ScriptWorkflowControllerTest {
             .andExpect(status().isAccepted())
             .andReturn();
 
-        assertThat(readLong(duplicate, "$.data.id")).isEqualTo(readLong(first, "$.data.id"));
+        Long executionId = readLong(first, "$.data.id");
+        assertThat(readLong(duplicate, "$.data.id")).isEqualTo(executionId);
+        mockMvc.perform(get("/api/tenants/%d/ai-executions/%d".formatted(tenantId, executionId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id", is(executionId.intValue())))
+            .andExpect(jsonPath("$.data.status", is("PENDING")))
+            .andExpect(jsonPath("$.data.businessType", is("SCRIPT_AI_OPERATION")));
         assertThat(jdbcTemplate.queryForObject(
             "select count(*) from script_ai_operation where tenant_id = ? and idempotency_key = ?",
             Integer.class, tenantId, "storyboard-scope-once"

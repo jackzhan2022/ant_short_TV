@@ -146,7 +146,7 @@ public class WorkflowAgentRunRepository {
     public List<WorkflowAgentModelCall> modelCalls(Long runId, Long tenantId) {
         return jdbc.query("""
             select log.id, log.model_id, log.provider_id, log.provider_request_id,
-                   log.transport_outcome, log.business_outcome
+                   log.transport_outcome, log.business_outcome, log.attempt_id
               from ai_workflow_agent_run_step step
               join ai_workflow_agent_run run on run.id = step.run_id
               join ai_call_log log on log.id = step.ai_call_log_id
@@ -157,6 +157,39 @@ public class WorkflowAgentRunRepository {
             row.getString("provider_request_id"), row.getString("transport_outcome"),
             row.getString("business_outcome")
         ), runId, tenantId);
+    }
+
+    public List<WorkflowAgentModelCall> modelCallsForExecutionAttempt(
+        Long executionId,
+        Long attemptId,
+        Long tenantId
+    ) {
+        return jdbc.query("""
+            select id, model_id, provider_id, provider_request_id,
+                   transport_outcome, business_outcome, attempt_id
+              from ai_call_log
+             where execution_id = ? and attempt_id = ? and tenant_id = ?
+               and business_scene = 'workflow_agent'
+             order by id
+            """, (row, index) -> new WorkflowAgentModelCall(
+            row.getLong("id"), nullableLong(row, "model_id"), nullableLong(row, "provider_id"),
+            row.getString("provider_request_id"), row.getString("transport_outcome"),
+            row.getString("business_outcome"), nullableLong(row, "attempt_id")
+        ), executionId, attemptId, tenantId);
+    }
+
+    public List<WorkflowAgentModelCall> modelCallsForExecution(Long executionId, Long tenantId) {
+        return jdbc.query("""
+            select id, model_id, provider_id, provider_request_id,
+                   transport_outcome, business_outcome, attempt_id
+              from ai_call_log
+             where execution_id = ? and tenant_id = ? and business_scene = 'workflow_agent'
+             order by id
+            """, (row, index) -> new WorkflowAgentModelCall(
+            row.getLong("id"), nullableLong(row, "model_id"), nullableLong(row, "provider_id"),
+            row.getString("provider_request_id"), row.getString("transport_outcome"),
+            row.getString("business_outcome"), nullableLong(row, "attempt_id")
+        ), executionId, tenantId);
     }
 
     public void fail(Long runId, String errorCode, String errorMessage) {

@@ -34,6 +34,7 @@ class ScreenplayToolCatalogTest {
             "save_episode_assets",
             "save_episode_script",
             "save_episode_splitting",
+            "save_episode_storyboards",
             "save_episode_summary",
             "save_global_understanding",
             "save_review_result",

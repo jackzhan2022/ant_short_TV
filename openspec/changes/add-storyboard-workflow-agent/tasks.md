@@ -42,14 +42,14 @@
 
 - [x] 6.1 Add `short-drama-storyboard` to `WorkflowAgentRunContract` with the exact read sequence and terminal `save_episode_storyboards`, and test missing, duplicate, skipped, and out-of-order calls.
 - [x] 6.2 Add a storyboard Agent Adapter that creates one episode-scoped formal Run and reports success only when the current active storyboard set is non-empty, complete, and entirely committed by that Run.
-- [ ] 6.3 Route `storyboard_breakdown` asynchronous executions through the storyboard Agent Adapter using the project's frozen TEXT model while preserving existing execution, attempt, call-log, usage, cost, point-settlement, cancellation, and claim-loss behavior.
-- [ ] 6.4 Configure at most three retryable execution attempts and verify terminal schema, stale-source, provider, and missing-save failures preserve prior formal storyboards and expose actionable diagnostics.
+- [x] 6.3 Route `storyboard_breakdown` asynchronous executions through the storyboard Agent Adapter using the project's frozen TEXT model while preserving existing execution, attempt, call-log, usage, cost, point-settlement, cancellation, and claim-loss behavior.
+- [x] 6.4 Configure at most three retryable execution attempts and verify terminal schema, stale-source, provider, and missing-save failures preserve prior formal storyboards and expose actionable diagnostics.
 - [x] 6.5 Remove the mansion, banquet-hall, and equity-agreement fixed inserts from both asynchronous and obsolete synchronous storyboard breakdown paths, with a regression test using unrelated episode content.
 
 ## 7. Episode-scoped API and storyboard page
 
 - [x] 7.1 Change the storyboard breakdown request contract to require one active `episodeId`, reject full-script and selected-text scopes, and return the unified asynchronous execution response with idempotency preserved.
-- [ ] 7.2 Add backend controller/service tests for authorization, episode ownership, duplicate idempotency keys, execution status, successful refresh, and failure preserving prior data.
+- [x] 7.2 Add backend controller/service tests for authorization, episode ownership, duplicate idempotency keys, execution status, successful refresh, and failure preserving prior data.
 - [x] 7.3 Add a “生成本集分镜” action to the selected episode area, disable it while its execution is active, show the shared AI execution status, and refresh only after formal Run completion.
 - [x] 7.4 Replace the plain prompt textarea with one accessible editing surface supporting text and material Mention nodes while retaining the existing single-input layout and saved complete prompt semantics.
 - [x] 7.5 Add frontend tests for selected-episode submission, no automatic generation, one visible prompt editor per storyboard, multiple internally numbered shots, material-tag display, unmatched plain text, and user deletion not auto-rebinding a tag.
@@ -57,7 +57,7 @@
 ## 8. Verification and rollout
 
 - [x] 8.1 Run focused backend tests for Workflow Agent contracts, screenplay tools, storyboard validation/rendering/persistence, execution integration, controller behavior, and Flyway schema migration.
-- [ ] 8.2 Run the complete backend test suite and resolve regressions without weakening the new formal save contract.
-- [ ] 8.3 Run frontend storyboard tests, TypeScript checking, Biome lint, Ant Design lint, and production build.
+- [x] 8.2 Run the complete backend test suite and resolve regressions without weakening the new formal save contract.
+- [x] 8.3 Run frontend storyboard tests, TypeScript checking, Biome lint, Ant Design lint, and production build.
 - [ ] 8.4 Exercise one successful generation and one failed regeneration against the local application, verifying prompt formatting, material Mention metadata, atomic replacement, prior-data preservation, Agent Run audit, AI usage, and point settlement.
 - [ ] 8.5 Enable the storyboard Workflow Agent feature flag for the intended environment only after verification and document rollback by disabling the flag without dropping new schema or audit data.
