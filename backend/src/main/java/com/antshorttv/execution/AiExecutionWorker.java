@@ -59,7 +59,7 @@ public class AiExecutionWorker {
                     claimToken,
                     "HANDLER_FAILURE",
                     exception.getMessage(),
-                    handler.retryPolicy(),
+                    handler.retryPolicy(exception),
                     LocalDateTime.now()
                 );
             }

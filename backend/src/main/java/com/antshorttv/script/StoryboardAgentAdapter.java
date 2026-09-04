@@ -1,6 +1,7 @@
 package com.antshorttv.script;
 
 import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.workflowagent.agent.StoryboardAgentBootstrap;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
@@ -43,12 +44,18 @@ public class StoryboardAgentAdapter {
             executionContext.task().executionVersion,
             executionContext.task().resolvedModelId == null
                 ? executionContext.task().requestedModelId : executionContext.task().resolvedModelId);
-        WorkflowAgentRunResult run = runner.runFormal(input);
-        if (!storyboards.hasCompleteRunSet(
-            operation.tenantId, operation.projectId, episodeId, run.runId())) {
-            throw new IllegalStateException("Agent 未提交本次剧集完整正式分镜。");
+        try {
+            WorkflowAgentRunResult run = runner.runFormal(input);
+            if (!storyboards.hasCompleteRunSet(
+                operation.tenantId, operation.projectId, episodeId, run.runId())) {
+                throw new IllegalStateException("Agent 未提交本次剧集完整正式分镜。");
+            }
+            return new Execution(run.runId(), run.modelCalls());
+        } catch (AiGatewayException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new NonRetryableStoryboardException(exception.getMessage(), exception);
         }
-        return new Execution(run.runId(), run.modelCalls());
     }
 
     public record Execution(Long agentRunId, List<WorkflowAgentModelCall> modelCalls) {

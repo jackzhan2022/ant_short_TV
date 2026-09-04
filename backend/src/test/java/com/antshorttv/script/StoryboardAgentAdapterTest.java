@@ -15,6 +15,9 @@ import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import com.antshorttv.workflowagent.tool.StoryboardToolDataService;
+import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
+import com.antshorttv.ai.AiGatewayException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -59,8 +62,24 @@ class StoryboardAgentAdapterTest {
         when(storyboards.hasCompleteRunSet(11L, 22L, 44L, 601L)).thenReturn(false);
 
         assertThatThrownBy(() -> adapter.execute(operation(), 44L, execution()))
-            .isInstanceOf(IllegalStateException.class)
+            .isInstanceOf(NonRetryableStoryboardException.class)
             .hasMessageContaining("完整正式分镜");
+    }
+
+    @Test
+    void marksDeterministicRunnerFailureAsNonRetryableButPreservesGatewayFailures() {
+        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, true);
+        when(runner.runFormal(any())).thenThrow(
+            new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID, "invalid segment"));
+        assertThatThrownBy(() -> adapter.execute(operation(), 44L, execution()))
+            .isInstanceOf(NonRetryableStoryboardException.class)
+            .hasMessageContaining("invalid segment");
+
+        org.mockito.Mockito.reset(runner);
+        when(runner.runFormal(any())).thenThrow(
+            new AiGatewayException(ErrorCode.AI_PROVIDER_TIMEOUT, "timeout"));
+        assertThatThrownBy(() -> adapter.execute(operation(), 44L, execution()))
+            .isInstanceOf(AiGatewayException.class);
     }
 
     private ScriptAiOperationEntity operation() {

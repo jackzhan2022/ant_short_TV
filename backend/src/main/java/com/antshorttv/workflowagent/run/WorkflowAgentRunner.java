@@ -24,6 +24,7 @@ import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
 import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
 import com.antshorttv.workflowagent.tool.WorkflowToolSchemaValidator;
 import com.antshorttv.workflowagent.tool.WorkflowToolRunState;
+import com.antshorttv.workflowagent.tool.WorkflowToolValidationException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -205,6 +206,7 @@ public class WorkflowAgentRunner {
         boolean reviewEvidenceRefreshPending = false;
         boolean reviewEvidenceRefreshUsed = false;
         boolean assetSaveCorrectionUsed = false;
+        String storyboardValidationCode = null;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
             requireBeforeDeadline(deadline);
@@ -360,6 +362,16 @@ public class WorkflowAgentRunner {
                         messages.add(AiChatMessage.user(
                             "保存失败。仅修正错误中指出的字段并再次调用 save_episode_assets；"
                                 + "五个数组必须始终存在，证据必须逐字来自当前剧集，不得编造。"));
+                        break;
+                    }
+                    if ("save_episode_storyboards".equals(call.code())) {
+                        String validationCode = storyboardValidationCode(normalized);
+                        if (storyboardValidationCode != null) throw normalized;
+                        storyboardValidationCode = validationCode;
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
+                        messages.add(AiChatMessage.user(
+                            "分镜保存校验失败。只根据结构化诊断修正对应片段范围或声音归属，"
+                                + "然后再次调用 save_episode_storyboards；不得重新读取或重做其他流程。"));
                         break;
                     }
                     if (reviewTruncationRecovery && isReviewEvidenceValidationFailure(call.code(), normalized)) {
@@ -631,14 +643,25 @@ public class WorkflowAgentRunner {
 
     private String writeError(BusinessException error) {
         try {
-            return json.writeValueAsString(Map.of(
-                "ok", false,
-                "errorCode", error.getErrorCode().name(),
-                "message", error.getMessage()
-            ));
+            Map<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("ok", false);
+            body.put("errorCode", error.getErrorCode().name());
+            body.put("message", error.getMessage());
+            if (error instanceof WorkflowToolValidationException validation) {
+                body.putAll(validation.details());
+            }
+            return json.writeValueAsString(body);
         } catch (JsonProcessingException exception) {
             return "{\"ok\":false}";
         }
+    }
+
+    private String storyboardValidationCode(BusinessException error) {
+        if (error instanceof WorkflowToolValidationException validation) {
+            Object value = validation.details().get("validationCode");
+            if (value != null) return value.toString();
+        }
+        return error.getErrorCode().name();
     }
 
     private String writeJson(JsonNode value) {

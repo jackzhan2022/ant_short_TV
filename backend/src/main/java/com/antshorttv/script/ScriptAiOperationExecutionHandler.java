@@ -96,6 +96,13 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
     }
 
     @Override
+    public AiExecutionRetryPolicy retryPolicy(Throwable failure) {
+        return failure instanceof NonRetryableStoryboardException
+            ? AiExecutionRetryPolicy.none()
+            : retryPolicy();
+    }
+
+    @Override
     public void validate(AiExecutionTaskEntity task) {
         ScriptAiOperationEntity operation = operationMapper.selectById(task.businessId);
         if (operation == null || !task.id.equals(operation.executionId)) {
@@ -136,7 +143,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
                 ? (callLogId == null ? 0 : 1)
                 : executionAgentCalls.size();
             settleTerminalFailure(context, settlementAgentCall, callLogId,
-                executionCallCount);
+                executionCallCount, retryPolicy(exception).maxAttempts());
             throw exception;
         }
         markAttempt(context, result);
@@ -326,10 +333,11 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         AiExecutionContext context,
         WorkflowAgentModelCall agentCall,
         Long callLogId,
-        int providerCallCount
+        int providerCallCount,
+        int maxAttempts
     ) {
         AiExecutionAttemptEntity attempt = attemptMapper.selectById(context.claim().attemptId());
-        if (attempt == null || attempt.attemptNo < retryPolicy().maxAttempts()) {
+        if (attempt == null || attempt.attemptNo < maxAttempts) {
             return;
         }
         settle(context, null, agentCall,

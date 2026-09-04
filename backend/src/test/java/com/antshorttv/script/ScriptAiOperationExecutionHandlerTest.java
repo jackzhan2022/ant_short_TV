@@ -1,6 +1,7 @@
 package com.antshorttv.script;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -19,6 +20,8 @@ import com.antshorttv.execution.AiExecutionContext;
 import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
+import com.antshorttv.ai.AiGatewayException;
+import com.antshorttv.common.ErrorCode;
 import com.antshorttv.points.AiPointReservationEntity;
 import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
@@ -33,6 +36,21 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class ScriptAiOperationExecutionHandlerTest {
+
+    @Test
+    void disablesRetryForDeterministicStoryboardFailureButKeepsTransportRetry() {
+        ScriptAiOperationExecutionHandler handler = new ScriptAiOperationExecutionHandler(
+            mock(ScriptAiOperationMapper.class), mock(ScriptWorkflowService.class),
+            mock(AiExecutionAttemptMapper.class), mock(AiPointReservationMapper.class),
+            mock(AiPointSettlementService.class), mock(AiExecutionService.class),
+            mock(AiUsageAccountingService.class), mock(AiExecutionTaskMapper.class),
+            new ObjectMapper(), mock(WorkflowAgentRunRepository.class));
+
+        assertThat(handler.retryPolicy(new NonRetryableStoryboardException("invalid", null)))
+            .isEqualTo(com.antshorttv.execution.AiExecutionRetryPolicy.none());
+        assertThat(handler.retryPolicy(new AiGatewayException(ErrorCode.AI_PROVIDER_TIMEOUT, "timeout")))
+            .isEqualTo(handler.retryPolicy());
+    }
 
     @Test
     void recoversWorkflowCallsWhenFormalValidationFailsOnFinalAttempt() {

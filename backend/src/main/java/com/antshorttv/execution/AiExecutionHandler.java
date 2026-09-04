@@ -20,6 +20,10 @@ public abstract class AiExecutionHandler {
         return AiExecutionRetryPolicy.none();
     }
 
+    public AiExecutionRetryPolicy retryPolicy(Throwable failure) {
+        return retryPolicy();
+    }
+
     public List<AiExecutionUsageExpectation> usageExpectations() {
         return List.of();
     }

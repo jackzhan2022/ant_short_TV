@@ -32,6 +32,7 @@ import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
 import com.antshorttv.workflowagent.tool.WorkflowToolExecutor;
 import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
 import com.antshorttv.workflowagent.tool.WorkflowToolSchemaValidator;
+import com.antshorttv.workflowagent.tool.WorkflowToolValidationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -886,6 +887,57 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void storyboardReturnsOneStructuredValidationForCorrectionAndThenSucceeds() throws Exception {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets",
+            "save_episode_storyboards");
+        List<WorkflowToolDefinition> definitions = new ArrayList<>();
+        codes.subList(0, 5).forEach(code -> definitions.add(storyboardRead(code, new ArrayList<>())));
+        AtomicInteger saves = new AtomicInteger();
+        definitions.add(storyboardSave(saves, false));
+        runner = runnerWith(definitions, 30);
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("bad", "save_episode_storyboards", "{}")), 960L))
+            .thenReturn(result(null, List.of(new AiToolCall("fixed", "save_episode_storyboards", "{}")), 961L));
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L));
+
+        assertThat(saves).hasValue(2);
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(1).textRequest().messages())
+            .extracting(AiChatMessage::content)
+            .anySatisfy(content -> assertThat(content)
+                .contains("SOURCE_SEGMENT_GAP", "expectedSegmentId", "S0002"));
+    }
+
+    @Test
+    void storyboardStopsAfterSecondDeterministicSaveFailure() throws Exception {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets",
+            "save_episode_storyboards");
+        List<WorkflowToolDefinition> definitions = new ArrayList<>();
+        codes.subList(0, 5).forEach(code -> definitions.add(storyboardRead(code, new ArrayList<>())));
+        AtomicInteger saves = new AtomicInteger();
+        definitions.add(storyboardSave(saves, true));
+        runner = runnerWith(definitions, 30);
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_storyboards", "{}")), 970L))
+            .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_storyboards", "{}")), 971L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L)))
+            .isInstanceOf(WorkflowToolValidationException.class);
+        assertThat(saves).hasValue(2);
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(any());
+    }
+
+    @Test
     void assetRecognitionCanCorrectMissingEvidenceOnceAndThenSucceed() throws Exception {
         AtomicInteger saves = new AtomicInteger();
         WorkflowToolDefinition save = new WorkflowToolDefinition(
@@ -1042,6 +1094,36 @@ class WorkflowAgentRunnerTest {
         } catch (java.io.IOException exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    private WorkflowToolDefinition storyboardSave(AtomicInteger saves, boolean alwaysFail) throws Exception {
+        return new WorkflowToolDefinition(
+            "save_episode_storyboards", "save", "save", json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.RETURN_TO_MODEL, new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    int attempt = saves.incrementAndGet();
+                    if (attempt == 1 || alwaysFail) {
+                        throw new WorkflowToolValidationException("segment gap", Map.of(
+                            "validationCode", "SOURCE_SEGMENT_GAP",
+                            "storyboardNo", 2,
+                            "expectedSegmentId", "S0002",
+                            "actualSegmentId", "S0003"));
+                    }
+                    return json.createObjectNode().put("saved", true);
+                }
+            });
+    }
+
+    private WorkflowAgentRecord storyboardAgent(List<String> codes) {
+        return new WorkflowAgentRecord(
+            7L, "short-drama-storyboard", "分镜规划", "", "执行", 8L,
+            new BigDecimal("0.2"), 8192, 12, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), codes);
     }
 
     private WorkflowToolDefinition reviewTool(String code, WorkflowToolExecutor executor)

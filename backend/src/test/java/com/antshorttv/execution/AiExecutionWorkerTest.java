@@ -51,6 +51,23 @@ class AiExecutionWorkerTest {
         verify(fixture.lease).close();
     }
 
+    @Test
+    void selectsRetryPolicyFromTheActualFailure() {
+        Fixture fixture = new Fixture();
+        RuntimeException failure = new RuntimeException("deterministic");
+        AiExecutionRetryPolicy none = AiExecutionRetryPolicy.none();
+        when(fixture.handler.execute(org.mockito.ArgumentMatchers.any())).thenThrow(failure);
+        when(fixture.handler.retryPolicy(failure)).thenReturn(none);
+
+        fixture.worker.run(1L);
+
+        verify(fixture.claims).markFailed(
+            org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq(2L),
+            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq("HANDLER_FAILURE"),
+            org.mockito.ArgumentMatchers.eq("deterministic"), org.mockito.ArgumentMatchers.eq(none),
+            org.mockito.ArgumentMatchers.any());
+    }
+
     private static final class Fixture {
         private final AiExecutionService executions = mock(AiExecutionService.class);
         private final AiExecutionClaimService claims = mock(AiExecutionClaimService.class);
