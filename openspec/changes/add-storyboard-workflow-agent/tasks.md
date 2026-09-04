@@ -64,7 +64,7 @@
 
 ## 9. Source-segment planning stabilization
 
-- [ ] 9.1 Add deterministic episode source segmentation with episode-local `S0001` IDs, exact text and offsets, type classification, metadata exclusion, and fingerprint-bound invalidation tests.
+- [x] 9.1 Add deterministic episode source segmentation with episode-local `S0001` IDs, exact text and offsets, type classification, metadata exclusion, and fingerprint-bound invalidation tests.
 - [ ] 9.2 Replace source text markers and copied spoken fields in the save schema with contiguous source ranges and spoken-segment references; add coverage, stale-source, unknown-ID, gap, overlap, order, and exact spoken-text tests.
 - [ ] 9.3 Make the storyboard execution host perform and audit the five trusted reads before one combined planning request while preserving scope guards and excluding old storyboards.
 - [ ] 9.4 Return structured save diagnostics and prevent deterministic validation failures from restarting the complete workflow; retain bounded retries for provider transport failures.
