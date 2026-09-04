@@ -28,17 +28,17 @@ The Agent SHALL load the common short-drama analysis foundation, storyboard plan
 - **THEN** the Agent may use an unambiguous natural-language expression
 - **AND** does not fail solely because the phrase is absent from the example dictionary
 
-### Requirement: Require trusted reads followed by a terminal save
-The Agent SHALL expose and require `read_current_episode`, `read_adjacent_episodes`, `read_script_analysis`, `read_project_context`, `read_script_assets`, and `save_episode_storyboards` in that order. `save_episode_storyboards` SHALL be the only write tool and the terminal tool.
+### Requirement: Prepare trusted reads before one planning request and a terminal save
+The execution host SHALL invoke and audit `read_current_episode`, `read_adjacent_episodes`, `read_script_analysis`, `read_project_context`, and `read_script_assets` in that order before one planning request. The model SHALL receive their combined bounded results, and `save_episode_storyboards` SHALL be the only write tool and terminal tool.
 
 #### Scenario: Agent returns text without saving
 - **WHEN** the model produces valid-looking storyboard content but does not successfully call `save_episode_storyboards`
 - **THEN** the Run SHALL NOT succeed
 - **AND** the content SHALL NOT become formal storyboard data
 
-#### Scenario: Agent calls a tool out of order
-- **WHEN** the Agent attempts to save before completing all required trusted reads
-- **THEN** the tool contract rejects the call
+#### Scenario: A required host read is missing
+- **WHEN** the host cannot complete and audit every required trusted read
+- **THEN** it does not start the planning request or allow the terminal save
 - **AND** no storyboard data is changed
 
 ### Requirement: Read current trusted storyboard context
@@ -55,7 +55,7 @@ The read tools SHALL provide the current episode's full formal content and finge
 - **AND** generation remains allowed
 
 ### Requirement: Submit a versioned structured storyboard set
-`save_episode_storyboards` SHALL accept versioned structured JSON containing the trusted episode fingerprint and an ordered non-empty `storyboards` array. Every storyboard SHALL contain its episode-local `storyboardNo`, source start and end markers, optional time and lighting, referenced asset keys, and an ordered non-empty `shots` array. Every shot SHALL contain a storyboard-local `shotNo`, decimal `durationSeconds`, positioning, action, and any source dialogue, narration, or inner OS.
+`save_episode_storyboards` SHALL accept versioned structured JSON containing the trusted episode fingerprint and an ordered non-empty `storyboards` array. Every storyboard SHALL contain its episode-local `storyboardNo`, `sourceFrom` and `sourceTo` segment IDs, optional time and lighting, referenced asset keys, and an ordered non-empty `shots` array. Every shot SHALL contain a storyboard-local `shotNo`, decimal `durationSeconds`, positioning, action, and references to any source dialogue, narration, or inner-OS segment IDs.
 
 #### Scenario: Model submits an ordered set
 - **WHEN** all required fields satisfy the tool schema
@@ -80,10 +80,10 @@ Each formal storyboard SHALL contain multiple chronologically ordered shots whos
 - **THEN** the save validation rejects the plan for correction
 
 ### Requirement: Preserve complete plot order and exact spoken content
-The storyboard set SHALL cover the current episode in source order without omission, duplication, or changed outcome. Dialogue, narration, and inner OS SHALL be copied verbatim, SHALL NOT be translated, polished, or invented, and each source utterance SHALL belong to exactly one internal shot.
+The server SHALL assign episode-local IDs from `S0001` upward to storyboard-relevant non-blank physical lines, retain their exact text and trusted offsets, and bind them to the episode fingerprint. The storyboard set SHALL cover every required segment in source order without omission, duplication, or changed outcome. Dialogue, narration, and inner OS SHALL be injected from trusted segment text and each source utterance SHALL belong to exactly one internal shot.
 
 #### Scenario: Complete valid coverage
-- **WHEN** ordered source boundary markers cover the episode and every utterance appears once verbatim
+- **WHEN** ordered source segment ranges cover every required segment and every utterance segment is assigned once
 - **THEN** coverage validation succeeds
 
 #### Scenario: Dialogue is translated or repeated
@@ -153,7 +153,7 @@ Replacing storyboards SHALL NOT physically delete historical first-frame, video-
 - **AND** none is bound as the current result of a new storyboard
 
 ### Requirement: Retry safely and report formal completion
-The asynchronous execution SHALL retry retryable Agent failures at most three times. A Run SHALL be successful only when the complete current episode storyboard set was committed by that Run; final failure SHALL preserve the prior set and expose a diagnostic error.
+The asynchronous execution SHALL retry provider transport failures at most three times. Deterministic scope, stale-source, schema, segment-coverage, duration, and material-validation errors SHALL NOT restart all reads and regenerate the episode. A correctable save error MAY receive one targeted correction in the same Run, and a repeated validation code SHALL end the attempt. A Run SHALL be successful only when the complete current episode storyboard set was committed by that Run; final failure SHALL preserve the prior set and expose a structured diagnostic error.
 
 #### Scenario: All attempts fail
 - **WHEN** schema, coverage, stale-source, or provider errors remain after the final allowed attempt

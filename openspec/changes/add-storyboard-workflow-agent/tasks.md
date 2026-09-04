@@ -61,3 +61,12 @@
 - [x] 8.3 Run frontend storyboard tests, TypeScript checking, Biome lint, Ant Design lint, and production build.
 - [ ] 8.4 Exercise one successful generation and one failed regeneration against the local application, verifying prompt formatting, material Mention metadata, atomic replacement, prior-data preservation, Agent Run audit, AI usage, and point settlement.
 - [ ] 8.5 Enable the storyboard Workflow Agent feature flag for the intended environment only after verification and document rollback by disabling the flag without dropping new schema or audit data.
+
+## 9. Source-segment planning stabilization
+
+- [ ] 9.1 Add deterministic episode source segmentation with episode-local `S0001` IDs, exact text and offsets, type classification, metadata exclusion, and fingerprint-bound invalidation tests.
+- [ ] 9.2 Replace source text markers and copied spoken fields in the save schema with contiguous source ranges and spoken-segment references; add coverage, stale-source, unknown-ID, gap, overlap, order, and exact spoken-text tests.
+- [ ] 9.3 Make the storyboard execution host perform and audit the five trusted reads before one combined planning request while preserving scope guards and excluding old storyboards.
+- [ ] 9.4 Return structured save diagnostics and prevent deterministic validation failures from restarting the complete workflow; retain bounded retries for provider transport failures.
+- [ ] 9.5 Update storyboard Skills and fixtures for source-segment ranges, then run focused and complete backend verification plus frontend regression checks.
+- [ ] 9.6 Deploy behind the existing feature flag and complete a successful online generation with Run audit, prompt/Mention, atomic replacement, usage, and point-settlement evidence.
