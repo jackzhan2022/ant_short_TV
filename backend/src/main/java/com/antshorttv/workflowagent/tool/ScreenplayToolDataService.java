@@ -830,8 +830,10 @@ public class ScreenplayToolDataService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少可信执行作用域。");
         }
         boolean trustedBackgroundRun = context.agentRunId() != null
-            && context.analysisStageId() != null
-            && context.taskId() != null;
+            && context.taskId() != null
+            && context.executionId() != null
+            && context.attemptId() != null
+            && context.executionVersion() != null;
         if (!trustedBackgroundRun || !context.permissions().contains(permission)) {
             permissionGuard.require(context.tenantId(), context.projectId(), permission);
         }

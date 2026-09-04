@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.antshorttv.rbac.ProjectPermissionGuard;
@@ -469,6 +470,19 @@ class ScreenplayToolDataServiceTest {
         assertThat(episodeContext.runState().require("currentEpisodeId", Long.class)).isEqualTo(episodeId);
         assertThat(episodeContext.runState().require("currentEpisodeFingerprint", String.class))
             .isEqualTo("fingerprint-2");
+    }
+
+    @Test
+    void trustedStoryboardExecutionReadsCurrentEpisodeWithoutHttpPrincipalPermissionLookup() {
+        ToolExecutionContext storyboardContext = new ToolExecutionContext(
+            tenantId, context.userId(), projectId, episodeId, scriptId, 9001L, null, 8001L,
+            7001L, 6001L, 1, Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null,
+            new WorkflowToolRunState());
+
+        JsonNode episode = service.readCurrentEpisode(storyboardContext);
+
+        assertThat(episode.path("episodeNo").asInt()).isEqualTo(2);
+        verify(permissionGuard, never()).require(anyLong(), anyLong(), anyString());
     }
 
     @Test
