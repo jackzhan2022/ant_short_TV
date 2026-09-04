@@ -142,7 +142,7 @@ export const layout: RunTimeLayoutConfig = ({
         group('creation', '创作', [
           '/short-drama-creation',
           '/video-script-decomposition',
-          '/script-review',
+          '/script-review-library',
         ]),
         group('mine', '我的', ['/projects/list', '/style-library']),
         group('management', '管理', [

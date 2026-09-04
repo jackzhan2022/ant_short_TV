@@ -159,6 +159,27 @@ describe('app bootstrap state', () => {
     expect(config.menu).toBeUndefined();
   });
 
+  it('adds the script review library entry to the creation menu group', async () => {
+    const { layout } = await import('./app');
+    const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
+    if (typeof config.menuDataRender !== 'function') throw new Error('menuDataRender missing');
+
+    const menu = config.menuDataRender([
+      { path: '/short-drama-creation', name: '短剧创作' },
+      { path: '/video-script-decomposition', name: '视频拆剧' },
+      { path: '/script-review-library', name: '剧本审核' },
+      { path: '/projects/list', name: '项目' },
+      { path: '/style-library', name: '风格库' },
+    ] as any);
+
+    expect(menu[0]).toMatchObject({
+      key: 'creation',
+      children: expect.arrayContaining([
+        expect.objectContaining({ path: '/script-review-library', name: '剧本审核' }),
+      ]),
+    });
+  });
+
   it('redirects page navigation when no authenticated bootstrap state exists', async () => {
     mockHistory.location = { pathname: '/projects/1/production-workbench', search: '', hash: '' };
     const { layout } = await import('./app');
