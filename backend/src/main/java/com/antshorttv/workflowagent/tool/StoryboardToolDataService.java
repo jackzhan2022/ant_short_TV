@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.antshorttv.workflowagent.tool.EpisodeSourceSegmenter.EpisodeSourceSegment;
+import com.antshorttv.workflowagent.tool.EpisodeSourceSegmenter.SourceSegmentType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.PreparedStatement;
@@ -31,7 +33,6 @@ public class StoryboardToolDataService {
         "视频中不得出现任何字幕、文字叠加、纯画面，不要bgm，不要配乐。";
     public static final String FIXED_CONSISTENCY_CONSTRAINT =
         "保持<人物身份、数量、服装、道具归属、空间方向和声音关系>稳定。";
-    private static final Pattern SPOKEN_LINE = Pattern.compile("^[^\\r\\n:：]{1,80}[：:].+$");
     private static final Pattern TOO_MANY_ACTIONS = Pattern.compile(
         ".*(随后|然后|接着|继而|并且|同时又|after that|then).*", Pattern.CASE_INSENSITIVE);
 
@@ -52,7 +53,7 @@ public class StoryboardToolDataService {
         if (!trustedFingerprint.equals(suppliedFingerprint)) {
             throw invalid("分镜来源指纹与本次读取的当前剧集不一致。");
         }
-        if (payload.path("schemaVersion").asInt() != 1) {
+        if (payload.path("schemaVersion").asInt() != 2) {
             throw invalid("不支持的分镜 Schema 版本。");
         }
         JsonNode submitted = payload.path("storyboards");
@@ -65,7 +66,8 @@ public class StoryboardToolDataService {
             throw invalid("当前剧集内容已变化，请重新生成分镜。");
         }
         String visualStyle = projectVisualStyle(context);
-        List<ValidatedStoryboard> validated = validateAll(context, source, submitted, visualStyle);
+        List<EpisodeSourceSegment> segments = trustedSegments(context);
+        List<ValidatedStoryboard> validated = validateAll(context, source, segments, submitted, visualStyle);
 
         jdbc.update("""
             update storyboard set deleted_at = now(), updated_at = now()
@@ -99,33 +101,65 @@ public class StoryboardToolDataService {
     private List<ValidatedStoryboard> validateAll(
         ToolExecutionContext context,
         String source,
+        List<EpisodeSourceSegment> segments,
         JsonNode submitted,
         String visualStyle
     ) {
         List<ValidatedStoryboard> values = new ArrayList<>();
-        int expectedOffset = 0;
+        Map<String, IndexedSegment> byId = new LinkedHashMap<>();
+        List<IndexedSegment> required = new ArrayList<>();
+        List<IndexedSegment> sounds = new ArrayList<>();
+        for (int ordinal = 0; ordinal < segments.size(); ordinal++) {
+            IndexedSegment indexed = new IndexedSegment(ordinal, segments.get(ordinal));
+            byId.put(indexed.segment.id(), indexed);
+            if (indexed.segment.requiredCoverage()) required.add(indexed);
+            if (isSound(indexed.segment.type())) sounds.add(indexed);
+        }
+        int expectedRequired = 0;
         Set<String> submittedSounds = new HashSet<>();
         for (int index = 0; index < submitted.size(); index++) {
             JsonNode board = submitted.get(index);
             int storyboardNo = board.path("storyboardNo").asInt();
             if (storyboardNo != index + 1) throw invalid("分镜编号必须从 1 连续递增。");
-            String startMarker = requiredText(board, "sourceStartMarker");
-            String endMarker = requiredText(board, "sourceEndMarker");
-            int start = uniqueIndex(source, startMarker, "开始");
-            int endStart = uniqueIndex(source, endMarker, "结束");
-            int end = endStart + endMarker.length();
-            if (endStart < start || !source.substring(expectedOffset, start).isBlank()) {
-                throw invalid("分镜原文边界存在遗漏、重叠或顺序错误。");
+            String fromId = requiredText(board, "sourceFrom");
+            String toId = requiredText(board, "sourceTo");
+            IndexedSegment from = requireSegment(byId, fromId, storyboardNo);
+            IndexedSegment to = requireSegment(byId, toId, storyboardNo);
+            if (from.ordinal > to.ordinal) {
+                throw validation("SOURCE_SEGMENT_REVERSED", storyboardNo,
+                    expectedRequired < required.size() ? required.get(expectedRequired).segment.id() : null,
+                    fromId, "分镜来源片段范围顺序颠倒。");
             }
-            expectedOffset = end;
+            List<IndexedSegment> covered = required.stream()
+                .filter(value -> value.ordinal >= from.ordinal && value.ordinal <= to.ordinal).toList();
+            if (covered.isEmpty()) {
+                throw validation("SOURCE_SEGMENT_GAP", storyboardNo,
+                    expectedRequired < required.size() ? required.get(expectedRequired).segment.id() : null,
+                    fromId, "分镜来源范围没有覆盖正文片段。");
+            }
+            IndexedSegment first = covered.get(0);
+            if (expectedRequired >= required.size() || first.ordinal < required.get(expectedRequired).ordinal) {
+                throw validation("SOURCE_SEGMENT_OVERLAP", storyboardNo,
+                    expectedRequired < required.size() ? required.get(expectedRequired).segment.id() : null,
+                    first.segment.id(), "分镜来源片段发生重叠。");
+            }
+            if (first.ordinal > required.get(expectedRequired).ordinal) {
+                throw validation("SOURCE_SEGMENT_GAP", storyboardNo,
+                    required.get(expectedRequired).segment.id(), first.segment.id(), "分镜来源片段存在遗漏。");
+            }
+            expectedRequired += covered.size();
 
             JsonNode shots = board.path("shots");
             if (!shots.isArray() || shots.size() < 2) {
                 throw invalid("每个正式分镜必须包含至少两个内部镜头。");
             }
             BigDecimal total = BigDecimal.ZERO;
+            ObjectNode validatedBoard = board.deepCopy();
+            validatedBoard.put("sourceText", source.substring(from.segment.startOffset(), to.segment.endOffset()));
+            ArrayNode validatedShots = (ArrayNode) validatedBoard.path("shots");
             for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
                 JsonNode shot = shots.get(shotIndex);
+                ObjectNode validatedShot = (ObjectNode) validatedShots.get(shotIndex);
                 if (shot.path("shotNo").asInt() != shotIndex + 1) {
                     throw invalid("每个分镜内的镜头编号必须从 1 连续递增。");
                 }
@@ -140,24 +174,26 @@ public class StoryboardToolDataService {
                 if (action.length() > 1000 || TOO_MANY_ACTIONS.matcher(action).matches()) {
                     throw invalid("单个镜头只能承载一个主要动作或一个明确情绪变化。");
                 }
-                collectSound(shot, "dialogue", submittedSounds);
-                collectSound(shot, "narration", submittedSounds);
-                collectSound(shot, "innerOs", submittedSounds);
+                injectSounds(shot, validatedShot, byId, submittedSounds, storyboardNo,
+                    from.ordinal, to.ordinal);
             }
             if (total.compareTo(BigDecimal.TEN) < 0 || total.compareTo(new BigDecimal("15")) > 0) {
                 throw invalid("每个正式分镜总时长必须为 10 至 15 秒。");
             }
             MaterialSet materials = resolveMaterials(context, board);
-            RenderedPrompt prompt = render(visualStyle, board, total, materials);
-            values.add(new ValidatedStoryboard(storyboardNo, total, board.deepCopy(), prompt,
+            RenderedPrompt prompt = render(visualStyle, validatedBoard, total, materials);
+            values.add(new ValidatedStoryboard(storyboardNo, total, validatedBoard, prompt,
                 materials.pending() ? "ASSET_PENDING" : "BOUND", materials));
         }
-        if (!source.substring(expectedOffset).isBlank()) {
-            throw invalid("分镜边界未完整覆盖当前剧集正文。");
+        if (expectedRequired < required.size()) {
+            throw validation("SOURCE_SEGMENT_GAP", submitted.size() + 1,
+                required.get(expectedRequired).segment.id(), null, "分镜未完整覆盖当前剧集正文。");
         }
-        Set<String> sourceSounds = extractSounds(source);
-        if (!sourceSounds.equals(submittedSounds)) {
-            throw invalid("对白、旁白或内心 OS 必须逐字保留且各出现一次。");
+        for (IndexedSegment sound : sounds) {
+            if (!submittedSounds.contains(sound.segment.id())) {
+                throw validation("SOUND_SEGMENT_MISSING", null, sound.segment.id(), null,
+                    "对白、旁白或内心 OS 声音片段必须各归属一个镜头。");
+            }
         }
         return values;
     }
@@ -418,28 +454,89 @@ public class StoryboardToolDataService {
         }
     }
 
-    private int uniqueIndex(String source, String marker, String label) {
-        int first = source.indexOf(marker);
-        if (first < 0 || first != source.lastIndexOf(marker)) {
-            throw invalid("分镜原文" + label + "标记缺失或不唯一。");
+    @SuppressWarnings("unchecked")
+    private List<EpisodeSourceSegment> trustedSegments(ToolExecutionContext context) {
+        List<?> values = context.runState().require("currentEpisodeSourceSegments", List.class);
+        if (values.isEmpty() || values.stream().anyMatch(value -> !(value instanceof EpisodeSourceSegment))) {
+            throw validation("SOURCE_SEGMENTS_UNAVAILABLE", null, null, null,
+                "当前剧集缺少可信来源片段，请重新读取后生成。");
         }
-        return first;
+        return (List<EpisodeSourceSegment>) values;
     }
 
-    private Set<String> extractSounds(String source) {
-        Set<String> values = new HashSet<>();
-        for (String line : source.split("\\R")) {
-            String value = line.trim();
-            if (SPOKEN_LINE.matcher(value).matches() && !values.add(value)) {
-                throw invalid("当前剧集存在完全相同且无法唯一归属的声音原文。");
+    private IndexedSegment requireSegment(
+        Map<String, IndexedSegment> byId, String id, Integer storyboardNo
+    ) {
+        IndexedSegment segment = byId.get(id);
+        if (segment == null) {
+            throw validation("SOURCE_SEGMENT_UNKNOWN", storyboardNo, null, id,
+                "分镜引用了未知的来源片段：" + id);
+        }
+        return segment;
+    }
+
+    private void injectSounds(
+        JsonNode submittedShot,
+        ObjectNode validatedShot,
+        Map<String, IndexedSegment> byId,
+        Set<String> submittedSounds,
+        int storyboardNo,
+        int rangeFrom,
+        int rangeTo
+    ) {
+        Map<String, List<String>> values = new LinkedHashMap<>();
+        JsonNode ids = submittedShot.path("soundSegmentIds");
+        if (ids.isArray()) {
+            for (JsonNode idNode : ids) {
+                String id = idNode.asText();
+                IndexedSegment indexed = requireSegment(byId, id, storyboardNo);
+                if (!isSound(indexed.segment.type())) {
+                    throw validation("SOUND_SEGMENT_TYPE_INVALID", storyboardNo, null, id,
+                        "镜头声音引用必须是对白、旁白或内心 OS 片段。");
+                }
+                if (indexed.ordinal < rangeFrom || indexed.ordinal > rangeTo) {
+                    throw validation("SOUND_SEGMENT_OUT_OF_RANGE", storyboardNo, null, id,
+                        "镜头声音引用不属于当前分镜来源范围。");
+                }
+                if (!submittedSounds.add(id)) {
+                    throw validation("SOUND_SEGMENT_DUPLICATE", storyboardNo, null, id,
+                        "同一声音片段不得重复归属多个镜头。");
+                }
+                values.computeIfAbsent(soundField(indexed.segment.type()), ignored -> new ArrayList<>())
+                    .add(indexed.segment.text());
             }
         }
-        return values;
+        values.forEach((field, lines) -> validatedShot.put(field, String.join("\n", lines)));
     }
 
-    private void collectSound(JsonNode shot, String field, Set<String> sounds) {
-        String value = optionalText(shot, field);
-        if (!value.isBlank() && !sounds.add(value)) throw invalid("声音原文不得重复归属多个镜头。");
+    private boolean isSound(SourceSegmentType type) {
+        return type == SourceSegmentType.DIALOGUE
+            || type == SourceSegmentType.NARRATION
+            || type == SourceSegmentType.INNER_OS;
+    }
+
+    private String soundField(SourceSegmentType type) {
+        return switch (type) {
+            case DIALOGUE -> "dialogue";
+            case NARRATION -> "narration";
+            case INNER_OS -> "innerOs";
+            default -> throw new IllegalArgumentException("非声音来源片段：" + type);
+        };
+    }
+
+    private WorkflowToolValidationException validation(
+        String code,
+        Integer storyboardNo,
+        String expectedSegmentId,
+        String actualSegmentId,
+        String message
+    ) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("validationCode", code);
+        if (storyboardNo != null) details.put("storyboardNo", storyboardNo);
+        if (expectedSegmentId != null) details.put("expectedSegmentId", expectedSegmentId);
+        if (actualSegmentId != null) details.put("actualSegmentId", actualSegmentId);
+        return new WorkflowToolValidationException(message, details);
     }
 
     private String requiredText(JsonNode node, String field) {
@@ -518,6 +615,7 @@ public class StoryboardToolDataService {
     }
 
     private record Episode(int episodeNo, String fingerprint) {}
+    private record IndexedSegment(int ordinal, EpisodeSourceSegment segment) {}
     private record Material(AssetKind kind, String key, Long assetId, Long variantId, String name, String variantName) {
         static Material unmatched(AssetKind kind, String name) {
             return new Material(kind, null, null, null, name, null);

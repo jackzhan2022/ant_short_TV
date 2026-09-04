@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -20,6 +21,7 @@ class StoryboardToolDataServiceTest {
     @Autowired private StoryboardToolDataService service;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ObjectMapper json;
+    @Autowired private EpisodeSourceSegmenter segmenter;
 
     private long tenantId;
     private long projectId;
@@ -80,6 +82,9 @@ class StoryboardToolDataServiceTest {
             .contains("镜头4 3.8s", "Serena: No...", StoryboardToolDataService.FIXED_CONSISTENCY_CONSTRAINT);
         assertThat(row.get("prompt_document_json").toString()).contains("\"version\":1", "\"nodes\"");
         assertThat(row.get("shot_plan_json").toString()).contains("\"durationSeconds\":3.8");
+        assertThat(row.get("shot_plan_json").toString())
+            .contains("\"dialogue\":\"Serena: No...\"")
+            .contains("\"soundSegmentIds\":[\"S0002\"]");
         assertThat(row.get("material_binding_status")).isEqualTo("BOUND");
         assertThat(row.get("generated_by_run_id")).isEqualTo(700L);
         assertThat(jdbc.queryForObject("""
@@ -144,16 +149,14 @@ class StoryboardToolDataServiceTest {
     }
 
     @Test
-    void invalidOrStalePayloadPreservesPriorStoryboardSet() throws Exception {
+    void invalidSoundAssignmentOrStalePayloadPreservesPriorStoryboardSet() throws Exception {
         JsonNode invalid = validPayload();
-        invalid.path("storyboards").get(0).path("shots").get(1)
-            .deepCopy();
-        ((com.fasterxml.jackson.databind.node.ObjectNode) invalid.path("storyboards").get(0)
-            .path("shots").get(1)).put("dialogue", "Serena: translated");
+        ((ArrayNode) invalid.path("storyboards").get(0).path("shots").get(1)
+            .path("soundSegmentIds")).removeAll();
 
         assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), invalid))
-            .isInstanceOf(com.antshorttv.common.BusinessException.class)
-            .hasMessageContaining("逐字保留");
+            .isInstanceOf(WorkflowToolValidationException.class)
+            .hasMessageContaining("声音片段");
         assertThat(jdbc.queryForObject("""
             select visual_description from storyboard where episode_id = ? and deleted_at is null
             """, String.class, episodeId)).isEqualTo("old storyboard");
@@ -164,12 +167,52 @@ class StoryboardToolDataServiceTest {
             .hasMessageContaining("已变化");
     }
 
+    @Test
+    void acceptsAdjacentRangesAndRejectsUnknownGapOverlapAndReversedRanges() throws Exception {
+        JsonNode twoBoards = twoBoardPayload();
+        assertThat(service.saveEpisodeStoryboards(context(), twoBoards).path("storyboardCount").asInt())
+            .isEqualTo(2);
+
+        jdbc.update("update storyboard set deleted_at = now() where episode_id = ? and generated_by_run_id = 700", episodeId);
+        jdbc.update("update storyboard set deleted_at = null where episode_id = ? and generated_by_run_id is null", episodeId);
+        JsonNode unknown = twoBoardPayload();
+        ((ObjectNode) unknown.path("storyboards").get(0)).put("sourceFrom", "S9999");
+        assertValidation(unknown, 0, "SOURCE_SEGMENT_UNKNOWN");
+        JsonNode gap = twoBoardPayload();
+        ((ObjectNode) gap.path("storyboards").get(0)).put("sourceTo", "S0001");
+        for (JsonNode shot : gap.path("storyboards").get(0).path("shots")) {
+            ((ArrayNode) shot.path("soundSegmentIds")).removeAll();
+        }
+        assertValidation(gap, 1, "SOURCE_SEGMENT_GAP");
+        JsonNode overlap = twoBoardPayload();
+        ((ObjectNode) overlap.path("storyboards").get(1)).put("sourceFrom", "S0002");
+        assertValidation(overlap, 1, "SOURCE_SEGMENT_OVERLAP");
+        JsonNode reversed = twoBoardPayload();
+        ((ObjectNode) reversed.path("storyboards").get(0))
+            .put("sourceFrom", "S0002").put("sourceTo", "S0001");
+        assertValidation(reversed, 0, "SOURCE_SEGMENT_REVERSED");
+    }
+
+    @Test
+    void rejectsDuplicateSoundSegmentAndPreservesExistingSet() throws Exception {
+        JsonNode payload = validPayload();
+        ((ArrayNode) payload.path("storyboards").get(0).path("shots").get(2)
+            .path("soundSegmentIds")).add("S0002");
+
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .isInstanceOfSatisfying(WorkflowToolValidationException.class,
+                failure -> assertThat(failure.details().get("validationCode"))
+                    .isEqualTo("SOUND_SEGMENT_DUPLICATE"));
+        assertPriorStoryboardUnchanged();
+    }
+
     private ToolExecutionContext context() {
         WorkflowToolRunState state = new WorkflowToolRunState();
         state.put("currentEpisodeId", episodeId);
         state.put("currentEpisodeScriptId", scriptId);
         state.put("currentEpisodeFingerprint", "fp-1");
         state.put("currentEpisodeContent", source);
+        state.put("currentEpisodeSourceSegments", segmenter.segment(source));
         return new ToolExecutionContext(tenantId, userId, projectId, episodeId, scriptId,
             500L, null, 700L, 800L, 900L, 1, Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"),
             Instant.now().plusSeconds(30), state);
@@ -178,24 +221,54 @@ class StoryboardToolDataServiceTest {
     private JsonNode validPayload() throws Exception {
         return json.readTree("""
             {
-              "schemaVersion":1,
+              "schemaVersion":2,
               "episodeFingerprint":"fp-1",
               "storyboards":[{
                 "storyboardNo":1,
-                "sourceStartMarker":"开场",
-                "sourceEndMarker":"结束",
+                "sourceFrom":"S0001",
+                "sourceTo":"S0003",
                 "time":"夜",
                 "lighting":"暖黄色侧光",
                 "usedAssetKeys":{"characters":[],"scenes":[],"props":[]},
                 "unmatchedMaterials":{"characters":[],"scenes":[],"props":[]},
                 "shots":[
-                  {"shotNo":1,"durationSeconds":3,"positioning":"空镜","action":"固定镜头拍摄开场"},
-                  {"shotNo":2,"durationSeconds":3,"positioning":"Serena站立","action":"镜头缓缓拉近","dialogue":"Serena: No..."},
-                  {"shotNo":3,"durationSeconds":3,"positioning":"Serena站立","action":"Serena神情转为坚定"},
-                  {"shotNo":4,"durationSeconds":3.8,"positioning":"走廊尽头","action":"镜头拉远至结束"}
+                  {"shotNo":1,"durationSeconds":3,"positioning":"空镜","action":"固定镜头拍摄开场","soundSegmentIds":[]},
+                  {"shotNo":2,"durationSeconds":3,"positioning":"Serena站立","action":"镜头缓缓拉近","soundSegmentIds":["S0002"]},
+                  {"shotNo":3,"durationSeconds":3,"positioning":"Serena站立","action":"Serena神情转为坚定","soundSegmentIds":[]},
+                  {"shotNo":4,"durationSeconds":3.8,"positioning":"走廊尽头","action":"镜头拉远至结束","soundSegmentIds":[]}
                 ]
               }]
             }
             """);
+    }
+
+    private JsonNode twoBoardPayload() throws Exception {
+        ObjectNode payload = (ObjectNode) validPayload();
+        ArrayNode boards = (ArrayNode) payload.path("storyboards");
+        ObjectNode first = (ObjectNode) boards.get(0);
+        first.put("sourceTo", "S0002");
+        ObjectNode second = first.deepCopy();
+        second.put("storyboardNo", 2).put("sourceFrom", "S0003").put("sourceTo", "S0003");
+        for (JsonNode shot : second.path("shots")) {
+            ((ArrayNode) shot.path("soundSegmentIds")).removeAll();
+        }
+        boards.add(second);
+        return payload;
+    }
+
+    private void assertValidation(JsonNode payload, int boardIndex, String expectedCode) {
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .isInstanceOfSatisfying(WorkflowToolValidationException.class, failure -> {
+                assertThat(failure.details().get("validationCode")).isEqualTo(expectedCode);
+                assertThat(failure.details().get("storyboardNo")).isEqualTo(boardIndex + 1);
+            });
+        assertPriorStoryboardUnchanged();
+    }
+
+    private void assertPriorStoryboardUnchanged() {
+        assertThat(jdbc.queryForObject("""
+            select count(*) from storyboard
+             where episode_id = ? and deleted_at is null and visual_description = 'old storyboard'
+            """, Integer.class, episodeId)).isEqualTo(1);
     }
 }
