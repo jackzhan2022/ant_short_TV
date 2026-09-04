@@ -50,6 +50,9 @@ class StoryboardAgentAdapterTest {
         assertThat(input.getValue().attemptId()).isEqualTo(77L);
         assertThat(input.getValue().executionVersion()).isEqualTo(3);
         assertThat(input.getValue().modelIdOverride()).isEqualTo(88L);
+        assertThat(input.getValue().input())
+            .contains("服务端准备", "schemaVersion 2", "save_episode_storyboards")
+            .doesNotContain("读取可信上下文");
         assertThat(result.agentRunId()).isEqualTo(601L);
         assertThat(result.modelCalls()).containsExactly(call);
     }

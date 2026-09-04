@@ -38,7 +38,7 @@ public class StoryboardAgentAdapter {
         if (!enabled) throw new IllegalStateException("分镜 Workflow Agent 尚未启用。");
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             StoryboardAgentBootstrap.AGENT_CODE,
-            "读取可信上下文，规划当前集全部分镜，并一次调用 save_episode_storyboards 正式保存。",
+            "使用服务端准备的可信上下文，按 schemaVersion 2 规划当前集全部分镜，并一次调用 save_episode_storyboards 正式保存。",
             operation.tenantId, operation.projectId, episodeId, operation.scriptId, operation.id,
             null, operation.createdBy, executionContext.task().id, executionContext.claim().attemptId(),
             executionContext.task().executionVersion,

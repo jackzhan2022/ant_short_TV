@@ -5,7 +5,7 @@ description: Use when planning one complete short-drama episode into formal mult
 
 # 短剧整集分镜规划
 
-严格按 `read_current_episode` 返回的当前集正文顺序规划整集，不读取或参考旧分镜。相邻集信息只用于承接上一集结尾和下一集开场，不得把相邻集正文扩写进当前集。
+服务端已准备并审计当前剧集、相邻集概要、剧本分析、项目上下文和正式素材这一个完整上下文。严格按其中当前集的 `sourceSegments` 顺序规划整集，不自行调用读取工具，不读取或参考旧分镜。相邻集信息只用于承接上一集结尾和下一集开场，不得把相邻集正文扩写进当前集。
 
 ## 分镜边界
 
@@ -17,8 +17,10 @@ description: Use when planning one complete short-drama episode into formal mult
 
 ## 剧情与声音
 
-全部有意义的正文必须用按顺序且不重叠的 `sourceStartMarker` 和 `sourceEndMarker` 完整覆盖，不得遗漏、重复、重排或改变结果。对白、旁白和内心 OS 必须保持原文，不能翻译、润色、改写或新增，并且每条声音内容只归属一个镜头。
+保存时固定提交 `schemaVersion: 2`。每个分镜用 `sourceFrom` 和 `sourceTo` 指向本集 `S0001` 起的来源片段；所有 `requiredCoverage: true` 的片段必须按顺序、相邻且不重叠地完整覆盖，不得遗漏、重复、重排或改变结果。元数据片段只作上下文，不强制覆盖。
+
+每个内部镜头都提交 `soundSegmentIds` 数组，可以为空。对白、旁白和内心 OS 只引用对应来源片段 ID，每个声音片段必须且只能归属一个镜头；不要复制、翻译、润色或改写声音原文，服务端会按 ID 注入可信原文。
 
 可以补充可执行的灯光、构图、微表情、走位、运镜和环境细节；不得补充剧情事件、人物关系、对白、关键道具或新结果。项目设定和已绑定素材与补充描述冲突时，始终以前者为准。
 
-完成全部读取后一次提交完整 `save_episode_storyboards`。保存成功前不得声称完成。
+基于已准备的一个上下文直接规划，并一次提交完整 `save_episode_storyboards`。保存成功前不得声称完成。

@@ -13,7 +13,10 @@ class StoryboardSkillContractTest {
     @Test
     void definesPlanningMaterialAndExtensibleSeedanceContracts() {
         assertThat(skills.detail("short-drama-storyboard-planning").content())
-            .contains("整集", "10 至 15 秒", "1.5 至 4 秒", "一个主要动作", "原文", "save_episode_storyboards");
+            .contains("整集", "10 至 15 秒", "1.5 至 4 秒", "一个主要动作", "原文",
+                "schemaVersion: 2", "sourceFrom", "sourceTo", "soundSegmentIds",
+                "完整覆盖", "服务端已准备", "save_episode_storyboards")
+            .doesNotContain("sourceStartMarker", "sourceEndMarker", "完成全部读取后");
         assertThat(skills.detail("short-drama-storyboard-material-reference").content())
             .contains("实际使用", "assetKey", "当前剧集绑定", "项目主形态", "精确匹配", "ASSET_PENDING");
         assertThat(skills.detail("short-drama-seedance-video-prompt").content())

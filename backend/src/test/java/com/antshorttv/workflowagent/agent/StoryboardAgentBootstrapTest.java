@@ -40,6 +40,9 @@ class StoryboardAgentBootstrapTest {
         assertThat(agent.toolCodes()).containsExactlyInAnyOrderElementsOf(StoryboardAgentBootstrap.TOOLS);
         assertThat(agent.maxSteps()).isEqualTo(14);
         assertThat(agent.maxTokens()).isEqualTo(16384);
-        assertThat(agent.systemPrompt()).contains("save_episode_storyboards", "终止动作");
+        assertThat(agent.systemPrompt())
+            .contains("服务端已准备", "schemaVersion 2", "sourceFrom", "sourceTo",
+                "soundSegmentIds", "save_episode_storyboards", "终止动作")
+            .doesNotContain("工具顺序");
     }
 }
