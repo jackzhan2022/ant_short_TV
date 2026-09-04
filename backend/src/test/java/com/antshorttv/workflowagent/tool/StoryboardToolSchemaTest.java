@@ -21,14 +21,22 @@ class StoryboardToolSchemaTest {
             .contains("schemaVersion", "episodeFingerprint", "storyboards");
         JsonNode board = schema.path("properties").path("storyboards").path("items");
         assertThat(board.path("required").toString())
-            .contains("storyboardNo", "sourceStartMarker", "sourceEndMarker", "usedAssetKeys", "shots");
+            .contains("storyboardNo", "sourceFrom", "sourceTo", "usedAssetKeys", "shots");
+        assertThat(board.path("properties").has("sourceStartMarker")).isFalse();
+        assertThat(board.path("properties").has("sourceEndMarker")).isFalse();
         JsonNode shot = board.path("properties").path("shots").path("items");
         assertThat(shot.path("required").toString())
-            .contains("shotNo", "durationSeconds", "positioning", "action");
-        assertThat(shot.path("properties").toString()).contains("dialogue", "narration", "innerOs");
+            .contains("shotNo", "durationSeconds", "positioning", "action", "soundSegmentIds");
+        assertThat(shot.path("properties").has("dialogue")).isFalse();
+        assertThat(shot.path("properties").has("narration")).isFalse();
+        assertThat(shot.path("properties").has("innerOs")).isFalse();
+        assertThat(schema.path("properties").path("schemaVersion").path("minimum").asInt())
+            .isEqualTo(2);
+        assertThat(schema.path("properties").path("schemaVersion").path("maximum").asInt())
+            .isEqualTo(2);
 
         JsonNode invalid = json.readTree("""
-            {"schemaVersion":1,"episodeFingerprint":"fp","storyboards":[]}
+            {"schemaVersion":2,"episodeFingerprint":"fp","storyboards":[]}
             """);
         assertThatThrownBy(() -> new WorkflowToolSchemaValidator().validate(schema, invalid))
             .isInstanceOf(IllegalArgumentException.class);

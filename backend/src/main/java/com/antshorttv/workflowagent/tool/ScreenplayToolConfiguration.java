@@ -282,17 +282,17 @@ public class ScreenplayToolConfiguration {
         ObjectNode schema = objectSchema(json);
         schema.putArray("required").add("schemaVersion").add("episodeFingerprint").add("storyboards");
         ObjectNode fields = (ObjectNode) schema.path("properties");
-        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 1).put("maximum", 1);
+        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 2).put("maximum", 2);
         fields.putObject("episodeFingerprint").put("type", "string").put("minLength", 1).put("maxLength", 128);
         ObjectNode boards = fields.putObject("storyboards").put("type", "array")
             .put("minItems", 1).put("maxItems", 200);
         ObjectNode board = objectSchema(json);
-        board.putArray("required").add("storyboardNo").add("sourceStartMarker")
-            .add("sourceEndMarker").add("usedAssetKeys").add("shots");
+        board.putArray("required").add("storyboardNo").add("sourceFrom")
+            .add("sourceTo").add("usedAssetKeys").add("shots");
         ObjectNode boardFields = (ObjectNode) board.path("properties");
         boardFields.putObject("storyboardNo").put("type", "integer").put("minimum", 1);
-        boardFields.putObject("sourceStartMarker").put("type", "string").put("minLength", 1).put("maxLength", 2000);
-        boardFields.putObject("sourceEndMarker").put("type", "string").put("minLength", 1).put("maxLength", 2000);
+        boardFields.putObject("sourceFrom").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16);
+        boardFields.putObject("sourceTo").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16);
         boardFields.set("time", nullableType(json, "string").put("maxLength", 100));
         boardFields.set("lighting", nullableType(json, "string").put("maxLength", 1000));
         boardFields.set("usedAssetKeys", materialGroups(json));
@@ -300,15 +300,16 @@ public class ScreenplayToolConfiguration {
         ObjectNode shots = boardFields.putObject("shots").put("type", "array")
             .put("minItems", 2).put("maxItems", 20);
         ObjectNode shot = objectSchema(json);
-        shot.putArray("required").add("shotNo").add("durationSeconds").add("positioning").add("action");
+        shot.putArray("required").add("shotNo").add("durationSeconds").add("positioning").add("action")
+            .add("soundSegmentIds");
         ObjectNode shotFields = (ObjectNode) shot.path("properties");
         shotFields.putObject("shotNo").put("type", "integer").put("minimum", 1);
         shotFields.putObject("durationSeconds").put("type", "number").put("minimum", 1.5).put("maximum", 4);
         shotFields.putObject("positioning").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         shotFields.putObject("action").put("type", "string").put("minLength", 1).put("maxLength", 1000);
-        for (String field : new String[]{"dialogue", "narration", "innerOs"}) {
-            shotFields.set(field, nullableType(json, "string").put("maxLength", 5000));
-        }
+        shotFields.putObject("soundSegmentIds").put("type", "array").put("maxItems", 100)
+            .put("uniqueItems", true).putObject("items").put("type", "string")
+            .put("pattern", "^S\\d{4,}$").put("maxLength", 16);
         shots.set("items", shot);
         boards.set("items", board);
         return schema;
