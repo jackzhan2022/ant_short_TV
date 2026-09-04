@@ -61,4 +61,15 @@ describe('PlatformCommercialOrderPage', () => {
     expect(await screen.findByRole('region', { name: '订单详情' })).toBeInTheDocument();
     expect(screen.getByText('微信支付单号：WX-1001')).toBeInTheDocument();
   });
+
+  it('renders an absent payment time as a dash', async () => {
+    mocks.listOrders.mockResolvedValue({ data: {
+      records: [{ id: 2, merchantOrderNo: 'COM-CLOSED', tenantId: 2, tenantName: '新禾文创', tenantCode: 'TENANT01', packageName: '积分包', packageVersionNo: 1, packageType: 'POINT_PACKAGE', amount: 99, currency: 'CNY', status: 'CLOSED', createdAt: '2026-09-04T10:00:00', paidAt: '-' }], total: 1, current: 1, pageSize: 20,
+    } });
+
+    render(<PlatformCommercialOrderPage />);
+
+    expect(await screen.findByText('COM-CLOSED')).toBeInTheDocument();
+    expect(screen.queryByText('Invalid Date')).not.toBeInTheDocument();
+  });
 });

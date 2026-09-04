@@ -21,7 +21,12 @@ const orderStatusColor = (status?: CommercialOrderStatus) => (
 );
 
 const packageTypeText = (type?: string) => type === 'SUBSCRIPTION' ? '会员订阅' : type === 'POINT_PACKAGE' ? '积分包' : '-';
-const dateTime = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-';
+const dateTime = (value?: string) => {
+  const date = value ? new Date(value) : undefined;
+  return date && !Number.isNaN(date.getTime())
+    ? date.toLocaleString('zh-CN', { hour12: false })
+    : '-';
+};
 
 const PlatformCommercialOrderPage = () => {
   const access = useAccess();
