@@ -30,6 +30,10 @@ class StoryboardToolSchemaTest {
         assertThat(shot.path("properties").has("dialogue")).isFalse();
         assertThat(shot.path("properties").has("narration")).isFalse();
         assertThat(shot.path("properties").has("innerOs")).isFalse();
+        assertThat(board.path("properties").path("sourceFrom").path("description").asText())
+            .contains("每个分镜对象内部");
+        assertThat(shot.path("properties").path("soundSegmentIds").path("description").asText())
+            .contains("DIALOGUE", "NARRATION", "INNER_OS", "ACTION", "METADATA");
         assertThat(schema.path("properties").path("schemaVersion").path("minimum").asInt())
             .isEqualTo(2);
         assertThat(schema.path("properties").path("schemaVersion").path("maximum").asInt())

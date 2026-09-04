@@ -17,9 +17,9 @@ description: Use when planning one complete short-drama episode into formal mult
 
 ## 剧情与声音
 
-保存时固定提交 `schemaVersion: 2`。每个分镜用 `sourceFrom` 和 `sourceTo` 指向本集 `S0001` 起的来源片段；所有 `requiredCoverage: true` 的片段必须按顺序、相邻且不重叠地完整覆盖，不得遗漏、重复、重排或改变结果。元数据片段只作上下文，不强制覆盖。
+保存时固定提交 `schemaVersion: 2`。`sourceFrom` 和 `sourceTo` 必须放在每个分镜对象内部，根对象只能放 `schemaVersion`、`episodeFingerprint` 和 `storyboards`，禁止在根对象放来源范围。每个分镜的范围指向本集 `S0001` 起的来源片段；所有 `requiredCoverage: true` 的片段必须按顺序、相邻且不重叠地完整覆盖，不得遗漏、重复、重排或改变结果。元数据片段只作上下文，不强制覆盖。
 
-每个内部镜头都提交 `soundSegmentIds` 数组，可以为空。对白、旁白和内心 OS 只引用对应来源片段 ID，每个声音片段必须且只能归属一个镜头；不要复制、翻译、润色或改写声音原文，服务端会按 ID 注入可信原文。
+每个内部镜头都提交 `soundSegmentIds` 数组，可以为空。数组只能引用 `sourceSegments` 中 `type` 为 `DIALOGUE`、`NARRATION` 或 `INNER_OS` 的 ID；禁止引用 `ACTION` 或 `METADATA`，即使该行动片段是角色提示行、字幕行或动作标签。每个声音片段必须且只能归属一个镜头；不要复制、翻译、润色或改写声音原文，服务端会按 ID 注入可信原文。
 
 可以补充可执行的灯光、构图、微表情、走位、运镜和环境细节；不得补充剧情事件、人物关系、对白、关键道具或新结果。项目设定和已绑定素材与补充描述冲突时，始终以前者为准。
 

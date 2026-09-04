@@ -15,7 +15,8 @@ class StoryboardSkillContractTest {
         assertThat(skills.detail("short-drama-storyboard-planning").content())
             .contains("整集", "10 至 15 秒", "1.5 至 4 秒", "一个主要动作", "原文",
                 "schemaVersion: 2", "sourceFrom", "sourceTo", "soundSegmentIds",
-                "完整覆盖", "服务端已准备", "save_episode_storyboards")
+                "完整覆盖", "服务端已准备", "save_episode_storyboards",
+                "每个分镜对象内部", "禁止引用 `ACTION` 或 `METADATA`")
             .doesNotContain("sourceStartMarker", "sourceEndMarker", "完成全部读取后");
         assertThat(skills.detail("short-drama-storyboard-material-reference").content())
             .contains("实际使用", "assetKey", "当前剧集绑定", "项目主形态", "精确匹配", "ASSET_PENDING");

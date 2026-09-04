@@ -280,6 +280,7 @@ public class ScreenplayToolConfiguration {
 
     private ObjectNode episodeStoryboardsInput(ObjectMapper json) {
         ObjectNode schema = objectSchema(json);
+        schema.put("description", "根对象只包含 schemaVersion、episodeFingerprint 和 storyboards；来源范围属于每个分镜对象。");
         schema.putArray("required").add("schemaVersion").add("episodeFingerprint").add("storyboards");
         ObjectNode fields = (ObjectNode) schema.path("properties");
         fields.putObject("schemaVersion").put("type", "integer").put("minimum", 2).put("maximum", 2);
@@ -291,8 +292,10 @@ public class ScreenplayToolConfiguration {
             .add("sourceTo").add("usedAssetKeys").add("shots");
         ObjectNode boardFields = (ObjectNode) board.path("properties");
         boardFields.putObject("storyboardNo").put("type", "integer").put("minimum", 1);
-        boardFields.putObject("sourceFrom").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16);
-        boardFields.putObject("sourceTo").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16);
+        boardFields.putObject("sourceFrom").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16)
+            .put("description", "必须放在每个分镜对象内部，表示该分镜覆盖的首个来源片段 ID；根对象禁止出现此字段。");
+        boardFields.putObject("sourceTo").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16)
+            .put("description", "必须放在每个分镜对象内部，表示该分镜覆盖的末个来源片段 ID；根对象禁止出现此字段。");
         boardFields.set("time", nullableType(json, "string").put("maxLength", 100));
         boardFields.set("lighting", nullableType(json, "string").put("maxLength", 1000));
         boardFields.set("usedAssetKeys", materialGroups(json));
@@ -308,7 +311,9 @@ public class ScreenplayToolConfiguration {
         shotFields.putObject("positioning").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         shotFields.putObject("action").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         shotFields.putObject("soundSegmentIds").put("type", "array").put("maxItems", 100)
-            .put("uniqueItems", true).putObject("items").put("type", "string")
+            .put("uniqueItems", true)
+            .put("description", "只能引用 sourceSegments 中 type 为 DIALOGUE、NARRATION 或 INNER_OS 的 ID；禁止引用 ACTION 或 METADATA，包括角色提示行、字幕行和动作标签。")
+            .putObject("items").put("type", "string")
             .put("pattern", "^S\\d{4,}$").put("maxLength", 16);
         shots.set("items", shot);
         boards.set("items", board);

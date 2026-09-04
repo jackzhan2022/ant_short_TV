@@ -911,7 +911,9 @@ class WorkflowAgentRunnerTest {
         assertThat(requests.getAllValues().get(1).textRequest().messages())
             .extracting(AiChatMessage::content)
             .anySatisfy(content -> assertThat(content)
-                .contains("SOURCE_SEGMENT_GAP", "expectedSegmentId", "S0002"));
+                .contains("SOURCE_SEGMENT_GAP", "expectedSegmentId", "S0002"))
+            .anySatisfy(content -> assertThat(content)
+                .contains("每个分镜对象内部", "DIALOGUE、NARRATION 或 INNER_OS", "ACTION、METADATA"));
     }
 
     @Test

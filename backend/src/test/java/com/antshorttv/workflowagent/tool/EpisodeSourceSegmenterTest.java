@@ -64,4 +64,29 @@ class EpisodeSourceSegmenterTest {
             assertThat(segment.endOffset()).isEqualTo(longAction.length());
         });
     }
+
+    @Test
+    void classifiesMultilineSpeechWithoutTreatingSubtitlesOrActionLabelsAsSound() {
+        String source = "Rowan（压低声音，冷笑）:\n"
+            + "\"Once she falls, everything will be ours.\"\n"
+            + "【字幕：只要她坠落，一切都会属于我们。】\n"
+            + "Serena Aldwych（os，颤抖）:\n"
+            + "\"No... how could you...\"\n"
+            + "V.O.（低沉）:\n"
+            + "暴雨将至。\n"
+            + "结尾钩子：Rowan猛地推开房门。";
+
+        List<EpisodeSourceSegmenter.EpisodeSourceSegment> segments = segmenter.segment(source);
+
+        assertThat(segments).extracting(EpisodeSourceSegmenter.EpisodeSourceSegment::type)
+            .containsExactly(
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.DIALOGUE,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.INNER_OS,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.NARRATION,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION);
+    }
 }

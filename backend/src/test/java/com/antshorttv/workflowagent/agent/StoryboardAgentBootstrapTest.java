@@ -42,7 +42,8 @@ class StoryboardAgentBootstrapTest {
         assertThat(agent.maxTokens()).isEqualTo(16384);
         assertThat(agent.systemPrompt())
             .contains("服务端已准备", "schemaVersion 2", "sourceFrom", "sourceTo",
-                "soundSegmentIds", "save_episode_storyboards", "终止动作")
+                "soundSegmentIds", "save_episode_storyboards", "终止动作",
+                "每个分镜对象内部", "只能引用 type 为 DIALOGUE、NARRATION 或 INNER_OS")
             .doesNotContain("工具顺序");
     }
 }

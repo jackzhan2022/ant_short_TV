@@ -371,7 +371,10 @@ public class WorkflowAgentRunner {
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
                         messages.add(AiChatMessage.user(
                             "分镜保存校验失败。只根据结构化诊断修正对应片段范围或声音归属，"
-                                + "然后再次调用 save_episode_storyboards；不得重新读取或重做其他流程。"));
+                                + "然后再次调用 save_episode_storyboards；不得重新读取或重做其他流程。"
+                                + "再次提交前必须同时自检：sourceFrom/sourceTo 位于每个分镜对象内部而非根对象；"
+                                + "soundSegmentIds 只能包含 DIALOGUE、NARRATION 或 INNER_OS，"
+                                + "必须排除 ACTION、METADATA、角色提示行和字幕行。"));
                         break;
                     }
                     if (reviewTruncationRecovery && isReviewEvidenceValidationFailure(call.code(), normalized)) {
@@ -453,7 +456,9 @@ public class WorkflowAgentRunner {
         }
         messages.add(AiChatMessage.user(
             "以下是服务端已按可信作用域读取并审计的完整分镜规划上下文。"
-                + "不要再次读取，也不要引用旧分镜；请直接规划整集并调用 save_episode_storyboards：\n"
+                + "不要再次读取，也不要引用旧分镜。sourceFrom/sourceTo 必须位于每个分镜对象内部；"
+                + "soundSegmentIds 只允许 DIALOGUE、NARRATION、INNER_OS，禁止 ACTION、METADATA。"
+                + "请直接规划整集并调用 save_episode_storyboards：\n"
                 + writeJson(prepared)));
         return stepNo;
     }
