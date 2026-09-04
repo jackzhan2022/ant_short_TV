@@ -34,7 +34,7 @@ class AiMigrationSnapshotRehearsalTest {
         assertThat(sourceJdbc.queryForObject(
                 "select count(*) from flyway_schema_history where success = true and version is not null",
                 Integer.class))
-            .isEqualTo(86);
+            .isEqualTo(87);
 
         DataSource restored = dataSource("ai_migration_restored");
         JdbcTemplate restoredJdbc = new JdbcTemplate(restored);
