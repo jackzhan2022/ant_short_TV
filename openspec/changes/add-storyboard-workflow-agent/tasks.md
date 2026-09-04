@@ -65,8 +65,8 @@
 ## 9. Source-segment planning stabilization
 
 - [x] 9.1 Add deterministic episode source segmentation with episode-local `S0001` IDs, exact text and offsets, type classification, metadata exclusion, and fingerprint-bound invalidation tests.
-- [ ] 9.2 Replace source text markers and copied spoken fields in the save schema with contiguous source ranges and spoken-segment references; add coverage, stale-source, unknown-ID, gap, overlap, order, and exact spoken-text tests.
-- [ ] 9.3 Make the storyboard execution host perform and audit the five trusted reads before one combined planning request while preserving scope guards and excluding old storyboards.
-- [ ] 9.4 Return structured save diagnostics and prevent deterministic validation failures from restarting the complete workflow; retain bounded retries for provider transport failures.
-- [ ] 9.5 Update storyboard Skills and fixtures for source-segment ranges, then run focused and complete backend verification plus frontend regression checks.
+- [x] 9.2 Replace source text markers and copied spoken fields in the save schema with contiguous source ranges and spoken-segment references; add coverage, stale-source, unknown-ID, gap, overlap, order, and exact spoken-text tests.
+- [x] 9.3 Make the storyboard execution host perform and audit the five trusted reads before one combined planning request while preserving scope guards and excluding old storyboards.
+- [x] 9.4 Return structured save diagnostics and prevent deterministic validation failures from restarting the complete workflow; retain bounded retries for provider transport failures.
+- [x] 9.5 Update storyboard Skills and fixtures for source-segment ranges, then run focused and complete backend verification plus frontend regression checks.
 - [ ] 9.6 Deploy behind the existing feature flag and complete a successful online generation with Run audit, prompt/Mention, atomic replacement, usage, and point-settlement evidence.
