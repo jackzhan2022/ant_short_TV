@@ -66,7 +66,7 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
                 select id from script_analysis_fanout_snapshot
                  where stage_id = ? and agent_code = ? and episode_set_hash = ?
                    and agent_revision = ? and model_id = ?
-                   and status in ('RUNNING', 'PARTIAL_FAILED', 'FAILED')
+                   and status in ('RUNNING', 'FINALIZING', 'SUCCEEDED', 'PARTIAL_FAILED', 'FAILED')
                  order by id desc limit 1
                 """, Long.class, stage.getId(), agentCode, episodeSetHash,
                 plan.agent().revision(), effectiveModelId);
@@ -208,6 +208,8 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
     @Override public void updateParentProgress(long snapshotId, EpisodeFanoutCoordinator.Progress progress) {
         int terminal = progress.completed() + progress.failed();
         int percent = progress.total() == 0 ? 0 : terminal * 100 / progress.total();
+        String snapshotStatus = "SUCCEEDED".equals(progress.status())
+            ? "FINALIZING" : progress.status();
         jdbc.update("""
             update script_analysis_stage stage
                set progress_percent = greatest(progress_percent, ?), completed_units = ?, total_units = ?,
@@ -220,7 +222,7 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
         jdbc.update("""
             update script_analysis_fanout_snapshot
                set completed_units = ?, failed_units = ?, status = ?, updated_at = now() where id = ?
-            """, progress.completed(), progress.failed(), progress.status(), snapshotId);
+            """, progress.completed(), progress.failed(), snapshotStatus, snapshotId);
     }
 
     @Override public void complete(long snapshotId) {

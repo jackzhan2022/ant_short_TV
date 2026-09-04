@@ -388,6 +388,41 @@ class RemainingAnalysisAgentsEndToEndTest {
             .isEqualTo("RUNNING");
     }
 
+    @Test
+    void aNewAttemptReusesACompletedSnapshotForFinalizationWithoutRerunningUnits() throws Exception {
+        ToolExecutionContext split = scriptContext();
+        tools.readCurrentScript(split);
+        tools.saveEpisodeSplitting(split, 1, boundaries());
+        AnalysisScope scope = createAnalysisScope("ASSET_RECOGNITION");
+        List<EpisodeFanoutCoordinator.EpisodeUnit> units = fanoutStore.currentEpisodes(
+            tenantId, projectId, scriptId);
+        WorkflowAgentExecutionPlan plan = plan("short-drama-asset-recognition");
+        String episodeSetHash = EpisodeFanoutCoordinator.episodeSetHash(units);
+        long snapshotId = fanoutStore.openSnapshot(scope.task(), scope.stage(),
+            "short-drama-asset-recognition", plan, modelId, units, episodeSetHash, false);
+        units.forEach(unit -> {
+            int unitAttemptNo = fanoutStore.markRunning(snapshotId, unit.episodeId());
+            fanoutStore.markSucceeded(snapshotId, unit.episodeId(), unitAttemptNo, createRun(
+                "short-drama-asset-recognition"));
+        });
+
+        fanoutStore.updateParentProgress(snapshotId, fanoutStore.progress(snapshotId));
+        assertThat(jdbc.queryForObject("""
+            select status from script_analysis_fanout_snapshot where id = ?
+            """, String.class, snapshotId)).isEqualTo("FINALIZING");
+
+        scope.stage().setAttemptNo(2);
+        long reused = fanoutStore.openSnapshot(scope.task(), scope.stage(),
+            "short-drama-asset-recognition", plan, modelId, units, episodeSetHash, false);
+
+        assertThat(reused).isEqualTo(snapshotId);
+        assertThat(fanoutStore.runnableUnits(snapshotId)).isEmpty();
+        assertThat(jdbc.queryForObject("""
+            select count(*) from script_analysis_fanout_unit
+             where snapshot_id = ? and status = 'SUCCEEDED' and attempt_no = 1
+            """, Integer.class, snapshotId)).isEqualTo(units.size());
+    }
+
     private JsonNode boundaries() throws Exception {
         return json.readTree("""
             [

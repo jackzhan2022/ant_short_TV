@@ -23,6 +23,6 @@
 - [x] 4.1 Run the focused execution, script fan-out, and workflow-agent test classes and resolve all regressions.
 - [x] 4.2 Run the complete backend test suite and confirm the change introduces no schema, billing, or API contract regression.
 - [x] 4.3 Configure production with a one-minute heartbeat interval, a temporary sixty-minute claim timeout, and fan-out concurrency four; back up the prior environment.
-- [ ] 4.4 Deploy and restart the backend, verify service and HTTP health, and observe heartbeat timestamps advance for the active execution.
-- [ ] 4.5 Retry the failed project 27 analysis stage and verify only unsuccessful snapshot units run while previously successful units remain unchanged.
+- [x] 4.4 Deploy and restart the backend, verify service and HTTP health, and observe heartbeat timestamps advance for the active execution.
+- [x] 4.5 Retry the failed project 27 analysis stage and verify only unsuccessful snapshot units run while previously successful units remain unchanged.
 - [ ] 4.6 Confirm all 58 units and the fan-out snapshot, analysis stage, domain task, and unified execution reach successful terminal states, then record the final attempt and error summary.
