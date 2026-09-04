@@ -55,9 +55,14 @@ class ScreenplayToolCatalogTest {
         assertThat(currentEpisode.inputSchema().path("additionalProperties").asBoolean()).isFalse();
         assertThat(currentEpisode.outputSchema().path("required"))
             .extracting(node -> node.asText())
-            .contains("episodeKey", "episodeNo", "content", "contentFingerprint", "assetCatalog");
+            .contains("episodeKey", "episodeNo", "content", "contentFingerprint", "sourceSegments", "assetCatalog");
         assertThat(currentEpisode.outputSchema().path("properties").path("content").path("maxLength").asInt())
             .isGreaterThan(0);
+        JsonNode sourceSegment = currentEpisode.outputSchema().path("properties")
+            .path("sourceSegments").path("items");
+        assertThat(sourceSegment.path("required")).extracting(JsonNode::asText)
+            .containsExactly("id", "type", "text", "requiredCoverage");
+        assertThat(sourceSegment.path("properties").has("startOffset")).isFalse();
         WorkflowToolDefinition fullScript = registry.require("read_project_full_script");
         assertThat(fullScript.riskLevel()).isEqualTo(ToolRiskLevel.READ_ONLY);
         assertThat(fullScript.inputSchema().path("properties")).isEmpty();

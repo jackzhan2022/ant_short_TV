@@ -456,6 +456,8 @@ class ScreenplayToolDataServiceTest {
 
     @Test
     void readsTrustedCurrentEpisodeWithFingerprintAndCompactScriptAssetCatalog() {
+        String source = "第2集：真相\r\n\r\n场景：夜 内 走廊\r\n△ Serena停下。\r\nSerena：谁在那里？";
+        jdbc.update("update script_episode set content = ? where id = ?", source, episodeId);
         jdbc.update("update character_asset set script_id = ?, normalized_name = 'hero', source = 'USER' where project_id = ?",
             scriptId, projectId);
         ToolExecutionContext episodeContext = episodeContext();
@@ -464,12 +466,21 @@ class ScreenplayToolDataServiceTest {
 
         assertThat(episode.path("episodeKey").asText()).isEqualTo("episode-2");
         assertThat(episode.path("episodeNo").asInt()).isEqualTo(2);
-        assertThat(episode.path("content").asText()).isEqualTo("Content 2");
+        assertThat(episode.path("content").asText()).isEqualTo(source);
         assertThat(episode.path("contentFingerprint").asText()).isEqualTo("fingerprint-2");
         assertThat(episode.path("assetCatalog").path("characters")).hasSize(0);
+        assertThat(episode.path("sourceSegments")).hasSize(4);
+        assertThat(episode.path("sourceSegments").get(0).path("id").asText()).isEqualTo("S0001");
+        assertThat(episode.path("sourceSegments").get(0).path("requiredCoverage").asBoolean()).isFalse();
+        assertThat(episode.path("sourceSegments").get(1).path("type").asText()).isEqualTo("SCENE");
+        assertThat(episode.path("sourceSegments").get(3).path("text").asText())
+            .isEqualTo("Serena：谁在那里？");
+        assertThat(episode.path("sourceSegments").get(3).has("startOffset")).isFalse();
         assertThat(episodeContext.runState().require("currentEpisodeId", Long.class)).isEqualTo(episodeId);
         assertThat(episodeContext.runState().require("currentEpisodeFingerprint", String.class))
             .isEqualTo("fingerprint-2");
+        assertThat(episodeContext.runState().require("currentEpisodeSourceSegments", List.class))
+            .hasSize(4);
     }
 
     @Test

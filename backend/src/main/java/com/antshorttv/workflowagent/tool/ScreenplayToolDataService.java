@@ -53,6 +53,7 @@ public class ScreenplayToolDataService {
     private final ScriptSplitChunkAnalyzer splitChunkAnalyzer;
     private final WorkflowAgentProperties workflowAgentProperties;
     private final TrustedEpisodeBoundaryBuilder trustedEpisodeBoundaryBuilder;
+    private final EpisodeSourceSegmenter episodeSourceSegmenter;
     private final EpisodeSplitBoundaryResolver splitBoundaryResolver = new EpisodeSplitBoundaryResolver();
 
     public ScreenplayToolDataService(
@@ -69,7 +70,8 @@ public class ScreenplayToolDataService {
         ScriptSplitSnapshotStore splitSnapshotStore,
         ScriptSplitChunkAnalyzer splitChunkAnalyzer,
         WorkflowAgentProperties workflowAgentProperties,
-        TrustedEpisodeBoundaryBuilder trustedEpisodeBoundaryBuilder
+        TrustedEpisodeBoundaryBuilder trustedEpisodeBoundaryBuilder,
+        EpisodeSourceSegmenter episodeSourceSegmenter
     ) {
         this.jdbc = jdbc;
         this.permissionGuard = permissionGuard;
@@ -85,6 +87,7 @@ public class ScreenplayToolDataService {
         this.splitChunkAnalyzer = splitChunkAnalyzer;
         this.workflowAgentProperties = workflowAgentProperties;
         this.trustedEpisodeBoundaryBuilder = trustedEpisodeBoundaryBuilder;
+        this.episodeSourceSegmenter = episodeSourceSegmenter;
     }
 
     public JsonNode readProjectContext(ToolExecutionContext context) {
@@ -358,12 +361,27 @@ public class ScreenplayToolDataService {
         context.runState().put("currentEpisodeFingerprint", fingerprint);
         context.runState().put("currentEpisodeContentHash", sha256(content));
         context.runState().put("currentEpisodeContent", content);
+        List<EpisodeSourceSegmenter.EpisodeSourceSegment> sourceSegments =
+            episodeSourceSegmenter.segment(content);
+        if (sourceSegments.size() > 10_000) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                "当前剧集原文片段过多，无法交给 Agent 处理。");
+        }
+        context.runState().put("currentEpisodeSourceSegments", sourceSegments);
         ObjectNode result = json.createObjectNode();
         put(result, "episodeKey", row.get("stable_key"));
         result.put("episodeNo", ((Number) row.get("episode_no")).intValue());
         put(result, "title", row.get("title"));
         result.put("content", content);
         result.put("contentFingerprint", fingerprint);
+        ArrayNode segmentValues = result.putArray("sourceSegments");
+        for (var segment : sourceSegments) {
+            ObjectNode value = segmentValues.addObject();
+            value.put("id", segment.id());
+            value.put("type", segment.type().name());
+            value.put("text", segment.text());
+            value.put("requiredCoverage", segment.requiredCoverage());
+        }
         ObjectNode catalog = result.putObject("assetCatalog");
         catalog.set("characters", currentScriptAssets(context, "character_asset", "CHARACTER", "c_"));
         catalog.set("scenes", currentScriptAssets(context, "scene_asset", "SCENE", "s_"));

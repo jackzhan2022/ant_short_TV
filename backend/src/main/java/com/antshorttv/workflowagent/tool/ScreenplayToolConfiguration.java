@@ -113,13 +113,25 @@ public class ScreenplayToolConfiguration {
     WorkflowToolDefinition readCurrentEpisodeTool(ScreenplayToolDataService data, ObjectMapper json) {
         ObjectNode output = objectSchema(json);
         output.putArray("required").add("episodeKey").add("episodeNo").add("content")
-            .add("contentFingerprint").add("assetCatalog");
+            .add("contentFingerprint").add("sourceSegments").add("assetCatalog");
         ObjectNode fields = (ObjectNode) output.path("properties");
         fields.putObject("episodeKey").put("type", "string").put("maxLength", 100);
         fields.putObject("episodeNo").put("type", "integer").put("minimum", 1);
         fields.set("title", nullableType(json, "string"));
         fields.putObject("content").put("type", "string").put("maxLength", 200000);
         fields.putObject("contentFingerprint").put("type", "string").put("maxLength", 128);
+        ObjectNode segments = fields.putObject("sourceSegments").put("type", "array")
+            .put("maxItems", 10_000);
+        ObjectNode segment = objectSchema(json);
+        segment.putArray("required").add("id").add("type").add("text").add("requiredCoverage");
+        ObjectNode segmentFields = (ObjectNode) segment.path("properties");
+        segmentFields.putObject("id").put("type", "string").put("pattern", "^S\\d{4,}$");
+        segmentFields.putObject("type").put("type", "string").putArray("enum")
+            .add("METADATA").add("SCENE").add("ACTION").add("DIALOGUE")
+            .add("NARRATION").add("INNER_OS");
+        segmentFields.putObject("text").put("type", "string").put("maxLength", 200000);
+        segmentFields.putObject("requiredCoverage").put("type", "boolean");
+        segments.set("items", segment);
         ObjectNode catalog = objectSchema(json);
         catalog.putArray("required").add("characters").add("scenes").add("props");
         ObjectNode catalogFields = (ObjectNode) catalog.path("properties");
