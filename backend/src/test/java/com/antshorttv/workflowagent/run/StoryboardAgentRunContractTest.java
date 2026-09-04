@@ -15,6 +15,9 @@ class StoryboardAgentRunContractTest {
             StoryboardAgentBootstrap.AGENT_CODE);
         assertThat(contract.requiredToolSequence()).containsExactlyElementsOf(StoryboardAgentBootstrap.TOOLS);
         assertThat(contract.terminalToolCode()).isEqualTo("save_episode_storyboards");
+        assertThat(contract.preparationToolCodes()).containsExactly(
+            "read_current_episode", "read_adjacent_episodes", "read_script_analysis",
+            "read_project_context", "read_script_assets");
 
         WorkflowToolRunState state = new WorkflowToolRunState();
         assertThatThrownBy(() -> contract.requireNext(state, "read_adjacent_episodes"))

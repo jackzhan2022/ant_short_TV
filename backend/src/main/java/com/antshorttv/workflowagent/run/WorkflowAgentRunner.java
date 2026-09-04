@@ -27,6 +27,7 @@ import com.antshorttv.workflowagent.tool.WorkflowToolRunState;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -196,6 +197,10 @@ public class WorkflowAgentRunner {
             input.taskId(), input.analysisStageId(), runId, input.executionId(), input.attemptId(),
             input.executionVersion(), trustedPermissions, deadline, runState, input.reviewScope());
         int stepNo = 0;
+        if ("short-drama-storyboard".equals(agent.code())) {
+            stepNo = prepareStoryboardContext(runId, agent, input, contract, context, messages,
+                allowlist, deadline, stepNo);
+        }
         boolean reviewTruncationRecovery = false;
         boolean reviewEvidenceRefreshPending = false;
         boolean reviewEvidenceRefreshUsed = false;
@@ -387,6 +392,60 @@ public class WorkflowAgentRunner {
             "Agent 已达到最大执行步数 " + agent.maxSteps() + "，仍未产生最终结果。");
     }
 
+    private int prepareStoryboardContext(
+        Long runId,
+        WorkflowAgentRecord agent,
+        WorkflowAgentRunInput input,
+        WorkflowAgentRunContract contract,
+        ToolExecutionContext context,
+        List<AiChatMessage> messages,
+        Set<String> allowlist,
+        Instant deadline,
+        int stepNo
+    ) {
+        ObjectNode prepared = json.createObjectNode();
+        for (String toolCode : contract.preparationToolCodes()) {
+            if (stepNo >= agent.maxSteps()) {
+                throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
+                    "Agent 已达到最大执行步数 " + agent.maxSteps() + "，无法完成分镜上下文读取。");
+            }
+            requireBeforeDeadline(deadline);
+            scopeGuard.requireExecutionActive(input);
+            int toolStep = ++stepNo;
+            if (!allowlist.contains(toolCode)) {
+                BusinessException error = new BusinessException(
+                    ErrorCode.WORKFLOW_AGENT_TOOL_UNAUTHORIZED, "分镜准备工具未获授权：" + toolCode);
+                runs.recordFailedToolStep(runId, toolStep, toolCode, "{}",
+                    error.getErrorCode().name(), error.getMessage());
+                throw error;
+            }
+            WorkflowToolDefinition definition = tools.require(toolCode);
+            try {
+                contract.requireNext(context.runState(), toolCode);
+                JsonNode arguments = json.createObjectNode();
+                schemaValidator.validate(definition.inputSchema(), arguments);
+                JsonNode output = definition.executor().execute(context, arguments);
+                requireBeforeDeadline(deadline);
+                scopeGuard.requireExecutionActive(input);
+                schemaValidator.validate(definition.outputSchema(), output);
+                String serialized = json.writeValueAsString(output);
+                runs.recordToolStep(runId, toolStep, toolCode, "{}", serialized);
+                context.runState().recordSuccess(toolCode);
+                prepared.set(toolCode, output.deepCopy());
+            } catch (Exception exception) {
+                BusinessException normalized = normalizeToolFailure(exception);
+                runs.recordFailedToolStep(runId, toolStep, toolCode, "{}",
+                    normalized.getErrorCode().name(), normalized.getMessage());
+                throw normalized;
+            }
+        }
+        messages.add(AiChatMessage.user(
+            "以下是服务端已按可信作用域读取并审计的完整分镜规划上下文。"
+                + "不要再次读取，也不要引用旧分镜；请直接规划整集并调用 save_episode_storyboards：\n"
+                + writeJson(prepared)));
+        return stepNo;
+    }
+
     private List<WorkflowAgentSkillSnapshot> loadSkills(List<String> codes) {
         return codes.stream().map(code -> {
             WorkflowSkillView skill = skills.detail(code);
@@ -463,11 +522,8 @@ public class WorkflowAgentRunner {
                 .toList();
         }
         if ("short-drama-storyboard".equals(agentCode)) {
-            List<String> remaining = remainingContractTools(contract, state);
-            if (remaining.isEmpty()) return List.of();
-            String next = remaining.get(0);
             return allowedTools.stream()
-                .filter(tool -> next.equals(tool.code()))
+                .filter(tool -> contract.isTerminal(tool.code()))
                 .map(this::providerTool)
                 .toList();
         }
@@ -582,6 +638,15 @@ public class WorkflowAgentRunner {
             ));
         } catch (JsonProcessingException exception) {
             return "{\"ok\":false}";
+        }
+    }
+
+    private String writeJson(JsonNode value) {
+        try {
+            return json.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
+                "无法序列化分镜规划上下文。");
         }
     }
 

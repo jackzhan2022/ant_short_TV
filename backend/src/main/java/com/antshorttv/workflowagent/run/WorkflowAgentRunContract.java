@@ -133,4 +133,9 @@ public record WorkflowAgentRunContract(
     public boolean isTerminal(String toolCode) {
         return terminalToolCode != null && terminalToolCode.equals(toolCode);
     }
+
+    public List<String> preparationToolCodes() {
+        if (!"save_episode_storyboards".equals(terminalToolCode)) return List.of();
+        return requiredToolSequence.stream().filter(tool -> !isTerminal(tool)).toList();
+    }
 }
