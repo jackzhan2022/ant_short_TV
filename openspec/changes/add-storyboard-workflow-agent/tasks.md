@@ -59,8 +59,8 @@
 - [x] 8.1 Run focused backend tests for Workflow Agent contracts, screenplay tools, storyboard validation/rendering/persistence, execution integration, controller behavior, and Flyway schema migration.
 - [x] 8.2 Run the complete backend test suite and resolve regressions without weakening the new formal save contract.
 - [x] 8.3 Run frontend storyboard tests, TypeScript checking, Biome lint, Ant Design lint, and production build.
-- [ ] 8.4 Exercise one successful generation and one failed regeneration against the local application, verifying prompt formatting, material Mention metadata, atomic replacement, prior-data preservation, Agent Run audit, AI usage, and point settlement.
-- [ ] 8.5 Enable the storyboard Workflow Agent feature flag for the intended environment only after verification and document rollback by disabling the flag without dropping new schema or audit data.
+- [x] 8.4 Exercise one successful generation and one failed regeneration against the local application, verifying prompt formatting, material Mention metadata, atomic replacement, prior-data preservation, Agent Run audit, AI usage, and point settlement.
+- [x] 8.5 Enable the storyboard Workflow Agent feature flag for the intended environment only after verification and document rollback by disabling the flag without dropping new schema or audit data.
 
 ## 9. Source-segment planning stabilization
 
@@ -69,4 +69,4 @@
 - [x] 9.3 Make the storyboard execution host perform and audit the five trusted reads before one combined planning request while preserving scope guards and excluding old storyboards.
 - [x] 9.4 Return structured save diagnostics and prevent deterministic validation failures from restarting the complete workflow; retain bounded retries for provider transport failures.
 - [x] 9.5 Update storyboard Skills and fixtures for source-segment ranges, then run focused and complete backend verification plus frontend regression checks.
-- [ ] 9.6 Deploy behind the existing feature flag and complete a successful online generation with Run audit, prompt/Mention, atomic replacement, usage, and point-settlement evidence.
+- [x] 9.6 Deploy behind the existing feature flag and complete a successful online generation with Run audit, prompt/Mention, atomic replacement, usage, and point-settlement evidence.
