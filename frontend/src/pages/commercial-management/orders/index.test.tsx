@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -60,6 +60,17 @@ describe('PlatformCommercialOrderPage', () => {
 
     expect(await screen.findByRole('region', { name: '订单详情' })).toBeInTheDocument();
     expect(screen.getByText('微信支付单号：WX-1001')).toBeInTheDocument();
+  });
+
+  it('highlights the amount and order status in the read-only detail summary', async () => {
+    render(<PlatformCommercialOrderPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+
+    const summary = await screen.findByRole('region', { name: '订单摘要' });
+    expect(within(summary).getByText('实付金额')).toBeInTheDocument();
+    expect(summary).toHaveTextContent('99CNY');
+    expect(within(summary).getByText('已完成')).toBeInTheDocument();
   });
 
   it('renders an absent payment time as a dash', async () => {
