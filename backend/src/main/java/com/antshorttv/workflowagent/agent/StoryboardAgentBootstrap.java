@@ -37,6 +37,6 @@ public class StoryboardAgentBootstrap extends AbstractAnalysisAgentBootstrap {
         return new WorkflowAgentCommand(
             AGENT_CODE, "分镜规划", "按当前有效剧集规划并正式保存完整多镜头视频分镜。",
             "严格按 Skill 和工具顺序完成整集分镜。只提交结构化事实，必须以 save_episode_storyboards 成功作为终止动作。",
-            modelId, new BigDecimal("0.300"), 16384, 8, "ENABLED", SKILLS, TOOLS);
+            modelId, new BigDecimal("0.300"), 16384, 12, "ENABLED", SKILLS, TOOLS);
     }
 }

@@ -38,7 +38,7 @@ class StoryboardAgentBootstrapTest {
         assertThat(agent.modelId()).isEqualTo(modelId);
         assertThat(agent.skillCodes()).containsExactlyElementsOf(StoryboardAgentBootstrap.SKILLS);
         assertThat(agent.toolCodes()).containsExactlyInAnyOrderElementsOf(StoryboardAgentBootstrap.TOOLS);
-        assertThat(agent.maxSteps()).isEqualTo(8);
+        assertThat(agent.maxSteps()).isEqualTo(12);
         assertThat(agent.maxTokens()).isEqualTo(16384);
         assertThat(agent.systemPrompt()).contains("save_episode_storyboards", "终止动作");
     }
