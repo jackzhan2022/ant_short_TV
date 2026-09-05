@@ -18,7 +18,7 @@
 - Modify `backend/src/test/java/com/antshorttv/workflowagent/tool/ScreenplayToolDataServiceTest.java`: prove adjacent full scripts are not returned and excerpts are bounded.
 - Modify `backend/src/main/java/com/antshorttv/workflowagent/run/WorkflowAgentRunner.java`: inject the reducer, log size metrics, and send reduced context to the planning model.
 - Modify `backend/src/test/java/com/antshorttv/workflowagent/run/WorkflowAgentRunnerTest.java`: prove raw audited outputs remain unchanged while the model receives reduced content.
-- Modify `openspec/changes/add-storyboard-workflow-agent/specs/storyboard-workflow-agent/spec.md`: add the model-context minimization requirement and scenarios.
+- Modify `openspec/changes/add-storyboard-workflow-agent/specs/short-drama-storyboard-agent/spec.md`: add the model-context minimization requirement and scenarios.
 - Modify `openspec/changes/add-storyboard-workflow-agent/tasks.md`: add and track context-pruning implementation, verification, deployment, and production evidence.
 
 ### Task 1: Add bounded adjacent-episode continuity excerpts
@@ -277,14 +277,14 @@ git commit -m "feat(storyboard): send reduced planning context"
 ### Task 4: Record the contract and verify the release candidate
 
 **Files:**
-- Modify: `openspec/changes/add-storyboard-workflow-agent/specs/storyboard-workflow-agent/spec.md`
+- Modify: `openspec/changes/add-storyboard-workflow-agent/specs/short-drama-storyboard-agent/spec.md`
 - Modify: `openspec/changes/add-storyboard-workflow-agent/tasks.md`
 
-- [ ] **Step 1: Add OpenSpec scenarios and tasks**
+- [x] **Step 1: Add OpenSpec scenarios and tasks**
 
 Add a requirement that storyboard planning receives the complete current episode but no full-project script or raw analysis response. Add scenarios for compact adjacent continuity, relevance-filtered assets, safe optional-data degradation, and required-data-over-budget behavior. Add Task 10 checkboxes matching Tasks 1–4 in this plan.
 
-- [ ] **Step 2: Validate OpenSpec strictly**
+- [x] **Step 2: Validate OpenSpec strictly**
 
 Run:
 
@@ -294,7 +294,7 @@ openspec validate add-storyboard-workflow-agent --strict
 
 Expected: `Change 'add-storyboard-workflow-agent' is valid`.
 
-- [ ] **Step 3: Run focused backend verification**
+- [x] **Step 3: Run focused backend verification**
 
 Run:
 
@@ -305,7 +305,7 @@ mvn -q -Dtest=ScreenplayToolDataServiceTest,StoryboardContextReducerTest,Workflo
 
 Expected: 0 failures and 0 errors.
 
-- [ ] **Step 4: Run the complete backend suite**
+- [x] **Step 4: Run the complete backend suite**
 
 Run:
 
@@ -316,7 +316,7 @@ mvn -q test
 
 Expected: 0 failures and 0 errors; the existing intentional skip remains the only skipped test.
 
-- [ ] **Step 5: Commit OpenSpec and verification evidence**
+- [x] **Step 5: Commit OpenSpec and verification evidence**
 
 ```powershell
 git add openspec/changes/add-storyboard-workflow-agent/specs/storyboard-workflow-agent/spec.md openspec/changes/add-storyboard-workflow-agent/tasks.md

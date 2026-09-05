@@ -70,3 +70,11 @@
 - [x] 9.4 Return structured save diagnostics and prevent deterministic validation failures from restarting the complete workflow; retain bounded retries for provider transport failures.
 - [x] 9.5 Update storyboard Skills and fixtures for source-segment ranges, then run focused and complete backend verification plus frontend regression checks.
 - [x] 9.6 Deploy behind the existing feature flag and complete a successful online generation with Run audit, prompt/Mention, atomic replacement, usage, and point-settlement evidence.
+
+## 10. Storyboard planning context pruning
+
+- [x] 10.1 Add bounded Unicode-safe opening and ending excerpts to adjacent episode context without exposing complete adjacent bodies.
+- [x] 10.2 Add a storyboard-only reducer that removes full-project script content, raw analysis responses, execution metadata, and verbose unused asset data while preserving the complete current episode and source segments.
+- [x] 10.3 Integrate reduction after all five trusted reads are audited, keep the original tool-step evidence unchanged, and log only input/output sizes and retained-item counts.
+- [x] 10.4 Run focused and complete backend verification and strict OpenSpec validation (756 tests, 0 failures, 0 errors, 1 intentional skip).
+- [ ] 10.5 Deploy behind the existing feature flag and record project 26 input size, model duration, total duration, storyboard coverage, material bindings, call count, and point settlement against execution 91399.

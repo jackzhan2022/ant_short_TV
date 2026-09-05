@@ -54,6 +54,40 @@ The read tools SHALL provide the current episode's full formal content and finge
 - **THEN** the missing adjacent summary is returned as null
 - **AND** generation remains allowed
 
+### Requirement: Minimize storyboard planning context without truncating the current episode
+The execution host SHALL derive a storyboard-only model context from the five audited read results. It SHALL preserve the current episode identity, complete content, fingerprint, and every trusted source segment; SHALL exclude full-project script bodies, raw analysis responses, execution metadata, and verbose unused asset metadata; and SHALL apply a 30,000-character soft budget only to optional context. The audited tool-step outputs SHALL remain unchanged.
+
+#### Scenario: Full-project analysis contains the source screenplay
+- **WHEN** an episode-splitting result embeds the complete project screenplay or a stage contains a raw provider response
+- **THEN** the host records the original trusted tool output in the Run audit
+- **AND** the planning model receives neither the embedded full-project screenplay nor the raw response
+- **AND** it receives only the selected episode's summary-scale analysis
+
+#### Scenario: Adjacent episodes provide continuity
+- **WHEN** a previous or next episode exists
+- **THEN** the planning context contains its title, summary, and bounded opening and ending excerpts with explicit truncation metadata
+- **AND** does not contain the complete adjacent episode body
+
+#### Scenario: Assets can be related to the current episode
+- **WHEN** canonical asset names, normalized names, or explicit aliases occur in the current episode
+- **THEN** the planning context retains those assets and their stable asset and variant keys
+- **AND** omits unmatched assets and verbose variant content
+
+#### Scenario: Asset relevance cannot be established
+- **WHEN** no supplied asset identity can be matched to the current episode
+- **THEN** the planning context retains an identity-only fallback catalog
+- **AND** omits verbose variant content
+
+#### Scenario: Optional analysis is malformed or exceeds the soft budget
+- **WHEN** optional analysis cannot be parsed or adding an optional section would exceed 30,000 characters
+- **THEN** the host drops that optional data and continues with the remaining trusted context
+- **AND** does not fail or alter the current episode
+
+#### Scenario: Required current episode exceeds the soft budget
+- **WHEN** the complete current episode and its source segments alone exceed 30,000 characters
+- **THEN** the host preserves them without truncation
+- **AND** removes all optional planning sections before invoking the model
+
 ### Requirement: Submit a versioned structured storyboard set
 `save_episode_storyboards` SHALL accept versioned structured JSON containing the trusted episode fingerprint and an ordered non-empty `storyboards` array. Every storyboard SHALL contain its episode-local `storyboardNo`, `sourceFrom` and `sourceTo` segment IDs, optional time and lighting, referenced asset keys, and an ordered non-empty `shots` array. Every shot SHALL contain a storyboard-local `shotNo`, decimal `durationSeconds`, positioning, action, and references to any source dialogue, narration, or inner-OS segment IDs.
 
