@@ -251,8 +251,7 @@ public final class StoryboardContextReducer {
     }
 
     private boolean addWithinBudget(ObjectNode target, String field, JsonNode value) {
-        if (value == null || value.isNull() || value.isMissingNode()
-            || (value.isContainerNode() && value.isEmpty())) {
+        if (value == null || value.isNull() || value.isMissingNode()) {
             return true;
         }
         target.set(field, value.deepCopy());

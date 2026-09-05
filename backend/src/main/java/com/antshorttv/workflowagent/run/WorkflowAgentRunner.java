@@ -39,10 +39,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class WorkflowAgentRunner {
+    private static final Logger LOG = LoggerFactory.getLogger(WorkflowAgentRunner.class);
     private static final Set<String> TRUSTED_SCOPE_ARGUMENTS = Set.of(
         "tenantId", "userId", "projectId", "episodeId", "scriptId", "taskId",
         "analysisStageId", "agentRunId", "permissions"
@@ -57,6 +60,7 @@ public class WorkflowAgentRunner {
     private final WorkflowAgentScopeGuard scopeGuard;
     private final WorkflowAgentProperties properties;
     private final ObjectMapper json;
+    private final StoryboardContextReducer storyboardContextReducer;
     private final EpisodeSplittingRunPolicy splitPolicy;
 
     @Autowired
@@ -70,6 +74,7 @@ public class WorkflowAgentRunner {
         WorkflowAgentScopeGuard scopeGuard,
         WorkflowAgentProperties properties,
         ObjectMapper json,
+        StoryboardContextReducer storyboardContextReducer,
         EpisodeSplittingRunPolicy splitPolicy
     ) {
         this.agents = agents;
@@ -81,7 +86,24 @@ public class WorkflowAgentRunner {
         this.scopeGuard = scopeGuard;
         this.properties = properties;
         this.json = json;
+        this.storyboardContextReducer = storyboardContextReducer;
         this.splitPolicy = splitPolicy;
+    }
+
+    public WorkflowAgentRunner(
+        WorkflowAgentService agents,
+        WorkflowSkillService skills,
+        WorkflowToolRegistry tools,
+        WorkflowToolSchemaValidator schemaValidator,
+        AiInvocationService invocation,
+        WorkflowAgentRunRepository runs,
+        WorkflowAgentScopeGuard scopeGuard,
+        WorkflowAgentProperties properties,
+        ObjectMapper json,
+        EpisodeSplittingRunPolicy splitPolicy
+    ) {
+        this(agents, skills, tools, schemaValidator, invocation, runs, scopeGuard,
+            properties, json, new StoryboardContextReducer(json), splitPolicy);
     }
 
     public WorkflowAgentRunner(
@@ -454,12 +476,19 @@ public class WorkflowAgentRunner {
                 throw normalized;
             }
         }
+        StoryboardContextReducer.Reduction reduction = storyboardContextReducer.reduce(prepared);
+        LOG.info(
+            "Storyboard context reduced runId={} episodeId={} originalChars={} reducedChars={} "
+                + "adjacent={} characters={} scenes={} props={} optionalDropped={}",
+            runId, input.episodeId(), reduction.originalCharacters(), reduction.reducedCharacters(),
+            reduction.adjacentEpisodeCount(), reduction.characterCount(), reduction.sceneCount(),
+            reduction.propCount(), reduction.optionalSectionsDropped());
         messages.add(AiChatMessage.user(
             "以下是服务端已按可信作用域读取并审计的完整分镜规划上下文。"
                 + "不要再次读取，也不要引用旧分镜。sourceFrom/sourceTo 必须位于每个分镜对象内部；"
                 + "soundSegmentIds 只允许 DIALOGUE、NARRATION、INNER_OS，禁止 ACTION、METADATA。"
                 + "请直接规划整集并调用 save_episode_storyboards：\n"
-                + writeJson(prepared)));
+                + writeJson(reduction.context())));
         return stepNo;
     }
 

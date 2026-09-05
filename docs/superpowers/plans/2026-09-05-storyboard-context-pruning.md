@@ -213,7 +213,7 @@ git commit -m "feat(storyboard): prune planning context"
 - Modify: `backend/src/test/java/com/antshorttv/workflowagent/run/WorkflowAgentRunnerTest.java`
 - Modify: `backend/src/main/java/com/antshorttv/workflowagent/run/WorkflowAgentRunner.java`
 
-- [ ] **Step 1: Write the failing runner integration test**
+- [x] **Step 1: Write the failing runner integration test**
 
 Change the storyboard preparation fixture so `read_script_analysis` returns a unique `FULL_PROJECT_SCRIPT` marker while `read_current_episode` returns a unique `CURRENT_EPISODE_TEXT` marker. Capture the single planning request and assert:
 
@@ -229,7 +229,7 @@ assertThat(planningMessage)
 
 Keep existing verifications proving all five original tool outputs are recorded through `recordToolStep` before the model call.
 
-- [ ] **Step 2: Run the runner test and verify RED**
+- [x] **Step 2: Run the runner test and verify RED**
 
 Run:
 
@@ -240,7 +240,7 @@ mvn -q -Dtest=WorkflowAgentRunnerTest#storyboardAgentHostPreparesAllReadsBeforeO
 
 Expected: FAIL because the planning message still contains the full script marker.
 
-- [ ] **Step 3: Inject and call the reducer**
+- [x] **Step 3: Inject and call the reducer**
 
 Add `StoryboardContextReducer` to the autowired constructor and keep the compatibility constructor used by tests by constructing a reducer from the existing `ObjectMapper`. In `prepareStoryboardContext`, reduce only after all five tool steps have been validated, recorded, and copied.
 
@@ -256,7 +256,7 @@ messages.add(AiChatMessage.user(STORYBOARD_CONTEXT_INSTRUCTION + writeJson(reduc
 
 Do not log any JSON content.
 
-- [ ] **Step 4: Run runner and reducer regression tests**
+- [x] **Step 4: Run runner and reducer regression tests**
 
 Run:
 
@@ -267,7 +267,7 @@ mvn -q -Dtest=WorkflowAgentRunnerTest,StoryboardContextReducerTest test
 
 Expected: both test classes PASS; the storyboard flow still invokes the model once and audits five reads.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```powershell
 git add backend/src/main/java/com/antshorttv/workflowagent/run/WorkflowAgentRunner.java backend/src/test/java/com/antshorttv/workflowagent/run/WorkflowAgentRunnerTest.java

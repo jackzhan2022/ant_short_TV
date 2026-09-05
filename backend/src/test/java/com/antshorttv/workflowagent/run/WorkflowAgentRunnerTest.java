@@ -34,6 +34,7 @@ import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
 import com.antshorttv.workflowagent.tool.WorkflowToolSchemaValidator;
 import com.antshorttv.workflowagent.tool.WorkflowToolValidationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -845,6 +846,61 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void storyboardPlanningMessageExcludesFullProjectAnalysisContent() throws Exception {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets",
+            "save_episode_storyboards");
+        List<String> executed = new ArrayList<>();
+        var current = json.readTree("""
+            {"episodeKey":"episode-1","episodeNo":1,"content":"CURRENT_EPISODE_TEXT",
+             "contentFingerprint":"fingerprint","sourceSegments":[
+               {"id":"S0001","type":"ACTION","text":"CURRENT_EPISODE_TEXT",
+                "requiredCoverage":true}],"assetCatalog":{"characters":[],"scenes":[],"props":[]}}
+            """);
+        var analysis = json.createObjectNode();
+        analysis.putNull("globalUnderstanding");
+        analysis.putArray("stages").addObject()
+            .put("stage_code", "EPISODE_SPLITTING")
+            .put("normalized_json", "{\"episodes\":[{\"episodeNo\":1,"
+                + "\"content\":\"FULL_PROJECT_SCRIPT\"}]}")
+            .put("raw_response", "RAW_MODEL_RESPONSE");
+        List<WorkflowToolDefinition> definitions = new ArrayList<>();
+        definitions.add(storyboardRead("read_current_episode", executed, current));
+        definitions.add(storyboardRead("read_adjacent_episodes", executed,
+            json.readTree("{\"previous\":null,\"next\":null}")));
+        definitions.add(storyboardRead("read_script_analysis", executed, analysis));
+        definitions.add(storyboardRead("read_project_context", executed,
+            json.readTree("{\"projectId\":26}")));
+        definitions.add(storyboardRead("read_script_assets", executed,
+            json.readTree("{\"characters\":[],\"scenes\":[],\"props\":[]}")));
+        definitions.add(tool("save_episode_storyboards"));
+        runner = runnerWith(definitions, 30);
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(new WorkflowAgentRecord(
+            7L, "short-drama-storyboard", "分镜规划", "", "执行", 8L,
+            new BigDecimal("0.2"), 8192, 12, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), codes));
+        when(invocation.invokeText(any())).thenReturn(result(null, List.of(
+            new AiToolCall("save", "save_episode_storyboards", "{}")), 951L));
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L));
+
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation).invokeText(requests.capture());
+        String planningMessage = requests.getValue().textRequest().messages().stream()
+            .map(AiChatMessage::content)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.joining("\n"));
+        assertThat(planningMessage)
+            .contains("CURRENT_EPISODE_TEXT")
+            .doesNotContain("FULL_PROJECT_SCRIPT", "raw_response", "RAW_MODEL_RESPONSE");
+        assertThat(executed).containsExactlyElementsOf(codes.subList(0, 5));
+        verify(runs).recordToolStep(101L, 3, "read_script_analysis", "{}",
+            json.writeValueAsString(analysis));
+    }
+
+    @Test
     void storyboardPreparationFailureStopsBeforeTheModel() throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",
@@ -1091,6 +1147,31 @@ class WorkflowAgentRunnerTest {
                     ) {
                         executed.add(code);
                         return json.createObjectNode().put("tool", code);
+                    }
+                });
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private WorkflowToolDefinition storyboardRead(
+        String code,
+        List<String> executed,
+        JsonNode output
+    ) {
+        try {
+            return new WorkflowToolDefinition(
+                code, code, code,
+                json.readTree("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+                json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.READ_ONLY,
+                ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                    @Override
+                    public com.fasterxml.jackson.databind.JsonNode execute(
+                        com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                        com.fasterxml.jackson.databind.JsonNode arguments
+                    ) {
+                        executed.add(code);
+                        return output.deepCopy();
                     }
                 });
         } catch (java.io.IOException exception) {
