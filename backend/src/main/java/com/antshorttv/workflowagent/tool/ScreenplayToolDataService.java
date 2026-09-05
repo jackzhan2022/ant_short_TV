@@ -35,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ScreenplayToolDataService {
+    private static final int ADJACENT_EXCERPT_CODE_POINTS = 600;
     private static final Pattern SCENE_HEADING = Pattern.compile(
         "(?m)^## S\\d{2,} \\| (?:内景|外景) · .+ \\| .+$");
     private static final Pattern DIALOGUE = Pattern.compile("(?m)^\\S+：(?:（[^）]*）)?.+$");
@@ -823,7 +824,30 @@ public class ScreenplayToolDataService {
         } else {
             put(item, "openingSummary", value);
         }
+        Object rawContent = row.get("content");
+        String content = rawContent == null ? "" : String.valueOf(rawContent);
+        item.put("openingExcerpt", prefixByCodePoints(content, ADJACENT_EXCERPT_CODE_POINTS));
+        item.put("endingExcerpt", suffixByCodePoints(content, ADJACENT_EXCERPT_CODE_POINTS));
+        item.put("contentTruncated",
+            content.codePointCount(0, content.length()) > ADJACENT_EXCERPT_CODE_POINTS);
         return item;
+    }
+
+    private String prefixByCodePoints(String value, int maximumCodePoints) {
+        int codePoints = value.codePointCount(0, value.length());
+        if (codePoints <= maximumCodePoints) {
+            return value;
+        }
+        return value.substring(0, value.offsetByCodePoints(0, maximumCodePoints));
+    }
+
+    private String suffixByCodePoints(String value, int maximumCodePoints) {
+        int codePoints = value.codePointCount(0, value.length());
+        if (codePoints <= maximumCodePoints) {
+            return value;
+        }
+        int start = value.offsetByCodePoints(0, codePoints - maximumCodePoints);
+        return value.substring(start);
     }
 
     private ObjectNode episodeSummary(Map<String, Object> row) {

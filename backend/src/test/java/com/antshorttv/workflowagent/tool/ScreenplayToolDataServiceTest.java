@@ -97,6 +97,36 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void adjacentEpisodesExposeOnlyBoundedContinuityExcerpts() {
+        String previous = "前".repeat(900) + "PREVIOUS_END";
+        String next = "NEXT_START" + "后".repeat(900);
+        jdbc.update("""
+            update script_episode set summary = 'previous summary', content = ?
+             where project_id = ? and episode_no = 1
+            """, previous, projectId);
+        jdbc.update("""
+            update script_episode set summary = 'next summary', content = ?
+             where project_id = ? and episode_no = 3
+            """, next, projectId);
+
+        JsonNode adjacent = service.readAdjacentEpisodes(context);
+
+        assertThat(adjacent.path("previous").has("content")).isFalse();
+        assertThat(adjacent.path("previous").path("summary").asText())
+            .isEqualTo("previous summary");
+        assertThat(adjacent.path("previous").path("endingExcerpt").asText())
+            .endsWith("PREVIOUS_END");
+        assertThat(adjacent.path("next").path("openingExcerpt").asText())
+            .startsWith("NEXT_START");
+        assertThat(adjacent.path("previous").path("contentTruncated").asBoolean()).isTrue();
+        assertThat(adjacent.path("next").path("contentTruncated").asBoolean()).isTrue();
+        assertThat(adjacent.path("previous").path("endingExcerpt").asText())
+            .hasSizeLessThanOrEqualTo(600);
+        assertThat(adjacent.path("next").path("openingExcerpt").asText())
+            .hasSizeLessThanOrEqualTo(600);
+    }
+
+    @Test
     void readsTheCompleteProjectScriptInEpisodeOrder() {
         jdbc.update("update script_episode set content = 'Current Content 3' where project_id = ? and episode_no = 3",
             projectId);

@@ -27,7 +27,7 @@
 - Modify: `backend/src/test/java/com/antshorttv/workflowagent/tool/ScreenplayToolDataServiceTest.java`
 - Modify: `backend/src/main/java/com/antshorttv/workflowagent/tool/ScreenplayToolDataService.java`
 
-- [ ] **Step 1: Write the failing adjacent-context test**
+- [x] **Step 1: Write the failing adjacent-context test**
 
 Add a test that inserts long previous and next episode bodies around the selected episode, calls `readAdjacentEpisodes`, and asserts the response contains identity, title, summary, `openingExcerpt`, `endingExcerpt`, and `contentTruncated`, but no `content` field.
 
@@ -49,7 +49,7 @@ void adjacentEpisodesExposeOnlyBoundedContinuityExcerpts() {
 }
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run:
 
@@ -60,7 +60,7 @@ mvn -q -Dtest=ScreenplayToolDataServiceTest#adjacentEpisodesExposeOnlyBoundedCon
 
 Expected: FAIL because the adjacent response does not yet contain excerpt fields.
 
-- [ ] **Step 3: Implement Unicode-safe excerpts**
+- [x] **Step 3: Implement Unicode-safe excerpts**
 
 Add a 600-code-point bound and helper methods. `adjacentSummary` must add both excerpts so previous and next records have a stable shape, while `contentTruncated` states whether any content was omitted.
 
@@ -81,7 +81,7 @@ private ObjectNode adjacentSummary(Map<String, Object> row, boolean previous) {
 
 Implement `prefixByCodePoints` and `suffixByCodePoints` with `offsetByCodePoints` so surrogate pairs cannot be split.
 
-- [ ] **Step 4: Run the focused service test**
+- [x] **Step 4: Run the focused service test**
 
 Run:
 
@@ -92,7 +92,7 @@ mvn -q -Dtest=ScreenplayToolDataServiceTest test
 
 Expected: all `ScreenplayToolDataServiceTest` tests PASS.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```powershell
 git add backend/src/main/java/com/antshorttv/workflowagent/tool/ScreenplayToolDataService.java backend/src/test/java/com/antshorttv/workflowagent/tool/ScreenplayToolDataServiceTest.java
