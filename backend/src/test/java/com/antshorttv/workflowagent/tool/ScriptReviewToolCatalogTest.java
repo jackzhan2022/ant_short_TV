@@ -12,14 +12,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 class ScriptReviewToolCatalogTest {
     private static final List<String> CODES = List.of(
         "read_review_context", "read_review_content", "read_review_issue_history",
-        "save_review_unit_result", "read_review_unit_results", "save_review_result");
+        "save_review_unit_result", "read_review_unit_results", "read_review_candidates",
+        "save_review_semantic_decisions", "save_review_result");
     private static final Set<String> FORBIDDEN_IDS = Set.of(
         "tenantId", "userId", "projectId", "taskId", "versionId", "snapshotId", "unitId", "agentRunId");
 
     @Autowired private WorkflowToolRegistry registry;
 
     @Test
-    void registersSixUniqueStrictBoundedReviewToolsWithoutBusinessIds() {
+    void registersStrictBoundedReviewToolsWithoutBusinessIds() {
         assertThat(registry.catalog()).extracting(WorkflowToolMetadata::code).containsAll(CODES);
         assertThat(CODES).doesNotHaveDuplicates();
         CODES.stream().map(registry::require).forEach(tool -> {
@@ -32,6 +33,8 @@ class ScriptReviewToolCatalogTest {
         assertThat(registry.require("read_review_content").inputSchema().path("properties").path("limit").path("maximum").asInt()).isEqualTo(50000);
         assertThat(registry.require("read_review_issue_history").inputSchema().path("properties").path("pageSize").path("maximum").asInt()).isEqualTo(100);
         assertThat(registry.require("save_review_unit_result").inputSchema().path("properties").path("candidates").path("maxItems").asInt()).isEqualTo(100);
+        assertThat(registry.require("read_review_candidates").inputSchema().path("properties").path("pageSize").path("maximum").asInt()).isEqualTo(100);
+        assertThat(registry.require("save_review_semantic_decisions").inputSchema().path("properties").path("decisions").path("maxItems").asInt()).isEqualTo(500);
         var hitProperties = registry.require("save_review_unit_result").inputSchema().path("properties")
             .path("candidates").path("items").path("properties").path("hits").path("items").path("properties");
         assertThat(hitProperties.path("startOffset").path("minimum").asInt()).isZero();
@@ -44,7 +47,9 @@ class ScriptReviewToolCatalogTest {
         assertThat(CODES.subList(0, 3).stream().map(registry::require).map(WorkflowToolDefinition::riskLevel))
             .containsOnly(ToolRiskLevel.READ_ONLY);
         assertThat(registry.require("read_review_unit_results").riskLevel()).isEqualTo(ToolRiskLevel.READ_ONLY);
+        assertThat(registry.require("read_review_candidates").riskLevel()).isEqualTo(ToolRiskLevel.READ_ONLY);
         assertThat(registry.require("save_review_unit_result").riskLevel()).isEqualTo(ToolRiskLevel.WRITE);
+        assertThat(registry.require("save_review_semantic_decisions").riskLevel()).isEqualTo(ToolRiskLevel.WRITE);
         assertThat(registry.require("save_review_result").riskLevel()).isEqualTo(ToolRiskLevel.WRITE);
     }
 }

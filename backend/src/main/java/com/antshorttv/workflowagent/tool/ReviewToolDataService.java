@@ -20,5 +20,7 @@ public class ReviewToolDataService {
     public JsonNode readHistory(ToolExecutionContext context, JsonNode arguments) { return reads.readHistory(context, arguments); }
     public JsonNode saveUnitResult(ToolExecutionContext context, JsonNode arguments) { return writes.saveUnitResult(context, arguments); }
     public JsonNode readUnitResults(ToolExecutionContext context, JsonNode arguments) { return writes.readUnitResults(context, arguments); }
+    public JsonNode readCandidates(ToolExecutionContext context, JsonNode arguments) { return writes.readCandidates(context, arguments); }
+    public JsonNode saveSemanticDecisions(ToolExecutionContext context, JsonNode arguments) { return writes.saveSemanticDecisions(context, arguments); }
     public JsonNode saveResult(ToolExecutionContext context, JsonNode arguments) { return writes.saveResult(context, arguments); }
 }

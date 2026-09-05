@@ -208,6 +208,9 @@ public class WorkflowAgentRunner {
         }
         List<AiChatMessage> messages = new ArrayList<>();
         messages.add(AiChatMessage.system(prompt));
+        if (input.stableContext() != null && !input.stableContext().isBlank()) {
+            messages.add(AiChatMessage.user(input.stableContext()));
+        }
         messages.add(AiChatMessage.user("CHUNK_FALLBACK".equals(runState.splitMode())
             ? fallbackInstruction(runState.splitFallbackReason()) : input.input()));
         Set<String> allowlist = new HashSet<>(agent.toolCodes());
@@ -259,7 +262,8 @@ public class WorkflowAgentRunner {
                         "short-drama-asset-recognition".equals(agent.code()) ? 1 : 0,
                         messages, activeProviderTools(allowedTools, splitting, runState,
                             agent.code(), contract, reviewTruncationRecovery, reviewEvidenceRefreshPending),
-                        disableThinking(agent.code(), splitting) ? "disabled" : null
+                        disableThinking(agent.code(), splitting) ? "disabled" : null,
+                        input.promptCacheKey(), input.promptCacheOptions()
                     ))
                     .build());
             } catch (AiGatewayException exception) {

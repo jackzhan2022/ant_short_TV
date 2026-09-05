@@ -145,6 +145,10 @@ interface ReviewFanoutUnitMapper extends BaseMapper<ReviewFanoutUnitEntity> {
 }
 
 @Mapper
+interface ReviewPipelineStageMapper extends BaseMapper<ReviewPipelineStageEntity> {
+}
+
+@Mapper
 interface ReviewUnitResultMapper extends BaseMapper<ReviewUnitResultEntity> {
     default ReviewUnitResultEntity selectCurrent(Long snapshotId, Long unitId) {
         return selectOne(new LambdaQueryWrapper<ReviewUnitResultEntity>()

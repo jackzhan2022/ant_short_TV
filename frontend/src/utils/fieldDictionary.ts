@@ -48,7 +48,9 @@ const SERVICE_TYPE: Dictionary = {
 
 const METRIC: Dictionary = {
   CALL: '调用次数',
-  INPUT_TOKEN: '输入 Token 数',
+  INPUT_TOKEN: '普通输入 Token 数',
+  CACHED_INPUT_TOKEN: '缓存读取 Token 数',
+  CACHE_WRITE_TOKEN: '缓存写入 Token 数',
   OUTPUT_TOKEN: '输出 Token 数',
   IMAGE: '图片数',
   VIDEO_SECOND: '视频秒数',

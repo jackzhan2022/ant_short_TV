@@ -51,6 +51,50 @@ public class ReviewToolConfiguration {
             executor((context, args) -> data.readUnitResults(context, args)));
     }
 
+    @Bean WorkflowToolDefinition readReviewCandidatesTool(ReviewToolDataService data, ObjectMapper json) {
+        return definition("read_review_candidates", "读取审核候选", "仅语义质检阶段分页读取冻结快照中的原始候选及来源信息。",
+            pagination(json, 100), pageOutput(json, "candidates"), ToolRiskLevel.READ_ONLY,
+            executor((context, args) -> data.readCandidates(context, args)));
+    }
+
+    @Bean WorkflowToolDefinition saveReviewSemanticDecisionsTool(ReviewToolDataService data, ObjectMapper json) {
+        ObjectNode input = object(json);
+        input.putArray("required").add("versionHash").add("scopeHash").add("dimensionsHash").add("decisions");
+        ObjectNode fields = (ObjectNode) input.path("properties");
+        hashFields(fields);
+        ObjectNode decisions = fields.putObject("decisions").put("type", "array").put("maxItems", 500);
+        ObjectNode decision = object(json);
+        decision.putArray("required").add("candidateId").add("decision").add("confidence")
+            .add("rationale").add("evidenceRefs");
+        ObjectNode decisionFields = (ObjectNode) decision.path("properties");
+        decisionFields.putObject("candidateId").put("type", "integer").put("minimum", 1);
+        decisionFields.putObject("decision").put("type", "string").putArray("enum")
+            .add("CONFIRMED").add("NEEDS_HUMAN_REVIEW").add("REJECTED").add("INSUFFICIENT_EVIDENCE");
+        decisionFields.putObject("confidence").put("type", "number").put("minimum", 0).put("maximum", 1);
+        decisionFields.putObject("rationale").put("type", "string").put("minLength", 1).put("maxLength", 2000);
+        decisionFields.putObject("severityDecision").put("type", "string").put("maxLength", 32);
+        decisionFields.putObject("evidenceRefs").put("type", "array").put("minItems", 1).put("maxItems", 50)
+            .putObject("items").put("type", "string").put("maxLength", 2000);
+        decisionFields.putObject("duplicateClusterKey").put("type", "string").put("maxLength", 160);
+        decisions.set("items", decision);
+        ObjectNode anomaly = object(json);
+        anomaly.putArray("required").add("passed").add("rationale").add("evidenceRefs");
+        ObjectNode anomalyFields = (ObjectNode) anomaly.path("properties");
+        anomalyFields.putObject("passed").put("type", "boolean");
+        anomalyFields.putObject("rationale").put("type", "string").put("minLength", 1).put("maxLength", 2000);
+        anomalyFields.putObject("evidenceRefs").put("type", "array").put("minItems", 1).put("maxItems", 100)
+            .putObject("items").put("type", "string").put("maxLength", 2000);
+        fields.set("anomalyReview", anomaly);
+        ObjectNode output = object(json);
+        output.putArray("required").add("saved").add("decisionCount");
+        ((ObjectNode) output.path("properties")).putObject("saved").put("type", "boolean");
+        ((ObjectNode) output.path("properties")).putObject("decisionCount").put("type", "integer").put("minimum", 0);
+        return definition("save_review_semantic_decisions", "保存语义质检裁决",
+            "为冻结快照中的每个候选原子保存一次终态语义裁决，不修改原始候选。",
+            input, output, ToolRiskLevel.WRITE,
+            executor((context, args) -> data.saveSemanticDecisions(context, args)));
+    }
+
     @Bean WorkflowToolDefinition saveReviewResultTool(ReviewToolDataService data, ObjectMapper json) {
         ObjectNode input = object(json);
         input.putArray("required").add("versionHash").add("scopeHash").add("dimensionsHash")
@@ -168,6 +212,8 @@ public class ReviewToolConfiguration {
             fields.putObject(name).put("type", "string").put("minLength", 1).put("maxLength", 4000);
         fields.putObject("evidence").put("type", "array").put("minItems", 1).put("maxItems", 20)
             .putObject("items").put("type", "string").put("maxLength", 2000);
+        fields.putObject("sourceCandidateIds").put("type", "array").put("minItems", 1).put("maxItems", 100)
+            .putObject("items").put("type", "integer").put("minimum", 1);
         ObjectNode hits = fields.putObject("hits").put("type", "array").put("minItems", 1).put("maxItems", 50);
         ObjectNode hit = object(json);
         hit.putArray("required").add("anchor").add("excerpt");

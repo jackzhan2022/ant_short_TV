@@ -214,6 +214,20 @@ test before reopening normal traffic:
 
 ## Rollback
 
+The script-review quality pipeline is staged behind four independent, disabled-by-default flags:
+
+| Environment variable | Capability | Rollback effect when set to `false` |
+| --- | --- | --- |
+| `REVIEW_WORKFLOW_CACHE_OBSERVABILITY_ENABLED` | Exposes cache-token and latency metrics in review responses | Hides the new cache observability fields; persisted call and usage audit rows remain intact. |
+| `REVIEW_WORKFLOW_DIMENSIONAL_ORCHESTRATION_ENABLED` | Routes DEEP reviews through one Run per dimension | Returns DEEP routing to the existing workflow selected by `AI_WORKFLOW_REVIEW_DEEP_ENABLED`. |
+| `REVIEW_WORKFLOW_SEMANTIC_REVIEW_ENABLED` | Runs and enforces candidate-level semantic decisions | Skips the semantic stage and permits the aggregation compatibility path. |
+| `REVIEW_WORKFLOW_ANOMALY_GATE_ENABLED` | Requires an explicit evidence-backed check before accepting zero findings | Stops requiring the zero-finding gate while leaving saved quality audits untouched. |
+
+Enable them in the listed order, verifying each stage before enabling the next. For a quality-pipeline
+rollback, disable in reverse order. Restart the backend after changing service environment variables.
+Do not delete dimension, candidate, decision, cache-usage, or stage rows during rollback: they are audit
+records and the compatibility path ignores them safely.
+
 For this additive change, roll back the application first. Hide or disable the
 two new frontend tabs/formal-run entry, point `current` to the preceding release,
 and restart `antv.service`. Leave V70/V71 tables and

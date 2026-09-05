@@ -72,6 +72,11 @@ describe('AiCallLogsPage', () => {
     expect(screen.getByText('业务场景')).toBeInTheDocument();
     expect(screen.getByText('服务类型')).toBeInTheDocument();
     expect(screen.getByText('调用状态')).toBeInTheDocument();
+    expect(screen.getByText('输入 Token')).toBeInTheDocument();
+    expect(screen.getByText('缓存 Token')).toBeInTheDocument();
+    expect(screen.getByText('缓存写入')).toBeInTheDocument();
+    expect(screen.getByText('输出 Token')).toBeInTheDocument();
+    expect(screen.getByText('缓存命中率')).toBeInTheDocument();
     expect(screen.getByText('耗时')).toBeInTheDocument();
 
     await waitFor(() => {
@@ -83,7 +88,38 @@ describe('AiCallLogsPage', () => {
         businessScene: 'chatbot',
       });
     });
-    expect(mocks.lastProTableProps.scroll).toEqual({ x: 1500 });
+    expect(mocks.lastProTableProps.scroll).toEqual({ x: 2050 });
+
+    const cacheRateColumn = mocks.lastProTableProps.columns.find(
+      (column: any) => column.title === '缓存命中率',
+    );
+    expect(
+      cacheRateColumn.renderText(undefined, {
+        promptTokens: 9631,
+        cachedInputTokens: 8960,
+      }),
+    ).toBe('93.0%');
+    expect(cacheRateColumn.renderText(undefined, { promptTokens: 9631 })).toBe(
+      '-',
+    );
+
+    const ordinaryInputColumn = mocks.lastProTableProps.columns.find(
+      (column: any) => column.title === '输入 Token',
+    );
+    expect(
+      ordinaryInputColumn.renderText(undefined, {
+        promptTokens: 9631,
+        cachedInputTokens: 8960,
+        cacheWriteTokens: 512,
+      }),
+    ).toBe('159');
+
+    for (const title of ['缓存 Token', '缓存写入', '输出 Token']) {
+      const column = mocks.lastProTableProps.columns.find(
+        (candidate: any) => candidate.title === title,
+      );
+      expect(column.renderText(undefined)).toBe('-');
+    }
   });
 
   it('prompts users to select a team when there is no current tenant', () => {

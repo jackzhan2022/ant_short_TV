@@ -3,6 +3,8 @@ package com.antshorttv.accounting;
 public enum AiUsageMetric {
     CALL("CALL"),
     INPUT_TOKEN("TOKEN"),
+    CACHED_INPUT_TOKEN("TOKEN"),
+    CACHE_WRITE_TOKEN("TOKEN"),
     OUTPUT_TOKEN("TOKEN"),
     IMAGE("IMAGE"),
     VIDEO_SECOND("SECOND"),

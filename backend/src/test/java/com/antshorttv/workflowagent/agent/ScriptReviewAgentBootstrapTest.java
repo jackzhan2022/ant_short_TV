@@ -36,27 +36,35 @@ class ScriptReviewAgentBootstrapTest {
         WorkflowAgentRecord maximum = agents.get(ScriptReviewAgentBootstrap.AGENT_CODE);
         assertThat(maximum.status()).isEqualTo("ENABLED");
         assertThat(maximum.maxSteps()).isEqualTo(20);
-        assertThat(maximum.skillCodes()).hasSize(16).contains(
+        assertThat(maximum.skillCodes()).hasSize(17).contains(
             "script-review-foundation", "script-review-execution-framework",
-            "script-review-cross-episode-synthesis");
+            "script-review-semantic-quality", "script-review-cross-episode-synthesis");
         assertThat(maximum.toolCodes()).containsExactlyInAnyOrder(
-            "read_review_context", "read_review_content", "read_review_issue_history",
-            "save_review_unit_result", "read_review_unit_results", "save_review_result");
+            "read_review_context", "read_review_content",
+            "save_review_unit_result", "read_review_unit_results", "read_review_candidates",
+            "save_review_semantic_decisions", "save_review_result");
 
         WorkflowAgentExecutionPlan quick = plans.freeze(List.of("台词合理性"), "QUICK");
         assertThat(quick.skillSnapshots()).extracting(skill -> skill.code()).containsExactly(
             "script-review-foundation", "script-review-execution-framework",
             ReviewDimension.DIALOGUE.skillCode());
         assertThat(quick.agent().toolCodes()).containsExactly(
-            "read_review_context", "read_review_content", "read_review_issue_history", "save_review_result");
+            "read_review_context", "read_review_content", "save_review_result");
 
         WorkflowAgentExecutionPlan child = plans.freeze(List.of("台词合理性"), "DEEP_CHILD");
         assertThat(child.agent().toolCodes()).containsExactly(
-            "read_review_context", "read_review_content", "read_review_issue_history", "save_review_unit_result");
+            "read_review_context", "read_review_content", "save_review_unit_result");
+        WorkflowAgentExecutionPlan semantic = plans.freeze(List.of("台词合理性"), "DEEP_SEMANTIC");
+        assertThat(semantic.skillSnapshots()).extracting(skill -> skill.code())
+            .endsWith("script-review-semantic-quality");
+        assertThat(semantic.agent().toolCodes()).containsExactly(
+            "read_review_context", "read_review_candidates", "read_review_content",
+            "save_review_semantic_decisions");
         WorkflowAgentExecutionPlan aggregation = plans.freeze(List.of("台词合理性"), "DEEP_AGGREGATION");
         assertThat(aggregation.skillSnapshots()).extracting(skill -> skill.code())
             .endsWith("script-review-cross-episode-synthesis");
         assertThat(aggregation.agent().toolCodes()).containsExactly(
-            "read_review_context", "read_review_issue_history", "read_review_unit_results", "save_review_result");
+            "read_review_context", "read_review_unit_results", "read_review_content",
+            "save_review_result");
     }
 }

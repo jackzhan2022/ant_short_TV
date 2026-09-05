@@ -62,6 +62,15 @@ class BuiltInAgentRegistryTest {
     }
 
     @Test
+    void scriptReviewPromptAcceptsOnlyCurrentReviewInputs() {
+        BuiltInAgentDefinition agent = registry.findByScene(AiBusinessScene.SCRIPT_REVIEW);
+
+        assertThat(agent.variables()).extracting(BuiltInAgentVariable::name)
+            .doesNotContain("previousIssues");
+        assertThat(agent.promptTemplate()).doesNotContain("previousIssues", "上一轮问题");
+    }
+
+    @Test
     void rendersVideoUnderstandingAsDirectProfessionalScreenplayJson() {
         String prompt = registry.render("video-understanding", Map.of("episodeNo", 6));
 

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,119 @@ class OpenAiAdapterTest {
 
     private final AiSecretCodec aiSecretCodec = new AiSecretCodec("test-ai-secret-key");
     private final OpenAiAdapter adapter = new OpenAiAdapter(aiSecretCodec, new ObjectMapper());
+
+    @Test
+    void sendsPromptCacheControlsAndParsesCacheUsageForGpt56() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = """
+                {
+                  "id":"chatcmpl-cache",
+                  "choices":[{"finish_reason":"stop","message":{"content":"ok"}}],
+                  "usage":{"prompt_tokens":9631,"completion_tokens":5,"total_tokens":9636,
+                    "prompt_tokens_details":{"cached_tokens":8960,"cache_write_tokens":512}}
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            AiTextRequest request = new AiTextRequest(
+                null, null, 0.2, 256, null, false, null, 10, 0,
+                List.of(AiChatMessage.user("stable script")), List.of(), null,
+                "review:tenant:version:rules", Map.of("mode", "explicit", "ttl", "30m")
+            );
+
+            AiTextResponse response = adapter.text(provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-5.6-terra", "TEXT"), request);
+
+            JsonNode sent = new ObjectMapper().readTree(requestBody.get());
+            assertThat(sent.path("prompt_cache_key").asText()).isEqualTo("review:tenant:version:rules");
+            assertThat(sent.path("prompt_cache_options").path("mode").asText()).isEqualTo("explicit");
+            assertThat(response.cachedInputTokens()).isEqualTo(8960);
+            assertThat(response.cacheWriteTokens()).isEqualTo(512);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void preservesUnknownWhenProviderOmitsPromptCacheUsageDetails() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] body = """
+                {"id":"chatcmpl-no-cache-detail","choices":[{"message":{"content":"ok"}}],
+                 "usage":{"prompt_tokens":9631,"completion_tokens":5,"total_tokens":9636}}
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            AiTextResponse response = adapter.text(
+                provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-5.6-terra", "TEXT"),
+                new AiTextRequest(null, "review", 0.2, 256, null)
+            );
+
+            assertThat(response.promptTokens()).isEqualTo(9631);
+            assertThat(response.cachedInputTokens()).isNull();
+            assertThat(response.cacheWriteTokens()).isNull();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void doesNotRetryWhenProviderRejectsPromptCacheOptions() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            attempts.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+            byte[] body = "{\"error\":\"unsupported prompt_cache_options\"}"
+                .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(400, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            AiTextRequest request = new AiTextRequest(
+                null, null, 0.2, 256, null, false, null, 10, 2,
+                List.of(AiChatMessage.user("stable script")), List.of(), null,
+                "review:tenant:version:rules", Map.of("mode", "explicit")
+            );
+
+            assertThatThrownBy(() -> adapter.text(
+                provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
+                model("gpt-5.6-terra", "TEXT"),
+                request,
+                "review-cache-options-rejected"
+            ))
+                .isInstanceOf(AiGatewayException.class)
+                .hasMessageContaining("HTTP 400")
+                .hasMessageContaining("unsupported prompt_cache_options");
+            assertThat(attempts).hasValue(1);
+        } finally {
+            server.stop(0);
+        }
+    }
 
     @Test
     void sendsChatCompletionRequestAndParsesTextResponse() throws Exception {

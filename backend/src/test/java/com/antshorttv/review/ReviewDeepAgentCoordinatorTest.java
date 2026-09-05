@@ -27,6 +27,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -39,10 +42,12 @@ class ReviewDeepAgentCoordinatorTest {
     private ReviewUnitPlanner planner;
     private ReviewFanoutRepository fanout;
     private ReviewTaskMapper tasks;
+    private ReviewSemanticAuditRepository semanticAudits;
     private ReviewScriptVersionMapper versions;
     private JdbcTemplate jdbc;
     private ReviewDeepAgentCoordinator coordinator;
     private WorkflowAgentExecutionPlan childPlan;
+    private WorkflowAgentExecutionPlan semanticPlan;
     private WorkflowAgentExecutionPlan aggregationPlan;
     private ReviewTaskEntity task;
 
@@ -54,14 +59,19 @@ class ReviewDeepAgentCoordinatorTest {
         planner = mock(ReviewUnitPlanner.class);
         fanout = mock(ReviewFanoutRepository.class);
         tasks = mock(ReviewTaskMapper.class);
+        semanticAudits = mock(ReviewSemanticAuditRepository.class);
         versions = mock(ReviewScriptVersionMapper.class);
         jdbc = mock(JdbcTemplate.class);
         coordinator = new ReviewDeepAgentCoordinator(plans, runner, content, planner, fanout,
-            tasks, versions, jdbc, new ObjectMapper(), true, 100, 10, 2);
+            tasks, versions, semanticAudits, jdbc, new ObjectMapper(),
+            new ReviewWorkflowFeatureFlags(true, true, true, true), true, 100, 10, 2);
         childPlan = plan(3L);
-        aggregationPlan = plan(4L);
-        when(plans.freeze(List.of("台词合理性"), "DEEP_CHILD")).thenReturn(childPlan);
-        when(plans.freeze(List.of("台词合理性"), "DEEP_AGGREGATION")).thenReturn(aggregationPlan);
+        semanticPlan = plan(4L);
+        aggregationPlan = plan(5L);
+        when(plans.freeze(List.of("台词合理性", "时间线连续性"), "DEEP_CHILD")).thenReturn(childPlan);
+        when(plans.freeze(List.of("台词合理性", "时间线连续性"), "DEEP_AGGREGATION")).thenReturn(aggregationPlan);
+        when(plans.freeze(List.of("台词合理性", "时间线连续性"), "DEEP_SEMANTIC")).thenReturn(semanticPlan);
+        when(semanticAudits.candidates(anyLong())).thenReturn(List.of());
         task = task("RUNNING");
         ReviewScriptVersionEntity version = new ReviewScriptVersionEntity();
         version.setId(6L);
@@ -87,6 +97,7 @@ class ReviewDeepAgentCoordinatorTest {
             List.of(first, unit(12L, 2, "SUCCEEDED", true)));
         when(runner.runFormal(eq(childPlan), any())).thenReturn(
             new WorkflowAgentRunResult(101L, "saved"), new WorkflowAgentRunResult(102L, "saved"));
+        when(runner.runFormal(eq(semanticPlan), any())).thenReturn(new WorkflowAgentRunResult(150L, "saved"));
         when(runner.runFormal(eq(aggregationPlan), any())).thenReturn(new WorkflowAgentRunResult(200L, "saved"));
         when(tasks.selectById(7L)).thenReturn(committed(200L));
 
@@ -100,10 +111,64 @@ class ReviewDeepAgentCoordinatorTest {
         assertThat(snapshot.getValue().maxConcurrency()).isEqualTo(2);
         verify(fanout, times(2)).addUnit(any());
         ArgumentCaptor<WorkflowAgentRunInput> inputs = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
-        verify(runner, times(3)).runFormal(any(), inputs.capture());
+        verify(runner, times(4)).runFormal(any(), inputs.capture());
         assertThat(inputs.getAllValues()).extracting(input -> input.reviewScope().phase())
-            .containsExactly("DEEP_CHILD", "DEEP_CHILD", "DEEP_AGGREGATION");
+            .containsExactly("DEEP_CHILD", "DEEP_CHILD", "DEEP_SEMANTIC", "DEEP_AGGREGATION");
+        assertThat(inputs.getAllValues().subList(0, 2)).extracting(WorkflowAgentRunInput::promptCacheKey)
+            .doesNotContainNull().allMatch(inputs.getAllValues().get(0).promptCacheKey()::equals);
+        assertThat(inputs.getAllValues().subList(0, 2)).extracting(WorkflowAgentRunInput::stableContext)
+            .containsOnly(inputs.getAllValues().get(0).stableContext());
+        assertThat(inputs.getAllValues().subList(0, 2))
+            .extracting(input -> input.reviewScope().selectedDimensions())
+            .containsExactly(List.of("台词合理性"), List.of("时间线连续性"));
         verify(tasks, atLeastOnce()).updateById(any(ReviewTaskEntity.class));
+    }
+
+    @Test
+    void warmsFirstDimensionBeforeRunningRemainingDimensionsConcurrently() {
+        List<String> dimensions = List.of("台词合理性", "时间线连续性", "道具连续性");
+        task.setSelectedDimensionsJson("[\"台词合理性\",\"时间线连续性\",\"道具连续性\"]");
+        when(plans.freeze(dimensions, "DEEP_CHILD")).thenReturn(childPlan);
+        when(plans.freeze(dimensions, "DEEP_SEMANTIC")).thenReturn(semanticPlan);
+        when(plans.freeze(dimensions, "DEEP_AGGREGATION")).thenReturn(aggregationPlan);
+        when(fanout.findMatchingSnapshot(anyLong(), any(), any(), any(), any())).thenReturn(null);
+        when(fanout.openSnapshot(any())).thenReturn(50L);
+        ReviewFanoutUnitEntity first = unit(11L, 1, "PENDING", false);
+        ReviewFanoutUnitEntity second = unit(12L, 2, "PENDING", false);
+        ReviewFanoutUnitEntity third = unit(13L, 3, "PENDING", false);
+        third.setDimension("道具连续性");
+        List<ReviewFanoutUnitEntity> units = List.of(first, second, third);
+        when(fanout.orderedUnits(50L)).thenReturn(units);
+        AtomicBoolean warmCompleted = new AtomicBoolean();
+        AtomicBoolean parallelStartedBeforeWarm = new AtomicBoolean();
+        AtomicBoolean everyParallelRunSawPeer = new AtomicBoolean(true);
+        CountDownLatch parallelRuns = new CountDownLatch(2);
+        when(runner.runFormal(eq(childPlan), any())).thenAnswer(invocation -> {
+            WorkflowAgentRunInput input = invocation.getArgument(1);
+            long unitId = input.reviewScope().unitId();
+            ReviewFanoutUnitEntity current = units.stream()
+                .filter(unit -> unit.getId() == unitId).findFirst().orElseThrow();
+            if (unitId == 11L) {
+                warmCompleted.set(true);
+            } else {
+                if (!warmCompleted.get()) parallelStartedBeforeWarm.set(true);
+                parallelRuns.countDown();
+                if (!parallelRuns.await(500, TimeUnit.MILLISECONDS)) {
+                    everyParallelRunSawPeer.set(false);
+                }
+            }
+            current.setStatus("SUCCEEDED");
+            current.setCandidateSaved(true);
+            return new WorkflowAgentRunResult(100L + unitId, "saved");
+        });
+        when(runner.runFormal(eq(semanticPlan), any())).thenReturn(new WorkflowAgentRunResult(150L, "saved"));
+        when(runner.runFormal(eq(aggregationPlan), any())).thenReturn(new WorkflowAgentRunResult(200L, "saved"));
+        when(tasks.selectById(7L)).thenReturn(committed(200L));
+
+        coordinator.execute(task, execution(), 9L);
+
+        assertThat(parallelStartedBeforeWarm).isFalse();
+        assertThat(everyParallelRunSawPeer).isTrue();
     }
 
     @Test
@@ -118,13 +183,14 @@ class ReviewDeepAgentCoordinatorTest {
             List.of(done, failed, unit(13L, 3, "SUCCEEDED", true)));
         when(runner.runFormal(eq(childPlan), any())).thenReturn(
             new WorkflowAgentRunResult(102L, "saved"), new WorkflowAgentRunResult(103L, "saved"));
+        when(runner.runFormal(eq(semanticPlan), any())).thenReturn(new WorkflowAgentRunResult(150L, "saved"));
         when(runner.runFormal(eq(aggregationPlan), any())).thenReturn(new WorkflowAgentRunResult(200L, "saved"));
         when(tasks.selectById(7L)).thenReturn(committed(200L));
 
         coordinator.execute(task, execution(), 9L);
 
         ArgumentCaptor<WorkflowAgentRunInput> inputs = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
-        verify(runner, times(3)).runFormal(any(), inputs.capture());
+        verify(runner, times(4)).runFormal(any(), inputs.capture());
         assertThat(inputs.getAllValues().stream().filter(input ->
             "DEEP_CHILD".equals(input.reviewScope().phase())).map(input -> input.reviewScope().unitId()))
             .containsExactly(12L, 13L);
@@ -138,6 +204,7 @@ class ReviewDeepAgentCoordinatorTest {
         when(fanout.orderedUnits(50L)).thenReturn(List.of(
             unit(11L, 1, "SUCCEEDED", true), unit(12L, 2, "SUCCEEDED", true)));
         when(tasks.selectById(7L)).thenReturn(task("RUNNING"));
+        when(runner.runFormal(eq(semanticPlan), any())).thenReturn(new WorkflowAgentRunResult(150L, "saved"));
         when(runner.runFormal(eq(aggregationPlan), any())).thenThrow(new IllegalStateException("aggregate failed"));
 
         assertThatThrownBy(() -> coordinator.execute(task, execution(), 9L))
@@ -146,6 +213,30 @@ class ReviewDeepAgentCoordinatorTest {
         verify(runner, never()).runFormal(eq(childPlan), any());
         verify(jdbc).update(startsWith("update review_fanout_snapshot set status='FAILED'"), eq(50L));
         verify(fanout, never()).addUnit(any());
+    }
+
+    @Test
+    void oneDimensionFailurePreventsSemanticReviewAndAggregation() {
+        when(fanout.findMatchingSnapshot(anyLong(), any(), any(), any(), any())).thenReturn(50L);
+        when(jdbc.queryForObject(startsWith("select attempt_no"), eq(Integer.class), eq(50L))).thenReturn(2);
+        ReviewFanoutUnitEntity first = unit(11L, 1, "PENDING", false);
+        ReviewFanoutUnitEntity second = unit(12L, 2, "PENDING", false);
+        when(fanout.orderedUnits(50L)).thenReturn(List.of(first, second),
+            List.of(unit(11L, 1, "SUCCEEDED", true), second));
+        when(runner.runFormal(eq(childPlan), any()))
+            .thenReturn(new WorkflowAgentRunResult(101L, "saved"))
+            .thenThrow(new IllegalStateException("timeline failed"));
+        when(tasks.selectById(7L)).thenReturn(task("RUNNING"));
+        when(jdbc.queryForObject(startsWith("select count(*) from review_fanout_unit"),
+            eq(Integer.class), eq(50L))).thenReturn(1);
+
+        assertThatThrownBy(() -> coordinator.execute(task, execution(), 9L))
+            .isInstanceOf(IllegalStateException.class).hasMessage("timeline failed");
+
+        verify(runner, never()).runFormal(eq(semanticPlan), any());
+        verify(runner, never()).runFormal(eq(aggregationPlan), any());
+        verify(jdbc).update(startsWith("update review_fanout_snapshot set status='PARTIAL_FAILED'"),
+            eq(1), eq(50L));
     }
 
     @Test
@@ -161,6 +252,20 @@ class ReviewDeepAgentCoordinatorTest {
         verify(runner, never()).runFormal(any(), any());
     }
 
+    @Test
+    void completedAttemptReturnsCommittedAggregationWithoutStartingAnotherRun() {
+        task.setStatus("COMPLETED");
+        task.setFanoutSnapshotId(50L);
+        task.setAggregationRunId(200L);
+
+        ReviewDeepAgentCoordinator.Execution result = coordinator.execute(task, execution(), 9L);
+
+        assertThat(result.snapshotId()).isEqualTo(50L);
+        assertThat(result.aggregationRunId()).isEqualTo(200L);
+        verify(runner, never()).runFormal(any(), any());
+        verify(fanout, never()).openSnapshot(any());
+    }
+
     private WorkflowAgentExecutionPlan plan(long revision) {
         WorkflowAgentRecord agent = new WorkflowAgentRecord(1L, "script-review", "审核", "", "", 9L,
             BigDecimal.ZERO, 4096, 8, "ENABLED", revision, 1L, 1L, LocalDateTime.now(), LocalDateTime.now(),
@@ -171,7 +276,7 @@ class ReviewDeepAgentCoordinatorTest {
     private ReviewTaskEntity task(String status) {
         ReviewTaskEntity value = new ReviewTaskEntity();
         value.setId(7L); value.setTenantId(2L); value.setProjectId(5L); value.setScriptVersionId(6L);
-        value.setReviewMode("DEEP"); value.setSelectedDimensionsJson("[\"台词合理性\"]");
+        value.setReviewMode("DEEP"); value.setSelectedDimensionsJson("[\"台词合理性\",\"时间线连续性\"]");
         value.setReviewScopeType("ALL"); value.setReviewScopeJson("{}"); value.setRoundNo(1);
         value.setCreatedBy(3L); value.setStatus(status); value.setWorkflowAttemptNo(1);
         return value;
@@ -187,6 +292,8 @@ class ReviewDeepAgentCoordinatorTest {
         ReviewFanoutUnitEntity unit = new ReviewFanoutUnitEntity();
         unit.setId(id); unit.setSnapshotId(50L); unit.setUnitNo(number);
         unit.setUnitKey("unit-" + number); unit.setStatus(status); unit.setCandidateSaved(candidateSaved);
+        unit.setStageType("DIMENSION_DISCOVERY");
+        unit.setDimension(number % 2 == 1 ? "台词合理性" : "时间线连续性");
         return unit;
     }
 

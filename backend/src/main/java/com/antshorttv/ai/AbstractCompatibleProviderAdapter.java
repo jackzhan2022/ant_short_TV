@@ -61,10 +61,16 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
                 content = root.path("choices").path(0).path("text").asText("");
             }
             JsonNode usage = root.path("usage");
+            JsonNode promptTokenDetails = usage.path("prompt_tokens_details");
             String finishReason = root.path("choices").path(0).path("finish_reason").asText(null);
             List<AiToolCall> toolCalls = parseToolCalls(root.path("choices").path(0).path("message"));
             if (!toolCalls.isEmpty() && content != null && content.isBlank()) {
                 content = null;
+            }
+            Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+            metadata.put("provider", provider.getCode());
+            if (request.promptCacheKey() != null && !request.promptCacheKey().isBlank()) {
+                metadata.put("promptCacheKey", request.promptCacheKey());
             }
             return new AiTextResponse(
                 content,
@@ -73,10 +79,12 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
                 nullableInt(usage, "completion_tokens"),
                 nullableInt(usage, "total_tokens"),
                 elapsed(started),
-                Map.of("provider", provider.getCode()),
+                metadata,
                 finishReason,
                 "length".equalsIgnoreCase(finishReason),
-                toolCalls
+                toolCalls,
+                nullableInt(promptTokenDetails, "cached_tokens"),
+                nullableInt(promptTokenDetails, "cache_write_tokens")
             );
         } catch (AiGatewayException exception) {
             throw exception;
@@ -293,6 +301,13 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             payload.put("thinking", Map.of("type", request.thinkingMode()));
         }
         configuredReasoningEffort(model).ifPresent(effort -> payload.put("reasoning_effort", effort));
+        if (modelCode.startsWith("gpt-5.6") && request.promptCacheKey() != null
+            && !request.promptCacheKey().isBlank()) {
+            payload.put("prompt_cache_key", request.promptCacheKey());
+            if (!request.promptCacheOptions().isEmpty()) {
+                payload.put("prompt_cache_options", request.promptCacheOptions());
+            }
+        }
         if (request.topP() != null) {
             payload.put("top_p", request.topP());
         }

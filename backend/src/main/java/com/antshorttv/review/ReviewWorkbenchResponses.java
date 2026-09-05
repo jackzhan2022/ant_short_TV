@@ -1,6 +1,7 @@
 package com.antshorttv.review;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -64,6 +65,7 @@ record ReviewTaskResponse(
     String retryKind,
     Boolean stale,
     ReviewFanoutProgressResponse fanout,
+    ReviewObservabilityResponse observability,
     LocalDateTime completedAt,
     LocalDateTime canceledAt,
     ReviewReviewSummaryResponse summary,
@@ -85,10 +87,61 @@ record ReviewUnitProgressResponse(
     Long id,
     Integer unitNo,
     String unitKey,
+    String stageType,
+    String dimension,
     String status,
+    Long childRunId,
+    Integer attemptNo,
     Boolean candidateSaved,
     String errorCode,
-    String errorMessage
+    String errorMessage,
+    ReviewCacheUsageResponse cacheUsage
+) {}
+
+record ReviewObservabilityResponse(
+    ReviewQualityProgressResponse quality,
+    ReviewDecisionCountsResponse decisions,
+    List<ReviewHumanReviewFindingResponse> humanReviewFindings,
+    ReviewCacheUsageResponse cacheUsage
+) {}
+
+record ReviewQualityProgressResponse(
+    String status,
+    Long runId,
+    Integer attemptNo,
+    Integer candidateCount,
+    Integer decisionCount,
+    Boolean anomalyRequired,
+    Boolean anomalyPassed
+) {}
+
+record ReviewDecisionCountsResponse(
+    Integer confirmed,
+    Integer needsHumanReview,
+    Integer rejected,
+    Integer insufficientEvidence
+) {}
+
+record ReviewHumanReviewFindingResponse(
+    Long candidateId,
+    Long unitId,
+    String dimension,
+    BigDecimal confidence,
+    String rationale,
+    String severityDecision,
+    List<String> evidenceRefs,
+    Map<String, Object> candidate
+) {}
+
+record ReviewCacheUsageResponse(
+    Long promptTokens,
+    Long ordinaryInputTokens,
+    Long cachedInputTokens,
+    Long cacheWriteTokens,
+    Long outputTokens,
+    Long latencyMs,
+    BigDecimal cacheHitRatio,
+    Boolean cacheObservable
 ) {}
 
 record ReviewReviewSummaryResponse(

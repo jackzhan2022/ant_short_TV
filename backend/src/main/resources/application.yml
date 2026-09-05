@@ -126,3 +126,8 @@ review:
     deep-unit-characters: ${REVIEW_WORKFLOW_DEEP_UNIT_CHARACTERS:24000}
     deep-unit-overlap: ${REVIEW_WORKFLOW_DEEP_UNIT_OVERLAP:1200}
     deep-max-concurrency: ${REVIEW_WORKFLOW_DEEP_MAX_CONCURRENCY:3}
+    features:
+      cache-observability: ${REVIEW_WORKFLOW_CACHE_OBSERVABILITY_ENABLED:false}
+      dimensional-orchestration: ${REVIEW_WORKFLOW_DIMENSIONAL_ORCHESTRATION_ENABLED:false}
+      semantic-review: ${REVIEW_WORKFLOW_SEMANTIC_REVIEW_ENABLED:false}
+      anomaly-gate: ${REVIEW_WORKFLOW_ANOMALY_GATE_ENABLED:false}

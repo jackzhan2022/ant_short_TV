@@ -54,13 +54,18 @@ public record WorkflowAgentRunContract(
     public static WorkflowAgentRunContract forReviewPhase(String phase) {
         return switch (phase == null ? "" : phase) {
             case "QUICK" -> new WorkflowAgentRunContract(List.of(
-                "read_review_context", "read_review_content", "read_review_issue_history", "save_review_result"),
+                "read_review_context", "read_review_content", "save_review_result"),
                 "save_review_result");
             case "DEEP_CHILD" -> new WorkflowAgentRunContract(List.of(
-                "read_review_context", "read_review_content", "read_review_issue_history", "save_review_unit_result"),
+                "read_review_context", "read_review_content", "save_review_unit_result"),
                 "save_review_unit_result");
+            case "DEEP_SEMANTIC" -> new WorkflowAgentRunContract(List.of(
+                "read_review_context", "read_review_candidates", "read_review_content",
+                "save_review_semantic_decisions"),
+                "save_review_semantic_decisions");
             case "DEEP_AGGREGATION" -> new WorkflowAgentRunContract(List.of(
-                "read_review_context", "read_review_issue_history", "read_review_unit_results", "save_review_result"),
+                "read_review_context", "read_review_unit_results", "read_review_content",
+                "save_review_result"),
                 "save_review_result");
             default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未知剧本审核阶段。");
         };
@@ -119,7 +124,8 @@ public record WorkflowAgentRunContract(
 
     private boolean isReviewContract() {
         return "save_review_result".equals(terminalToolCode)
-            || "save_review_unit_result".equals(terminalToolCode);
+            || "save_review_unit_result".equals(terminalToolCode)
+            || "save_review_semantic_decisions".equals(terminalToolCode);
     }
 
     private List<String> activeSequence(WorkflowToolRunState state) {

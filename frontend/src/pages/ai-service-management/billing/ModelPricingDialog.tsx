@@ -43,7 +43,9 @@ type ModelPricingDialogProps = {
 
 const metricOptions = [
   ['CALL', '调用次数'],
-  ['INPUT_TOKEN', '输入 Token'],
+  ['INPUT_TOKEN', '普通输入 Token'],
+  ['CACHED_INPUT_TOKEN', '缓存读取 Token'],
+  ['CACHE_WRITE_TOKEN', '缓存写入 Token'],
   ['OUTPUT_TOKEN', '输出 Token'],
   ['IMAGE', '图片数'],
   ['VIDEO_SECOND', '视频秒数'],

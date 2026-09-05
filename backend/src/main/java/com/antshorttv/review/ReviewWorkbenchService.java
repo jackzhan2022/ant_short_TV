@@ -45,7 +45,6 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -115,6 +114,8 @@ public class ReviewWorkbenchService {
     private final ReviewFanoutUnitMapper fanoutUnitMapper;
     private final ReviewQuickAgentAdapter reviewQuickAgentAdapter;
     private final ReviewDeepAgentCoordinator reviewDeepAgentCoordinator;
+    private final ReviewObservabilityRepository reviewObservabilityRepository;
+    private final ReviewWorkflowFeatureFlags reviewWorkflowFeatureFlags;
     private final int quickSafeCharacters;
     private final Path exportRoot;
 
@@ -143,6 +144,8 @@ public class ReviewWorkbenchService {
         ReviewFanoutUnitMapper fanoutUnitMapper,
         ReviewQuickAgentAdapter reviewQuickAgentAdapter,
         ReviewDeepAgentCoordinator reviewDeepAgentCoordinator,
+        ReviewObservabilityRepository reviewObservabilityRepository,
+        ReviewWorkflowFeatureFlags reviewWorkflowFeatureFlags,
         @Value("${review.workflow.quick-safe-characters:80000}") int quickSafeCharacters,
         @Value("${review.export-root:storage/review-exports}") String exportRoot
     ) {
@@ -170,6 +173,8 @@ public class ReviewWorkbenchService {
         this.fanoutUnitMapper = fanoutUnitMapper;
         this.reviewQuickAgentAdapter = reviewQuickAgentAdapter;
         this.reviewDeepAgentCoordinator = reviewDeepAgentCoordinator;
+        this.reviewObservabilityRepository = reviewObservabilityRepository;
+        this.reviewWorkflowFeatureFlags = reviewWorkflowFeatureFlags;
         this.quickSafeCharacters = Math.min(50000, quickSafeCharacters);
         this.exportRoot = Path.of(exportRoot).toAbsolutePath().normalize();
     }
@@ -692,7 +697,7 @@ public class ReviewWorkbenchService {
             ReviewAiResult aiResult = review.result();
             task.setResultJson(aiResult.rawJson());
             task.setCurrentStage("MATCHING");
-            task.setCurrentAction("正在匹配历史问题并生成轮次结果");
+            task.setCurrentAction("正在生成当前版本的独立审核结果");
             task.setOverallProgress(75);
             task.setUpdatedAt(LocalDateTime.now());
             taskMapper.updateById(task);
@@ -760,14 +765,12 @@ public class ReviewWorkbenchService {
             throw new BusinessException(ErrorCode.AI_EXECUTION_STATUS_INVALID, "AI 调用必须先创建执行和积分预占。");
         }
         Long modelId = resolveDefaultTextModelId(task.getTenantId());
-        List<ReviewIssueEntity> previousIssues = latestIssuesBefore(task.getTenantId(), task.getProjectId(), task.getRoundNo());
         Map<String, Object> variables = new LinkedHashMap<>();
         variables.put("scriptTitle", version.getFileName() == null ? "独立剧本" : version.getFileName());
         variables.put("scriptContent", scopedContent);
         variables.put("reviewMode", task.getReviewMode());
         variables.put("selectedDimensions", deserializeStringList(task.getSelectedDimensionsJson()));
         variables.put("reviewScope", deserializeObject(task.getReviewScopeJson()));
-        variables.put("previousIssues", previousIssues.stream().map(this::issueBrief).toList());
         variables.put("globalIndex", globalIndex);
         AiInvocationRequest.Builder request = AiInvocationRequest.text()
                 .tenantId(task.getTenantId())
@@ -810,10 +813,6 @@ public class ReviewWorkbenchService {
         ReviewScriptVersionEntity version,
         String scopedContent
     ) {
-        List<ReviewIssueEntity> previousIssues = latestIssuesBefore(task.getTenantId(), task.getProjectId(), task.getRoundNo());
-        Map<String, ReviewIssueEntity> previousBySignature = previousIssues.stream()
-            .collect(Collectors.toMap(this::issueSignature, issue -> issue, (left, right) -> left, LinkedHashMap::new));
-        Set<String> matchedPrevious = new LinkedHashSet<>();
         LocalDateTime now = LocalDateTime.now();
         int nextIssueIndex = 1;
 
@@ -836,45 +835,11 @@ public class ReviewWorkbenchService {
             issue.setManuallyResolved(false);
             issue.setCreatedAt(now);
             issue.setUpdatedAt(now);
-            ReviewIssueEntity previous = previousBySignature.get(draft.signature());
-            if (previous != null) {
-                matchedPrevious.add(previous.getIssueNo());
-                issue.setRelatedIssueNo(previous.getIssueNo());
-                issue.setStatus(resolveRoundStatus(previous, draft));
-            } else {
-                issue.setStatus("new");
-            }
+            issue.setStatus("new");
+            issue.setRelatedIssueNo(null);
             issueMapper.insert(issue);
             persistHits(task, issue, draft.hits());
-            persistIssueEvent(task, issue, previous == null ? null : previous.getStatus(), issue.getStatus(), "ROUND_RESULT", draft);
-        }
-
-        for (ReviewIssueEntity previous : previousIssues) {
-            if (matchedPrevious.contains(previous.getIssueNo())) {
-                continue;
-            }
-            ReviewIssueEntity fixed = new ReviewIssueEntity();
-            fixed.setTenantId(task.getTenantId());
-            fixed.setProjectId(task.getProjectId());
-            fixed.setTaskId(task.getId());
-            fixed.setScriptVersionId(version.getId());
-            fixed.setRoundNo(task.getRoundNo());
-            fixed.setIssueNo("R%d-%02d".formatted(task.getRoundNo(), nextIssueIndex++));
-            fixed.setDimension(previous.getDimension());
-            fixed.setSeverity(previous.getSeverity());
-            fixed.setTitle(previous.getTitle());
-            fixed.setPositionJson(previous.getPositionJson());
-            fixed.setExcerpt(previous.getExcerpt());
-            fixed.setProblem(previous.getProblem());
-            fixed.setEvidenceJson(previous.getEvidenceJson());
-            fixed.setSuggestion(previous.getSuggestion());
-            fixed.setStatus("fixed");
-            fixed.setRelatedIssueNo(previous.getIssueNo());
-            fixed.setManuallyResolved(false);
-            fixed.setCreatedAt(now);
-            fixed.setUpdatedAt(now);
-            issueMapper.insert(fixed);
-            persistIssueEvent(task, fixed, previous.getStatus(), "fixed", "ROUND_RESULT", Map.of("fixedFrom", previous.getIssueNo()));
+            persistIssueEvent(task, issue, null, issue.getStatus(), "ROUND_RESULT", draft);
         }
     }
 
@@ -926,27 +891,6 @@ public class ReviewWorkbenchService {
         event.setCreatedBy(task.getCreatedBy());
         event.setCreatedAt(LocalDateTime.now());
         eventMapper.insert(event);
-    }
-
-    private String resolveRoundStatus(ReviewIssueEntity previous, ReviewDraftIssue draft) {
-        String previousStatus = previous.getStatus() == null ? "new" : previous.getStatus();
-        return ReviewIssueMatcher.classify(
-            new ReviewIssueMatcher.IssueSnapshot(
-                previous.getDimension(),
-                previous.getTitle(),
-                deserializeObject(previous.getPositionJson()),
-                previous.getExcerpt(),
-                previous.getProblem()
-            ),
-            new ReviewIssueMatcher.IssueSnapshot(
-                draft.dimension(),
-                draft.title(),
-                draft.position(),
-                draft.excerpt(),
-                draft.problem()
-            ),
-            previousStatus
-        );
     }
 
     private ReviewAiResult parseReviewResult(String rawJson) {
@@ -1003,42 +947,6 @@ public class ReviewWorkbenchService {
             text(node, "relatedIssueNo", null),
             hits
         );
-    }
-
-    private List<ReviewIssueEntity> latestIssuesBefore(Long tenantId, Long projectId, Integer roundNo) {
-        if (roundNo == null || roundNo <= 1) {
-            return List.of();
-        }
-        ReviewTaskEntity latest = taskMapper.selectOne(new LambdaQueryWrapper<ReviewTaskEntity>()
-            .eq(ReviewTaskEntity::getTenantId, tenantId)
-            .eq(ReviewTaskEntity::getProjectId, projectId)
-            .lt(ReviewTaskEntity::getRoundNo, roundNo)
-            .orderByDesc(ReviewTaskEntity::getRoundNo)
-            .last("limit 1"));
-        if (latest == null) {
-            return List.of();
-        }
-        return issueMapper.selectByTask(latest.getId());
-    }
-
-    private String issueSignature(ReviewIssueEntity issue) {
-        return ReviewIssueMatcher.signature(new ReviewIssueMatcher.IssueSnapshot(
-            issue.getDimension(),
-            issue.getTitle(),
-            deserializeObject(issue.getPositionJson()),
-            issue.getExcerpt(),
-            issue.getProblem()
-        ));
-    }
-
-    private String issueSignature(ReviewDraftIssue issue) {
-        return ReviewIssueMatcher.signature(new ReviewIssueMatcher.IssueSnapshot(
-            issue.dimension(),
-            issue.title(),
-            issue.position(),
-            issue.excerpt(),
-            issue.problem()
-        ));
     }
 
     private Map<String, Object> buildGlobalIndex(String content, ReviewTaskEntity task) {
@@ -1154,15 +1062,30 @@ public class ReviewWorkbenchService {
         }
         List<ReviewIssueResponse> issues = includeIssues ? issueMapper.selectByTask(task.getId()).stream().map(this::toIssueResponse).toList() : List.of();
         ReviewFanoutProgressResponse fanout = null;
+        ReviewObservabilityResponse observability = null;
         if (task.getFanoutSnapshotId() != null) {
             ReviewFanoutSnapshotEntity snapshot = fanoutSnapshotMapper.selectById(task.getFanoutSnapshotId());
             if (snapshot != null) {
+                List<ReviewFanoutUnitEntity> fanoutUnits = fanoutUnitMapper.selectOrdered(snapshot.getId());
                 fanout = new ReviewFanoutProgressResponse(snapshot.getStatus(), snapshot.getTotalUnits(),
                     snapshot.getCompletedUnits(), snapshot.getFailedUnits(), snapshot.getCurrentUnitId(),
-                    snapshot.getAggregationStatus(), fanoutUnitMapper.selectOrdered(snapshot.getId()).stream()
+                    snapshot.getAggregationStatus(), fanoutUnits.stream()
                         .map(unit -> new ReviewUnitProgressResponse(unit.getId(), unit.getUnitNo(), unit.getUnitKey(),
-                            unit.getStatus(), unit.getCandidateSaved(), unit.getErrorCode(), unit.getErrorMessage()))
+                            unit.getStageType(), unit.getDimension(), unit.getStatus(), unit.getChildRunId(),
+                            unit.getAttemptNo(), unit.getCandidateSaved(), unit.getErrorCode(), unit.getErrorMessage(),
+                            reviewWorkflowFeatureFlags.cacheObservability()
+                                ? reviewObservabilityRepository.cacheUsage(unit.getChildRunId() == null
+                                    ? List.of() : List.of(unit.getChildRunId()))
+                                : null))
                         .toList());
+                List<Long> runIds = new ArrayList<>(fanoutUnits.stream()
+                    .map(ReviewFanoutUnitEntity::getChildRunId).filter(Objects::nonNull).toList());
+                if (task.getAggregationRunId() != null) runIds.add(task.getAggregationRunId());
+                observability = reviewObservabilityRepository.load(snapshot.getId(), runIds);
+                if (!reviewWorkflowFeatureFlags.cacheObservability()) {
+                    observability = new ReviewObservabilityResponse(observability.quality(),
+                        observability.decisions(), observability.humanReviewFindings(), null);
+                }
             }
         }
         return new ReviewTaskResponse(
@@ -1190,6 +1113,7 @@ public class ReviewWorkbenchService {
             task.getRetryKind(),
             task.getStale(),
             fanout,
+            observability,
             task.getCompletedAt(),
             task.getCanceledAt(),
             summary,
@@ -1937,10 +1861,6 @@ public class ReviewWorkbenchService {
             : resolveSourceType(file);
     }
 
-    private String issueBrief(ReviewIssueEntity issue) {
-        return "%s|%s|%s".formatted(issue.getDimension(), issue.getTitle(), issue.getStatus());
-    }
-
     private RecordReviewTaskMatcher matcherFor(ReviewTaskEntity task) {
         return new RecordReviewTaskMatcher(task.getId(), task.getRoundNo());
     }
@@ -1974,15 +1894,6 @@ public class ReviewWorkbenchService {
         String relatedIssueNo,
         List<ReviewDraftHit> hits
     ) {
-        String signature() {
-            return ReviewIssueMatcher.signature(new ReviewIssueMatcher.IssueSnapshot(
-                dimension,
-                title,
-                position,
-                excerpt,
-                problem
-            ));
-        }
     }
 
     private record ReviewDraftHit(

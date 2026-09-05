@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component;
 public class WorkflowAgentScopeGuard {
     private static final Set<String> REVIEW_TOOLS = Set.of(
         "read_review_context", "read_review_content", "read_review_issue_history",
-        "save_review_unit_result", "read_review_unit_results", "save_review_result"
+        "save_review_unit_result", "read_review_unit_results", "read_review_candidates",
+        "save_review_semantic_decisions", "save_review_result"
     );
     private static final Set<String> PROJECT_TOOLS = Set.of(
         "read_project_context", "list_episode_scripts", "read_episode_script", "read_project_full_script",
@@ -135,11 +136,13 @@ public class WorkflowAgentScopeGuard {
         var scope = input.reviewScope();
         Set<String> allowed = switch (scope.phase() == null ? "" : scope.phase()) {
             case "QUICK" -> Set.of("read_review_context", "read_review_content",
-                "read_review_issue_history", "save_review_result");
+                "save_review_result");
             case "DEEP_CHILD" -> Set.of("read_review_context", "read_review_content",
-                "read_review_issue_history", "save_review_unit_result");
-            case "DEEP_AGGREGATION" -> Set.of("read_review_context", "read_review_issue_history",
-                "read_review_unit_results", "save_review_result");
+                "save_review_unit_result");
+            case "DEEP_SEMANTIC" -> Set.of("read_review_context", "read_review_candidates",
+                "read_review_content", "save_review_semantic_decisions");
+            case "DEEP_AGGREGATION" -> Set.of("read_review_context", "read_review_unit_results",
+                "read_review_content", "save_review_result");
             default -> Set.of();
         };
         if (!allowed.containsAll(toolCodes.stream().filter(REVIEW_TOOLS::contains).toList())) {
