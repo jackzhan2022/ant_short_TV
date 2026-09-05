@@ -8,7 +8,7 @@ The production acceptance target is project 26. The optimized flow must retain t
 
 ## Scope
 
-This change affects only the server-prepared context for the `short-drama-storyboard` workflow agent. It does not change the general `read_script_analysis`, `read_adjacent_episodes`, or `read_script_assets` tool contracts used by other agents. It does not change storyboard numbering, save validation, billing, or the one-correction policy.
+This change affects only the server-prepared context for the `short-drama-storyboard` workflow agent. It does not remove or reinterpret fields from the general `read_script_analysis`, `read_adjacent_episodes`, or `read_script_assets` tool contracts used by other agents. `read_adjacent_episodes` gains additive bounded excerpt fields so the selected continuity policy can be represented without exposing complete adjacent scripts. Storyboard numbering, save validation, billing, and the one-correction policy remain unchanged.
 
 ## Selected Approach
 
@@ -32,7 +32,7 @@ The current episode is never truncated by the reducer. The overall reduced conte
 
 ### Current episode
 
-Preserve the complete `read_current_episode` result, including the full text, fingerprint, and every source segment. The reducer must not renumber, omit, or rewrite source segments.
+Preserve the current episode's identity fields, full text, fingerprint, and every source segment. The reducer must not renumber, omit, or rewrite source segments. The nested asset catalog is projected separately under the asset policy below, so verbose asset metadata is not treated as required episode text.
 
 ### Adjacent episodes
 
