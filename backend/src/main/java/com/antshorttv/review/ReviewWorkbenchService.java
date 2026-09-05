@@ -655,7 +655,16 @@ public class ReviewWorkbenchService {
 
     ReviewExecutionOutcome executeTask(Long taskId, AiExecutionContext executionContext) {
         ReviewTaskEntity task = taskMapper.selectById(taskId);
-        if (task == null || List.of("COMPLETED", "CANCELED").contains(task.getStatus())) {
+        if (task == null || "CANCELED".equals(task.getStatus())) {
+            return ReviewExecutionOutcome.empty();
+        }
+        if ("COMPLETED".equals(task.getStatus())) {
+            if (reviewDeepAgentCoordinator.enabled()
+                && reviewDeepAgentCoordinator.canRecoverCommittedAggregation(task)) {
+                ReviewDeepAgentCoordinator.Execution recovered =
+                    reviewDeepAgentCoordinator.recoverCommittedAggregation(task);
+                return new ReviewExecutionOutcome(null, recovered.modelCalls());
+            }
             return ReviewExecutionOutcome.empty();
         }
         try {
@@ -715,7 +724,7 @@ public class ReviewWorkbenchService {
             return new ReviewExecutionOutcome(review.invocation());
         } catch (Exception exception) {
             ReviewTaskEntity failed = taskMapper.selectById(taskId);
-            if (failed != null && !"CANCELED".equals(failed.getStatus())) {
+            if (failed != null && !List.of("COMPLETED", "CANCELED").contains(failed.getStatus())) {
                 failed.setStatus("FAILED");
                 failed.setCurrentStage("FAILED");
                 failed.setCurrentAction("审核失败");

@@ -59,10 +59,12 @@ public class ReviewToolConfiguration {
 
     @Bean WorkflowToolDefinition saveReviewSemanticDecisionsTool(ReviewToolDataService data, ObjectMapper json) {
         ObjectNode input = object(json);
-        input.putArray("required").add("versionHash").add("scopeHash").add("dimensionsHash").add("decisions");
+        input.putArray("required").add("versionHash").add("scopeHash").add("dimensionsHash")
+            .add("decisions").add("finalBatch");
         ObjectNode fields = (ObjectNode) input.path("properties");
         hashFields(fields);
-        ObjectNode decisions = fields.putObject("decisions").put("type", "array").put("maxItems", 500);
+        ObjectNode decisions = fields.putObject("decisions").put("type", "array").put("maxItems", 100);
+        fields.putObject("finalBatch").put("type", "boolean");
         ObjectNode decision = object(json);
         decision.putArray("required").add("candidateId").add("decision").add("confidence")
             .add("rationale").add("evidenceRefs");
@@ -86,11 +88,12 @@ public class ReviewToolConfiguration {
             .putObject("items").put("type", "string").put("maxLength", 2000);
         fields.set("anomalyReview", anomaly);
         ObjectNode output = object(json);
-        output.putArray("required").add("saved").add("decisionCount");
+        output.putArray("required").add("saved").add("decisionCount").add("complete");
         ((ObjectNode) output.path("properties")).putObject("saved").put("type", "boolean");
         ((ObjectNode) output.path("properties")).putObject("decisionCount").put("type", "integer").put("minimum", 0);
+        ((ObjectNode) output.path("properties")).putObject("complete").put("type", "boolean");
         return definition("save_review_semantic_decisions", "保存语义质检裁决",
-            "为冻结快照中的每个候选原子保存一次终态语义裁决，不修改原始候选。",
+            "按最多 100 条一批幂等保存终态语义裁决；仅最后一批设置 finalBatch=true。",
             input, output, ToolRiskLevel.WRITE,
             executor((context, args) -> data.saveSemanticDecisions(context, args)));
     }

@@ -24,7 +24,32 @@ final class ReviewDimensionRunScheduler {
                 T dimension = dimensions.get(index);
                 futures.add(executor.submit(() -> operation.apply(dimension)));
             }
-            for (Future<R> future : futures) results.add(await(future));
+            RuntimeException firstFailure = null;
+            Error firstError = null;
+            boolean interrupted = false;
+            for (Future<R> future : futures) {
+                boolean terminal = false;
+                while (!terminal) {
+                    try {
+                        results.add(await(future));
+                        terminal = true;
+                    } catch (InterruptedWait failure) {
+                        interrupted = true;
+                    } catch (RuntimeException failure) {
+                        if (firstFailure == null && firstError == null) firstFailure = failure;
+                        terminal = true;
+                    } catch (Error failure) {
+                        if (firstFailure == null && firstError == null) firstError = failure;
+                        terminal = true;
+                    }
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("等待审核维度执行时被中断。");
+            }
+            if (firstError != null) throw firstError;
+            if (firstFailure != null) throw firstFailure;
             return List.copyOf(results);
         } finally {
             executor.shutdownNow();
@@ -35,13 +60,16 @@ final class ReviewDimensionRunScheduler {
         try {
             return future.get();
         } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("等待审核维度执行时被中断。", exception);
+            throw new InterruptedWait(exception);
         } catch (ExecutionException exception) {
             Throwable cause = exception.getCause();
             if (cause instanceof RuntimeException runtime) throw runtime;
             if (cause instanceof Error error) throw error;
             throw new IllegalStateException("审核维度执行失败。", cause);
         }
+    }
+
+    private static final class InterruptedWait extends RuntimeException {
+        private InterruptedWait(InterruptedException cause) { super(cause); }
     }
 }

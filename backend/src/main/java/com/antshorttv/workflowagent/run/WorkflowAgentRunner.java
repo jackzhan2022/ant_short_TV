@@ -166,18 +166,26 @@ public class WorkflowAgentRunner {
         List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
         String prompt = composePrompt(agent, skillSnapshots);
         Long effectiveModelId = input.modelIdOverride() == null ? agent.modelId() : input.modelIdOverride();
+        boolean semanticReview = input.reviewScope() != null
+            && "DEEP_SEMANTIC".equals(input.reviewScope().phase());
+        int effectiveMaxSteps = semanticReview
+            ? Math.max(agent.maxSteps(), properties.getReviewSemanticMaxSteps()) : agent.maxSteps();
         if (input.modelIdOverride() != null) {
             agents.requireToolCallingModel(effectiveModelId);
         }
         Long runId = runs.start(new WorkflowAgentRunStart(
             agent.id(), agent.code(), runType, input.tenantId(), input.userId(), input.projectId(),
             input.episodeId(), input.scriptId(), input.taskId(), input.analysisStageId(), effectiveModelId,
-            agent.temperature(), agent.maxTokens(), agent.maxSteps(), prompt, skillSnapshots,
+            agent.temperature(), agent.maxTokens(), effectiveMaxSteps, prompt, skillSnapshots,
             agent.toolCodes()
         ));
-        Instant deadline = Instant.now().plusSeconds(properties.getRunTimeoutSeconds());
+        long timeoutSeconds = semanticReview
+            ? Math.max(properties.getRunTimeoutSeconds(), properties.getReviewSemanticRunTimeoutSeconds())
+            : properties.getRunTimeoutSeconds();
+        Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
         try {
             return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline,
+                effectiveMaxSteps,
                 WorkflowAgentRunContract.forAgent(agent.code(),
                     input.reviewScope() == null ? null : input.reviewScope().phase()));
         } catch (BusinessException exception) {
@@ -198,6 +206,7 @@ public class WorkflowAgentRunner {
         String prompt,
         List<WorkflowToolDefinition> allowedTools,
         Instant deadline,
+        int maxSteps,
         WorkflowAgentRunContract contract
     ) {
         WorkflowToolRunState runState = new WorkflowToolRunState();
@@ -233,7 +242,7 @@ public class WorkflowAgentRunner {
         boolean assetSaveCorrectionUsed = false;
         String storyboardValidationCode = null;
         String traceId = "workflow-agent-" + UUID.randomUUID();
-        for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
+        for (int modelRound = 1; stepNo < maxSteps; modelRound++) {
             requireBeforeDeadline(deadline);
             scopeGuard.requireExecutionActive(input);
             AiInvocationResult<AiTextResponse> result;
@@ -281,7 +290,10 @@ public class WorkflowAgentRunner {
             AiTextResponse response = result.response();
             modelCalls.add(new WorkflowAgentModelCall(
                 result.aiCallLogId(), result.resolvedModelId(), result.providerId(),
-                result.providerRequestId(), result.transportOutcome(), result.businessOutcome()));
+                result.providerRequestId(), result.transportOutcome(), result.businessOutcome(), result.attemptId(),
+                result.promptTokens(), result.completionTokens(),
+                response == null ? null : response.cachedInputTokens(),
+                response == null ? null : response.cacheWriteTokens()));
             List<AiToolCall> calls = response == null ? List.of() : response.toolCalls();
             String finalContent = response == null ? null : response.content();
             runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
@@ -322,9 +334,9 @@ public class WorkflowAgentRunner {
             }
             messages.add(AiChatMessage.assistantToolCalls(calls));
             for (AiToolCall call : calls) {
-                if (stepNo >= agent.maxSteps()) {
+                if (stepNo >= maxSteps) {
                     throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
-                        "Agent 已达到最大执行步数 " + agent.maxSteps() + "，停止执行后续工具。");
+                        "Agent 已达到最大执行步数 " + maxSteps + "，停止执行后续工具。");
                 }
                 requireBeforeDeadline(deadline);
                 scopeGuard.requireExecutionActive(input);
@@ -373,7 +385,9 @@ public class WorkflowAgentRunner {
                             "已重新读取当前审核单元正文。现在只允许调用 save_review_unit_result；"
                                 + "候选最多 20 个，删除不能逐字验证的候选，字段务必精简。"));
                     }
-                    if (contract.isTerminal(call.code())) {
+                    boolean incompleteSemanticBatch = "save_review_semantic_decisions".equals(call.code())
+                        && !output.path("complete").asBoolean(false);
+                    if (contract.isTerminal(call.code()) && !incompleteSemanticBatch) {
                         runs.complete(runId, serialized);
                         return new WorkflowAgentRunResult(runId, serialized, modelCalls);
                     }
@@ -430,7 +444,7 @@ public class WorkflowAgentRunner {
             }
         }
         throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
-            "Agent 已达到最大执行步数 " + agent.maxSteps() + "，仍未产生最终结果。");
+            "Agent 已达到最大执行步数 " + maxSteps + "，仍未产生最终结果。");
     }
 
     private int prepareStoryboardContext(

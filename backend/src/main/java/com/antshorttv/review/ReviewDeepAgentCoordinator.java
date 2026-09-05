@@ -7,6 +7,7 @@ import com.antshorttv.workflowagent.agent.ScriptReviewAgentBootstrap;
 import com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import com.antshorttv.workflowagent.tool.ReviewToolScope;
@@ -40,11 +41,13 @@ public class ReviewDeepAgentCoordinator {
     private final int maxConcurrency;
     private final ReviewPromptCacheContextFactory cacheContexts;
     private final ReviewDimensionRunScheduler dimensionScheduler;
+    private final WorkflowAgentRunRepository workflowRuns;
 
     public ReviewDeepAgentCoordinator(ReviewAgentExecutionPlanFactory plans, WorkflowAgentRunner runner,
         ReviewContentService contentService, ReviewUnitPlanner planner, ReviewFanoutRepository fanout,
         ReviewTaskMapper tasks, ReviewScriptVersionMapper versions,
-        ReviewSemanticAuditRepository semanticAudits, JdbcTemplate jdbc, ObjectMapper json,
+        ReviewSemanticAuditRepository semanticAudits, WorkflowAgentRunRepository workflowRuns,
+        JdbcTemplate jdbc, ObjectMapper json,
         ReviewWorkflowFeatureFlags featureFlags,
         @Value("${ai.workflow-agent.review-deep-enabled:false}") boolean enabled,
         @Value("${review.workflow.deep-unit-characters:24000}") int unitCharacters,
@@ -52,6 +55,7 @@ public class ReviewDeepAgentCoordinator {
         @Value("${review.workflow.deep-max-concurrency:3}") int maxConcurrency) {
         this.plans = plans; this.runner = runner; this.contentService = contentService; this.planner = planner;
         this.fanout = fanout; this.tasks = tasks; this.versions = versions; this.semanticAudits = semanticAudits;
+        this.workflowRuns = workflowRuns;
         this.jdbc = jdbc; this.json = json;
         this.featureFlags = featureFlags;
         this.enabled = enabled; this.unitCharacters = unitCharacters; this.unitOverlap = unitOverlap;
@@ -60,13 +64,41 @@ public class ReviewDeepAgentCoordinator {
         this.dimensionScheduler = new ReviewDimensionRunScheduler();
     }
 
-    public boolean enabled() { return enabled && featureFlags.dimensionalOrchestration(); }
+    public boolean enabled() { return enabled; }
+
+    public boolean canRecoverCommittedAggregation(ReviewTaskEntity task) {
+        return task != null && "COMPLETED".equals(task.getStatus()) && "DEEP".equals(task.getReviewMode())
+            && task.getFanoutSnapshotId() != null && task.getWorkflowAgentRunId() != null
+            && (task.getAggregationRunId() == null
+                || task.getWorkflowAgentRunId().equals(task.getAggregationRunId()));
+    }
+
+    public Execution recoverCommittedAggregation(ReviewTaskEntity task) {
+        if (!canRecoverCommittedAggregation(task)) {
+            throw invalid("审核任务不存在可恢复的聚合提交。");
+        }
+        Long runId = task.getWorkflowAgentRunId();
+        if (!workflowRuns.belongsToTask(runId, task.getTenantId(), task.getId())) {
+            throw invalid("聚合运行与审核任务不匹配。");
+        }
+        workflowRuns.reconcileCommitted(runId, task.getResultJson());
+        task.setAggregationRunId(runId);
+        task.setUpdatedAt(LocalDateTime.now());
+        tasks.updateById(task);
+        jdbc.update("update review_fanout_snapshot set status='SUCCEEDED', aggregation_status='SUCCEEDED', aggregation_run_id=?, completed_at=coalesce(completed_at, now()), updated_at=now() where id=? and task_id=?",
+            runId, task.getFanoutSnapshotId(), task.getId());
+        return new Execution(task.getFanoutSnapshotId(), runId,
+            List.copyOf(workflowRuns.modelCalls(runId, task.getTenantId())));
+    }
 
     public Execution execute(ReviewTaskEntity task, AiExecutionContext execution, Long modelId) {
         if (execution == null) throw invalid("AI 调用必须先创建执行和积分预占。");
         if ("COMPLETED".equals(task.getStatus()) && task.getFanoutSnapshotId() != null
             && task.getAggregationRunId() != null) {
             return new Execution(task.getFanoutSnapshotId(), task.getAggregationRunId(), List.of());
+        }
+        if (!featureFlags.dimensionalOrchestration()) {
+            return executeLegacy(task, execution, modelId);
         }
         ReviewScriptVersionEntity version = versions.selectById(task.getScriptVersionId());
         if (version == null) throw invalid("审核版本不存在。");
@@ -139,7 +171,7 @@ public class ReviewDeepAgentCoordinator {
             String semanticInputHash = ReviewContentService.hash(semanticCandidates.stream()
                 .map(ReviewSemanticAuditRepository.CandidateRecord::candidateKey)
                 .collect(java.util.stream.Collectors.joining("|")));
-            if (!semanticStageComplete(snapshotId, semanticInputHash, semanticCandidates.size())) {
+            if (!semanticStageComplete(task, snapshotId, semanticInputHash, semanticCandidates.size())) {
             ensureSemanticStage(task, snapshotId, frozen, semanticInputHash);
             jdbc.update("""
                 update review_pipeline_stage
@@ -163,6 +195,7 @@ public class ReviewDeepAgentCoordinator {
                     semanticCache.commonPrefix(), semanticCache.cacheKey(),
                     "读取全部冻结候选与必要的当前版本原文，逐条检查证据支持、规则适用、替代解释、严重度、"
                         + "建议有效性和重复关系；每个候选必须保存且只能保存一个终态语义裁决。"
+                        + "按候选读取分页分批保存，每批最多100条，仅覆盖全部候选的最后一批设置finalBatch=true。"
                         + "不得读取或参考历史审核问题；" + anomalyInstruction));
                 calls.addAll(quality.modelCalls());
                 int decisionCount = semanticAudits.decisionCount(snapshotId);
@@ -219,6 +252,119 @@ public class ReviewDeepAgentCoordinator {
         return input(task, execution, modelId, scope, null, null, prompt);
     }
 
+    private Execution executeLegacy(ReviewTaskEntity task, AiExecutionContext execution, Long modelId) {
+        ReviewScriptVersionEntity version = versions.selectById(task.getScriptVersionId());
+        if (version == null) throw invalid("审核版本不存在。");
+        List<String> dimensions = list(task.getSelectedDimensionsJson());
+        Map<String, Object> scopeMap = map(task.getReviewScopeJson());
+        ReviewContentService.FrozenReview frozen = contentService.freeze(version.getContent(),
+            task.getReviewScopeType(), scopeMap, dimensions);
+        List<ReviewUnitPlanner.Unit> planned = planner.plan(version.getContent(), task.getReviewScopeType(),
+            scopeMap, frozen, unitCharacters, unitOverlap);
+        WorkflowAgentExecutionPlan childPlan = plans.freeze(dimensions, "DEEP_CHILD");
+        String unitSetHash = ReviewContentService.hash(planned.stream()
+            .map(unit -> unit.unitKey() + ":" + unit.fingerprint())
+            .collect(java.util.stream.Collectors.joining("|")));
+        int attempt = task.getWorkflowAttemptNo() == null ? 1 : Math.max(1, task.getWorkflowAttemptNo());
+        Long snapshotId = fanout.findMatchingSnapshot(task.getId(), frozen.versionHash(),
+            frozen.scopeHash(), frozen.dimensionsHash(), unitSetHash);
+        if (snapshotId == null) {
+            attempt = task.getWorkflowAttemptNo() == null ? 1 : task.getWorkflowAttemptNo() + 1;
+            snapshotId = fanout.openSnapshot(new ReviewFanoutRepository.SnapshotDraft(task.getTenantId(),
+                task.getProjectId(), task.getId(), version.getId(), attempt, ScriptReviewAgentBootstrap.AGENT_CODE,
+                childPlan.agent().revision(), skillRevisions(childPlan), modelId, task.getSelectedDimensionsJson(),
+                task.getReviewScopeJson(), frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash(),
+                unitSetHash, planned.size(), maxConcurrency));
+            for (ReviewUnitPlanner.Unit unit : planned) {
+                fanout.addUnit(new ReviewFanoutRepository.UnitDraft(snapshotId, unit.unitNo(), unit.unitKey(),
+                    stringify(Map.of("unitKey", unit.unitKey())), unit.startOffset(), unit.endOffset(),
+                    unit.fingerprint()));
+            }
+        } else {
+            attempt = jdbc.queryForObject("select attempt_no from review_fanout_snapshot where id = ?",
+                Integer.class, snapshotId);
+        }
+        task.setFanoutSnapshotId(snapshotId); task.setWorkflowAgentCode(ScriptReviewAgentBootstrap.AGENT_CODE);
+        task.setWorkflowAgentRevision(childPlan.agent().revision()); task.setWorkflowPhase("DEEP_CHILD");
+        task.setWorkflowAttemptNo(attempt); task.setCurrentStage("DEEP_UNITS");
+        task.setCurrentAction("正在逐单元深度审核"); task.setOverallProgress(20); task.setUpdatedAt(LocalDateTime.now());
+        tasks.updateById(task);
+        jdbc.update("update review_fanout_snapshot set status = 'RUNNING', updated_at = now() where id = ?", snapshotId);
+
+        List<WorkflowAgentModelCall> calls = new ArrayList<>();
+        List<ReviewFanoutUnitEntity> units = fanout.orderedUnits(snapshotId);
+        int completed = (int) units.stream().filter(unit -> "SUCCEEDED".equals(unit.getStatus())
+            && Boolean.TRUE.equals(unit.getCandidateSaved())).count();
+        int failed = (int) units.stream().filter(unit -> "FAILED".equals(unit.getStatus())).count();
+        jdbc.update("update review_fanout_snapshot set completed_units=?, failed_units=?, updated_at=now() where id=?",
+            completed, failed, snapshotId);
+        for (ReviewFanoutUnitEntity unit : units) {
+            if ("SUCCEEDED".equals(unit.getStatus()) && Boolean.TRUE.equals(unit.getCandidateSaved())) continue;
+            requireNotCanceled(task.getId());
+            jdbc.update("update review_fanout_unit set status='RUNNING', attempt_no=attempt_no+1, error_code=null, error_message=null, started_at=now(), updated_at=now() where id=?", unit.getId());
+            jdbc.update("update review_fanout_snapshot set current_unit_id=?, updated_at=now() where id=?", unit.getId(), snapshotId);
+            try {
+                WorkflowAgentRunResult child = runner.runFormal(childPlan, input(task, execution, modelId,
+                    new ReviewToolScope(task.getProjectId(), version.getId(), snapshotId, unit.getId(), attempt,
+                        "DEEP_CHILD", dimensions),
+                    "审核当前冻结单元并保存候选问题；不得保存正式审核结果。"));
+                calls.addAll(child.modelCalls());
+                ReviewFanoutUnitEntity after = fanout.orderedUnits(snapshotId).stream()
+                    .filter(candidate -> candidate.getId().equals(unit.getId())).findFirst().orElseThrow();
+                if (!"SUCCEEDED".equals(after.getStatus()) || !Boolean.TRUE.equals(after.getCandidateSaved())) {
+                    throw invalid("DEEP 子 Agent 未保存完整候选结果。");
+                }
+                completed++;
+                jdbc.update("update review_fanout_unit set completed_at=now(), updated_at=now() where id=?", unit.getId());
+                jdbc.update("update review_fanout_snapshot set completed_units=?, current_unit_id=?, updated_at=now() where id=?",
+                    completed, unit.getId(), snapshotId);
+                task.setOverallProgress(20 + (int) Math.floor(60.0 * completed / units.size()));
+                task.setCurrentAction("深度审核单元 %d/%d".formatted(completed, units.size()));
+                task.setUpdatedAt(LocalDateTime.now()); tasks.updateById(task);
+            } catch (RuntimeException failure) {
+                jdbc.update("update review_fanout_unit set status='FAILED', error_code=?, error_message=?, updated_at=now() where id=?",
+                    failure.getClass().getSimpleName(), trim(failure.getMessage()), unit.getId());
+                int failedNow = jdbc.queryForObject(
+                    "select count(*) from review_fanout_unit where snapshot_id=? and status='FAILED'",
+                    Integer.class, snapshotId);
+                jdbc.update("update review_fanout_snapshot set status='PARTIAL_FAILED', failed_units=?, updated_at=now() where id=?",
+                    failedNow, snapshotId);
+                throw failure;
+            }
+        }
+
+        requireNotCanceled(task.getId());
+        WorkflowAgentExecutionPlan aggregationPlan = plans.freeze(dimensions, "DEEP_AGGREGATION");
+        jdbc.update("update review_fanout_snapshot set status='AGGREGATING', aggregation_status='RUNNING', current_unit_id=null, updated_at=now() where id=?", snapshotId);
+        task.setWorkflowPhase("DEEP_AGGREGATION"); task.setCurrentStage("DEEP_AGGREGATION");
+        task.setCurrentAction("正在汇总跨单元问题并生成正式审核结果"); task.setOverallProgress(85);
+        task.setUpdatedAt(LocalDateTime.now()); tasks.updateById(task);
+        try {
+            WorkflowAgentRunResult aggregation = runner.runFormal(aggregationPlan, input(task, execution, modelId,
+                new ReviewToolScope(task.getProjectId(), version.getId(), snapshotId, null, attempt,
+                    "DEEP_AGGREGATION", dimensions),
+                "读取全部已保存候选，完成跨单元去重与连续性综合，最后仅调用一次正式保存工具。"));
+            calls.addAll(aggregation.modelCalls());
+            ReviewTaskEntity committed = tasks.selectById(task.getId());
+            if (committed == null || !"COMPLETED".equals(committed.getStatus())
+                || !aggregation.runId().equals(committed.getWorkflowAgentRunId())) {
+                throw invalid("DEEP 聚合 Agent 未提交本次正式结果。");
+            }
+            committed.setAggregationRunId(aggregation.runId());
+            committed.setUpdatedAt(LocalDateTime.now());
+            tasks.updateById(committed);
+            jdbc.update("update review_fanout_snapshot set status='SUCCEEDED', aggregation_status='SUCCEEDED', aggregation_run_id=?, completed_at=now(), updated_at=now() where id=?", aggregation.runId(), snapshotId);
+            return new Execution(snapshotId, aggregation.runId(), List.copyOf(calls));
+        } catch (RuntimeException failure) {
+            ReviewTaskEntity committed = tasks.selectById(task.getId());
+            if (canRecoverCommittedAggregation(committed)) {
+                return recoverCommittedAggregation(committed);
+            }
+            jdbc.update("update review_fanout_snapshot set status='FAILED', aggregation_status='FAILED', updated_at=now() where id=?", snapshotId);
+            throw failure;
+        }
+    }
+
     private WorkflowAgentRunInput input(ReviewTaskEntity task, AiExecutionContext execution, Long modelId,
         ReviewToolScope scope, String stableContext, String promptCacheKey, String prompt) {
         return new WorkflowAgentRunInput(ScriptReviewAgentBootstrap.AGENT_CODE, prompt, task.getTenantId(),
@@ -272,18 +418,48 @@ public class ReviewDeepAgentCoordinator {
         }
     }
 
-    private boolean semanticStageComplete(Long snapshotId, String inputHash, int candidateCount) {
+    private boolean semanticStageComplete(
+        ReviewTaskEntity task,
+        Long snapshotId,
+        String inputHash,
+        int candidateCount
+    ) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-            select status, input_hash, candidate_count, decision_count
+            select status, run_id, input_hash, coverage_json, candidate_count, decision_count
               from review_pipeline_stage
              where snapshot_id=? and stage_key='semantic-quality'
             """, snapshotId);
         if (rows.isEmpty()) return false;
         Map<String, Object> row = rows.get(0);
-        return "SUCCEEDED".equals(String.valueOf(rowValue(row, "status")))
-            && inputHash.equals(String.valueOf(rowValue(row, "input_hash")))
+        if (!inputHash.equals(String.valueOf(rowValue(row, "input_hash")))) return false;
+        if ("SUCCEEDED".equals(String.valueOf(rowValue(row, "status")))
             && number(rowValue(row, "candidate_count")) == candidateCount
-            && number(rowValue(row, "decision_count")) == candidateCount;
+            && number(rowValue(row, "decision_count")) == candidateCount) {
+            return reconcileSemanticRun(task, rowValue(row, "run_id"), candidateCount);
+        }
+        int durableDecisions = semanticAudits.decisionCount(snapshotId);
+        Object runId = rowValue(row, "run_id");
+        Object coverage = rowValue(row, "coverage_json");
+        if (durableDecisions == candidateCount && runId instanceof Number
+            && coverage != null && !String.valueOf(coverage).isBlank()) {
+            jdbc.update("""
+                update review_pipeline_stage
+                   set status='SUCCEEDED', candidate_count=?, decision_count=?,
+                       completed_at=coalesce(completed_at, now()), updated_at=now()
+                 where snapshot_id=? and stage_key='semantic-quality'
+                """, candidateCount, durableDecisions, snapshotId);
+            return reconcileSemanticRun(task, runId, durableDecisions);
+        }
+        return false;
+    }
+
+    private boolean reconcileSemanticRun(ReviewTaskEntity task, Object runValue, int decisionCount) {
+        if (!(runValue instanceof Number number)) return false;
+        long runId = number.longValue();
+        if (!workflowRuns.belongsToTask(runId, task.getTenantId(), task.getId())) return false;
+        workflowRuns.reconcileCommitted(runId,
+            "{\"saved\":true,\"complete\":true,\"decisionCount\":" + decisionCount + "}");
+        return true;
     }
 
     private void ensureSemanticStage(ReviewTaskEntity task, Long snapshotId,

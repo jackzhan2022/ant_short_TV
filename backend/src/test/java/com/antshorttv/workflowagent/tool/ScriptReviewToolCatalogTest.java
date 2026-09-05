@@ -34,7 +34,10 @@ class ScriptReviewToolCatalogTest {
         assertThat(registry.require("read_review_issue_history").inputSchema().path("properties").path("pageSize").path("maximum").asInt()).isEqualTo(100);
         assertThat(registry.require("save_review_unit_result").inputSchema().path("properties").path("candidates").path("maxItems").asInt()).isEqualTo(100);
         assertThat(registry.require("read_review_candidates").inputSchema().path("properties").path("pageSize").path("maximum").asInt()).isEqualTo(100);
-        assertThat(registry.require("save_review_semantic_decisions").inputSchema().path("properties").path("decisions").path("maxItems").asInt()).isEqualTo(500);
+        var semanticSave = registry.require("save_review_semantic_decisions").inputSchema();
+        assertThat(semanticSave.path("properties").path("decisions").path("maxItems").asInt()).isEqualTo(100);
+        assertThat(semanticSave.path("required")).anySatisfy(value ->
+            assertThat(value.asText()).isEqualTo("finalBatch"));
         var hitProperties = registry.require("save_review_unit_result").inputSchema().path("properties")
             .path("candidates").path("items").path("properties").path("hits").path("items").path("properties");
         assertThat(hitProperties.path("startOffset").path("minimum").asInt()).isZero();

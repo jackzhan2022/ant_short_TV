@@ -21,6 +21,7 @@ import com.antshorttv.workflowagent.agent.WorkflowAgentRecord;
 import com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -46,6 +47,7 @@ class ReviewDeepAgentCoordinatorTest {
     private ReviewScriptVersionMapper versions;
     private JdbcTemplate jdbc;
     private ReviewDeepAgentCoordinator coordinator;
+    private WorkflowAgentRunRepository workflowRuns;
     private WorkflowAgentExecutionPlan childPlan;
     private WorkflowAgentExecutionPlan semanticPlan;
     private WorkflowAgentExecutionPlan aggregationPlan;
@@ -62,8 +64,10 @@ class ReviewDeepAgentCoordinatorTest {
         semanticAudits = mock(ReviewSemanticAuditRepository.class);
         versions = mock(ReviewScriptVersionMapper.class);
         jdbc = mock(JdbcTemplate.class);
+        workflowRuns = mock(WorkflowAgentRunRepository.class);
+        when(workflowRuns.belongsToTask(anyLong(), anyLong(), anyLong())).thenReturn(true);
         coordinator = new ReviewDeepAgentCoordinator(plans, runner, content, planner, fanout,
-            tasks, versions, semanticAudits, jdbc, new ObjectMapper(),
+            tasks, versions, semanticAudits, workflowRuns, jdbc, new ObjectMapper(),
             new ReviewWorkflowFeatureFlags(true, true, true, true), true, 100, 10, 2);
         childPlan = plan(3L);
         semanticPlan = plan(4L);
@@ -264,6 +268,59 @@ class ReviewDeepAgentCoordinatorTest {
         assertThat(result.aggregationRunId()).isEqualTo(200L);
         verify(runner, never()).runFormal(any(), any());
         verify(fanout, never()).openSnapshot(any());
+    }
+
+    @Test
+    void adoptsCommittedAggregationTerminalWriteAfterCoordinatorCrash() {
+        task.setStatus("COMPLETED");
+        task.setFanoutSnapshotId(50L);
+        task.setWorkflowAgentRunId(200L);
+        task.setResultJson("{\"summary\":{}}");
+        when(workflowRuns.belongsToTask(200L, 2L, 7L)).thenReturn(true);
+        when(workflowRuns.modelCalls(200L, 2L)).thenReturn(List.of());
+
+        ReviewDeepAgentCoordinator.Execution result = coordinator.recoverCommittedAggregation(task);
+
+        assertThat(result.snapshotId()).isEqualTo(50L);
+        assertThat(result.aggregationRunId()).isEqualTo(200L);
+        verify(workflowRuns).reconcileCommitted(200L, "{\"summary\":{}}");
+        verify(tasks).updateById(task);
+        verify(jdbc).update(startsWith("update review_fanout_snapshot set status='SUCCEEDED'"),
+            eq(200L), eq(50L), eq(7L));
+    }
+
+    @Test
+    void adoptsDurableSemanticTerminalWriteAfterCoordinatorCrash() {
+        when(fanout.findMatchingSnapshot(anyLong(), any(), any(), any(), any())).thenReturn(50L);
+        when(jdbc.queryForObject(startsWith("select attempt_no"), eq(Integer.class), eq(50L))).thenReturn(2);
+        when(fanout.orderedUnits(50L)).thenReturn(List.of(
+            unit(11L, 1, "SUCCEEDED", true), unit(12L, 2, "SUCCEEDED", true)));
+        var candidate = new ReviewSemanticAuditRepository.CandidateRecord(
+            81L, 11L, 101L, "candidate-key", "台词合理性", 1, "VALID", "{}", null, "fingerprint");
+        when(semanticAudits.candidates(50L)).thenReturn(List.of(candidate));
+        when(semanticAudits.decisionCount(50L)).thenReturn(1);
+        when(jdbc.queryForList(startsWith("select status, run_id"), eq(50L))).thenReturn(List.of(Map.of(
+            "status", "RUNNING", "run_id", 150L, "input_hash", ReviewContentService.hash("candidate-key"),
+            "coverage_json", "{\"candidateCount\":1}")));
+        when(runner.runFormal(eq(aggregationPlan), any())).thenReturn(new WorkflowAgentRunResult(200L, "saved"));
+        when(tasks.selectById(7L)).thenReturn(committed(200L));
+
+        ReviewDeepAgentCoordinator.Execution result = coordinator.execute(task, execution(), 9L);
+
+        assertThat(result.aggregationRunId()).isEqualTo(200L);
+        verify(runner, never()).runFormal(eq(semanticPlan), any());
+        verify(jdbc).update(startsWith("update review_pipeline_stage"), eq(1), eq(1), eq(50L));
+        verify(workflowRuns).reconcileCommitted(150L,
+            "{\"saved\":true,\"complete\":true,\"decisionCount\":1}");
+    }
+
+    @Test
+    void keepsLegacyDeepFanoutEnabledWhenDimensionalRolloutIsOff() {
+        ReviewDeepAgentCoordinator legacy = new ReviewDeepAgentCoordinator(plans, runner, content, planner, fanout,
+            tasks, versions, semanticAudits, workflowRuns, jdbc, new ObjectMapper(),
+            new ReviewWorkflowFeatureFlags(false, false, false, false), true, 100, 10, 2);
+
+        assertThat(legacy.enabled()).isTrue();
     }
 
     private WorkflowAgentExecutionPlan plan(long revision) {

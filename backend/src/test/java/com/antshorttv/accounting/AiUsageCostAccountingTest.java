@@ -185,6 +185,17 @@ class AiUsageCostAccountingTest {
     }
 
     @Test
+    void preservesKnownCacheMetricWithoutInventingUnknownOrdinaryInput() {
+        List<AiUsageCommand> tokens = usageExtractor.providerTokens(
+            context(1013L, 110L), 100, 5, 80, null, CONTACTED_AT);
+
+        assertThat(tokens).extracting(AiUsageCommand::metric)
+            .containsExactly(AiUsageMetric.CACHED_INPUT_TOKEN, AiUsageMetric.OUTPUT_TOKEN);
+        assertThat(tokens).extracting(AiUsageCommand::quantity)
+            .containsExactly(new BigDecimal("80"), new BigDecimal("5"));
+    }
+
+    @Test
     void pricesImagesAndVideoSecondsUsingMatchingDimensions() {
         Long imageVersion = priceVersion(102L);
         priceComponent(imageVersion, AiUsageMetric.CALL, "1", "0.01000000", Map.of());

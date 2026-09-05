@@ -34,13 +34,17 @@ public class AiUsageExtractor {
             if ((long) cached + cacheWrite > inputTokens) {
                 throw new IllegalArgumentException("cache token details cannot exceed inputTokens");
             }
-            usage.add(provider(
-                context,
-                AiUsageMetric.INPUT_TOKEN,
-                BigDecimal.valueOf(inputTokens - cached - cacheWrite),
-                Map.of(),
-                observedAt
-            ));
+            boolean noCacheDetail = cachedInputTokens == null && cacheWriteTokens == null;
+            boolean completeCacheDetail = cachedInputTokens != null && cacheWriteTokens != null;
+            if (noCacheDetail || completeCacheDetail) {
+                usage.add(provider(
+                    context,
+                    AiUsageMetric.INPUT_TOKEN,
+                    BigDecimal.valueOf(inputTokens - cached - cacheWrite),
+                    Map.of(),
+                    observedAt
+                ));
+            }
             if (cachedInputTokens != null) {
                 usage.add(provider(
                     context, AiUsageMetric.CACHED_INPUT_TOKEN, BigDecimal.valueOf(cached), Map.of(), observedAt

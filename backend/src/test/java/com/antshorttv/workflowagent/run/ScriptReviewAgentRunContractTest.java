@@ -34,7 +34,14 @@ class ScriptReviewAgentRunContractTest {
         assertThat(quality.requiredToolSequence()).containsExactly(
             "read_review_context", "read_review_candidates", "read_review_content",
             "save_review_semantic_decisions");
-        assertReviewReadsBeforeSave(quality, "read_review_content", "read_review_candidates");
+        WorkflowToolRunState state = new WorkflowToolRunState();
+        state.recordSuccess("read_review_context");
+        state.recordSuccess("read_review_content");
+        state.recordSuccess("read_review_candidates");
+        quality.requireNext(state, quality.terminalToolCode());
+        state.recordSuccess(quality.terminalToolCode());
+        quality.requireNext(state, quality.terminalToolCode());
+        quality.requireComplete(state);
     }
 
     private void assertReviewReadsBeforeSave(

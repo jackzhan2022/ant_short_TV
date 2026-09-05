@@ -115,6 +115,26 @@ public class ReviewSemanticAuditRepository {
             draft.severityDecision(), stringify(draft.evidenceRefs()), draft.duplicateClusterKey());
     }
 
+    public void saveDecisionIdempotent(DecisionDraft draft) {
+        try {
+            saveDecision(draft);
+        } catch (DuplicateKeyException duplicate) {
+            DecisionRecord existing = decisions(draft.snapshotId()).stream()
+                .filter(decision -> decision.candidateId() == draft.candidateId())
+                .findFirst().orElseThrow(() -> duplicate);
+            String expectedDecision = draft.decision().trim().toUpperCase();
+            String expectedEvidence = stringify(draft.evidenceRefs());
+            if (!expectedDecision.equals(existing.decision())
+                || draft.confidence().compareTo(existing.confidence()) != 0
+                || !draft.rationale().trim().equals(existing.rationale())
+                || !java.util.Objects.equals(draft.severityDecision(), existing.severityDecision())
+                || !expectedEvidence.equals(existing.evidenceRefsJson())
+                || !java.util.Objects.equals(draft.duplicateClusterKey(), existing.duplicateClusterKey())) {
+                throw invalid("同一候选已存在不同的语义裁决，不能覆盖。");
+            }
+        }
+    }
+
     public void validateDecision(DecisionDraft draft) {
         String decision = draft.decision() == null ? "" : draft.decision().trim().toUpperCase();
         if (!DECISIONS.contains(decision)) throw invalid("语义质检裁决状态无效。");

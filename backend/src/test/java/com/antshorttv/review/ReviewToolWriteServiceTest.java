@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest(properties = {
     "review.workflow.features.semantic-review=true",
@@ -119,8 +120,7 @@ class ReviewToolWriteServiceTest {
     @Test
     void semanticQualityReadsFrozenCandidatesAndAtomicallySavesOneDecisionEach() throws Exception {
         writes.saveUnitResult(childContext(), unitPayload("顾言：再见"));
-        long qualityRunId = insertRun("REVIEW_SEMANTIC_QUALITY");
-        ToolExecutionContext quality = qualityContext(qualityRunId);
+        ToolExecutionContext quality = qualityContext(insertRun("REVIEW_SEMANTIC_QUALITY"));
 
         JsonNode candidates = writes.readCandidates(
             quality, json.readTree("{\"page\":1,\"pageSize\":50}"));
@@ -152,6 +152,39 @@ class ReviewToolWriteServiceTest {
             .isEqualTo("CONFIRMED");
         assertThat(auditedCandidate.path("semanticDecision").path("rationale").asText())
             .isEqualTo("证据直接支持且无合理替代解释");
+    }
+
+    @Test
+    void savesSemanticDecisionsInIdempotentBatchesAndCompletesOnlyFinalBatch() throws Exception {
+        var rawCandidates = json.createArrayNode();
+        rawCandidates.addObject().put("dimension", "台词合理性").put("title", "候选A");
+        rawCandidates.addObject().put("dimension", "台词合理性").put("title", "候选B");
+        semanticAudits.appendCandidates(new ReviewSemanticAuditRepository.CandidateBatch(
+            98700L, 98701L, 98703L, 98704L, unitId, childRunId, ReviewContentService.hash(script)), rawCandidates);
+        List<ReviewSemanticAuditRepository.CandidateRecord> candidates = semanticAudits.candidates(98704L);
+        ToolExecutionContext firstRun = qualityContext(insertRun("REVIEW_SEMANTIC_QUALITY"));
+        String template = """
+            {"versionHash":"%s","scopeHash":"%s","dimensionsHash":"%s","finalBatch":%s,
+             "decisions":[{"candidateId":%d,"decision":"CONFIRMED","confidence":0.9,
+             "rationale":"证据充分","evidenceRefs":["episode:1/scene:1-1/offset:4"]}]}
+            """;
+        JsonNode firstPayload = json.readTree(template.formatted(frozen.versionHash(), frozen.scopeHash(),
+            frozen.dimensionsHash(), false, candidates.get(0).id()));
+        JsonNode first = writes.saveSemanticDecisions(firstRun, firstPayload);
+
+        ToolExecutionContext resumedRun = qualityContext(insertRun("REVIEW_SEMANTIC_QUALITY"));
+        JsonNode resumedCandidates = writes.readCandidates(
+            resumedRun, json.readTree("{\"page\":1,\"pageSize\":50}"));
+        JsonNode retry = writes.saveSemanticDecisions(resumedRun, firstPayload);
+        JsonNode second = writes.saveSemanticDecisions(resumedRun, json.readTree(template.formatted(
+            frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash(), true, candidates.get(1).id())));
+
+        assertThat(first.path("complete").asBoolean()).isFalse();
+        assertThat(retry.path("decisionCount").asInt()).isOne();
+        assertThat(resumedCandidates.path("candidates").get(0).path("semanticDecision")
+            .path("decision").asText()).isEqualTo("CONFIRMED");
+        assertThat(second.path("complete").asBoolean()).isTrue();
+        assertThat(second.path("decisionCount").asInt()).isEqualTo(2);
     }
 
     @Test
@@ -247,6 +280,28 @@ class ReviewToolWriteServiceTest {
             .hasMessageContaining("零问题异常复核");
         assertThat(jdbc.queryForObject(
             "select count(*) from review_semantic_decision", Integer.class)).isZero();
+    }
+
+    @Test
+    void zeroCandidateReportDoesNotRequireAnomalyReviewWhenGateIsDisabled() throws Exception {
+        ReviewWorkflowFeatureFlags original = new ReviewWorkflowFeatureFlags(true, true, true, true);
+        try {
+            ReflectionTestUtils.setField(writes, "featureFlags",
+                new ReviewWorkflowFeatureFlags(true, true, true, false));
+            writes.saveUnitResult(childContext(), emptyUnitPayload());
+            ToolExecutionContext quality = qualityContext(insertRun("REVIEW_SEMANTIC_QUALITY"));
+            writes.readCandidates(quality, json.readTree("{\"page\":1,\"pageSize\":50}"));
+            reads.readContent(quality, json.createObjectNode().put("offset", 0).put("limit", 50000));
+            writes.saveSemanticDecisions(quality, json.readTree("""
+                {"versionHash":"%s","scopeHash":"%s","dimensionsHash":"%s","decisions":[]}
+                """.formatted(frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash())));
+
+            JsonNode saved = writes.saveResult(aggregationContext(), emptyFormalPayload());
+
+            assertThat(saved.path("saved").asBoolean()).isTrue();
+        } finally {
+            ReflectionTestUtils.setField(writes, "featureFlags", original);
+        }
     }
 
     @Test

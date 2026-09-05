@@ -25,6 +25,13 @@ public class WorkflowAgentProperties {
     @Min(1)
     private long runTimeoutSeconds = 300L;
 
+    @Min(20)
+    @Max(200)
+    private int reviewSemanticMaxSteps = 96;
+
+    @Min(300)
+    private long reviewSemanticRunTimeoutSeconds = 1800L;
+
     @Min(1024)
     private long maxLogPayloadBytes = 262_144L;
 
@@ -84,6 +91,11 @@ public class WorkflowAgentProperties {
     public void setRunTimeoutSeconds(long runTimeoutSeconds) {
         this.runTimeoutSeconds = runTimeoutSeconds;
     }
+
+    public int getReviewSemanticMaxSteps() { return reviewSemanticMaxSteps; }
+    public void setReviewSemanticMaxSteps(int value) { this.reviewSemanticMaxSteps = value; }
+    public long getReviewSemanticRunTimeoutSeconds() { return reviewSemanticRunTimeoutSeconds; }
+    public void setReviewSemanticRunTimeoutSeconds(long value) { this.reviewSemanticRunTimeoutSeconds = value; }
 
     public long getMaxLogPayloadBytes() {
         return maxLogPayloadBytes;

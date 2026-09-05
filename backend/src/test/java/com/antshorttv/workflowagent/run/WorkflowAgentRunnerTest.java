@@ -976,6 +976,63 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void semanticSaveContinuesAcrossBatchesAndTerminatesOnlyOnCompleteOutput() throws Exception {
+        AtomicInteger batches = new AtomicInteger();
+        AtomicInteger modelCalls = new AtomicInteger();
+        AtomicInteger candidatePages = new AtomicInteger();
+        WorkflowToolDefinition context = reviewTool("read_review_context", executorReturning("{}"));
+        WorkflowToolDefinition candidates = reviewTool("read_review_candidates", new WorkflowToolExecutor() {
+            @Override public JsonNode execute(
+                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext, JsonNode arguments) {
+                candidatePages.incrementAndGet();
+                return json.createObjectNode().put("hasMore", arguments.path("page").asInt() < 13);
+            }
+        });
+        WorkflowToolDefinition content = reviewTool("read_review_content", executorReturning("{}"));
+        WorkflowToolDefinition save = reviewTool("save_review_semantic_decisions", new WorkflowToolExecutor() {
+            @Override public JsonNode execute(
+                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext, JsonNode arguments) {
+                int batch = batches.incrementAndGet();
+                return json.createObjectNode().put("saved", true).put("decisionCount", batch)
+                    .put("complete", batch == 13);
+            }
+        });
+        runner = runnerWith(List.of(context, candidates, content, save), 30);
+        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
+            6L, "script-review", "剧本审核", "", "执行审核", 8L,
+            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
+                "read_review_context", "read_review_candidates", "read_review_content",
+                "save_review_semantic_decisions")));
+        when(invocation.invokeText(any())).thenAnswer(ignored -> {
+            int call = modelCalls.incrementAndGet();
+            if (call == 1) {
+                return result(null, List.of(
+                    new AiToolCall("context", "read_review_context", "{}"),
+                    new AiToolCall("content", "read_review_content", "{}")), 614L);
+            }
+            int page = call - 1;
+            return result(null, List.of(
+                new AiToolCall("candidates-" + page, "read_review_candidates",
+                    "{\"page\":" + page + ",\"pageSize\":100}"),
+                new AiToolCall("batch-" + page, "save_review_semantic_decisions", "{}")), 614L + call);
+        });
+
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
+            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
+            null, null, null, null,
+            new ReviewToolScope(25L, 77L, 88L, null, 1, "DEEP_SEMANTIC", List.of("台词合理性"))));
+
+        assertThat(batches).hasValue(13);
+        assertThat(candidatePages).hasValue(13);
+        assertThat(result.output()).contains("\"complete\":true");
+        verify(invocation, org.mockito.Mockito.times(14)).invokeText(any());
+        var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
+        verify(runs).start(start.capture());
+        assertThat(start.getValue().maxSteps()).isEqualTo(96);
+    }
+
+    @Test
     void storyboardStopsAfterSecondDeterministicSaveFailure() throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",

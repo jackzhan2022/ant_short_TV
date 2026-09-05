@@ -7,7 +7,7 @@ description: Use when independently validating frozen script-review candidates b
 
 ## 执行边界
 
-先读取冻结审核上下文、全部候选和冻结原文。逐条裁决所有候选，只调用一次 `save_review_semantic_decisions`；不得读取或参考历史审核问题，不得修改候选、剧本或保存正式报告。
+先读取冻结审核上下文、全部候选和冻结原文。逐条裁决所有尚无 `semanticDecision` 的候选，已有裁决表示前次运行已可靠落库，不得覆盖；候选较多时按读取分页顺序分批调用 `save_review_semantic_decisions`，每批最多 100 条，仅覆盖全部候选的最后一批设置 `finalBatch=true`，此前均设置为 `false`。不得读取或参考历史审核问题，不得修改候选、剧本或保存正式报告。
 
 ## 强制检验
 
@@ -22,4 +22,4 @@ description: Use when independently validating frozen script-review candidates b
 
 每条裁决都要给出置信度、简洁理由、可信证据引用和校准后的严重度；重复项提供稳定的重复聚类键。不得删除或覆盖原始候选。
 
-候选为零或当前运行覆盖异常时，必须提交 `anomalyReview`，明确是否通过并引用本次覆盖与当前原文证据；不能仅凭空候选判定无问题，也不得使用历史问题数量判断异常。
+仅当本次运行指令明确启用“零问题异常闸门”时，候选为零或当前运行覆盖异常才必须提交 `anomalyReview`，明确是否通过并引用本次覆盖与当前原文证据；未启用时不要自行强制该闸门。不能仅凭空候选判定无问题，也不得使用历史问题数量判断异常。

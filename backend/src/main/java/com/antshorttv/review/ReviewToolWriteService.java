@@ -181,6 +181,9 @@ public class ReviewToolWriteService {
         List<ReviewSemanticAuditRepository.CandidateRecord> all = semanticAudits.candidates(scope.snapshotId());
         int from = Math.min((page - 1) * size, all.size());
         int to = Math.min(from + size, all.size());
+        Map<Long, ReviewSemanticAuditRepository.DecisionRecord> existingDecisions =
+            semanticAudits.decisions(scope.snapshotId()).stream().collect(java.util.stream.Collectors.toMap(
+                ReviewSemanticAuditRepository.DecisionRecord::candidateId, decision -> decision));
         ArrayNode output = json.createArrayNode();
         for (int index = from; index < to; index++) {
             ReviewSemanticAuditRepository.CandidateRecord candidate = all.get(index);
@@ -197,6 +200,8 @@ public class ReviewToolWriteService {
             if (candidate.validationErrorsJson() != null) {
                 item.set("validationErrors", parse(candidate.validationErrorsJson()));
             }
+            ReviewSemanticAuditRepository.DecisionRecord existing = existingDecisions.get(candidate.id());
+            if (existing != null) item.set("semanticDecision", semanticDecisionJson(existing));
         }
         ObjectNode result = json.createObjectNode();
         result.set("candidates", output);
@@ -214,15 +219,13 @@ public class ReviewToolWriteService {
         }
         verifyHashes(state, arguments);
         JsonNode decisions = arguments.path("decisions");
-        if (!decisions.isArray() || decisions.size() > 500) throw invalid("语义质检裁决列表格式或数量无效。");
+        if (!decisions.isArray() || decisions.size() > 100) throw invalid("语义质检裁决列表格式或数量无效。");
+        boolean finalBatch = !arguments.has("finalBatch") || arguments.path("finalBatch").asBoolean(false);
         List<ReviewSemanticAuditRepository.CandidateRecord> candidates = semanticAudits.candidates(scope.snapshotId());
-        if (semanticAudits.decisionCount(scope.snapshotId()) > 0) {
-            throw invalid("当前冻结快照已保存语义裁决，不能重复覆盖。");
-        }
         Map<Long, ReviewSemanticAuditRepository.CandidateRecord> byId = candidates.stream()
             .collect(java.util.stream.Collectors.toMap(ReviewSemanticAuditRepository.CandidateRecord::id,
                 candidate -> candidate));
-        boolean anomalyRequired = featureFlags.anomalyGate() && candidates.isEmpty();
+        boolean anomalyRequired = featureFlags.anomalyGate() && candidates.isEmpty() && finalBatch;
         JsonNode anomalyReview = arguments.path("anomalyReview");
         if (anomalyRequired) requireAnomalyReview(anomalyReview);
         Set<Long> submitted = new LinkedHashSet<>();
@@ -241,17 +244,23 @@ public class ReviewToolWriteService {
                 optionalText(decision, "duplicateClusterKey")
             ));
         }
-        if (!submitted.equals(byId.keySet())) throw invalid("每个冻结候选都必须获得一次终态语义裁决。");
         validated.forEach(semanticAudits::validateDecision);
-        validated.forEach(semanticAudits::saveDecision);
-        ObjectNode coverage = json.createObjectNode();
-        coverage.put("candidateCount", candidates.size());
-        coverage.put("anomalyRequired", anomalyRequired);
-        if (anomalyReview.isObject()) coverage.set("anomalyReview", anomalyReview.deepCopy());
-        semanticAudits.recordQualityCoverage(scope.snapshotId(), context.agentRunId(), coverage);
+        validated.forEach(semanticAudits::saveDecisionIdempotent);
+        int totalDecisions = semanticAudits.decisionCount(scope.snapshotId());
+        if (finalBatch) {
+            if (totalDecisions != candidates.size()) {
+                throw invalid("最终批次提交后，每个冻结候选都必须获得一次终态语义裁决。");
+            }
+            ObjectNode coverage = json.createObjectNode();
+            coverage.put("candidateCount", candidates.size());
+            coverage.put("anomalyRequired", anomalyRequired);
+            if (anomalyReview.isObject()) coverage.set("anomalyReview", anomalyReview.deepCopy());
+            semanticAudits.recordQualityCoverage(scope.snapshotId(), context.agentRunId(), coverage);
+        }
         ObjectNode result = json.createObjectNode();
         result.put("saved", true);
-        result.put("decisionCount", submitted.size());
+        result.put("decisionCount", totalDecisions);
+        result.put("complete", finalBatch);
         return result;
     }
 
@@ -557,8 +566,8 @@ public class ReviewToolWriteService {
         List<ReviewSemanticAuditRepository.DecisionRecord> decisions = semanticAudits.decisions(snapshotId);
         if (decisions.size() != candidates.size()) throw invalid("语义质检尚未覆盖全部候选。");
         JsonNode qualityCoverage = semanticAudits.qualityCoverage(snapshotId);
-        boolean anomalyRequired = candidates.isEmpty()
-            || qualityCoverage != null && qualityCoverage.path("anomalyRequired").asBoolean(false);
+        boolean anomalyRequired = featureFlags.anomalyGate() && (candidates.isEmpty()
+            || qualityCoverage != null && qualityCoverage.path("anomalyRequired").asBoolean(false));
         if (anomalyRequired && (qualityCoverage == null
             || !qualityCoverage.path("anomalyReview").path("passed").asBoolean(false))) {
             throw invalid("零问题异常复核未通过，不能完成正式报告。");

@@ -111,7 +111,8 @@ public record WorkflowAgentRunContract(
         }
         if (isTerminal(toolCode)) {
             List<String> requiredReads = sequence.subList(0, sequence.size() - 1);
-            if (completed.contains(toolCode) || !completed.containsAll(requiredReads)) {
+            boolean repeatableSemanticBatch = "save_review_semantic_decisions".equals(toolCode);
+            if ((!repeatableSemanticBatch && completed.contains(toolCode)) || !completed.containsAll(requiredReads)) {
                 throw reviewOrderError(sequence);
             }
         }

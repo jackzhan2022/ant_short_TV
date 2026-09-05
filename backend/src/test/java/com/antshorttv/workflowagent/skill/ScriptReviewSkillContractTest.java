@@ -47,7 +47,8 @@ class ScriptReviewSkillContractTest {
             .contains("跨单元", "身份", "时间线", "场景", "道具", "视觉", "情绪", "因果", "悬念", "反转", "伏笔");
         assertThat(skills.detail("script-review-semantic-quality").content())
             .contains("证据支持", "规则适用", "替代解释", "严重度", "建议有效", "重复聚类",
-                "CONFIRMED", "NEEDS_HUMAN_REVIEW", "REJECTED", "INSUFFICIENT_EVIDENCE");
+                "CONFIRMED", "NEEDS_HUMAN_REVIEW", "REJECTED", "INSUFFICIENT_EVIDENCE",
+                "仅当本次运行指令明确启用");
     }
 
     @Test
