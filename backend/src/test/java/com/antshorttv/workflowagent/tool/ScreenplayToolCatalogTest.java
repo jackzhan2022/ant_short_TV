@@ -69,6 +69,17 @@ class ScreenplayToolCatalogTest {
         assertThat(fullScript.outputSchema().path("properties").path("episodes")
             .path("items").path("required"))
             .extracting(node -> node.asText()).contains("episodeId", "episodeNo", "content");
+        WorkflowToolDefinition adjacentEpisodes = registry.require("read_adjacent_episodes");
+        JsonNode adjacentEpisode = adjacentEpisodes.outputSchema().path("properties").path("previous");
+        assertThat(adjacentEpisode.path("required"))
+            .extracting(JsonNode::asText)
+            .contains("episodeId", "episodeNo", "openingExcerpt", "endingExcerpt", "contentTruncated");
+        assertThat(adjacentEpisode.path("properties").path("openingExcerpt").path("type").asText())
+            .isEqualTo("string");
+        assertThat(adjacentEpisode.path("properties").path("endingExcerpt").path("type").asText())
+            .isEqualTo("string");
+        assertThat(adjacentEpisode.path("properties").path("contentTruncated").path("type").asText())
+            .isEqualTo("boolean");
         WorkflowToolDefinition structure = registry.require("read_script_structure");
         assertThat(structure.inputSchema().path("properties")).isEmpty();
         assertThat(structure.outputSchema().path("required"))

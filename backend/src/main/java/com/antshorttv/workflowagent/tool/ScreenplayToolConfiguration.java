@@ -569,13 +569,21 @@ public class ScreenplayToolConfiguration {
         ObjectNode schema = objectSchema(json);
         ObjectNode fields = (ObjectNode) schema.path("properties");
         ObjectNode episode = objectSchema(json);
-        episode.putArray("required").add("episodeId").add("episodeNo");
+        episode.putArray("required")
+            .add("episodeId")
+            .add("episodeNo")
+            .add("openingExcerpt")
+            .add("endingExcerpt")
+            .add("contentTruncated");
         ObjectNode episodeFields = (ObjectNode) episode.path("properties");
         episodeFields.putObject("episodeId").put("type", "integer");
         episodeFields.putObject("episodeNo").put("type", "integer");
         for (String field : new String[]{"title", "summary", "status", "endingSummary", "openingSummary"}) {
             episodeFields.set(field, nullableType(json, "string"));
         }
+        episodeFields.putObject("openingExcerpt").put("type", "string");
+        episodeFields.putObject("endingExcerpt").put("type", "string");
+        episodeFields.putObject("contentTruncated").put("type", "boolean");
         episode.set("type", json.createArrayNode().add("object").add("null"));
         fields.set("previous", episode);
         fields.set("next", episode.deepCopy());
