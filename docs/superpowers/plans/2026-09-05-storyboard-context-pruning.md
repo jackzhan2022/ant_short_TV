@@ -323,14 +323,16 @@ git add openspec/changes/add-storyboard-workflow-agent/specs/storyboard-workflow
 git commit -m "docs(openspec): specify storyboard context pruning"
 ```
 
-- [ ] **Step 6: Deploy using the existing runbook**
+- [x] **Step 6: Deploy using the existing runbook**
 
 Follow `docs/antv-deployment-runbook.md`: build the backend artifact, create a timestamped release under `/opt/antv/releases`, preserve the previous release as the rollback target, back up the database and workflow skills, switch `/opt/antv/current`, restart `antv.service`, and verify the service, homepage, feature flag, and Flyway state.
 
-- [ ] **Step 7: Perform production acceptance on project 26**
+- [x] **Step 7: Perform production acceptance on project 26**
 
 Generate the selected episode's storyboards once. Verify the run succeeds with one planning call, valid source coverage, material bindings, usage settlement, and no correction caused by pruning. Read the structured reduction log and compare planning input size, model duration, and total execution duration with execution 91399 (`~220,000` prepared characters, `107,899 ms` model time, `110 s` total).
 
-- [ ] **Step 8: Record final production evidence**
+- [x] **Step 8: Record final production evidence**
 
 Update Task 10 with the release ID, rollback target, reduced character count, model call count, model duration, total duration, storyboard count, and settlement result. Run strict OpenSpec validation again, commit the evidence, and push `master`.
+
+Production acceptance completed on release `202609051124-8007ee8`. Project 26 execution `94278` / Run `477` reduced 240,260 prepared characters to 14,123, made one 37,236 ms model call, completed in 39 seconds, atomically saved four `BOUND` storyboards with contiguous `S0003`–`S0042` coverage and three internal shots each, and settled 10 points. The known-good rollback target is `202609050453-2f8710c`.
