@@ -105,7 +105,7 @@ git commit -m "feat(storyboard): bound adjacent episode context"
 - Create: `backend/src/test/java/com/antshorttv/workflowagent/run/StoryboardContextReducerTest.java`
 - Create: `backend/src/main/java/com/antshorttv/workflowagent/run/StoryboardContextReducer.java`
 
-- [ ] **Step 1: Write failing projection tests**
+- [x] **Step 1: Write failing projection tests**
 
 Create tests around this public contract:
 
@@ -130,7 +130,7 @@ Fixtures must include:
 
 Assert that only the selected episode summary remains, relevant assets retain `assetKey` and `variantKey`, nonmatching assets are absent when matches exist, and current content/source segments are structurally equal to the input. Do not require the verbose input `assetCatalog` to remain structurally equal because it is intentionally projected.
 
-- [ ] **Step 2: Run projection tests and verify RED**
+- [x] **Step 2: Run projection tests and verify RED**
 
 Run:
 
@@ -141,7 +141,7 @@ mvn -q -Dtest=StoryboardContextReducerTest test
 
 Expected: test compilation FAILS because `StoryboardContextReducer` does not exist.
 
-- [ ] **Step 3: Implement the projection and relevance rules**
+- [x] **Step 3: Implement the projection and relevance rules**
 
 Create the component with a pure reduction result:
 
@@ -181,15 +181,15 @@ public final class StoryboardContextReducer {
 
 The implementation must parse textual `normalized_json` defensively, recursively reject full-text keys (`content`, `script`, `screenplay`, `raw_response`, `rawResponse`), choose the entry whose `episodeNo` equals the current episode number, and keep an identity-only asset fallback when name/alias matching finds no entries.
 
-- [ ] **Step 4: Add failing malformed-data and budget-priority tests**
+- [x] **Step 4: Add failing malformed-data and budget-priority tests**
 
 Assert malformed normalized JSON is omitted without an exception. Construct optional sections over 30,000 characters and assert the reducer removes optional data before touching the complete current episode. Construct a required current episode over 30,000 characters and assert it remains complete while all optional sections are dropped.
 
-- [ ] **Step 5: Implement safe degradation and budget enforcement**
+- [x] **Step 5: Implement safe degradation and budget enforcement**
 
 Implement optional-section assembly in priority order. Measure the serialized result after each optional addition; if the budget would be exceeded, remove or compact that optional section. Never mutate the input tree, never shorten `read_current_episode.content`, and never change `sourceSegments`.
 
-- [ ] **Step 6: Run reducer tests and verify GREEN**
+- [x] **Step 6: Run reducer tests and verify GREEN**
 
 Run:
 
@@ -200,7 +200,7 @@ mvn -q -Dtest=StoryboardContextReducerTest test
 
 Expected: all reducer tests PASS with no test errors.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```powershell
 git add backend/src/main/java/com/antshorttv/workflowagent/run/StoryboardContextReducer.java backend/src/test/java/com/antshorttv/workflowagent/run/StoryboardContextReducerTest.java
