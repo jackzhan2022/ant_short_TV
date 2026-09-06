@@ -166,9 +166,9 @@ public class WorkflowAgentRunner {
         List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
         String prompt = composePrompt(agent, skillSnapshots);
         Long effectiveModelId = input.modelIdOverride() == null ? agent.modelId() : input.modelIdOverride();
-        boolean semanticReview = input.reviewScope() != null
-            && "DEEP_SEMANTIC".equals(input.reviewScope().phase());
-        int effectiveMaxSteps = semanticReview
+        boolean deepReview = input.reviewScope() != null
+            && isDeepReviewPhase(input.reviewScope().phase());
+        int effectiveMaxSteps = deepReview
             ? Math.max(agent.maxSteps(), properties.getReviewSemanticMaxSteps()) : agent.maxSteps();
         if (input.modelIdOverride() != null) {
             agents.requireToolCallingModel(effectiveModelId);
@@ -179,7 +179,7 @@ public class WorkflowAgentRunner {
             agent.temperature(), agent.maxTokens(), effectiveMaxSteps, prompt, skillSnapshots,
             agent.toolCodes()
         ));
-        long timeoutSeconds = semanticReview
+        long timeoutSeconds = deepReview
             ? Math.max(properties.getRunTimeoutSeconds(), properties.getReviewSemanticRunTimeoutSeconds())
             : properties.getRunTimeoutSeconds();
         Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
@@ -196,6 +196,12 @@ public class WorkflowAgentRunner {
             throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
                 "Agent 运行失败：" + safeMessage(exception));
         }
+    }
+
+    private boolean isDeepReviewPhase(String phase) {
+        return "DEEP_CHILD".equals(phase)
+            || "DEEP_AGGREGATION".equals(phase)
+            || "DEEP_SEMANTIC".equals(phase);
     }
 
     private WorkflowAgentRunResult runLoop(
