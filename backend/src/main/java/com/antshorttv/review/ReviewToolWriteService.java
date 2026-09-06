@@ -286,19 +286,20 @@ public class ReviewToolWriteService {
         int score = arguments.path("score").asInt(-1);
         if (score < 0 || score > 100) throw invalid("审核评分必须在 0 到 100 之间。");
         requireText(arguments, "conclusion", "审核结论");
-        validateIssues(arguments.path("issues"), state, state.frozen().content(), null, 500);
+        ObjectNode formal = arguments.deepCopy();
+        normalizeFormalEvidence(formal.path("issues"));
+        validateIssues(formal.path("issues"), state, state.frozen().content(), null, 500);
         if ("QUICK".equals(scope.phase())) {
             requireFullyRead(context, ReviewContentService.hash(state.frozen().content()), state.frozen().content().length());
         }
 
         clearCurrentTaskSnapshot(state.task().getId());
         int index = 1;
-        for (JsonNode draft : arguments.path("issues")) {
+        for (JsonNode draft : formal.path("issues")) {
             ReviewIssueEntity issue = persistIssue(state, draft, index++, "new", null);
             persistHits(state.task(), issue, draft.path("hits"));
             persistEvent(state.task(), issue, null, issue.getStatus(), draft);
         }
-        ObjectNode formal = arguments.deepCopy();
         formal.put("overallScore", score);
         formal.put("overallConclusion", arguments.path("conclusion").asText());
         formal.set("selectedDimensions", json.valueToTree(state.dimensions()));
@@ -321,6 +322,16 @@ public class ReviewToolWriteService {
         result.put("saved", true);
         result.put("formalSaved", task.getId());
         return result;
+    }
+
+    private void normalizeFormalEvidence(JsonNode drafts) {
+        if (!drafts.isArray()) return;
+        for (JsonNode draft : drafts) {
+            if (!draft.isObject() || !draft.path("hits").isArray() || draft.path("hits").isEmpty()) continue;
+            ArrayNode evidence = json.createArrayNode();
+            for (JsonNode hit : draft.path("hits")) evidence.add(hit.path("excerpt").asText());
+            ((ObjectNode) draft).set("evidence", evidence);
+        }
     }
 
     private void clearCurrentTaskSnapshot(Long taskId) {

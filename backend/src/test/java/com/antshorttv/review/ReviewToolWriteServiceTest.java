@@ -366,6 +366,21 @@ class ReviewToolWriteServiceTest {
     }
 
     @Test
+    void normalizesFormalEvidenceFromVerifiedHitExcerpts() throws Exception {
+        jdbc.update("update review_task set review_mode = 'QUICK' where id = 98703");
+        JsonNode formal = formalPayload();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) formal.path("issues").get(0))
+            .putArray("evidence").add("顾言突然告别，林夏没有回应。");
+
+        JsonNode result = writes.saveResult(quickContext(insertRun("REVIEW_QUICK")), formal);
+
+        assertThat(result.path("saved").asBoolean()).isTrue();
+        String evidence = jdbc.queryForObject(
+            "select evidence_json from review_issue where task_id = 98703", String.class);
+        assertThat(json.readTree(evidence)).extracting(JsonNode::asText).containsExactly("顾言：再见");
+    }
+
+    @Test
     void replacesStaleFormalIssuesWhenSavingTheSameTaskAgain() throws Exception {
         jdbc.update("insert into review_issue (tenant_id, project_id, task_id, script_version_id, round_no, issue_no, dimension, severity, title, status, manually_resolved, created_at, updated_at) values (98700,98701,98703,98702,1,'R1-01','台词合理性','LOW','过期问题','new',false,now(),now())");
         jdbc.update("update review_task set review_mode = 'QUICK' where id = 98703");
