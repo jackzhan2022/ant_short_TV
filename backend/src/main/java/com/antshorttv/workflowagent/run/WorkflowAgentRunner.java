@@ -569,6 +569,15 @@ public class WorkflowAgentRunner {
                 .map(this::providerTool)
                 .toList();
         }
+        if ("script-review".equals(agentCode) && isAggregationReviewContract(contract)) {
+            List<String> remaining = remainingContractTools(contract, state);
+            if (remaining.isEmpty()) return List.of();
+            String next = remaining.get(0);
+            return allowedTools.stream()
+                .filter(tool -> next.equals(tool.code()))
+                .map(this::providerTool)
+                .toList();
+        }
         if ("script-review".equals(agentCode) && reviewTruncationRecovery) {
             Set<String> activeCodes = new HashSet<>(remainingContractTools(contract, state));
             return allowedTools.stream()
@@ -601,6 +610,11 @@ public class WorkflowAgentRunner {
             .filter(tool -> activeCodes.contains(tool.code()))
             .map(this::providerTool)
             .toList();
+    }
+
+    private boolean isAggregationReviewContract(WorkflowAgentRunContract contract) {
+        return contract.requiredToolSequence().equals(List.of(
+            "read_review_context", "read_review_unit_results", "save_review_result"));
     }
 
     private List<String> remainingContractTools(

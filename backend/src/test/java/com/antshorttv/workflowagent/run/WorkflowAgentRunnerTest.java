@@ -296,6 +296,44 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void aggregationExposesOnlyTheNextRequiredTool() throws Exception {
+        WorkflowToolDefinition context = reviewTool("read_review_context",
+            executorReturning("{\"projectId\":25}"));
+        WorkflowToolDefinition units = reviewTool("read_review_unit_results",
+            executorReturning("{\"units\":[]}"));
+        WorkflowToolDefinition save = reviewTool("save_review_result",
+            executorReturning("{\"saved\":true}"));
+        runner = runnerWith(List.of(context, units, save), 30);
+        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
+            6L, "script-review", "剧本审核", "", "执行审核", 8L,
+            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
+                "read_review_context", "read_review_unit_results", "save_review_result")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("context", "read_review_context", "{}")), 614L))
+            .thenReturn(result(null, List.of(new AiToolCall("units", "read_review_unit_results", "{}")), 615L))
+            .thenReturn(result(null, List.of(new AiToolCall("save", "save_review_result", "{}")), 616L));
+
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
+            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
+            null, null, null, null,
+            new ReviewToolScope(25L, 77L, 88L, null, 1, "DEEP_AGGREGATION", List.of("台词合理性"))));
+
+        assertThat(result.output()).contains("\"saved\":true");
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(0).textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("read_review_context");
+        assertThat(requests.getAllValues().get(1).textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("read_review_unit_results");
+        assertThat(requests.getAllValues().get(2).textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("save_review_result");
+    }
+
+    @Test
     void scriptReviewDisablesThinkingAndRecoversTruncatedEmptyResponse() throws Exception {
         AtomicInteger saves = new AtomicInteger();
         WorkflowToolDefinition context = reviewTool("read_review_context",

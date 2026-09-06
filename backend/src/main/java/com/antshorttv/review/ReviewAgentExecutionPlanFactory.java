@@ -50,7 +50,7 @@ public class ReviewAgentExecutionPlanFactory {
             case "DEEP_SEMANTIC" -> List.of("read_review_context", "read_review_candidates",
                 "read_review_content", "save_review_semantic_decisions");
             case "DEEP_AGGREGATION" -> List.of("read_review_context", "read_review_unit_results",
-                "read_review_content", "save_review_result");
+                "save_review_result");
             default -> throw new IllegalStateException();
         };
         if (!maximum.toolCodes().containsAll(toolCodes)) {

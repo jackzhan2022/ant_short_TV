@@ -64,8 +64,7 @@ public record WorkflowAgentRunContract(
                 "save_review_semantic_decisions"),
                 "save_review_semantic_decisions");
             case "DEEP_AGGREGATION" -> new WorkflowAgentRunContract(List.of(
-                "read_review_context", "read_review_unit_results", "read_review_content",
-                "save_review_result"),
+                "read_review_context", "read_review_unit_results", "save_review_result"),
                 "save_review_result");
             default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未知剧本审核阶段。");
         };

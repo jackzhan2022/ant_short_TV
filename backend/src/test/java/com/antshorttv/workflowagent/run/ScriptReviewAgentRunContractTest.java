@@ -17,15 +17,15 @@ class ScriptReviewAgentRunContractTest {
     }
 
     @Test
-    void childCanOnlyPersistItsCandidateAndAggregationMustReadCandidatesBeforeFormalSave() {
+    void childCanOnlyPersistItsCandidateAndAggregationSavesFromVerifiedCandidates() {
         WorkflowAgentRunContract child = WorkflowAgentRunContract.forReviewPhase("DEEP_CHILD");
         assertThat(child.requiredToolSequence()).containsExactly(
             "read_review_context", "read_review_content", "save_review_unit_result");
         assertReviewReadsBeforeSave(child, "read_review_content");
         WorkflowAgentRunContract aggregation = WorkflowAgentRunContract.forReviewPhase("DEEP_AGGREGATION");
         assertThat(aggregation.requiredToolSequence()).containsExactly(
-            "read_review_context", "read_review_unit_results", "read_review_content", "save_review_result");
-        assertReviewReadsBeforeSave(aggregation, "read_review_unit_results", "read_review_content");
+            "read_review_context", "read_review_unit_results", "save_review_result");
+        assertReviewReadsBeforeSave(aggregation, "read_review_unit_results");
     }
 
     @Test

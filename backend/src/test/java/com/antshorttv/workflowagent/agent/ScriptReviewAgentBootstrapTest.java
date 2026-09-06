@@ -64,7 +64,6 @@ class ScriptReviewAgentBootstrapTest {
         assertThat(aggregation.skillSnapshots()).extracting(skill -> skill.code())
             .endsWith("script-review-cross-episode-synthesis");
         assertThat(aggregation.agent().toolCodes()).containsExactly(
-            "read_review_context", "read_review_unit_results", "read_review_content",
-            "save_review_result");
+            "read_review_context", "read_review_unit_results", "save_review_result");
     }
 }

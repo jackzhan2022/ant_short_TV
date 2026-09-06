@@ -142,7 +142,7 @@ public class WorkflowAgentScopeGuard {
             case "DEEP_SEMANTIC" -> Set.of("read_review_context", "read_review_candidates",
                 "read_review_content", "save_review_semantic_decisions");
             case "DEEP_AGGREGATION" -> Set.of("read_review_context", "read_review_unit_results",
-                "read_review_content", "save_review_result");
+                "save_review_result");
             default -> Set.of();
         };
         if (!allowed.containsAll(toolCodes.stream().filter(REVIEW_TOOLS::contains).toList())) {
