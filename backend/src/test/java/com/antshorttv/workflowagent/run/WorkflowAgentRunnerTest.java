@@ -296,6 +296,38 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void deepChildUsesReviewSemanticTimeoutAndStepBudget() throws Exception {
+        WorkflowToolDefinition context = reviewTool("read_review_context",
+            executorReturning("{\"projectId\":25}"));
+        WorkflowToolDefinition content = reviewTool("read_review_content",
+            executorReturning("{\"content\":\"正文\"}"));
+        WorkflowToolDefinition save = reviewTool("save_review_unit_result",
+            executorReturning("{\"saved\":true}"));
+        runner = runnerWith(List.of(context, content, save), 30);
+        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
+            6L, "script-review", "剧本审核", "", "执行审核", 8L,
+            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
+                "read_review_context", "read_review_content", "save_review_unit_result")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("context", "read_review_context", "{}")), 617L))
+            .thenReturn(result(null, List.of(new AiToolCall("content", "read_review_content", "{}")), 618L))
+            .thenReturn(result(null, List.of(new AiToolCall("save", "save_review_unit_result", "{}")), 619L));
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
+            null, null, null, null,
+            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
+
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(0).textRequest().timeoutSeconds()).isGreaterThan(300);
+        var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
+        verify(runs).start(start.capture());
+        assertThat(start.getValue().maxSteps()).isEqualTo(96);
+    }
+
+    @Test
     void scriptReviewDisablesThinkingAndRecoversTruncatedEmptyResponse() throws Exception {
         AtomicInteger saves = new AtomicInteger();
         WorkflowToolDefinition context = reviewTool("read_review_context",

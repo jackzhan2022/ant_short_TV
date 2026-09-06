@@ -166,16 +166,23 @@ public class WorkflowAgentRunner {
         List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
         String prompt = composePrompt(agent, skillSnapshots);
         Long effectiveModelId = input.modelIdOverride() == null ? agent.modelId() : input.modelIdOverride();
+        boolean deepReview = input.reviewScope() != null
+            && isDeepReviewPhase(input.reviewScope().phase());
+        int effectiveMaxSteps = deepReview
+            ? Math.max(agent.maxSteps(), properties.getReviewSemanticMaxSteps()) : agent.maxSteps();
         if (input.modelIdOverride() != null) {
             agents.requireToolCallingModel(effectiveModelId);
         }
         Long runId = runs.start(new WorkflowAgentRunStart(
             agent.id(), agent.code(), runType, input.tenantId(), input.userId(), input.projectId(),
             input.episodeId(), input.scriptId(), input.taskId(), input.analysisStageId(), effectiveModelId,
-            agent.temperature(), agent.maxTokens(), agent.maxSteps(), prompt, skillSnapshots,
+            agent.temperature(), agent.maxTokens(), effectiveMaxSteps, prompt, skillSnapshots,
             agent.toolCodes()
         ));
-        Instant deadline = Instant.now().plusSeconds(properties.getRunTimeoutSeconds());
+        long timeoutSeconds = deepReview
+            ? Math.max(properties.getRunTimeoutSeconds(), properties.getReviewSemanticRunTimeoutSeconds())
+            : properties.getRunTimeoutSeconds();
+        Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
         try {
             return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline,
                 WorkflowAgentRunContract.forAgent(agent.code(),
@@ -188,6 +195,12 @@ public class WorkflowAgentRunner {
             throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
                 "Agent 运行失败：" + safeMessage(exception));
         }
+    }
+
+    private boolean isDeepReviewPhase(String phase) {
+        return "DEEP_CHILD".equals(phase)
+            || "DEEP_AGGREGATION".equals(phase)
+            || "DEEP_SEMANTIC".equals(phase);
     }
 
     private WorkflowAgentRunResult runLoop(
