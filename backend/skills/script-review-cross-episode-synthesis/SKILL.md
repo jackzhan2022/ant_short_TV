@@ -20,6 +20,8 @@ description: Use when aggregating complete deep-review unit candidates across an
 跨单元结论至少引用两个相关单元的精确引文或 anchor。只有单侧证据时标记不确定，不得制造另一侧事实。
 先用 `read_review_unit_results` 读取全部已完成单元及其语义裁决；需要复核跨单元证据时，使用有界的
 `read_review_content` 读取任一审核范围内正文，汇总阶段不绑定单个发现单元。
+调用 `read_review_unit_results` 时，参数仅允许 page 和 pageSize；humanReviewFindings 是返回数据，
+不得作为工具调用参数。无候选时仍须完成规定读取并调用 `save_review_result` 保存当前轮正式结果。
 
 ## 完成
 

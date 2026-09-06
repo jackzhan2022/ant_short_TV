@@ -34,6 +34,9 @@ class ScriptReviewToolCatalogTest {
         assertThat(registry.require("read_review_issue_history").inputSchema().path("properties").path("pageSize").path("maximum").asInt()).isEqualTo(100);
         assertThat(registry.require("save_review_unit_result").inputSchema().path("properties").path("candidates").path("maxItems").asInt()).isEqualTo(100);
         assertThat(registry.require("read_review_candidates").inputSchema().path("properties").path("pageSize").path("maximum").asInt()).isEqualTo(100);
+        assertThat(registry.require("read_review_unit_results").inputSchema().path("properties")
+            .path("humanReviewFindings").path("description").asText())
+            .contains("ignored");
         var semanticSave = registry.require("save_review_semantic_decisions").inputSchema();
         assertThat(semanticSave.path("properties").path("decisions").path("maxItems").asInt()).isEqualTo(100);
         assertThat(semanticSave.path("required")).anySatisfy(value ->
