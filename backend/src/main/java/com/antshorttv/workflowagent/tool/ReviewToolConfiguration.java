@@ -47,7 +47,7 @@ public class ReviewToolConfiguration {
 
     @Bean WorkflowToolDefinition readReviewUnitResultsTool(ReviewToolDataService data, ObjectMapper json) {
         return definition("read_review_unit_results", "读取审核单元候选", "仅聚合阶段读取完整且未变化的有序单元候选。",
-            unitResultsPagination(json), pageOutput(json, "units"), ToolRiskLevel.READ_ONLY,
+            unitResultsPagination(json), unitResultsOutput(json), ToolRiskLevel.READ_ONLY,
             executor((context, args) -> data.readUnitResults(context, args)));
     }
 
@@ -151,6 +151,13 @@ public class ReviewToolConfiguration {
         ObjectNode schema = pagination(json, 100);
         ((ObjectNode) schema.path("properties")).putObject("humanReviewFindings")
             .put("description", "Legacy model echo field; ignored by the server.");
+        return schema;
+    }
+
+    private ObjectNode unitResultsOutput(ObjectMapper json) {
+        ObjectNode schema = pageOutput(json, "units");
+        ((ObjectNode) schema.path("properties")).putObject("humanReviewFindings")
+            .put("type", "array").put("maxItems", 100).putObject("items").put("type", "object");
         return schema;
     }
 

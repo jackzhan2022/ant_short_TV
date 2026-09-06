@@ -37,6 +37,8 @@ class ScriptReviewToolCatalogTest {
         assertThat(registry.require("read_review_unit_results").inputSchema().path("properties")
             .path("humanReviewFindings").path("description").asText())
             .contains("ignored");
+        assertThat(registry.require("read_review_unit_results").outputSchema().path("properties")
+            .path("humanReviewFindings").path("type").asText()).isEqualTo("array");
         var semanticSave = registry.require("save_review_semantic_decisions").inputSchema();
         assertThat(semanticSave.path("properties").path("decisions").path("maxItems").asInt()).isEqualTo(100);
         assertThat(semanticSave.path("required")).anySatisfy(value ->
