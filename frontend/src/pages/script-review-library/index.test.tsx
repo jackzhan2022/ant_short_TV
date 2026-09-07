@@ -49,28 +49,20 @@ describe('ScriptReviewLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.queryReviewProjects.mockResolvedValue({ data: [
-      { id: 1, name: '待处理剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 2, latestRoundNo: 1 },
-      { id: 2, name: '已完成剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 1, latestRoundNo: 1 },
+      { id: 1, name: '待处理剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 2, latestRoundNo: 1, reviewState: 'ACTION_REQUIRED', outstandingIssueCount: 1, actionLabel: '处理问题' },
+      { id: 2, name: '已完成剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 1, latestRoundNo: 1, reviewState: 'COMPLETED', outstandingIssueCount: 0, actionLabel: '查看报告' },
     ] });
-    mocks.queryReviewProject.mockImplementation((id) => Promise.resolve({
-      data: {
-        project: { id },
-        versions: [],
-        tasks: id === 1
-          ? [{ status: 'COMPLETED', issues: [{ manuallyResolved: false }] }]
-          : [{ status: 'COMPLETED', issues: [] }],
-      },
-    }));
   });
 
-  it('opens an import modal and navigates to the selected project workbench', async () => {
+  it('renders the library from lightweight summaries and navigates to project history', async () => {
     render(<ScriptReviewLibraryPage />);
     expect(await screen.findByText('待处理剧本')).toBeInTheDocument();
     expect(screen.getAllByText('待处理')).not.toHaveLength(0);
+    expect(mocks.queryReviewProject).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '新建剧本' }));
     expect(screen.getByText('新建独立剧本')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '处理问题' }));
-    expect(mocks.push).toHaveBeenCalledWith('/script-review?projectId=1');
+    expect(mocks.push).toHaveBeenCalledWith('/script-review/projects/1/reviews');
   });
 
   it('filters projects from the left review-status navigation', async () => {

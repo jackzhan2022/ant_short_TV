@@ -112,7 +112,38 @@ class InspirationCreationControllerTest {
                 .cookie(sessionCookie))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.valueOf("video/mp4")))
+            .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                result.getResponse().getHeader(HttpHeaders.CACHE_CONTROL)
+            ).contains("private"))
             .andExpect(content().bytes("video".getBytes()));
+    }
+
+    @Test
+    void listReturnsProtectedThumbnailAndThumbnailEndpointStreamsIt() throws Exception {
+        InspirationCreationEntity entity = creation("external-thumbnail", "IMPORTED", 1);
+        entity.setThumbnailPath("inspiration/creations/external-thumbnail/thumbnail.jpg");
+        entity.setThumbnailUrl("/api/inspiration-creations/0/thumbnail");
+        entity.setThumbnailMimeType("image/jpeg");
+        entity.setThumbnailStatus("READY");
+        mapper.insert(entity);
+        entity.setThumbnailUrl("/api/inspiration-creations/%d/thumbnail".formatted(entity.getId()));
+        mapper.updateById(entity);
+        when(objectStorageService.resource("inspiration/creations/external-thumbnail/thumbnail.jpg"))
+            .thenReturn(new ByteArrayResource("thumbnail".getBytes()));
+
+        mockMvc.perform(get("/api/inspiration-creations")
+                .cookie(sessionCookie))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.records[0].thumbnailUrl", is(entity.getThumbnailUrl())));
+
+        mockMvc.perform(get("/api/inspiration-creations/{id}/thumbnail", entity.getId())
+                .cookie(sessionCookie))
+            .andExpect(status().isOk())
+            .andExpect(content().contentType(MediaType.IMAGE_JPEG))
+            .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                result.getResponse().getHeader(HttpHeaders.CACHE_CONTROL)
+            ).contains("private"))
+            .andExpect(content().bytes("thumbnail".getBytes()));
     }
 
     @Test

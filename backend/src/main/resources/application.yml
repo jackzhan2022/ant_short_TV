@@ -62,6 +62,12 @@ object-storage:
   region: ${OBJECT_STORAGE_REGION:}
   auto-create-bucket: ${OBJECT_STORAGE_AUTO_CREATE_BUCKET:true}
 
+inspiration:
+  thumbnail:
+    max-dimension: ${INSPIRATION_THUMBNAIL_MAX_DIMENSION:640}
+    jpeg-quality: ${INSPIRATION_THUMBNAIL_JPEG_QUALITY:0.82}
+    backfill-batch-size: ${INSPIRATION_THUMBNAIL_BACKFILL_BATCH_SIZE:20}
+
 commercial:
   wechat:
     enabled: ${WECHAT_PAY_ENABLED:false}

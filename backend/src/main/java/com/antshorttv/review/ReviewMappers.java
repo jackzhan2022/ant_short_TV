@@ -25,6 +25,14 @@ interface ReviewProjectMapper extends BaseMapper<ReviewProjectEntity> {
 
 @Mapper
 interface ReviewScriptVersionMapper extends BaseMapper<ReviewScriptVersionEntity> {
+    default List<ReviewScriptVersionEntity> selectByProjects(Long tenantId, List<Long> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) return List.of();
+        return selectList(new LambdaQueryWrapper<ReviewScriptVersionEntity>()
+            .eq(ReviewScriptVersionEntity::getTenantId, tenantId)
+            .in(ReviewScriptVersionEntity::getProjectId, projectIds)
+            .isNull(ReviewScriptVersionEntity::getDeletedAt));
+    }
+
     default List<ReviewScriptVersionEntity> selectByProject(Long tenantId, Long projectId) {
         return selectList(new LambdaQueryWrapper<ReviewScriptVersionEntity>()
             .eq(ReviewScriptVersionEntity::getTenantId, tenantId)
@@ -45,6 +53,32 @@ interface ReviewScriptVersionMapper extends BaseMapper<ReviewScriptVersionEntity
 
 @Mapper
 interface ReviewTaskMapper extends BaseMapper<ReviewTaskEntity> {
+    default long countByProject(Long tenantId, Long projectId) {
+        return selectCount(new LambdaQueryWrapper<ReviewTaskEntity>()
+            .eq(ReviewTaskEntity::getTenantId, tenantId)
+            .eq(ReviewTaskEntity::getProjectId, projectId));
+    }
+
+    default List<ReviewTaskEntity> selectHistoryPage(
+        Long tenantId, Long projectId, int offset, int pageSize
+    ) {
+        return selectList(new LambdaQueryWrapper<ReviewTaskEntity>()
+            .eq(ReviewTaskEntity::getTenantId, tenantId)
+            .eq(ReviewTaskEntity::getProjectId, projectId)
+            .orderByDesc(ReviewTaskEntity::getCreatedAt)
+            .orderByDesc(ReviewTaskEntity::getId)
+            .last("limit " + pageSize + " offset " + offset));
+    }
+
+    default List<ReviewTaskEntity> selectByProjects(Long tenantId, List<Long> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) return List.of();
+        return selectList(new LambdaQueryWrapper<ReviewTaskEntity>()
+            .eq(ReviewTaskEntity::getTenantId, tenantId)
+            .in(ReviewTaskEntity::getProjectId, projectIds)
+            .orderByDesc(ReviewTaskEntity::getCreatedAt)
+            .orderByDesc(ReviewTaskEntity::getId));
+    }
+
     default List<ReviewTaskEntity> selectRunnable() {
         return selectList(new LambdaQueryWrapper<ReviewTaskEntity>()
             .eq(ReviewTaskEntity::getStatus, "PENDING")
@@ -70,6 +104,12 @@ interface ReviewTaskMapper extends BaseMapper<ReviewTaskEntity> {
 
 @Mapper
 interface ReviewIssueMapper extends BaseMapper<ReviewIssueEntity> {
+    default List<ReviewIssueEntity> selectByTasks(List<Long> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) return List.of();
+        return selectList(new LambdaQueryWrapper<ReviewIssueEntity>()
+            .in(ReviewIssueEntity::getTaskId, taskIds));
+    }
+
     default List<ReviewIssueEntity> selectByTask(Long taskId) {
         return selectList(new LambdaQueryWrapper<ReviewIssueEntity>()
             .eq(ReviewIssueEntity::getTaskId, taskId)
@@ -86,6 +126,13 @@ interface ReviewIssueMapper extends BaseMapper<ReviewIssueEntity> {
 
 @Mapper
 interface ReviewIssueHitMapper extends BaseMapper<ReviewIssueHitEntity> {
+    default List<ReviewIssueHitEntity> selectByIssues(List<Long> issueIds) {
+        if (issueIds == null || issueIds.isEmpty()) return List.of();
+        return selectList(new LambdaQueryWrapper<ReviewIssueHitEntity>()
+            .in(ReviewIssueHitEntity::getIssueId, issueIds)
+            .orderByAsc(ReviewIssueHitEntity::getHitNo));
+    }
+
     default List<ReviewIssueHitEntity> selectByIssue(Long issueId) {
         return selectList(new LambdaQueryWrapper<ReviewIssueHitEntity>()
             .eq(ReviewIssueHitEntity::getIssueId, issueId)

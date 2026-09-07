@@ -66,6 +66,11 @@ const DIMENSIONS = [
   '伏笔回收',
 ];
 
+const taskIdFromPath = () => {
+  const match = window.location.pathname.match(/^\/script-review\/tasks\/(\d+)$/);
+  return match ? Number(match[1]) : undefined;
+};
+
 const statusColor = (status: string) => {
   if (['COMPLETED', 'fixed'].includes(status)) return 'green';
   if (['FAILED', 'P2', 'P1'].includes(status)) return 'red';
@@ -92,6 +97,7 @@ const formatReviewCacheUsage = (
 
 const ScriptReviewPage = () => {
   const { message, modal } = App.useApp();
+  const taskRouteId = taskIdFromPath();
   const [detail, setDetail] = useState<ReviewProjectDetail>();
   const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>(() => {
     const projectId = Number(
@@ -220,17 +226,54 @@ const ScriptReviewPage = () => {
     }
   };
 
-  useEffect(() => {
-    loadProjects().catch(() => message.error('加载审核项目失败'));
-  }, []);
+  const loadTaskRoute = async (taskId: number) => {
+    setLoading(true);
+    try {
+      const response = await queryReviewTask(taskId);
+      const task = response.data;
+      const version = task?.boundVersion;
+      if (!task || !version) return;
+      setSelectedProjectId(task.projectId);
+      setSelectedTaskId(task.id);
+      setSelectedVersionId(version.id);
+      setTaskDetails({ [task.id]: task });
+      setDetail({
+        project: {
+          id: task.projectId,
+          name: '剧本审核',
+          sourceType: version.sourceType,
+          currentVersionId: version.id,
+          lastTaskId: task.id,
+          status: 'ACTIVE',
+          versionCount: 1,
+          latestRoundNo: task.roundNo,
+        },
+        versions: [version],
+        tasks: [task],
+      });
+      setContent(version.content);
+      setSelectedIssueId(task.issues.find((issue) => !issue.manuallyResolved)?.id ?? task.issues[0]?.id);
+      setIssueFilter('PENDING');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (selectedProjectId) {
+    if (taskRouteId) {
+      loadTaskRoute(taskRouteId).catch(() => message.error('加载审核详情失败'));
+      return;
+    }
+    loadProjects().catch(() => message.error('加载审核项目失败'));
+  }, [taskRouteId]);
+
+  useEffect(() => {
+    if (!taskRouteId && selectedProjectId) {
       loadProject(selectedProjectId).catch(() =>
         message.error('加载剧本审核工作台失败'),
       );
     }
-  }, [selectedProjectId]);
+  }, [selectedProjectId, taskRouteId]);
 
   useEffect(() => {
     if (!selectedTaskId || !selectedTaskSummary) {
@@ -270,6 +313,10 @@ const ScriptReviewPage = () => {
   }, [message, selectedTaskId, selectedTaskSummary, taskDetails]);
 
   const refresh = async () => {
+    if (taskRouteId) {
+      await loadTaskRoute(taskRouteId);
+      return;
+    }
     await loadProjects();
     if (selectedProjectId) await loadProject(selectedProjectId);
   };

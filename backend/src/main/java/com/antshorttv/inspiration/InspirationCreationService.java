@@ -7,7 +7,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.springframework.core.io.Resource;
+import org.springframework.http.CacheControl;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -58,16 +60,44 @@ public class InspirationCreationService {
         return mediaStorage.resource(requireImported(id));
     }
 
+    public Resource thumbnail(Long id) {
+        currentPrincipal.require();
+        return mediaStorage.thumbnailResource(requireReadyThumbnail(id));
+    }
+
     public String contentType(Long id) {
         currentPrincipal.require();
         InspirationCreationEntity entity = requireImported(id);
         return InspirationCreationMediaStorage.contentType(entity.getStoragePath(), entity.getMimeType());
     }
 
+    public String thumbnailContentType(Long id) {
+        currentPrincipal.require();
+        InspirationCreationEntity entity = requireReadyThumbnail(id);
+        return InspirationCreationMediaStorage.contentType(
+            entity.getThumbnailPath(),
+            entity.getThumbnailMimeType()
+        );
+    }
+
+    public CacheControl mediaCacheControl() {
+        return CacheControl.maxAge(1, TimeUnit.DAYS).cachePrivate();
+    }
+
     private InspirationCreationEntity requireImported(Long id) {
         InspirationCreationEntity entity = mapper.selectImportedById(id);
         if (entity == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "灵感案例不存在。");
+        }
+        return entity;
+    }
+
+    private InspirationCreationEntity requireReadyThumbnail(Long id) {
+        InspirationCreationEntity entity = requireImported(id);
+        if (!"READY".equals(entity.getThumbnailStatus())
+            || entity.getThumbnailPath() == null
+            || entity.getThumbnailPath().isBlank()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "灵感缩略图不存在。");
         }
         return entity;
     }

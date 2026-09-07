@@ -235,12 +235,24 @@ export default [
     component: './script-review-library',
   },
   {
+    path: '/script-review/projects/:projectId/reviews',
+    hideInMenu: true,
+    access: 'canViewScriptReview',
+    component: './script-review-history',
+  },
+  {
+    path: '/script-review/tasks/:taskId',
+    hideInMenu: true,
+    access: 'canViewScriptReview',
+    component: './script-review',
+  },
+  {
     path: '/script-review',
     name: 'script-review',
     icon: 'audit',
     hideInMenu: true,
     access: 'canViewScriptReview',
-    component: './script-review',
+    component: './script-review-legacy',
   },
   {
     path: '/projects/:id/production-workbench',

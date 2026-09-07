@@ -13,6 +13,7 @@ record InspirationCreationListResponse(
     String title,
     String authorName,
     String url,
+    String thumbnailUrl,
     String mimeType,
     Long fileSize,
     Integer sortOrder,
@@ -28,11 +29,16 @@ record InspirationCreationListResponse(
             entity.getTitle(),
             entity.getAuthorName(),
             entity.getUrl(),
+            readyThumbnailUrl(entity),
             entity.getMimeType(),
             entity.getFileSize(),
             entity.getSortOrder(),
             entity.getSourceCreatedAt()
         );
+    }
+
+    private static String readyThumbnailUrl(InspirationCreationEntity entity) {
+        return "READY".equals(entity.getThumbnailStatus()) ? entity.getThumbnailUrl() : null;
     }
 }
 
@@ -45,6 +51,7 @@ record InspirationCreationDetailResponse(
     String title,
     String authorName,
     String url,
+    String thumbnailUrl,
     String mimeType,
     Long fileSize,
     Integer sortOrder,
@@ -61,6 +68,7 @@ record InspirationCreationDetailResponse(
             entity.getTitle(),
             entity.getAuthorName(),
             entity.getUrl(),
+            "READY".equals(entity.getThumbnailStatus()) ? entity.getThumbnailUrl() : null,
             entity.getMimeType(),
             entity.getFileSize(),
             entity.getSortOrder(),

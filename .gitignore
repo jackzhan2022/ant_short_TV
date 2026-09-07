@@ -45,6 +45,20 @@ functions/*
 screenshot
 .firebase
 
+# local design previews
+/.superpowers/brainstorm/order-detail-session/
+/.superpowers/brainstorm/sidebar-points-preview/
+/asset-review-drawer-preview.html
+/asset-review-queue-preview.html
+/asset-workbench-reference-preview.html
+/commercial-packages-optimized-preview.html
+/current-asset-workbench.png
+/preview-workbench.png
+/reference-asset-workbench.png
+/reference-workbench.png
+/review-workbench-prototype/
+/script-workbench-layout-preview.html
+
 build
 **/target
 

@@ -13,6 +13,7 @@ export type InspirationCreation = {
   title?: string;
   authorName?: string;
   url: string;
+  thumbnailUrl?: string;
   mimeType?: string;
   sortOrder?: number;
   sourceCreatedAt?: string;

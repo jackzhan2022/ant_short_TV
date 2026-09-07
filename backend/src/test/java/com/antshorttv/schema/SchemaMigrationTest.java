@@ -777,12 +777,14 @@ class SchemaMigrationTest {
                 'external_id', 'external_task_id', 'creation_type', 'task_type',
                 'title', 'author_name', 'url', 'storage_path', 'mime_type',
                 'file_size', 'detail_json', 'source_created_at', 'source_updated_at',
-                'import_status', 'import_error', 'sort_order', 'created_at', 'updated_at'
+                'import_status', 'import_error', 'sort_order', 'created_at', 'updated_at',
+                'thumbnail_path', 'thumbnail_url', 'thumbnail_mime_type', 'thumbnail_file_size',
+                'thumbnail_status', 'thumbnail_error'
               )
             """, Integer.class);
 
         assertThat(tableCount).isEqualTo(1);
-        assertThat(columnCount).isEqualTo(18);
+        assertThat(columnCount).isEqualTo(24);
     }
 
     @Test

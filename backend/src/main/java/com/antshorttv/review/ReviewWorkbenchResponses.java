@@ -17,6 +17,9 @@ record ReviewProjectSummaryResponse(
     String status,
     Integer versionCount,
     Integer latestRoundNo,
+    String reviewState,
+    Integer outstandingIssueCount,
+    String actionLabel,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -26,6 +29,45 @@ record ReviewProjectDetailResponse(
     ReviewProjectSummaryResponse project,
     List<ReviewVersionResponse> versions,
     List<ReviewTaskResponse> tasks
+) {
+}
+
+record ReviewProjectReviewHistoryResponse(
+    ReviewProjectSummaryResponse project,
+    List<ReviewVersionMetadataResponse> versions,
+    List<ReviewHistoryTaskResponse> items,
+    Integer page,
+    Integer pageSize,
+    Long total
+) {
+}
+
+record ReviewVersionMetadataResponse(
+    Long id,
+    Long projectId,
+    Integer versionNo,
+    String sourceType,
+    String fileName,
+    LocalDateTime createdAt
+) {
+}
+
+record ReviewHistoryTaskResponse(
+    Long id,
+    Long scriptVersionId,
+    Integer roundNo,
+    String reviewMode,
+    List<String> selectedDimensions,
+    String reviewScopeType,
+    String status,
+    Integer overallProgress,
+    Integer issueCount,
+    Integer outstandingIssueCount,
+    Long createdBy,
+    LocalDateTime createdAt,
+    LocalDateTime completedAt,
+    LocalDateTime canceledAt,
+    String errorMessage
 ) {
 }
 
@@ -69,7 +111,8 @@ record ReviewTaskResponse(
     LocalDateTime completedAt,
     LocalDateTime canceledAt,
     ReviewReviewSummaryResponse summary,
-    List<ReviewIssueResponse> issues
+    List<ReviewIssueResponse> issues,
+    ReviewVersionResponse boundVersion
 ) {
 }
 

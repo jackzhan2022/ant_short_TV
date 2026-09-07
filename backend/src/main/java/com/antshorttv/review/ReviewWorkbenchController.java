@@ -64,6 +64,17 @@ public class ReviewWorkbenchController {
         return ApiResponse.success(reviewWorkbenchService.detailProject(tenantId(request), projectId));
     }
 
+    @GetMapping("/projects/{projectId}/reviews")
+    public ApiResponse<ReviewProjectReviewHistoryResponse> reviewHistory(
+        @PathVariable Long projectId,
+        @RequestParam(defaultValue = "1") int page,
+        @RequestParam(defaultValue = "20") int pageSize,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(reviewWorkbenchService.reviewHistory(
+            tenantId(request), projectId, page, pageSize));
+    }
+
     @PutMapping("/projects/{projectId}/versions")
     public ApiResponse<ReviewVersionResponse> saveVersion(
         @PathVariable Long projectId,

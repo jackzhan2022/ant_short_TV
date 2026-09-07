@@ -14,6 +14,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ public class InspirationCreationImportService {
     private final InspirationCreationMapper mapper;
     private final InspirationCreationMediaStorage mediaStorage;
     private final ObjectMapper objectMapper;
+    private final InspirationThumbnailProcessor thumbnailProcessor;
     private final HttpClient httpClient = HttpClient.newBuilder()
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build();
@@ -36,11 +39,13 @@ public class InspirationCreationImportService {
     public InspirationCreationImportService(
         InspirationCreationMapper mapper,
         InspirationCreationMediaStorage mediaStorage,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        InspirationThumbnailProcessor thumbnailProcessor
     ) {
         this.mapper = mapper;
         this.mediaStorage = mediaStorage;
         this.objectMapper = objectMapper;
+        this.thumbnailProcessor = thumbnailProcessor;
     }
 
     public List<InspirationCreationEntity> importFrom(InspirationCreationImportRequest request) {
@@ -93,12 +98,47 @@ public class InspirationCreationImportService {
         entity.setStoragePath(transfer.storagePath());
         entity.setMimeType(transfer.mimeType());
         entity.setFileSize(transfer.fileSize());
+        updateThumbnail(entity, transfer);
         entity.setDetailJson(writeJson(sanitize(detail.deepCopy(), localUrl)));
         entity.setImportStatus(InspirationCreationImportStatus.IMPORTED.name());
         entity.setImportError(null);
         entity.setUpdatedAt(now);
         mapper.updateById(entity);
         return entity;
+    }
+
+    private void updateThumbnail(InspirationCreationEntity entity, InspirationCreationMediaTransfer transfer) {
+        try {
+            InspirationThumbnail thumbnail = thumbnail(transfer);
+            String path = InspirationCreationMediaStorage.thumbnailPath(entity.getExternalId());
+            mediaStorage.uploadThumbnail(path, thumbnail);
+            entity.setThumbnailPath(path);
+            entity.setThumbnailUrl(thumbnailUrl(entity.getId()));
+            entity.setThumbnailMimeType(thumbnail.mimeType());
+            entity.setThumbnailFileSize((long) thumbnail.bytes().length);
+            entity.setThumbnailStatus("READY");
+            entity.setThumbnailError(null);
+        } catch (Exception exception) {
+            entity.setThumbnailPath(null);
+            entity.setThumbnailUrl(null);
+            entity.setThumbnailMimeType(null);
+            entity.setThumbnailFileSize(null);
+            entity.setThumbnailStatus("FAILED");
+            entity.setThumbnailError(message(exception));
+        }
+    }
+
+    private InspirationThumbnail thumbnail(InspirationCreationMediaTransfer transfer) throws Exception {
+        if (!transfer.mimeType().startsWith("video/")) {
+            return thumbnailProcessor.fromImage(transfer.bytes(), transfer.mimeType());
+        }
+        Path video = Files.createTempFile("inspiration-thumbnail-", ".mp4");
+        try {
+            Files.write(video, transfer.bytes());
+            return thumbnailProcessor.fromVideo(video);
+        } finally {
+            Files.deleteIfExists(video);
+        }
     }
 
     private InspirationCreationEntity markFailed(JsonNode item, String externalId, int sortOrder, String error) {
@@ -295,6 +335,10 @@ public class InspirationCreationImportService {
 
     private String localUrl(Long id) {
         return "/api/inspiration-creations/%d/file".formatted(id);
+    }
+
+    private String thumbnailUrl(Long id) {
+        return "/api/inspiration-creations/%d/thumbnail".formatted(id);
     }
 
     private String message(Exception exception) {

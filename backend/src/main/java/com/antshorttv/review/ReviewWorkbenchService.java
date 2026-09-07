@@ -181,9 +181,32 @@ public class ReviewWorkbenchService {
 
     public List<ReviewProjectSummaryResponse> listProjects(Long tenantId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        return projectMapper.selectActive(context.tenantId()).stream()
+        List<ReviewProjectEntity> projects = projectMapper.selectActive(context.tenantId()).stream()
             .filter(project -> reviewAccessGuard.canView(context, project))
-            .map(project -> toProjectSummary(project, context.tenantId()))
+            .toList();
+        if (projects.isEmpty()) {
+            return List.of();
+        }
+        List<Long> projectIds = projects.stream().map(ReviewProjectEntity::getId).toList();
+        Map<Long, Integer> versionCounts = versionMapper.selectByProjects(context.tenantId(), projectIds).stream()
+            .collect(Collectors.groupingBy(ReviewScriptVersionEntity::getProjectId,
+                Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
+        Map<Long, ReviewTaskEntity> latestTasks = new LinkedHashMap<>();
+        for (ReviewTaskEntity task : taskMapper.selectByProjects(context.tenantId(), projectIds)) {
+            latestTasks.putIfAbsent(task.getProjectId(), task);
+        }
+        List<ReviewIssueEntity> latestTaskIssues = issueMapper.selectByTasks(
+            latestTasks.values().stream().map(ReviewTaskEntity::getId).toList());
+        Map<Long, Integer> issueCounts = latestTaskIssues.stream()
+            .collect(Collectors.groupingBy(ReviewIssueEntity::getTaskId,
+                Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
+        Map<Long, Integer> outstandingIssues = latestTaskIssues.stream()
+            .filter(issue -> !Boolean.TRUE.equals(issue.getManuallyResolved()))
+            .collect(Collectors.groupingBy(ReviewIssueEntity::getTaskId,
+                Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
+        return projects.stream()
+            .map(project -> toProjectSummary(project, versionCounts.getOrDefault(project.getId(), 0),
+                latestTasks.get(project.getId()), outstandingIssues, issueCounts))
             .toList();
     }
 
@@ -233,6 +256,30 @@ public class ReviewWorkbenchService {
             versionMapper.selectByProject(context.tenantId(), projectId).stream().map(this::toVersionResponse).toList(),
             listTasksForProject(context.tenantId(), projectId).stream().map(task -> toTaskResponse(task, false)).toList()
         );
+    }
+
+    public ReviewProjectReviewHistoryResponse reviewHistory(
+        Long tenantId, Long projectId, int requestedPage, int requestedPageSize
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        ReviewProjectEntity project = requireAccessibleProject(context, projectId, "PROJECT:VIEW");
+        int page = Math.max(1, requestedPage);
+        int pageSize = Math.min(100, Math.max(1, requestedPageSize));
+        long total = taskMapper.countByProject(context.tenantId(), projectId);
+        int offset = Math.toIntExact(Math.min(Integer.MAX_VALUE, (long) (page - 1) * pageSize));
+        List<ReviewTaskEntity> tasks = taskMapper.selectHistoryPage(
+            context.tenantId(), projectId, offset, pageSize);
+        Map<Long, List<ReviewIssueEntity>> issuesByTask = issueMapper.selectByTasks(
+                tasks.stream().map(ReviewTaskEntity::getId).toList())
+            .stream().collect(Collectors.groupingBy(ReviewIssueEntity::getTaskId));
+        return new ReviewProjectReviewHistoryResponse(
+            toProjectSummary(project, context.tenantId()),
+            versionMapper.selectByProject(context.tenantId(), projectId).stream()
+                .map(this::toVersionMetadataResponse).toList(),
+            tasks.stream()
+                .map(task -> toHistoryTaskResponse(task, issuesByTask.getOrDefault(task.getId(), List.of())))
+                .toList(),
+            page, pageSize, total);
     }
 
     @Transactional
@@ -1069,23 +1116,28 @@ public class ReviewWorkbenchService {
         if (task.getResultJson() != null && !task.getResultJson().isBlank()) {
             summary = readSummary(task.getResultJson());
         }
-        List<ReviewIssueResponse> issues = includeIssues ? issueMapper.selectByTask(task.getId()).stream().map(this::toIssueResponse).toList() : List.of();
+        List<ReviewIssueEntity> issueEntities = includeIssues ? issueMapper.selectByTask(task.getId()) : List.of();
+        Map<Long, List<ReviewIssueHitEntity>> hitsByIssue = hitMapper.selectByIssues(
+                issueEntities.stream().map(ReviewIssueEntity::getId).toList())
+            .stream().collect(Collectors.groupingBy(ReviewIssueHitEntity::getIssueId));
+        List<ReviewIssueResponse> issues = issueEntities.stream()
+            .map(issue -> toIssueResponse(issue, hitsByIssue.getOrDefault(issue.getId(), List.of()))).toList();
         ReviewFanoutProgressResponse fanout = null;
         ReviewObservabilityResponse observability = null;
         if (task.getFanoutSnapshotId() != null) {
             ReviewFanoutSnapshotEntity snapshot = fanoutSnapshotMapper.selectById(task.getFanoutSnapshotId());
             if (snapshot != null) {
                 List<ReviewFanoutUnitEntity> fanoutUnits = fanoutUnitMapper.selectOrdered(snapshot.getId());
+                Map<Long, ReviewCacheUsageResponse> cacheUsageByRun = reviewWorkflowFeatureFlags.cacheObservability()
+                    ? reviewObservabilityRepository.cacheUsageByRunIds(fanoutUnits.stream()
+                        .map(ReviewFanoutUnitEntity::getChildRunId).filter(Objects::nonNull).toList()) : Map.of();
                 fanout = new ReviewFanoutProgressResponse(snapshot.getStatus(), snapshot.getTotalUnits(),
                     snapshot.getCompletedUnits(), snapshot.getFailedUnits(), snapshot.getCurrentUnitId(),
                     snapshot.getAggregationStatus(), fanoutUnits.stream()
                         .map(unit -> new ReviewUnitProgressResponse(unit.getId(), unit.getUnitNo(), unit.getUnitKey(),
                             unit.getStageType(), unit.getDimension(), unit.getStatus(), unit.getChildRunId(),
                             unit.getAttemptNo(), unit.getCandidateSaved(), unit.getErrorCode(), unit.getErrorMessage(),
-                            reviewWorkflowFeatureFlags.cacheObservability()
-                                ? reviewObservabilityRepository.cacheUsage(unit.getChildRunId() == null
-                                    ? List.of() : List.of(unit.getChildRunId()))
-                                : null))
+                            unit.getChildRunId() == null ? null : cacheUsageByRun.get(unit.getChildRunId())))
                         .toList());
                 List<Long> runIds = new ArrayList<>(fanoutUnits.stream()
                     .map(ReviewFanoutUnitEntity::getChildRunId).filter(Objects::nonNull).toList());
@@ -1126,8 +1178,25 @@ public class ReviewWorkbenchService {
             task.getCompletedAt(),
             task.getCanceledAt(),
             summary,
-            issues
+            issues,
+            includeIssues ? toVersionResponse(versionMapper.selectById(task.getScriptVersionId())) : null
         );
+    }
+
+    private ReviewVersionMetadataResponse toVersionMetadataResponse(ReviewScriptVersionEntity version) {
+        return new ReviewVersionMetadataResponse(version.getId(), version.getProjectId(), version.getVersionNo(),
+            version.getSourceType(), version.getFileName(), version.getCreatedAt());
+    }
+
+    private ReviewHistoryTaskResponse toHistoryTaskResponse(
+        ReviewTaskEntity task, List<ReviewIssueEntity> issues
+    ) {
+        int outstandingIssueCount = (int) issues.stream()
+            .filter(issue -> !Boolean.TRUE.equals(issue.getManuallyResolved())).count();
+        return new ReviewHistoryTaskResponse(task.getId(), task.getScriptVersionId(), task.getRoundNo(),
+            task.getReviewMode(), deserializeStringList(task.getSelectedDimensionsJson()), task.getReviewScopeType(),
+            task.getStatus(), task.getOverallProgress(), issues.size(), outstandingIssueCount, task.getCreatedBy(),
+            task.getCreatedAt(), task.getCompletedAt(), task.getCanceledAt(), task.getErrorMessage());
     }
 
     private List<ReviewVersionDiffResponse> buildVersionDiff(ReviewScriptVersionEntity selectedVersion, List<ReviewScriptVersionEntity> versions) {
@@ -1220,6 +1289,10 @@ public class ReviewWorkbenchService {
     }
 
     private ReviewIssueResponse toIssueResponse(ReviewIssueEntity issue) {
+        return toIssueResponse(issue, hitMapper.selectByIssue(issue.getId()));
+    }
+
+    private ReviewIssueResponse toIssueResponse(ReviewIssueEntity issue, List<ReviewIssueHitEntity> hits) {
         return new ReviewIssueResponse(
             issue.getId(),
             issue.getTaskId(),
@@ -1239,7 +1312,7 @@ public class ReviewWorkbenchService {
             issue.getManuallyResolved(),
             issue.getManuallyResolvedAt(),
             issue.getManuallyResolvedBy(),
-            hitMapper.selectByIssue(issue.getId()).stream().map(this::toHitResponse).toList()
+            hits.stream().map(this::toHitResponse).toList()
         );
     }
 
@@ -1266,6 +1339,49 @@ public class ReviewWorkbenchService {
             .eq(ReviewTaskEntity::getTenantId, tenantId)
             .eq(ReviewTaskEntity::getProjectId, project.getId())
             .orderByDesc(ReviewTaskEntity::getRoundNo));
+        List<ReviewIssueEntity> latestTaskIssues = tasks.isEmpty()
+            ? List.of() : issueMapper.selectByTask(tasks.get(0).getId());
+        Map<Long, Integer> issueCounts = latestTaskIssues.stream()
+            .collect(Collectors.groupingBy(ReviewIssueEntity::getTaskId,
+                Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
+        Map<Long, Integer> outstandingIssues = latestTaskIssues.stream()
+            .filter(issue -> !Boolean.TRUE.equals(issue.getManuallyResolved()))
+            .collect(Collectors.groupingBy(ReviewIssueEntity::getTaskId,
+                Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
+        return toProjectSummary(project, versions.size(), tasks.isEmpty() ? null : tasks.get(0),
+            outstandingIssues, issueCounts);
+    }
+
+    private ReviewProjectSummaryResponse toProjectSummary(
+        ReviewProjectEntity project,
+        int versionCount,
+        ReviewTaskEntity latestTask,
+        Map<Long, Integer> outstandingIssues,
+        Map<Long, Integer> issueCounts
+    ) {
+        String reviewState = "NOT_REVIEWED";
+        String actionLabel = "发起审核";
+        int outstandingIssueCount = latestTask == null ? 0
+            : outstandingIssues.getOrDefault(latestTask.getId(), 0);
+        if (latestTask != null) {
+            if (List.of("PENDING", "RUNNING").contains(latestTask.getStatus())) {
+                reviewState = "RUNNING";
+                actionLabel = "查看进度";
+                outstandingIssueCount = 0;
+            } else if (outstandingIssueCount > 0) {
+                reviewState = "ACTION_REQUIRED";
+                actionLabel = "处理问题";
+            } else {
+                long issueCount = issueCounts.getOrDefault(latestTask.getId(), 0);
+                if (issueCount > 0) {
+                    reviewState = "READY_FOR_REVIEW";
+                    actionLabel = "发起复审";
+                } else {
+                    reviewState = "COMPLETED";
+                    actionLabel = "查看报告";
+                }
+            }
+        }
         return new ReviewProjectSummaryResponse(
             project.getId(),
             project.getMainProjectId(),
@@ -1276,8 +1392,11 @@ public class ReviewWorkbenchService {
             project.getCurrentVersionId(),
             project.getLastTaskId(),
             project.getStatus(),
-            versions.size(),
-            tasks.isEmpty() ? 0 : tasks.get(0).getRoundNo(),
+            versionCount,
+            latestTask == null ? 0 : latestTask.getRoundNo(),
+            reviewState,
+            outstandingIssueCount,
+            actionLabel,
             project.getCreatedAt(),
             project.getUpdatedAt()
         );
