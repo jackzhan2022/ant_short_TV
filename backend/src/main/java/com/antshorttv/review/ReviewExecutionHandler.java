@@ -3,7 +3,10 @@ package com.antshorttv.review;
 import com.antshorttv.accounting.AiUsageAccountingService;
 import com.antshorttv.accounting.AiUsageCommand;
 import com.antshorttv.accounting.AiUsageContext;
+import com.antshorttv.accounting.AiUsageExtractor;
 import com.antshorttv.accounting.AiUsageMetric;
+import com.antshorttv.accounting.AiExecutionCostSummary;
+import com.antshorttv.accounting.AiUsageCostStatus;
 import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiTextResponse;
@@ -21,12 +24,15 @@ import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.AiSettlementOutcome;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -40,6 +46,8 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
     private final AiExecutionService executionService;
     private final AiExecutionTaskMapper executionTaskMapper;
     private final AiUsageAccountingService usageAccountingService;
+    private final AiUsageExtractor usageExtractor;
+    private final WorkflowAgentRunRepository workflowAgentRuns;
     private final ObjectMapper objectMapper;
 
     public ReviewExecutionHandler(
@@ -51,6 +59,8 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         AiExecutionService executionService,
         AiExecutionTaskMapper executionTaskMapper,
         AiUsageAccountingService usageAccountingService,
+        AiUsageExtractor usageExtractor,
+        WorkflowAgentRunRepository workflowAgentRuns,
         ObjectMapper objectMapper
     ) {
         this.taskMapper = taskMapper;
@@ -61,6 +71,8 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         this.executionService = executionService;
         this.executionTaskMapper = executionTaskMapper;
         this.usageAccountingService = usageAccountingService;
+        this.usageExtractor = usageExtractor;
+        this.workflowAgentRuns = workflowAgentRuns;
         this.objectMapper = objectMapper;
     }
 
@@ -87,35 +99,111 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         try {
             ReviewExecutionOutcome outcome = reviewService.executeTask(context.task().businessId, context);
             AiInvocationResult<AiTextResponse> invocation = outcome.invocation();
+            int workflowCallCount = 0;
             if (invocation != null) {
                 markAttempt(context, invocation);
-                recordUsageAndCost(context, invocation);
-            } else if (!outcome.modelCalls().isEmpty()) {
-                markWorkflowAttempt(context, outcome.modelCalls().get(outcome.modelCalls().size() - 1));
-                recordWorkflowUsageAndCost(context, outcome.modelCalls());
+                java.util.List<WorkflowAgentModelCall> persisted = workflowCallsForExecution(context);
+                if (persisted.isEmpty()) {
+                    recordUsageAndCost(context, invocation);
+                    workflowCallCount = 1;
+                } else {
+                    recordWorkflowUsageAndCost(context, persisted);
+                    workflowCallCount = persisted.size();
+                }
+            } else {
+                java.util.List<WorkflowAgentModelCall> persisted = workflowCallsForExecution(context);
+                java.util.List<WorkflowAgentModelCall> billable = persisted.isEmpty() ? outcome.modelCalls() : persisted;
+                if (!billable.isEmpty()) {
+                    latestCallForCurrentAttempt(context, billable)
+                        .ifPresent(call -> markWorkflowAttempt(context, call));
+                    recordWorkflowUsageAndCost(context, billable);
+                    workflowCallCount = billable.size();
+                }
             }
-            settle(context, invocation, !outcome.modelCalls().isEmpty());
+            settle(context, invocation, workflowCallCount);
             return new AiExecutionHandlerResult("REVIEW_TASK", context.task().businessId);
         } catch (ReviewInvocationException exception) {
             markAttempt(context, exception.invocation());
-            recordUsageAndCost(context, exception.invocation());
+            java.util.List<WorkflowAgentModelCall> persisted = workflowCallsForExecution(context);
+            int callCount;
+            if (persisted.isEmpty()) {
+                recordUsageAndCost(context, exception.invocation());
+                callCount = 1;
+            } else {
+                recordWorkflowUsageAndCost(context, persisted);
+                callCount = persisted.size();
+            }
             settleTerminalFailure(
                 context,
                 AiSettlementOutcome.BUSINESS_FAILURE,
-                exception.invocation().aiCallLogId()
+                exception.invocation().aiCallLogId(),
+                callCount
             );
             throw exception;
         } catch (AiGatewayException exception) {
+            WorkflowUsageRecovery recovery = recordFailedWorkflowUsage(context);
+            if (recovery.callCount() == 0 && exception.getAiCallLogId() != null) {
+                recovery = recordDirectGatewayFailureUsageAndCost(context, exception.getAiCallLogId());
+            }
             markGatewayFailure(context, exception);
             settleTerminalFailure(
                 context,
                 exception.getAiCallLogId() == null
                     ? AiSettlementOutcome.PROVIDER_REJECTION
                     : AiSettlementOutcome.PROVIDER_BILLED_FAILURE,
-                exception.getAiCallLogId()
+                exception.getAiCallLogId(),
+                recovery.callCount()
             );
             throw exception;
+        } catch (RuntimeException exception) {
+            WorkflowUsageRecovery recovery = recordFailedWorkflowUsage(context);
+            settleTerminalFailure(context, AiSettlementOutcome.BUSINESS_FAILURE,
+                recovery.lastCallId(), recovery.callCount());
+            throw exception;
         }
+    }
+
+    private WorkflowUsageRecovery recordFailedWorkflowUsage(AiExecutionContext context) {
+        java.util.List<WorkflowAgentModelCall> calls = workflowCallsForExecution(context);
+        if (calls.isEmpty()) return new WorkflowUsageRecovery(null, 0);
+        latestCallForCurrentAttempt(context, calls).ifPresent(call -> markWorkflowAttempt(context, call));
+        recordWorkflowUsageAndCost(context, calls);
+        return new WorkflowUsageRecovery(calls.get(calls.size() - 1).callLogId(), calls.size());
+    }
+
+    private WorkflowUsageRecovery recordDirectGatewayFailureUsageAndCost(
+        AiExecutionContext context,
+        Long callLogId
+    ) {
+        java.util.Optional<WorkflowAgentModelCall> persisted = workflowAgentRuns.modelCallForExecution(
+            callLogId, context.task().id, context.task().tenantId);
+        if (persisted.isEmpty() || persisted.get().modelId() == null) {
+            return new WorkflowUsageRecovery(null, 0);
+        }
+        WorkflowAgentModelCall call = persisted.get();
+        Set<AiUsageMetric> required = recordCallUsage(context, call.callLogId(), call.modelId(),
+            call.attemptId(), call.promptTokens(), call.completionTokens(),
+            call.cachedInputTokens(), call.cacheWriteTokens());
+        AiExecutionCostSummary cost = usageAccountingService.priceExecution(context.task().id, required);
+        if (hasIncompleteTokenClassification(call)) {
+            cost = new AiExecutionCostSummary(cost.executionId(), AiUsageCostStatus.INCOMPLETE,
+                cost.totalsByCurrency());
+        }
+        persistCostSummary(context, cost);
+        return new WorkflowUsageRecovery(call.callLogId(), 1);
+    }
+
+    private java.util.Optional<WorkflowAgentModelCall> latestCallForCurrentAttempt(
+        AiExecutionContext context,
+        java.util.List<WorkflowAgentModelCall> calls
+    ) {
+        return calls.stream()
+            .filter(call -> context.claim().attemptId().equals(call.attemptId()))
+            .reduce((first, second) -> second);
+    }
+
+    private java.util.List<WorkflowAgentModelCall> workflowCallsForExecution(AiExecutionContext context) {
+        return workflowAgentRuns.modelCallsForExecution(context.task().id, context.task().tenantId);
     }
 
     private void markAttempt(AiExecutionContext context, AiInvocationResult<AiTextResponse> invocation) {
@@ -145,13 +233,37 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
     }
 
     private void recordWorkflowUsageAndCost(AiExecutionContext context, java.util.List<WorkflowAgentModelCall> calls) {
+        Set<AiUsageMetric> required = EnumSet.noneOf(AiUsageMetric.class);
         for (WorkflowAgentModelCall call : calls) {
-            usageAccountingService.record(AiUsageCommand.requestDerived(
-                new AiUsageContext(context.task().tenantId, context.task().id,
-                    context.claim().attemptId(), call.callLogId(), call.modelId()),
-                AiUsageMetric.CALL, "1", Map.of(), LocalDateTime.now()));
+            required.addAll(recordCallUsage(context, call.callLogId(), call.modelId(),
+                call.attemptId(), call.promptTokens(), call.completionTokens(),
+                call.cachedInputTokens(), call.cacheWriteTokens()));
         }
-        var cost = usageAccountingService.priceExecution(context.task().id, Set.of(AiUsageMetric.CALL));
+        AiExecutionCostSummary cost = usageAccountingService.priceExecution(context.task().id, required);
+        if (calls.stream().anyMatch(this::hasIncompleteTokenClassification)) {
+            cost = new AiExecutionCostSummary(cost.executionId(), AiUsageCostStatus.INCOMPLETE,
+                cost.totalsByCurrency());
+        }
+        persistCostSummary(context, cost);
+    }
+
+    private void recordUsageAndCost(AiExecutionContext context, AiInvocationResult<AiTextResponse> invocation) {
+        AiTextResponse response = invocation.response();
+        Set<AiUsageMetric> required = recordCallUsage(context, invocation.aiCallLogId(),
+            invocation.resolvedModelId(), invocation.attemptId(), invocation.promptTokens(),
+            invocation.completionTokens(), response == null ? null : response.cachedInputTokens(),
+            response == null ? null : response.cacheWriteTokens());
+        AiExecutionCostSummary cost = usageAccountingService.priceExecution(context.task().id, required);
+        if (hasIncompleteTokenClassification(invocation.promptTokens(),
+            response == null ? null : response.cachedInputTokens(),
+            response == null ? null : response.cacheWriteTokens())) {
+            cost = new AiExecutionCostSummary(cost.executionId(), AiUsageCostStatus.INCOMPLETE,
+                cost.totalsByCurrency());
+        }
+        persistCostSummary(context, cost);
+    }
+
+    private void persistCostSummary(AiExecutionContext context, AiExecutionCostSummary cost) {
         try {
             executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
                 .set("usage_cost_status", cost.status().name())
@@ -162,29 +274,36 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         }
     }
 
-    private void recordUsageAndCost(AiExecutionContext context, AiInvocationResult<AiTextResponse> invocation) {
-        usageAccountingService.record(AiUsageCommand.requestDerived(
-            new AiUsageContext(
-                context.task().tenantId,
-                context.task().id,
-                context.claim().attemptId(),
-                invocation.aiCallLogId(),
-                invocation.resolvedModelId()
-            ),
-            AiUsageMetric.CALL,
-            "1",
-            Map.of(),
-            LocalDateTime.now()
-        ));
-        var cost = usageAccountingService.priceExecution(context.task().id, Set.of(AiUsageMetric.CALL));
-        try {
-            executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
-                .set("usage_cost_status", cost.status().name())
-                .set("provider_cost_summary_json", objectMapper.writeValueAsString(cost.totalsByCurrency()))
-                .eq("id", context.task().id));
-        } catch (Exception exception) {
-            throw new IllegalStateException("Unable to persist review cost summary.", exception);
-        }
+    private Set<AiUsageMetric> recordCallUsage(AiExecutionContext context, Long callLogId, Long modelId,
+        Long providerAttemptId, Integer inputTokens, Integer outputTokens,
+        Integer cachedInputTokens, Integer cacheWriteTokens) {
+        LocalDateTime observedAt = LocalDateTime.now();
+        AiUsageContext usageContext = new AiUsageContext(context.task().tenantId, context.task().id,
+            providerAttemptId == null ? context.claim().attemptId() : providerAttemptId, callLogId, modelId);
+        List<AiUsageCommand> commands = new java.util.ArrayList<>();
+        commands.add(usageExtractor.requestCall(usageContext, observedAt));
+        commands.addAll(usageExtractor.providerTokens(usageContext, inputTokens, outputTokens,
+            cachedInputTokens, cacheWriteTokens, observedAt));
+        commands.forEach(usageAccountingService::recordIfAbsent);
+        Set<AiUsageMetric> metrics = EnumSet.of(AiUsageMetric.CALL);
+        if (inputTokens != null) metrics.add(AiUsageMetric.INPUT_TOKEN);
+        if (outputTokens != null) metrics.add(AiUsageMetric.OUTPUT_TOKEN);
+        if (cachedInputTokens != null) metrics.add(AiUsageMetric.CACHED_INPUT_TOKEN);
+        if (cacheWriteTokens != null) metrics.add(AiUsageMetric.CACHE_WRITE_TOKEN);
+        return metrics;
+    }
+
+    private boolean hasIncompleteTokenClassification(WorkflowAgentModelCall call) {
+        return hasIncompleteTokenClassification(
+            call.promptTokens(), call.cachedInputTokens(), call.cacheWriteTokens());
+    }
+
+    private boolean hasIncompleteTokenClassification(
+        Integer inputTokens,
+        Integer cachedInputTokens,
+        Integer cacheWriteTokens
+    ) {
+        return inputTokens != null && (cachedInputTokens == null) != (cacheWriteTokens == null);
     }
 
     private void markGatewayFailure(AiExecutionContext context, AiGatewayException exception) {
@@ -198,12 +317,12 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         attemptMapper.update(null, update);
     }
 
-    private void settle(AiExecutionContext context, AiInvocationResult<AiTextResponse> invocation, boolean workflowContacted) {
+    private void settle(AiExecutionContext context, AiInvocationResult<AiTextResponse> invocation, int workflowCallCount) {
         AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(context.task().id);
         AiPointReservationEntity settled = settlementService.finalizeOutcome(
             reservation.id,
             AiSettlementOutcome.SUCCESS,
-            callUsage(invocation != null || workflowContacted),
+            callUsage(workflowCallCount),
             context.claim().attemptId(),
             invocation == null ? null : invocation.aiCallLogId(),
             "execution:%d:v%d:success".formatted(context.task().id, context.task().executionVersion)
@@ -214,7 +333,8 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
     private void settleTerminalFailure(
         AiExecutionContext context,
         AiSettlementOutcome outcome,
-        Long callLogId
+        Long callLogId,
+        int callCount
     ) {
         AiExecutionAttemptEntity attempt = attemptMapper.selectById(context.claim().attemptId());
         if (attempt == null || attempt.attemptNo < retryPolicy().maxAttempts()) {
@@ -227,7 +347,7 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         AiPointReservationEntity settled = settlementService.finalizeOutcome(
             reservation.id,
             outcome,
-            callUsage(callLogId != null),
+            callUsage(callCount),
             context.claim().attemptId(),
             callLogId,
             "execution:%d:v%d:failure".formatted(context.task().id, context.task().executionVersion)
@@ -235,7 +355,9 @@ public class ReviewExecutionHandler extends AiExecutionHandler {
         executionService.updateSettlementSummary(settled);
     }
 
-    private Map<AiUsageMetric, BigDecimal> callUsage(boolean providerContacted) {
-        return Map.of(AiUsageMetric.CALL, providerContacted ? BigDecimal.ONE : BigDecimal.ZERO);
+    private Map<AiUsageMetric, BigDecimal> callUsage(int callCount) {
+        return Map.of(AiUsageMetric.CALL, BigDecimal.valueOf(Math.max(0, callCount)));
     }
+
+    private record WorkflowUsageRecovery(Long lastCallId, int callCount) {}
 }

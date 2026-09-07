@@ -80,6 +80,8 @@ ai:
     max-skill-file-bytes: ${AI_WORKFLOW_MAX_SKILL_FILE_BYTES:1048576}
     max-steps: ${AI_WORKFLOW_MAX_STEPS:20}
     run-timeout-seconds: ${AI_WORKFLOW_RUN_TIMEOUT_SECONDS:300}
+    review-semantic-max-steps: ${AI_WORKFLOW_REVIEW_SEMANTIC_MAX_STEPS:96}
+    review-semantic-run-timeout-seconds: ${AI_WORKFLOW_REVIEW_SEMANTIC_RUN_TIMEOUT_SECONDS:1800}
     max-log-payload-bytes: ${AI_WORKFLOW_MAX_LOG_PAYLOAD_BYTES:262144}
     split-chunk-target-min: ${AI_WORKFLOW_SPLIT_CHUNK_TARGET_MIN:15000}
     split-chunk-target-max: ${AI_WORKFLOW_SPLIT_CHUNK_TARGET_MAX:20000}

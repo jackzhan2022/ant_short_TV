@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -143,10 +144,19 @@ public class WorkflowAgentRunRepository {
         return count != null && count == 1;
     }
 
+    public boolean belongsToTask(Long runId, Long tenantId, Long taskId) {
+        Integer count = jdbc.queryForObject("""
+            select count(*) from ai_workflow_agent_run
+             where id = ? and tenant_id = ? and task_id = ? and agent_code = 'script-review'
+            """, Integer.class, runId, tenantId, taskId);
+        return count != null && count == 1;
+    }
+
     public List<WorkflowAgentModelCall> modelCalls(Long runId, Long tenantId) {
         return jdbc.query("""
             select log.id, log.model_id, log.provider_id, log.provider_request_id,
-                   log.transport_outcome, log.business_outcome, log.attempt_id
+                   log.transport_outcome, log.business_outcome, log.attempt_id,
+                   log.prompt_tokens, log.completion_tokens, log.cached_input_tokens, log.cache_write_tokens
               from ai_workflow_agent_run_step step
               join ai_workflow_agent_run run on run.id = step.run_id
               join ai_call_log log on log.id = step.ai_call_log_id
@@ -155,7 +165,9 @@ public class WorkflowAgentRunRepository {
             """, (row, index) -> new WorkflowAgentModelCall(
             row.getLong("id"), nullableLong(row, "model_id"), nullableLong(row, "provider_id"),
             row.getString("provider_request_id"), row.getString("transport_outcome"),
-            row.getString("business_outcome")
+            row.getString("business_outcome"), nullableLong(row, "attempt_id"),
+            nullableInt(row, "prompt_tokens"), nullableInt(row, "completion_tokens"),
+            nullableInt(row, "cached_input_tokens"), nullableInt(row, "cache_write_tokens")
         ), runId, tenantId);
     }
 
@@ -166,7 +178,8 @@ public class WorkflowAgentRunRepository {
     ) {
         return jdbc.query("""
             select id, model_id, provider_id, provider_request_id,
-                   transport_outcome, business_outcome, attempt_id
+                   transport_outcome, business_outcome, attempt_id,
+                   prompt_tokens, completion_tokens, cached_input_tokens, cache_write_tokens
               from ai_call_log
              where execution_id = ? and attempt_id = ? and tenant_id = ?
                and business_scene = 'workflow_agent'
@@ -174,22 +187,48 @@ public class WorkflowAgentRunRepository {
             """, (row, index) -> new WorkflowAgentModelCall(
             row.getLong("id"), nullableLong(row, "model_id"), nullableLong(row, "provider_id"),
             row.getString("provider_request_id"), row.getString("transport_outcome"),
-            row.getString("business_outcome"), nullableLong(row, "attempt_id")
+            row.getString("business_outcome"), nullableLong(row, "attempt_id"),
+            nullableInt(row, "prompt_tokens"), nullableInt(row, "completion_tokens"),
+            nullableInt(row, "cached_input_tokens"), nullableInt(row, "cache_write_tokens")
         ), executionId, attemptId, tenantId);
     }
 
     public List<WorkflowAgentModelCall> modelCallsForExecution(Long executionId, Long tenantId) {
         return jdbc.query("""
             select id, model_id, provider_id, provider_request_id,
-                   transport_outcome, business_outcome, attempt_id
-              from ai_call_log
-             where execution_id = ? and tenant_id = ? and business_scene = 'workflow_agent'
+                   transport_outcome, business_outcome, attempt_id,
+                   prompt_tokens, completion_tokens, cached_input_tokens, cache_write_tokens
+             from ai_call_log
+             where execution_id = ? and tenant_id = ?
              order by id
             """, (row, index) -> new WorkflowAgentModelCall(
             row.getLong("id"), nullableLong(row, "model_id"), nullableLong(row, "provider_id"),
             row.getString("provider_request_id"), row.getString("transport_outcome"),
-            row.getString("business_outcome"), nullableLong(row, "attempt_id")
+            row.getString("business_outcome"), nullableLong(row, "attempt_id"),
+            nullableInt(row, "prompt_tokens"), nullableInt(row, "completion_tokens"),
+            nullableInt(row, "cached_input_tokens"), nullableInt(row, "cache_write_tokens")
         ), executionId, tenantId);
+    }
+
+    public Optional<WorkflowAgentModelCall> modelCallForExecution(
+        Long callLogId,
+        Long executionId,
+        Long tenantId
+    ) {
+        List<WorkflowAgentModelCall> calls = jdbc.query("""
+            select id, model_id, provider_id, provider_request_id,
+                   transport_outcome, business_outcome, attempt_id,
+                   prompt_tokens, completion_tokens, cached_input_tokens, cache_write_tokens
+              from ai_call_log
+             where id = ? and execution_id = ? and tenant_id = ?
+            """, (row, index) -> new WorkflowAgentModelCall(
+            row.getLong("id"), nullableLong(row, "model_id"), nullableLong(row, "provider_id"),
+            row.getString("provider_request_id"), row.getString("transport_outcome"),
+            row.getString("business_outcome"), nullableLong(row, "attempt_id"),
+            nullableInt(row, "prompt_tokens"), nullableInt(row, "completion_tokens"),
+            nullableInt(row, "cached_input_tokens"), nullableInt(row, "cache_write_tokens")
+        ), callLogId, executionId, tenantId);
+        return calls.stream().findFirst();
     }
 
     public void fail(Long runId, String errorCode, String errorMessage) {
@@ -342,6 +381,11 @@ public class WorkflowAgentRunRepository {
 
     private Long nullableLong(java.sql.ResultSet row, String column) throws java.sql.SQLException {
         long value = row.getLong(column);
+        return row.wasNull() ? null : value;
+    }
+
+    private Integer nullableInt(java.sql.ResultSet row, String column) throws java.sql.SQLException {
+        int value = row.getInt(column);
         return row.wasNull() ? null : value;
     }
 

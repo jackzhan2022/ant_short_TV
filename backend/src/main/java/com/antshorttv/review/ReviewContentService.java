@@ -18,7 +18,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class ReviewContentService {
     private static final Pattern EPISODE = Pattern.compile(
-        "^(?:第\\s*(\\d{1,3})\\s*集|EP\\s*0*(\\d{1,3}))\\b.*$", Pattern.CASE_INSENSITIVE);
+        "^(?:第\\s*([0-9]{1,3}|[零〇一二三四五六七八九十百两]{1,7})\\s*集|EP\\s*0*(\\d{1,3}))\\b.*$",
+        Pattern.CASE_INSENSITIVE);
     private static final Pattern SCENE = Pattern.compile(
         "^(?:(?:第\\s*)?([0-9]{1,3}(?:[-.]\\d{1,3})?)(?:\\s*场)?|场景\\s*([^\\s:：]+)|SCENE\\s*([^\\s:：]+))(?:\\s+|[:：]).*$",
         Pattern.CASE_INSENSITIVE);
@@ -38,7 +39,9 @@ public class ReviewContentService {
             Set<String> selected = values(scope, "episodeNos");
             if (selected.isEmpty()) throw invalid("指定集范围不能为空。");
             List<Span> spans = episodes.stream().filter(span -> selected.contains(String.valueOf(span.episodeNo))).toList();
-            if (spans.isEmpty() || spans.size() != selected.size()) throw invalid("指定集不在当前剧本中。");
+            Set<String> foundEpisodes = spans.stream().map(span -> String.valueOf(span.episodeNo))
+                .collect(java.util.stream.Collectors.toSet());
+            if (spans.isEmpty() || !foundEpisodes.containsAll(selected)) throw invalid("指定集不在当前剧本中。");
             scoped = spans.stream().map(span -> source.substring(span.start, span.end).trim())
                 .collect(java.util.stream.Collectors.joining("\n\n"));
             selectedSegments = scenes.stream().filter(segment ->
@@ -101,7 +104,7 @@ public class ReviewContentService {
             Matcher matcher = EPISODE.matcher(line.text.trim());
             if (!matcher.matches()) continue;
             if (currentNo != null) result.add(new Span(currentNo, currentStart, line.start));
-            currentNo = Integer.parseInt(matcher.group(1) == null ? matcher.group(2) : matcher.group(1));
+            currentNo = episodeNumber(matcher);
             currentStart = line.start;
         }
         if (currentNo == null) return List.of(new Span(1, 0, source.length()));
@@ -115,7 +118,7 @@ public class ReviewContentService {
         for (Line line : lines) {
             Matcher episode = EPISODE.matcher(line.text.trim());
             if (episode.matches()) {
-                episodeNo = Integer.parseInt(episode.group(1) == null ? episode.group(2) : episode.group(1));
+                episodeNo = episodeNumber(episode);
                 continue;
             }
             Matcher scene = SCENE.matcher(line.text.trim());
@@ -148,6 +151,44 @@ public class ReviewContentService {
 
     private int paragraphBreaks(String value) {
         return value.split("(?:\\r?\\n){2,}", -1).length - 1;
+    }
+
+    private int episodeNumber(Matcher matcher) {
+        String value = matcher.group(1) == null ? matcher.group(2) : matcher.group(1);
+        if (value.chars().allMatch(Character::isDigit)) return Integer.parseInt(value);
+        int total = 0;
+        int digit = 0;
+        for (char valueChar : value.toCharArray()) {
+            int parsedDigit = chineseDigit(valueChar);
+            if (parsedDigit >= 0) {
+                digit = parsedDigit;
+            } else if (valueChar == '十') {
+                total += (digit == 0 ? 1 : digit) * 10;
+                digit = 0;
+            } else if (valueChar == '百') {
+                total += (digit == 0 ? 1 : digit) * 100;
+                digit = 0;
+            } else {
+                throw invalid("无法识别的剧集编号。");
+            }
+        }
+        return total + digit;
+    }
+
+    private int chineseDigit(char value) {
+        return switch (value) {
+            case '零', '〇' -> 0;
+            case '一' -> 1;
+            case '二', '两' -> 2;
+            case '三' -> 3;
+            case '四' -> 4;
+            case '五' -> 5;
+            case '六' -> 6;
+            case '七' -> 7;
+            case '八' -> 8;
+            case '九' -> 9;
+            default -> -1;
+        };
     }
 
     private Set<String> values(Map<String, Object> scope, String key) {

@@ -32,6 +32,33 @@ class ReviewContentServiceTest {
     }
 
     @Test
+    void recognizesChineseNumeralEpisodeHeadingsWithTitles() {
+        String chineseNumbered = """
+            第3集：阿拉伯数字标题
+            3-1 夜 内
+            第三集内容
+            第四集：中文数字标题
+            4-1 日 外
+            第四集内容
+            第五十九集：尾声
+            59-1 黄昏 外
+            第五十九集内容
+            """;
+
+        ReviewContentService.FrozenReview fourth = service.freeze(
+            chineseNumbered, "EPISODES", Map.of("episodeNos", List.of(4)), List.of("剧情逻辑与因果"));
+
+        assertThat(fourth.content())
+            .contains("第四集：中文数字标题", "第四集内容")
+            .doesNotContain("第三集内容", "第五十九集内容");
+        assertThat(fourth.segments()).extracting(ReviewContentService.Segment::episodeNo)
+            .containsOnly(4);
+        assertThat(service.freeze(
+            chineseNumbered, "EPISODES", Map.of("episodeNos", List.of(59)), List.of("剧情逻辑与因果"))
+            .content()).contains("第五十九集内容").doesNotContain("第四集内容");
+    }
+
+    @Test
     void producesStableCanonicalHashesAnchorsAndUnicodeOffsets() {
         ReviewContentService.FrozenReview first = service.freeze(script, "SCENES",
             Map.of("sceneKeys", List.of("2-1", "1-2")), List.of("道具连续性", "台词合理性"));
