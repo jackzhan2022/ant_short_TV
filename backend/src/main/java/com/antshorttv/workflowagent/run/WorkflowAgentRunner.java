@@ -184,7 +184,7 @@ public class WorkflowAgentRunner {
             : properties.getRunTimeoutSeconds();
         Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
         try {
-            return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline,
+            return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline, effectiveMaxSteps,
                 WorkflowAgentRunContract.forAgent(agent.code(),
                     input.reviewScope() == null ? null : input.reviewScope().phase()));
         } catch (BusinessException exception) {
@@ -211,6 +211,7 @@ public class WorkflowAgentRunner {
         String prompt,
         List<WorkflowToolDefinition> allowedTools,
         Instant deadline,
+        int maxSteps,
         WorkflowAgentRunContract contract
     ) {
         WorkflowToolRunState runState = new WorkflowToolRunState();
@@ -243,9 +244,10 @@ public class WorkflowAgentRunner {
         boolean reviewTruncationRecovery = false;
         boolean reviewEvidenceRefreshPending = false;
         boolean reviewEvidenceRefreshUsed = false;
+        boolean reviewHashCorrectionUsed = false;
         boolean assetSaveCorrectionUsed = false;
         String traceId = "workflow-agent-" + UUID.randomUUID();
-        for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
+        for (int modelRound = 1; stepNo < maxSteps; modelRound++) {
             requireBeforeDeadline(deadline);
             scopeGuard.requireExecutionActive(input);
             AiInvocationResult<AiTextResponse> result;
@@ -402,6 +404,16 @@ public class WorkflowAgentRunner {
                                 + "五个数组必须始终存在，证据必须逐字来自当前剧集，不得编造。"));
                         break;
                     }
+                    if (reviewTruncationRecovery && isReviewSaveHashValidationFailure(call.code(), normalized)) {
+                        if (reviewHashCorrectionUsed) throw normalized;
+                        reviewHashCorrectionUsed = true;
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
+                        messages.add(AiChatMessage.user(
+                            "固定哈希值校验失败。现在只允许调用 save_review_unit_result；"
+                                + "不得修改候选、覆盖范围或 contentFingerprint，"
+                                + "必须逐字复用 read_review_context 返回的 versionHash、scopeHash、dimensionsHash。"));
+                        break;
+                    }
                     if (reviewTruncationRecovery && isReviewEvidenceValidationFailure(call.code(), normalized)) {
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
                         if (!reviewEvidenceRefreshUsed) {
@@ -429,7 +441,7 @@ public class WorkflowAgentRunner {
             }
         }
         throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
-            "Agent 已达到最大执行步数 " + agent.maxSteps() + "，仍未产生最终结果。");
+            "Agent 已达到最大执行步数 " + maxSteps + "，仍未产生最终结果。");
     }
 
     private int prepareStoryboardContext(
@@ -607,6 +619,14 @@ public class WorkflowAgentRunner {
         return "save_review_unit_result".equals(toolCode)
             && error.getErrorCode() == ErrorCode.VALIDATION_ERROR
             && "审核证据无法在当前范围正文中验证。".equals(error.getMessage());
+    }
+
+    private boolean isReviewSaveHashValidationFailure(String toolCode, BusinessException error) {
+        return "save_review_unit_result".equals(toolCode)
+            && error.getErrorCode() == ErrorCode.VALIDATION_ERROR
+            && ("版本内容已变化。".equals(error.getMessage())
+                || "范围内容已变化。".equals(error.getMessage())
+                || "维度内容已变化。".equals(error.getMessage()));
     }
 
     private boolean disableThinking(String agentCode, boolean splitting) {
