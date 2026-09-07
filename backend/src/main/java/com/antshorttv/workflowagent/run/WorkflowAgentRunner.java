@@ -245,6 +245,7 @@ public class WorkflowAgentRunner {
         boolean reviewTruncationRecovery = false;
         boolean reviewEvidenceRefreshPending = false;
         boolean reviewEvidenceRefreshUsed = false;
+        boolean reviewHashCorrectionUsed = false;
         boolean assetSaveCorrectionUsed = false;
         String storyboardValidationCode = null;
         String traceId = "workflow-agent-" + UUID.randomUUID();
@@ -421,6 +422,16 @@ public class WorkflowAgentRunner {
                                 + "再次提交前必须同时自检：sourceFrom/sourceTo 位于每个分镜对象内部而非根对象；"
                                 + "soundSegmentIds 只能包含 DIALOGUE、NARRATION 或 INNER_OS，"
                                 + "必须排除 ACTION、METADATA、角色提示行和字幕行。"));
+                        break;
+                    }
+                    if (reviewTruncationRecovery && isReviewSaveHashValidationFailure(call.code(), normalized)) {
+                        if (reviewHashCorrectionUsed) throw normalized;
+                        reviewHashCorrectionUsed = true;
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
+                        messages.add(AiChatMessage.user(
+                            "固定哈希值校验失败。现在只允许调用 save_review_unit_result；"
+                                + "不得修改候选、覆盖范围或 contentFingerprint，"
+                                + "必须逐字复用 read_review_context 返回的 versionHash、scopeHash、dimensionsHash。"));
                         break;
                     }
                     if (reviewTruncationRecovery && isReviewEvidenceValidationFailure(call.code(), normalized)) {
@@ -642,6 +653,14 @@ public class WorkflowAgentRunner {
         return "save_review_unit_result".equals(toolCode)
             && error.getErrorCode() == ErrorCode.VALIDATION_ERROR
             && "审核证据无法在当前范围正文中验证。".equals(error.getMessage());
+    }
+
+    private boolean isReviewSaveHashValidationFailure(String toolCode, BusinessException error) {
+        return "save_review_unit_result".equals(toolCode)
+            && error.getErrorCode() == ErrorCode.VALIDATION_ERROR
+            && ("版本内容已变化。".equals(error.getMessage())
+                || "范围内容已变化。".equals(error.getMessage())
+                || "维度内容已变化。".equals(error.getMessage()));
     }
 
     private boolean disableThinking(String agentCode, boolean splitting) {
