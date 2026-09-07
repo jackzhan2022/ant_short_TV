@@ -48,6 +48,8 @@ public class AiExecutionTaskEntity {
     public String errorMessage;
     public String usageCostStatus;
     public String providerCostSummaryJson;
+    public Integer businessCallCount;
+    public Integer technicalRetryCount;
     public String pointSettlementStatus;
     public BigDecimal reservedPoints;
     public BigDecimal settledPoints;

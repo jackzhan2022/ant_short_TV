@@ -24,8 +24,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -362,8 +364,9 @@ public class ScreenplayToolDataService {
         context.runState().put("currentEpisodeFingerprint", fingerprint);
         context.runState().put("currentEpisodeContentHash", sha256(content));
         context.runState().put("currentEpisodeContent", content);
+        ArrayNode characters = currentScriptAssets(context, "character_asset", "CHARACTER", "c_");
         List<EpisodeSourceSegmenter.EpisodeSourceSegment> sourceSegments =
-            episodeSourceSegmenter.segment(content);
+            episodeSourceSegmenter.segment(content, speakerContext(characters));
         if (sourceSegments.size() > 10_000) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                 "当前剧集原文片段过多，无法交给 Agent 处理。");
@@ -376,18 +379,41 @@ public class ScreenplayToolDataService {
         result.put("content", content);
         result.put("contentFingerprint", fingerprint);
         ArrayNode segmentValues = result.putArray("sourceSegments");
+        ArrayNode classificationWarnings = result.putArray("classificationWarnings");
         for (var segment : sourceSegments) {
             ObjectNode value = segmentValues.addObject();
             value.put("id", segment.id());
             value.put("type", segment.type().name());
             value.put("text", segment.text());
             value.put("requiredCoverage", segment.requiredCoverage());
+            if (segment.classificationWarning() != null) {
+                value.put("classificationWarning", segment.classificationWarning());
+                ObjectNode warning = classificationWarnings.addObject();
+                warning.put("segmentId", segment.id());
+                warning.put("code", segment.classificationWarning());
+            }
         }
         ObjectNode catalog = result.putObject("assetCatalog");
-        catalog.set("characters", currentScriptAssets(context, "character_asset", "CHARACTER", "c_"));
+        catalog.set("characters", characters);
         catalog.set("scenes", currentScriptAssets(context, "scene_asset", "SCENE", "s_"));
         catalog.set("props", currentScriptAssets(context, "prop_asset", "PROP", "p_"));
         return result;
+    }
+
+    private EpisodeSourceSegmenter.SegmentationContext speakerContext(ArrayNode characters) {
+        Set<String> names = new LinkedHashSet<>();
+        Set<String> aliases = new LinkedHashSet<>();
+        for (JsonNode character : characters) {
+            String name = character.path("name").asText("").strip();
+            if (!name.isEmpty()) names.add(name);
+            String normalizedName = character.path("normalizedName").asText("").strip();
+            if (!normalizedName.isEmpty()) aliases.add(normalizedName);
+            for (JsonNode alias : character.path("aliases")) {
+                String value = alias.asText("").strip();
+                if (!value.isEmpty()) aliases.add(value);
+            }
+        }
+        return new EpisodeSourceSegmenter.SegmentationContext(names, aliases);
     }
 
     private ArrayNode currentScriptAssets(

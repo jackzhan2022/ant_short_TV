@@ -16,14 +16,56 @@ public class AiUsageExtractor {
         Integer outputTokens,
         LocalDateTime observedAt
     ) {
+        return providerTokens(context, inputTokens, outputTokens, null, null, observedAt);
+    }
+
+    public List<AiUsageCommand> providerTokens(
+        AiUsageContext context,
+        Integer inputTokens,
+        Integer outputTokens,
+        Integer cachedInputTokens,
+        Integer cacheWriteTokens,
+        LocalDateTime observedAt
+    ) {
         List<AiUsageCommand> usage = new ArrayList<>();
         if (inputTokens != null) {
-            usage.add(provider(context, AiUsageMetric.INPUT_TOKEN, BigDecimal.valueOf(inputTokens), Map.of(), observedAt));
+            int cached = tokenDetail(cachedInputTokens, "cachedInputTokens");
+            int cacheWrite = tokenDetail(cacheWriteTokens, "cacheWriteTokens");
+            if ((long) cached + cacheWrite > inputTokens) {
+                throw new IllegalArgumentException("cache token details cannot exceed inputTokens");
+            }
+            usage.add(provider(
+                context,
+                AiUsageMetric.INPUT_TOKEN,
+                BigDecimal.valueOf(inputTokens - cached - cacheWrite),
+                Map.of(),
+                observedAt
+            ));
+            if (cachedInputTokens != null) {
+                usage.add(provider(
+                    context, AiUsageMetric.CACHED_INPUT_TOKEN, BigDecimal.valueOf(cached), Map.of(), observedAt
+                ));
+            }
+            if (cacheWriteTokens != null) {
+                usage.add(provider(
+                    context, AiUsageMetric.CACHE_WRITE_TOKEN, BigDecimal.valueOf(cacheWrite), Map.of(), observedAt
+                ));
+            }
         }
         if (outputTokens != null) {
             usage.add(provider(context, AiUsageMetric.OUTPUT_TOKEN, BigDecimal.valueOf(outputTokens), Map.of(), observedAt));
         }
         return List.copyOf(usage);
+    }
+
+    private int tokenDetail(Integer value, String name) {
+        if (value == null) {
+            return 0;
+        }
+        if (value < 0) {
+            throw new IllegalArgumentException(name + " cannot be negative");
+        }
+        return value;
     }
 
     public AiUsageCommand requestCall(AiUsageContext context, LocalDateTime observedAt) {

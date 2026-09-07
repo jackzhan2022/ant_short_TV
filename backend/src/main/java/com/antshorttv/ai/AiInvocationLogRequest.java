@@ -18,7 +18,10 @@ public record AiInvocationLogRequest(
     String businessOutcome,
     Integer responseLength,
     String finishReason,
-    Boolean truncated
+    Boolean truncated,
+    Integer cachedInputTokens,
+    Integer cacheWriteTokens,
+    String promptCacheKey
 ) {
     public AiInvocationLogRequest(
         AiContext context,
@@ -40,7 +43,7 @@ public record AiInvocationLogRequest(
         this(
             context, route, capability, requestSummary, responseSummary, status, errorMessage,
             durationMs, providerRequestId, promptTokens, completionTokens, totalTokens,
-            externalTaskId, transportOutcome, businessOutcome, null, null, false
+            externalTaskId, transportOutcome, businessOutcome, null, null, false, null, null, null
         );
     }
 
@@ -63,7 +66,7 @@ public record AiInvocationLogRequest(
             durationMs, providerRequestId, promptTokens, completionTokens, totalTokens, null,
             "FAILED".equals(status) ? "FAILED" : "SUCCEEDED",
             "FAILED".equals(status) ? "NOT_REACHED" : "SUCCEEDED",
-            null, null, false
+            null, null, false, null, null, null
         );
     }
 
@@ -97,7 +100,10 @@ public record AiInvocationLogRequest(
             "SUCCEEDED",
             null,
             null,
-            false
+            false,
+            null,
+            null,
+            null
         );
     }
 
@@ -112,7 +118,8 @@ public record AiInvocationLogRequest(
             context, route, AiCapability.TEXT, requestSummary, response.content(), "SUCCESS", null,
             durationMs, response.providerRequestId(), response.promptTokens(), response.completionTokens(),
             response.totalTokens(), null, "SUCCEEDED", "SUCCEEDED",
-            response.content() == null ? 0 : response.content().length(), response.finishReason(), response.truncated()
+            response.content() == null ? 0 : response.content().length(), response.finishReason(), response.truncated(),
+            response.cachedInputTokens(), response.cacheWriteTokens(), metadataString(response, "promptCacheKey")
         );
     }
 
@@ -128,7 +135,7 @@ public record AiInvocationLogRequest(
         return new AiInvocationLogRequest(
             context, route, capability, requestSummary, null, "ACCEPTED", null, durationMs,
             providerRequestId, null, null, null, externalTaskId, "SUCCEEDED", "PENDING",
-            null, null, false
+            null, null, false, null, null, null
         );
     }
 
@@ -158,7 +165,16 @@ public record AiInvocationLogRequest(
             "NOT_REACHED",
             null,
             null,
-            false
+            false,
+            null,
+            null,
+            null
         );
+    }
+
+    private static String metadataString(AiTextResponse response, String key) {
+        if (response.metadata() == null) return null;
+        Object value = response.metadata().get(key);
+        return value == null ? null : value.toString();
     }
 }

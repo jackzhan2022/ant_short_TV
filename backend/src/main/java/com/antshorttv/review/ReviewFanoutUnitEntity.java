@@ -11,6 +11,8 @@ public class ReviewFanoutUnitEntity {
     private Long snapshotId;
     private Integer unitNo;
     private String unitKey;
+    private String stageType;
+    private String dimension;
     private String scopeJson;
     private Integer startOffset;
     private Integer endOffset;
@@ -30,6 +32,8 @@ public class ReviewFanoutUnitEntity {
     public Long getSnapshotId() { return snapshotId; } public void setSnapshotId(Long v) { snapshotId = v; }
     public Integer getUnitNo() { return unitNo; } public void setUnitNo(Integer v) { unitNo = v; }
     public String getUnitKey() { return unitKey; } public void setUnitKey(String v) { unitKey = v; }
+    public String getStageType() { return stageType; } public void setStageType(String v) { stageType = v; }
+    public String getDimension() { return dimension; } public void setDimension(String v) { dimension = v; }
     public String getScopeJson() { return scopeJson; } public void setScopeJson(String v) { scopeJson = v; }
     public Integer getStartOffset() { return startOffset; } public void setStartOffset(Integer v) { startOffset = v; }
     public Integer getEndOffset() { return endOffset; } public void setEndOffset(Integer v) { endOffset = v; }

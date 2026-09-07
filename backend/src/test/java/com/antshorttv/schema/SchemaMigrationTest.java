@@ -12,6 +12,51 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class SchemaMigrationTest {
 
     @Test
+    void flywayAddsReviewQualityAndCacheObservabilityWithoutBreakingHistoricalRows() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.tables
+             where lower(table_name) in (
+               'review_pipeline_stage', 'review_candidate_audit', 'review_semantic_decision'
+             )
+            """, Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'ai_call_log'
+               and lower(column_name) in (
+                 'cached_input_tokens', 'cache_write_tokens', 'prompt_cache_key'
+               )
+               and is_nullable = 'YES'
+            """, Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name) = 'review_fanout_unit'
+               and lower(column_name) = 'stage_type'
+               and is_nullable = 'NO'
+            """, Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+            select count(distinct lower(index_name)) from information_schema.indexes
+             where (lower(table_name) = 'review_fanout_unit'
+                    and lower(index_name) = 'idx_review_fanout_dimension_stage')
+                or (lower(table_name) = 'review_pipeline_stage'
+                    and lower(index_name) = 'idx_review_pipeline_stage_status')
+                or (lower(table_name) = 'review_candidate_audit'
+                    and lower(index_name) = 'idx_review_candidate_status')
+                or (lower(table_name) = 'review_semantic_decision'
+                    and lower(index_name) = 'idx_review_semantic_status')
+            """, Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.table_constraints
+             where constraint_type = 'UNIQUE'
+               and lower(constraint_name) in (
+                 'uk_review_pipeline_stage', 'uk_review_candidate_audit',
+                 'uk_review_semantic_candidate'
+               )
+            """, Integer.class)).isEqualTo(3);
+    }
+
+    @Test
     void flywayCreatesEpisodeSplitFallbackPersistence() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         assertThat(jdbc.queryForObject("""

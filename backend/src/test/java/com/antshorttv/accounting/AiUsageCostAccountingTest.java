@@ -99,6 +99,32 @@ class AiUsageCostAccountingTest {
     }
 
     @Test
+    void pricesOrdinaryCachedAndCacheWriteTokensAsSeparateComponents() {
+        Long versionId = priceVersion(111L);
+        priceComponent(versionId, AiUsageMetric.INPUT_TOKEN, "1000", "0.01000000", Map.of());
+        priceComponent(versionId, AiUsageMetric.CACHED_INPUT_TOKEN, "1000", "0.00100000", Map.of());
+        priceComponent(versionId, AiUsageMetric.CACHE_WRITE_TOKEN, "1000", "0.00400000", Map.of());
+        priceComponent(versionId, AiUsageMetric.OUTPUT_TOKEN, "1000", "0.00200000", Map.of());
+        AiUsageContext context = context(1013L, 111L);
+
+        usageExtractor.providerTokens(context, 1000, 200, 800, 100, CONTACTED_AT)
+            .forEach(accountingService::record);
+
+        AiExecutionCostSummary summary = accountingService.priceExecution(
+            1013L,
+            Set.of(
+                AiUsageMetric.INPUT_TOKEN,
+                AiUsageMetric.CACHED_INPUT_TOKEN,
+                AiUsageMetric.CACHE_WRITE_TOKEN,
+                AiUsageMetric.OUTPUT_TOKEN
+            )
+        );
+
+        assertThat(summary.status()).isEqualTo(AiUsageCostStatus.PRICED);
+        assertThat(summary.totalsByCurrency()).containsEntry("USD", new BigDecimal("0.00260000"));
+    }
+
+    @Test
     void recordsTheSameRequestDerivedCallOnlyOnceWhenRecoveryResumes() {
         AiUsageCommand command = AiUsageCommand.requestDerived(
             context(1011L, 110L), AiUsageMetric.CALL, "1", Map.of(), CONTACTED_AT);
@@ -134,6 +160,28 @@ class AiUsageCostAccountingTest {
         assertThat(characters.metric()).isEqualTo(AiUsageMetric.CHARACTER);
         assertThat(images.source()).isEqualTo(AiUsageSource.RESULT_MEASURED);
         assertThat(video.quantity()).isEqualByComparingTo("5.5");
+    }
+
+    @Test
+    void splitsProviderInputTokensWithoutDoubleCountingCacheUsage() {
+        List<AiUsageCommand> tokens = usageExtractor.providerTokens(
+            context(1012L, 110L), 9631, 5, 8960, 512, CONTACTED_AT
+        );
+
+        assertThat(tokens).extracting(AiUsageCommand::metric)
+            .containsExactly(
+                AiUsageMetric.INPUT_TOKEN,
+                AiUsageMetric.CACHED_INPUT_TOKEN,
+                AiUsageMetric.CACHE_WRITE_TOKEN,
+                AiUsageMetric.OUTPUT_TOKEN
+            );
+        assertThat(tokens).extracting(AiUsageCommand::quantity)
+            .containsExactly(
+                new BigDecimal("159"),
+                new BigDecimal("8960"),
+                new BigDecimal("512"),
+                new BigDecimal("5")
+            );
     }
 
     @Test

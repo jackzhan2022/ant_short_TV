@@ -345,7 +345,9 @@ export async function retryTask(
     `/api/script-review/tasks/${param0}/retry`,
     {
       method: "POST",
-      params: { ...queryParams },
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );

@@ -45,6 +45,9 @@ class ScriptReviewSkillContractTest {
                 .doesNotContain("tenantId", "projectId", "taskId", "versionId"));
         assertThat(skills.detail("script-review-cross-episode-synthesis").content())
             .contains("跨单元", "身份", "时间线", "场景", "道具", "视觉", "情绪", "因果", "悬念", "反转", "伏笔");
+        assertThat(skills.detail("script-review-semantic-quality").content())
+            .contains("证据支持", "规则适用", "替代解释", "严重度", "建议有效", "重复聚类",
+                "CONFIRMED", "NEEDS_HUMAN_REVIEW", "REJECTED", "INSUFFICIENT_EVIDENCE");
     }
 
     @Test

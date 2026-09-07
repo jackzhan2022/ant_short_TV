@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   updateStoryboard: vi.fn(),
   deleteStoryboard: vi.fn(),
   breakdownStoryboards: vi.fn(),
+  createStoryboardBatch: vi.fn(),
+  queryStoryboardBatch: vi.fn(),
+  queryLatestStoryboardBatch: vi.fn(),
   pollExecution: vi.fn(),
   cancelExecution: vi.fn(),
   retryExecution: vi.fn(),
@@ -79,6 +82,9 @@ vi.mock('./service', () => ({
   updateStoryboard: mocks.updateStoryboard,
   deleteStoryboard: mocks.deleteStoryboard,
   breakdownStoryboards: mocks.breakdownStoryboards,
+  createStoryboardBatch: mocks.createStoryboardBatch,
+  queryStoryboardBatch: mocks.queryStoryboardBatch,
+  queryLatestStoryboardBatch: mocks.queryLatestStoryboardBatch,
 }));
 
 vi.mock('./ShotProductionWorkspace', () => ({
@@ -426,6 +432,7 @@ const setupWorkspaceResponse = (
   mocks.breakdownStoryboards.mockResolvedValue({
     data: { id: 7100, status: 'PENDING', progress: 0 },
   });
+  mocks.queryLatestStoryboardBatch.mockResolvedValue({ data: null });
   mocks.createAiImageTask.mockResolvedValue({
     data: {
       id: 1200,
@@ -601,6 +608,102 @@ describe('ProductionWorkbench script page', () => {
       );
       expect(mocks.queryScriptWorkspace.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
+  });
+
+  it('submits all active episodes and shows separate batch outcome totals', async () => {
+    const batch = {
+      id: 88,
+      projectId: 1,
+      name: '分镜批次-88',
+      status: 'COMPLETED_WITH_FAILURES',
+      total: 3,
+      pending: 0,
+      running: 0,
+      succeeded: 1,
+      warning: 1,
+      failed: 1,
+      businessCallCount: 3,
+      technicalRetryCount: 2,
+      settledPoints: 30,
+      items: [],
+      createdAt: '2026-09-05T19:00:00',
+    };
+    mocks.createStoryboardBatch.mockResolvedValue({ data: batch });
+    render(<ProductionWorkbench />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /批量生成分镜/ }));
+
+    await waitFor(() => {
+      expect(mocks.createStoryboardBatch).toHaveBeenCalledWith(1, {
+        episodeIds: [1001, 1002],
+      });
+    });
+    expect(screen.getByText('成功 1 集')).toBeInTheDocument();
+    expect(screen.getByText('有告警 1 集')).toBeInTheDocument();
+    expect(screen.getByText('失败 1 集')).toBeInTheDocument();
+    expect(screen.getByText('业务调用 3 次')).toBeInTheDocument();
+    expect(screen.getByText('技术重试 2 次')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重试告警|修复告警/ })).not.toBeInTheDocument();
+  });
+
+  it('shows successful storyboard warnings without offering a paid warning retry', async () => {
+    setupWorkspaceResponse({
+      storyboards: [
+        {
+          id: 401,
+          shotNo: 1,
+          storyboardNo: 1,
+          episodeId: 1001,
+          episodeNo: 1,
+          shotType: '中景',
+          visualDescription: '人物转身走向门口。',
+          characters: '李慧',
+          scene: '停车场',
+          props: '',
+          dialogue: '',
+          durationSeconds: 12,
+          imagePrompt: '',
+          videoPrompt: '镜头提示',
+          shotPlan: {
+            storyboardNo: 1,
+            durationSeconds: 12,
+            diagnostics: {
+              normalizationCount: 5,
+              derivedSoundCount: 3,
+              classificationWarnings: [
+                { code: 'SOURCE_SPEAKER_UNCONFIRMED', segmentId: 'S0004' },
+              ],
+              actionWarnings: [],
+              businessCallCount: 1,
+              technicalRetryCount: 2,
+            },
+            warnings: [
+              {
+                code: 'ACTION_DENSITY',
+                storyboardNo: 1,
+                shotNo: 2,
+                message: '动作描述可能包含多个连续节拍，请按需人工检查。',
+              },
+            ],
+            shots: [],
+          },
+        },
+      ],
+    });
+    render(<ProductionWorkbench />);
+    await screen.findByText('分镜1');
+
+    fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
+
+    expect(await screen.findByText('生成成功，有 1 条质量告警')).toBeInTheDocument();
+    expect(screen.getByText('后端规范化 5 项')).toBeInTheDocument();
+    expect(screen.getByText('派生声音 3 条')).toBeInTheDocument();
+    expect(screen.getByText('来源分类告警 1 条')).toBeInTheDocument();
+    expect(screen.getByText('业务调用 1 次')).toBeInTheDocument();
+    expect(screen.getByText('技术重试 2 次')).toBeInTheDocument();
+    expect(screen.getByText('镜头2：动作描述可能包含多个连续节拍，请按需人工检查。'))
+      .toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重试告警|修复告警/ })).not.toBeInTheDocument();
   });
 
   it('keeps one rich prompt editor and does not rebind deleted material text', async () => {

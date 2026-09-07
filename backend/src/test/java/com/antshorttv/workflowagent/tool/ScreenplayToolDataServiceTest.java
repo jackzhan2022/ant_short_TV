@@ -514,6 +514,39 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void readsCurrentEpisodeWithTrustedSpeakerClassificationAndWarnings() {
+        jdbc.update("""
+            insert into character_asset
+              (tenant_id, project_id, script_id, name, normalized_name, role_type, status, source,
+               content_json, created_by, created_at, updated_at)
+            values (?, ?, ?, 'Serena', 'serena', 'LEAD', 'CONFIRMED', 'MANUAL',
+                    '{"aliases":["Sera"]}', ?, now(), now())
+            """, tenantId, projectId, scriptId, context.userId());
+        String source = "出场人物：Serena、神秘人\n"
+            + "▲ 镜头缓缓移向壁画：画中有人持剑。\n"
+            + "Serena：别动。\n"
+            + "Sera：听我说。\n"
+            + "神秘人：轮到你了。";
+        jdbc.update("update script_episode set content = ? where id = ?", source, episodeId);
+
+        JsonNode episode = service.readCurrentEpisode(episodeContext());
+
+        assertThat(episode.path("sourceSegments")).hasSize(5);
+        assertThat(episode.path("sourceSegments").get(0).path("type").asText())
+            .isEqualTo("METADATA");
+        assertThat(episode.path("sourceSegments").get(1).path("type").asText())
+            .isEqualTo("ACTION");
+        assertThat(episode.path("sourceSegments").get(2).path("type").asText())
+            .isEqualTo("DIALOGUE");
+        assertThat(episode.path("sourceSegments").get(3).path("type").asText())
+            .isEqualTo("DIALOGUE");
+        assertThat(episode.path("sourceSegments").get(4).path("type").asText())
+            .isEqualTo("ACTION");
+        assertThat(episode.path("sourceSegments").get(4).path("classificationWarning").asText())
+            .isEqualTo("SOURCE_SPEAKER_UNCONFIRMED");
+    }
+
+    @Test
     void trustedStoryboardExecutionReadsCurrentEpisodeWithoutHttpPrincipalPermissionLookup() {
         ToolExecutionContext storyboardContext = new ToolExecutionContext(
             tenantId, context.userId(), projectId, episodeId, scriptId, 9001L, null, 8001L,

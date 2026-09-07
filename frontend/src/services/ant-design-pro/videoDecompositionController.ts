@@ -55,6 +55,23 @@ export async function detail(
   );
 }
 
+/** 此处后端没有提供注释 GET /api/video-script-decomposition/batches/${param0}/screenplays */
+export async function screenplays(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.screenplaysParams,
+  options?: { [key: string]: any }
+) {
+  const { batchId: param0, ...queryParams } = params;
+  return request<API.ApiResponseVideoDecompositionBatchScreenplaysResponse>(
+    `/api/video-script-decomposition/batches/${param0}/screenplays`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 GET /api/video-script-decomposition/episodes/${param0} */
 export async function episode(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

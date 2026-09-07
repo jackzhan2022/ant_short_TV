@@ -199,12 +199,73 @@ export type StoryboardInternalShot = {
   innerOs?: string | null;
 };
 
+export type StoryboardWarning = {
+  code: string;
+  storyboardNo?: number;
+  shotNo?: number;
+  message: string;
+};
+
+export type StoryboardClassificationWarning = {
+  code: string;
+  segmentId: string;
+};
+
+export type StoryboardDiagnostics = {
+  normalizationCount: number;
+  derivedSoundCount: number;
+  actionWarnings: StoryboardWarning[];
+  classificationWarnings: StoryboardClassificationWarning[];
+  businessCallCount: number;
+  technicalRetryCount: number;
+};
+
 export type StoryboardShotPlan = {
   storyboardNo: number;
   durationSeconds: number;
   time?: string | null;
   lighting?: string | null;
+  warnings?: StoryboardWarning[];
+  diagnostics?: StoryboardDiagnostics;
   shots: StoryboardInternalShot[];
+};
+
+export type StoryboardBatchItem = {
+  id: number;
+  episodeId: number;
+  episodeNo: number;
+  executionId: number;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'SUCCESS_WITH_WARNING' | 'FAILED';
+  warningCount: number;
+  businessCallCount: number;
+  technicalRetryCount: number;
+  settledPoints: number;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+};
+
+export type StoryboardBatch = {
+  id: number;
+  projectId: number;
+  name: string;
+  status:
+    | 'PENDING'
+    | 'RUNNING'
+    | 'SUCCEEDED'
+    | 'SUCCEEDED_WITH_WARNING'
+    | 'COMPLETED_WITH_FAILURES'
+    | 'FAILED';
+  total: number;
+  pending: number;
+  running: number;
+  succeeded: number;
+  warning: number;
+  failed: number;
+  businessCallCount: number;
+  technicalRetryCount: number;
+  settledPoints: number;
+  items: StoryboardBatchItem[];
+  createdAt: string;
 };
 
 export type StoryboardPromptNode =
@@ -711,6 +772,32 @@ export const breakdownStoryboards = async (
       headers: { 'Content-Type': 'application/json' },
       data: values,
     },
+  );
+
+export const createStoryboardBatch = async (
+  projectId: number,
+  values: { episodeIds: number[] },
+) =>
+  request<ApiResponse<StoryboardBatch>>(
+    `/api/projects/${projectId}/storyboard-batches`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const queryStoryboardBatch = async (
+  projectId: number,
+  batchId: number,
+) =>
+  request<ApiResponse<StoryboardBatch>>(
+    `/api/projects/${projectId}/storyboard-batches/${batchId}`,
+  );
+
+export const queryLatestStoryboardBatch = async (projectId: number) =>
+  request<ApiResponse<StoryboardBatch | null>>(
+    `/api/projects/${projectId}/storyboard-batches/latest`,
   );
 
 export const createStoryboard = async (

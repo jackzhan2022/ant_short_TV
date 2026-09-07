@@ -24,9 +24,14 @@ import org.springframework.http.ResponseEntity;
 public class ScriptWorkflowController {
 
     private final ScriptWorkflowService scriptWorkflowService;
+    private final StoryboardBatchService storyboardBatchService;
 
-    public ScriptWorkflowController(ScriptWorkflowService scriptWorkflowService) {
+    public ScriptWorkflowController(
+        ScriptWorkflowService scriptWorkflowService,
+        StoryboardBatchService storyboardBatchService
+    ) {
         this.scriptWorkflowService = scriptWorkflowService;
+        this.storyboardBatchService = storyboardBatchService;
     }
 
     @GetMapping("/script-workspace")
@@ -333,6 +338,38 @@ public class ScriptWorkflowController {
         HttpServletRequest request
     ) {
         return accepted(scriptWorkflowService.submitStoryboardBreakdown(tenantId(request), projectId, body, request));
+    }
+
+    @PostMapping("/storyboard-batches")
+    @RequireProjectPermission("AI_SERVICE:USE")
+    public ResponseEntity<ApiResponse<StoryboardBatchResponse>> createStoryboardBatch(
+        @PathVariable Long projectId,
+        @Valid @RequestBody CreateStoryboardBatchRequest body,
+        HttpServletRequest request
+    ) {
+        StoryboardBatchResponse batch = storyboardBatchService.create(
+            tenantId(request), projectId, body,
+            request.getHeader("Idempotency-Key"), request.getHeader("X-Trace-Id"));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(batch));
+    }
+
+    @GetMapping("/storyboard-batches/latest")
+    @RequireProjectPermission("STORYBOARD:VIEW")
+    public ApiResponse<StoryboardBatchResponse> latestStoryboardBatch(
+        @PathVariable Long projectId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(storyboardBatchService.latest(tenantId(request), projectId));
+    }
+
+    @GetMapping("/storyboard-batches/{batchId}")
+    @RequireProjectPermission("STORYBOARD:VIEW")
+    public ApiResponse<StoryboardBatchResponse> storyboardBatch(
+        @PathVariable Long projectId,
+        @PathVariable Long batchId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(storyboardBatchService.get(tenantId(request), projectId, batchId));
     }
 
     @PostMapping("/storyboards")

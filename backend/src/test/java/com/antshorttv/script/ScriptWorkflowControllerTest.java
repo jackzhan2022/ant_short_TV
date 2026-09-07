@@ -1081,6 +1081,78 @@ class ScriptWorkflowControllerTest {
         )).isEqualTo(1);
     }
 
+    @Test
+    void storyboardBatchPersistsEpisodeExecutionsAndReturnsIdempotentSummary() throws Exception {
+        String token = registerUser("13800013033", "Storyboard Batch Owner");
+        Long tenantId = createTenant(token, "分镜批次团队");
+        Long ownerId = userIdByMobile("13800013033");
+        createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 10);
+        Long projectId = createProject(
+            token, tenantId, ownerId, "分镜批次项目", "STORYBOARD_BATCH",
+            "第1集：开端\n主角推开房门。\n\n第2集：冲突\n对手走进客厅。"
+        );
+        mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "title", "分镜批次剧本",
+                    "content", "第1集：开端\n主角推开房门。\n\n第2集：冲突\n对手走进客厅。",
+                    "status", "CONFIRMED"
+                ))))
+            .andExpect(status().isOk());
+        List<Long> episodeIds = jdbcTemplate.queryForList("""
+            select id from script_episode
+             where tenant_id = ? and project_id = ? and status = 'ACTIVE' and retired_at is null
+             order by episode_no
+            """, Long.class, tenantId, projectId);
+        String body = objectMapper.writeValueAsString(Map.of("episodeIds", episodeIds));
+
+        MvcResult first = mockMvc.perform(post("/api/projects/%d/storyboard-batches".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "storyboard-batch-once")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.total", is(2)))
+            .andExpect(jsonPath("$.data.pending", is(2)))
+            .andExpect(jsonPath("$.data.items", hasSize(2)))
+            .andReturn();
+        Long batchId = readLong(first, "$.data.id");
+
+        mockMvc.perform(post("/api/projects/%d/storyboard-batches".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "storyboard-batch-once")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.id", is(batchId.intValue())));
+
+        mockMvc.perform(get("/api/projects/%d/storyboard-batches/latest".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id", is(batchId.intValue())))
+            .andExpect(jsonPath("$.data.businessCallCount", is(0)))
+            .andExpect(jsonPath("$.data.technicalRetryCount", is(0)));
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from storyboard_batch where tenant_id = ? and project_id = ?",
+            Integer.class, tenantId, projectId
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from storyboard_batch_item where batch_id = ?",
+            Integer.class, batchId
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_execution_task where tenant_id = ? and scene = 'storyboard_breakdown'",
+            Integer.class, tenantId
+        )).isEqualTo(2);
+    }
+
     private String registerUser(String mobile, String nickname) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)

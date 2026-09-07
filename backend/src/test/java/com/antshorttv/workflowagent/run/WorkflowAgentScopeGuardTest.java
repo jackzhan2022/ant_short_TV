@@ -169,6 +169,8 @@ class WorkflowAgentScopeGuardTest {
 
         guard.requireAuthorized(input, List.of(
             "read_review_context", "read_review_content", "save_review_result"));
+        assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("read_review_issue_history")))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
         assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("save_review_unit_result")))
             .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
     }
@@ -189,6 +191,8 @@ class WorkflowAgentScopeGuardTest {
             301L, 302L, 303L, 304L, 1, "DEEP_CHILD", List.of("道具连续性")));
         guard.requireAuthorized(input, List.of(
             "read_review_context", "read_review_content", "save_review_unit_result"));
+        assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("read_review_issue_history")))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
         assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("read_review_unit_results")))
             .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
         assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("save_review_result")))

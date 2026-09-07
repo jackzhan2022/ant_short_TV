@@ -45,8 +45,8 @@ const AiOperationsPage = () => {
   const metrics = [
     ['过期 claim', overview.expiredClaims],
     ['重试耗尽', overview.retryExhausted],
-    ['未定价 usage', overview.unpricedUsage],
-    ['不完整 usage', overview.incompleteUsage],
+    ['价格组件缺失', overview.unpricedUsage],
+    ['用量数据不完整', overview.incompleteUsage],
     ['结算复核', overview.settlementReview],
     ['Provider 成本', overview.totalProviderCost],
     ['已结算积分', overview.totalSettledPoints],

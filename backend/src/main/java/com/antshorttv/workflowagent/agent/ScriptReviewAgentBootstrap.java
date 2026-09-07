@@ -30,12 +30,15 @@ public class ScriptReviewAgentBootstrap extends AbstractAnalysisAgentBootstrap {
         skills.add("script-review-foundation");
         skills.add("script-review-execution-framework");
         Arrays.stream(ReviewDimension.values()).map(ReviewDimension::skillCode).forEach(skills::add);
+        skills.add("script-review-semantic-quality");
         skills.add("script-review-cross-episode-synthesis");
         return new WorkflowAgentCommand(AGENT_CODE, "剧本审核", "按所选维度独立审核当前剧本版本，支持快速审核与深度分段聚合。",
             "只使用可信审核工具读取当前冻结范围。严格按当前阶段加载的 Skill 与工具顺序执行；"
-                + "不得臆造证据，不得越过所选维度或范围，且保存工具成功前不得声称完成。",
+                + "不得读取或参考任何历史审核问题，不得臆造证据，不得越过所选维度或范围，"
+                + "且保存工具成功前不得声称完成。",
             modelId, new BigDecimal("0.100"), 16384, 20, "ENABLED", List.copyOf(skills),
-            List.of("read_review_context", "read_review_content", "read_review_issue_history",
-                "save_review_unit_result", "read_review_unit_results", "save_review_result"));
+            List.of("read_review_context", "read_review_content",
+                "save_review_unit_result", "read_review_unit_results", "read_review_candidates",
+                "save_review_semantic_decisions", "save_review_result"));
     }
 }

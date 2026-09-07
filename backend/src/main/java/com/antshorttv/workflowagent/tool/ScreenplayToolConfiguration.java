@@ -271,10 +271,16 @@ public class ScreenplayToolConfiguration {
         fields.putObject("episodeId").put("type", "integer");
         fields.putObject("storyboardCount").put("type", "integer").put("minimum", 1);
         fields.putObject("storyboardIds").put("type", "array").putObject("items").put("type", "integer");
+        fields.putObject("normalizationCount").put("type", "integer").put("minimum", 0);
+        fields.putObject("derivedSoundCount").put("type", "integer").put("minimum", 0);
+        fields.putObject("actionWarnings").put("type", "array")
+            .putObject("items").put("type", "object");
+        fields.putObject("classificationWarnings").put("type", "array")
+            .putObject("items").put("type", "object");
         return definition("save_episode_storyboards", "保存本集正式分镜",
             "完整校验并原子覆盖当前有效剧集的正式多镜头分镜。",
             episodeStoryboardsInput(json), output, ToolRiskLevel.WRITE,
-            ToolFailurePolicy.RETURN_TO_MODEL,
+            ToolFailurePolicy.TERMINAL,
             executor((context, arguments) -> data.saveEpisodeStoryboards(context, arguments)));
     }
 
@@ -283,13 +289,12 @@ public class ScreenplayToolConfiguration {
         schema.put("description", "根对象只包含 schemaVersion、episodeFingerprint 和 storyboards；来源范围属于每个分镜对象。");
         schema.putArray("required").add("schemaVersion").add("episodeFingerprint").add("storyboards");
         ObjectNode fields = (ObjectNode) schema.path("properties");
-        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 2).put("maximum", 2);
+        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 2).put("maximum", 3);
         fields.putObject("episodeFingerprint").put("type", "string").put("minLength", 1).put("maxLength", 128);
         ObjectNode boards = fields.putObject("storyboards").put("type", "array")
             .put("minItems", 1).put("maxItems", 200);
         ObjectNode board = objectSchema(json);
-        board.putArray("required").add("storyboardNo").add("sourceFrom")
-            .add("sourceTo").add("usedAssetKeys").add("shots");
+        board.putArray("required").add("storyboardNo").add("sourceTo").add("usedAssetKeys").add("shots");
         ObjectNode boardFields = (ObjectNode) board.path("properties");
         boardFields.putObject("storyboardNo").put("type", "integer").put("minimum", 1);
         boardFields.putObject("sourceFrom").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16)
@@ -303,16 +308,21 @@ public class ScreenplayToolConfiguration {
         ObjectNode shots = boardFields.putObject("shots").put("type", "array")
             .put("minItems", 2).put("maxItems", 20);
         ObjectNode shot = objectSchema(json);
-        shot.putArray("required").add("shotNo").add("durationSeconds").add("positioning").add("action")
-            .add("soundSegmentIds");
+        shot.putArray("required").add("shotNo").add("durationSeconds").add("positioning").add("action");
         ObjectNode shotFields = (ObjectNode) shot.path("properties");
         shotFields.putObject("shotNo").put("type", "integer").put("minimum", 1);
         shotFields.putObject("durationSeconds").put("type", "number").put("minimum", 1.5).put("maximum", 4);
         shotFields.putObject("positioning").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         shotFields.putObject("action").put("type", "string").put("minLength", 1).put("maxLength", 1000);
+        shotFields.set("performance", nullableType(json, "string").put("maxLength", 1000));
+        shotFields.set("emotion", nullableType(json, "string").put("maxLength", 1000));
+        shotFields.set("camera", nullableType(json, "string").put("maxLength", 1000));
+        shotFields.putObject("sourceAnchor").put("type", "string").put("pattern", "^S\\d{4,}$")
+            .put("maxLength", 16)
+            .put("description", "Schema v3 可选来源锚点；必须按镜头顺序非递减。未提供时由后端按来源顺序和镜头时长推导。");
         shotFields.putObject("soundSegmentIds").put("type", "array").put("maxItems", 100)
             .put("uniqueItems", true)
-            .put("description", "只能引用 sourceSegments 中 type 为 DIALOGUE、NARRATION 或 INNER_OS 的 ID；禁止引用 ACTION 或 METADATA，包括角色提示行、字幕行和动作标签。")
+            .put("description", "仅用于读取和兼容历史 Schema v2；Schema v3 不应提交，最终声音归属由后端派生。")
             .putObject("items").put("type", "string")
             .put("pattern", "^S\\d{4,}$").put("maxLength", 16);
         shots.set("items", shot);

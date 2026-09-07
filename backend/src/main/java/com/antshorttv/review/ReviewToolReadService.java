@@ -45,7 +45,7 @@ public class ReviewToolReadService {
         result.put("mode", state.task.getReviewMode());
         result.put("phase", state.scope.phase());
         result.put("round", state.task.getRoundNo());
-        result.set("dimensions", json.valueToTree(state.dimensions));
+        result.set("dimensions", json.valueToTree(activeDimensions(state)));
         result.set("scope", json.valueToTree(state.scopeMap));
         result.put("versionHash", state.frozen.versionHash());
         result.put("scopeHash", state.frozen.scopeHash());
@@ -74,16 +74,21 @@ public class ReviewToolReadService {
             ReviewFanoutUnitEntity unit = fanout.orderedUnits(state.scope.snapshotId()).stream()
                 .filter(candidate -> candidate.getId().equals(state.scope.unitId())).findFirst()
                 .orElseThrow(() -> invalid("审核单元不存在。"));
+            boolean dimensional = unit.getDimension() != null && !unit.getDimension().isBlank();
             String source = state.version.getContent() == null ? "" : state.version.getContent();
-            if (unit.getStartOffset() < 0 || unit.getEndOffset() > source.length()
-                || unit.getStartOffset() >= unit.getEndOffset()) throw invalid("审核单元偏移已失效。");
-            visible = source.substring(unit.getStartOffset(), unit.getEndOffset());
+            if (dimensional) {
+                visible = state.frozen.content();
+            } else {
+                if (unit.getStartOffset() < 0 || unit.getEndOffset() > source.length()
+                    || unit.getStartOffset() >= unit.getEndOffset()) throw invalid("审核单元偏移已失效。");
+                visible = source.substring(unit.getStartOffset(), unit.getEndOffset());
+            }
             fingerprint = ReviewContentService.hash(visible);
             if (!fingerprint.equals(unit.getContentFingerprint())) throw invalid("审核单元内容已变化。");
             unitKey = unit.getUnitKey();
             unitAnchors = state.frozen.segments().stream()
-                .filter(segment -> segment.endOffset() > unit.getStartOffset()
-                    && segment.startOffset() < unit.getEndOffset())
+                .filter(segment -> dimensional || (segment.endOffset() > unit.getStartOffset()
+                    && segment.startOffset() < unit.getEndOffset()))
                 .map(ReviewContentService.Segment::anchor)
                 .distinct()
                 .toList();
@@ -128,9 +133,9 @@ public class ReviewToolReadService {
              where issue.tenant_id = ? and issue.project_id = ? and issue.round_no < ?
                and issue.dimension in (%s)
              order by issue.round_no desc, issue.id asc limit ? offset ?
-            """.formatted(placeholders(state.dimensions.size())), historyArgs(
+            """.formatted(placeholders(activeDimensions(state).size())), historyArgs(
                 context.tenantId(), state.scope.reviewProjectId(), state.task.getRoundNo(),
-                state.dimensions, pageSize + 1, offset));
+                activeDimensions(state), pageSize + 1, offset));
         boolean hasMore = rows.size() > pageSize;
         if (hasMore) rows = rows.subList(0, pageSize);
         ArrayNode issues = json.createArrayNode();
@@ -174,6 +179,10 @@ public class ReviewToolReadService {
             || !task.getProjectId().equals(version.getProjectId())) throw invalid("审核任务或版本不匹配。");
         List<String> dimensions = list(task.getSelectedDimensionsJson());
         ReviewDimension.parseAll(dimensions);
+        if (!scope.selectedDimensions().isEmpty()
+            && !dimensions.containsAll(scope.selectedDimensions())) {
+            throw invalid("审核运行包含未选择的维度。");
+        }
         Map<String, Object> scopeMap = map(task.getReviewScopeJson());
         ReviewContentService.FrozenReview frozen = contentService.freeze(
             version.getContent(), task.getReviewScopeType(), scopeMap, dimensions);
@@ -181,6 +190,12 @@ public class ReviewToolReadService {
         requireHash(task.getScopeHash(), frozen.scopeHash(), "范围");
         requireHash(task.getDimensionsHash(), frozen.dimensionsHash(), "维度");
         return new State(task, version, scope, dimensions, scopeMap, frozen);
+    }
+
+    List<String> activeDimensions(State state) {
+        return state.scope().selectedDimensions().isEmpty()
+            ? state.dimensions()
+            : state.scope().selectedDimensions();
     }
 
     private void requireHash(String stored, String actual, String label) {

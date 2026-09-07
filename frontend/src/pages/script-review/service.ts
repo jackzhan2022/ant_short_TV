@@ -84,7 +84,12 @@ export type ReviewTask = {
   workflowAgentCode?: string | null;
   workflowAgentRevision?: number | null;
   workflowAgentRunId?: number | null;
-  workflowPhase?: 'QUICK' | 'DEEP_CHILD' | 'DEEP_AGGREGATION' | null;
+  workflowPhase?:
+    | 'QUICK'
+    | 'DEEP_CHILD'
+    | 'DEEP_SEMANTIC'
+    | 'DEEP_AGGREGATION'
+    | null;
   workflowAttemptNo?: number | null;
   fanoutSnapshotId?: number | null;
   aggregationRunId?: number | null;
@@ -101,11 +106,44 @@ export type ReviewTask = {
       id: number;
       unitNo: number;
       unitKey: string;
+      stageType?: string | null;
+      dimension?: string | null;
       status: string;
+      childRunId?: number | null;
+      attemptNo?: number | null;
       candidateSaved: boolean;
       errorCode?: string | null;
       errorMessage?: string | null;
+      cacheUsage?: ReviewCacheUsage | null;
     }>;
+  } | null;
+  observability?: {
+    quality?: {
+      status: string;
+      runId?: number | null;
+      attemptNo?: number | null;
+      candidateCount?: number | null;
+      decisionCount?: number | null;
+      anomalyRequired: boolean;
+      anomalyPassed?: boolean | null;
+    } | null;
+    decisions: {
+      confirmed: number;
+      needsHumanReview: number;
+      rejected: number;
+      insufficientEvidence: number;
+    };
+    humanReviewFindings: Array<{
+      candidateId: number;
+      unitId: number;
+      dimension: string;
+      confidence: number;
+      rationale: string;
+      severityDecision?: string | null;
+      evidenceRefs: string[];
+      candidate: Record<string, unknown>;
+    }>;
+    cacheUsage: ReviewCacheUsage;
   } | null;
   completedAt?: string | null;
   canceledAt?: string | null;
@@ -115,6 +153,17 @@ export type ReviewTask = {
     summary: string;
   } | null;
   issues: ReviewIssue[];
+};
+
+export type ReviewCacheUsage = {
+  promptTokens: number;
+  ordinaryInputTokens?: number | null;
+  cachedInputTokens?: number | null;
+  cacheWriteTokens?: number | null;
+  outputTokens: number;
+  latencyMs: number;
+  cacheHitRatio?: number | null;
+  cacheObservable: boolean;
 };
 
 export type ReviewProjectDetail = {

@@ -208,6 +208,9 @@ public class WorkflowAgentRunner {
         }
         List<AiChatMessage> messages = new ArrayList<>();
         messages.add(AiChatMessage.system(prompt));
+        if (input.stableContext() != null && !input.stableContext().isBlank()) {
+            messages.add(AiChatMessage.user(input.stableContext()));
+        }
         messages.add(AiChatMessage.user("CHUNK_FALLBACK".equals(runState.splitMode())
             ? fallbackInstruction(runState.splitFallbackReason()) : input.input()));
         Set<String> allowlist = new HashSet<>(agent.toolCodes());
@@ -228,7 +231,6 @@ public class WorkflowAgentRunner {
         boolean reviewEvidenceRefreshPending = false;
         boolean reviewEvidenceRefreshUsed = false;
         boolean assetSaveCorrectionUsed = false;
-        String storyboardValidationCode = null;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < agent.maxSteps(); modelRound++) {
             requireBeforeDeadline(deadline);
@@ -259,7 +261,8 @@ public class WorkflowAgentRunner {
                         "short-drama-asset-recognition".equals(agent.code()) ? 1 : 0,
                         messages, activeProviderTools(allowedTools, splitting, runState,
                             agent.code(), contract, reviewTruncationRecovery, reviewEvidenceRefreshPending),
-                        disableThinking(agent.code(), splitting) ? "disabled" : null
+                        disableThinking(agent.code(), splitting) ? "disabled" : null,
+                        input.promptCacheKey(), input.promptCacheOptions()
                     ))
                     .build());
             } catch (AiGatewayException exception) {
@@ -384,19 +387,6 @@ public class WorkflowAgentRunner {
                         messages.add(AiChatMessage.user(
                             "保存失败。仅修正错误中指出的字段并再次调用 save_episode_assets；"
                                 + "五个数组必须始终存在，证据必须逐字来自当前剧集，不得编造。"));
-                        break;
-                    }
-                    if ("save_episode_storyboards".equals(call.code())) {
-                        String validationCode = storyboardValidationCode(normalized);
-                        if (storyboardValidationCode != null) throw normalized;
-                        storyboardValidationCode = validationCode;
-                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
-                        messages.add(AiChatMessage.user(
-                            "分镜保存校验失败。只根据结构化诊断修正对应片段范围或声音归属，"
-                                + "然后再次调用 save_episode_storyboards；不得重新读取或重做其他流程。"
-                                + "再次提交前必须同时自检：sourceFrom/sourceTo 位于每个分镜对象内部而非根对象；"
-                                + "soundSegmentIds 只能包含 DIALOGUE、NARRATION 或 INNER_OS，"
-                                + "必须排除 ACTION、METADATA、角色提示行和字幕行。"));
                         break;
                     }
                     if (reviewTruncationRecovery && isReviewEvidenceValidationFailure(call.code(), normalized)) {
@@ -688,14 +678,6 @@ public class WorkflowAgentRunner {
         } catch (JsonProcessingException exception) {
             return "{\"ok\":false}";
         }
-    }
-
-    private String storyboardValidationCode(BusinessException error) {
-        if (error instanceof WorkflowToolValidationException validation) {
-            Object value = validation.details().get("validationCode");
-            if (value != null) return value.toString();
-        }
-        return error.getErrorCode().name();
     }
 
     private String writeJson(JsonNode value) {

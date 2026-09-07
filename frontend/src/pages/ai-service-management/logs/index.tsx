@@ -97,6 +97,61 @@ const AiCallLogsPage = () => {
       width: 200,
     },
     {
+      title: '输入 Token',
+      dataIndex: 'promptTokens',
+      search: false,
+      width: 110,
+      renderText: (_, record) => {
+        if (record.promptTokens == null) return '-';
+        return Math.max(
+          0,
+          record.promptTokens -
+            (record.cachedInputTokens ?? 0) -
+            (record.cacheWriteTokens ?? 0),
+        ).toLocaleString();
+      },
+    },
+    {
+      title: '缓存 Token',
+      dataIndex: 'cachedInputTokens',
+      search: false,
+      width: 110,
+      renderText: (value) =>
+        value == null ? '-' : Number(value).toLocaleString(),
+    },
+    {
+      title: '缓存写入',
+      dataIndex: 'cacheWriteTokens',
+      search: false,
+      width: 110,
+      renderText: (value) =>
+        value == null ? '-' : Number(value).toLocaleString(),
+    },
+    {
+      title: '输出 Token',
+      dataIndex: 'completionTokens',
+      search: false,
+      width: 110,
+      renderText: (value) =>
+        value == null ? '-' : Number(value).toLocaleString(),
+    },
+    {
+      title: '缓存命中率',
+      dataIndex: 'cachedInputTokens',
+      search: false,
+      width: 120,
+      renderText: (_, record) => {
+        if (
+          record.cachedInputTokens == null ||
+          record.promptTokens == null ||
+          record.promptTokens <= 0
+        ) {
+          return '-';
+        }
+        return `${((record.cachedInputTokens / record.promptTokens) * 100).toFixed(1)}%`;
+      },
+    },
+    {
       title: '耗时',
       dataIndex: 'durationMs',
       search: false,
@@ -118,7 +173,7 @@ const AiCallLogsPage = () => {
         headerTitle="AI调用日志"
         columns={columns}
         tableLayout="fixed"
-        scroll={{ x: 1500 }}
+        scroll={{ x: 2050 }}
         request={async (params) => {
           const response = await queryAiCallLogs(tenantId, {
             current: params.current,

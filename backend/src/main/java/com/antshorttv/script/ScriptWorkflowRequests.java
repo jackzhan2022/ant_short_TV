@@ -73,6 +73,11 @@ record StoryboardBreakdownRequest(
 ) {
 }
 
+record CreateStoryboardBatchRequest(
+    @NotNull @Size(min = 1, max = 200) java.util.List<@NotNull Long> episodeIds
+) {
+}
+
 record SaveStoryboardRequest(
     @Min(1) @Max(200) Integer episodeNo,
     @Min(1) @Max(9999) Integer shotNo,

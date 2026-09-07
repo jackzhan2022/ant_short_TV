@@ -36,11 +36,13 @@ import type {
   ScriptEpisode,
   ScriptWorkspace,
   StoryboardShot,
+  StoryboardBatch,
   StoryboardPromptDocument,
   StoryboardPromptNode,
 } from './service';
 import {
   breakdownStoryboards,
+  createStoryboardBatch,
   cancelAiImageTask,
   cancelAiVideoTask,
   createAiImageTask,
@@ -51,6 +53,8 @@ import {
   queryAiImageTasks,
   queryAiVideoTasks,
   queryScriptWorkspace,
+  queryLatestStoryboardBatch,
+  queryStoryboardBatch,
   regenerateAiImageTask,
   regenerateAiVideoTask,
   updateStoryboard,
@@ -67,6 +71,12 @@ type StoryboardDraft = Record<
 type StoryboardWithProps = StoryboardShot & { props?: string };
 
 const successStatuses = ['SUCCESS', 'SUCCEEDED'];
+const terminalStoryboardBatchStatuses = new Set([
+  'SUCCEEDED',
+  'SUCCEEDED_WITH_WARNING',
+  'COMPLETED_WITH_FAILURES',
+  'FAILED',
+]);
 const supportedVideoDurations = [5, 8, 10];
 
 const getTaskImage = (
@@ -512,6 +522,7 @@ const StoryboardCard = ({
   onCopyStoryboard: (storyboard: StoryboardShot) => void;
   onDelete: (storyboard: StoryboardShot) => void;
 }) => {
+  const warnings = item.shotPlan?.warnings ?? [];
   const characterNames = splitNames(item.characters);
   const sceneNames = splitNames(item.scene);
   const propNames = getStoryboardPropNames(item);
@@ -675,6 +686,28 @@ const StoryboardCard = ({
           />
         </Flex>
       </div>
+
+      {warnings.length ? (
+        <div
+          style={{
+            padding: '10px 18px',
+            background: '#fffbe6',
+            borderBottom: '1px solid #ffe58f',
+          }}
+        >
+          <Flex gap={8} wrap>
+            {warnings.map((warning) => (
+              <Tag
+                color="warning"
+                key={`${warning.code}-${warning.storyboardNo}-${warning.shotNo}-${warning.message}`}
+              >
+                {warning.shotNo ? `镜头${warning.shotNo}：` : ''}
+                {warning.message}
+              </Tag>
+            ))}
+          </Flex>
+        </div>
+      ) : null}
 
       <div
         style={{
@@ -1132,6 +1165,8 @@ const ProductionWorkbenchStoryboard = () => {
   const [storyboardExecution, setStoryboardExecution] =
     useState<API.AiExecutionResponse>();
   const [storyboardBusy, setStoryboardBusy] = useState(false);
+  const [storyboardBatch, setStoryboardBatch] = useState<StoryboardBatch>();
+  const [storyboardBatchBusy, setStoryboardBatchBusy] = useState(false);
   const reservedShotNos = useRef<Record<number, number>>({});
   const [workspace, setWorkspace] = useState<ScriptWorkspace>({
     projectId: projectId || 0,
@@ -1152,8 +1187,9 @@ const ProductionWorkbenchStoryboard = () => {
       queryScriptWorkspace(projectId),
       queryAiImageTasks(projectId, undefined).catch(() => ({ data: [] })),
       queryAiVideoTasks(projectId, undefined).catch(() => ({ data: [] })),
+      queryLatestStoryboardBatch(projectId).catch(() => ({ data: null })),
     ])
-      .then(([workspaceResponse, imageTaskResponse, videoTaskResponse]) => {
+      .then(([workspaceResponse, imageTaskResponse, videoTaskResponse, batchResponse]) => {
         if (!active) {
           return;
         }
@@ -1174,6 +1210,7 @@ const ProductionWorkbenchStoryboard = () => {
         setImageTasks(imageTaskResponse.data || []);
         const nextVideoTasks = videoTaskResponse.data || [];
         setVideoTasks(nextVideoTasks);
+        setStoryboardBatch(batchResponse.data || undefined);
         for (const task of nextVideoTasks.filter(
           (item) =>
             item.executionId &&
@@ -1212,6 +1249,35 @@ const ProductionWorkbenchStoryboard = () => {
     };
   }, [projectId]);
 
+  useEffect(() => {
+    if (
+      !storyboardBatch?.id ||
+      storyboardBatchBusy ||
+      terminalStoryboardBatchStatuses.has(storyboardBatch.status)
+    ) {
+      return;
+    }
+    let active = true;
+    const follow = async () => {
+      while (active) {
+        const response = await queryStoryboardBatch(projectId, storyboardBatch.id);
+        if (!active || !response.data) return;
+        setStoryboardBatch(response.data);
+        if (terminalStoryboardBatchStatuses.has(response.data.status)) {
+          await reloadWorkspace();
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    };
+    void follow().catch(() => {
+      if (active) message.error('分镜批次状态刷新失败');
+    });
+    return () => {
+      active = false;
+    };
+  }, [projectId, storyboardBatch?.id, storyboardBatchBusy]);
+
   const characters = workspace.characters;
   const scenes = workspace.scenes;
   const props = workspace.props;
@@ -1230,6 +1296,12 @@ const ProductionWorkbenchStoryboard = () => {
   const visibleStoryboards = workspace.storyboards.filter(
     (item) => item.episodeNo === activeEpisode,
   );
+  const storyboardWarnings = visibleStoryboards.flatMap(
+    (item) => item.shotPlan?.warnings ?? [],
+  );
+  const storyboardDiagnostics = visibleStoryboards.find(
+    (item) => item.shotPlan?.diagnostics,
+  )?.shotPlan?.diagnostics;
 
   const updateDraft = (
     storyboardId: number,
@@ -1311,6 +1383,44 @@ const ProductionWorkbenchStoryboard = () => {
       message.error('本集分镜生成失败');
     } finally {
       setStoryboardBusy(false);
+    }
+  };
+
+  const pollStoryboardBatch = async (batchId: number) => {
+    while (true) {
+      const response = await queryStoryboardBatch(projectId, batchId);
+      if (!response.data) throw new Error('missing storyboard batch');
+      setStoryboardBatch(response.data);
+      if (terminalStoryboardBatchStatuses.has(response.data.status)) {
+        return response.data;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  };
+
+  const generateStoryboardBatch = async () => {
+    const episodeIds = (workspace.episodes || [])
+      .map((episode) => episode.episodeId)
+      .filter((episodeId): episodeId is number => Number.isSafeInteger(episodeId));
+    if (!episodeIds.length) {
+      message.warning('当前项目没有可生成分镜的有效剧集');
+      return;
+    }
+    setStoryboardBatchBusy(true);
+    try {
+      const response = await createStoryboardBatch(projectId, { episodeIds });
+      if (!response.data) throw new Error('missing storyboard batch');
+      setStoryboardBatch(response.data);
+      const terminal = terminalStoryboardBatchStatuses.has(response.data.status)
+        ? response.data
+        : await pollStoryboardBatch(response.data.id);
+      setStoryboardBatch(terminal);
+      await reloadWorkspace();
+      message.success('批量分镜生成已完成');
+    } catch {
+      message.error('批量分镜生成失败');
+    } finally {
+      setStoryboardBatchBusy(false);
     }
   };
 
@@ -1736,8 +1846,30 @@ const ProductionWorkbenchStoryboard = () => {
             <Button icon={<BarsOutlined />} onClick={batchGenerateVideo}>
               批量生成视频
             </Button>
+            <Button
+              icon={<ThunderboltOutlined />}
+              loading={storyboardBatchBusy}
+              disabled={
+                storyboardBatchBusy ||
+                ['PENDING', 'RUNNING'].includes(storyboardBatch?.status || '')
+              }
+              onClick={generateStoryboardBatch}
+            >
+              批量生成分镜
+            </Button>
           </Flex>
         </Flex>
+
+        {storyboardBatch ? (
+          <Flex gap={8} wrap style={{ marginTop: 12 }}>
+            <Tag color="success">成功 {storyboardBatch.succeeded} 集</Tag>
+            <Tag color="warning">有告警 {storyboardBatch.warning} 集</Tag>
+            <Tag color="error">失败 {storyboardBatch.failed} 集</Tag>
+            <Tag>进行中 {storyboardBatch.running + storyboardBatch.pending} 集</Tag>
+            <Tag>业务调用 {storyboardBatch.businessCallCount} 次</Tag>
+            <Tag>技术重试 {storyboardBatch.technicalRetryCount} 次</Tag>
+          </Flex>
+        ) : null}
 
         <section style={{ marginTop: 18, paddingLeft: 2 }}>
           <Flex justify="space-between" align="center" gap={16} wrap>
@@ -1774,6 +1906,22 @@ const ProductionWorkbenchStoryboard = () => {
           </Typography.Paragraph>
           {storyboardExecution ? (
             <AiExecutionStatus task={storyboardExecution} busy={storyboardBusy} />
+          ) : null}
+          {storyboardExecution?.status === 'SUCCEEDED' && storyboardWarnings.length ? (
+            <Tag color="warning" style={{ marginTop: 10 }}>
+              生成成功，有 {storyboardWarnings.length} 条质量告警
+            </Tag>
+          ) : null}
+          {storyboardDiagnostics ? (
+            <Flex gap={8} wrap style={{ marginTop: 10 }}>
+              <Tag>后端规范化 {storyboardDiagnostics.normalizationCount} 项</Tag>
+              <Tag>派生声音 {storyboardDiagnostics.derivedSoundCount} 条</Tag>
+              <Tag color={storyboardDiagnostics.classificationWarnings.length ? 'warning' : 'default'}>
+                来源分类告警 {storyboardDiagnostics.classificationWarnings.length} 条
+              </Tag>
+              <Tag>业务调用 {storyboardDiagnostics.businessCallCount} 次</Tag>
+              <Tag>技术重试 {storyboardDiagnostics.technicalRetryCount} 次</Tag>
+            </Flex>
           ) : null}
         </section>
 

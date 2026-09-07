@@ -33,8 +33,10 @@ public class StoryboardToolDataService {
         "视频中不得出现任何字幕、文字叠加、纯画面，不要bgm，不要配乐。";
     public static final String FIXED_CONSISTENCY_CONSTRAINT =
         "保持<人物身份、数量、服装、道具归属、空间方向和声音关系>稳定。";
-    private static final Pattern TOO_MANY_ACTIONS = Pattern.compile(
+    private static final Pattern ACTION_DENSITY_PATTERN = Pattern.compile(
         ".*(随后|然后|接着|继而|并且|同时又|after that|then).*", Pattern.CASE_INSENSITIVE);
+    private static final Pattern QUOTED_TEXT = Pattern.compile(
+        "\\\"[^\\\"]*\\\"|'[^']*'|“[^”]*”|‘[^’]*’");
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -53,7 +55,8 @@ public class StoryboardToolDataService {
         if (!trustedFingerprint.equals(suppliedFingerprint)) {
             throw invalid("分镜来源指纹与本次读取的当前剧集不一致。");
         }
-        if (payload.path("schemaVersion").asInt() != 2) {
+        int schemaVersion = payload.path("schemaVersion").asInt();
+        if (schemaVersion != 2 && schemaVersion != 3) {
             throw invalid("不支持的分镜 Schema 版本。");
         }
         JsonNode submitted = payload.path("storyboards");
@@ -67,7 +70,21 @@ public class StoryboardToolDataService {
         }
         String visualStyle = projectVisualStyle(context);
         List<EpisodeSourceSegment> segments = trustedSegments(context);
+        StoryboardNormalizer.Result normalization = schemaVersion == 3
+            ? new StoryboardNormalizer(json).normalize(submitted, segments)
+            : new StoryboardNormalizer.Result((ArrayNode) submitted, 0, 0);
+        submitted = normalization.storyboards();
         List<ValidatedStoryboard> validated = validateAll(context, source, segments, submitted, visualStyle);
+        ArrayNode classificationWarnings = classificationWarnings(segments);
+        for (ValidatedStoryboard board : validated) {
+            ObjectNode diagnostics = ((ObjectNode) board.plan).putObject("diagnostics");
+            diagnostics.put("normalizationCount", normalization.normalizedFieldCount());
+            diagnostics.put("derivedSoundCount", normalization.derivedSoundCount());
+            diagnostics.set("actionWarnings", board.plan.path("warnings").deepCopy());
+            diagnostics.set("classificationWarnings", classificationWarnings.deepCopy());
+            diagnostics.put("businessCallCount", 0);
+            diagnostics.put("technicalRetryCount", 0);
+        }
 
         jdbc.update("""
             update storyboard set deleted_at = now(), updated_at = now()
@@ -82,7 +99,54 @@ public class StoryboardToolDataService {
         result.put("episodeId", context.episodeId());
         result.put("storyboardCount", validated.size());
         result.set("storyboardIds", ids);
+        result.put("normalizationCount", normalization.normalizedFieldCount());
+        result.put("derivedSoundCount", normalization.derivedSoundCount());
+        ArrayNode actionWarnings = result.putArray("actionWarnings");
+        validated.forEach(board -> board.plan.path("warnings").forEach(actionWarnings::add));
+        result.set("classificationWarnings", classificationWarnings);
         return result;
+    }
+
+    @Transactional
+    public void annotateRunDiagnostics(
+        Long tenantId,
+        Long projectId,
+        Long episodeId,
+        Long runId,
+        int businessCallCount,
+        int technicalRetryCount
+    ) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            select id, shot_plan_json from storyboard
+             where tenant_id = ? and project_id = ? and episode_id = ? and generated_by_run_id = ?
+               and deleted_at is null
+             order by storyboard_no
+            """, tenantId, projectId, episodeId, runId);
+        if (rows.isEmpty()) {
+            throw new IllegalStateException("本次运行没有可写入诊断信息的正式分镜。");
+        }
+        for (Map<String, Object> row : rows) {
+            try {
+                ObjectNode plan = (ObjectNode) json.readTree(String.valueOf(row.get("shot_plan_json")));
+                ObjectNode diagnostics = plan.withObject("diagnostics");
+                diagnostics.put("businessCallCount", Math.max(0, businessCallCount));
+                diagnostics.put("technicalRetryCount", Math.max(0, technicalRetryCount));
+                jdbc.update("update storyboard set shot_plan_json = ?, updated_at = now() where id = ?",
+                    write(plan), row.get("id"));
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("无法更新分镜诊断信息。", exception);
+            }
+        }
+    }
+
+    private ArrayNode classificationWarnings(List<EpisodeSourceSegment> segments) {
+        ArrayNode warnings = json.createArrayNode();
+        segments.stream().filter(segment -> segment.classificationWarning() != null).forEach(segment -> {
+            ObjectNode warning = warnings.addObject();
+            warning.put("code", segment.classificationWarning());
+            warning.put("segmentId", segment.id());
+        });
+        return warnings;
     }
 
     public boolean hasCompleteRunSet(Long tenantId, Long projectId, Long episodeId, Long runId) {
@@ -156,6 +220,7 @@ public class StoryboardToolDataService {
             BigDecimal total = BigDecimal.ZERO;
             ObjectNode validatedBoard = board.deepCopy();
             validatedBoard.put("sourceText", source.substring(from.segment.startOffset(), to.segment.endOffset()));
+            ArrayNode warnings = validatedBoard.putArray("warnings");
             ArrayNode validatedShots = (ArrayNode) validatedBoard.path("shots");
             for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
                 JsonNode shot = shots.get(shotIndex);
@@ -171,8 +236,16 @@ public class StoryboardToolDataService {
                 total = total.add(duration);
                 String action = requiredText(shot, "action");
                 requiredText(shot, "positioning");
-                if (action.length() > 1000 || TOO_MANY_ACTIONS.matcher(action).matches()) {
+                if (action.length() > 1000) {
                     throw invalid("单个镜头只能承载一个主要动作或一个明确情绪变化。");
+                }
+                String unquotedAction = QUOTED_TEXT.matcher(action).replaceAll("");
+                if (ACTION_DENSITY_PATTERN.matcher(unquotedAction).matches()) {
+                    ObjectNode warning = warnings.addObject();
+                    warning.put("code", "ACTION_DENSITY");
+                    warning.put("storyboardNo", storyboardNo);
+                    warning.put("shotNo", shotIndex + 1);
+                    warning.put("message", "动作描述可能包含多个连续节拍，请按需人工检查。");
                 }
                 injectSounds(shot, validatedShot, byId, submittedSounds, storyboardNo,
                     from.ordinal, to.ordinal);
@@ -308,6 +381,14 @@ public class StoryboardToolDataService {
                 .append(formatDuration(shot.path("durationSeconds").decimalValue())).append("s\n")
                 .append("[站位] ").append(requiredText(shot, "positioning")).append("\n")
                 .append("[动作] ").append(requiredText(shot, "action"));
+            for (String field : List.of("performance", "emotion", "camera")) {
+                String value = optionalText(shot, field);
+                if (!value.isBlank()) text.append("\n[").append(switch (field) {
+                    case "performance" -> "表演";
+                    case "emotion" -> "情绪";
+                    default -> "运镜";
+                }).append("] ").append(value);
+            }
             for (String field : List.of("dialogue", "narration", "innerOs")) {
                 String sound = optionalText(shot, field);
                 if (!sound.isBlank()) text.append(' ').append(sound);

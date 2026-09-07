@@ -3,6 +3,7 @@ package com.antshorttv.workflowagent.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class EpisodeSourceSegmenterTest {
@@ -88,5 +89,41 @@ class EpisodeSourceSegmenterTest {
                 EpisodeSourceSegmenter.SourceSegmentType.ACTION,
                 EpisodeSourceSegmenter.SourceSegmentType.NARRATION,
                 EpisodeSourceSegmenter.SourceSegmentType.ACTION);
+    }
+
+    @Test
+    void usesTrustedSpeakersAndDoesNotTreatProductionStructureLinesAsSound() {
+        String source = "出场人物：Cassian、Serena\n"
+            + "▲ 镜头缓缓移向墙上的古老壁画：画中，一名白裙女子持剑。\n"
+            + "Serena：你别过来。\n"
+            + "新闻主播（VO）：紧急消息。\n"
+            + "Serena OS：他怎么会在这里？";
+
+        var segments = segmenter.segment(source,
+            new EpisodeSourceSegmenter.SegmentationContext(
+                Set.of("Cassian", "Serena"), Set.of()));
+
+        assertThat(segments).extracting(EpisodeSourceSegmenter.EpisodeSourceSegment::type)
+            .containsExactly(
+                EpisodeSourceSegmenter.SourceSegmentType.METADATA,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.DIALOGUE,
+                EpisodeSourceSegmenter.SourceSegmentType.NARRATION,
+                EpisodeSourceSegmenter.SourceSegmentType.INNER_OS);
+        assertThat(segments.get(0).requiredCoverage()).isFalse();
+        assertThat(segments.get(1).requiredCoverage()).isTrue();
+    }
+
+    @Test
+    void keepsUnknownColonPrefixAsVisualCoverageWithWarning() {
+        var segments = segmenter.segment("神秘人：别动。",
+            new EpisodeSourceSegmenter.SegmentationContext(Set.of("Serena"), Set.of()));
+
+        assertThat(segments).singleElement().satisfies(segment -> {
+            assertThat(segment.type()).isEqualTo(EpisodeSourceSegmenter.SourceSegmentType.ACTION);
+            assertThat(segment.requiredCoverage()).isTrue();
+            assertThat(segment.classificationWarning()).isEqualTo("SOURCE_SPEAKER_UNCONFIRMED");
+            assertThat(segment.text()).isEqualTo("神秘人：别动。");
+        });
     }
 }

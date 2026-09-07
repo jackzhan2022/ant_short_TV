@@ -10,9 +10,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,18 +30,23 @@ public class ReviewToolWriteService {
     private final ReviewIssueMapper issues;
     private final ReviewIssueHitMapper hits;
     private final ReviewIssueEventMapper events;
+    private final ReviewSemanticAuditRepository semanticAudits;
+    private final ReviewWorkflowFeatureFlags featureFlags;
     private final ObjectMapper json;
 
     public ReviewToolWriteService(ReviewToolReadService reads, ReviewFanoutRepository fanout,
         ReviewTaskMapper tasks, ReviewIssueMapper issues, ReviewIssueHitMapper hits,
-        ReviewIssueEventMapper events, ObjectMapper json) {
+        ReviewIssueEventMapper events, ReviewSemanticAuditRepository semanticAudits, ObjectMapper json,
+        ReviewWorkflowFeatureFlags featureFlags) {
         this.reads = reads;
         this.fanout = fanout;
         this.tasks = tasks;
         this.issues = issues;
         this.hits = hits;
         this.events = events;
+        this.semanticAudits = semanticAudits;
         this.json = json;
+        this.featureFlags = featureFlags;
     }
 
     @Transactional
@@ -62,12 +67,17 @@ public class ReviewToolWriteService {
             || !unit.getContentFingerprint().equals(ReviewContentService.hash(content))) {
             throw invalid("审核单元内容已变化。");
         }
+        boolean dimensional = unit.getDimension() != null && !unit.getDimension().isBlank();
         Set<String> unitAnchors = state.frozen().segments().stream()
-            .filter(segment -> segment.endOffset() > unit.getStartOffset()
-                && segment.startOffset() < unit.getEndOffset())
+            .filter(segment -> dimensional || (segment.endOffset() > unit.getStartOffset()
+                && segment.startOffset() < unit.getEndOffset()))
             .map(ReviewContentService.Segment::anchor)
             .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         ArrayNode candidates = normalizedUnitCandidates(arguments.path("candidates"), state, content, unitAnchors);
+        semanticAudits.appendCandidates(new ReviewSemanticAuditRepository.CandidateBatch(
+            state.task().getTenantId(), state.task().getProjectId(), state.task().getId(),
+            scope.snapshotId(), scope.unitId(), context.agentRunId(), unit.getContentFingerprint()
+        ), candidates);
         String coverage = stringify(arguments.path("coverage"));
         String serializedCandidates = stringify(candidates);
         fanout.replaceCandidate(new ReviewFanoutRepository.CandidateDraft(scope.snapshotId(), scope.unitId(),
@@ -108,17 +118,140 @@ public class ReviewToolWriteService {
         }
         int from = Math.min((page - 1) * size, candidates.size());
         int to = Math.min(from + size, candidates.size());
+        Map<Long, List<ReviewSemanticAuditRepository.CandidateRecord>> auditsByUnit = new LinkedHashMap<>();
+        Map<Long, ReviewSemanticAuditRepository.CandidateRecord> auditsById = new LinkedHashMap<>();
+        for (ReviewSemanticAuditRepository.CandidateRecord audit : semanticAudits.candidates(scope.snapshotId())) {
+            auditsByUnit.computeIfAbsent(audit.unitId(), ignored -> new ArrayList<>()).add(audit);
+            auditsById.put(audit.id(), audit);
+        }
+        Map<Long, ReviewSemanticAuditRepository.DecisionRecord> decisionsByCandidate = new LinkedHashMap<>();
+        for (ReviewSemanticAuditRepository.DecisionRecord decision : semanticAudits.decisions(scope.snapshotId())) {
+            decisionsByCandidate.put(decision.candidateId(), decision);
+        }
         ArrayNode output = json.createArrayNode();
         for (int index = from; index < to; index++) {
             ObjectNode item = output.addObject();
             item.put("unitId", units.get(index).getId());
             item.put("unitKey", units.get(index).getUnitKey());
             item.set("coverage", parse(candidates.get(index).getCoverageJson()));
-            item.set("candidates", parse(candidates.get(index).getCandidatesJson()));
+            ArrayNode unitCandidates = (ArrayNode) parse(candidates.get(index).getCandidatesJson());
+            List<ReviewSemanticAuditRepository.CandidateRecord> unitAudits =
+                auditsByUnit.getOrDefault(units.get(index).getId(), List.of());
+            for (int candidateIndex = 0; candidateIndex < unitCandidates.size()
+                && candidateIndex < unitAudits.size(); candidateIndex++) {
+                if (!(unitCandidates.get(candidateIndex) instanceof ObjectNode candidate)) continue;
+                ReviewSemanticAuditRepository.CandidateRecord audit = unitAudits.get(candidateIndex);
+                candidate.put("candidateId", audit.id());
+                candidate.put("candidateKey", audit.candidateKey());
+                ReviewSemanticAuditRepository.DecisionRecord decision = decisionsByCandidate.get(audit.id());
+                if (decision != null) candidate.set("semanticDecision", semanticDecisionJson(decision));
+            }
+            item.set("candidates", unitCandidates);
         }
         ObjectNode result = json.createObjectNode();
         result.set("units", output);
+        ArrayNode humanReviewFindings = result.putArray("humanReviewFindings");
+        for (ReviewSemanticAuditRepository.DecisionRecord decision : decisionsByCandidate.values()) {
+            if (!"NEEDS_HUMAN_REVIEW".equals(decision.decision())) continue;
+            ReviewSemanticAuditRepository.CandidateRecord audit = auditsById.get(decision.candidateId());
+            if (audit == null) continue;
+            ObjectNode finding = humanReviewFindings.addObject();
+            finding.put("candidateId", audit.id());
+            finding.put("unitId", audit.unitId());
+            finding.put("dimension", audit.dimension());
+            finding.put("confidence", decision.confidence());
+            finding.put("rationale", decision.rationale());
+            if (decision.severityDecision() != null) {
+                finding.put("severityDecision", decision.severityDecision());
+            }
+            finding.set("evidenceRefs", parse(decision.evidenceRefsJson()));
+            finding.set("candidate", parse(audit.rawPayloadJson()));
+        }
         result.put("hasMore", to < candidates.size());
+        return result;
+    }
+
+    public JsonNode readCandidates(ToolExecutionContext context, JsonNode arguments) {
+        ReviewToolReadService.State state = reads.state(context);
+        ReviewToolScope scope = state.scope();
+        requirePhase(scope, "DEEP_SEMANTIC");
+        if (scope.snapshotId() == null) throw invalid("缺少语义质检快照。");
+        int page = Math.max(1, arguments.path("page").asInt(1));
+        int size = Math.min(100, Math.max(1, arguments.path("pageSize").asInt(50)));
+        List<ReviewSemanticAuditRepository.CandidateRecord> all = semanticAudits.candidates(scope.snapshotId());
+        int from = Math.min((page - 1) * size, all.size());
+        int to = Math.min(from + size, all.size());
+        ArrayNode output = json.createArrayNode();
+        for (int index = from; index < to; index++) {
+            ReviewSemanticAuditRepository.CandidateRecord candidate = all.get(index);
+            ObjectNode item = output.addObject();
+            item.put("candidateId", candidate.id());
+            item.put("unitId", candidate.unitId());
+            item.put("discoveryRunId", candidate.discoveryRunId());
+            item.put("candidateKey", candidate.candidateKey());
+            item.put("dimension", candidate.dimension());
+            item.put("candidateNo", candidate.candidateNo());
+            item.put("status", candidate.status());
+            item.put("sourceFingerprint", candidate.sourceFingerprint());
+            item.set("candidate", parse(candidate.rawPayloadJson()));
+            if (candidate.validationErrorsJson() != null) {
+                item.set("validationErrors", parse(candidate.validationErrorsJson()));
+            }
+        }
+        ObjectNode result = json.createObjectNode();
+        result.set("candidates", output);
+        result.put("hasMore", to < all.size());
+        return result;
+    }
+
+    @Transactional
+    public JsonNode saveSemanticDecisions(ToolExecutionContext context, JsonNode arguments) {
+        ReviewToolReadService.State state = reads.state(context);
+        ReviewToolScope scope = state.scope();
+        requirePhase(scope, "DEEP_SEMANTIC");
+        if (scope.snapshotId() == null || context.agentRunId() == null) {
+            throw invalid("缺少语义质检的可信运行作用域。");
+        }
+        verifyHashes(state, arguments);
+        JsonNode decisions = arguments.path("decisions");
+        if (!decisions.isArray() || decisions.size() > 500) throw invalid("语义质检裁决列表格式或数量无效。");
+        List<ReviewSemanticAuditRepository.CandidateRecord> candidates = semanticAudits.candidates(scope.snapshotId());
+        if (semanticAudits.decisionCount(scope.snapshotId()) > 0) {
+            throw invalid("当前冻结快照已保存语义裁决，不能重复覆盖。");
+        }
+        Map<Long, ReviewSemanticAuditRepository.CandidateRecord> byId = candidates.stream()
+            .collect(java.util.stream.Collectors.toMap(ReviewSemanticAuditRepository.CandidateRecord::id,
+                candidate -> candidate));
+        boolean anomalyRequired = featureFlags.anomalyGate() && candidates.isEmpty();
+        JsonNode anomalyReview = arguments.path("anomalyReview");
+        if (anomalyRequired) requireAnomalyReview(anomalyReview);
+        Set<Long> submitted = new LinkedHashSet<>();
+        List<ReviewSemanticAuditRepository.DecisionDraft> validated = new ArrayList<>();
+        for (JsonNode decision : decisions) {
+            long candidateId = decision.path("candidateId").asLong(0);
+            if (!byId.containsKey(candidateId)) throw invalid("语义质检候选不属于当前冻结快照。");
+            if (!submitted.add(candidateId)) throw invalid("同一候选不能重复提交语义裁决。");
+            JsonNode evidenceRefs = decision.path("evidenceRefs");
+            if (!evidenceRefs.isArray() || evidenceRefs.isEmpty()) throw invalid("语义质检必须提供证据引用。");
+            validated.add(new ReviewSemanticAuditRepository.DecisionDraft(
+                state.task().getTenantId(), state.task().getProjectId(), state.task().getId(),
+                scope.snapshotId(), candidateId, context.agentRunId(), decision.path("decision").asText(),
+                decimal(decision.path("confidence")), requireText(decision, "rationale", "语义质检理由"),
+                optionalText(decision, "severityDecision"), evidenceRefs,
+                optionalText(decision, "duplicateClusterKey")
+            ));
+        }
+        if (!submitted.equals(byId.keySet())) throw invalid("每个冻结候选都必须获得一次终态语义裁决。");
+        validated.forEach(semanticAudits::validateDecision);
+        validated.forEach(semanticAudits::saveDecision);
+        ObjectNode coverage = json.createObjectNode();
+        coverage.put("candidateCount", candidates.size());
+        coverage.put("anomalyRequired", anomalyRequired);
+        if (anomalyReview.isObject()) coverage.set("anomalyReview", anomalyReview.deepCopy());
+        semanticAudits.recordQualityCoverage(scope.snapshotId(), context.agentRunId(), coverage);
+        ObjectNode result = json.createObjectNode();
+        result.put("saved", true);
+        result.put("decisionCount", submitted.size());
         return result;
     }
 
@@ -137,6 +270,9 @@ public class ReviewToolWriteService {
         requireCoverage(arguments.path("coverage"));
         if ("DEEP_AGGREGATION".equals(scope.phase())) {
             readUnitResults(context, json.createObjectNode().put("page", 1).put("pageSize", 100));
+            if (featureFlags.semanticReview()) {
+                requireSemanticApproval(scope.snapshotId(), arguments.path("issues"));
+            }
         }
         int score = arguments.path("score").asInt(-1);
         if (score < 0 || score > 100) throw invalid("审核评分必须在 0 到 100 之间。");
@@ -147,22 +283,11 @@ public class ReviewToolWriteService {
         }
 
         clearCurrentTaskSnapshot(state.task().getId());
-        List<Prior> previous = previousIssues(state);
-        Set<String> matched = new HashSet<>();
         int index = 1;
         for (JsonNode draft : arguments.path("issues")) {
-            ReviewIssueMatcher.Match match = ReviewIssueMatcher.match(previous.stream().map(Prior::matcher)
-                .filter(prior -> !matched.contains(prior.issueNo())).toList(), current(draft));
-            if (match.relatedIssueNo() != null) matched.add(match.relatedIssueNo());
-            ReviewIssueEntity issue = persistIssue(state, draft, index++, match.status(), match.relatedIssueNo());
+            ReviewIssueEntity issue = persistIssue(state, draft, index++, "new", null);
             persistHits(state.task(), issue, draft.path("hits"));
             persistEvent(state.task(), issue, null, issue.getStatus(), draft);
-        }
-        for (Prior prior : previous) {
-            if (matched.contains(prior.entity().getIssueNo())) continue;
-            ReviewIssueEntity fixed = persistFixed(state, prior.entity(), index++);
-            persistEvent(state.task(), fixed, prior.entity().getStatus(), "fixed",
-                Map.of("fixedFrom", prior.entity().getIssueNo()));
         }
         ObjectNode formal = arguments.deepCopy();
         formal.put("overallScore", score);
@@ -220,7 +345,9 @@ public class ReviewToolWriteService {
         Set<String> identities = new LinkedHashSet<>();
         for (JsonNode draft : drafts) {
             String dimension = requireText(draft, "dimension", "审核维度");
-            if (!state.dimensions().contains(dimension)) throw invalid("审核结果包含未选择的维度：" + dimension);
+            if (!reads.activeDimensions(state).contains(dimension)) {
+                throw invalid("审核结果包含当前运行未选择的维度：" + dimension);
+            }
             String severity = requireText(draft, "severity", "严重级别").toUpperCase();
             if (!SEVERITIES.contains(severity)) throw invalid("审核严重级别无效：" + severity);
             String title = requireText(draft, "title", "问题标题");
@@ -271,12 +398,8 @@ public class ReviewToolWriteService {
                 }
                 if (extracted) candidate.set("evidence", evidence);
             }
-            try {
-                validateIssues(json.createArrayNode().add(candidate), state, content, unitAnchors, 1);
-                accepted.add(candidate);
-            } catch (BusinessException ignored) {
-                // One unverified candidate must not prevent the reviewed unit from being saved.
-            }
+            validateIssues(json.createArrayNode().add(candidate), state, content, unitAnchors, 1);
+            accepted.add(candidate);
         }
         return accepted;
     }
@@ -314,40 +437,13 @@ public class ReviewToolWriteService {
     }
 
     private String unitContent(ReviewToolReadService.State state, ReviewFanoutUnitEntity unit) {
+        if (unit.getDimension() != null && !unit.getDimension().isBlank()) {
+            return state.frozen().content();
+        }
         String source = state.version().getContent() == null ? "" : state.version().getContent();
         if (unit.getStartOffset() < 0 || unit.getEndOffset() > source.length()
             || unit.getStartOffset() >= unit.getEndOffset()) throw invalid("审核单元偏移已失效。");
         return source.substring(unit.getStartOffset(), unit.getEndOffset());
-    }
-
-    private List<Prior> previousIssues(ReviewToolReadService.State state) {
-        ReviewTaskEntity previousTask = tasks.selectOne(new LambdaQueryWrapper<ReviewTaskEntity>()
-            .eq(ReviewTaskEntity::getTenantId, state.task().getTenantId())
-            .eq(ReviewTaskEntity::getProjectId, state.task().getProjectId())
-            .lt(ReviewTaskEntity::getRoundNo, state.task().getRoundNo())
-            .eq(ReviewTaskEntity::getStatus, "COMPLETED")
-            .orderByDesc(ReviewTaskEntity::getRoundNo).last("limit 1"));
-        if (previousTask == null) return List.of();
-        return issues.selectByTask(previousTask.getId()).stream()
-            .filter(issue -> state.dimensions().contains(issue.getDimension()))
-            .map(issue -> new Prior(issue, new ReviewIssueMatcher.PriorIssue(issue.getIssueNo(), snapshot(issue),
-                issue.getStatus(), Boolean.TRUE.equals(issue.getManuallyResolved()),
-                hits.selectByIssue(issue.getId()).stream().map(ReviewIssueHitEntity::getAnchorLabel)
-                    .filter(value -> value != null && !value.isBlank()).collect(java.util.stream.Collectors.toSet()))))
-            .toList();
-    }
-
-    private ReviewIssueMatcher.CurrentIssue current(JsonNode draft) {
-        Set<String> anchors = new LinkedHashSet<>();
-        draft.path("hits").forEach(hit -> anchors.add(hit.path("anchor").asText()));
-        return new ReviewIssueMatcher.CurrentIssue(new ReviewIssueMatcher.IssueSnapshot(
-            draft.path("dimension").asText(), draft.path("title").asText(), position(draft.path("hits")),
-            draft.path("hits").path(0).path("excerpt").asText(), draft.path("problem").asText()), anchors);
-    }
-
-    private ReviewIssueMatcher.IssueSnapshot snapshot(ReviewIssueEntity issue) {
-        return new ReviewIssueMatcher.IssueSnapshot(issue.getDimension(), issue.getTitle(), map(issue.getPositionJson()),
-            issue.getExcerpt(), issue.getProblem());
     }
 
     private ReviewIssueEntity persistIssue(ReviewToolReadService.State state, JsonNode draft,
@@ -365,16 +461,6 @@ public class ReviewToolWriteService {
         issue.setRelatedIssueNo(related);
         issues.insert(issue);
         return issue;
-    }
-
-    private ReviewIssueEntity persistFixed(ReviewToolReadService.State state, ReviewIssueEntity prior, int index) {
-        ReviewIssueEntity fixed = baseIssue(state, index);
-        fixed.setDimension(prior.getDimension()); fixed.setSeverity(prior.getSeverity()); fixed.setTitle(prior.getTitle());
-        fixed.setPositionJson(prior.getPositionJson()); fixed.setExcerpt(prior.getExcerpt()); fixed.setProblem(prior.getProblem());
-        fixed.setEvidenceJson(prior.getEvidenceJson()); fixed.setSuggestion(prior.getSuggestion());
-        fixed.setStatus("fixed"); fixed.setRelatedIssueNo(prior.getIssueNo());
-        issues.insert(fixed);
-        return fixed;
     }
 
     private ReviewIssueEntity baseIssue(ReviewToolReadService.State state, int index) {
@@ -452,6 +538,70 @@ public class ReviewToolWriteService {
         return node.hasNonNull(field) && node.path(field).canConvertToInt() ? node.path(field).asInt() : null;
     }
 
+    private ObjectNode semanticDecisionJson(ReviewSemanticAuditRepository.DecisionRecord decision) {
+        ObjectNode output = json.createObjectNode();
+        output.put("decision", decision.decision());
+        output.put("confidence", decision.confidence());
+        output.put("rationale", decision.rationale());
+        if (decision.severityDecision() != null) output.put("severityDecision", decision.severityDecision());
+        output.set("evidenceRefs", parse(decision.evidenceRefsJson()));
+        if (decision.duplicateClusterKey() != null) {
+            output.put("duplicateClusterKey", decision.duplicateClusterKey());
+        }
+        return output;
+    }
+
+    private void requireSemanticApproval(Long snapshotId, JsonNode drafts) {
+        if (snapshotId == null) throw invalid("缺少语义质检快照。");
+        List<ReviewSemanticAuditRepository.CandidateRecord> candidates = semanticAudits.candidates(snapshotId);
+        List<ReviewSemanticAuditRepository.DecisionRecord> decisions = semanticAudits.decisions(snapshotId);
+        if (decisions.size() != candidates.size()) throw invalid("语义质检尚未覆盖全部候选。");
+        JsonNode qualityCoverage = semanticAudits.qualityCoverage(snapshotId);
+        boolean anomalyRequired = candidates.isEmpty()
+            || qualityCoverage != null && qualityCoverage.path("anomalyRequired").asBoolean(false);
+        if (anomalyRequired && (qualityCoverage == null
+            || !qualityCoverage.path("anomalyReview").path("passed").asBoolean(false))) {
+            throw invalid("零问题异常复核未通过，不能完成正式报告。");
+        }
+        Map<Long, String> statuses = decisions.stream().collect(java.util.stream.Collectors.toMap(
+            ReviewSemanticAuditRepository.DecisionRecord::candidateId,
+            ReviewSemanticAuditRepository.DecisionRecord::decision));
+        Set<Long> confirmed = statuses.entrySet().stream()
+            .filter(entry -> "CONFIRMED".equals(entry.getValue()))
+            .map(Map.Entry::getKey).collect(java.util.stream.Collectors.toSet());
+        Set<Long> used = new LinkedHashSet<>();
+        for (JsonNode draft : drafts) {
+            JsonNode sourceIds = draft.path("sourceCandidateIds");
+            if (!sourceIds.isArray() || sourceIds.isEmpty()) {
+                throw invalid("深度审核正式问题必须声明已确认的来源候选。");
+            }
+            for (JsonNode sourceId : sourceIds) {
+                long id = sourceId.asLong(0);
+                if (!"CONFIRMED".equals(statuses.get(id))) {
+                    throw invalid("正式报告包含语义质检未确认的候选。");
+                }
+                used.add(id);
+            }
+        }
+        if (!used.containsAll(confirmed)) throw invalid("正式报告遗漏了已确认候选。");
+    }
+
+    private void requireAnomalyReview(JsonNode review) {
+        if (!review.isObject() || !review.has("passed") || !review.path("passed").isBoolean()) {
+            throw invalid("零问题异常复核必须给出明确结论。");
+        }
+        requireText(review, "rationale", "零问题异常复核理由");
+        JsonNode evidenceRefs = review.path("evidenceRefs");
+        if (!evidenceRefs.isArray() || evidenceRefs.isEmpty()) {
+            throw invalid("零问题异常复核必须提供覆盖或当前剧本证据引用。");
+        }
+    }
+
+    private BigDecimal decimal(JsonNode node) {
+        if (!node.isNumber()) throw invalid("语义质检置信度格式无效。");
+        return node.decimalValue();
+    }
+
     private void requirePhase(ReviewToolScope scope, String phase) {
         if (scope == null || !phase.equals(scope.phase())) throw invalid("当前审核阶段不能调用该工具。");
     }
@@ -464,5 +614,4 @@ public class ReviewToolWriteService {
         return new BusinessException(ErrorCode.VALIDATION_ERROR, message);
     }
 
-    private record Prior(ReviewIssueEntity entity, ReviewIssueMatcher.PriorIssue matcher) {}
 }

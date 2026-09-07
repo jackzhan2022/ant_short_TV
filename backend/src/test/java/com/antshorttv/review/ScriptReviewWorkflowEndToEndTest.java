@@ -61,8 +61,9 @@ class ScriptReviewWorkflowEndToEndTest {
         agents.create(new WorkflowAgentCommand(
             "script-review", "剧本审核", "端到端测试审核 Agent", "只使用可信审核工具。", modelId,
             new BigDecimal("0.100"), 16384, 12, "ENABLED", allSkillCodes(),
-            List.of("read_review_context", "read_review_content", "read_review_issue_history",
-                "save_review_unit_result", "read_review_unit_results", "save_review_result")), userId);
+            List.of("read_review_context", "read_review_content",
+                "save_review_unit_result", "read_review_candidates", "save_review_semantic_decisions",
+                "read_review_unit_results", "save_review_result")), userId);
         jdbc.update("insert into review_project (id, tenant_id, name, source_type, original_content, status, created_by, created_at, updated_at) values (?, ?, '审核端到端', 'TXT', ?, 'ACTIVE', ?, now(), now())",
             projectId, tenantId, source, userId);
         jdbc.update("insert into review_script_version (id, tenant_id, project_id, version_no, source_type, content, created_by, created_at, updated_at) values (?, ?, ?, 1, 'TXT', ?, ?, now(), now())",
@@ -71,7 +72,7 @@ class ScriptReviewWorkflowEndToEndTest {
     }
 
     @Test
-    void quickReviewLoadsOneDimensionUsesTrustedSceneMatchesHistoryAndSavesFormalResult() {
+    void quickReviewIgnoresHistoricalIssueAndSavesIndependentFormalResult() {
         List<String> dimensions = List.of("台词合理性");
         Map<String, Object> scope = Map.of("sceneKeys", List.of("1-2"));
         ReviewContentService.FrozenReview frozen = content.freeze(source, "SCENES", scope, dimensions);
@@ -86,7 +87,7 @@ class ScriptReviewWorkflowEndToEndTest {
             "script-review-foundation", "script-review-execution-framework",
             "script-review-dimension-dialogue");
         assertThat(plan.agent().toolCodes()).containsExactly(
-            "read_review_context", "read_review_content", "read_review_issue_history", "save_review_result");
+            "read_review_context", "read_review_content", "save_review_result");
 
         long runId = insertRun(taskId, "REVIEW_QUICK");
         ToolExecutionContext context = context(taskId, runId,
@@ -110,8 +111,11 @@ class ScriptReviewWorkflowEndToEndTest {
             .isEqualTo("COMPLETED");
         assertThat(jdbc.queryForMap("select issue_no, status, related_issue_no from review_issue where task_id = ?", taskId))
             .containsEntry("ISSUE_NO", "R2-01")
-            .containsEntry("STATUS", "persists")
-            .containsEntry("RELATED_ISSUE_NO", "R1-01");
+            .containsEntry("STATUS", "new")
+            .containsEntry("RELATED_ISSUE_NO", null);
+        assertThat(jdbc.queryForMap("select status, related_issue_no from review_issue where task_id = ?", previousTaskId))
+            .containsEntry("STATUS", "new")
+            .containsEntry("RELATED_ISSUE_NO", null);
         assertThat(jdbc.queryForObject("select count(*) from review_issue_hit where task_id = ?", Integer.class, taskId))
             .isOne();
         assertThat(jdbc.queryForObject("select count(*) from review_issue_event where task_id = ?", Integer.class, taskId))
@@ -139,6 +143,8 @@ class ScriptReviewWorkflowEndToEndTest {
             "[]", modelId, stringify(dimensions), "{}", frozen.versionHash(), frozen.scopeHash(),
             frozen.dimensionsHash(), unitSetHash, units.size(), 2));
 
+        String candidateExcerpt = null;
+        String candidateAnchor = null;
         for (ReviewUnitPlanner.Unit unit : units) {
             long unitId = fanout.addUnit(new ReviewFanoutRepository.UnitDraft(snapshotId, unit.unitNo(),
                 unit.unitKey(), "{}", unit.startOffset(), unit.endOffset(), unit.fingerprint()));
@@ -146,11 +152,28 @@ class ScriptReviewWorkflowEndToEndTest {
             long runId = insertRun(taskId, "REVIEW_CHILD");
             ToolExecutionContext child = context(taskId, runId,
                 new ReviewToolScope(projectId, versionId, snapshotId, unitId, 1, "DEEP_CHILD", dimensions));
-            reads.readContent(child, json.createObjectNode().put("offset", 0).put("limit", 50000));
+            JsonNode visible = reads.readContent(child,
+                json.createObjectNode().put("offset", 0).put("limit", 50000));
             ObjectNode payload = hashes(frozen);
             payload.put("contentFingerprint", unit.fingerprint());
-            payload.set("coverage", coverage(unit.unitKey()));
-            payload.set("candidates", json.createArrayNode());
+            String visibleAnchor = visible.path("segments").get(0).path("anchors").get(0).asText();
+            payload.set("coverage", coverage(visibleAnchor));
+            ArrayNode candidates = json.createArrayNode();
+            if (unit.unitNo() == 1) {
+                candidateExcerpt = visible.path("segments").get(0).path("content").asText().trim();
+                candidateAnchor = visibleAnchor;
+                ObjectNode candidate = candidates.addObject();
+                candidate.put("dimension", "剧情逻辑与因果");
+                candidate.put("severity", "HIGH");
+                candidate.put("title", "线索未回收");
+                candidate.put("problem", "线索缺少完整因果闭环");
+                candidate.putArray("evidence").add(candidateExcerpt);
+                candidate.put("suggestion", "补充线索回收动作");
+                ObjectNode hit = candidate.putArray("hits").addObject();
+                hit.put("anchor", candidateAnchor);
+                hit.put("excerpt", candidateExcerpt);
+            }
+            payload.set("candidates", candidates);
             writes.saveUnitResult(child, payload);
         }
 
@@ -158,14 +181,31 @@ class ScriptReviewWorkflowEndToEndTest {
             assertThat(unit.getStatus()).isEqualTo("SUCCEEDED");
             assertThat(unit.getCandidateSaved()).isTrue();
         });
+        long candidateId = jdbc.queryForObject(
+            "select id from review_candidate_audit where snapshot_id = ?", Long.class, snapshotId);
+        ToolExecutionContext quality = context(taskId, insertRun(taskId, "REVIEW_SEMANTIC_QUALITY"),
+            new ReviewToolScope(projectId, versionId, snapshotId, null, 1, "DEEP_SEMANTIC", dimensions));
+        writes.readCandidates(quality, json.createObjectNode().put("page", 1).put("pageSize", 100));
+        reads.readContent(quality, json.createObjectNode().put("offset", 0).put("limit", 50000));
+        ObjectNode semantic = hashes(frozen);
+        ObjectNode decision = semantic.putArray("decisions").addObject();
+        decision.put("candidateId", candidateId);
+        decision.put("decision", "CONFIRMED");
+        decision.put("confidence", 0.91);
+        decision.put("rationale", "当前剧本证据直接支持");
+        decision.put("severityDecision", "HIGH");
+        decision.putArray("evidenceRefs").add(candidateAnchor);
+        writes.saveSemanticDecisions(quality, semantic);
+
         long aggregationRunId = insertRun(taskId, "REVIEW_AGGREGATION");
         ToolExecutionContext aggregation = context(taskId, aggregationRunId,
             new ReviewToolScope(projectId, versionId, snapshotId, null, 1, "DEEP_AGGREGATION", dimensions));
         assertThat(writes.readUnitResults(aggregation,
             json.createObjectNode().put("page", 1).put("pageSize", 100)).path("units")).hasSize(units.size());
 
-        ObjectNode formal = formalPayload(frozen, "剧情逻辑与因果", "甲说：开始。",
-            frozen.segments().get(0).anchor(), "HIGH");
+        ObjectNode formal = formalPayload(frozen, "剧情逻辑与因果", candidateExcerpt,
+            candidateAnchor, "HIGH");
+        ((ObjectNode) formal.path("issues").get(0)).putArray("sourceCandidateIds").add(candidateId);
         ArrayNode hits = (ArrayNode) formal.path("issues").get(0).path("hits");
         ObjectNode secondHit = hits.addObject();
         secondHit.put("anchor", frozen.segments().get(0).anchor());
@@ -250,6 +290,7 @@ class ScriptReviewWorkflowEndToEndTest {
         codes.add("script-review-foundation");
         codes.add("script-review-execution-framework");
         Arrays.stream(ReviewDimension.values()).map(ReviewDimension::skillCode).forEach(codes::add);
+        codes.add("script-review-semantic-quality");
         codes.add("script-review-cross-episode-synthesis");
         return List.copyOf(codes);
     }

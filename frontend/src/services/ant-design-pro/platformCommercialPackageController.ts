@@ -3,7 +3,7 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/platform/commercial/packages */
-export async function list8(options?: { [key: string]: any }) {
+export async function list9(options?: { [key: string]: any }) {
   return request<API.ApiResponseListCommercialPackageSummaryResponse>(
     "/api/platform/commercial/packages",
     {

@@ -74,6 +74,22 @@ const statusColor = (status: string) => {
   return 'gold';
 };
 
+const formatReviewCacheUsage = (
+  cache: NonNullable<ReviewTask['observability']>['cacheUsage'],
+) => {
+  const latency = `${Number((cache.latencyMs / 1000).toFixed(1))}s`;
+  if (
+    !cache.cacheObservable ||
+    cache.cachedInputTokens == null ||
+    cache.cacheHitRatio == null
+  ) {
+    return `缓存明细不可观测 · 输入 ${cache.promptTokens} tokens · 输出 ${cache.outputTokens} · 耗时 ${latency}`;
+  }
+  return `缓存 ${cache.cachedInputTokens} / ${cache.promptTokens} tokens · 命中率 ${(
+    cache.cacheHitRatio * 100
+  ).toFixed(2)}% · 耗时 ${latency}`;
+};
+
 const ScriptReviewPage = () => {
   const { message, modal } = App.useApp();
   const [detail, setDetail] = useState<ReviewProjectDetail>();
@@ -607,7 +623,10 @@ const ScriptReviewPage = () => {
                         {task.fanout ? (
                           <div style={{ marginTop: 8 }}>
                             <Typography.Text type="secondary">
-                              深度单元 {task.fanout.completedUnits}/{task.fanout.totalUnits}
+                              {task.fanout.units.some((unit) => unit.dimension)
+                                ? '审核维度'
+                                : '深度单元'}{' '}
+                              {task.fanout.completedUnits}/{task.fanout.totalUnits}
                               {task.fanout.failedUnits > 0
                                 ? ` · 失败 ${task.fanout.failedUnits}`
                                 : ''}
@@ -615,13 +634,76 @@ const ScriptReviewPage = () => {
                                 ? ` · 聚合 ${task.fanout.aggregationStatus}`
                                 : ''}
                               {task.fanout.currentUnitId
-                                ? ` · 当前单元 ${
+                                ? ` · 当前 ${
                                     task.fanout.units.find(
                                       (unit) => unit.id === task.fanout?.currentUnitId,
-                                    )?.unitNo ?? task.fanout.currentUnitId
+                                    )?.dimension ??
+                                    `单元 ${
+                                      task.fanout.units.find(
+                                        (unit) => unit.id === task.fanout?.currentUnitId,
+                                      )?.unitNo ?? task.fanout.currentUnitId
+                                    }`
                                   }`
                                 : ''}
                             </Typography.Text>
+                            {task.fanout.units.some((unit) => unit.dimension) ? (
+                              <div style={{ marginTop: 6 }}>
+                                <Space wrap size={[4, 4]}>
+                                  {task.fanout.units.map((unit) => (
+                                    <Tag
+                                      key={unit.id}
+                                      color={statusColor(unit.status)}
+                                      title={unit.errorMessage ?? undefined}
+                                    >
+                                      {unit.dimension} · {statusText(unit.status)}
+                                      {unit.attemptNo ? ` · 第 ${unit.attemptNo} 次` : ''}
+                                    </Tag>
+                                  ))}
+                                </Space>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {task.observability ? (
+                          <div style={{ marginTop: 8 }}>
+                            {task.observability.quality ? (
+                              <Typography.Text type="secondary">
+                                语义质检：
+                                {statusText(task.observability.quality.status)} · 候选{' '}
+                                {task.observability.quality.candidateCount ?? 0} / 裁决{' '}
+                                {task.observability.quality.decisionCount ?? 0}
+                              </Typography.Text>
+                            ) : null}
+                            <div style={{ marginTop: 6 }}>
+                              <Space wrap size={[4, 4]}>
+                                <Tag color="green">已确认 {task.observability.decisions.confirmed}</Tag>
+                                <Tag color="gold">
+                                  待人工 {task.observability.decisions.needsHumanReview}
+                                </Tag>
+                                <Tag>已驳回 {task.observability.decisions.rejected}</Tag>
+                                <Tag>
+                                  证据不足 {task.observability.decisions.insufficientEvidence}
+                                </Tag>
+                                {task.observability.quality?.anomalyRequired ? (
+                                  <Tag
+                                    color={
+                                      task.observability.quality.anomalyPassed
+                                        ? 'green'
+                                        : 'red'
+                                    }
+                                  >
+                                    {task.observability.quality.anomalyPassed
+                                      ? '异常复核通过'
+                                      : '异常复核未通过'}
+                                  </Tag>
+                                ) : null}
+                              </Space>
+                            </div>
+                            <div style={{ marginTop: 6 }}>
+                              <Typography.Text type="secondary">
+                                {formatReviewCacheUsage(task.observability.cacheUsage)}
+                              </Typography.Text>
+                            </div>
                           </div>
                         ) : null}
                         <div style={{ marginTop: 8 }}>
@@ -650,7 +732,9 @@ const ScriptReviewPage = () => {
                                 {task.retryKind === 'AGGREGATION_ONLY'
                                   ? '仅重试聚合'
                                   : task.retryKind === 'FAILED_UNITS'
-                                    ? '重试失败单元'
+                                    ? task.fanout?.units.some((unit) => unit.dimension)
+                                      ? '重试失败维度'
+                                      : '重试失败单元'
                                     : '重试'}
                               </Button>
                             )}
@@ -686,6 +770,35 @@ const ScriptReviewPage = () => {
                       {selectedTask.summary?.summary ||
                         '问题会按维度聚合，支持多命中片段和人工处理。'}
                     </Typography.Paragraph>
+                    {selectedTask.observability?.humanReviewFindings.length ? (
+                      <Card
+                        size="small"
+                        title={`待人工复核 (${selectedTask.observability.humanReviewFindings.length})`}
+                      >
+                        <List
+                          size="small"
+                          dataSource={selectedTask.observability.humanReviewFindings}
+                          rowKey="candidateId"
+                          renderItem={(finding) => (
+                            <List.Item>
+                              <List.Item.Meta
+                                title={
+                                  <Space wrap>
+                                    <Tag color="gold">{finding.dimension}</Tag>
+                                    <Typography.Text strong>
+                                      {typeof finding.candidate.title === 'string'
+                                        ? finding.candidate.title
+                                        : `候选 ${finding.candidateId}`}
+                                    </Typography.Text>
+                                  </Space>
+                                }
+                                description={finding.rationale}
+                              />
+                            </List.Item>
+                          )}
+                        />
+                      </Card>
+                    ) : null}
                     {selectedIssue ? (
                       <Card size="small" title="问题详情">
                         <Space vertical style={{ width: '100%' }}>

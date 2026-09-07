@@ -1,0 +1,46 @@
+<h2>四 Agent 产物：数据模型重构方向</h2>
+<p class="subtitle">当前的问题不是没有保存，而是“分析快照、业务实体、审核候选”混在不同层级：全局理解和分集概要只能从 JSON 快照读取，分集与资产却各自有不同的落库路径。</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">现状：同一批解析产物分散保存</div>
+    <div class="mockup-body" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:13px">
+      <div style="border:1px solid #f0b429;border-radius:8px;padding:10px"><b>全局理解</b><br>analysis_result JSON<br><span style="color:#9b6b00">无业务投影</span></div>
+      <div style="border:1px solid #2f80ed;border-radius:8px;padding:10px"><b>分集</b><br>analysis_result JSON<br>+ script_episode</div>
+      <div style="border:1px solid #f0b429;border-radius:8px;padding:10px"><b>分集概要</b><br>analysis_result JSON<br><span style="color:#9b6b00">未回写 episode</span></div>
+      <div style="border:1px solid #27ae60;border-radius:8px;padding:10px"><b>资产识别</b><br>run / candidate<br>人工确认后转资产</div>
+    </div>
+  </div>
+</div>
+
+<p class="label">请选择重构方向</p>
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>补齐现有表（最小迁移）</h3>
+      <p>为全局理解、分集概要增加各自的业务表；保留当前 task / stage / result 和分集、资产体系。改动小，但产物类型持续各自建表。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>版本化“产物中心”模型（推荐）</h3>
+      <p>一次解析是一个 Run，四个 Agent 生成不可变 Artifact；全局、分集概要、资产候选等再投影为可消费的业务数据。可独立重跑、比较版本、替换 Agent。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>工作流事件模型</h3>
+      <p>所有步骤与产物以事件流存储，读取侧构建分集、概要和资产投影。审计最强，但迁移、查询与运维复杂度最高。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <div class="pros-cons">
+    <div class="pros"><h4>我的建议：B</h4><ul><li>保留当前表的可读业务投影</li><li>新增 Agent 时不需要再设计一套任务表</li><li>支持版本、血缘、重试和人工审核</li></ul></div>
+    <div class="cons"><h4>需要接受的成本</h4><ul><li>新增一层 Artifact 与 Projection</li><li>需要一次数据迁移和双写过渡</li><li>读取接口要明确“当前版本”</li></ul></div>
+  </div>
+</div>

@@ -142,6 +142,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             int executionCallCount = executionAgentCalls.isEmpty()
                 ? (callLogId == null ? 0 : 1)
                 : executionAgentCalls.size();
+            markExecutionDiagnostics(context, executionCallCount);
             settleTerminalFailure(context, settlementAgentCall, callLogId,
                 executionCallCount, retryPolicy(exception).maxAttempts());
             throw exception;
@@ -155,12 +156,22 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         int executionCallCount = executionAgentCalls.isEmpty()
             ? result.invocations().size()
             : executionAgentCalls.size();
+        markExecutionDiagnostics(context, executionCallCount);
         WorkflowAgentModelCall settlementAgentCall = result.lastAgentModelCall() != null
             ? result.lastAgentModelCall()
             : executionAgentCalls.isEmpty() ? null : executionAgentCalls.get(executionAgentCalls.size() - 1);
         settle(context, result.lastInvocation(), settlementAgentCall, AiSettlementOutcome.SUCCESS,
             executionCallCount);
         return new AiExecutionHandlerResult(result.resultType(), result.resultId());
+    }
+
+    private void markExecutionDiagnostics(AiExecutionContext context, int businessCallCount) {
+        AiExecutionAttemptEntity attempt = attemptMapper.selectById(context.claim().attemptId());
+        int technicalRetryCount = attempt == null || attempt.retryCount == null ? 0 : attempt.retryCount;
+        executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("business_call_count", businessCallCount)
+            .set("technical_retry_count", technicalRetryCount)
+            .eq("id", context.task().id));
     }
 
     private ScriptAiOperationExecutionResult executeOperation(

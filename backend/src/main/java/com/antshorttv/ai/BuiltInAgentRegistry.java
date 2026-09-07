@@ -333,11 +333,11 @@ public class BuiltInAgentRegistry {
                     本轮审核模式：${reviewMode}
                     本轮审核维度：${selectedDimensions}
                     本轮审核范围：${reviewScope}
-                    上一轮问题摘要：${previousIssues}
                     全局审核索引：${globalIndex}
 
                     请基于剧本内容执行本轮审核。优先检查用户选中的维度；如果发现选中范围外的 P0/P1 剧情硬伤，允许作为“兜底问题”顺带提醒。
                     快速审核以当前范围内的明显局部问题为主，不声称覆盖全部跨集问题；深度审核必须结合全局索引检查跨集人物、时间线、道具、伏笔和因果关系。
+                    本轮必须独立审核，不读取、不推测、不匹配任何历史审核问题。
                     不要为了找问题而强行判错。没有证据时使用 uncertain，不要编造剧本中不存在的事实。
                     每个问题必须给出具体位置、原文片段、问题原因、证据和可执行修改建议。
 
@@ -378,7 +378,6 @@ public class BuiltInAgentRegistry {
                     variable("reviewMode", "审核模式", "TEXT"),
                     variable("selectedDimensions", "审核维度", "JSON"),
                     variable("reviewScope", "审核范围", "JSON"),
-                    variable("previousIssues", "上一轮问题", "JSON"),
                     variable("globalIndex", "全局审核索引", "JSON")
                 ),
                 "{\"overallScore\":0,\"overallConclusion\":\"PASS\",\"summary\":\"\",\"issues\":[]}",

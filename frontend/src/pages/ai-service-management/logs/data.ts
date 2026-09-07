@@ -18,6 +18,12 @@ export interface AiCallLog {
   status: AiCallLogStatus;
   errorMessage?: string;
   durationMs: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteTokens?: number;
+  promptCacheKey?: string;
   createdAt: string;
 }
 

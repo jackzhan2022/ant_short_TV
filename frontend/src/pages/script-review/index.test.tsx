@@ -730,7 +730,7 @@ describe('ScriptReviewPage', () => {
             status: 'FAILED',
             currentStage: 'DEEP_UNITS',
             overallProgress: 60,
-            currentAction: '深度审核单元 2/4',
+            currentAction: '逐维审核 2/4',
             workflowAgentCode: 'script-review',
             workflowPhase: 'DEEP_CHILD',
             retryKind: 'FAILED_UNITS',
@@ -745,8 +745,57 @@ describe('ScriptReviewPage', () => {
               currentUnitId: 903,
               aggregationStatus: 'PENDING',
               units: [
-                { id: 903, unitNo: 3, unitKey: 'offset-20-30', status: 'FAILED', candidateSaved: false },
+                {
+                  id: 903,
+                  unitNo: 3,
+                  unitKey: 'dimension-dialogue',
+                  stageType: 'DIMENSION_DISCOVERY',
+                  dimension: '台词合理性',
+                  attemptNo: 2,
+                  status: 'FAILED',
+                  candidateSaved: false,
+                  errorMessage: '模型调用失败',
+                },
               ],
+            },
+            observability: {
+              quality: {
+                status: 'SUCCEEDED',
+                runId: 904,
+                attemptNo: 1,
+                candidateCount: 4,
+                decisionCount: 4,
+                anomalyRequired: true,
+                anomalyPassed: true,
+              },
+              decisions: {
+                confirmed: 2,
+                needsHumanReview: 1,
+                rejected: 1,
+                insufficientEvidence: 0,
+              },
+              humanReviewFindings: [
+                {
+                  candidateId: 905,
+                  unitId: 903,
+                  dimension: '台词合理性',
+                  confidence: 0.62,
+                  rationale: '存在合理替代解释',
+                  severityDecision: 'LOW',
+                  evidenceRefs: ['scene:1'],
+                  candidate: { title: '告别突兀' },
+                },
+              ],
+              cacheUsage: {
+                promptTokens: 9631,
+                ordinaryInputTokens: 159,
+                cachedInputTokens: 8960,
+                cacheWriteTokens: 512,
+                outputTokens: 5,
+                latencyMs: 1200,
+                cacheHitRatio: 0.9303,
+                cacheObservable: true,
+              },
             },
           },
         ],
@@ -758,10 +807,16 @@ describe('ScriptReviewPage', () => {
 
     render(<ScriptReviewPage />);
 
-    expect(await screen.findByText('深度单元 2/4 · 失败 1 · 聚合 PENDING · 当前单元 3')).toBeInTheDocument();
+    expect(await screen.findByText('审核维度 2/4 · 失败 1 · 聚合 PENDING · 当前 台词合理性')).toBeInTheDocument();
+    expect(screen.getByText('台词合理性 · 失败 · 第 2 次')).toBeInTheDocument();
     expect(screen.getByText('输入已变化')).toBeInTheDocument();
     expect(screen.getByText('Skill：台词合理性')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '重试失败单元' }));
+    expect(screen.getByText('语义质检：已完成 · 候选 4 / 裁决 4')).toBeInTheDocument();
+    expect(screen.getByText('已确认 2')).toBeInTheDocument();
+    expect(screen.getByText('待人工 1')).toBeInTheDocument();
+    expect(screen.getByText('异常复核通过')).toBeInTheDocument();
+    expect(screen.getByText('缓存 8960 / 9631 tokens · 命中率 93.03% · 耗时 1.2s')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试失败维度' }));
     await waitFor(() => expect(mocks.retryReviewTask).toHaveBeenCalledWith(9));
   });
 
@@ -815,6 +870,37 @@ describe('ScriptReviewPage', () => {
               aggregationStatus: 'FAILED',
               units: [],
             },
+            observability: {
+              quality: {
+                status: 'SUCCEEDED',
+                candidateCount: 1,
+                decisionCount: 1,
+                anomalyRequired: false,
+              },
+              decisions: {
+                confirmed: 0,
+                needsHumanReview: 1,
+                rejected: 0,
+                insufficientEvidence: 0,
+              },
+              humanReviewFindings: [
+                {
+                  candidateId: 1001,
+                  unitId: 1002,
+                  dimension: '剧情逻辑与因果',
+                  confidence: 0.58,
+                  rationale: '可能存在未明说的人物动机',
+                  evidenceRefs: ['scene:2'],
+                  candidate: { title: '人物决定缺少动机' },
+                },
+              ],
+              cacheUsage: {
+                promptTokens: 2100,
+                outputTokens: 120,
+                latencyMs: 860,
+                cacheObservable: false,
+              },
+            },
           },
         ],
       },
@@ -826,6 +912,10 @@ describe('ScriptReviewPage', () => {
     render(<ScriptReviewPage />);
 
     expect(await screen.findByText('深度单元 4/4 · 聚合 FAILED')).toBeInTheDocument();
+    expect(screen.getByText('缓存明细不可观测 · 输入 2100 tokens · 输出 120 · 耗时 0.9s')).toBeInTheDocument();
+    expect(screen.getByText('待人工复核 (1)')).toBeInTheDocument();
+    expect(screen.getByText('人物决定缺少动机')).toBeInTheDocument();
+    expect(screen.getByText('可能存在未明说的人物动机')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '仅重试聚合' }));
     await waitFor(() => expect(mocks.retryReviewTask).toHaveBeenCalledWith(10));
   });

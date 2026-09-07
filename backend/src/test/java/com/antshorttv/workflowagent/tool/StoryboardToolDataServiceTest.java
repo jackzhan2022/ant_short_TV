@@ -206,6 +206,70 @@ class StoryboardToolDataServiceTest {
         assertPriorStoryboardUnchanged();
     }
 
+    @Test
+    void savesV3WithCanonicalNumbersRangesAndBackendDerivedSounds() throws Exception {
+        ObjectNode payload = (ObjectNode) validPayload();
+        payload.put("schemaVersion", 3);
+        ObjectNode board = (ObjectNode) payload.path("storyboards").get(0);
+        board.put("storyboardNo", 12);
+        board.remove("sourceFrom");
+        for (int index = 0; index < board.path("shots").size(); index++) {
+            ObjectNode shot = (ObjectNode) board.path("shots").get(index);
+            shot.put("shotNo", 20 + index);
+            shot.remove("soundSegmentIds");
+        }
+        ((ObjectNode) board.path("shots").get(0)).put("sourceAnchor", "S0001");
+        ((ObjectNode) board.path("shots").get(1)).put("sourceAnchor", "S0002")
+            .put("performance", "肩膀微微收紧")
+            .put("emotion", "克制的恐惧")
+            .put("camera", "缓慢推近至特写");
+
+        JsonNode result = service.saveEpisodeStoryboards(context(), payload);
+        JsonNode plan = json.readTree(jdbc.queryForObject(
+            "select shot_plan_json from storyboard where episode_id = ? and deleted_at is null",
+            String.class, episodeId));
+
+        assertThat(result.path("normalizationCount").asInt()).isGreaterThan(0);
+        assertThat(result.path("derivedSoundCount").asInt()).isEqualTo(1);
+        assertThat(plan.path("diagnostics").path("normalizationCount").asInt()).isGreaterThan(0);
+        assertThat(plan.path("diagnostics").path("derivedSoundCount").asInt()).isEqualTo(1);
+        assertThat(plan.path("diagnostics").path("classificationWarnings").isArray()).isTrue();
+        assertThat(plan.path("storyboardNo").asInt()).isEqualTo(1);
+        assertThat(plan.path("sourceFrom").asText()).isEqualTo("S0001");
+        assertThat(plan.path("shots").get(0).path("shotNo").asInt()).isEqualTo(1);
+        assertThat(plan.path("shots").get(1).path("soundSegmentIds").toString())
+            .isEqualTo("[\"S0002\"]");
+        assertThat(plan.path("shots").get(1).path("dialogue").asText())
+            .isEqualTo("Serena: No...");
+        assertThat(jdbc.queryForObject(
+            "select video_prompt from storyboard where episode_id = ? and deleted_at is null",
+            String.class, episodeId)).contains(
+                "[表演] 肩膀微微收紧", "[情绪] 克制的恐惧", "[运镜] 缓慢推近至特写");
+
+        service.annotateRunDiagnostics(tenantId, projectId, episodeId, 700L, 1, 2);
+        JsonNode annotated = json.readTree(jdbc.queryForObject(
+            "select shot_plan_json from storyboard where episode_id = ? and deleted_at is null",
+            String.class, episodeId));
+        assertThat(annotated.path("diagnostics").path("businessCallCount").asInt()).isEqualTo(1);
+        assertThat(annotated.path("diagnostics").path("technicalRetryCount").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void savesSequenceWordsAsWarningsWithoutRejectingQuotedThen() throws Exception {
+        ObjectNode payload = (ObjectNode) validPayload();
+        ObjectNode board = (ObjectNode) payload.path("storyboards").get(0);
+        ((ObjectNode) board.path("shots").get(0)).put("action", "她转身，然后走向门口");
+        ((ObjectNode) board.path("shots").get(1)).put("action", "她说：\"Then we leave.\"");
+
+        JsonNode result = service.saveEpisodeStoryboards(context(), payload);
+
+        assertThat(result.path("actionWarnings")).hasSize(1);
+        assertThat(result.path("actionWarnings").get(0).path("code").asText())
+            .isEqualTo("ACTION_DENSITY");
+        assertThat(result.path("actionWarnings").get(0).path("storyboardNo").asInt()).isEqualTo(1);
+        assertThat(result.path("actionWarnings").get(0).path("shotNo").asInt()).isEqualTo(1);
+    }
+
     private ToolExecutionContext context() {
         WorkflowToolRunState state = new WorkflowToolRunState();
         state.put("currentEpisodeId", episodeId);

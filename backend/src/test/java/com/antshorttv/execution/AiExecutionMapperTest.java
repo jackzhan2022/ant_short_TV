@@ -17,6 +17,9 @@ class AiExecutionMapperTest {
     @Autowired
     private AiExecutionAttemptMapper attemptMapper;
 
+    @Autowired
+    private AiExecutionResponseMapper responseMapper;
+
     @Test
     void persistsExecutionAndCorrelatedAttempt() {
         LocalDateTime now = LocalDateTime.now();
@@ -37,6 +40,8 @@ class AiExecutionMapperTest {
         task.retryable = false;
         task.usageCostStatus = "PENDING";
         task.pointSettlementStatus = "PENDING";
+        task.businessCallCount = 1;
+        task.technicalRetryCount = 2;
         task.createdAt = now;
         task.updatedAt = now;
 
@@ -59,6 +64,8 @@ class AiExecutionMapperTest {
         assertThat(attemptMapper.selectByExecutionId(task.id))
             .extracting(item -> item.id)
             .containsExactly(attempt.id);
+        assertThat(responseMapper.toResponse(task).businessCallCount()).isEqualTo(1);
+        assertThat(responseMapper.toResponse(task).technicalRetryCount()).isEqualTo(2);
     }
 
     @Test

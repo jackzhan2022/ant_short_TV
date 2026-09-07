@@ -11,6 +11,9 @@ import * as shotProductionController from "./shotProductionController";
 import * as projectAiConfigController from "./projectAiConfigController";
 import * as aiImageTaskController from "./aiImageTaskController";
 import * as projectController from "./projectController";
+import * as platformTenantController from "./platformTenantController";
+import * as workflowSkillController from "./workflowSkillController";
+import * as workflowAgentController from "./workflowAgentController";
 import * as platformAiManagementController from "./platformAiManagementController";
 import * as editableAiDefinitionController from "./editableAiDefinitionController";
 import * as tenantMemberController from "./tenantMemberController";
@@ -20,6 +23,7 @@ import * as aiExecutionController from "./aiExecutionController";
 import * as aiVideoTaskController from "./aiVideoTaskController";
 import * as platformCommercialPackageController from "./platformCommercialPackageController";
 import * as platformCommercialOrderController from "./platformCommercialOrderController";
+import * as workflowAgentRunController from "./workflowAgentRunController";
 import * as platformAiAccountingController from "./platformAiAccountingController";
 import * as builtInAgentCatalogController from "./builtInAgentCatalogController";
 import * as wechatPaymentNotificationController from "./wechatPaymentNotificationController";
@@ -31,6 +35,7 @@ import * as teamCommercialCatalogController from "./teamCommercialCatalogControl
 import * as aiCallLogController from "./aiCallLogController";
 import * as styleLibraryController from "./styleLibraryController";
 import * as platformAiOperationsController from "./platformAiOperationsController";
+import * as workflowToolCatalogController from "./workflowToolCatalogController";
 import * as inspirationCreationController from "./inspirationCreationController";
 import * as authBootstrapController from "./authBootstrapController";
 export default {
@@ -43,6 +48,9 @@ export default {
   projectAiConfigController,
   aiImageTaskController,
   projectController,
+  platformTenantController,
+  workflowSkillController,
+  workflowAgentController,
   platformAiManagementController,
   editableAiDefinitionController,
   tenantMemberController,
@@ -52,6 +60,7 @@ export default {
   aiVideoTaskController,
   platformCommercialPackageController,
   platformCommercialOrderController,
+  workflowAgentRunController,
   platformAiAccountingController,
   builtInAgentCatalogController,
   wechatPaymentNotificationController,
@@ -63,6 +72,7 @@ export default {
   aiCallLogController,
   styleLibraryController,
   platformAiOperationsController,
+  workflowToolCatalogController,
   inspirationCreationController,
   authBootstrapController,
 };

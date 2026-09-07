@@ -23,6 +23,8 @@ public record AiExecutionResponse(
     String errorMessage,
     String usageCostStatus,
     String providerCostSummaryJson,
+    Integer businessCallCount,
+    Integer technicalRetryCount,
     String pointSettlementStatus,
     BigDecimal reservedPoints,
     BigDecimal settledPoints,

@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.antshorttv.execution.AiExecutionClaim;
 import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionAttemptEntity;
+import com.antshorttv.execution.AiExecutionAttemptMapper;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
@@ -25,10 +27,11 @@ import org.mockito.ArgumentCaptor;
 class StoryboardAgentAdapterTest {
     private final WorkflowAgentRunner runner = mock(WorkflowAgentRunner.class);
     private final StoryboardToolDataService storyboards = mock(StoryboardToolDataService.class);
+    private final AiExecutionAttemptMapper attempts = mock(AiExecutionAttemptMapper.class);
 
     @Test
     void runsOneEpisodeWithTrustedExecutionScopeAndFrozenTextModel() {
-        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, true);
+        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts, true);
         ScriptAiOperationEntity operation = operation();
         AiExecutionContext execution = execution();
         WorkflowAgentModelCall call = new WorkflowAgentModelCall(
@@ -36,6 +39,9 @@ class StoryboardAgentAdapterTest {
         when(runner.runFormal(any())).thenReturn(
             new WorkflowAgentRunResult(601L, "{\"saved\":true}", List.of(call)));
         when(storyboards.hasCompleteRunSet(11L, 22L, 44L, 601L)).thenReturn(true);
+        AiExecutionAttemptEntity attempt = new AiExecutionAttemptEntity();
+        attempt.retryCount = 2;
+        when(attempts.selectById(77L)).thenReturn(attempt);
 
         StoryboardAgentAdapter.Execution result = adapter.execute(operation, 44L, execution);
 
@@ -51,15 +57,16 @@ class StoryboardAgentAdapterTest {
         assertThat(input.getValue().executionVersion()).isEqualTo(3);
         assertThat(input.getValue().modelIdOverride()).isEqualTo(88L);
         assertThat(input.getValue().input())
-            .contains("服务端准备", "schemaVersion 2", "save_episode_storyboards")
+            .contains("服务端准备", "schemaVersion 3", "save_episode_storyboards")
             .doesNotContain("读取可信上下文");
         assertThat(result.agentRunId()).isEqualTo(601L);
         assertThat(result.modelCalls()).containsExactly(call);
+        verify(storyboards).annotateRunDiagnostics(11L, 22L, 44L, 601L, 1, 2);
     }
 
     @Test
     void rejectsACompletedRunWithoutItsCompleteCommittedStoryboardSet() {
-        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, true);
+        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts, true);
         when(runner.runFormal(any())).thenReturn(
             new WorkflowAgentRunResult(601L, "model text only", List.of()));
         when(storyboards.hasCompleteRunSet(11L, 22L, 44L, 601L)).thenReturn(false);
@@ -71,7 +78,7 @@ class StoryboardAgentAdapterTest {
 
     @Test
     void marksDeterministicRunnerFailureAsNonRetryableButPreservesGatewayFailures() {
-        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, true);
+        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts, true);
         when(runner.runFormal(any())).thenThrow(
             new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID, "invalid segment"));
         assertThatThrownBy(() -> adapter.execute(operation(), 44L, execution()))

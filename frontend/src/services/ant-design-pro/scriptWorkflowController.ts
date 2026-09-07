@@ -64,6 +64,67 @@ export async function decideAssetCandidate(
   );
 }
 
+/** 此处后端没有提供注释 POST /api/projects/${param0}/episodes/${param1}/assets/regenerate */
+export async function regenerateEpisodeAssets(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.regenerateEpisodeAssetsParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, episodeId: param1, ...queryParams } = params;
+  return request<API.ApiResponseWorkflowAgentRunResult>(
+    `/api/projects/${param0}/episodes/${param1}/assets/regenerate`,
+    {
+      method: "POST",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 PUT /api/projects/${param0}/episodes/${param1}/summary */
+export async function updateEpisodeSummary(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.updateEpisodeSummaryParams,
+  body: API.SaveEpisodeSummaryRequest,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, episodeId: param1, ...queryParams } = params;
+  return request<API.ApiResponseScriptEpisodeSummaryDocument>(
+    `/api/projects/${param0}/episodes/${param1}/summary`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 POST /api/projects/${param0}/episodes/${param1}/summary/regenerate */
+export async function regenerateEpisodeSummary(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.regenerateEpisodeSummaryParams,
+  body: API.RegenerateEpisodeSummaryRequest,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, episodeId: param1, ...queryParams } = params;
+  return request<API.ApiResponseWorkflowAgentRunResult>(
+    `/api/projects/${param0}/episodes/${param1}/summary/regenerate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 POST /api/projects/${param0}/prompts/ai-generate */
 export async function generatePrompts(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -112,6 +173,23 @@ export async function reanalyze(
   const { projectId: param0, ...queryParams } = params;
   return request<API.ApiResponseAiExecutionResponse>(
     `/api/projects/${param0}/script-analysis/current/reanalyze`,
+    {
+      method: "POST",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 POST /api/projects/${param0}/script-analysis/current/regenerate-episodes */
+export async function regenerateEpisodes(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.regenerateEpisodesParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseWorkflowAgentRunResult>(
+    `/api/projects/${param0}/script-analysis/current/regenerate-episodes`,
     {
       method: "POST",
       params: { ...queryParams },
@@ -412,6 +490,62 @@ export async function applyVersion(
     `/api/projects/${param0}/scripts/versions/${param1}/apply`,
     {
       method: "PUT",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 POST /api/projects/${param0}/storyboard-batches */
+export async function createStoryboardBatch(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.createStoryboardBatchParams,
+  body: API.CreateStoryboardBatchRequest,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseStoryboardBatchResponse>(
+    `/api/projects/${param0}/storyboard-batches`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/storyboard-batches/${param1} */
+export async function storyboardBatch(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.storyboardBatchParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, batchId: param1, ...queryParams } = params;
+  return request<API.ApiResponseStoryboardBatchResponse>(
+    `/api/projects/${param0}/storyboard-batches/${param1}`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/storyboard-batches/latest */
+export async function latestStoryboardBatch(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.latestStoryboardBatchParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseStoryboardBatchResponse>(
+    `/api/projects/${param0}/storyboard-batches/latest`,
+    {
+      method: "GET",
       params: { ...queryParams },
       ...(options || {}),
     }

@@ -119,6 +119,30 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void placesStableContextBeforeDynamicInstructionAndForwardsCacheIdentity() {
+        when(invocation.invokeText(any())).thenReturn(result("完成", List.of(), 503L));
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "screenplay-agent", "仅检查时间线", 7L, 25L, 91L, null, null, null, 9L,
+            null, null, null, null, null,
+            "公共规则\n结构索引\n冻结剧本", "review-cache-v1", Map.of("retention", "short")
+        ));
+
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation).invokeText(requests.capture());
+        assertThat(requests.getValue().textRequest().messages())
+            .extracting(AiChatMessage::content)
+            .containsExactly(
+                requests.getValue().textRequest().messages().get(0).content(),
+                "公共规则\n结构索引\n冻结剧本",
+                "仅检查时间线"
+            );
+        assertThat(requests.getValue().textRequest().promptCacheKey()).isEqualTo("review-cache-v1");
+        assertThat(requests.getValue().textRequest().promptCacheOptions())
+            .containsEntry("retention", "short");
+    }
+
+    @Test
     void rejectsAnUnassociatedToolBeforeExecution() {
         when(invocation.invokeText(any())).thenReturn(result(null,
             List.of(new AiToolCall("call-x", "save_episode_script", "{\"content\":\"x\"}")), 503L));
@@ -232,8 +256,6 @@ class WorkflowAgentRunnerTest {
             executorReturning("{\"projectId\":25}"));
         WorkflowToolDefinition content = reviewTool("read_review_content",
             executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition history = reviewTool("read_review_issue_history",
-            executorReturning("{\"issues\":[]}"));
         WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
             @Override
             public com.fasterxml.jackson.databind.JsonNode execute(
@@ -244,20 +266,18 @@ class WorkflowAgentRunnerTest {
                 return json.createObjectNode().put("saved", true);
             }
         });
-        runner = runnerWith(List.of(context, content, history, save), 30);
+        runner = runnerWith(List.of(context, content, save), 30);
         when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
             6L, "script-review", "剧本审核", "", "执行审核", 8L,
             new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "read_review_issue_history",
-                "save_review_unit_result")));
+                "read_review_context", "read_review_content", "save_review_unit_result")));
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(new AiToolCall(
                 "premature-save", "save_review_unit_result", "{}")), 611L))
             .thenReturn(result(null, List.of(
                 new AiToolCall("context", "read_review_context", "{}"),
-                new AiToolCall("content", "read_review_content", "{}"),
-                new AiToolCall("history", "read_review_issue_history", "{}")), 612L))
+                new AiToolCall("content", "read_review_content", "{}")), 612L))
             .thenReturn(result(null, List.of(new AiToolCall(
                 "corrected-save", "save_review_unit_result", "{}")), 613L));
 
@@ -271,7 +291,7 @@ class WorkflowAgentRunnerTest {
         verify(runs).recordFailedToolStep(101L, 2, "save_review_unit_result", "{}",
             ErrorCode.REQUIRED_TOOL_NOT_CALLED.name(),
             "必须先读取审核上下文，并完成全部可信读取后再保存：read_review_context -> "
-                + "read_review_content -> read_review_issue_history -> save_review_unit_result");
+                + "read_review_content -> save_review_unit_result");
         verify(invocation, org.mockito.Mockito.times(3)).invokeText(any());
     }
 
@@ -282,8 +302,6 @@ class WorkflowAgentRunnerTest {
             executorReturning("{\"projectId\":25}"));
         WorkflowToolDefinition content = reviewTool("read_review_content",
             executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition history = reviewTool("read_review_issue_history",
-            executorReturning("{\"issues\":[]}"));
         WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
             @Override
             public com.fasterxml.jackson.databind.JsonNode execute(
@@ -294,21 +312,18 @@ class WorkflowAgentRunnerTest {
                 return json.createObjectNode().put("saved", true);
             }
         });
-        runner = runnerWith(List.of(context, content, history, save), 30);
+        runner = runnerWith(List.of(context, content, save), 30);
         when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
             6L, "script-review", "剧本审核", "", "执行审核", 8L,
             new BigDecimal("0.2"), 16384, 10, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "read_review_issue_history",
-                "save_review_unit_result")));
+                "read_review_context", "read_review_content", "save_review_unit_result")));
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(new AiToolCall(
                 "context", "read_review_context", "{}")), 621L))
             .thenReturn(result(null, List.of(new AiToolCall(
                 "content", "read_review_content", "{}")), 622L))
             .thenReturn(truncatedEmpty(623L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "history", "read_review_issue_history", "{}")), 624L))
             .thenReturn(result(null, List.of(new AiToolCall(
                 "save", "save_review_unit_result", "{}")), 625L));
 
@@ -320,7 +335,7 @@ class WorkflowAgentRunnerTest {
         assertThat(result.output()).contains("\"saved\":true");
         assertThat(saves).hasValue(1);
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(5)).invokeText(requests.capture());
+        verify(invocation, org.mockito.Mockito.times(4)).invokeText(requests.capture());
         assertThat(requests.getAllValues()).allSatisfy(request ->
             assertThat(request.textRequest().thinkingMode()).isEqualTo("disabled"));
         assertThat(requests.getAllValues().get(3).textRequest().messages())
@@ -335,8 +350,6 @@ class WorkflowAgentRunnerTest {
             executorReturning("{\"projectId\":25}"));
         WorkflowToolDefinition content = reviewTool("read_review_content",
             executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition history = reviewTool("read_review_issue_history",
-            executorReturning("{\"issues\":[]}"));
         WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
             @Override
             public com.fasterxml.jackson.databind.JsonNode execute(
@@ -347,18 +360,16 @@ class WorkflowAgentRunnerTest {
                 return json.createObjectNode().put("saved", true);
             }
         });
-        runner = runnerWith(List.of(context, content, history, save), 30);
+        runner = runnerWith(List.of(context, content, save), 30);
         when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
             6L, "script-review", "剧本审核", "", "执行审核", 8L,
             new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "read_review_issue_history",
-                "save_review_unit_result")));
+                "read_review_context", "read_review_content", "save_review_unit_result")));
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(
                 new AiToolCall("context", "read_review_context", "{}"),
-                new AiToolCall("content", "read_review_content", "{}"),
-                new AiToolCall("history", "read_review_issue_history", "{}")), 631L))
+                new AiToolCall("content", "read_review_content", "{}")), 631L))
             .thenReturn(truncatedEmpty(632L))
             .thenReturn(result(null, List.of(new AiToolCall(
                 "save", "save_review_unit_result", "{}")), 633L));
@@ -387,8 +398,6 @@ class WorkflowAgentRunnerTest {
             executorReturning("{\"projectId\":25}"));
         WorkflowToolDefinition content = reviewTool("read_review_content",
             executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition history = reviewTool("read_review_issue_history",
-            executorReturning("{\"issues\":[]}"));
         WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
             @Override
             public com.fasterxml.jackson.databind.JsonNode execute(
@@ -399,18 +408,16 @@ class WorkflowAgentRunnerTest {
                 return json.createObjectNode().put("saved", true);
             }
         });
-        runner = runnerWith(List.of(context, content, history, save), 30);
+        runner = runnerWith(List.of(context, content, save), 30);
         when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
             6L, "script-review", "剧本审核", "", "执行审核", 8L,
             new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "read_review_issue_history",
-                "save_review_unit_result")));
+                "read_review_context", "read_review_content", "save_review_unit_result")));
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(
                 new AiToolCall("context", "read_review_context", "{}"),
-                new AiToolCall("content", "read_review_content", "{}"),
-                new AiToolCall("history", "read_review_issue_history", "{}")), 641L))
+                new AiToolCall("content", "read_review_content", "{}")), 641L))
             .thenReturn(truncatedPartialSave(642L))
             .thenReturn(result(null, List.of(new AiToolCall(
                 "save", "save_review_unit_result", "{}")), 643L));
@@ -448,8 +455,6 @@ class WorkflowAgentRunnerTest {
                 return json.createObjectNode().put("content", "当前审核单元正文");
             }
         });
-        WorkflowToolDefinition history = reviewTool("read_review_issue_history",
-            executorReturning("{\"issues\":[]}"));
         WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
             @Override
             public com.fasterxml.jackson.databind.JsonNode execute(
@@ -462,18 +467,16 @@ class WorkflowAgentRunnerTest {
                 return json.createObjectNode().put("saved", true);
             }
         });
-        runner = runnerWith(List.of(context, content, history, save), 30);
+        runner = runnerWith(List.of(context, content, save), 30);
         when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
             6L, "script-review", "剧本审核", "", "执行审核", 8L,
             new BigDecimal("0.2"), 16384, 12, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "read_review_issue_history",
-                "save_review_unit_result")));
+                "read_review_context", "read_review_content", "save_review_unit_result")));
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(
                 new AiToolCall("context", "read_review_context", "{}"),
-                new AiToolCall("content", "read_review_content", "{}"),
-                new AiToolCall("history", "read_review_issue_history", "{}")), 651L))
+                new AiToolCall("content", "read_review_content", "{}")), 651L))
             .thenReturn(truncatedPartialSave(652L))
             .thenReturn(result(null, List.of(new AiToolCall(
                 "invalid-save", "save_review_unit_result", "{}")), 653L))
@@ -943,7 +946,7 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
-    void storyboardReturnsOneStructuredValidationForCorrectionAndThenSucceeds() throws Exception {
+    void storyboardHardValidationStopsAfterOneBusinessModelCall() throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",
             "save_episode_storyboards");
@@ -954,26 +957,19 @@ class WorkflowAgentRunnerTest {
         runner = runnerWith(definitions, 30);
         when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
         when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(new AiToolCall("bad", "save_episode_storyboards", "{}")), 960L))
-            .thenReturn(result(null, List.of(new AiToolCall("fixed", "save_episode_storyboards", "{}")), 961L));
+            .thenReturn(result(null, List.of(new AiToolCall("bad", "save_episode_storyboards", "{}")), 960L));
 
-        runner.runFormal(new WorkflowAgentRunInput(
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
-            null, null, 9L, 700L, 701L, 1, 8L));
+            null, null, 9L, 700L, 701L, 1, 8L)))
+            .isInstanceOf(WorkflowToolValidationException.class);
 
-        assertThat(saves).hasValue(2);
-        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
-        assertThat(requests.getAllValues().get(1).textRequest().messages())
-            .extracting(AiChatMessage::content)
-            .anySatisfy(content -> assertThat(content)
-                .contains("SOURCE_SEGMENT_GAP", "expectedSegmentId", "S0002"))
-            .anySatisfy(content -> assertThat(content)
-                .contains("每个分镜对象内部", "DIALOGUE、NARRATION 或 INNER_OS", "ACTION、METADATA"));
+        assertThat(saves).hasValue(1);
+        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
     }
 
     @Test
-    void storyboardStopsAfterSecondDeterministicSaveFailure() throws Exception {
+    void storyboardTerminalPolicyDoesNotRetryARepeatableFailure() throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",
             "save_episode_storyboards");
@@ -984,15 +980,14 @@ class WorkflowAgentRunnerTest {
         runner = runnerWith(definitions, 30);
         when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
         when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_storyboards", "{}")), 970L))
-            .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_storyboards", "{}")), 971L));
+            .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_storyboards", "{}")), 970L));
 
         assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
             null, null, 9L, 700L, 701L, 1, 8L)))
             .isInstanceOf(WorkflowToolValidationException.class);
-        assertThat(saves).hasValue(2);
-        verify(invocation, org.mockito.Mockito.times(2)).invokeText(any());
+        assertThat(saves).hasValue(1);
+        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
     }
 
     @Test
@@ -1183,7 +1178,7 @@ class WorkflowAgentRunnerTest {
         return new WorkflowToolDefinition(
             "save_episode_storyboards", "save", "save", json.readTree("{\"type\":\"object\"}"),
             json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
-            ToolFailurePolicy.RETURN_TO_MODEL, new WorkflowToolExecutor() {
+            ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
                 @Override
                 public com.fasterxml.jackson.databind.JsonNode execute(
                     com.antshorttv.workflowagent.tool.ToolExecutionContext context,

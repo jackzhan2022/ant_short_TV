@@ -69,17 +69,19 @@ public class ReviewFanoutRepository {
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                 insert into review_fanout_unit
-                  (snapshot_id, unit_no, unit_key, scope_json, start_offset, end_offset,
+                  (snapshot_id, unit_no, unit_key, stage_type, dimension, scope_json, start_offset, end_offset,
                    content_fingerprint, status, attempt_no, candidate_saved, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, false, now(), now())
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, false, now(), now())
                 """, Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, draft.snapshotId());
             statement.setInt(2, draft.unitNo());
             statement.setString(3, draft.unitKey());
-            statement.setString(4, draft.scopeJson());
-            statement.setInt(5, draft.startOffset());
-            statement.setInt(6, draft.endOffset());
-            statement.setString(7, draft.fingerprint());
+            statement.setString(4, draft.stageType());
+            statement.setString(5, draft.dimension());
+            statement.setString(6, draft.scopeJson());
+            statement.setInt(7, draft.startOffset());
+            statement.setInt(8, draft.endOffset());
+            statement.setString(9, draft.fingerprint());
             return statement;
         }, keys);
         return keys.getKey().longValue();
@@ -123,6 +125,8 @@ public class ReviewFanoutRepository {
                 unit.setSnapshotId(row.getLong("snapshot_id"));
                 unit.setUnitNo(row.getInt("unit_no"));
                 unit.setUnitKey(row.getString("unit_key"));
+                unit.setStageType(row.getString("stage_type"));
+                unit.setDimension(row.getString("dimension"));
                 unit.setScopeJson(row.getString("scope_json"));
                 unit.setStartOffset(row.getInt("start_offset"));
                 unit.setEndOffset(row.getInt("end_offset"));
@@ -181,9 +185,15 @@ public class ReviewFanoutRepository {
     ) {}
 
     public record UnitDraft(
-        long snapshotId, int unitNo, String unitKey, String scopeJson,
+        long snapshotId, int unitNo, String unitKey, String stageType, String dimension, String scopeJson,
         int startOffset, int endOffset, String fingerprint
-    ) {}
+    ) {
+        public UnitDraft(long snapshotId, int unitNo, String unitKey, String scopeJson,
+            int startOffset, int endOffset, String fingerprint) {
+            this(snapshotId, unitNo, unitKey, "CONTENT_DISCOVERY", null, scopeJson,
+                startOffset, endOffset, fingerprint);
+        }
+    }
 
     public record CandidateDraft(
         long snapshotId, long unitId, long childRunId, int attemptNo,

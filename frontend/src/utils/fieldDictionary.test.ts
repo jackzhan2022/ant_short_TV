@@ -15,7 +15,9 @@ describe('后台字段字典', () => {
   });
 
   it('将计费指标和权益类型转换为中文', () => {
-    expect(metricText('INPUT_TOKEN')).toBe('输入 Token 数');
+    expect(metricText('INPUT_TOKEN')).toBe('普通输入 Token 数');
+    expect(metricText('CACHED_INPUT_TOKEN')).toBe('缓存读取 Token 数');
+    expect(metricText('CACHE_WRITE_TOKEN')).toBe('缓存写入 Token 数');
     expect(entitlementTypeText('GLOBAL_DISCOUNT')).toBe('全局折扣');
   });
 

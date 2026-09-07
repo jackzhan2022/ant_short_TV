@@ -39,7 +39,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.mockito.ArgumentCaptor;
 
-@SpringBootTest
+@SpringBootTest(properties = "review.workflow.features.cache-observability=true")
 @AutoConfigureMockMvc
 class ReviewWorkbenchControllerTest {
 
@@ -104,13 +104,103 @@ class ReviewWorkbenchControllerTest {
             "select max(id) from review_fanout_snapshot where task_id = ?", Long.class, taskId);
         jdbcTemplate.update("""
             insert into review_fanout_unit
-              (snapshot_id, unit_no, unit_key, scope_json, start_offset, end_offset,
+              (snapshot_id, unit_no, unit_key, stage_type, dimension, scope_json, start_offset, end_offset,
                content_fingerprint, status, attempt_no, candidate_saved, created_at, updated_at)
-            values (?, 1, 'offset-0-12', '{}', 0, 12, 'fingerprint', 'FAILED', 1, false, now(), now())
+            values (?, 1, 'dimension-dialogue', 'DIMENSION_DISCOVERY', '台词合理性', '{}',
+                    0, 12, 'fingerprint', 'FAILED', 1, false, now(), now())
             """, snapshotId);
+        Long userId = jdbcTemplate.queryForObject(
+            "select created_by from review_task where id=?", Long.class, taskId);
+        jdbcTemplate.update("""
+            insert into ai_workflow_agent_run
+              (agent_code, run_type, tenant_id, user_id, project_id, task_id, status, model_id,
+               temperature, max_tokens, max_steps, prompt_snapshot, started_at, finished_at, created_at)
+            values ('script-review', 'REVIEW_CHILD', ?, ?, ?, ?, 'SUCCEEDED', ?,
+                    0.1, 4096, 20, '', now(), now(), now())
+            """, tenantId, userId, projectId, taskId, modelId);
+        Long runId = jdbcTemplate.queryForObject(
+            "select max(id) from ai_workflow_agent_run where task_id=?", Long.class, taskId);
+        Long unitId = jdbcTemplate.queryForObject(
+            "select id from review_fanout_unit where snapshot_id=?", Long.class, snapshotId);
+        jdbcTemplate.update("update review_fanout_unit set child_run_id=? where id=?", runId, unitId);
+        jdbcTemplate.update("""
+            insert into ai_call_log
+              (tenant_id, user_id, provider, service_type, model, business_scene, status,
+               duration_ms, prompt_tokens, completion_tokens, total_tokens, cached_input_tokens,
+               cache_write_tokens, prompt_cache_key, created_at)
+            values (?, ?, 'OpenAI', 'TEXT', 'gpt-5.6-terra', 'SCRIPT_REVIEW', 'SUCCESS',
+                    321, 9631, 5, 9636, 8960, 512, 'review:test', now())
+            """, tenantId, userId);
+        Long callLogId = jdbcTemplate.queryForObject("select max(id) from ai_call_log", Long.class);
+        jdbcTemplate.update("""
+            insert into ai_workflow_agent_run_step
+              (run_id, step_no, step_type, status, ai_call_log_id, started_at, finished_at, created_at)
+            values (?, 1, 'MODEL', 'SUCCEEDED', ?, now(), now(), now())
+            """, runId, callLogId);
+        jdbcTemplate.update("""
+            insert into review_pipeline_stage
+              (tenant_id, project_id, task_id, snapshot_id, stage_key, stage_type, status, run_id,
+               attempt_no, version_hash, scope_hash, dimensions_hash, input_hash, coverage_json,
+               candidate_count, decision_count, created_at, updated_at, started_at, completed_at)
+            values (?, ?, ?, ?, 'semantic-quality', 'SEMANTIC_QUALITY', 'SUCCEEDED', ?, 1,
+                    'version', 'scope', 'dimensions', 'input',
+                    '{"anomalyRequired":true,"anomalyReview":{"passed":true}}',
+                    1, 1, now(), now(), now(), now())
+            """, tenantId, projectId, taskId, snapshotId, runId);
+        jdbcTemplate.update("""
+            insert into review_candidate_audit
+              (tenant_id, project_id, task_id, snapshot_id, unit_id, discovery_run_id,
+               candidate_key, dimension, candidate_no, status, raw_payload_json,
+               source_fingerprint, created_at)
+            values (?, ?, ?, ?, ?, ?, 'candidate-key', '台词合理性', 1, 'VALID',
+                    '{"title":"告别突兀","problem":"缺少回应"}', 'fingerprint', now())
+            """, tenantId, projectId, taskId, snapshotId, unitId, runId);
+        Long candidateId = jdbcTemplate.queryForObject(
+            "select id from review_candidate_audit where snapshot_id=?", Long.class, snapshotId);
+        jdbcTemplate.update("""
+            insert into review_semantic_decision
+              (tenant_id, project_id, task_id, snapshot_id, candidate_id, quality_run_id,
+               decision, confidence, rationale, severity_decision, evidence_refs_json, created_at)
+            values (?, ?, ?, ?, ?, ?, 'NEEDS_HUMAN_REVIEW', 0.62,
+                    '存在合理替代解释', 'LOW', '["scene:1"]', now())
+            """, tenantId, projectId, taskId, snapshotId, candidateId, runId);
         jdbcTemplate.update("update review_task set status='FAILED', fanout_snapshot_id=? where id=?",
             snapshotId, taskId);
         jdbcTemplate.update("update ai_execution_task set status='FAILED' where id=?", executionId);
+
+        mockMvc.perform(get("/api/script-review/tasks/%d".formatted(taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.fanout.units[0].stageType", is("DIMENSION_DISCOVERY")))
+            .andExpect(jsonPath("$.data.fanout.units[0].dimension", is("台词合理性")))
+            .andExpect(jsonPath("$.data.fanout.units[0].attemptNo", is(1)))
+            .andExpect(jsonPath("$.data.fanout.units[0].status", is("FAILED")))
+            .andExpect(jsonPath("$.data.observability.quality.status", is("SUCCEEDED")))
+            .andExpect(jsonPath("$.data.observability.quality.candidateCount", is(1)))
+            .andExpect(jsonPath("$.data.observability.quality.decisionCount", is(1)))
+            .andExpect(jsonPath("$.data.observability.decisions.needsHumanReview", is(1)))
+            .andExpect(jsonPath("$.data.observability.humanReviewFindings[0].candidateId", is(candidateId.intValue())))
+            .andExpect(jsonPath("$.data.observability.cacheUsage.promptTokens", is(9631)))
+            .andExpect(jsonPath("$.data.observability.cacheUsage.ordinaryInputTokens", is(159)))
+            .andExpect(jsonPath("$.data.observability.cacheUsage.cachedInputTokens", is(8960)))
+            .andExpect(jsonPath("$.data.observability.cacheUsage.cacheWriteTokens", is(512)))
+            .andExpect(jsonPath("$.data.observability.cacheUsage.outputTokens", is(5)))
+            .andExpect(jsonPath("$.data.observability.cacheUsage.latencyMs", is(321)))
+            .andExpect(jsonPath("$.data.observability.cacheUsage.cacheObservable", is(true)))
+            .andExpect(jsonPath("$.data.fanout.units[0].cacheUsage.cachedInputTokens", is(8960)));
+
+        jdbcTemplate.update(
+            "update ai_call_log set cached_input_tokens=null, cache_write_tokens=null where id=?",
+            callLogId);
+        mockMvc.perform(get("/api/script-review/tasks/%d".formatted(taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.observability.cacheUsage.cacheObservable", is(false)))
+            .andExpect(jsonPath("$.data.observability.cacheUsage.cachedInputTokens").doesNotExist())
+            .andExpect(jsonPath("$.data.observability.cacheUsage.cacheWriteTokens").doesNotExist())
+            .andExpect(jsonPath("$.data.observability.cacheUsage.promptTokens", is(9631)));
 
         mockMvc.perform(post("/api/script-review/tasks/%d/retry".formatted(taskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))

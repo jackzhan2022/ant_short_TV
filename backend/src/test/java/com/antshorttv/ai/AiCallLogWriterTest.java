@@ -118,7 +118,8 @@ class AiCallLogWriterTest {
     @Test
     void recordsTextResponseDiagnostics() {
         AiTextResponse response = new AiTextResponse(
-            "123456", "provider-text", 3, 4, 7, 20L, Map.of(), "length", true
+            "123456", "provider-text", 9631, 4, 9635, 20L, Map.of(), "length", true,
+            java.util.List.of(), 8960, 512
         );
 
         Long logId = writer.record(AiInvocationLogRequest.successText(
@@ -127,11 +128,14 @@ class AiCallLogWriterTest {
         ));
 
         Map<String, Object> log = jdbc.queryForMap(
-            "select response_length, finish_reason, truncated from ai_call_log where id = ?", logId
+            "select response_length, finish_reason, truncated, cached_input_tokens, cache_write_tokens "
+                + "from ai_call_log where id = ?", logId
         );
         assertThat(log.get("response_length")).isEqualTo(6);
         assertThat(log.get("finish_reason")).isEqualTo("length");
         assertThat(log.get("truncated")).isEqualTo(true);
+        assertThat(log.get("cached_input_tokens")).isEqualTo(8960);
+        assertThat(log.get("cache_write_tokens")).isEqualTo(512);
     }
 
     @Test

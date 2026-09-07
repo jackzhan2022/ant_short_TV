@@ -25,6 +25,8 @@ public class AiExecutionResponseMapper {
             task.errorMessage,
             task.usageCostStatus,
             task.providerCostSummaryJson,
+            task.businessCallCount == null ? 0 : task.businessCallCount,
+            task.technicalRetryCount == null ? 0 : task.technicalRetryCount,
             task.pointSettlementStatus,
             task.reservedPoints,
             task.settledPoints,

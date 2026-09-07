@@ -1,8 +1,10 @@
 package com.antshorttv.workflowagent.tool;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
@@ -19,8 +21,19 @@ public class EpisodeSourceSegmenter {
     private static final Pattern NARRATION_MARKER = Pattern.compile(
         "(^|[^A-Z0-9])V\\.?(?:O|S)\\.?(?=[^A-Z0-9]|$)", Pattern.CASE_INSENSITIVE);
 
+    private static final Pattern STRUCTURAL_METADATA = Pattern.compile(
+        "^(出场人物|登场人物|人物列表|角色列表|演员)[：:].*");
+    private static final Pattern STRUCTURAL_ACTION = Pattern.compile(
+        "^(镜头|画面|动作|时间|地点)[：:].*");
+
     public List<EpisodeSourceSegment> segment(String source) {
+        return segment(source, SegmentationContext.legacy());
+    }
+
+    public List<EpisodeSourceSegment> segment(String source, SegmentationContext context) {
         if (source == null || source.isEmpty()) return List.of();
+        SegmentationContext effectiveContext = context == null
+            ? SegmentationContext.legacy() : context;
         List<EpisodeSourceSegment> segments = new ArrayList<>();
         int start = 0;
         int ordinal = 1;
@@ -32,17 +45,18 @@ public class EpisodeSourceSegmenter {
             }
             String text = source.substring(start, end);
             if (!text.isBlank()) {
-                SourceSegmentType type;
+                Classification classification;
                 if (pendingSpeechType != null) {
-                    type = pendingSpeechType;
+                    classification = new Classification(pendingSpeechType, null);
                     pendingSpeechType = null;
                 } else {
-                    type = classify(text);
-                    pendingSpeechType = speechCueType(text.strip());
+                    classification = classify(text, effectiveContext);
+                    pendingSpeechType = speechCueType(text.strip(), effectiveContext);
                 }
                 segments.add(new EpisodeSourceSegment(
-                    "S%04d".formatted(ordinal++), type, text, start, end,
-                    type != SourceSegmentType.METADATA));
+                    "S%04d".formatted(ordinal++), classification.type(), text, start, end,
+                    classification.type() != SourceSegmentType.METADATA,
+                    classification.warning()));
             }
             if (end >= source.length()) break;
             start = end + 1;
@@ -53,33 +67,51 @@ public class EpisodeSourceSegmenter {
         return List.copyOf(segments);
     }
 
-    private SourceSegmentType classify(String text) {
+    private Classification classify(String text, SegmentationContext context) {
         String value = text.strip();
         String withoutHeading = value.replaceFirst("^#+\\s*", "");
         String upper = withoutHeading.toUpperCase(Locale.ROOT);
-        if (isMetadata(value, withoutHeading)) return SourceSegmentType.METADATA;
+        if (isMetadata(value, withoutHeading)
+            || STRUCTURAL_METADATA.matcher(withoutHeading).matches()) {
+            return new Classification(SourceSegmentType.METADATA, null);
+        }
         if (withoutHeading.matches("^(场景|场次)[：:].+")
             || upper.matches("^(INT|EXT|INT/EXT|EXT/INT)[.． ].*")) {
-            return SourceSegmentType.SCENE;
+            return new Classification(SourceSegmentType.SCENE, null);
         }
-        if (isSubtitleOrActionLabel(withoutHeading)) return SourceSegmentType.ACTION;
+        if (isSubtitleOrActionLabel(withoutHeading)
+            || withoutHeading.matches("^[△▲].*")
+            || STRUCTURAL_ACTION.matcher(withoutHeading).matches()) {
+            return new Classification(SourceSegmentType.ACTION, null);
+        }
         var speech = SPEECH_LINE.matcher(withoutHeading);
-        if (speech.matches()) return speechType(speech.group(1));
-        return SourceSegmentType.ACTION;
+        if (speech.matches()) {
+            SourceSegmentType explicit = explicitSpeechType(speech.group(1));
+            if (explicit != null) return new Classification(explicit, null);
+            if (context.permissive() || context.isKnownSpeaker(speech.group(1))) {
+                return new Classification(SourceSegmentType.DIALOGUE, null);
+            }
+            return new Classification(SourceSegmentType.ACTION, "SOURCE_SPEAKER_UNCONFIRMED");
+        }
+        return new Classification(SourceSegmentType.ACTION, null);
     }
 
-    private SourceSegmentType speechCueType(String value) {
+    private SourceSegmentType speechCueType(String value, SegmentationContext context) {
         var cue = SPEECH_CUE.matcher(value.replaceFirst("^#+\\s*", ""));
-        return cue.matches() ? speechType(cue.group(1)) : null;
+        if (!cue.matches()) return null;
+        SourceSegmentType explicit = explicitSpeechType(cue.group(1));
+        if (explicit != null) return explicit;
+        return context.permissive() || context.isKnownSpeaker(cue.group(1))
+            ? SourceSegmentType.DIALOGUE : null;
     }
 
-    private SourceSegmentType speechType(String prefix) {
+    private SourceSegmentType explicitSpeechType(String prefix) {
         if (INNER_OS_MARKER.matcher(prefix).find()) return SourceSegmentType.INNER_OS;
         if (NARRATION_MARKER.matcher(prefix).find()
             || prefix.contains("旁白") || prefix.contains("画外音")) {
             return SourceSegmentType.NARRATION;
         }
-        return SourceSegmentType.DIALOGUE;
+        return null;
     }
 
     private boolean isSubtitleOrActionLabel(String value) {
@@ -113,6 +145,46 @@ public class EpisodeSourceSegmenter {
         String text,
         int startOffset,
         int endOffset,
-        boolean requiredCoverage
+        boolean requiredCoverage,
+        String classificationWarning
     ) {}
+
+    public record SegmentationContext(
+        Set<String> speakerNames,
+        Set<String> speakerAliases,
+        boolean permissive
+    ) {
+        public SegmentationContext(Set<String> speakerNames, Set<String> speakerAliases) {
+            this(speakerNames, speakerAliases, false);
+        }
+
+        public SegmentationContext {
+            speakerNames = normalized(speakerNames);
+            speakerAliases = normalized(speakerAliases);
+        }
+
+        static SegmentationContext legacy() {
+            return new SegmentationContext(Set.of(), Set.of(), true);
+        }
+
+        boolean isKnownSpeaker(String prefix) {
+            String candidate = normalizeSpeaker(prefix);
+            return speakerNames.contains(candidate) || speakerAliases.contains(candidate);
+        }
+
+        private static Set<String> normalized(Set<String> values) {
+            if (values == null || values.isEmpty()) return Set.of();
+            Set<String> result = new LinkedHashSet<>();
+            values.stream().map(SegmentationContext::normalizeSpeaker)
+                .filter(value -> !value.isEmpty()).forEach(result::add);
+            return Set.copyOf(result);
+        }
+
+        private static String normalizeSpeaker(String value) {
+            if (value == null) return "";
+            return value.replaceFirst("[（(].*$", "").strip().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    private record Classification(SourceSegmentType type, String warning) {}
 }

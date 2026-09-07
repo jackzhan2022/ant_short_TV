@@ -54,7 +54,11 @@ class AiCallLogControllerTest {
             .andExpect(jsonPath("$.data.records[0].businessScene", is("chatbot")))
             .andExpect(jsonPath("$.data.records[0].requestSummary", is("你好")))
             .andExpect(jsonPath("$.data.records[0].responseSummary", is("你好，我可以帮你。")))
-            .andExpect(jsonPath("$.data.records[0].status", is("SUCCESS")));
+            .andExpect(jsonPath("$.data.records[0].status", is("SUCCESS")))
+            .andExpect(jsonPath("$.data.records[0].promptTokens", is(9631)))
+            .andExpect(jsonPath("$.data.records[0].cachedInputTokens", is(8960)))
+            .andExpect(jsonPath("$.data.records[0].cacheWriteTokens", is(512)))
+            .andExpect(jsonPath("$.data.records[0].promptCacheKey", is("review:v1")));
     }
 
     private void insertCallLog(
@@ -72,8 +76,10 @@ class AiCallLogControllerTest {
     ) {
         jdbcTemplate.update("""
             insert into ai_call_log
-              (tenant_id, user_id, provider, service_type, model, business_scene, request_summary, response_summary, status, error_message, duration_ms, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+              (tenant_id, user_id, provider, service_type, model, business_scene, request_summary, response_summary,
+               status, error_message, duration_ms, prompt_tokens, completion_tokens, total_tokens,
+               cached_input_tokens, cache_write_tokens, prompt_cache_key, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 9631, 5, 9636, 8960, 512, 'review:v1', now())
             """, tenantId, userId, provider, serviceType, model, businessScene, requestSummary, responseSummary, status, errorMessage, durationMs);
     }
 
