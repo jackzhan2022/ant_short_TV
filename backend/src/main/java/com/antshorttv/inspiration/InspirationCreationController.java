@@ -2,7 +2,6 @@ package com.antshorttv.inspiration;
 
 import com.antshorttv.common.ApiResponse;
 import org.springframework.core.io.Resource;
-import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,8 +35,16 @@ public class InspirationCreationController {
     @GetMapping("/{id}/file")
     public ResponseEntity<Resource> file(@PathVariable Long id) {
         return ResponseEntity.ok()
-            .cacheControl(CacheControl.noStore())
+            .cacheControl(service.mediaCacheControl())
             .contentType(MediaType.parseMediaType(service.contentType(id)))
             .body(service.file(id));
+    }
+
+    @GetMapping("/{id}/thumbnail")
+    public ResponseEntity<Resource> thumbnail(@PathVariable Long id) {
+        return ResponseEntity.ok()
+            .cacheControl(service.mediaCacheControl())
+            .contentType(MediaType.parseMediaType(service.thumbnailContentType(id)))
+            .body(service.thumbnail(id));
     }
 }

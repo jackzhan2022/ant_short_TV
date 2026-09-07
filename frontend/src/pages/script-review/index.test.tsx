@@ -250,6 +250,7 @@ vi.mock('@/components/AiExecutionStatus', () => ({
 
 describe('ScriptReviewPage', () => {
   beforeEach(() => {
+    window.history.replaceState({}, '', '/script-review');
     vi.clearAllMocks();
     mocks.queryReviewTask.mockResolvedValue({ data: undefined });
     mocks.queryReviewProjects.mockResolvedValue({
@@ -513,6 +514,18 @@ describe('ScriptReviewPage', () => {
       status: 'SUCCEEDED',
       progress: 100,
     });
+  });
+
+  it('loads only the selected task on the dedicated task-detail route', async () => {
+    window.history.replaceState({}, '', '/script-review/tasks/7');
+    mocks.queryReviewTask.mockResolvedValue({ data: {
+      id: 7, projectId: 1, scriptVersionId: 2, roundNo: 1, reviewMode: 'QUICK', selectedDimensions: [], reviewScopeType: 'ALL', reviewScope: {}, status: 'COMPLETED', overallProgress: 100, issues: [],
+      boundVersion: { id: 2, projectId: 1, versionNo: 1, sourceType: 'IMPORT', content: '正文' },
+    } });
+    render(<ScriptReviewPage />);
+    await waitFor(() => expect(mocks.queryReviewTask).toHaveBeenCalledWith(7));
+    expect(mocks.queryReviewProjects).not.toHaveBeenCalled();
+    expect(mocks.queryReviewProject).not.toHaveBeenCalled();
   });
 
   it('loads issue details for a summarized selected task', async () => {

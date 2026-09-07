@@ -22,21 +22,15 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  deriveLibraryState,
   filterLibraryProjects,
+  libraryStateFromProject,
   type LibraryStateKey,
 } from '../script-review/library';
-import type { ReviewProject, ReviewProjectDetail } from '../script-review/service';
+import type { ReviewProject } from '../script-review/service';
 import {
   importReviewProject,
-  queryReviewProject,
   queryReviewProjects,
 } from '../script-review/service';
-
-type ProjectLibraryItem = {
-  project: ReviewProject;
-  detail?: ReviewProjectDetail;
-};
 
 const stateColor: Record<LibraryStateKey, string> = {
   NOT_REVIEWED: 'default',
@@ -48,7 +42,7 @@ const stateColor: Record<LibraryStateKey, string> = {
 
 const ScriptReviewLibraryPage = () => {
   const { message } = App.useApp();
-  const [items, setItems] = useState<ProjectLibraryItem[]>([]);
+  const [items, setItems] = useState<ReviewProject[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<LibraryStateKey>();
   const [importOpen, setImportOpen] = useState(false);
@@ -59,18 +53,7 @@ const ScriptReviewLibraryPage = () => {
 
   const loadProjects = async () => {
     const response = await queryReviewProjects();
-    const projects = response.data ?? [];
-    const details = await Promise.all(
-      projects.map(async (project) => {
-        try {
-          const detailResponse = await queryReviewProject(project.id);
-          return { project, detail: detailResponse.data };
-        } catch {
-          return { project };
-        }
-      }),
-    );
-    setItems(details);
+    setItems(response.data ?? []);
   };
 
   useEffect(() => {
@@ -80,17 +63,12 @@ const ScriptReviewLibraryPage = () => {
   const states = useMemo(
     () =>
       new Map(
-        items.map(({ project, detail }) => {
-          const task = detail?.tasks.find(
-            (candidate) => candidate.id === project.lastTaskId,
-          ) ?? detail?.tasks[0];
-          return [project.id, deriveLibraryState({ project, task })];
-        }),
+        items.map((project) => [project.id, libraryStateFromProject(project)]),
       ),
     [items],
   );
   const projects = useMemo(
-    () => filterLibraryProjects(items.map((item) => item.project), states, query, filter),
+    () => filterLibraryProjects(items, states, query, filter),
     [filter, items, query, states],
   );
   const stateFilters = useMemo(
@@ -139,7 +117,7 @@ const ScriptReviewLibraryPage = () => {
       setUploadFile(undefined);
       await loadProjects();
       message.success('已创建独立剧本审核项目');
-      history.push(`/script-review?projectId=${projectId}`);
+      history.push(`/script-review/projects/${projectId}/reviews`);
     } finally {
       setSaving(false);
     }
@@ -211,7 +189,7 @@ const ScriptReviewLibraryPage = () => {
                       key="open"
                       type="link"
                       onClick={() =>
-                        history.push(`/script-review?projectId=${project.id}`)
+                        history.push(`/script-review/projects/${project.id}/reviews`)
                       }
                     >
                       {state?.actionLabel ?? '进入审核'}

@@ -19,6 +19,12 @@ public class InspirationCreationEntity {
     private String storagePath;
     private String mimeType;
     private Long fileSize;
+    private String thumbnailPath;
+    private String thumbnailUrl;
+    private String thumbnailMimeType;
+    private Long thumbnailFileSize;
+    private String thumbnailStatus;
+    private String thumbnailError;
     private String detailJson;
     private LocalDateTime sourceCreatedAt;
     private LocalDateTime sourceUpdatedAt;
@@ -50,6 +56,18 @@ public class InspirationCreationEntity {
     public void setMimeType(String mimeType) { this.mimeType = mimeType; }
     public Long getFileSize() { return fileSize; }
     public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
+    public String getThumbnailPath() { return thumbnailPath; }
+    public void setThumbnailPath(String thumbnailPath) { this.thumbnailPath = thumbnailPath; }
+    public String getThumbnailUrl() { return thumbnailUrl; }
+    public void setThumbnailUrl(String thumbnailUrl) { this.thumbnailUrl = thumbnailUrl; }
+    public String getThumbnailMimeType() { return thumbnailMimeType; }
+    public void setThumbnailMimeType(String thumbnailMimeType) { this.thumbnailMimeType = thumbnailMimeType; }
+    public Long getThumbnailFileSize() { return thumbnailFileSize; }
+    public void setThumbnailFileSize(Long thumbnailFileSize) { this.thumbnailFileSize = thumbnailFileSize; }
+    public String getThumbnailStatus() { return thumbnailStatus; }
+    public void setThumbnailStatus(String thumbnailStatus) { this.thumbnailStatus = thumbnailStatus; }
+    public String getThumbnailError() { return thumbnailError; }
+    public void setThumbnailError(String thumbnailError) { this.thumbnailError = thumbnailError; }
     public String getDetailJson() { return detailJson; }
     public void setDetailJson(String detailJson) { this.detailJson = detailJson; }
     public LocalDateTime getSourceCreatedAt() { return sourceCreatedAt; }

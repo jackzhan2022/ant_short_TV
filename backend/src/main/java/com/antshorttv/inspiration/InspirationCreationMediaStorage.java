@@ -34,7 +34,7 @@ public class InspirationCreationMediaStorage {
             String mimeType = contentType(response, mediaUrl);
             String storagePath = storagePath(externalId, mediaUrl, mimeType);
             objectStorageService.upload(storagePath, bytes, mimeType);
-            return new InspirationCreationMediaTransfer(storagePath, mimeType, (long) bytes.length);
+            return new InspirationCreationMediaTransfer(storagePath, mimeType, (long) bytes.length, bytes);
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -46,8 +46,20 @@ public class InspirationCreationMediaStorage {
         return objectStorageService.resource(entity.getStoragePath());
     }
 
+    public Resource thumbnailResource(InspirationCreationEntity entity) {
+        return objectStorageService.resource(entity.getThumbnailPath());
+    }
+
+    public void uploadThumbnail(String storagePath, InspirationThumbnail thumbnail) {
+        objectStorageService.upload(storagePath, thumbnail.bytes(), thumbnail.mimeType());
+    }
+
     static String storagePath(String externalId, String mediaUrl, String mimeType) {
         return "inspiration/creations/%s/original.%s".formatted(externalId, extension(mediaUrl, mimeType));
+    }
+
+    static String thumbnailPath(String externalId) {
+        return "inspiration/creations/%s/thumbnail.jpg".formatted(externalId);
     }
 
     static String contentType(String storagePath, String storedMimeType) {
@@ -106,6 +118,7 @@ public class InspirationCreationMediaStorage {
 record InspirationCreationMediaTransfer(
     String storagePath,
     String mimeType,
-    Long fileSize
+    Long fileSize,
+    byte[] bytes
 ) {
 }

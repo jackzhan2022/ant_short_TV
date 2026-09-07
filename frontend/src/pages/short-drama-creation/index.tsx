@@ -47,6 +47,7 @@ import {
   queryStyleLibrary,
   queryTenantMembers,
 } from './service';
+import LazyInspirationThumbnail from './LazyInspirationThumbnail';
 import styles from './index.module.css';
 
 type CreationStep = 1 | 2;
@@ -115,12 +116,16 @@ const ShortDramaCreationPage = () => {
   const [inspirationLoading, setInspirationLoading] = useState(false);
   const [inspirationHasMore, setInspirationHasMore] = useState(true);
   const [inspirationPage, setInspirationPage] = useState(0);
+  const [hasScrolledGallery, setHasScrolledGallery] = useState(false);
+  const [galleryScrollVersion, setGalleryScrollVersion] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedInspiration, setSelectedInspiration] =
     useState<InspirationCreationDetail>();
   const [members, setMembers] = useState<TenantMember[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const inspirationBottomRef = useRef<HTMLDivElement>(null);
+  const inspirationRequestInFlightRef = useRef(false);
+  const lastPaginationScrollVersionRef = useRef(-1);
   const [projectForm, setProjectForm] = useState<Partial<ProjectFormValues>>({
     coverSource: 'FIRST_FRAME',
     aspectRatio: '16:9',
@@ -130,6 +135,10 @@ const ShortDramaCreationPage = () => {
   });
 
   const loadInspirationPage = useCallback(async (page: number, append = false) => {
+    if (inspirationRequestInFlightRef.current) {
+      return;
+    }
+    inspirationRequestInFlightRef.current = true;
     setInspirationLoading(true);
     try {
       const response = await queryInspirationCreations({
@@ -144,6 +153,7 @@ const ShortDramaCreationPage = () => {
     } catch {
       message.error('灵感广场加载失败');
     } finally {
+      inspirationRequestInFlightRef.current = false;
       setInspirationLoading(false);
     }
   }, [message]);
@@ -201,18 +211,31 @@ const ShortDramaCreationPage = () => {
   }, [loadInspirationPage]);
 
   useEffect(() => {
+    const markScrolled = () => {
+      setHasScrolledGallery(true);
+      setGalleryScrollVersion((current) => current + 1);
+    };
+    window.addEventListener('scroll', markScrolled, { passive: true });
+    return () => window.removeEventListener('scroll', markScrolled);
+  }, []);
+
+  useEffect(() => {
     const target = inspirationBottomRef.current;
-    if (!target || !inspirationHasMore || inspirationLoading) {
+    if (!target || !hasScrolledGallery || !inspirationHasMore || inspirationLoading) {
       return;
     }
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
+      if (
+        entry.isIntersecting
+        && lastPaginationScrollVersionRef.current !== galleryScrollVersion
+      ) {
+        lastPaginationScrollVersionRef.current = galleryScrollVersion;
         void loadInspirationPage(inspirationPage + 1, true);
       }
     }, { rootMargin: '240px 0px' });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [inspirationHasMore, inspirationLoading, inspirationPage, loadInspirationPage]);
+  }, [galleryScrollVersion, hasScrolledGallery, inspirationHasMore, inspirationLoading, inspirationPage, loadInspirationPage]);
 
   const updateForm = (next: Partial<ProjectFormValues>) => {
     setProjectForm((current) => ({ ...current, ...next }));
@@ -405,7 +428,6 @@ const ShortDramaCreationPage = () => {
             <div className={styles.inspirationGrid}>
               {inspirationGallery.map((item) => {
                 const title = item.title?.trim() || `灵感 ${item.id}`;
-                const isVideo = item.mimeType?.startsWith('video/');
                 return (
                   <button
                     className={styles.inspirationCard}
@@ -416,11 +438,11 @@ const ShortDramaCreationPage = () => {
                     }}
                     type="button"
                   >
-                    {isVideo ? (
-                      <video muted playsInline preload="metadata" src={item.url} />
-                    ) : (
-                      <img alt={title} src={item.url} />
-                    )}
+                    <LazyInspirationThumbnail
+                      alt={title}
+                      placeholderClassName={styles.inspirationPlaceholder}
+                      src={item.thumbnailUrl}
+                    />
                     <span className={styles.inspirationOverlay}>
                       <strong>{title}</strong>
                     </span>

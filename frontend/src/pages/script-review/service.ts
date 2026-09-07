@@ -17,6 +17,9 @@ export type ReviewProject = {
   status: string;
   versionCount: number;
   latestRoundNo: number;
+  reviewState?: 'NOT_REVIEWED' | 'RUNNING' | 'ACTION_REQUIRED' | 'READY_FOR_REVIEW' | 'COMPLETED';
+  outstandingIssueCount?: number;
+  actionLabel?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -153,6 +156,7 @@ export type ReviewTask = {
     summary: string;
   } | null;
   issues: ReviewIssue[];
+  boundVersion?: ReviewVersion | null;
 };
 
 export type ReviewCacheUsage = {
@@ -170,6 +174,35 @@ export type ReviewProjectDetail = {
   project: ReviewProject;
   versions: ReviewVersion[];
   tasks: ReviewTask[];
+};
+
+export type ReviewVersionMetadata = Omit<ReviewVersion, 'content'>;
+
+export type ReviewHistoryTask = {
+  id: number;
+  scriptVersionId: number;
+  roundNo: number;
+  reviewMode: string;
+  selectedDimensions: string[];
+  reviewScopeType: string;
+  status: string;
+  overallProgress: number;
+  issueCount: number;
+  outstandingIssueCount: number;
+  createdBy?: number | null;
+  createdAt?: string | null;
+  completedAt?: string | null;
+  canceledAt?: string | null;
+  errorMessage?: string | null;
+};
+
+export type ReviewProjectHistory = {
+  project: ReviewProject;
+  versions: ReviewVersionMetadata[];
+  items: ReviewHistoryTask[];
+  page: number;
+  pageSize: number;
+  total: number;
 };
 
 export type ReviewVersionDiffLine = {
@@ -247,6 +280,12 @@ export const importReviewProject = async (
 export const queryReviewProject = (projectId: number) =>
   request<ApiResponse<ReviewProjectDetail>>(
     `/api/script-review/projects/${projectId}`,
+  );
+
+export const queryReviewProjectHistory = (projectId: number, page = 1) =>
+  request<ApiResponse<ReviewProjectHistory>>(
+    `/api/script-review/projects/${projectId}/reviews`,
+    { params: { page, pageSize: 20 } },
   );
 
 export const queryReviewTask = (taskId: number) =>

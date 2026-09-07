@@ -75,6 +75,38 @@ public class ReviewObservabilityRepository {
         }, runIds.toArray());
     }
 
+    public Map<Long, ReviewCacheUsageResponse> cacheUsageByRunIds(Collection<Long> requestedRunIds) {
+        List<Long> runIds = new ArrayList<>(new LinkedHashSet<>(
+            requestedRunIds == null ? List.of() : requestedRunIds.stream().filter(java.util.Objects::nonNull).toList()
+        ));
+        if (runIds.isEmpty()) return Map.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(runIds.size(), "?"));
+        return jdbc.query("""
+            select s.run_id, count(*) call_count,
+                   sum(case when l.cached_input_tokens is not null and l.cache_write_tokens is not null then 1 else 0 end) observed_count,
+                   coalesce(sum(l.prompt_tokens), 0) prompt_tokens, coalesce(sum(l.completion_tokens), 0) output_tokens,
+                   coalesce(sum(l.duration_ms), 0) latency_ms, coalesce(sum(l.cached_input_tokens), 0) cached_input_tokens,
+                   coalesce(sum(l.cache_write_tokens), 0) cache_write_tokens
+              from ai_workflow_agent_run_step s join ai_call_log l on l.id=s.ai_call_log_id
+             where s.run_id in (%s) group by s.run_id
+            """.formatted(placeholders), result -> {
+            java.util.LinkedHashMap<Long, ReviewCacheUsageResponse> values = new java.util.LinkedHashMap<>();
+            while (result.next()) {
+                long prompt = result.getLong("prompt_tokens");
+                long cached = result.getLong("cached_input_tokens");
+                long calls = result.getLong("call_count");
+                boolean observable = calls > 0 && result.getLong("observed_count") == calls;
+                values.put(result.getLong("run_id"), new ReviewCacheUsageResponse(prompt,
+                    observable ? Math.max(0, prompt - cached - result.getLong("cache_write_tokens")) : null,
+                    observable ? cached : null, observable ? result.getLong("cache_write_tokens") : null,
+                    result.getLong("output_tokens"), result.getLong("latency_ms"),
+                    observable && prompt > 0 ? BigDecimal.valueOf(cached).divide(BigDecimal.valueOf(prompt), 4, RoundingMode.HALF_UP) : null,
+                    observable));
+            }
+            return values;
+        }, runIds.toArray());
+    }
+
     private ReviewQualityProgressResponse quality(long snapshotId) {
         List<ReviewQualityProgressResponse> rows = jdbc.query("""
             select status, run_id, attempt_no, candidate_count, decision_count, coverage_json

@@ -8,9 +8,12 @@ import static org.mockito.Mockito.when;
 
 import com.antshorttv.storage.ObjectStorageService;
 import com.sun.net.httpserver.HttpServer;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +36,7 @@ class InspirationCreationImportServiceTest {
     void importsListAndDetailWithLocalMediaOnly() throws Exception {
         mapper.delete(null);
         when(objectStorageService.enabled()).thenReturn(true);
+        byte[] sourcePng = png();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/creations", exchange -> {
             String base = "http://127.0.0.1:%d".formatted(server.getAddress().getPort());
@@ -55,7 +59,7 @@ class InspirationCreationImportServiceTest {
             exchange.close();
         });
         server.createContext("/media/source.png", exchange -> {
-            byte[] body = "image-bytes".getBytes(StandardCharsets.UTF_8);
+            byte[] body = sourcePng;
             exchange.getResponseHeaders().add("Content-Type", "image/png");
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
@@ -78,6 +82,8 @@ class InspirationCreationImportServiceTest {
         assertThat(entity.getAuthorName()).isEqualTo("管理员");
         assertThat(entity.getStoragePath()).isEqualTo("inspiration/creations/842344185310472160/original.png");
         assertThat(entity.getUrl()).isEqualTo("/api/inspiration-creations/%d/file".formatted(entity.getId()));
+        assertThat(entity.getThumbnailStatus()).isEqualTo("READY");
+        assertThat(entity.getThumbnailUrl()).isEqualTo("/api/inspiration-creations/%d/thumbnail".formatted(entity.getId()));
         assertThat(entity.getDetailJson()).contains("\"url\":\"/api/inspiration-creations/%d/file\"".formatted(entity.getId()));
         assertThat(entity.getDetailJson()).doesNotContain("127.0.0.1");
         assertThat(entity.getDetailJson()).contains("保留文本");
@@ -88,7 +94,12 @@ class InspirationCreationImportServiceTest {
             bytes.capture(),
             eq("image/png")
         );
-        assertThat(bytes.getValue()).containsExactly("image-bytes".getBytes());
+        assertThat(bytes.getValue()).containsExactly(png());
+        verify(objectStorageService).upload(
+            eq("inspiration/creations/842344185310472160/thumbnail.jpg"),
+            org.mockito.ArgumentMatchers.any(byte[].class),
+            eq("image/jpeg")
+        );
     }
 
     @Test
@@ -151,6 +162,7 @@ class InspirationCreationImportServiceTest {
         InspirationCreationEntity imported = mapper.selectByExternalId("valid-creation");
         InspirationCreationEntity failed = mapper.selectByExternalId("missing-media");
         assertThat(imported.getImportStatus()).isEqualTo(InspirationCreationImportStatus.IMPORTED.name());
+        assertThat(imported.getThumbnailStatus()).isEqualTo("FAILED");
         assertThat(imported.getMimeType()).isEqualTo("video/mp4");
         assertThat(imported.getTitle()).isEqualTo("详情标题");
         assertThat(failed.getImportStatus()).isEqualTo(InspirationCreationImportStatus.FAILED.name());
@@ -195,5 +207,12 @@ class InspirationCreationImportServiceTest {
         ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
         verify(objectStorageService).upload(eq("inspiration/creations/abc-123/original.png"), bytes.capture(), eq("image/png"));
         assertThat(bytes.getValue()).containsExactly("image-bytes".getBytes());
+    }
+
+    private byte[] png() throws Exception {
+        BufferedImage image = new BufferedImage(12, 8, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", output);
+        return output.toByteArray();
     }
 }

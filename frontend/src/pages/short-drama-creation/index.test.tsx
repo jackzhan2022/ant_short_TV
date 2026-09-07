@@ -1,5 +1,5 @@
 import { App } from 'antd';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ShortDramaCreationPage from './index';
 
@@ -86,6 +86,7 @@ describe('ShortDramaCreationPage', () => {
           title: '线上灵感 A',
           authorName: '管理员',
           url: '/api/inspiration-creations/101/file',
+          thumbnailUrl: '/api/inspiration-creations/101/thumbnail',
           mimeType: 'image/png',
           sortOrder: 1,
           sourceCreatedAt: '2026-08-22T10:00:00',
@@ -98,6 +99,7 @@ describe('ShortDramaCreationPage', () => {
           title: '线上灵感 B',
           authorName: '管理员',
           url: '/api/inspiration-creations/102/file',
+          thumbnailUrl: '/api/inspiration-creations/102/thumbnail',
           mimeType: 'image/png',
           sortOrder: 2,
           sourceCreatedAt: '2026-08-22T10:10:00',
@@ -113,9 +115,10 @@ describe('ShortDramaCreationPage', () => {
             creationType: 'IMAGE',
             taskType: 'STORY',
             title: '线上灵感 C',
-            authorName: '管理员',
-            url: '/api/inspiration-creations/103/file',
-            mimeType: 'image/png',
+          authorName: '管理员',
+          url: '/api/inspiration-creations/103/file',
+          thumbnailUrl: '/api/inspiration-creations/103/thumbnail',
+          mimeType: 'image/png',
             sortOrder: 3,
           }],
           total: 9,
@@ -133,6 +136,7 @@ describe('ShortDramaCreationPage', () => {
         title: '线上灵感 A',
         authorName: '管理员',
         url: '/api/inspiration-creations/101/file',
+        thumbnailUrl: '/api/inspiration-creations/101/thumbnail',
         mimeType: 'image/png',
         sortOrder: 1,
         sourceCreatedAt: '2026-08-22T10:00:00',
@@ -175,6 +179,14 @@ describe('ShortDramaCreationPage', () => {
     expect(screen.queryByText('豪门继承人归来')).not.toBeInTheDocument();
     expect(screen.queryByText('3D风格-高清真实渲染')).not.toBeInTheDocument();
     expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({ page: 1, pageSize: 8 });
+    expect(screen.getByAltText('线上灵感 A')).not.toHaveAttribute('src');
+    act(() => {
+      intersectionObservers[0]([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
+    });
+    expect(screen.getByAltText('线上灵感 A')).toHaveAttribute(
+      'src',
+      '/api/inspiration-creations/101/thumbnail',
+    );
     expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({});
   });
 
@@ -198,7 +210,7 @@ describe('ShortDramaCreationPage', () => {
     );
   });
 
-  it('loads the next inspiration page when the gallery bottom becomes visible', async () => {
+  it('does not load the next inspiration page before the user scrolls', async () => {
     render(
       <App>
         <ShortDramaCreationPage />
@@ -208,8 +220,28 @@ describe('ShortDramaCreationPage', () => {
     await screen.findByText('线上灵感 A');
     intersectionObservers.at(-1)?.([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
 
+    await waitFor(() => {
+      expect(mocks.queryInspirationCreations).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText('线上灵感 C')).not.toBeInTheDocument();
+  });
+
+  it('loads the next inspiration page after user scroll reaches the gallery bottom', async () => {
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+
+    await screen.findByText('线上灵感 A');
+    fireEvent.scroll(window, { target: { scrollY: 240 } });
+    const paginationObserver = intersectionObservers.at(-1);
+    paginationObserver?.([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
+    paginationObserver?.([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
+
     expect(await screen.findByText('线上灵感 C')).toBeInTheDocument();
     expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({ page: 2, pageSize: 8 });
+    expect(mocks.queryInspirationCreations).toHaveBeenCalledTimes(2);
   });
 
   it('opens the settings page from the first page start button', async () => {

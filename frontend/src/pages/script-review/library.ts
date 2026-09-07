@@ -67,6 +67,32 @@ export const deriveLibraryState = ({ task }: ProjectReviewSnapshot): LibraryStat
   };
 };
 
+export const libraryStateFromProject = (project: ReviewProject): LibraryState => {
+  if (project.reviewState) {
+    const labels: Record<LibraryStateKey, string> = {
+      NOT_REVIEWED: '未审核',
+      RUNNING: '审核中',
+      ACTION_REQUIRED: '待处理',
+      READY_FOR_REVIEW: '待复审',
+      COMPLETED: '审核完成',
+    };
+    const actions: Record<LibraryStateKey, string> = {
+      NOT_REVIEWED: '发起审核',
+      RUNNING: '查看进度',
+      ACTION_REQUIRED: '处理问题',
+      READY_FOR_REVIEW: '发起复审',
+      COMPLETED: '查看报告',
+    };
+    return {
+      key: project.reviewState,
+      label: labels[project.reviewState],
+      actionLabel: project.actionLabel ?? actions[project.reviewState],
+      outstandingIssueCount: project.outstandingIssueCount ?? 0,
+    };
+  }
+  return deriveLibraryState({ project });
+};
+
 export const filterLibraryProjects = (
   projects: ReviewProject[],
   states: Map<number, Pick<LibraryState, 'key'>>,
