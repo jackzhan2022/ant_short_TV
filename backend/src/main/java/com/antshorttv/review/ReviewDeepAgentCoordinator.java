@@ -7,6 +7,7 @@ import com.antshorttv.workflowagent.agent.ScriptReviewAgentBootstrap;
 import com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import com.antshorttv.workflowagent.tool.ReviewToolScope;
@@ -40,11 +41,13 @@ public class ReviewDeepAgentCoordinator {
     private final int maxConcurrency;
     private final ReviewPromptCacheContextFactory cacheContexts;
     private final ReviewDimensionRunScheduler dimensionScheduler;
+    private final WorkflowAgentRunRepository workflowRuns;
 
     public ReviewDeepAgentCoordinator(ReviewAgentExecutionPlanFactory plans, WorkflowAgentRunner runner,
         ReviewContentService contentService, ReviewUnitPlanner planner, ReviewFanoutRepository fanout,
         ReviewTaskMapper tasks, ReviewScriptVersionMapper versions,
-        ReviewSemanticAuditRepository semanticAudits, JdbcTemplate jdbc, ObjectMapper json,
+        ReviewSemanticAuditRepository semanticAudits, WorkflowAgentRunRepository workflowRuns,
+        JdbcTemplate jdbc, ObjectMapper json,
         ReviewWorkflowFeatureFlags featureFlags,
         @Value("${ai.workflow-agent.review-deep-enabled:false}") boolean enabled,
         @Value("${review.workflow.deep-unit-characters:24000}") int unitCharacters,
@@ -52,6 +55,7 @@ public class ReviewDeepAgentCoordinator {
         @Value("${review.workflow.deep-max-concurrency:3}") int maxConcurrency) {
         this.plans = plans; this.runner = runner; this.contentService = contentService; this.planner = planner;
         this.fanout = fanout; this.tasks = tasks; this.versions = versions; this.semanticAudits = semanticAudits;
+        this.workflowRuns = workflowRuns;
         this.jdbc = jdbc; this.json = json;
         this.featureFlags = featureFlags;
         this.enabled = enabled; this.unitCharacters = unitCharacters; this.unitOverlap = unitOverlap;
@@ -61,6 +65,31 @@ public class ReviewDeepAgentCoordinator {
     }
 
     public boolean enabled() { return enabled && featureFlags.dimensionalOrchestration(); }
+
+    public boolean canRecoverCommittedAggregation(ReviewTaskEntity task) {
+        return task != null && "COMPLETED".equals(task.getStatus()) && "DEEP".equals(task.getReviewMode())
+            && task.getFanoutSnapshotId() != null && task.getWorkflowAgentRunId() != null
+            && (task.getAggregationRunId() == null
+                || task.getWorkflowAgentRunId().equals(task.getAggregationRunId()));
+    }
+
+    public Execution recoverCommittedAggregation(ReviewTaskEntity task) {
+        if (!canRecoverCommittedAggregation(task)) {
+            throw invalid("审核任务不存在可恢复的聚合提交。");
+        }
+        Long runId = task.getWorkflowAgentRunId();
+        if (!workflowRuns.belongsToTask(runId, task.getTenantId(), task.getId())) {
+            throw invalid("聚合运行与审核任务不匹配。");
+        }
+        workflowRuns.reconcileCommitted(runId, task.getResultJson());
+        task.setAggregationRunId(runId);
+        task.setUpdatedAt(LocalDateTime.now());
+        tasks.updateById(task);
+        jdbc.update("update review_fanout_snapshot set status='SUCCEEDED', aggregation_status='SUCCEEDED', aggregation_run_id=?, completed_at=coalesce(completed_at, now()), updated_at=now() where id=? and task_id=?",
+            runId, task.getFanoutSnapshotId(), task.getId());
+        return new Execution(task.getFanoutSnapshotId(), runId,
+            List.copyOf(workflowRuns.modelCalls(runId, task.getTenantId())));
+    }
 
     public Execution execute(ReviewTaskEntity task, AiExecutionContext execution, Long modelId) {
         if (execution == null) throw invalid("AI 调用必须先创建执行和积分预占。");

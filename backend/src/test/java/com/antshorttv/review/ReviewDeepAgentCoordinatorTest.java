@@ -20,6 +20,7 @@ import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.workflowagent.agent.WorkflowAgentRecord;
 import com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +45,7 @@ class ReviewDeepAgentCoordinatorTest {
     private ReviewTaskMapper tasks;
     private ReviewSemanticAuditRepository semanticAudits;
     private ReviewScriptVersionMapper versions;
+    private WorkflowAgentRunRepository workflowRuns;
     private JdbcTemplate jdbc;
     private ReviewDeepAgentCoordinator coordinator;
     private WorkflowAgentExecutionPlan childPlan;
@@ -61,9 +63,10 @@ class ReviewDeepAgentCoordinatorTest {
         tasks = mock(ReviewTaskMapper.class);
         semanticAudits = mock(ReviewSemanticAuditRepository.class);
         versions = mock(ReviewScriptVersionMapper.class);
+        workflowRuns = mock(WorkflowAgentRunRepository.class);
         jdbc = mock(JdbcTemplate.class);
         coordinator = new ReviewDeepAgentCoordinator(plans, runner, content, planner, fanout,
-            tasks, versions, semanticAudits, jdbc, new ObjectMapper(),
+            tasks, versions, semanticAudits, workflowRuns, jdbc, new ObjectMapper(),
             new ReviewWorkflowFeatureFlags(true, true, true, true), true, 100, 10, 2);
         childPlan = plan(3L);
         semanticPlan = plan(4L);
