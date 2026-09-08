@@ -90,6 +90,7 @@ The host uses this layout:
 /opt/antv/releases/<timestamp>-<commit>/backend/env -> /opt/antv/shared/env
 /opt/antv/releases/<timestamp>-<commit>/frontend/dist/
 /opt/antv/shared/workflow-skills/<skill-code>/SKILL.md
+/opt/antv/shared/review-exports/
 /opt/antv/current -> /opt/antv/releases/<timestamp>-<commit>
 ```
 
@@ -115,6 +116,18 @@ sample Skills over it.
 sudo install -d -m 750 -o <service-user> -g <service-group> /opt/antv/shared/workflow-skills
 sudo -u <service-user> test -r /opt/antv/shared/workflow-skills
 sudo -u <service-user> test -w /opt/antv/shared/workflow-skills
+```
+
+Review exports also need a writable path outside the immutable release tree.
+Set the following value in `/opt/antv/shared/env` and create the directory once:
+
+```dotenv
+REVIEW_EXPORT_ROOT=/opt/antv/shared/review-exports
+```
+
+```bash
+sudo install -d -m 750 -o <service-user> -g <service-group> /opt/antv/shared/review-exports
+sudo -u <service-user> test -w /opt/antv/shared/review-exports
 ```
 
 Before every release, back up the Skill root together with the database backup.
