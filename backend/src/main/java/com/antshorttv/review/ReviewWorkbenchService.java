@@ -337,6 +337,10 @@ public class ReviewWorkbenchService {
         task.setSelectedDimensionsJson(serialize(dimensions));
         task.setReviewScopeType(scopeType);
         task.setReviewScopeJson(scopeJson);
+        boolean markdownExecutable = "QUICK".equals(reviewMode) ? reviewQuickAgentAdapter.enabled()
+            : "DEEP".equals(reviewMode) && reviewDeepAgentCoordinator.enabled();
+        task.setResultFormat(reviewWorkflowFeatureFlags.markdownReports() && markdownExecutable
+            ? "MARKDOWN" : "STRUCTURED_JSON");
         ReviewContentService.FrozenReview frozen = reviewContentService.freeze(
             version.getContent(), scopeType, request.reviewScope() == null ? Map.of() : request.reviewScope(), dimensions);
         if ("QUICK".equals(reviewMode)) {
