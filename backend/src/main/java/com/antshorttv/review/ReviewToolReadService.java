@@ -74,21 +74,16 @@ public class ReviewToolReadService {
             ReviewFanoutUnitEntity unit = fanout.orderedUnits(state.scope.snapshotId()).stream()
                 .filter(candidate -> candidate.getId().equals(state.scope.unitId())).findFirst()
                 .orElseThrow(() -> invalid("审核单元不存在。"));
-            boolean dimensional = unit.getDimension() != null && !unit.getDimension().isBlank();
             String source = state.version.getContent() == null ? "" : state.version.getContent();
-            if (dimensional) {
-                visible = state.frozen.content();
-            } else {
-                if (unit.getStartOffset() < 0 || unit.getEndOffset() > source.length()
-                    || unit.getStartOffset() >= unit.getEndOffset()) throw invalid("审核单元偏移已失效。");
-                visible = source.substring(unit.getStartOffset(), unit.getEndOffset());
-            }
+            if (unit.getStartOffset() < 0 || unit.getEndOffset() > source.length()
+                || unit.getStartOffset() >= unit.getEndOffset()) throw invalid("审核单元偏移已失效。");
+            visible = source.substring(unit.getStartOffset(), unit.getEndOffset());
             fingerprint = ReviewContentService.hash(visible);
             if (!fingerprint.equals(unit.getContentFingerprint())) throw invalid("审核单元内容已变化。");
             unitKey = unit.getUnitKey();
             unitAnchors = state.frozen.segments().stream()
-                .filter(segment -> dimensional || (segment.endOffset() > unit.getStartOffset()
-                    && segment.startOffset() < unit.getEndOffset()))
+                .filter(segment -> segment.endOffset() > unit.getStartOffset()
+                    && segment.startOffset() < unit.getEndOffset())
                 .map(ReviewContentService.Segment::anchor)
                 .distinct()
                 .toList();

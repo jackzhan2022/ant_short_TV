@@ -83,6 +83,36 @@ class ReviewToolReadServiceTest {
     }
 
     @Test
+    void dimensionalMarkdownUnitReadsItsFrozenChunkInsteadOfTheWholeReviewScope() throws Exception {
+        ReviewContentService.FrozenReview frozen = content.freeze(script, "ALL", Map.of(),
+            List.of("台词合理性"));
+        jdbc.update("update review_task set review_scope_type='ALL', review_scope_json='{}', version_hash=?, scope_hash=?, dimensions_hash=? where id=98603",
+            frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash());
+        int end = script.indexOf("1-2");
+        String visible = script.substring(0, end);
+        Long modelId = jdbc.queryForObject("select min(id) from ai_model", Long.class);
+        long snapshotId = fanout.openSnapshot(new ReviewFanoutRepository.SnapshotDraft(
+            98600L, 98601L, 98603L, 98602L, 1, "script-review", 1L, "[]", modelId,
+            "[\"台词合理性\"]", "{}", frozen.versionHash(), frozen.scopeHash(),
+            frozen.dimensionsHash(), "dimensional-unit-set", 1, 1));
+        long unitId = fanout.addUnit(new ReviewFanoutRepository.UnitDraft(
+            snapshotId, 1, "offset-0-" + end + "-dialogue", "DIMENSION_MARKDOWN", "台词合理性",
+            "{}", 0, end, ReviewContentService.hash(visible)));
+        ToolExecutionContext unitContext = new ToolExecutionContext(
+            98600L, 1L, null, null, null, 98603L, null, 779L, null, null, null,
+            Set.of(), null, new WorkflowToolRunState(), new ReviewToolScope(
+                98601L, 98602L, snapshotId, unitId, 1, "MARKDOWN_DEEP_CHILD", List.of("台词合理性")));
+
+        var page = reads.readContent(unitContext, json.readTree("{\"offset\":0,\"limit\":50000}"));
+
+        assertThat(page.path("segments").get(0).path("content").asText()).isEqualTo(visible);
+        assertThat(page.path("segments").get(0).path("contentFingerprint").asText())
+            .isEqualTo(ReviewContentService.hash(visible));
+        assertThat(page.path("segments").get(0).path("anchors"))
+            .extracting(node -> node.asText()).containsExactly(frozen.segments().get(0).anchor());
+    }
+
+    @Test
     void firstRoundHistoryIsEmptyAndLaterRoundIsDimensionFiltered() throws Exception {
         assertThat(reads.readHistory(context(), json.readTree("{\"page\":1,\"pageSize\":50}"))
             .path("issues")).isEmpty();
