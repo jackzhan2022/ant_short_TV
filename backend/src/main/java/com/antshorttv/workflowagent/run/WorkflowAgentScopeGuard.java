@@ -45,7 +45,8 @@ public class WorkflowAgentScopeGuard {
     }
 
     public void requireAuthorized(WorkflowAgentRunInput input, List<String> toolCodes) {
-        boolean needsReview = toolCodes.stream().anyMatch(REVIEW_TOOLS::contains);
+        boolean needsReview = ("script-review".equals(input.agentCode()) && input.reviewScope() != null)
+            || toolCodes.stream().anyMatch(REVIEW_TOOLS::contains);
         if (needsReview) {
             requireTrustedReviewScope(input, toolCodes);
         }

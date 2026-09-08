@@ -199,6 +199,21 @@ class WorkflowAgentScopeGuardTest {
             .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
     }
 
+    @Test
+    void markdownDeepAggregationWithoutToolsStillUsesTrustedReviewScope() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class)))
+            .thenAnswer(invocation -> {
+                String sql = invocation.getArgument(0);
+                return sql.contains("from review_task task")
+                    || sql.contains("from review_fanout_snapshot")
+                    || sql.contains("from script") ? 1 : 0;
+            });
+        WorkflowAgentRunInput input = reviewInput(new ReviewToolScope(
+            301L, 302L, 303L, null, 1, "MARKDOWN_DEEP_AGGREGATION", List.of("道具连续性")));
+
+        guard.requireAuthorized(input, List.of());
+    }
+
     private WorkflowAgentRunInput reviewInput(ReviewToolScope scope) {
         return new WorkflowAgentRunInput(
             "script-review", "run", 7L, 301L, null, null, 305L, null, 9L,
