@@ -432,17 +432,24 @@ const ScriptReviewPage = () => {
   };
 
   const exportReport = async () => {
-    if (!selectedProjectId || !selectedVersionId) return;
+    if (!selectedProjectId || !selectedVersionId || !selectedTask?.reportMarkdown) return;
     const response = await exportReviewReport(
       selectedProjectId,
       selectedVersionId,
       'MARKDOWN',
-      selectedTask?.id,
+      selectedTask.id,
     );
     message.success(`导出记录已创建：${response.data?.fileName ?? '审核报告'}`);
-    if (response.data?.downloadUrl) {
-      window.open(response.data.downloadUrl, '_blank', 'noopener,noreferrer');
-    }
+    const downloadUrl = URL.createObjectURL(
+      new Blob([selectedTask.reportMarkdown], { type: 'text/markdown;charset=utf-8' }),
+    );
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = response.data?.fileName ?? '审核报告.md';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
   };
 
   const selectIssueFilter = (filter: 'PENDING' | 'PROCESSED') => {

@@ -548,6 +548,14 @@ describe('ScriptReviewPage', () => {
     mocks.exportReviewReport.mockResolvedValue({ data: { fileName: 'report.md' } });
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:markdown-report');
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    let downloadedFile: { download: string; href: string } | undefined;
+    const downloadClick = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function captureDownload(this: HTMLAnchorElement) {
+        downloadedFile = { download: this.download, href: this.href };
+      });
 
     render(<ScriptReviewPage />);
 
@@ -559,6 +567,10 @@ describe('ScriptReviewPage', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdownTask.reportMarkdown));
     fireEvent.click(screen.getByRole('button', { name: '下载 .md' }));
     await waitFor(() => expect(mocks.exportReviewReport).toHaveBeenCalledWith(1, 2, 'MARKDOWN', 12));
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(downloadedFile).toEqual({ download: 'report.md', href: 'blob:markdown-report' });
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:markdown-report');
+    downloadClick.mockRestore();
   });
 
   it('loads only the selected task on the dedicated task-detail route', async () => {
