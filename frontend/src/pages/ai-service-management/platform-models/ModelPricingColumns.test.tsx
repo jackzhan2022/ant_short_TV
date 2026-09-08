@@ -49,5 +49,6 @@ describe('PlatformModelsPage pricing columns', () => {
     ));
     expect(mocks.columns.find((column) => column.title === '当前成本价').renderText).toBeDefined();
     expect(mocks.columns.find((column) => column.title === '当前积分价').renderText).toBeDefined();
+    expect(mocks.columns.find((column) => column.title === '操作').fixed).toBe('right');
   });
 });

@@ -4,7 +4,7 @@ import { history } from '@umijs/max';
 import { useEffect, useState } from 'react';
 import { cancelReviewTask, createReviewTask, queryReviewProjectHistory, retryReviewTask, type ReviewProjectHistory } from '../script-review/service';
 
-const DEFAULT_DIMENSIONS = ['台词合理性', '人物关系一致性', '人物认知一致性'];
+import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from '../script-review/dimensions';
 
 const statusColor = (status: string) => {
   if (status === 'COMPLETED') return 'green';
@@ -26,7 +26,7 @@ const ScriptReviewHistoryPage = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [versionId, setVersionId] = useState<number>();
   const [reviewMode, setReviewMode] = useState('QUICK');
-  const [dimensions, setDimensions] = useState(DEFAULT_DIMENSIONS);
+  const [dimensions, setDimensions] = useState(DEFAULT_REVIEW_DIMENSIONS);
   const [statusFilter, setStatusFilter] = useState<string>();
 
   const load = async (page = 1) => {
@@ -111,7 +111,7 @@ const ScriptReviewHistoryPage = () => {
         <Space direction="vertical" style={{ width: '100%' }}>
           <Select value={versionId} options={(data?.versions ?? []).map((version) => ({ value: version.id, label: `V${version.versionNo} · ${version.fileName || '直接录入'}` }))} onChange={setVersionId} />
           <Select value={reviewMode} options={[{ value: 'QUICK', label: '快速审核' }, { value: 'DEEP', label: '深度审核' }]} onChange={setReviewMode} />
-          <Checkbox.Group value={dimensions} options={DEFAULT_DIMENSIONS} onChange={(values) => setDimensions(values as string[])} />
+          <Checkbox.Group value={dimensions} options={REVIEW_DIMENSIONS} onChange={(values) => setDimensions(values as string[])} />
         </Space>
       </Modal>
     </PageContainer>

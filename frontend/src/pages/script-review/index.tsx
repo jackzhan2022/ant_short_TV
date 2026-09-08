@@ -50,21 +50,7 @@ import {
   saveReviewVersion,
 } from './service';
 
-const DIMENSIONS = [
-  '台词合理性',
-  '人物关系一致性',
-  '人物认知一致性',
-  '人物动机',
-  '时间线连续性',
-  '场景连续性',
-  '道具连续性',
-  '视觉连续性',
-  '剧情逻辑与因果',
-  '分镜可执行性',
-  '情绪递进',
-  '悬念与反转铺垫',
-  '伏笔回收',
-];
+import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from './dimensions';
 
 const taskIdFromPath = () => {
   const match = window.location.pathname.match(/^\/script-review\/tasks\/(\d+)$/);
@@ -115,7 +101,7 @@ const ScriptReviewPage = () => {
   const [selectedIssueId, setSelectedIssueId] = useState<number>();
   const [content, setContent] = useState('');
   const [dimensions, setDimensions] = useState<string[]>(
-    DIMENSIONS.slice(0, 3),
+    DEFAULT_REVIEW_DIMENSIONS,
   );
   const [reviewMode, setReviewMode] = useState('QUICK');
   const [scopeType, setScopeType] = useState('ALL');
@@ -1055,7 +1041,7 @@ const ScriptReviewPage = () => {
             value={dimensions}
             onChange={(values) => setDimensions(values as string[])}
             disabled={taskLocked}
-            options={DIMENSIONS}
+            options={REVIEW_DIMENSIONS}
           />
           <Radio.Group
             value={reviewMode}

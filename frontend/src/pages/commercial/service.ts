@@ -1,7 +1,12 @@
 import { request } from '@umijs/max';
 
 type ApiResponse<T> = { success: boolean; data: T };
-export type CommercialEntitlement = { type: string; value: number };
+export type CommercialEntitlement = {
+  type: string;
+  value?: number;
+  name?: string;
+  category?: 'SYSTEM' | 'DISPLAY';
+};
 export type CommercialCatalogItem = { packageId: number; packageVersionId: number; code: string; packageType: 'POINT_PACKAGE' | 'SUBSCRIPTION'; name: string; description?: string; billingPeriod?: string; periodMonths?: number; price: number; listPrice?: number; currency: string; entitlements: CommercialEntitlement[] };
 export type CommercialOrder = { id: number; merchantOrderNo: string; amount: number; currency: string; status: string; expiresAt: string; codeUrl?: string };
 export type TeamSubscription = { id: number; packageVersionId: number; status: string; startsAt: string; endsAt: string; nextGrantAt?: string; snapshotJson: string };

@@ -384,6 +384,7 @@ const PlatformModelsPage = () => {
       title: '操作',
       valueType: 'option',
       width: 120,
+      fixed: 'right',
       render: (_, record) => (
         <Space size={0}>
           {access.canViewModelBilling && (

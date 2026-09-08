@@ -3,6 +3,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper; import org.apache.ibatis
 @Mapper interface CommercialPackageMapper extends BaseMapper<CommercialPackageEntity> {}
 @Mapper interface CommercialPackageVersionMapper extends BaseMapper<CommercialPackageVersionEntity> {}
 @Mapper interface CommercialEntitlementMapper extends BaseMapper<CommercialEntitlementEntity> {}
+@Mapper interface CommercialEntitlementDefinitionMapper extends BaseMapper<CommercialEntitlementDefinitionEntity> {}
 @Mapper interface CommercialOrderMapper extends BaseMapper<CommercialOrderEntity> {}
 @Mapper interface CommercialPaymentMapper extends BaseMapper<CommercialPaymentEntity> {}
 @Mapper interface TeamSubscriptionMapper extends BaseMapper<TeamSubscriptionEntity> {}

@@ -63,7 +63,7 @@ class TeamPointControllerTest {
     }
 
     @Test
-    void listsHistoricalManualGrantTransactions() throws Exception {
+    void distinguishesCommercialAndHistoricalGrantTransactions() throws Exception {
         String token = registerUser("13800019003", "Point History");
         Long tenantId = createTenant(token, "积分历史团队");
         mockMvc.perform(get("/api/tenants/%d/points/account".formatted(tenantId))
@@ -75,13 +75,53 @@ class TeamPointControllerTest {
                idempotency_key, description, created_at)
             values (?, 'GRANT', 25, 25, 0, 'legacy-manual-grant', '历史手工增加', now())
             """, tenantId);
+        jdbcTemplate.update("""
+            insert into point_ledger
+              (tenant_id, entry_type, amount, available_balance_after, reserved_balance_after,
+               idempotency_key, description, created_at)
+            values (?, 'GRANT', 100, 125, 0, 'order:101:points', '商业化权益发放', now())
+            """, tenantId);
+        jdbcTemplate.update("""
+            insert into point_ledger
+              (tenant_id, entry_type, amount, available_balance_after, reserved_balance_after,
+               idempotency_key, description, created_at)
+            values (?, 'GRANT', 300, 425, 0, 'subscription:201:period:1', '会员周期积分发放', now())
+            """, tenantId);
 
         mockMvc.perform(get("/api/tenants/%d/points/transactions".formatted(tenantId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.total", is(1)))
-            .andExpect(jsonPath("$.data.records[0].transactionType", is("ADJUST_GRANT")))
-            .andExpect(jsonPath("$.data.records[0].description", is("历史手工增加")));
+            .andExpect(jsonPath("$.data.total", is(3)))
+            .andExpect(jsonPath("$.data.records[0].transactionType", is("ENTITLEMENT_GRANT")))
+            .andExpect(jsonPath("$.data.records[0].description", is("会员周期积分发放")))
+            .andExpect(jsonPath("$.data.records[1].transactionType", is("ENTITLEMENT_GRANT")))
+            .andExpect(jsonPath("$.data.records[1].description", is("商业化权益发放")))
+            .andExpect(jsonPath("$.data.records[2].transactionType", is("ADJUST_GRANT")))
+            .andExpect(jsonPath("$.data.records[2].description", is("历史手工增加")));
+    }
+
+    @Test
+    void returnsDebitTransactionAmountsAsNegativeValues() throws Exception {
+        String token = registerUser("13800019005", "Point Signs");
+        Long tenantId = createTenant(token, "积分方向团队");
+        mockMvc.perform(get("/api/tenants/%d/points/account".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk());
+        insertLedgerEntry(tenantId, "RESERVE", 40, 60, "reserve:sign", "积分预扣");
+        insertLedgerEntry(tenantId, "INCREMENTAL_RESERVE", 5, 55, "reserve:sign:incremental", "追加预扣");
+        insertLedgerEntry(tenantId, "SETTLE", 30, 60, "settle:sign", "积分消耗");
+        insertLedgerEntry(tenantId, "RELEASE", 10, 70, "release:sign", "预扣释放");
+        insertLedgerEntry(tenantId, "REFUND", 30, 100, "refund:sign", "积分退回");
+
+        mockMvc.perform(get("/api/tenants/%d/points/transactions".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.records[0].changeAmount", is(30)))
+            .andExpect(jsonPath("$.data.records[1].changeAmount", is(10)))
+            .andExpect(jsonPath("$.data.records[2].changeAmount", is(-30)))
+            .andExpect(jsonPath("$.data.records[3].transactionType", is("INCREMENTAL_RESERVE")))
+            .andExpect(jsonPath("$.data.records[3].changeAmount", is(-5)))
+            .andExpect(jsonPath("$.data.records[4].changeAmount", is(-40)));
     }
 
     @Test
@@ -116,6 +156,22 @@ class TeamPointControllerTest {
             .andExpect(status().isOk())
             .andReturn();
         return readLong(result, "$.data.id");
+    }
+
+    private void insertLedgerEntry(
+        Long tenantId,
+        String entryType,
+        int amount,
+        int balanceAfter,
+        String idempotencyKey,
+        String description
+    ) {
+        jdbcTemplate.update("""
+            insert into point_ledger
+              (tenant_id, entry_type, amount, available_balance_after, reserved_balance_after,
+               idempotency_key, description, created_at)
+            values (?, ?, ?, ?, 0, ?, ?, now())
+            """, tenantId, entryType, amount, balanceAfter, idempotencyKey, description);
     }
 
     private Long readLong(MvcResult result, String path) throws Exception {

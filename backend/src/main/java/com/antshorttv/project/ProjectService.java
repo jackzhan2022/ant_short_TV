@@ -184,7 +184,8 @@ public class ProjectService {
     }
 
     public List<ProjectResponse> list(Long tenantId) {
-        List<ProjectEntity> projects = projectAccessResolver.accessibleProjects(tenantId);
+        List<ProjectAccessContext> accesses = projectAccessResolver.accessibleProjectContexts(tenantId);
+        List<ProjectEntity> projects = accesses.stream().map(ProjectAccessContext::project).toList();
         if (projects.isEmpty()) {
             return List.of();
         }
@@ -195,13 +196,13 @@ public class ProjectService {
             tenantId,
             projects.stream().map(project -> project.id).toList()
         ).stream().collect(Collectors.groupingBy(member -> member.projectId, Collectors.counting()));
-        return projects
+        return accesses
             .stream()
-            .map(project -> toProjectResponse(
-                project,
-                tenantId,
-                owners.get(project.ownerId),
-                memberCounts.getOrDefault(project.id, 0L)
+            .map(access -> toProjectResponse(
+                access.project(),
+                access,
+                owners.get(access.project().ownerId),
+                memberCounts.getOrDefault(access.project().id, 0L)
             ))
             .toList();
     }
@@ -719,16 +720,6 @@ public class ProjectService {
         ProjectAccessContext access = projectAccessResolver.requireView(tenantId, project.id);
         UserEntity owner = userMapper.selectById(project.ownerId);
         return toProjectResponse(project, access, owner, projectMemberMapper.countActiveByProjectId(tenantId, project.id));
-    }
-
-    private ProjectResponse toProjectResponse(
-        ProjectEntity project,
-        Long tenantId,
-        UserEntity owner,
-        long memberCount
-    ) {
-        ProjectAccessContext access = projectAccessResolver.requireView(tenantId, project.id);
-        return toProjectResponse(project, access, owner, memberCount);
     }
 
     private ProjectResponse toProjectResponse(

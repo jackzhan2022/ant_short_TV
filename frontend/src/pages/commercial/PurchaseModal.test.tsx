@@ -64,6 +64,22 @@ describe('PurchaseModal', () => {
     expect(onPurchase).toHaveBeenCalledWith(pointPackage);
   });
 
+  it('renders display entitlement snapshots without a numeric suffix and keeps legacy system formatting', () => {
+    const packageWithDisplayEntitlement: CommercialCatalogItem = {
+      ...pointPackage,
+      entitlements: [
+        { type: 'ONE_TIME_POINTS', value: 2000 },
+        { type: 'DISPLAY_ALL_MODELS', name: '使用全部模型', category: 'DISPLAY' },
+      ],
+    };
+
+    render(<PurchaseModal open catalog={[packageWithDisplayEntitlement]} canManageBilling onClose={vi.fn()} onPurchase={vi.fn()} />);
+
+    expect(screen.getAllByText('一次性发放 2,000 积分')).toHaveLength(2);
+    expect(screen.getByText('使用全部模型')).toBeInTheDocument();
+    expect(screen.queryByText(/使用全部模型.*undefined/)).not.toBeInTheDocument();
+  });
+
   it('shows a payment panel for a pending order with a QR code', () => {
     const payment: CommercialOrder & { packageName: string } = {
       id: 42,

@@ -8,12 +8,16 @@ const mocks = vi.hoisted(() => ({
   grants: vi.fn(),
   orders: vi.fn(),
   points: vi.fn(),
+  pointTransactions: vi.fn(),
   create: vi.fn(),
   refresh: vi.fn(),
 }));
 
 vi.mock('@/services/account-team/auth', () => ({ getCurrentTenantId: () => 10 }));
-vi.mock('@/services/account-team/points', () => ({ queryTeamPointAccount: mocks.points }));
+vi.mock('@/services/account-team/points', () => ({
+  queryTeamPointAccount: mocks.points,
+  queryTeamPointTransactions: mocks.pointTransactions,
+}));
 vi.mock('./service', () => ({
   queryCommercialCatalog: mocks.catalog,
   queryCurrentSubscription: mocks.current,
@@ -55,21 +59,50 @@ describe('CommercialPage', () => {
     mocks.grants.mockResolvedValue({ data: [{ id: 31, entitlementType: 'PERIODIC_POINTS', amount: 3000, status: 'GRANTED', grantedAt: '2026-08-01T00:00:00' }] });
     mocks.orders.mockResolvedValue({ data: [] });
     mocks.points.mockResolvedValue({ data: { balance: 2140 } });
+    mocks.pointTransactions.mockResolvedValue({
+      data: {
+        records: [
+          { id: 41, transactionType: 'ENTITLEMENT_GRANT', changeAmount: 3000, balanceAfter: 4000, description: '会员周期积分发放', createdAt: '2026-08-01T00:00:00' },
+          { id: 42, transactionType: 'ADJUST_GRANT', changeAmount: 25, balanceAfter: 1000, description: '历史手工增加', createdAt: '2026-07-01T00:00:00' },
+          { id: 43, transactionType: 'RESERVE', changeAmount: -100, balanceAfter: 2900, description: 'AI 积分预扣', createdAt: '2026-08-02T00:00:00' },
+          { id: 48, transactionType: 'INCREMENTAL_RESERVE', changeAmount: -20, balanceAfter: 2880, description: 'AI 追加预扣', createdAt: '2026-08-02T00:01:00' },
+          { id: 44, transactionType: 'SETTLE', changeAmount: -80, balanceAfter: 2900, description: 'AI 积分结算', createdAt: '2026-08-03T00:00:00' },
+          { id: 45, transactionType: 'RELEASE', changeAmount: 20, balanceAfter: 2920, description: 'AI 预扣释放', createdAt: '2026-08-03T00:01:00' },
+          { id: 46, transactionType: 'REFUND', changeAmount: 80, balanceAfter: 3000, description: 'AI 积分退回', createdAt: '2026-08-04T00:00:00' },
+          { id: 47, transactionType: 'LOYALTY_BONUS', changeAmount: 10, balanceAfter: 3010, description: '活动奖励', createdAt: '2026-08-05T00:00:00' },
+        ],
+        total: 8,
+        current: 1,
+        pageSize: 20,
+      },
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('loads the selected team commercial overview from APIs', async () => {
+  it('loads unified point history without querying commercial grants', async () => {
     render(<CommercialPage />);
 
     await waitFor(() => expect(mocks.catalog).toHaveBeenCalledWith(10));
+    expect(mocks.pointTransactions).toHaveBeenCalledWith(10);
+    expect(mocks.grants).not.toHaveBeenCalled();
     expect(await screen.findAllByText('专业版月卡')).not.toHaveLength(0);
     expect(screen.getByText('专业版季卡', { exact: false })).toBeInTheDocument();
-    expect(screen.getAllByText('3,000', { exact: false }).length).toBeGreaterThan(0);
     expect(screen.getByText(/2140/)).toBeInTheDocument();
-    expect(mocks.grants).toHaveBeenCalledWith(10);
+    expect(screen.getByText('积分明细')).toBeInTheDocument();
+    expect(screen.getByText('权益发放')).toBeInTheDocument();
+    expect(screen.getByText('手动增加')).toBeInTheDocument();
+    expect(screen.getByText('积分预扣')).toBeInTheDocument();
+    expect(screen.getByText('追加预扣')).toBeInTheDocument();
+    expect(screen.getByText('积分消耗')).toBeInTheDocument();
+    expect(screen.getByText('预扣释放')).toBeInTheDocument();
+    expect(screen.getByText('积分退回')).toBeInTheDocument();
+    expect(screen.getByText('LOYALTY_BONUS')).toBeInTheDocument();
+    expect(screen.getByText('4,000')).toBeInTheDocument();
+    expect(screen.getByText('会员周期积分发放')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '积分明细' })).not.toBeInTheDocument();
   });
 
   it('opens the package selection dialog from a purchase entry', async () => {

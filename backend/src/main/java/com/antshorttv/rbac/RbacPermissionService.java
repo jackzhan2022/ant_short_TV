@@ -90,10 +90,15 @@ public class RbacPermissionService {
         if (role == null || !ProjectRoleStatus.ACTIVE.name().equals(role.status)) {
             return Set.of();
         }
+        return projectRolePermissionCodes(context.tenantId(), projectId, member.roleId);
+    }
+
+    // The caller must validate active project membership and role before using this lookup.
+    public Set<String> projectRolePermissionCodes(Long tenantId, Long projectId, Long roleId) {
         List<ProjectRolePermissionEntity> rolePermissions = projectRolePermissionMapper.selectByRoleIds(
-            context.tenantId(),
+            tenantId,
             projectId,
-            List.of(member.roleId)
+            List.of(roleId)
         );
         List<Long> permissionIds = rolePermissions.stream()
             .map(permission -> permission.permissionId)

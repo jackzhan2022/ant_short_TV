@@ -3,9 +3,10 @@ import { history, useAccess } from '@umijs/max';
 import { App, Button, Card, Empty, Space, Spin, Statistic, Table, Tag, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
-import { queryTeamPointAccount } from '@/services/account-team/points';
-import { entitlementTypeText, statusText } from '@/utils/fieldDictionary';
-import { createCommercialOrder, queryActiveCommercialOrders, queryCommercialCatalog, queryCommercialGrants, queryCurrentSubscription, queryQueuedSubscriptions, refreshCommercialOrder, type CommercialCatalogItem, type CommercialGrant, type CommercialOrder, type TeamSubscription } from './service';
+import { queryTeamPointAccount, queryTeamPointTransactions } from '@/services/account-team/points';
+import type { TeamPointTransaction } from '@/services/account-team/types';
+import { statusText } from '@/utils/fieldDictionary';
+import { createCommercialOrder, queryActiveCommercialOrders, queryCommercialCatalog, queryCurrentSubscription, queryQueuedSubscriptions, refreshCommercialOrder, type CommercialCatalogItem, type CommercialOrder, type TeamSubscription } from './service';
 import PurchaseModal from './PurchaseModal';
 import styles from './index.less';
 
@@ -14,6 +15,15 @@ type PaymentOrder = CommercialOrder & { packageName?: string };
 const snapshotName = (snapshot?: string) => {
   if (!snapshot) return '-';
   try { return JSON.parse(snapshot).name ?? '-'; } catch { return '-'; }
+};
+const pointTransactionTypeText: Record<string, string> = {
+  ENTITLEMENT_GRANT: '权益发放',
+  ADJUST_GRANT: '手动增加',
+  RESERVE: '积分预扣',
+  INCREMENTAL_RESERVE: '追加预扣',
+  SETTLE: '积分消耗',
+  RELEASE: '预扣释放',
+  REFUND: '积分退回',
 };
 
 const CommercialPage = () => {
@@ -24,7 +34,7 @@ const CommercialPage = () => {
   const [catalog, setCatalog] = useState<CommercialCatalogItem[]>([]);
   const [current, setCurrent] = useState<TeamSubscription | null>(null);
   const [queued, setQueued] = useState<TeamSubscription[]>([]);
-  const [grants, setGrants] = useState<CommercialGrant[]>([]);
+  const [pointTransactions, setPointTransactions] = useState<TeamPointTransaction[]>([]);
   const [orders, setOrders] = useState<CommercialOrder[]>([]);
   const [balance, setBalance] = useState(0);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -34,12 +44,12 @@ const CommercialPage = () => {
     if (!tenantId) return;
     setLoading(true);
     try {
-      const [catalogResult, currentResult, queuedResult, grantsResult, ordersResult, pointsResult] = await Promise.all([
+      const [catalogResult, currentResult, queuedResult, ordersResult, pointsResult, transactionsResult] = await Promise.all([
         queryCommercialCatalog(tenantId), queryCurrentSubscription(tenantId), queryQueuedSubscriptions(tenantId),
-        queryCommercialGrants(tenantId), queryActiveCommercialOrders(tenantId), queryTeamPointAccount(tenantId),
+        queryActiveCommercialOrders(tenantId), queryTeamPointAccount(tenantId), queryTeamPointTransactions(tenantId),
       ]);
       setCatalog(catalogResult.data ?? []); setCurrent(currentResult.data ?? null);
-      setQueued(queuedResult.data ?? []); setGrants(grantsResult.data ?? []);
+      setQueued(queuedResult.data ?? []); setPointTransactions(transactionsResult.data?.records ?? []);
       setOrders(ordersResult.data ?? []); setBalance(pointsResult.data?.balance ?? 0);
     } finally { setLoading(false); }
   }, [tenantId]);
@@ -95,7 +105,7 @@ const CommercialPage = () => {
   return <Spin spinning={loading}><main className={styles.page}>
     <header className={styles.header}>
       <button className={styles.brand} type="button" onClick={() => history.push('/')}><span className={styles.brandMark}>剧</span><span>剧智创</span></button>
-      <div className={styles.headerRight}><Statistic title="团队积分余额" value={balance} suffix="积分" prefix={<WalletOutlined />} /><Button type="text" onClick={() => history.push('/team/settings')}>积分明细</Button><Button type="text" icon={<LeftOutlined />} onClick={() => history.back()}>返回工作台</Button></div>
+      <div className={styles.headerRight}><Statistic title="团队积分余额" value={balance} suffix="积分" prefix={<WalletOutlined />} /><Button type="text" icon={<LeftOutlined />} onClick={() => history.back()}>返回工作台</Button></div>
     </header>
     <section className={styles.content}>
       <div className={styles.hero}><Title level={2}>充值中心</Title><Text type="secondary">选择适合团队的积分包或会员订阅，已发放积分永久有效</Text></div>
@@ -111,9 +121,12 @@ const CommercialPage = () => {
           {orders.map((item) => <div key={item.id}>{item.merchantOrderNo} <Tag>{statusText(item.status)}</Tag> ¥{item.amount} {item.id === pendingOrder?.id && <Button type="link" onClick={() => { setPayment(item); setPurchaseOpen(true); }}>继续支付</Button>}</div>)}
         </Space>}
       </Card>
-      <Card className={styles.queueCard} variant="borderless" title="权益发放记录"><Table<CommercialGrant> rowKey="id" size="small" pagination={false} dataSource={grants} columns={[
-        { title: '权益', dataIndex: 'entitlementType', render: (value) => entitlementTypeText(value) }, { title: '数量', dataIndex: 'amount', render: (value) => value == null ? '-' : Number(value).toLocaleString() },
-        { title: '状态', dataIndex: 'status', render: (value) => <Tag>{value}</Tag> }, { title: '发放时间', dataIndex: 'grantedAt', render: (value) => value ?? '-' },
+      <Card className={styles.queueCard} variant="borderless" title="积分明细"><Table<TeamPointTransaction> rowKey="id" size="small" pagination={false} dataSource={pointTransactions} columns={[
+        { title: '变化类型', dataIndex: 'transactionType', render: (value) => pointTransactionTypeText[value] ?? value },
+        { title: '变动积分', dataIndex: 'changeAmount', render: (value) => <Tag color={value > 0 ? 'green' : value < 0 ? 'red' : undefined}>{Number(value).toLocaleString()}</Tag> },
+        { title: '变动后余额', dataIndex: 'balanceAfter', render: (value) => Number(value).toLocaleString() },
+        { title: '说明', dataIndex: 'description', ellipsis: true, render: (value) => value ?? '-' },
+        { title: '时间', dataIndex: 'createdAt' },
       ]} /></Card>
     </section>
     <PurchaseModal open={purchaseOpen} catalog={catalog} payment={payment} canManageBilling={Boolean(access.canManageBilling)} onClose={closePurchase} onPurchase={(item) => void buy(item)} />

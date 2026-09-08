@@ -5,11 +5,10 @@ import {
   ProFormDigit,
   ProFormList,
   ProFormSelect,
-  ProFormText,
 } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { App, Button, Modal, Popconfirm, Space, Table, Tabs, Tag, Typography } from 'antd';
-import dayjs from 'dayjs';
+import { App, Button, Form, Modal, Popconfirm, Space, Table, Tabs, Tag, Typography } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useState } from 'react';
 import {
   billingHistory,
@@ -19,12 +18,18 @@ import {
   revokePointPrice,
 } from '@/services/ant-design-pro/platformAiAccountingController';
 import { metricText } from '@/utils/fieldDictionary';
+import {
+  buildPointComponents,
+  findEffectiveCostVersion,
+  formatBillingUnit,
+} from './pricingEntry';
 
 type PriceKind = 'cost' | 'point';
 type PriceVersion = API.ModelPriceVersionResponse | API.ModelPointPriceVersionResponse;
 type FormValues = {
-  effectiveFrom: string;
-  effectiveTo?: string;
+  effectiveFrom: string | Dayjs;
+  effectiveTo?: string | Dayjs;
+  multiplier?: number;
   components: Array<{
     metric: string;
     unitSize: number;
@@ -53,9 +58,10 @@ const metricOptions = [
   ['CHARACTER', '字符数'],
 ].map(([value, label]) => ({ value, label }));
 
-function isoLocalDateTime(value: string): string;
-function isoLocalDateTime(value: string | undefined): string | undefined;
-function isoLocalDateTime(value?: string) {
+function isoLocalDateTime(value: string | Dayjs): string;
+function isoLocalDateTime(value: string | Dayjs | undefined): string | undefined;
+function isoLocalDateTime(value?: string | Dayjs) {
+  if (dayjs.isDayjs(value)) return value.format('YYYY-MM-DDTHH:mm:ss');
   return value?.replace(
     /^(\d{4}-\d{2}-\d{2}) (?=\d{2}:\d{2}:\d{2}(?:\.\d+)?$)/,
     '$1T',
@@ -75,6 +81,8 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
   const access = useAccess();
   const [history, setHistory] = useState<API.ModelBillingHistoryResponse>();
   const [loading, setLoading] = useState(false);
+  const [costForm] = Form.useForm<FormValues>();
+  const [pointForm] = Form.useForm<FormValues>();
 
   const load = async () => {
     setLoading(true);
@@ -157,7 +165,7 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
             <Space orientation="vertical" size={2}>
               {(record.components ?? []).map((component) => (
                 <Typography.Text key={component.id ?? component.metric}>
-                  {metricText(component.metric)} / {component.unitSize}:{' '}
+                  {metricText(component.metric ?? '')} / {formatBillingUnit(component.metric ?? '', component.unitSize ?? 0)}:{' '}
                   {kind === 'cost'
                     ? `${(component as API.ModelPriceComponentResponse).unitPrice} ${(component as API.ModelPriceComponentResponse).currency}`
                     : `${(component as API.PointPolicyComponentResponse).pointRate} 积分`}
@@ -182,24 +190,78 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
     />
   );
 
+  const generatePointComponents = () => {
+    const values = pointForm.getFieldsValue();
+    const effectiveFrom = isoLocalDateTime(values.effectiveFrom);
+    const costVersion = effectiveFrom && findEffectiveCostVersion(
+      history?.costPrices ?? [],
+      effectiveFrom,
+    );
+
+    if (!costVersion) {
+      message.warning('该生效时间没有可用的已发布成本价，请先发布成本价或调整生效时间');
+      return;
+    }
+
+    pointForm.setFieldsValue({
+      components: buildPointComponents(
+        (costVersion.components ?? []).map((component) => ({
+          metric: component.metric ?? '',
+          unitSize: component.unitSize ?? 0,
+          unitPrice: component.unitPrice ?? 0,
+        })),
+        values.multiplier ?? 1,
+      ),
+    });
+  };
+
   const editor = (kind: PriceKind) => (
     <ModalForm<FormValues>
       title={kind === 'cost' ? '发布成本价' : '发布积分价'}
       trigger={<Button type="primary" icon={<PlusOutlined />}>{kind === 'cost' ? '发布成本价' : '发布积分价'}</Button>}
       onFinish={(values) => publish(kind, values)}
       modalProps={{ destroyOnHidden: true }}
-      initialValues={{ components: [{ unitSize: 1, currency: 'USD' }] }}
+      form={kind === 'cost' ? costForm : pointForm}
+      onOpenChange={(visible) => {
+        if (visible) {
+          const form = kind === 'cost' ? costForm : pointForm;
+          form.resetFields();
+          form.setFieldsValue({
+            effectiveFrom: dayjs(),
+            components: [{ unitSize: 1, currency: 'USD' }],
+            ...(kind === 'point' ? { multiplier: 1 } : {}),
+          });
+        }
+      }}
+      initialValues={{ effectiveFrom: dayjs(), components: [{ unitSize: 1, currency: 'USD' }] }}
     >
       <ProFormDateTimePicker name="effectiveFrom" label="生效时间" rules={[{ required: true }]} />
       <ProFormDateTimePicker name="effectiveTo" label="失效时间" />
+      {kind === 'point' && <Space align="start">
+        <ProFormDigit name="multiplier" label="倍率" min={0} initialValue={1} rules={[{ required: true }]} />
+        <Button onClick={generatePointComponents}>按倍率生成积分项</Button>
+      </Space>}
       <ProFormList name="components" label="计费项" min={1} creatorButtonProps={{ creatorButtonText: '添加计费项' }}>
         <Space align="start" wrap>
           <ProFormSelect name="metric" label="指标" options={metricOptions} rules={[{ required: true }]} />
-          <ProFormDigit name="unitSize" label="计费单位" min={0.00000001} rules={[{ required: true }]} />
+          <ProFormDigit
+            name="unitSize"
+            label={`计费单位（Token：${formatBillingUnit('INPUT_TOKEN', 1_000_000)}；调用：${formatBillingUnit('CALL', 1)}）`}
+            min={0.00000001}
+            rules={[{ required: true }]}
+          />
           {kind === 'cost' ? (
             <>
               <ProFormDigit name="unitPrice" label="成本单价" min={0} rules={[{ required: true }]} />
-              <ProFormText name="currency" label="币种" rules={[{ required: true }]} />
+              <ProFormSelect
+                name="currency"
+                label="币种"
+                options={[
+                  { label: '人民币（CNY）', value: 'CNY' },
+                  { label: '美元（USD）', value: 'USD' },
+                ]}
+                rules={[{ required: true }]}
+              />
             </>
           ) : (
             <ProFormDigit name="pointRate" label="积分单价" min={0} rules={[{ required: true }]} />

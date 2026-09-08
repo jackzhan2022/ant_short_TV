@@ -142,17 +142,19 @@ describe('TeamSettings', () => {
     });
   });
 
-  it('renders team point balance and loads point transactions', async () => {
+  it('loads team settings without loading or rendering point information', async () => {
     render(<TeamSettings />);
 
     await waitFor(() => {
-      expect(mocks.queryTeamPointAccount).toHaveBeenCalledWith(10);
+      expect(mocks.queryTenant).toHaveBeenCalledWith(10);
     });
-    expect(screen.getByText('团队积分')).toBeInTheDocument();
-    expect(screen.getByText('可用积分')).toBeInTheDocument();
-    expect(screen.getByText('88点')).toBeInTheDocument();
-    expect(screen.getByText('AI 调用消耗积分')).toBeInTheDocument();
-    expect(screen.getByText('历史手工增加')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '调整积分' })).not.toBeInTheDocument();
+    expect(mocks.queryTenantMembers).toHaveBeenCalledWith(10);
+    expect(mocks.queryTeamPointAccount).not.toHaveBeenCalled();
+    expect(mocks.queryTeamPointTransactions).not.toHaveBeenCalled();
+    expect(screen.getByText('团队名称')).toBeInTheDocument();
+    expect(screen.queryByText('团队积分')).not.toBeInTheDocument();
+    expect(screen.queryByText('可用积分')).not.toBeInTheDocument();
+    expect(screen.queryByText('累计获得')).not.toBeInTheDocument();
+    expect(screen.queryByText('累计消耗')).not.toBeInTheDocument();
   });
 });

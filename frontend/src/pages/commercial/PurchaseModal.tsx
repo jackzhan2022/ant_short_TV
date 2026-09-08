@@ -17,10 +17,13 @@ type PurchaseModalProps = {
 type Category = 'points' | 'monthly' | 'quarterly' | 'halfYear' | 'yearly';
 
 const entitlementLabel = (entitlement: CommercialEntitlement) => {
+  if (entitlement.category === 'DISPLAY' || entitlement.value == null) {
+    return entitlement.name ?? entitlementTypeText(entitlement.type);
+  }
   if (entitlement.type === 'GLOBAL_DISCOUNT') return `全局 AI 积分 ${Number((entitlement.value * 10).toFixed(1))} 折`;
   if (entitlement.type === 'PERIODIC_POINTS') return `每月发放 ${Number(entitlement.value).toLocaleString()} 积分`;
   if (entitlement.type === 'ONE_TIME_POINTS') return `一次性发放 ${Number(entitlement.value).toLocaleString()} 积分`;
-  return `${entitlementTypeText(entitlement.type)}：${entitlement.value}`;
+  return `${entitlement.name ?? entitlementTypeText(entitlement.type)}：${entitlement.value}`;
 };
 
 const subscriptionCategory = (item: CommercialCatalogItem): Exclude<Category, 'points'> => {

@@ -64,6 +64,15 @@ class ProjectAccessibleQueryIntegrationTest {
             .extracting(project -> project.id)
             .containsExactly(projectId);
 
+        String script = "A long script. ".repeat(10000);
+        jdbc.update("update project set initial_script_content = ? where id = ?", script, projectId);
+        assertThat(projectMapper.selectByTenantId(tenantId)).singleElement()
+            .satisfies(project -> assertThat(project.initialScriptContent).isNull());
+        assertThat(projectMapper.selectAccessibleByMember(tenantId, userId)).singleElement()
+            .satisfies(project -> assertThat(project.initialScriptContent).isNull());
+        assertThat(projectMapper.selectByTenantIdAndId(tenantId, projectId).initialScriptContent)
+            .isEqualTo(script);
+
         ProjectMemberEntity member = projectMemberMapper.selectByProjectIdAndUserId(tenantId, projectId, userId);
         member.status = ProjectMemberStatus.REMOVED.name();
         projectMemberMapper.updateById(member);

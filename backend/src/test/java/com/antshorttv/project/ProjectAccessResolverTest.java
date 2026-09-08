@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.rbac.RbacPermissionService;
@@ -84,13 +86,21 @@ class ProjectAccessResolverTest {
         when(permissionService.permissionCodes(tenant)).thenReturn(Set.of());
         when(memberMapper.selectActiveByProjectIdAndUserId(11L, 23L, 7L)).thenReturn(member);
         when(roleMapper.selectByTenantProjectAndId(11L, 23L, 37L)).thenReturn(role);
-        when(permissionService.projectPermissionCodes(tenant, 23L)).thenReturn(Set.of("PROJECT:VIEW", "SCRIPT:EDIT"));
+        when(permissionService.projectRolePermissionCodes(11L, 23L, 37L)).thenReturn(Set.of("PROJECT:VIEW", "SCRIPT:EDIT"));
 
         ProjectAccessContext access = resolver.requireView(11L, 23L);
 
         assertThat(access.source()).isEqualTo(ProjectAccessSource.PROJECT_MEMBER);
         assertThat(access.projectRole()).isSameAs(role);
         assertThat(access.effectivePermissions()).containsExactlyInAnyOrder("PROJECT:VIEW", "SCRIPT:EDIT");
+
+        when(projectMapper.selectAccessibleByMember(11L, 7L)).thenReturn(List.of(project));
+        assertThat(resolver.accessibleProjectContexts(11L)).singleElement()
+            .satisfies(listAccess -> assertThat(listAccess).isEqualTo(access));
+        // Only the explicit detail request above may load the full project row.
+        verify(projectMapper).selectByTenantIdAndId(11L, 23L);
+        verify(projectMapper).selectAccessibleByMember(11L, 7L);
+        verifyNoMoreInteractions(projectMapper);
     }
 
     @Test
@@ -144,6 +154,27 @@ class ProjectAccessResolverTest {
 
         assertThat(resolver.accessibleProjects(11L)).hasSize(1);
         verify(projectMapper).selectAccessibleByMember(11L, 7L);
+    }
+
+    @Test
+    void listsTenantWideContextsWithoutRepeatingQueriesPerProject() {
+        TenantContext tenant = tenantContext();
+        ProjectEntity first = project();
+        ProjectEntity second = project();
+        second.id = 24L;
+        when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL", "PROJECT:EDIT_ALL"));
+        when(projectMapper.selectByTenantId(11L)).thenReturn(List.of(first, second));
+
+        assertThat(resolver.accessibleProjectContexts(11L)).hasSize(2).allSatisfy(access -> {
+            assertThat(access.source()).isEqualTo(ProjectAccessSource.TENANT_WIDE);
+            assertThat(access.capabilities().canEdit()).isTrue();
+        });
+        verify(tenantContextResolver).requireActiveMember(11L);
+        verify(permissionService).permissionCodes(tenant);
+        verify(projectMapper).selectByTenantId(11L);
+        verifyNoMoreInteractions(tenantContextResolver, permissionService, projectMapper);
+        verifyNoInteractions(memberMapper, roleMapper);
     }
 
     private TenantContext tenantContext() {

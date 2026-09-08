@@ -22,9 +22,10 @@ public class CommercialOrderService {
     private final WechatPayProperties wechatPayProperties;
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final CommercialPackageService packageService;
 
-    public CommercialOrderService(CommercialPackageVersionMapper versionMapper, CommercialOrderMapper orderMapper, CommercialPaymentMapper paymentMapper, WechatPayClient wechatPayClient, WechatPayProperties wechatPayProperties, JdbcTemplate jdbc, ObjectMapper objectMapper) {
-        this.versionMapper = versionMapper; this.orderMapper = orderMapper; this.paymentMapper = paymentMapper; this.wechatPayClient = wechatPayClient; this.wechatPayProperties = wechatPayProperties; this.jdbc = jdbc; this.objectMapper = objectMapper;
+    public CommercialOrderService(CommercialPackageVersionMapper versionMapper, CommercialOrderMapper orderMapper, CommercialPaymentMapper paymentMapper, WechatPayClient wechatPayClient, WechatPayProperties wechatPayProperties, JdbcTemplate jdbc, ObjectMapper objectMapper, CommercialPackageService packageService) {
+        this.versionMapper = versionMapper; this.orderMapper = orderMapper; this.paymentMapper = paymentMapper; this.wechatPayClient = wechatPayClient; this.wechatPayProperties = wechatPayProperties; this.jdbc = jdbc; this.objectMapper = objectMapper; this.packageService = packageService;
     }
 
     @Transactional
@@ -32,7 +33,7 @@ public class CommercialOrderService {
         CommercialPackageVersionEntity version = versionMapper.selectById(command.packageVersionId());
         if (version == null || !"PUBLISHED".equals(version.status)) throw new IllegalArgumentException("Package version is not for sale");
         LocalDateTime now = LocalDateTime.now();
-        CommercialOrderEntity order = new CommercialOrderEntity(); order.tenantId = command.tenantId(); order.userId = command.userId(); order.packageVersionId = version.id; order.packageSnapshotJson = "{\"name\":\"" + version.name.replace("\"", "\\\"") + "\",\"versionNo\":" + version.versionNo + "}"; order.merchantOrderNo = generateMerchantOrderNo(); order.amount = version.price; order.currency = version.currency; order.status = "PENDING_PAYMENT"; order.expiresAt = now.plusMinutes(30); order.createdAt = now; order.updatedAt = now; orderMapper.insert(order);
+        CommercialOrderEntity order = new CommercialOrderEntity(); order.tenantId = command.tenantId(); order.userId = command.userId(); order.packageVersionId = version.id; order.packageSnapshotJson = packageSnapshot(version.id); order.merchantOrderNo = generateMerchantOrderNo(); order.amount = version.price; order.currency = version.currency; order.status = "PENDING_PAYMENT"; order.expiresAt = now.plusMinutes(30); order.createdAt = now; order.updatedAt = now; orderMapper.insert(order);
         CommercialPaymentEntity payment = new CommercialPaymentEntity(); payment.orderId = order.id; payment.provider = "WECHAT_NATIVE"; payment.amount = version.price; payment.status = "PENDING"; payment.createdAt = now; payment.updatedAt = now; paymentMapper.insert(payment);
         if (wechatPayProperties.isEnabled()) {
             WechatNativeOrder nativeOrder;
@@ -120,6 +121,13 @@ public class CommercialOrderService {
             return name != null && name.isTextual() && !name.asText().isBlank() ? name.asText() : fallback;
         } catch (Exception ignored) {
             return fallback;
+        }
+    }
+    private String packageSnapshot(Long versionId) {
+        try {
+            return objectMapper.writeValueAsString(packageService.snapshot(versionId));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to create package snapshot", exception);
         }
     }
     private record SqlAndArgs(String sql, List<Object> args) {}

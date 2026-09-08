@@ -22,8 +22,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @SpringBootTest(properties = "commercial.wechat.enabled=true")
 class CommercialPackageServiceTest {
     @Autowired CommercialPackageService service;
+    @Autowired CommercialEntitlementCatalogService catalogService;
     @Autowired CommercialOrderService orderService;
     @Autowired CommercialEntitlementOrchestrator orchestrator;
+    @Autowired CommercialEntitlementResolver entitlementResolver;
     @Autowired CommercialPaymentLifecycleService paymentLifecycleService;
     @Autowired WechatPaymentNotificationService notificationService;
     @Autowired JdbcTemplate jdbc;
@@ -90,7 +92,7 @@ class CommercialPackageServiceTest {
             BigDecimal.TEN, null, "CNY", LocalDateTime.now(), null,
             List.of(new CommercialEntitlementInput("FREE_GENERATIONS", BigDecimal.ONE)), 2L
         ))).isInstanceOf(BusinessException.class)
-            .hasMessageContaining("不支持的权益类型");
+            .hasMessageContaining("权益不存在");
 
         assertThatThrownBy(() -> service.createDraft(new CommercialPackageDraftCommand(
             "BAD_PERIOD", "SUBSCRIPTION", "错误周期", null, "MONTH", 0,
@@ -173,6 +175,135 @@ class CommercialPackageServiceTest {
     }
 
     @Test
+    void snapshotsValuelessDisplayEntitlementFromActiveCatalog() {
+        CommercialEntitlementDefinitionResponse display = catalogService.create(
+            new CommercialDisplayEntitlementCommand("使用全部模型", "仅用于套餐介绍", 40));
+
+        CommercialPackageVersionResponse draft = service.createDraft(new CommercialPackageDraftCommand(
+            "DISPLAY_PACK", "SUBSCRIPTION", "展示权益套餐", null, "MONTH", 1,
+            BigDecimal.TEN, null, "CNY", LocalDateTime.now(), null,
+            List.of(
+                new CommercialEntitlementInput("PERIODIC_POINTS", new BigDecimal("100")),
+                new CommercialEntitlementInput(display.code(), null)
+            ), 10L
+        ));
+
+        CommercialEntitlementInput snapshot = draft.entitlements().stream()
+            .filter(item -> display.code().equals(item.type())).findFirst().orElseThrow();
+        assertThat(snapshot.value()).isNull();
+        assertThat(snapshot.name()).isEqualTo("使用全部模型");
+        assertThat(snapshot.category()).isEqualTo("DISPLAY");
+        assertThat(jdbc.queryForObject("""
+            select text_value from commercial_entitlement
+             where package_version_id=? and entitlement_type=?
+            """, String.class, draft.versionId(), display.code())).isEqualTo("使用全部模型");
+
+        catalogService.update(display.id(),
+            new CommercialDisplayEntitlementCommand("使用所有模型", null, 40));
+        assertThat(service.history(draft.packageId()).get(0).entitlements())
+            .extracting(CommercialEntitlementInput::name).contains("使用全部模型");
+    }
+
+    @Test
+    void rejectsInvalidCatalogEntitlementsAndRevalidatesOnPublish() {
+        CommercialEntitlementDefinitionResponse display = catalogService.create(
+            new CommercialDisplayEntitlementCommand("专属展示权益", null, 50));
+
+        assertThatThrownBy(() -> createEntitlementValidationDraft("UNKNOWN", null))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("不存在");
+        assertThatThrownBy(() -> createEntitlementValidationDraft(display.code(), BigDecimal.ONE))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("无需填写数值");
+        assertThatThrownBy(() -> createEntitlementValidationDraft("ONE_TIME_POINTS", null))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("权益值");
+        assertThatThrownBy(() -> service.createDraft(new CommercialPackageDraftCommand(
+            "DUPLICATE_ENTITLEMENT", "POINT_PACKAGE", "重复权益", null, null, null,
+            BigDecimal.ONE, null, "CNY", LocalDateTime.now(), null,
+            List.of(
+                new CommercialEntitlementInput("ONE_TIME_POINTS", BigDecimal.ONE),
+                new CommercialEntitlementInput("ONE_TIME_POINTS", BigDecimal.TEN)
+            ), 10L
+        ))).isInstanceOf(BusinessException.class).hasMessageContaining("重复");
+
+        CommercialPackageVersionResponse draft = createEntitlementValidationDraft(display.code(), null);
+        catalogService.disable(display.id());
+        assertThatThrownBy(() -> service.publish(draft.packageId(), draft.versionId(), 10L))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("已停用");
+        assertThatThrownBy(() -> createEntitlementValidationDraft(display.code(), null))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("已停用");
+    }
+
+    @Test
+    void fallsBackToDictionaryNameForLegacySystemEntitlement() {
+        CommercialPackageVersionResponse draft = createEntitlementValidationDraft(
+            "ONE_TIME_POINTS", BigDecimal.TEN);
+        jdbc.update("update commercial_entitlement set text_value=null where package_version_id=?", draft.versionId());
+
+        CommercialEntitlementInput entitlement = service.history(draft.packageId()).get(0).entitlements().get(0);
+        assertThat(entitlement.name()).isEqualTo("一次性积分");
+        assertThat(entitlement.category()).isEqualTo("SYSTEM");
+    }
+
+    @Test
+    void keepsDisplayEntitlementSnapshotInOrderAndSubscriptionWithoutExecutingIt() {
+        CommercialEntitlementDefinitionResponse display = catalogService.create(
+            new CommercialDisplayEntitlementCommand("使用全部模型（快照）", null, 60));
+        CommercialPackageVersionResponse draft = service.createDraft(new CommercialPackageDraftCommand(
+            "SNAPSHOT_SUBSCRIPTION", "SUBSCRIPTION", "快照订阅", null, "MONTH", 1,
+            new BigDecimal("30.00"), null, "CNY", LocalDateTime.now(), null,
+            List.of(
+                new CommercialEntitlementInput("PERIODIC_POINTS", new BigDecimal("100")),
+                new CommercialEntitlementInput("GLOBAL_DISCOUNT", new BigDecimal("0.90")),
+                new CommercialEntitlementInput(display.code(), null)
+            ), 10L
+        ));
+        CommercialPackageVersionResponse published = service.publish(draft.packageId(), draft.versionId(), 10L);
+        CommercialOrderResponse order = orderService.create(
+            new CommercialOrderCommand(310L, 410L, published.versionId()));
+        LocalDateTime paidAt = LocalDateTime.now();
+        orchestrator.confirmPaid(order.id(), "WX-SNAPSHOT", new BigDecimal("30.00"), paidAt);
+
+        catalogService.update(display.id(),
+            new CommercialDisplayEntitlementCommand("改名后的展示权益", null, 60));
+        catalogService.disable(display.id());
+
+        String orderSnapshot = jdbc.queryForObject(
+            "select package_snapshot_json from commercial_order where id=?", String.class, order.id());
+        String subscriptionSnapshot = jdbc.queryForObject(
+            "select snapshot_json from team_subscription where source_order_id=?", String.class, order.id());
+        assertThat(orderSnapshot).contains("使用全部模型（快照）", display.code())
+            .doesNotContain("改名后的展示权益");
+        assertThat(subscriptionSnapshot).isEqualTo(orderSnapshot);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from commercial_entitlement_grant
+             where order_id=? and entitlement_type=?
+            """, Integer.class, order.id(), display.code())).isZero();
+        assertThat(entitlementResolver.resolveGlobalDiscount(310L, paidAt.plusSeconds(1)).discountRate())
+            .isEqualByComparingTo("0.90000000");
+    }
+
+    @Test
+    void completesDisplayOnlyPackageWithoutCreatingGrant() {
+        CommercialEntitlementDefinitionResponse display = catalogService.create(
+            new CommercialDisplayEntitlementCommand("展示权益不发放", null, 70));
+        CommercialPackageVersionResponse draft = service.createDraft(new CommercialPackageDraftCommand(
+            "DISPLAY_ONLY", "POINT_PACKAGE", "纯展示套餐", null, null, null,
+            new BigDecimal("1.00"), null, "CNY", LocalDateTime.now(), null,
+            List.of(new CommercialEntitlementInput(display.code(), null)), 10L
+        ));
+        service.publish(draft.packageId(), draft.versionId(), 10L);
+        CommercialOrderResponse order = orderService.create(
+            new CommercialOrderCommand(311L, 411L, draft.versionId()));
+
+        CommercialOrderEntity completed = orchestrator.confirmPaid(
+            order.id(), "WX-DISPLAY-ONLY", new BigDecimal("1.00"), LocalDateTime.now());
+
+        assertThat(completed.status).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject(
+            "select count(*) from commercial_entitlement_grant where order_id=?",
+            Integer.class, order.id())).isZero();
+    }
+
+    @Test
     void proactiveLookupCompletesPaidOrder() {
         CommercialPackageVersionResponse version = publishedPointPackage("LOOKUP_PACK", "40.00", "400");
         CommercialOrderResponse order = orderService.create(new CommercialOrderCommand(51L, 52L, version.versionId()));
@@ -242,5 +373,13 @@ class CommercialPackageServiceTest {
             List.of(new CommercialEntitlementInput("ONE_TIME_POINTS", new BigDecimal(points))), 3L
         ));
         return service.publish(draft.packageId(), draft.versionId(), 3L);
+    }
+
+    private CommercialPackageVersionResponse createEntitlementValidationDraft(String type, BigDecimal value) {
+        return service.createDraft(new CommercialPackageDraftCommand(
+            null, "POINT_PACKAGE", "权益校验套餐", null, null, null,
+            BigDecimal.ONE, null, "CNY", LocalDateTime.now(), null,
+            List.of(new CommercialEntitlementInput(type, value)), 10L
+        ));
     }
 }

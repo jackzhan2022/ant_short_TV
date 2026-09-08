@@ -25,13 +25,17 @@ public interface ProjectMapper extends BaseMapper<ProjectEntity> {
 
     default List<ProjectEntity> selectByTenantId(Long tenantId) {
         return selectList(new QueryWrapper<ProjectEntity>()
+            .select(ProjectEntity.class, field -> !"initialScriptContent".equals(field.getProperty()))
             .eq("tenant_id", tenantId)
             .isNull("deleted_at")
             .orderByDesc("created_at"));
     }
 
     @Select("""
-        select p.*
+        select p.id, p.tenant_id, p.name, p.code, p.description, p.cover_url, p.cover_source,
+               p.owner_id, p.status, p.start_date, p.end_date, p.aspect_ratio, p.file_format,
+               p.script_type, p.breakdown_strength, p.visual_style, p.created_by,
+               p.created_at, p.updated_at, p.deleted_at
         from project p
         join project_member pm
           on pm.tenant_id = p.tenant_id

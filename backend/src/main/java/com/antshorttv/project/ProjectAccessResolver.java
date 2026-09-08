@@ -40,6 +40,14 @@ public class ProjectAccessResolver {
         }
 
         Set<String> tenantPermissions = permissionService.permissionCodes(tenant);
+        return requireView(tenant, project, tenantPermissions);
+    }
+
+    private ProjectAccessContext requireView(
+        TenantContext tenant, ProjectEntity project, Set<String> tenantPermissions
+    ) {
+        Long tenantId = tenant.tenantId();
+        Long projectId = project.id;
         if (tenantPermissions.contains("PROJECT:VIEW_ALL")) {
             return context(tenant, project, ProjectAccessSource.TENANT_WIDE, null, null, tenantPermissions);
         }
@@ -56,7 +64,7 @@ public class ProjectAccessResolver {
         if (role == null || !ProjectRoleStatus.ACTIVE.name().equals(role.status)) {
             throw denied();
         }
-        Set<String> projectPermissions = permissionService.projectPermissionCodes(tenant, projectId);
+        Set<String> projectPermissions = permissionService.projectRolePermissionCodes(tenantId, projectId, member.roleId);
         if (!projectPermissions.contains("PROJECT:VIEW")) {
             throw denied();
         }
@@ -69,6 +77,15 @@ public class ProjectAccessResolver {
             return projectMapper.selectByTenantId(tenantId);
         }
         return projectMapper.selectAccessibleByMember(tenantId, tenant.userId());
+    }
+
+    public List<ProjectAccessContext> accessibleProjectContexts(Long tenantId) {
+        TenantContext tenant = tenantContextResolver.requireActiveMember(tenantId);
+        Set<String> permissions = permissionService.permissionCodes(tenant);
+        List<ProjectEntity> projects = permissions.contains("PROJECT:VIEW_ALL")
+            ? projectMapper.selectByTenantId(tenantId)
+            : projectMapper.selectAccessibleByMember(tenantId, tenant.userId());
+        return projects.stream().map(project -> requireView(tenant, project, permissions)).toList();
     }
 
     private ProjectAccessContext context(

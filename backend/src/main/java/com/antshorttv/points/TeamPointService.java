@@ -1,6 +1,7 @@
 package com.antshorttv.points;
 
 import com.antshorttv.security.TenantContextResolver;
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -46,7 +47,7 @@ public class TeamPointService {
         );
         List<TeamPointTransactionResponse> records = jdbcTemplate.query("""
             select id, tenant_id, user_id, entry_type, amount, available_balance_after,
-                   business_type, business_id, description, created_at
+                   business_type, business_id, idempotency_key, description, created_at
               from point_ledger
              where tenant_id = ?
              order by created_at desc, id desc
@@ -56,8 +57,8 @@ public class TeamPointService {
                 rs.getLong("id"),
                 rs.getLong("tenant_id"),
                 rs.getLong("user_id"),
-                responseType(rs.getString("entry_type")),
-                rs.getBigDecimal("amount").intValue(),
+                responseType(rs.getString("entry_type"), rs.getString("idempotency_key")),
+                responseAmount(rs.getString("entry_type"), rs.getBigDecimal("amount")),
                 rs.getBigDecimal("available_balance_after").intValue(),
                 rs.getString("business_type"),
                 rs.getObject("business_id", Long.class),
@@ -92,7 +93,20 @@ public class TeamPointService {
         return timestamp == null ? null : timestamp.toLocalDateTime();
     }
 
-    private String responseType(String entryType) {
-        return "GRANT".equals(entryType) ? "ADJUST_GRANT" : entryType;
+    private String responseType(String entryType, String idempotencyKey) {
+        if (!"GRANT".equals(entryType)) return entryType;
+        if (idempotencyKey != null
+            && (idempotencyKey.startsWith("order:") || idempotencyKey.startsWith("subscription:"))) {
+            return "ENTITLEMENT_GRANT";
+        }
+        return "ADJUST_GRANT";
+    }
+
+    private int responseAmount(String entryType, BigDecimal amount) {
+        return ("RESERVE".equals(entryType)
+            || "INCREMENTAL_RESERVE".equals(entryType)
+            || "SETTLE".equals(entryType)
+            ? amount.negate()
+            : amount).intValue();
     }
 }

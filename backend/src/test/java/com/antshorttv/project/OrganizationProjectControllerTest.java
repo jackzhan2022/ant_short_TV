@@ -155,6 +155,11 @@ class ProjectControllerTest {
             .andReturn();
 
         Number createdId = JsonPath.read(richResult.getResponse().getContentAsString(), "$.data.id");
+        mockMvc.perform(get("/api/projects")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].initialScriptContent").doesNotExist());
         mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(createdId.longValue()))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", tenantId))
@@ -169,7 +174,8 @@ class ProjectControllerTest {
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.visualStyle", is("3D风格-高清真实渲染")));
+            .andExpect(jsonPath("$.data.visualStyle", is("3D风格-高清真实渲染")))
+            .andExpect(jsonPath("$.data.initialScriptContent", is("第一场，雨夜重逢。")));
 
         mockMvc.perform(post("/api/projects")
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))

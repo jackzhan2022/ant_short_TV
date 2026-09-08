@@ -1,7 +1,28 @@
 import { request } from '@umijs/max';
 
 export type ApiResponse<T> = { success: boolean; data: T };
-export type CommercialEntitlement = { type: string; value: number };
+export type CommercialEntitlement = {
+  type: string;
+  value?: number;
+  name?: string;
+  category?: 'SYSTEM' | 'DISPLAY';
+};
+export type CommercialEntitlementDefinition = {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  category: 'SYSTEM' | 'DISPLAY';
+  status: 'ACTIVE' | 'INACTIVE';
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type DisplayEntitlementDraft = {
+  name: string;
+  description?: string;
+  sortOrder?: number;
+};
 export type CommercialPackageSummary = {
   id: number;
   code: string;
@@ -68,3 +89,23 @@ export const publishCommercialPackageVersion = (packageId: number, versionId: nu
   request<ApiResponse<CommercialPackageVersion>>(`/api/platform/commercial/packages/${packageId}/versions/${versionId}/publish`, { method: 'POST' });
 export const unpublishCommercialPackageVersion = (packageId: number, versionId: number) =>
   request<ApiResponse<CommercialPackageVersion>>(`/api/platform/commercial/packages/${packageId}/versions/${versionId}/unpublish`, { method: 'POST' });
+export const listCommercialEntitlements = () =>
+  request<ApiResponse<CommercialEntitlementDefinition[]>>('/api/platform/commercial/entitlements');
+export const createDisplayEntitlement = (data: DisplayEntitlementDraft) =>
+  request<ApiResponse<CommercialEntitlementDefinition>>('/api/platform/commercial/entitlements', {
+    method: 'POST',
+    data,
+  });
+export const updateDisplayEntitlement = (id: number, data: DisplayEntitlementDraft) =>
+  request<ApiResponse<CommercialEntitlementDefinition>>(`/api/platform/commercial/entitlements/${id}`, {
+    method: 'PUT',
+    data,
+  });
+export const enableDisplayEntitlement = (id: number) =>
+  request<ApiResponse<CommercialEntitlementDefinition>>(`/api/platform/commercial/entitlements/${id}/enable`, {
+    method: 'POST',
+  });
+export const disableDisplayEntitlement = (id: number) =>
+  request<ApiResponse<CommercialEntitlementDefinition>>(`/api/platform/commercial/entitlements/${id}/disable`, {
+    method: 'POST',
+  });
