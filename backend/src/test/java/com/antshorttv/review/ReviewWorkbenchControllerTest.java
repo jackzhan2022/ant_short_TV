@@ -340,6 +340,42 @@ class ReviewWorkbenchControllerTest {
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.APPLICATION_OCTET_STREAM));
+
+        String markdown = "# 原样报告\n\n|位置|结论|\n|---|---|\n|第1集|保留 `字段`|";
+        jdbcTemplate.update("update review_task set result_format='MARKDOWN', report_markdown=? where id=?",
+            markdown, firstTaskId);
+        mockMvc.perform(get("/api/script-review/tasks/%d".formatted(firstTaskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.resultFormat", is("MARKDOWN")))
+            .andExpect(jsonPath("$.data.reportMarkdown", is(markdown)));
+        mockMvc.perform(get("/api/script-review/projects/%d".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.project.reviewState", is("COMPLETED")))
+            .andExpect(jsonPath("$.data.project.outstandingIssueCount", is(0)));
+        MvcResult markdownExport = mockMvc.perform(post("/api/script-review/projects/%d/exports".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"versionId":%d,"exportType":"WORD"}
+                    """.formatted(versionId)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.fileName").value(org.hamcrest.Matchers.endsWith(".md")))
+            .andReturn();
+        String markdownFileName = JsonPath.read(markdownExport.getResponse().getContentAsString(), "$.data.fileName");
+        assertThat(Files.readString(Path.of("storage/review-exports").resolve(markdownFileName))).isEqualTo(markdown);
+
+        jdbcTemplate.update("update review_task set status='FAILED' where id=?", firstTaskId);
+        mockMvc.perform(get("/api/script-review/projects/%d".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.project.reviewState", is("NOT_REVIEWED")))
+            .andExpect(jsonPath("$.data.project.actionLabel", is("重试审核")));
     }
 
     @Test

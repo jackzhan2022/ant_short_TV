@@ -9,6 +9,27 @@ import org.junit.jupiter.api.Test;
 
 class ScriptReviewAgentRunContractTest {
     @Test
+    void markdownPhasesRequireOnlyTrustedReadsAndNoTerminalSave() {
+        WorkflowAgentRunContract quick = WorkflowAgentRunContract.forReviewPhase("MARKDOWN_QUICK");
+        assertThat(quick.requiredToolSequence()).containsExactly("read_review_context", "read_review_content");
+        assertThat(quick.terminalToolCode()).isNull();
+        WorkflowToolRunState state = new WorkflowToolRunState();
+        quick.requireNext(state, "read_review_context");
+        state.recordSuccess("read_review_context");
+        quick.requireNext(state, "read_review_content");
+        state.recordSuccess("read_review_content");
+        quick.requireNext(state, "read_review_content");
+        state.recordSuccess("read_review_content");
+        quick.requireComplete(state);
+        WorkflowAgentRunContract child = WorkflowAgentRunContract.forReviewPhase("MARKDOWN_DEEP_CHILD");
+        assertThat(child.requiredToolSequence()).containsExactly("read_review_context", "read_review_content");
+        assertThat(child.terminalToolCode()).isNull();
+        WorkflowAgentRunContract aggregation = WorkflowAgentRunContract.forReviewPhase("MARKDOWN_DEEP_AGGREGATION");
+        assertThat(aggregation.requiredToolSequence()).isEmpty();
+        assertThat(aggregation.terminalToolCode()).isNull();
+    }
+
+    @Test
     void quickRequiresTrustedReadsThenExactlyOneFormalSave() {
         WorkflowAgentRunContract contract = WorkflowAgentRunContract.forReviewPhase("QUICK");
         assertThat(contract.requiredToolSequence()).containsExactly(

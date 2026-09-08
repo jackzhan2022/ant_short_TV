@@ -67,6 +67,9 @@ public record WorkflowAgentRunContract(
                 "read_review_context", "read_review_unit_results", "read_review_content",
                 "save_review_result"),
                 "save_review_result");
+            case "MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD" -> new WorkflowAgentRunContract(List.of(
+                "read_review_context", "read_review_content"), null);
+            case "MARKDOWN_DEEP_AGGREGATION" -> NONE;
             default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未知剧本审核阶段。");
         };
     }
@@ -123,7 +126,8 @@ public record WorkflowAgentRunContract(
     }
 
     private boolean isReviewContract() {
-        return "save_review_result".equals(terminalToolCode)
+        return requiredToolSequence.contains("read_review_context")
+            || "save_review_result".equals(terminalToolCode)
             || "save_review_unit_result".equals(terminalToolCode)
             || "save_review_semantic_decisions".equals(terminalToolCode);
     }

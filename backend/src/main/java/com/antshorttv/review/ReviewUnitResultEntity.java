@@ -18,6 +18,7 @@ public class ReviewUnitResultEntity {
     private String contentFingerprint;
     private String coverageJson;
     private String candidatesJson;
+    private String reportMarkdown;
     private String payloadHash;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -33,6 +34,7 @@ public class ReviewUnitResultEntity {
     public String getContentFingerprint() { return contentFingerprint; } public void setContentFingerprint(String v) { contentFingerprint = v; }
     public String getCoverageJson() { return coverageJson; } public void setCoverageJson(String v) { coverageJson = v; }
     public String getCandidatesJson() { return candidatesJson; } public void setCandidatesJson(String v) { candidatesJson = v; }
+    public String getReportMarkdown() { return reportMarkdown; } public void setReportMarkdown(String v) { reportMarkdown = v; }
     public String getPayloadHash() { return payloadHash; } public void setPayloadHash(String v) { payloadHash = v; }
     public LocalDateTime getCreatedAt() { return createdAt; } public void setCreatedAt(LocalDateTime v) { createdAt = v; }
     public LocalDateTime getUpdatedAt() { return updatedAt; } public void setUpdatedAt(LocalDateTime v) { updatedAt = v; }

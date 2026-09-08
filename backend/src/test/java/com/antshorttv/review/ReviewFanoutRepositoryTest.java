@@ -28,6 +28,32 @@ class ReviewFanoutRepositoryTest {
     }
 
     @Test
+    void storesMarkdownFragmentByteForByteAndReplacesOnlyTheCurrentUnit() {
+        long snapshotId = repository.openSnapshot(snapshot(1));
+        long unitId = repository.addUnit(new ReviewFanoutRepository.UnitDraft(
+            snapshotId, 1, "u1", "DIMENSION_MARKDOWN", "台词合理性", "{}", 0, 3, "f1"));
+        long run1 = insertRun();
+        long run2 = insertRun();
+        String first = "## 任意标题\n\n|位置|说明|\n|---|---|\n|第1集|原样保留|";
+        String second = first + "\n\n补充：`字段` 不解析。";
+
+        jdbc.update("update review_fanout_unit set status='RUNNING' where id=?", unitId);
+        repository.replaceMarkdownFragment(new ReviewFanoutRepository.MarkdownFragmentDraft(
+            snapshotId, unitId, run1, 1, "version", "scope", "dimensions", "f1", first, "hash-1"));
+        jdbc.update("update review_fanout_unit set status='RUNNING' where id=?", unitId);
+        repository.replaceMarkdownFragment(new ReviewFanoutRepository.MarkdownFragmentDraft(
+            snapshotId, unitId, run2, 2, "version", "scope", "dimensions", "f1", second, "hash-2"));
+
+        assertThat(repository.orderedMarkdownFragments(snapshotId)).singleElement().satisfies(fragment -> {
+            assertThat(fragment.dimension()).isEqualTo("台词合理性");
+            assertThat(fragment.reportMarkdown()).isEqualTo(second);
+        });
+        assertThat(repository.currentCandidate(snapshotId, unitId).getReportMarkdown()).isEqualTo(second);
+        assertThat(jdbc.queryForObject("select count(*) from review_unit_result where unit_id=?",
+            Integer.class, unitId)).isOne();
+    }
+
+    @Test
     void keepsAttemptIdempotentUnitsUniqueAndOrdered() {
         long first = repository.openSnapshot(snapshot(1));
         long second = repository.openSnapshot(snapshot(1));

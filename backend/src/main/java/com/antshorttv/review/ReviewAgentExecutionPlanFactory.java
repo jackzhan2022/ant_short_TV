@@ -24,9 +24,11 @@ public class ReviewAgentExecutionPlanFactory {
 
     public WorkflowAgentExecutionPlan freeze(List<String> selectedDimensions, String phase) {
         WorkflowAgentRecord maximum = agents.loadForRun(ScriptReviewAgentBootstrap.AGENT_CODE);
-        boolean aggregation = "DEEP_AGGREGATION".equals(phase);
+        boolean aggregation = "DEEP_AGGREGATION".equals(phase)
+            || "MARKDOWN_DEEP_AGGREGATION".equals(phase);
         boolean semantic = "DEEP_SEMANTIC".equals(phase);
-        if (!List.of("QUICK", "DEEP_CHILD", "DEEP_SEMANTIC", "DEEP_AGGREGATION").contains(phase)) {
+        if (!List.of("QUICK", "DEEP_CHILD", "DEEP_SEMANTIC", "DEEP_AGGREGATION",
+            "MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD", "MARKDOWN_DEEP_AGGREGATION").contains(phase)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未知剧本审核阶段。");
         }
         List<String> skillCodes;
@@ -51,6 +53,9 @@ public class ReviewAgentExecutionPlanFactory {
                 "read_review_content", "save_review_semantic_decisions");
             case "DEEP_AGGREGATION" -> List.of("read_review_context", "read_review_unit_results",
                 "read_review_content", "save_review_result");
+            case "MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD" -> List.of(
+                "read_review_context", "read_review_content");
+            case "MARKDOWN_DEEP_AGGREGATION" -> List.of();
             default -> throw new IllegalStateException();
         };
         if (!maximum.toolCodes().containsAll(toolCodes)) {

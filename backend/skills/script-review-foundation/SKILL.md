@@ -23,6 +23,6 @@ description: Use when reviewing a trusted immutable script version within a froz
 
 范围、版本、维度或内容已变化时立即停止。校验失败只能修正后重试，不能缩小覆盖或伪造证据。
 
-## 终止保存
+## Markdown 输出
 
-QUICK 与聚合阶段必须以一次成功 `save_review_result` 作为终止保存；DEEP 子单元必须以一次成功 `save_review_unit_result` 结束。成功后不得再次保存或继续输出结论。
+完成可信读取后直接返回非空 Markdown。标题、段落、列表和表格可按实际发现组织，不需要生成候选 JSON，也不得调用结果保存工具。服务端负责原样保存最终文本。输出容量不足或模型报告截断时停止并报告失败，不得把不完整内容声明为完成。

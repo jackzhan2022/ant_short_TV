@@ -200,7 +200,9 @@ public class WorkflowAgentRunner {
     private boolean isDeepReviewPhase(String phase) {
         return "DEEP_CHILD".equals(phase)
             || "DEEP_AGGREGATION".equals(phase)
-            || "DEEP_SEMANTIC".equals(phase);
+            || "DEEP_SEMANTIC".equals(phase)
+            || "MARKDOWN_DEEP_CHILD".equals(phase)
+            || "MARKDOWN_DEEP_AGGREGATION".equals(phase);
     }
 
     private WorkflowAgentRunResult runLoop(
@@ -300,6 +302,10 @@ public class WorkflowAgentRunner {
             String finalContent = response == null ? null : response.content();
             runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
             if ("script-review".equals(agent.code()) && isTruncated(response)) {
+                String phase = input.reviewScope() == null ? null : input.reviewScope().phase();
+                if (phase != null && phase.startsWith("MARKDOWN_")) {
+                    throw new WorkflowAgentTruncatedOutputException(runId, finalContent, modelCalls);
+                }
                 reviewTruncationRecovery = true;
                 List<String> remainingTools = remainingContractTools(contract, runState);
                 messages.add(AiChatMessage.user(

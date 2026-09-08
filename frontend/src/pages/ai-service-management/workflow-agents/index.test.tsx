@@ -239,6 +239,16 @@ describe('WorkflowAgentsPage', () => {
     );
   });
 
+  it('shows an error in the detail modal when loading fails', async () => {
+    mocks.queryRun.mockRejectedValueOnce({});
+    render(<App><WorkflowAgentsPage /></App>);
+    await screen.findByText('编剧 Agent');
+    fireEvent.click(screen.getByRole('button', { name: /运行记录/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '详情' }));
+    expect((await screen.findByText('Agent 运行详情')).closest('[role="dialog"]')).toBeInTheDocument();
+    expect(await screen.findByText('加载运行详情失败，请关闭后重试')).toBeInTheDocument();
+  });
+
   it('shows failure diagnostics and steps for a historical run', async () => {
     mocks.queryRun.mockResolvedValueOnce({
       success: true,
@@ -289,5 +299,6 @@ describe('WorkflowAgentsPage', () => {
     expect(screen.getByText('模型未能完成保存')).toBeInTheDocument();
     expect(screen.getByText('save_review_unit_result')).toBeInTheDocument();
     expect(screen.getByText('审核提示词快照')).toBeInTheDocument();
+    expect(screen.getByText('审核提示词快照').closest('[role="dialog"]')).toContainElement(screen.getByText('Agent 运行详情'));
   });
 });

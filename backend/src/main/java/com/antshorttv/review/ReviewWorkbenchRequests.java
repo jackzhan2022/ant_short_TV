@@ -71,6 +71,7 @@ record RollbackReviewVersionRequest(
 
 record ExportReviewReportRequest(
     @NotBlank @Size(max = 32) String exportType,
-    @NotNull Long versionId
+    @NotNull Long versionId,
+    Long taskId
 ) {
 }

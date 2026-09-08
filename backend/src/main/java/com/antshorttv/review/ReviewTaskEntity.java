@@ -19,6 +19,8 @@ public class ReviewTaskEntity {
     private String reviewScopeJson;
     private String globalIndexJson;
     private String resultJson;
+    private String resultFormat;
+    private String reportMarkdown;
     private String status;
     private String currentStage;
     private Integer overallProgress;
@@ -67,6 +69,10 @@ public class ReviewTaskEntity {
     public void setGlobalIndexJson(String globalIndexJson) { this.globalIndexJson = globalIndexJson; }
     public String getResultJson() { return resultJson; }
     public void setResultJson(String resultJson) { this.resultJson = resultJson; }
+    public String getResultFormat() { return resultFormat; }
+    public void setResultFormat(String resultFormat) { this.resultFormat = resultFormat; }
+    public String getReportMarkdown() { return reportMarkdown; }
+    public void setReportMarkdown(String reportMarkdown) { this.reportMarkdown = reportMarkdown; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public String getCurrentStage() { return currentStage; }

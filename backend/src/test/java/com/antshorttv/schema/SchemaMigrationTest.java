@@ -12,6 +12,35 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class SchemaMigrationTest {
 
     @Test
+    void flywayAddsMarkdownReviewResultsWithoutChangingStructuredData() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where (lower(table_name) = 'review_task'
+                    and lower(column_name) in ('result_format', 'report_markdown'))
+                or (lower(table_name) = 'review_unit_result'
+                    and lower(column_name) = 'report_markdown')
+            """, Integer.class)).isEqualTo(3);
+
+        jdbc.update("""
+            insert into review_task
+              (tenant_id, project_id, script_version_id, round_no, review_mode,
+               selected_dimensions_json, review_scope_type, result_json, status,
+               overall_progress, idempotency_key, created_by, created_at, updated_at)
+            values (99001, 99002, 99003, 1, 'QUICK', '[]', 'ALL',
+                    '{"summary":"历史结果"}', 'COMPLETED', 100, 'markdown-migration-history',
+                    1, now(), now())
+            """);
+        assertThat(jdbc.queryForObject("""
+            select result_json from review_task where idempotency_key='markdown-migration-history'
+            """, String.class)).contains("历史结果");
+        assertThat(jdbc.queryForObject("""
+            select result_format from review_task where idempotency_key='markdown-migration-history'
+            """, String.class)).isNull();
+    }
+
+    @Test
     void flywayAddsReviewQualityAndCacheObservabilityWithoutBreakingHistoricalRows() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 

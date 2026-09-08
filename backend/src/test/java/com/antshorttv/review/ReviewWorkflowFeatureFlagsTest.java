@@ -8,11 +8,12 @@ class ReviewWorkflowFeatureFlagsTest {
 
     @Test
     void exposesEachRolloutCapabilityIndependently() {
-        ReviewWorkflowFeatureFlags flags = new ReviewWorkflowFeatureFlags(true, false, true, false);
+        ReviewWorkflowFeatureFlags flags = new ReviewWorkflowFeatureFlags(true, false, true, false, true);
 
         assertThat(flags.cacheObservability()).isTrue();
         assertThat(flags.dimensionalOrchestration()).isFalse();
         assertThat(flags.semanticReview()).isTrue();
         assertThat(flags.anomalyGate()).isFalse();
+        assertThat(flags.markdownReports()).isTrue();
     }
 }

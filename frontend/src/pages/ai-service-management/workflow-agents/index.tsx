@@ -16,6 +16,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
   Select,
   Space,
@@ -225,6 +226,30 @@ const WorkflowAgentsPage = () => {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<WorkflowRunSummary[]>([]);
   const [historyDetail, setHistoryDetail] = useState<WorkflowRunDetail>();
+  const [historyDetailOpen, setHistoryDetailOpen] = useState(false);
+  const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
+  const [historyDetailError, setHistoryDetailError] = useState<string>();
+  const historyDetailRequest = useRef(0);
+
+  const openHistoryDetail = async (runId: number) => {
+    const requestId = ++historyDetailRequest.current;
+    setHistoryDetail(undefined);
+    setHistoryDetailError(undefined);
+    setHistoryDetailOpen(true);
+    setHistoryDetailLoading(true);
+    try {
+      const response = await queryWorkflowAgentRun(runId);
+      if (requestId !== historyDetailRequest.current) return;
+      if (!response.data) throw new Error('运行详情为空');
+      setHistoryDetail(response.data);
+    } catch (caught) {
+      if (requestId === historyDetailRequest.current) {
+        setHistoryDetailError(errorMessage(caught, '加载运行详情失败，请关闭后重试'));
+      }
+    } finally {
+      if (requestId === historyDetailRequest.current) setHistoryDetailLoading(false);
+    }
+  };
   const promptCursor = useRef(0);
   const selectedToolCodes = Form.useWatch('toolCodes', form) ?? [];
 
@@ -742,9 +767,7 @@ const WorkflowAgentsPage = () => {
               render: (_, run) => (
                 <Button
                   type="link"
-                  onClick={async () =>
-                    setHistoryDetail((await queryWorkflowAgentRun(run.id)).data)
-                  }
+                  onClick={() => void openHistoryDetail(run.id)}
                 >
                   详情
                 </Button>
@@ -752,6 +775,21 @@ const WorkflowAgentsPage = () => {
             },
           ]}
         />
+      </Drawer>
+      <Modal
+        title="Agent 运行详情"
+        open={historyDetailOpen}
+        loading={historyDetailLoading}
+        onCancel={() => {
+          ++historyDetailRequest.current;
+          setHistoryDetailOpen(false);
+        }}
+        footer={null}
+        width={1000}
+        styles={{ body: { maxHeight: '70vh', overflow: 'auto', overflowWrap: 'anywhere' } }}
+        destroyOnHidden
+      >
+        {historyDetailError && <Alert type="error" showIcon title={historyDetailError} />}
         {historyDetail && (
           <Space
             orientation="vertical"
@@ -818,7 +856,7 @@ const WorkflowAgentsPage = () => {
             </div>
           </Space>
         )}
-      </Drawer>
+      </Modal>
     </>
   );
 };

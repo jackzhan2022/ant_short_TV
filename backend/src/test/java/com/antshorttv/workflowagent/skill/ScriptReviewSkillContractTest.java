@@ -35,16 +35,19 @@ class ScriptReviewSkillContractTest {
     @Test
     void commonAndDimensionSkillsDefineTrustedEvidenceAndSaveBoundaries() {
         assertThat(skills.detail("script-review-foundation").content())
-            .contains("可信来源", "精确引文", "严重程度", "不确定", "范围", "内容已变化", "终止保存");
+            .contains("可信来源", "精确引文", "严重程度", "不确定", "范围", "内容已变化", "Markdown")
+            .doesNotContain("必须以一次成功 `save_review_result`");
         assertThat(skills.detail("script-review-execution-framework").content())
-            .contains("QUICK", "DEEP_CHILD", "DEEP_AGGREGATION", "覆盖", "去重", "save_review_result");
+            .contains("QUICK", "DEEP_CHILD", "DEEP_AGGREGATION", "覆盖", "去重", "Markdown")
+            .doesNotContain("调用 `save_review_result`");
 
         assertThat(DIMENSION_SKILLS.stream().map(skills::detail).toList()).allSatisfy(skill ->
             assertThat(skill.content())
                 .contains("检查项", "不应报告", "证据要求", "严重程度", "可执行建议")
                 .doesNotContain("tenantId", "projectId", "taskId", "versionId"));
         assertThat(skills.detail("script-review-cross-episode-synthesis").content())
-            .contains("跨单元", "身份", "时间线", "场景", "道具", "视觉", "情绪", "因果", "悬念", "反转", "伏笔");
+            .contains("跨单元", "身份", "时间线", "场景", "道具", "视觉", "情绪", "因果", "悬念", "反转", "伏笔",
+                "Markdown", "相同维度", "根因", "稳定位置", "保留全部不同引用");
         assertThat(skills.detail("script-review-semantic-quality").content())
             .contains("证据支持", "规则适用", "替代解释", "严重度", "建议有效", "重复聚类",
                 "CONFIRMED", "NEEDS_HUMAN_REVIEW", "REJECTED", "INSUFFICIENT_EVIDENCE");

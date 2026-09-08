@@ -78,6 +78,8 @@ export type ReviewTask = {
   selectedDimensions: string[];
   reviewScopeType: string;
   reviewScope: Record<string, unknown>;
+  resultFormat?: 'MARKDOWN' | 'STRUCTURED_JSON';
+  reportMarkdown?: string | null;
   status: string;
   currentStage?: string | null;
   overallProgress: number;
@@ -89,9 +91,12 @@ export type ReviewTask = {
   workflowAgentRunId?: number | null;
   workflowPhase?:
     | 'QUICK'
+    | 'MARKDOWN_QUICK'
     | 'DEEP_CHILD'
+    | 'MARKDOWN_DEEP_CHILD'
     | 'DEEP_SEMANTIC'
     | 'DEEP_AGGREGATION'
+    | 'MARKDOWN_DEEP_AGGREGATION'
     | null;
   workflowAttemptNo?: number | null;
   fanoutSnapshotId?: number | null;
@@ -185,6 +190,8 @@ export type ReviewHistoryTask = {
   reviewMode: string;
   selectedDimensions: string[];
   reviewScopeType: string;
+  resultFormat?: 'MARKDOWN' | 'STRUCTURED_JSON';
+  reportMarkdown?: string | null;
   status: string;
   overallProgress: number;
   issueCount: number;
@@ -411,12 +418,13 @@ export const exportReviewReport = (
   projectId: number,
   versionId: number,
   exportType: string,
+  taskId?: number,
 ) =>
   request<ApiResponse<{ fileName: string; downloadUrl?: string | null }>>(
     `/api/script-review/projects/${projectId}/exports`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      data: { versionId, exportType },
+      data: { versionId, exportType, taskId },
     },
   );

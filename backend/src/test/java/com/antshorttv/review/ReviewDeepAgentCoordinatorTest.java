@@ -61,6 +61,7 @@ class ReviewDeepAgentCoordinatorTest {
         planner = mock(ReviewUnitPlanner.class);
         fanout = mock(ReviewFanoutRepository.class);
         tasks = mock(ReviewTaskMapper.class);
+        when(tasks.update(any(), any())).thenReturn(1);
         semanticAudits = mock(ReviewSemanticAuditRepository.class);
         versions = mock(ReviewScriptVersionMapper.class);
         workflowRuns = mock(WorkflowAgentRunRepository.class);
@@ -87,6 +88,47 @@ class ReviewDeepAgentCoordinatorTest {
         when(planner.plan(any(), any(), any(), eq(frozen), eq(100), eq(10))).thenReturn(List.of(
             new ReviewUnitPlanner.Unit(1, "offset-0-5", 0, 5, "abcde", "fingerprint-1"),
             new ReviewUnitPlanner.Unit(2, "offset-5-10", 5, 10, "fghij", "fingerprint-2")));
+    }
+
+    @Test
+    void markdownDeepStoresFragmentsSkipsSemanticAndPersistsFinalReport() {
+        coordinator = new ReviewDeepAgentCoordinator(plans, runner, content, planner, fanout,
+            tasks, versions, semanticAudits, workflowRuns, jdbc, new ObjectMapper(),
+            new ReviewWorkflowFeatureFlags(true, true, true, true, true), true, 100, 10, 2);
+        task.setResultFormat("MARKDOWN");
+        WorkflowAgentExecutionPlan markdownChild = plan(6L);
+        WorkflowAgentExecutionPlan markdownAggregation = plan(7L);
+        when(plans.freeze(List.of("台词合理性", "时间线连续性"), "MARKDOWN_DEEP_CHILD"))
+            .thenReturn(markdownChild);
+        when(plans.freeze(List.of("台词合理性", "时间线连续性"), "MARKDOWN_DEEP_AGGREGATION"))
+            .thenReturn(markdownAggregation);
+        when(fanout.findMatchingSnapshot(anyLong(), any(), any(), any(), any())).thenReturn(null);
+        when(fanout.openSnapshot(any())).thenReturn(50L);
+        when(fanout.orderedUnits(50L)).thenReturn(List.of(
+            unit(11L, 1, "PENDING", false), unit(12L, 2, "PENDING", false)));
+        when(tasks.selectById(7L)).thenReturn(task);
+        when(runner.runFormal(eq(markdownChild), any())).thenReturn(
+            new WorkflowAgentRunResult(101L, "## 台词\n第1集：引用 A"),
+            new WorkflowAgentRunResult(102L, "## 时间线\n第2集：引用 B"));
+        when(fanout.orderedMarkdownFragments(50L)).thenReturn(List.of(
+            new ReviewFanoutRepository.MarkdownFragment(11L, 1, "unit-1", "台词合理性", "## 台词\n第1集：引用 A"),
+            new ReviewFanoutRepository.MarkdownFragment(12L, 2, "unit-2", "时间线连续性", "## 时间线\n第2集：引用 B")));
+        String finalReport = "# 审核报告\n\n两个发现。";
+        when(runner.runFormal(eq(markdownAggregation), any()))
+            .thenReturn(new WorkflowAgentRunResult(200L, finalReport));
+
+        ReviewDeepAgentCoordinator.Execution result = coordinator.execute(task, execution(), 9L);
+
+        assertThat(result.aggregationRunId()).isEqualTo(200L);
+        assertThat(task.getReportMarkdown()).isEqualTo(finalReport);
+        assertThat(task.getStatus()).isEqualTo("COMPLETED");
+        verify(fanout, times(2)).replaceMarkdownFragment(any());
+        verify(plans, never()).freeze(any(), eq("DEEP_SEMANTIC"));
+        ArgumentCaptor<WorkflowAgentRunInput> inputs = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
+        verify(runner, times(3)).runFormal(any(), inputs.capture());
+        assertThat(inputs.getAllValues()).extracting(input -> input.reviewScope().phase())
+            .containsExactly("MARKDOWN_DEEP_CHILD", "MARKDOWN_DEEP_CHILD", "MARKDOWN_DEEP_AGGREGATION");
+        assertThat(inputs.getAllValues().get(2).input()).contains("引用 A", "引用 B", "根因", "稳定位置");
     }
 
     @Test
@@ -267,6 +309,22 @@ class ReviewDeepAgentCoordinatorTest {
         assertThat(result.aggregationRunId()).isEqualTo(200L);
         verify(runner, never()).runFormal(any(), any());
         verify(fanout, never()).openSnapshot(any());
+    }
+
+    @Test
+    void committedMarkdownRecoveryReconcilesTheStoredReport() {
+        task.setStatus("COMPLETED");
+        task.setResultFormat("MARKDOWN");
+        task.setReportMarkdown("# 已提交报告\n\n原始内容");
+        task.setFanoutSnapshotId(50L);
+        task.setWorkflowAgentRunId(200L);
+        when(workflowRuns.belongsToTask(200L, 2L, 7L)).thenReturn(true);
+        when(workflowRuns.modelCalls(200L, 2L)).thenReturn(List.of());
+
+        ReviewDeepAgentCoordinator.Execution result = coordinator.recoverCommittedAggregation(task);
+
+        assertThat(result.aggregationRunId()).isEqualTo(200L);
+        verify(workflowRuns).reconcileCommitted(200L, "# 已提交报告\n\n原始内容");
     }
 
     private WorkflowAgentExecutionPlan plan(long revision) {

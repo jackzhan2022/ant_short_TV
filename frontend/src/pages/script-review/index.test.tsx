@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@ant-design/icons', () => ({
   AuditOutlined: () => <span />,
   CheckCircleOutlined: () => <span />,
+  CopyOutlined: () => <span />,
   CloudUploadOutlined: () => <span />,
   DownloadOutlined: () => <span />,
   FileTextOutlined: () => <span />,
@@ -218,6 +219,10 @@ vi.mock('@ant-design/pro-components', () => ({
       {children}
     </main>
   ),
+}));
+
+vi.mock('@ant-design/x-markdown', () => ({
+  default: ({ children }: any) => <article>{children}</article>,
 }));
 
 vi.mock('./service', () => ({
@@ -514,6 +519,46 @@ describe('ScriptReviewPage', () => {
       status: 'SUCCEEDED',
       progress: 100,
     });
+  });
+
+  it('shows Markdown reports with copy and md download while hiding issue actions', async () => {
+    const markdownTask = {
+      id: 12,
+      projectId: 1,
+      scriptVersionId: 2,
+      roundNo: 3,
+      reviewMode: 'QUICK',
+      selectedDimensions: ['台词合理性'],
+      reviewScopeType: 'ALL',
+      reviewScope: {},
+      resultFormat: 'MARKDOWN',
+      reportMarkdown: '# 自定义审核\n\n|位置|建议|\n|---|---|\n|第1集|保留|',
+      status: 'COMPLETED',
+      overallProgress: 100,
+      issues: [],
+    };
+    mocks.queryReviewProject.mockResolvedValueOnce({
+      data: {
+        project: { id: 1, name: '审稿样例', sourceType: 'TEXT', currentVersionId: 2, lastTaskId: 12, status: 'ACTIVE', versionCount: 1, latestRoundNo: 3 },
+        versions: [{ id: 2, projectId: 1, versionNo: 1, sourceType: 'IMPORT', content: '第1集\n正文' }],
+        tasks: [markdownTask],
+      },
+    });
+    mocks.queryReviewTask.mockResolvedValueOnce({ data: markdownTask });
+    mocks.exportReviewReport.mockResolvedValue({ data: { fileName: 'report.md' } });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+
+    render(<ScriptReviewPage />);
+
+    expect(await screen.findByTestId('markdown-report-reader')).toHaveTextContent('自定义审核');
+    expect(screen.getByTestId('markdown-report-reader')).toHaveTextContent('第1集|保留');
+    expect(screen.queryByRole('button', { name: /未处理/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('问题详情')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '复制报告' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdownTask.reportMarkdown));
+    fireEvent.click(screen.getByRole('button', { name: '下载 .md' }));
+    await waitFor(() => expect(mocks.exportReviewReport).toHaveBeenCalledWith(1, 2, 'MARKDOWN', 12));
   });
 
   it('loads only the selected task on the dedicated task-detail route', async () => {

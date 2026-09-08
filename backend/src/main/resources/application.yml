@@ -139,3 +139,4 @@ review:
       dimensional-orchestration: ${REVIEW_WORKFLOW_DIMENSIONAL_ORCHESTRATION_ENABLED:false}
       semantic-review: ${REVIEW_WORKFLOW_SEMANTIC_REVIEW_ENABLED:false}
       anomaly-gate: ${REVIEW_WORKFLOW_ANOMALY_GATE_ENABLED:false}
+      markdown-reports: ${REVIEW_WORKFLOW_MARKDOWN_REPORTS_ENABLED:false}

@@ -627,18 +627,20 @@ public class ReviewWorkbenchService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewProjectEntity project = requireAccessibleProject(context, projectId, "PROJECT:VIEW");
         ReviewScriptVersionEntity version = requireVersion(context.tenantId(), projectId, request.versionId());
-        ReviewTaskEntity task = taskMapper.selectOne(new LambdaQueryWrapper<ReviewTaskEntity>()
+        LambdaQueryWrapper<ReviewTaskEntity> taskQuery = new LambdaQueryWrapper<ReviewTaskEntity>()
             .eq(ReviewTaskEntity::getTenantId, context.tenantId())
             .eq(ReviewTaskEntity::getProjectId, projectId)
-            .eq(ReviewTaskEntity::getScriptVersionId, version.getId())
-            .orderByDesc(ReviewTaskEntity::getRoundNo)
-            .last("limit 1"));
+            .eq(ReviewTaskEntity::getScriptVersionId, version.getId());
+        if (request.taskId() != null) taskQuery.eq(ReviewTaskEntity::getId, request.taskId());
+        else taskQuery.orderByDesc(ReviewTaskEntity::getRoundNo).last("limit 1");
+        ReviewTaskEntity task = taskMapper.selectOne(taskQuery);
         if (task == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "当前版本暂无审核记录。");
         }
 
         ReviewTaskResponse response = toTaskResponse(task, true);
-        String exportType = normalizeExportType(request.exportType());
+        String exportType = "MARKDOWN".equals(effectiveResultFormat(task))
+            ? "MARKDOWN" : normalizeExportType(request.exportType());
         String fileName = buildExportFileName(project.getName(), version.getVersionNo(), exportType);
         String text = buildExportDocument(project, version, response);
         try {
@@ -1158,6 +1160,8 @@ public class ReviewWorkbenchService {
             deserializeStringList(task.getSelectedDimensionsJson()),
             task.getReviewScopeType(),
             deserializeObject(task.getReviewScopeJson()),
+            effectiveResultFormat(task),
+            task.getReportMarkdown(),
             task.getStatus(),
             task.getCurrentStage(),
             task.getOverallProgress(),
@@ -1195,6 +1199,7 @@ public class ReviewWorkbenchService {
             .filter(issue -> !Boolean.TRUE.equals(issue.getManuallyResolved())).count();
         return new ReviewHistoryTaskResponse(task.getId(), task.getScriptVersionId(), task.getRoundNo(),
             task.getReviewMode(), deserializeStringList(task.getSelectedDimensionsJson()), task.getReviewScopeType(),
+            effectiveResultFormat(task), task.getReportMarkdown(),
             task.getStatus(), task.getOverallProgress(), issues.size(), outstandingIssueCount, task.getCreatedBy(),
             task.getCreatedAt(), task.getCompletedAt(), task.getCanceledAt(), task.getErrorMessage());
     }
@@ -1368,6 +1373,17 @@ public class ReviewWorkbenchService {
                 reviewState = "RUNNING";
                 actionLabel = "查看进度";
                 outstandingIssueCount = 0;
+            } else if ("MARKDOWN".equals(effectiveResultFormat(latestTask))
+                && "COMPLETED".equals(latestTask.getStatus())
+                && latestTask.getReportMarkdown() != null && !latestTask.getReportMarkdown().isBlank()) {
+                reviewState = "COMPLETED";
+                actionLabel = "查看报告";
+                outstandingIssueCount = 0;
+            } else if ("MARKDOWN".equals(effectiveResultFormat(latestTask))
+                && List.of("FAILED", "CANCELED").contains(latestTask.getStatus())) {
+                reviewState = "NOT_REVIEWED";
+                actionLabel = "重试审核";
+                outstandingIssueCount = 0;
             } else if (outstandingIssueCount > 0) {
                 reviewState = "ACTION_REQUIRED";
                 actionLabel = "处理问题";
@@ -1470,6 +1486,10 @@ public class ReviewWorkbenchService {
         task.setSelectedDimensionsJson(serialize(dimensions));
         task.setReviewScopeType(scopeType);
         task.setReviewScopeJson(scopeJson);
+        boolean markdownExecutable = "QUICK".equals(reviewMode) ? reviewQuickAgentAdapter.enabled()
+            : "DEEP".equals(reviewMode) && reviewDeepAgentCoordinator.enabled();
+        task.setResultFormat(reviewWorkflowFeatureFlags.markdownReports() && markdownExecutable
+            ? "MARKDOWN" : "STRUCTURED_JSON");
         task.setStatus("PENDING");
         task.setCurrentStage("GLOBAL_INDEX");
         task.setOverallProgress(0);
@@ -1478,6 +1498,11 @@ public class ReviewWorkbenchService {
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
         return task;
+    }
+
+    private String effectiveResultFormat(ReviewTaskEntity task) {
+        return task.getResultFormat() == null || task.getResultFormat().isBlank()
+            ? "STRUCTURED_JSON" : task.getResultFormat();
     }
 
     private ReviewScriptVersionEntity createVersion(
@@ -1713,6 +1738,9 @@ public class ReviewWorkbenchService {
     }
 
     private String buildExportDocument(ReviewProjectEntity project, ReviewScriptVersionEntity version, ReviewTaskResponse task) {
+        if ("MARKDOWN".equals(task.resultFormat())) {
+            return task.reportMarkdown() == null ? "" : task.reportMarkdown();
+        }
         StringBuilder builder = new StringBuilder();
         builder.append("# ").append(project.getName()).append("\n\n");
         builder.append("- 版本: ").append(version.getVersionNo()).append("\n");

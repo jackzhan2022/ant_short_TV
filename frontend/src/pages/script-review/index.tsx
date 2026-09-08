@@ -1,6 +1,7 @@
 import {
   AuditOutlined,
   CheckCircleOutlined,
+  CopyOutlined,
   DownloadOutlined,
   LockOutlined,
   ReloadOutlined,
@@ -8,6 +9,7 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
+import XMarkdown from '@ant-design/x-markdown';
 import {
   App,
   Button,
@@ -435,6 +437,7 @@ const ScriptReviewPage = () => {
       selectedProjectId,
       selectedVersionId,
       'MARKDOWN',
+      selectedTask?.id,
     );
     message.success(`导出记录已创建：${response.data?.fileName ?? '审核报告'}`);
     if (response.data?.downloadUrl) {
@@ -446,6 +449,12 @@ const ScriptReviewPage = () => {
     setIssueFilter(filter);
     const issues = filter === 'PENDING' ? visibleIssues : processedIssues;
     setSelectedIssueId(issues[0]?.id);
+  };
+
+  const copyMarkdownReport = async () => {
+    if (!selectedTask?.reportMarkdown) return;
+    await navigator.clipboard.writeText(selectedTask.reportMarkdown);
+    message.success('审核报告已复制');
   };
 
   return (
@@ -473,7 +482,7 @@ const ScriptReviewPage = () => {
             </Card>
           ) : (
             <Row gutter={[16, 16]}>
-              <Col xs={24} xl={5}>
+              {selectedTask?.resultFormat !== 'MARKDOWN' ? <Col xs={24} xl={5}>
                 <Card title="问题队列" loading={loading}>
                   {!selectedTask ? (
                     <Empty description="创建审核任务后显示问题队列" />
@@ -526,8 +535,8 @@ const ScriptReviewPage = () => {
                     </Space>
                   )}
                 </Card>
-              </Col>
-              <Col xs={24} xl={12}>
+              </Col> : null}
+              <Col xs={24} xl={selectedTask?.resultFormat === 'MARKDOWN' ? 17 : 12}>
               <Card
                 title={detail.project.name}
                 extra={
@@ -784,7 +793,7 @@ const ScriptReviewPage = () => {
               <Card
                 title={
                   <Space>
-                    <span>审核问题</span>
+                    <span>{selectedTask?.resultFormat === 'MARKDOWN' ? '审核报告' : '审核问题'}</span>
                     {selectedTask && (
                       <Tag color={statusColor(selectedTask.status)}>
                         {selectedTask.summary?.overallConclusion ??
@@ -797,6 +806,46 @@ const ScriptReviewPage = () => {
               >
                 {!selectedTask ? (
                   <Empty description="创建审核任务后，这里会显示问题卡" />
+                ) : selectedTask.resultFormat === 'MARKDOWN' ? (
+                  <Space vertical size="middle" style={{ width: '100%' }}>
+                    {selectedTask.status === 'FAILED' ? (
+                      <Typography.Paragraph type="danger">
+                        {selectedTask.errorMessage ?? '报告生成失败，可从任务卡片重试。'}
+                      </Typography.Paragraph>
+                    ) : null}
+                    <Space>
+                      <Button
+                        icon={<CopyOutlined />}
+                        disabled={!selectedTask.reportMarkdown}
+                        onClick={copyMarkdownReport}
+                      >
+                        复制报告
+                      </Button>
+                      <Button
+                        icon={<DownloadOutlined />}
+                        disabled={!selectedTask.reportMarkdown}
+                        onClick={exportReport}
+                      >
+                        下载 .md
+                      </Button>
+                    </Space>
+                    {selectedTask.reportMarkdown ? (
+                      <div
+                        data-testid="markdown-report-reader"
+                        style={{ maxHeight: '70vh', overflow: 'auto', paddingRight: 8 }}
+                      >
+                        <XMarkdown>{selectedTask.reportMarkdown}</XMarkdown>
+                      </div>
+                    ) : (
+                      <Empty
+                        description={
+                          selectedTask.status === 'COMPLETED'
+                            ? '报告内容为空'
+                            : '报告生成中'
+                        }
+                      />
+                    )}
+                  </Space>
                 ) : (
                   <Space vertical style={{ width: '100%' }}>
                     <Typography.Paragraph type="secondary">

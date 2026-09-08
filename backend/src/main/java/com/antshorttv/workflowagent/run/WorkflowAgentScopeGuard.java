@@ -143,6 +143,9 @@ public class WorkflowAgentScopeGuard {
                 "read_review_content", "save_review_semantic_decisions");
             case "DEEP_AGGREGATION" -> Set.of("read_review_context", "read_review_unit_results",
                 "read_review_content", "save_review_result");
+            case "MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD" -> Set.of(
+                "read_review_context", "read_review_content");
+            case "MARKDOWN_DEEP_AGGREGATION" -> Set.of();
             default -> Set.of();
         };
         if (!allowed.containsAll(toolCodes.stream().filter(REVIEW_TOOLS::contains).toList())) {
@@ -170,7 +173,7 @@ public class WorkflowAgentScopeGuard {
             input.tenantId(), input.userId());
         if (count == null || count != 1) throw invalid("审核任务、版本或执行身份不匹配。");
 
-        if ("QUICK".equals(scope.phase())) {
+        if ("QUICK".equals(scope.phase()) || "MARKDOWN_QUICK".equals(scope.phase())) {
             if (scope.snapshotId() != null || scope.unitId() != null) {
                 throw invalid("快速审核不得绑定深度审核快照或单元。");
             }
@@ -184,7 +187,7 @@ public class WorkflowAgentScopeGuard {
             """, Integer.class, scope.snapshotId(), input.tenantId(), scope.reviewProjectId(),
             input.taskId(), scope.versionId(), scope.attemptNo());
         if (snapshotCount == null || snapshotCount != 1) throw invalid("审核快照不属于当前任务。");
-        if ("DEEP_CHILD".equals(scope.phase())) {
+        if ("DEEP_CHILD".equals(scope.phase()) || "MARKDOWN_DEEP_CHILD".equals(scope.phase())) {
             if (scope.unitId() == null) throw invalid("子审核缺少冻结单元。");
             Integer unitCount = jdbc.queryForObject("""
                 select count(*) from review_fanout_unit where id = ? and snapshot_id = ?
