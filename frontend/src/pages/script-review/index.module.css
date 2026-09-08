@@ -1,0 +1,79 @@
+.workspace {
+  height: calc(100dvh - 144px);
+  min-height: 360px;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel > [class~="ant-card-head"] {
+  flex-shrink: 0;
+}
+
+.panel > [class~="ant-card-body"] {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.reader,
+.editor,
+.report {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor > textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  overflow: auto;
+}
+
+.editor > [class~="ant-space"] {
+  flex-shrink: 0;
+}
+
+.execution {
+  flex-shrink: 0;
+  max-height: 35%;
+  margin-top: 16px;
+  overflow: auto;
+}
+
+.report {
+  gap: 16px;
+}
+
+.queue {
+  flex-shrink: 0;
+  max-height: 30%;
+  margin-bottom: 16px;
+  overflow: auto;
+}
+
+@media (max-width: 767px) {
+  .workspace {
+    height: auto;
+  }
+
+  .column {
+    height: calc(100dvh - 144px);
+    min-height: 360px;
+  }
+}

@@ -9,7 +9,6 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import XMarkdown from '@ant-design/x-markdown';
 import {
   App,
   Button,
@@ -53,6 +52,8 @@ import {
 } from './service';
 
 import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from './dimensions';
+import ReportIssueList from './ReportIssueList';
+import styles from './index.module.css';
 
 const taskIdFromPath = () => {
   const match = window.location.pathname.match(/^\/script-review\/tasks\/(\d+)$/);
@@ -488,63 +489,10 @@ const ScriptReviewPage = () => {
               <Empty description="请选择或导入一个独立剧本" />
             </Card>
           ) : (
-            <Row gutter={[16, 16]}>
-              {selectedTask?.resultFormat !== 'MARKDOWN' ? <Col xs={24} xl={5}>
-                <Card title="问题队列" loading={loading}>
-                  {!selectedTask ? (
-                    <Empty description="创建审核任务后显示问题队列" />
-                  ) : (
-                    <Space vertical style={{ width: '100%' }}>
-                      <Space wrap>
-                        <Button
-                          type={issueFilter === 'PENDING' ? 'primary' : 'default'}
-                          onClick={() => selectIssueFilter('PENDING')}
-                        >
-                          未处理 ({visibleIssues.length})
-                        </Button>
-                        <Button
-                          type={issueFilter === 'PROCESSED' ? 'primary' : 'default'}
-                          onClick={() => selectIssueFilter('PROCESSED')}
-                        >
-                          已处理 ({processedIssues.length})
-                        </Button>
-                      </Space>
-                      <List
-                        size="small"
-                        dataSource={queueIssues}
-                        locale={{ emptyText: '当前筛选下没有问题' }}
-                        renderItem={(issue) => (
-                          <List.Item
-                            style={{
-                              cursor: 'pointer',
-                              background:
-                                issue.id === selectedIssueId
-                                  ? 'var(--app-color-primary-bg)'
-                                  : undefined,
-                            }}
-                            onClick={() => setSelectedIssueId(issue.id)}
-                          >
-                            <Space vertical size={0}>
-                              <Space wrap>
-                                <Tag color={statusColor(issue.severity)}>
-                                  {issue.issueNo}
-                                </Tag>
-                                <Tag>{issue.dimension}</Tag>
-                              </Space>
-                              <Typography.Text strong>{issue.title}</Typography.Text>
-                              <Typography.Text type="secondary">
-                                {issue.problem}
-                              </Typography.Text>
-                            </Space>
-                          </List.Item>
-                        )}
-                      />
-                    </Space>
-                  )}
-                </Card>
-              </Col> : null}
-              <Col xs={24} xl={selectedTask?.resultFormat === 'MARKDOWN' ? 17 : 12}>
+            <Row gutter={[16, 16]} className={styles.workspace}>
+              <Col xs={24} md={14} className={styles.column}>
               <Card
+                className={styles.panel}
                 title={detail.project.name}
                 extra={
                   <Space>
@@ -578,13 +526,20 @@ const ScriptReviewPage = () => {
                   </Space>
                 }
               >
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} xl={15}>
+                <div className={styles.reader}>
+                  <section aria-label="审核维度标签" style={{ marginBottom: 16 }}>
+                    <Space wrap size={[4, 8]}>
+                      {selectedTask?.selectedDimensions.map((dimension) => (
+                        <Tag key={dimension} color="blue">{dimension}</Tag>
+                      ))}
+                    </Space>
+                  </section>
+                  <div className={styles.editor}>
                     <Input.TextArea
                       ref={editorRef}
                       value={content}
                       onChange={(event) => setContent(event.target.value)}
-                      autoSize={{ minRows: 20, maxRows: 36 }}
+                      autoSize={false}
                       disabled={taskLocked}
                     />
                     <Space style={{ marginTop: 12 }}>
@@ -622,8 +577,9 @@ const ScriptReviewPage = () => {
                         还原当前版本
                       </Button>
                     </Space>
-                  </Col>
-                  <Col xs={24} xl={9}>
+                  </div>
+                  <details className={styles.execution}>
+                    <summary style={{ cursor: 'pointer' }}>执行详情</summary>
                     {activeExecution ? (
                       <div style={{ marginTop: 12 }}>
                         <AiExecutionStatus
@@ -791,16 +747,71 @@ const ScriptReviewPage = () => {
                         </div>
                       </Card>
                     ))}
-                  </Col>
-                </Row>
+                  </details>
+                </div>
               </Card>
               </Col>
 
-              <Col xs={24} xl={7}>
+              <Col xs={24} md={10} className={styles.column}>
+              {selectedTask?.resultFormat !== 'MARKDOWN' ? <div className={styles.queue}>
+                <Card title="问题队列" loading={loading}>
+                  {!selectedTask ? (
+                    <Empty description="创建审核任务后显示问题队列" />
+                  ) : (
+                    <Space vertical style={{ width: '100%' }}>
+                      <Space wrap>
+                        <Button
+                          type={issueFilter === 'PENDING' ? 'primary' : 'default'}
+                          onClick={() => selectIssueFilter('PENDING')}
+                        >
+                          未处理 ({visibleIssues.length})
+                        </Button>
+                        <Button
+                          type={issueFilter === 'PROCESSED' ? 'primary' : 'default'}
+                          onClick={() => selectIssueFilter('PROCESSED')}
+                        >
+                          已处理 ({processedIssues.length})
+                        </Button>
+                      </Space>
+                      <List
+                        size="small"
+                        dataSource={queueIssues}
+                        locale={{ emptyText: '当前筛选下没有问题' }}
+                        renderItem={(issue) => (
+                          <List.Item
+                            style={{
+                              cursor: 'pointer',
+                              background:
+                                issue.id === selectedIssueId
+                                  ? 'var(--app-color-primary-bg)'
+                                  : undefined,
+                            }}
+                            onClick={() => setSelectedIssueId(issue.id)}
+                          >
+                            <Space vertical size={0}>
+                              <Space wrap>
+                                <Tag color={statusColor(issue.severity)}>
+                                  {issue.issueNo}
+                                </Tag>
+                                <Tag>{issue.dimension}</Tag>
+                              </Space>
+                              <Typography.Text strong>{issue.title}</Typography.Text>
+                              <Typography.Text type="secondary">
+                                {issue.problem}
+                              </Typography.Text>
+                            </Space>
+                          </List.Item>
+                        )}
+                      />
+                    </Space>
+                  )}
+                </Card>
+              </div> : null}
               <Card
+                className={styles.panel}
                 title={
                   <Space>
-                    <span>{selectedTask?.resultFormat === 'MARKDOWN' ? '审核报告' : '审核问题'}</span>
+                    <span>审核问题</span>
                     {selectedTask && (
                       <Tag color={statusColor(selectedTask.status)}>
                         {selectedTask.summary?.overallConclusion ??
@@ -814,7 +825,7 @@ const ScriptReviewPage = () => {
                 {!selectedTask ? (
                   <Empty description="创建审核任务后，这里会显示问题卡" />
                 ) : selectedTask.resultFormat === 'MARKDOWN' ? (
-                  <Space vertical size="middle" style={{ width: '100%' }}>
+                  <div className={styles.report}>
                     {selectedTask.status === 'FAILED' ? (
                       <Typography.Paragraph type="danger">
                         {selectedTask.errorMessage ?? '报告生成失败，可从任务卡片重试。'}
@@ -837,12 +848,7 @@ const ScriptReviewPage = () => {
                       </Button>
                     </Space>
                     {selectedTask.reportMarkdown ? (
-                      <div
-                        data-testid="markdown-report-reader"
-                        style={{ maxHeight: '70vh', overflow: 'auto', paddingRight: 8 }}
-                      >
-                        <XMarkdown>{selectedTask.reportMarkdown}</XMarkdown>
-                      </div>
+                      <ReportIssueList markdown={selectedTask.reportMarkdown} />
                     ) : (
                       <Empty
                         description={
@@ -852,7 +858,7 @@ const ScriptReviewPage = () => {
                         }
                       />
                     )}
-                  </Space>
+                  </div>
                 ) : (
                   <Space vertical style={{ width: '100%' }}>
                     <Typography.Paragraph type="secondary">

@@ -573,6 +573,25 @@ describe('ScriptReviewPage', () => {
     downloadClick.mockRestore();
   });
 
+  it('shows a completed task report as right-side findings when structured issues are empty', async () => {
+    window.history.replaceState({}, '', '/script-review/tasks/30');
+    mocks.queryReviewTask.mockResolvedValue({ data: {
+      id: 30, projectId: 9, scriptVersionId: 9, roundNo: 1, reviewMode: 'DEEP', selectedDimensions: ['人物动机', '台词合理性'], reviewScopeType: 'ALL', reviewScope: {}, status: 'COMPLETED', overallProgress: 100, issues: [],
+      resultFormat: 'MARKDOWN',
+      reportMarkdown: '## 二、合并后的主要问题\n### 1. 角色转折缺少铺垫\n建议补充转折动机\n### 2. 字幕名称不一致\n建议统一译名\n## 三、各维度审核结论\n审核总结',
+      boundVersion: { id: 9, projectId: 9, versionNo: 1, sourceType: 'IMPORT', content: '剧本原文仍然可读' },
+    } });
+    render(<ScriptReviewPage />);
+    expect(await screen.findByRole('list', { name: '审核问题列表' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '1. 角色转折缺少铺垫' })).toBeVisible();
+    expect(screen.getByText('共 2 项问题')).toBeVisible();
+    expect(screen.getByText('剧本原文仍然可读')).toBeVisible();
+    expect(screen.getByRole('region', { name: '审核维度标签' })).toHaveTextContent('人物动机');
+    expect(screen.getByRole('region', { name: '审核维度标签' })).toHaveTextContent('台词合理性');
+    expect(screen.getByText('执行详情').closest('details')).not.toHaveAttribute('open');
+    expect(mocks.createReviewTask).not.toHaveBeenCalled();
+  });
+
   it('loads only the selected task on the dedicated task-detail route', async () => {
     window.history.replaceState({}, '', '/script-review/tasks/7');
     mocks.queryReviewTask.mockResolvedValue({ data: {
