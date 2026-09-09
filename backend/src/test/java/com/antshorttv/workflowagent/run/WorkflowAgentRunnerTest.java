@@ -868,6 +868,9 @@ class WorkflowAgentRunnerTest {
             .extracting(com.antshorttv.ai.AiToolDefinition::code)
             .containsExactly("read_script_structure", "analyze_script_chunks", "save_episode_splitting");
         assertThat(requests.getAllValues()).allSatisfy(request ->
+            assertThat(request.textRequest().messages().get(0).content())
+                .contains("startSegmentId", "schemaVersion=2"));
+        assertThat(requests.getAllValues()).allSatisfy(request ->
             assertThat(request.textRequest().thinkingMode()).isEqualTo("disabled"));
     }
 

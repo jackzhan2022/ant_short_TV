@@ -20,6 +20,56 @@ import org.assertj.core.api.Assertions;
 
 class ScriptSplitChunkAnalyzerTest {
     @Test
+    void segmentCandidateKeepsLongLinePreviewBounded() {
+        String source = "中".repeat(1999) + "🧜" + "中".repeat(88000);
+        ScriptSplitSnapshotStore store = mock(ScriptSplitSnapshotStore.class);
+        when(store.require(21L)).thenReturn(new ScriptSplitSnapshotStore.SplitSnapshot(
+            21, 121, "hash", "CHUNK_FALLBACK", "CONTEXT_PREFLIGHT", "RUNNING", 1, 0, 0));
+        when(store.successfulChunks(21L)).thenReturn(List.of());
+        when(store.retryableChunks(21L)).thenReturn(List.of(
+            new ScriptSplitSnapshotStore.SplitChunk(
+                1, 21, 1, 0, 24000, 0, 24000, "hash", "PENDING", null, null)));
+        AiInvocationService invocation = mock(AiInvocationService.class);
+        when(invocation.invokeText(any())).thenReturn(
+            result("{\"candidates\":[{\"segmentId\":\"S0001\"}]}", 16));
+        var analyzer = new ScriptSplitChunkAnalyzer(
+            store, id -> source, invocation, new ObjectMapper(), new WorkflowAgentProperties());
+        var analyzed = analyzer.analyze(
+            new ScriptSplitChunkAnalyzer.AnalysisContext(1, 2, 3, null, 7, 121), 21);
+        assertThat(analyzed.candidates()).singleElement().satisfies(candidate -> {
+            assertThat(candidate.absoluteOffset()).isZero();
+            assertThat(candidate.marker()).hasSizeLessThanOrEqualTo(2000);
+            assertThat(Character.isHighSurrogate(candidate.marker().charAt(candidate.marker().length() - 1)))
+                .isFalse();
+        });
+    }
+
+    @Test
+    void acceptsGlobalSegmentIdInsteadOfCopyingRepeatedMarkerText() {
+        String source = "【黑场转场】\n【黑场转场】";
+        ScriptSplitSnapshotStore store = mock(ScriptSplitSnapshotStore.class);
+        when(store.require(20L)).thenReturn(new ScriptSplitSnapshotStore.SplitSnapshot(
+            20, 120, "hash", "CHUNK_FALLBACK", "OUTPUT_TRUNCATED", "RUNNING", 1, 0, 0));
+        when(store.successfulChunks(20L)).thenReturn(List.of());
+        when(store.retryableChunks(20L)).thenReturn(List.of(
+            new ScriptSplitSnapshotStore.SplitChunk(
+                1, 20, 1, 0, source.length(), 0, source.length(), "hash", "PENDING", null, null)));
+        AiInvocationService invocation = mock(AiInvocationService.class);
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            String prompt = call.<com.antshorttv.ai.AiInvocationRequest>getArgument(0)
+                .textRequest().messages().get(1).content();
+            assertThat(prompt).contains("[S0001]", "[S0002]");
+            return result("{\"candidates\":[{\"segmentId\":\"S0002\",\"type\":\"TURN\"}]}", 15);
+        });
+        var analyzer = new ScriptSplitChunkAnalyzer(
+            store, id -> source, invocation, new ObjectMapper(), new WorkflowAgentProperties());
+        var analyzed = analyzer.analyze(
+            new ScriptSplitChunkAnalyzer.AnalysisContext(1, 2, 3, null, 7, 120), 20);
+        assertThat(analyzed.candidates()).singleElement().satisfies(candidate ->
+            assertThat(candidate.absoluteOffset()).isEqualTo(source.indexOf('\n') + 1));
+    }
+
+    @Test
     void verifiesAbsoluteMarkersDeduplicatesOverlapAndBoundsConcurrency() {
         String source = "A".repeat(20) + "边界一" + "B".repeat(20) + "边界二" + "C".repeat(20);
         ScriptSplitSnapshotStore store = mock(ScriptSplitSnapshotStore.class);

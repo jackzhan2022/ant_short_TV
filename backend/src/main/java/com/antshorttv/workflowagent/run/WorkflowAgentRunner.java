@@ -1,5 +1,7 @@
 package com.antshorttv.workflowagent.run;
 
+import com.antshorttv.script.ScriptSourceSegmentIndex;
+
 import com.antshorttv.ai.AiChatMessage;
 import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.ai.AiInvocationRequest;
@@ -240,6 +242,10 @@ public class WorkflowAgentRunner {
     ) {
         WorkflowToolRunState runState = new WorkflowToolRunState();
         boolean splitting = EpisodeSplittingRunPolicy.AGENT_CODE.equals(agent.code());
+        if (splitting) {
+            runState.put(ScriptSourceSegmentIndex.RUN_STATE_KEY, true);
+            prompt = prompt + "\n" + ScriptSourceSegmentIndex.INSTRUCTION;
+        }
         if (splitting && splitPolicy != null) {
             splitPolicy.preflight(input).ifPresent(reason ->
                 runState.beginSplitFallback(reason.name()));

@@ -11,6 +11,18 @@ import org.junit.jupiter.api.Test;
 
 class EpisodeSplittingRunPolicyTest {
     @Test
+    void preflightIncludesSegmentLabelsForManyShortLines() {
+        WorkflowAgentProperties properties = new WorkflowAgentProperties();
+        properties.setSplitSafeContextTokens(100);
+        properties.setSplitPromptReserveTokens(0);
+        properties.setSplitToolReserveTokens(0);
+        EpisodeSplittingRunPolicy policy = new EpisodeSplittingRunPolicy(
+            properties, input -> "A\n".repeat(100));
+        assertThat(policy.preflight(new WorkflowAgentRunInput(
+            "short-drama-episode-splitting", "split", 1L, 2L, null, 3L,
+            null, null, 4L))).contains(EpisodeSplittingRunPolicy.FallbackReason.CONTEXT_PREFLIGHT);
+    }
+    @Test
     void classifiesOnlyCapacityAndIncompleteCallOutcomesForFallback() {
         EpisodeSplittingRunPolicy policy = new EpisodeSplittingRunPolicy(
             new WorkflowAgentProperties(), input -> "source");

@@ -1,5 +1,7 @@
 package com.antshorttv.workflowagent.tool;
 
+import com.antshorttv.script.ScriptSourceSegmentIndex;
+
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.rbac.ProjectPermissionGuard;
@@ -241,6 +243,12 @@ public class ScreenplayToolDataService {
         updateAnalysisProgress(context, analyzing.percent(), analyzing.action());
         ObjectNode result = json.createObjectNode();
         result.put("content", content);
+        if (Boolean.TRUE.equals(context.runState().get(ScriptSourceSegmentIndex.RUN_STATE_KEY, Boolean.class))) {
+            ScriptSourceSegmentIndex index = new ScriptSourceSegmentIndex(content);
+            result.put("content", index.numberedContent());
+            result.put("contentFormat", ScriptSourceSegmentIndex.FORMAT);
+            result.put("segmentCount", index.segments().size());
+        }
         result.put("contentHash", hash);
         Object updatedAt = rows.get(0).get("updated_at");
         if (updatedAt == null) {
@@ -307,6 +315,7 @@ public class ScreenplayToolDataService {
                 value.put("signal", anchor.signal());
             }
         }
+        addSplitSegmentReferences(result, source);
         return result;
     }
 
@@ -331,12 +340,34 @@ public class ScreenplayToolDataService {
             context.runState().put("trustedSplitBoundaries", trusted);
             result.set("recommendedEpisodes", trusted);
         });
+        addSplitSegmentReferences(result, source);
         int bytes = result.toString().getBytes(StandardCharsets.UTF_8).length;
         if (bytes > workflowAgentProperties.getMaxLogPayloadBytes()) {
             throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
                 "分块候选结果超过安全日志上限。");
         }
         return result;
+    }
+
+    private void addSplitSegmentReferences(ObjectNode result, String source) {
+        ScriptSourceSegmentIndex index = new ScriptSourceSegmentIndex(source);
+        ObjectNode catalog = result.putObject("segmentCatalog");
+        catalog.put("segmentCount", index.segments().size());
+        if (!index.segments().isEmpty()) {
+            catalog.put("firstSegmentId", index.segments().get(0).id());
+            catalog.put("lastSegmentId", index.segments().get(index.segments().size() - 1).id());
+        }
+        for (String field : List.of("candidates", "anchors")) {
+            for (JsonNode item : result.path(field)) {
+                int offset = item.has("absoluteOffset")
+                    ? item.path("absoluteOffset").asInt(-1) : item.path("offset").asInt(-1);
+                var reference = index.referenceAt(offset);
+                if (reference != null && item instanceof ObjectNode node) {
+                    node.put("startSegmentId", reference.startSegmentId());
+                    node.put("previousSegmentId", reference.previousSegmentId());
+                }
+            }
+        }
     }
 
     public JsonNode readCurrentEpisode(ToolExecutionContext context) {
@@ -590,19 +621,38 @@ public class ScreenplayToolDataService {
                 "剧本在分集过程中发生变化，请重新读取后再分析。");
         }
         JsonNode effectiveBoundaries = episodeBoundaries;
-        if ("CHUNK_FALLBACK".equals(context.runState().splitMode())) {
+        if (schemaVersion == 1 && "CHUNK_FALLBACK".equals(context.runState().splitMode())) {
             try {
                 effectiveBoundaries = context.runState().require("trustedSplitBoundaries", JsonNode.class);
             } catch (IllegalStateException ignored) {
                 // Heading-free scripts continue to use the model-selected verified candidates.
             }
         }
-        List<EpisodeSplitBoundaryResolver.Boundary> boundaries = new java.util.ArrayList<>();
-        effectiveBoundaries.forEach(item -> boundaries.add(new EpisodeSplitBoundaryResolver.Boundary(
-            item.path("title").asText(), item.path("startMarker").asText(), item.path("endMarker").asText())));
         List<ScriptEpisodeResponse> extracted;
         try {
-            extracted = splitBoundaryResolver.resolve(source, boundaries);
+            if (schemaVersion == 2) {
+                List<ScriptSourceSegmentIndex.Range> ranges = new java.util.ArrayList<>();
+                effectiveBoundaries.forEach(item -> {
+                    if (item.has("startMarker") || item.has("endMarker")) {
+                        throw new IllegalArgumentException("分集 Schema v2 仅接受片段编号，不接受文本边界。");
+                    }
+                    ranges.add(new ScriptSourceSegmentIndex.Range(item.path("title").asText(),
+                        item.path("startSegmentId").asText(), item.path("endSegmentId").asText()));
+                });
+                extracted = new ScriptSourceSegmentIndex(source).resolve(ranges);
+            } else if (schemaVersion == 1) {
+                List<EpisodeSplitBoundaryResolver.Boundary> boundaries = new java.util.ArrayList<>();
+                effectiveBoundaries.forEach(item -> {
+                    if (item.has("startSegmentId") || item.has("endSegmentId")) {
+                        throw new IllegalArgumentException("片段编号必须使用分集 Schema v2。");
+                    }
+                    boundaries.add(new EpisodeSplitBoundaryResolver.Boundary(
+                        item.path("title").asText(), item.path("startMarker").asText(), item.path("endMarker").asText()));
+                });
+                extracted = splitBoundaryResolver.resolve(source, boundaries);
+            } else {
+                throw new IllegalArgumentException("不支持的分集 Schema 版本。");
+            }
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, exception.getMessage());
         }

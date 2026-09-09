@@ -169,6 +169,13 @@ class ScreenplayToolDataServiceTest {
         assertThat(result.path("contentHash").asText()).isNotBlank();
         assertThat(result.path("snapshotKey").asText()).isNotBlank();
         assertThat(result.path("totalChunks").asInt()).isGreaterThan(1);
+        schemaValidator.validate(registry.require("read_script_structure").outputSchema(), result);
+        assertThat(result.path("segmentCatalog").path("firstSegmentId").asText()).isEqualTo("S0001");
+        assertThat(result.path("segmentCatalog").path("lastSegmentId").asText()).isEqualTo("S0004");
+        assertThat(result.path("anchors")).anySatisfy(anchor -> {
+            assertThat(anchor.path("startSegmentId").asText()).isEqualTo("S0003");
+            assertThat(anchor.path("previousSegmentId").asText()).isEqualTo("S0002");
+        });
         assertThat(result.toString()).doesNotContain(source);
         assertThat(scoped.runState().require("splitSnapshotId", Long.class)).isPositive();
         assertThat(scoped.runState().require("currentScriptHash", String.class))
@@ -702,6 +709,51 @@ class ScreenplayToolDataServiceTest {
             select content from script_episode
              where script_id = ? and status = 'ACTIVE' and retired_at is null order by episode_no
             """, String.class, scriptId))).isEqualTo(source);
+    }
+
+    @Test
+    void splittingReadAndV2SaveUseDistinctSegmentIdsForRepeatedText() throws Exception {
+        String source = "\r\n【黑场转场】\r\n\r\n【黑场转场】\r\n";
+        jdbc.update("update script set content = ? where id = ?", source, scriptId);
+        ToolExecutionContext splitContext = scriptContext();
+        splitContext.runState().put("scriptSegmentProtocol", true);
+        JsonNode read = service.readCurrentScript(splitContext);
+        schemaValidator.validate(registry.require("read_current_script").outputSchema(), read);
+        assertThat(read.path("contentFormat").asText()).isEqualTo("SEGMENTED_V1");
+        assertThat(read.path("content").asText()).contains("[S0001]", "[S0002]");
+        assertThat(service.readCurrentScript(scriptContext()).path("content").asText()).isEqualTo(source);
+
+        JsonNode input = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":2,"episodes":[
+              {"title":"开场","startSegmentId":"S0001","endSegmentId":"S0001"},
+              {"title":"尾声","startSegmentId":"S0002","endSegmentId":"S0002"}]}
+            """);
+        schemaValidator.validate(registry.require("save_episode_splitting").inputSchema(), input);
+        JsonNode saved = service.saveEpisodeSplitting(splitContext, 2, input.path("episodes"));
+        assertThat(saved.path("episodeCount").asInt()).isEqualTo(2);
+        assertThat(String.join("", jdbc.queryForList("""
+            select content from script_episode where script_id = ? and status = 'ACTIVE'
+              and retired_at is null order by episode_no
+            """, String.class, scriptId))).isEqualTo(source);
+        jdbc.update("update script set content = ? where id = ?", source + "变更", scriptId);
+        assertThatThrownBy(() -> service.saveEpisodeSplitting(splitContext, 2, input.path("episodes")))
+            .hasMessageContaining("发生变化");
+    }
+
+    @Test
+    void segmentSaveRejectsGapsBeforeChangingFormalEpisodes() throws Exception {
+        jdbc.update("update script set content = 'A\nB\nC' where id = ?", scriptId);
+        ToolExecutionContext splitContext = scriptContext();
+        service.readCurrentScript(splitContext);
+        JsonNode ranges = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            [{"title":"漏段","startSegmentId":"S0002","endSegmentId":"S0003"}]
+            """);
+        assertThatThrownBy(() -> service.saveEpisodeSplitting(splitContext, 2, ranges))
+            .hasMessageContaining("连续覆盖");
+        assertThat(jdbc.queryForObject("""
+            select count(*) from script_episode where script_id = ? and status = 'ACTIVE'
+              and retired_at is null
+            """, Integer.class, scriptId)).isEqualTo(3);
     }
 
     @Test

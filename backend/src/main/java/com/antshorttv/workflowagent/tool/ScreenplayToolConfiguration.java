@@ -65,6 +65,8 @@ public class ScreenplayToolConfiguration {
         ObjectNode fields = (ObjectNode) output.path("properties");
         fields.putObject("content").put("type", "string");
         fields.putObject("contentHash").put("type", "string");
+        fields.putObject("contentFormat").put("type", "string").putArray("enum").add("SEGMENTED_V1");
+        fields.putObject("segmentCount").put("type", "integer").put("minimum", 0);
         fields.set("updatedAt", nullableType(json, "string"));
         return definition("read_current_script", "读取当前剧本", "读取可信作用域中的当前剧本正文。",
             emptyInput(json), output, ToolRiskLevel.READ_ONLY,
@@ -79,6 +81,7 @@ public class ScreenplayToolConfiguration {
         ObjectNode fields = (ObjectNode) output.path("properties");
         fields.putObject("contentHash").put("type", "string");
         fields.putObject("snapshotKey").put("type", "string");
+        fields.putObject("segmentCatalog").put("type", "object");
         fields.putObject("totalChunks").put("type", "integer").put("minimum", 0);
         fields.putObject("chunks").put("type", "array")
             .putObject("items").put("type", "object");
@@ -103,6 +106,7 @@ public class ScreenplayToolConfiguration {
             fields.putObject(name).put("type", "array");
         }
         fields.putObject("recommendedEpisodes").put("type", "array");
+        fields.putObject("segmentCatalog").put("type", "object");
         return definition("analyze_script_chunks", "分析剧本分块",
             "分析已建立的可信剧本分块并返回紧凑边界候选。",
             emptyInput(json), output, ToolRiskLevel.READ_ONLY,
@@ -219,19 +223,25 @@ public class ScreenplayToolConfiguration {
 
     private ObjectNode episodeSplittingInput(ObjectMapper json) {
         ObjectNode schema = objectSchema(json);
+        schema.put("description", "推荐 schemaVersion=2：每集提交 title、startSegmentId、endSegmentId，"
+            + "首尾编号均包含，必须连续覆盖全文。schemaVersion=1 仅兼容旧文本边界。两种字段不得混用。");
         schema.putArray("required").add("schemaVersion").add("episodes");
         ObjectNode fields = (ObjectNode) schema.path("properties");
-        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 1).put("maximum", 1);
+        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 1).put("maximum", 2);
         ObjectNode episodes = fields.putObject("episodes").put("type", "array")
             .put("minItems", 1).put("maxItems", 500);
         ObjectNode item = objectSchema(json);
-        item.putArray("required").add("title").add("startMarker").add("endMarker");
+        item.putArray("required").add("title");
         ObjectNode itemFields = (ObjectNode) item.path("properties");
         itemFields.putObject("title").put("type", "string").put("minLength", 1).put("maxLength", 200);
         itemFields.putObject("startMarker").put("type", "string").put("minLength", 1)
             .put("maxLength", 2000);
         itemFields.putObject("endMarker").put("type", "string").put("minLength", 1)
             .put("maxLength", 2000);
+        itemFields.putObject("startSegmentId").put("type", "string").put("pattern", "^S\\d{4,}$")
+            .put("maxLength", 16);
+        itemFields.putObject("endSegmentId").put("type", "string").put("pattern", "^S\\d{4,}$")
+            .put("maxLength", 16);
         episodes.set("items", item);
         return schema;
     }

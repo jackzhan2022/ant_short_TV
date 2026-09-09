@@ -27,9 +27,10 @@ import org.springframework.stereotype.Component;
 public class ScriptSplitChunkAnalyzer {
     private static final String SYSTEM_PROMPT = """
         你只分析一个短剧剧本处理分块，静默判断潜在分集边界。
-        仅输出 JSON：{"candidates":[{"marker":"连续原文","localOffset":0,
+        正文带整剧全局编号 [S0001]；只引用编号，不要抄写原文或计算字符位置。
+        仅输出 JSON：{"candidates":[{"segmentId":"S0001",
         "type":"TURN","rationale":"简短理由","confidence":0.0}]}。
-        localOffset 是 marker 在本分块文本中的 UTF-16 起始位置；不得改写 marker。
+        segmentId 必须来自本分块显示的编号，表示该片段开始处的候选分集边界。
         """;
 
     private final ScriptSplitSnapshotStore store;
@@ -132,7 +133,8 @@ public class ScriptSplitChunkAnalyzer {
         ScriptSplitSnapshotStore.SplitChunk chunk
     ) {
         try {
-            String body = source.substring(chunk.contextStart(), chunk.contextEnd());
+            String body = new ScriptSourceSegmentIndex(source)
+                .numberedContent(chunk.contextStart(), chunk.contextEnd());
             String prompt = "chunkNo=" + chunk.chunkNo() + "\ncontextStart=" + chunk.contextStart()
                 + "\n分块正文：\n" + body;
             AiInvocationResult<AiTextResponse> result = invocation.invokeText(AiInvocationRequest.text()
@@ -171,9 +173,27 @@ public class ScriptSplitChunkAnalyzer {
             JsonNode root = json.readTree(content == null ? "" : content);
             if (!root.path("candidates").isArray()) throw new IllegalArgumentException("候选数组缺失。");
             List<BoundaryCandidate> result = new ArrayList<>();
+            ScriptSourceSegmentIndex segmentIndex = new ScriptSourceSegmentIndex(source);
             String body = source.substring(chunk.contextStart(), chunk.contextEnd());
             for (JsonNode item : root.path("candidates")) {
                 try {
+                    if (item.has("segmentId")) {
+                        var segment = segmentIndex.require(item.path("segmentId").asText());
+                        if (segment.startOffset() < chunk.contextStart()
+                            || segment.startOffset() >= chunk.contextEnd()) {
+                            throw new IllegalArgumentException("候选片段不属于当前分块。");
+                        }
+                        int previewEnd = Math.min(segment.endOffset(),
+                            Math.min(chunk.contextEnd(), segment.startOffset() + 2000));
+                        if (previewEnd > segment.startOffset()
+                            && Character.isHighSurrogate(source.charAt(previewEnd - 1))) previewEnd--;
+                        String preview = source.substring(segment.startOffset(), previewEnd);
+                        result.add(new BoundaryCandidate(preview, segment.startOffset(),
+                            item.path("type").asText("UNKNOWN"), item.path("rationale").asText(""),
+                            Math.max(0, Math.min(1, item.path("confidence").asDouble(0))),
+                            List.of(chunk.chunkNo())));
+                        continue;
+                    }
                     String marker = item.path("marker").asText();
                     int localOffset = item.path("localOffset").asInt(-1);
                     if (marker.isBlank() || marker.length() > 2000 || localOffset < 0) {

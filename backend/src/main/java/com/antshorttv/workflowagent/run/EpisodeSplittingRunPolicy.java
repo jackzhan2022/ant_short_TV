@@ -1,6 +1,7 @@
 package com.antshorttv.workflowagent.run;
 
 import com.antshorttv.ai.AiTextResponse;
+import com.antshorttv.script.ScriptSourceSegmentIndex;
 import com.antshorttv.workflowagent.WorkflowAgentProperties;
 import com.antshorttv.workflowagent.tool.WorkflowToolRunState;
 import java.nio.charset.StandardCharsets;
@@ -30,7 +31,7 @@ public class EpisodeSplittingRunPolicy {
 
     public Optional<FallbackReason> preflight(WorkflowAgentRunInput input) {
         if (!AGENT_CODE.equals(input.agentCode()) || input.scriptId() == null) return Optional.empty();
-        String source = sourceReader.read(input);
+        String source = new ScriptSourceSegmentIndex(sourceReader.read(input)).numberedContent();
         long estimated = (long) Math.ceil(source.getBytes(StandardCharsets.UTF_8).length / 3.0)
             + properties.getSplitPromptReserveTokens() + properties.getSplitToolReserveTokens();
         return estimated > properties.getSplitSafeContextTokens()
