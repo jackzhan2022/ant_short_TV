@@ -86,6 +86,12 @@ ai:
     max-skill-file-bytes: ${AI_WORKFLOW_MAX_SKILL_FILE_BYTES:1048576}
     max-steps: ${AI_WORKFLOW_MAX_STEPS:20}
     run-timeout-seconds: ${AI_WORKFLOW_RUN_TIMEOUT_SECONDS:300}
+    episode-summary-run-timeout-seconds: ${AI_WORKFLOW_EPISODE_SUMMARY_RUN_TIMEOUT_SECONDS:300}
+    episode-summary-request-timeout-seconds: ${AI_WORKFLOW_EPISODE_SUMMARY_REQUEST_TIMEOUT_SECONDS:300}
+    asset-recognition-run-timeout-seconds: ${AI_WORKFLOW_ASSET_RECOGNITION_RUN_TIMEOUT_SECONDS:300}
+    asset-recognition-request-timeout-seconds: ${AI_WORKFLOW_ASSET_RECOGNITION_REQUEST_TIMEOUT_SECONDS:300}
+    storyboard-run-timeout-seconds: ${AI_WORKFLOW_STORYBOARD_RUN_TIMEOUT_SECONDS:300}
+    storyboard-request-timeout-seconds: ${AI_WORKFLOW_STORYBOARD_REQUEST_TIMEOUT_SECONDS:300}
     review-semantic-max-steps: ${AI_WORKFLOW_REVIEW_SEMANTIC_MAX_STEPS:96}
     review-semantic-run-timeout-seconds: ${AI_WORKFLOW_REVIEW_SEMANTIC_RUN_TIMEOUT_SECONDS:1800}
     max-log-payload-bytes: ${AI_WORKFLOW_MAX_LOG_PAYLOAD_BYTES:262144}
@@ -101,6 +107,10 @@ ai:
     episode-splitting-enabled: ${AI_WORKFLOW_EPISODE_SPLITTING_ENABLED:false}
     episode-summary-enabled: ${AI_WORKFLOW_EPISODE_SUMMARY_ENABLED:false}
     asset-recognition-enabled: ${AI_WORKFLOW_ASSET_RECOGNITION_ENABLED:false}
+    episode-context-pipeline-enabled: ${AI_WORKFLOW_EPISODE_CONTEXT_PIPELINE_ENABLED:false}
+    auto-storyboard-enabled: ${AI_WORKFLOW_AUTO_STORYBOARD_ENABLED:false}
+    auto-storyboard-dispatch-delay-ms: ${AI_WORKFLOW_AUTO_STORYBOARD_DISPATCH_DELAY_MS:3000}
+    auto-storyboard-stale-dispatch-seconds: ${AI_WORKFLOW_AUTO_STORYBOARD_STALE_DISPATCH_SECONDS:120}
     storyboard-enabled: ${AI_WORKFLOW_STORYBOARD_ENABLED:false}
     review-bootstrap-enabled: ${AI_WORKFLOW_REVIEW_BOOTSTRAP_ENABLED:true}
     review-quick-enabled: ${AI_WORKFLOW_REVIEW_QUICK_ENABLED:false}
@@ -116,6 +126,7 @@ ai:
     claim-timeout: ${AI_EXECUTION_CLAIM_TIMEOUT:PT10M}
     heartbeat-interval: ${AI_EXECUTION_HEARTBEAT_INTERVAL:PT1M}
     max-concurrent-per-tenant: ${AI_EXECUTION_MAX_CONCURRENT_PER_TENANT:5}
+    max-concurrent-per-model: ${AI_EXECUTION_MAX_CONCURRENT_PER_MODEL:4}
     worker-threads: ${AI_EXECUTION_WORKER_THREADS:4}
     queue-capacity: ${AI_EXECUTION_QUEUE_CAPACITY:100}
   video:

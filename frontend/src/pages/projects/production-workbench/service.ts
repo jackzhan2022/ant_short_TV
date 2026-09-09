@@ -358,11 +358,45 @@ export type EpisodeFanoutProgress = {
   retryable: boolean;
   stale: boolean;
   units: EpisodeFanoutUnit[];
+  cache?: {
+    knownCalls: number;
+    unknownCalls: number;
+    promptTokens?: number | null;
+    cachedInputTokens?: number | null;
+    hitRate?: number | null;
+  } | null;
+  timing?: {
+    queueMs?: number | null;
+    preparationMs?: number | null;
+    modelMs?: number | null;
+    validationSaveMs?: number | null;
+    totalMs?: number | null;
+    firstByteMs?: number | null;
+  } | null;
+};
+
+export type EpisodePipelineStatus = {
+  episodeId: number;
+  episodeKey: string;
+  episodeNo: number;
+  summaryStatus: string;
+  summaryRunId?: number | null;
+  summaryError?: string | null;
+  recognitionStatus: string;
+  recognitionRunId?: number | null;
+  recognitionError?: string | null;
+  storyboardStatus?: string | null;
+  storyboardExecutionId?: number | null;
+  storyboardId?: number | null;
+  storyboardError?: string | null;
+  autoTriggered: boolean;
+  protectedExisting: boolean;
 };
 
 export type ScriptAnalysisTask = {
   id: number;
   scriptVersionId: number;
+  pipelineVersion?: string | null;
   status: string;
   currentStage?: string | null;
   overallProgress: number;
@@ -370,6 +404,7 @@ export type ScriptAnalysisTask = {
   errorCode?: string | null;
   errorMessage?: string | null;
   stages: ScriptAnalysisStage[];
+  episodes?: EpisodePipelineStatus[];
 };
 
 export type GenerateScriptValues = {

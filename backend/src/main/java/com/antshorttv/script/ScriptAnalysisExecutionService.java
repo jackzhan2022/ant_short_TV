@@ -101,15 +101,24 @@ public class ScriptAnalysisExecutionService {
         task.setStatus("RUNNING");
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);
+        RuntimeException branchFailure = null;
+        boolean independentBranches = "EPISODE_CONTEXT_V2".equals(task.getPipelineVersion());
         for (ScriptAnalysisStageEntity stage : stageMapper.selectByTask(task.getId())) {
             if ("SUCCEEDED".equals(stage.getStatus())) {
                 continue;
             }
             executeStage(task, stage, version, executionContext, tracker);
             if ("FAILED".equals(stage.getStatus())) {
-                throw new IllegalStateException(task.getErrorMessage() == null ? "Script analysis failed." : task.getErrorMessage());
+                RuntimeException failure = new IllegalStateException(
+                    task.getErrorMessage() == null ? "Script analysis failed." : task.getErrorMessage());
+                if (independentBranches && isIndependentEpisodeBranch(stage.getStageCode())) {
+                    branchFailure = failure;
+                    continue;
+                }
+                throw failure;
             }
         }
+        if (branchFailure != null) throw branchFailure;
         requireExecutionActive(executionContext);
         task.setStatus("COMPLETED");
         task.setCurrentStage(null);
@@ -119,6 +128,11 @@ public class ScriptAnalysisExecutionService {
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);
         return new ScriptAnalysisExecutionOutcome(List.copyOf(tracker.calls));
+    }
+
+    private boolean isIndependentEpisodeBranch(String stageCode) {
+        return "EPISODE_SUMMARY".equals(stageCode)
+            || "CHARACTER_SCENE_RECOGNITION".equals(stageCode);
     }
 
     private void executeStage(

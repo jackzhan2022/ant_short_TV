@@ -23,6 +23,8 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class EpisodeAssetPersistenceService {
@@ -33,10 +35,24 @@ public class EpisodeAssetPersistenceService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final AutoStoryboardEventRepository autoStoryboardEvents;
+    private final boolean autoStoryboardEnabled;
 
-    public EpisodeAssetPersistenceService(JdbcTemplate jdbc, ObjectMapper json) {
+    @Autowired
+    public EpisodeAssetPersistenceService(
+        JdbcTemplate jdbc,
+        ObjectMapper json,
+        AutoStoryboardEventRepository autoStoryboardEvents,
+        @Value("${ai.workflow-agent.auto-storyboard-enabled:false}") boolean autoStoryboardEnabled
+    ) {
         this.jdbc = jdbc;
         this.json = json;
+        this.autoStoryboardEvents = autoStoryboardEvents;
+        this.autoStoryboardEnabled = autoStoryboardEnabled;
+    }
+
+    public EpisodeAssetPersistenceService(JdbcTemplate jdbc, ObjectMapper json) {
+        this(jdbc, json, null, false);
     }
 
     @Transactional
@@ -73,6 +89,7 @@ public class EpisodeAssetPersistenceService {
         diagnostic.put("bindingCount", bindings.size());
         long analysisId = upsertCoverage(context, payload.path("schemaVersion").asInt(),
             read.fingerprint(), diagnostic);
+        recordAutoStoryboard(context, read, analysisId);
 
         ObjectNode result = json.createObjectNode();
         result.put("saved", true);
@@ -81,6 +98,30 @@ public class EpisodeAssetPersistenceService {
         result.put("contentFingerprint", read.fingerprint());
         result.set("counts", counts);
         return result;
+    }
+
+    private void recordAutoStoryboard(
+        ToolExecutionContext context,
+        ReadEpisode read,
+        long analysisId
+    ) {
+        if (!autoStoryboardEnabled || autoStoryboardEvents == null || context.taskId() == null) return;
+        Integer eligible = jdbc.queryForObject("""
+            select count(*) from script_analysis_task
+             where id=? and tenant_id=? and project_id=? and script_id=?
+               and pipeline_version='EPISODE_CONTEXT_V2'
+            """, Integer.class, context.taskId(), context.tenantId(), context.projectId(), context.scriptId());
+        if (eligible == null || eligible != 1) return;
+        List<Long> snapshots = jdbc.queryForList("""
+            select id from episode_prompt_context_snapshot
+             where tenant_id=? and project_id=? and script_id=? and episode_id=?
+               and source_fingerprint=? order by id desc limit 1
+            """, Long.class, context.tenantId(), context.projectId(), context.scriptId(),
+            context.episodeId(), read.fingerprint());
+        autoStoryboardEvents.recordPending(new AutoStoryboardEventRepository.Draft(
+            context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(),
+            read.episodeKey(), read.fingerprint(), analysisId,
+            snapshots.isEmpty() ? null : snapshots.get(0), context.userId()));
     }
 
     public boolean hasCoverage(Long tenantId, Long scriptId, Long episodeId, Long runId) {

@@ -8,21 +8,29 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DuplicateKeyException;
 
 @Service
 public class AiExecutionClaimService {
     private final AiExecutionTaskMapper taskMapper;
     private final AiExecutionAttemptMapper attemptMapper;
     private final int maxConcurrentPerTenant;
+    private final int maxConcurrentPerModel;
+    private final JdbcTemplate jdbc;
 
     public AiExecutionClaimService(
         AiExecutionTaskMapper taskMapper,
         AiExecutionAttemptMapper attemptMapper,
-        @Value("${ai.execution.max-concurrent-per-tenant:5}") int maxConcurrentPerTenant
+        JdbcTemplate jdbc,
+        @Value("${ai.execution.max-concurrent-per-tenant:5}") int maxConcurrentPerTenant,
+        @Value("${ai.execution.max-concurrent-per-model:4}") int maxConcurrentPerModel
     ) {
         this.taskMapper = taskMapper;
         this.attemptMapper = attemptMapper;
+        this.jdbc = jdbc;
         this.maxConcurrentPerTenant = maxConcurrentPerTenant;
+        this.maxConcurrentPerModel = Math.max(1, maxConcurrentPerModel);
     }
 
     @Transactional
@@ -35,6 +43,11 @@ public class AiExecutionClaimService {
             .eq("tenant_id", candidate.tenantId)
             .eq("status", AiExecutionStatus.RUNNING.name()));
         if (running >= maxConcurrentPerTenant) {
+            return null;
+        }
+        Long modelId = candidate.resolvedModelId == null
+            ? candidate.requestedModelId : candidate.resolvedModelId;
+        if (modelId != null && modelCapacityReached(modelId)) {
             return null;
         }
         int updated = taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
@@ -69,6 +82,26 @@ public class AiExecutionClaimService {
         attempt.startedAt = now;
         attemptMapper.insert(attempt);
         return new AiExecutionClaim(executionId, attempt.id, claimToken, candidate.executionVersion, candidate.phase);
+    }
+
+    private boolean modelCapacityReached(Long modelId) {
+        try {
+            jdbc.update("""
+                insert into ai_model_execution_quota(model_id, concurrency_limit, updated_at)
+                values (?, ?, now())
+                """, modelId, maxConcurrentPerModel);
+        } catch (DuplicateKeyException ignored) {
+            // The row is the cross-instance mutex for this model.
+        }
+        Integer limit = jdbc.queryForObject("""
+            select concurrency_limit from ai_model_execution_quota
+             where model_id = ? for update
+            """, Integer.class, modelId);
+        Long running = taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
+            .eq("status", AiExecutionStatus.RUNNING.name())
+            .and(scope -> scope.eq("resolved_model_id", modelId)
+                .or(nested -> nested.isNull("resolved_model_id").eq("requested_model_id", modelId))));
+        return running >= (limit == null ? maxConcurrentPerModel : limit);
     }
 
     @Transactional

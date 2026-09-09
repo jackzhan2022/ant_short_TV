@@ -25,6 +25,24 @@ public class WorkflowAgentProperties {
     @Min(1)
     private long runTimeoutSeconds = 300L;
 
+    @Min(1)
+    private long episodeSummaryRunTimeoutSeconds = 300L;
+
+    @Min(1)
+    private int episodeSummaryRequestTimeoutSeconds = 300;
+
+    @Min(1)
+    private long assetRecognitionRunTimeoutSeconds = 300L;
+
+    @Min(1)
+    private int assetRecognitionRequestTimeoutSeconds = 300;
+
+    @Min(1)
+    private long storyboardRunTimeoutSeconds = 300L;
+
+    @Min(1)
+    private int storyboardRequestTimeoutSeconds = 300;
+
     @Min(20)
     @Max(200)
     private int reviewSemanticMaxSteps = 96;
@@ -91,6 +109,19 @@ public class WorkflowAgentProperties {
     public void setRunTimeoutSeconds(long runTimeoutSeconds) {
         this.runTimeoutSeconds = runTimeoutSeconds;
     }
+
+    public long getEpisodeSummaryRunTimeoutSeconds() { return episodeSummaryRunTimeoutSeconds; }
+    public void setEpisodeSummaryRunTimeoutSeconds(long value) { this.episodeSummaryRunTimeoutSeconds = value; }
+    public int getEpisodeSummaryRequestTimeoutSeconds() { return episodeSummaryRequestTimeoutSeconds; }
+    public void setEpisodeSummaryRequestTimeoutSeconds(int value) { this.episodeSummaryRequestTimeoutSeconds = value; }
+    public long getAssetRecognitionRunTimeoutSeconds() { return assetRecognitionRunTimeoutSeconds; }
+    public void setAssetRecognitionRunTimeoutSeconds(long value) { this.assetRecognitionRunTimeoutSeconds = value; }
+    public int getAssetRecognitionRequestTimeoutSeconds() { return assetRecognitionRequestTimeoutSeconds; }
+    public void setAssetRecognitionRequestTimeoutSeconds(int value) { this.assetRecognitionRequestTimeoutSeconds = value; }
+    public long getStoryboardRunTimeoutSeconds() { return storyboardRunTimeoutSeconds; }
+    public void setStoryboardRunTimeoutSeconds(long value) { this.storyboardRunTimeoutSeconds = value; }
+    public int getStoryboardRequestTimeoutSeconds() { return storyboardRequestTimeoutSeconds; }
+    public void setStoryboardRequestTimeoutSeconds(int value) { this.storyboardRequestTimeoutSeconds = value; }
 
     public int getReviewSemanticMaxSteps() { return reviewSemanticMaxSteps; }
     public void setReviewSemanticMaxSteps(int value) { this.reviewSemanticMaxSteps = value; }

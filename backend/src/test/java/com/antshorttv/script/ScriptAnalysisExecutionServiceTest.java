@@ -301,6 +301,33 @@ class ScriptAnalysisExecutionServiceTest {
         order.verify(summary).executeChild(any(), any(), any(), any(), any(), any());
         order.verify(recognition).executeChild(any(), any(), any(), any(), any(), any());
 
+        org.mockito.Mockito.reset(summary, recognition, fanout);
+        task.setPipelineVersion("EPISODE_CONTEXT_V2");
+        task.setStatus("PENDING");
+        task.setCompletedAt(null);
+        stages.forEach(item -> item.setStatus("PENDING"));
+        stages.get(0).setStatus("SUCCEEDED");
+        stages.get(1).setStatus("SUCCEEDED");
+        when(summary.enabled()).thenReturn(true);
+        when(recognition.enabled()).thenReturn(true);
+        when(summary.executeChild(any(), any(), any(), any(), any(), any()))
+            .thenThrow(new IllegalStateException("summary failed"));
+        when(recognition.executeChild(any(), any(), any(), any(), any(), any()))
+            .thenReturn(new AssetRecognitionAgentAdapter.Execution(14L, List.of()));
+        doAnswer(invocation -> {
+            ScriptAnalysisTaskEntity currentTask = invocation.getArgument(0);
+            ScriptAnalysisStageEntity currentStage = invocation.getArgument(1);
+            EpisodeFanoutCoordinator.ChildExecutor child = invocation.getArgument(6);
+            child.run(null, currentTask, currentStage, null,
+                new EpisodeFanoutCoordinator.EpisodeUnit(100L, "episode-1", "fp", "ACTIVE"));
+            return new EpisodeFanoutCoordinator.Result(currentStage.getId(),
+                new EpisodeFanoutCoordinator.Progress(1, 1, 0, 0, 0, "SUCCEEDED"), List.of());
+        }).when(fanout).execute(any(), any(), any(), any(), anyString(), anyBoolean(), any(), any());
+
+        assertThatThrownBy(() -> service.executeTask(91L)).isInstanceOf(IllegalStateException.class);
+        verify(summary).executeChild(any(), any(), any(), any(), any(), any());
+        verify(recognition).executeChild(any(), any(), any(), any(), any(), any());
+
         ScriptAnalysisExecutionService failingService = new ScriptAnalysisExecutionService(
             taskMapper, stageMapper, resultMapper, scriptMapper, versionMapper, scriptElementDraftService,
             aiInvocationService, projectAiConfigService, teamPointService, objectMapper);

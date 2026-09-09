@@ -78,11 +78,19 @@ public class WorkflowAgentRunRepository {
         List<AiToolCall> toolCalls,
         String finalContent
     ) {
+        recordModelStep(runId, stepNo, aiCallLogId, toolCalls, finalContent,
+            modelStartedAt(aiCallLogId));
+    }
+
+    public void recordModelStep(
+        Long runId, int stepNo, Long aiCallLogId, List<AiToolCall> toolCalls,
+        String finalContent, LocalDateTime startedAt
+    ) {
         var snapshot = new LinkedHashMap<String, Object>();
         snapshot.put("content", finalContent);
         snapshot.put("toolCalls", toolCalls == null ? List.of() : toolCalls);
         insertStep(runId, stepNo, "MODEL", "SUCCESS", aiCallLogId, null,
-            null, payload(write(snapshot)), null, null);
+            null, payload(write(snapshot)), null, null, startedAt);
     }
 
     public void recordFailedModelStep(
@@ -92,8 +100,15 @@ public class WorkflowAgentRunRepository {
         String errorCode,
         String errorMessage
     ) {
+        recordFailedModelStep(runId, stepNo, aiCallLogId, errorCode, errorMessage, null);
+    }
+
+    public void recordFailedModelStep(
+        Long runId, int stepNo, Long aiCallLogId, String errorCode, String errorMessage,
+        LocalDateTime startedAt
+    ) {
         insertStep(runId, stepNo, "MODEL", "FAILED", aiCallLogId, null,
-            null, null, errorCode, payload(errorMessage));
+            null, null, errorCode, payload(errorMessage), startedAt);
     }
 
     public void recordToolStep(
@@ -103,8 +118,15 @@ public class WorkflowAgentRunRepository {
         String inputJson,
         String outputJson
     ) {
+        recordToolStep(runId, stepNo, toolCode, inputJson, outputJson, null);
+    }
+
+    public void recordToolStep(
+        Long runId, int stepNo, String toolCode, String inputJson, String outputJson,
+        LocalDateTime startedAt
+    ) {
         insertStep(runId, stepNo, "TOOL", "SUCCESS", null, toolCode,
-            payload(inputJson), payload(outputJson), null, null);
+            payload(inputJson), payload(outputJson), null, null, startedAt);
     }
 
     public void recordFailedToolStep(
@@ -115,8 +137,15 @@ public class WorkflowAgentRunRepository {
         String errorCode,
         String errorMessage
     ) {
+        recordFailedToolStep(runId, stepNo, toolCode, inputJson, errorCode, errorMessage, null);
+    }
+
+    public void recordFailedToolStep(
+        Long runId, int stepNo, String toolCode, String inputJson, String errorCode,
+        String errorMessage, LocalDateTime startedAt
+    ) {
         insertStep(runId, stepNo, "TOOL", "FAILED", null, toolCode,
-            payload(inputJson), null, errorCode, payload(errorMessage));
+            payload(inputJson), null, errorCode, payload(errorMessage), startedAt);
     }
 
     public void complete(Long runId, String output) {
@@ -314,12 +343,22 @@ public class WorkflowAgentRunRepository {
         String errorCode,
         String errorMessage
     ) {
+        insertStep(runId, stepNo, type, status, callLogId, toolCode, input, output,
+            errorCode, errorMessage, null);
+    }
+
+    private void insertStep(
+        Long runId, int stepNo, String type, String status, Long callLogId,
+        String toolCode, String input, String output, String errorCode,
+        String errorMessage, LocalDateTime startedAt
+    ) {
         jdbc.update("""
             insert into ai_workflow_agent_run_step
               (run_id, step_no, step_type, status, ai_call_log_id, tool_code, input_json,
                output_json, error_code, error_message, started_at, finished_at, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now(), now())
-            """, runId, stepNo, type, status, callLogId, toolCode, input, output, errorCode, errorMessage);
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, coalesce(?, now()), now(), now())
+            """, runId, stepNo, type, status, callLogId, toolCode, input, output, errorCode,
+            errorMessage, startedAt);
     }
 
     private String payload(String value) {
@@ -336,6 +375,15 @@ public class WorkflowAgentRunRepository {
         }
         int end = Math.min(redacted.length(), (int) maxPayloadBytes / 2);
         return redacted.substring(0, end) + "...[TRUNCATED]";
+    }
+
+    private LocalDateTime modelStartedAt(Long callLogId) {
+        if (callLogId == null) return null;
+        List<Long> durations = jdbc.queryForList(
+            "select duration_ms from ai_call_log where id = ? and duration_ms is not null",
+            Long.class, callLogId);
+        if (durations.isEmpty() || durations.get(0) == null) return null;
+        return LocalDateTime.now().minusNanos(Math.max(0L, durations.get(0)) * 1_000_000L);
     }
 
     private String skillPayload(List<WorkflowAgentSkillSnapshot> snapshots) {

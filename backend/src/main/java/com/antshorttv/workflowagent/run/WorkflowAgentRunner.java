@@ -50,6 +50,10 @@ public class WorkflowAgentRunner {
         "tenantId", "userId", "projectId", "episodeId", "scriptId", "taskId",
         "analysisStageId", "agentRunId", "permissions"
     );
+    private static final List<String> EPISODE_SHARED_TOOL_SCHEMA = List.of(
+        "read_current_episode", "read_adjacent_episodes", "read_script_analysis",
+        "read_project_context", "read_script_assets", "save_episode_summary",
+        "save_episode_assets", "save_episode_storyboards");
 
     private final WorkflowAgentService agents;
     private final WorkflowSkillService skills;
@@ -181,7 +185,7 @@ public class WorkflowAgentRunner {
         ));
         long timeoutSeconds = deepReview
             ? Math.max(properties.getRunTimeoutSeconds(), properties.getReviewSemanticRunTimeoutSeconds())
-            : properties.getRunTimeoutSeconds();
+            : stageRunTimeoutSeconds(agent.code());
         Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
         try {
             return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline, effectiveMaxSteps,
@@ -205,6 +209,24 @@ public class WorkflowAgentRunner {
             || "MARKDOWN_DEEP_AGGREGATION".equals(phase);
     }
 
+    private long stageRunTimeoutSeconds(String agentCode) {
+        return switch (agentCode) {
+            case "short-drama-episode-summary" -> properties.getEpisodeSummaryRunTimeoutSeconds();
+            case "short-drama-asset-recognition" -> properties.getAssetRecognitionRunTimeoutSeconds();
+            case "short-drama-storyboard" -> properties.getStoryboardRunTimeoutSeconds();
+            default -> properties.getRunTimeoutSeconds();
+        };
+    }
+
+    private int stageRequestTimeoutSeconds(String agentCode) {
+        return switch (agentCode) {
+            case "short-drama-episode-summary" -> properties.getEpisodeSummaryRequestTimeoutSeconds();
+            case "short-drama-asset-recognition" -> properties.getAssetRecognitionRequestTimeoutSeconds();
+            case "short-drama-storyboard" -> properties.getStoryboardRequestTimeoutSeconds();
+            default -> Integer.MAX_VALUE;
+        };
+    }
+
     private WorkflowAgentRunResult runLoop(
         Long runId,
         WorkflowAgentRecord agent,
@@ -223,10 +245,10 @@ public class WorkflowAgentRunner {
                 runState.beginSplitFallback(reason.name()));
         }
         List<AiChatMessage> messages = new ArrayList<>();
-        messages.add(AiChatMessage.system(prompt));
         if (input.stableContext() != null && !input.stableContext().isBlank()) {
-            messages.add(AiChatMessage.user(input.stableContext()));
+            messages.add(AiChatMessage.system(input.stableContext()));
         }
+        messages.add(AiChatMessage.system(prompt));
         messages.add(AiChatMessage.user("CHUNK_FALLBACK".equals(runState.splitMode())
             ? fallbackInstruction(runState.splitFallbackReason()) : input.input()));
         Set<String> allowlist = new HashSet<>(agent.toolCodes());
@@ -239,7 +261,10 @@ public class WorkflowAgentRunner {
             input.taskId(), input.analysisStageId(), runId, input.executionId(), input.attemptId(),
             input.executionVersion(), trustedPermissions, deadline, runState, input.reviewScope());
         int stepNo = 0;
-        if ("short-drama-storyboard".equals(agent.code())) {
+        if (isTrustedEpisodePreloadAgent(agent.code())) {
+            stepNo = prepareEpisodeContext(runId, agent, input, contract, context, messages,
+                allowlist, deadline, stepNo);
+        } else if ("short-drama-storyboard".equals(agent.code())) {
             stepNo = prepareStoryboardContext(runId, agent, input, contract, context, messages,
                 allowlist, deadline, stepNo);
         }
@@ -274,7 +299,7 @@ public class WorkflowAgentRunner {
                     .requestSummary("Agent " + agent.code() + " round " + modelRound)
                     .textRequest(new AiTextRequest(
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
-                        null, remainingSeconds(deadline),
+                        null, Math.min(remainingSeconds(deadline), stageRequestTimeoutSeconds(agent.code())),
                         "short-drama-asset-recognition".equals(agent.code()) ? 1 : 0,
                         messages, activeProviderTools(allowedTools, splitting, runState,
                             agent.code(), contract, reviewTruncationRecovery, reviewEvidenceRefreshPending),
@@ -450,6 +475,64 @@ public class WorkflowAgentRunner {
             "Agent 已达到最大执行步数 " + maxSteps + "，仍未产生最终结果。");
     }
 
+    private boolean isTrustedEpisodePreloadAgent(String agentCode) {
+        return "short-drama-episode-summary".equals(agentCode)
+            || "short-drama-asset-recognition".equals(agentCode);
+    }
+
+    private int prepareEpisodeContext(
+        Long runId,
+        WorkflowAgentRecord agent,
+        WorkflowAgentRunInput input,
+        WorkflowAgentRunContract contract,
+        ToolExecutionContext context,
+        List<AiChatMessage> messages,
+        Set<String> allowlist,
+        Instant deadline,
+        int stepNo
+    ) {
+        String toolCode = "read_current_episode";
+        if (stepNo >= agent.maxSteps()) {
+            throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
+                "Agent 步数不足，无法预加载当前剧集。");
+        }
+        requireBeforeDeadline(deadline);
+        scopeGuard.requireExecutionActive(input);
+        int toolStep = ++stepNo;
+        if (!allowlist.contains(toolCode)) {
+            BusinessException error = new BusinessException(
+                ErrorCode.WORKFLOW_AGENT_TOOL_UNAUTHORIZED, "剧集预加载工具未获授权。");
+            runs.recordFailedToolStep(runId, toolStep, toolCode, "{}",
+                error.getErrorCode().name(), error.getMessage());
+            throw error;
+        }
+        WorkflowToolDefinition definition = tools.require(toolCode);
+        try {
+            contract.requireNext(context.runState(), toolCode);
+            JsonNode arguments = json.createObjectNode();
+            schemaValidator.validate(definition.inputSchema(), arguments);
+            JsonNode output = definition.executor().execute(context, arguments);
+            requireBeforeDeadline(deadline);
+            scopeGuard.requireExecutionActive(input);
+            schemaValidator.validate(definition.outputSchema(), output);
+            String serialized = json.writeValueAsString(output);
+            runs.recordToolStep(runId, toolStep, toolCode, "{}", serialized);
+            context.runState().recordSuccess(toolCode);
+            if (input.stableContext() == null || input.stableContext().isBlank()
+                || "short-drama-asset-recognition".equals(agent.code())) {
+                messages.add(AiChatMessage.user(
+                    "以下为服务端已按可信作用域预加载并审计的当前剧集数据，"
+                        + "不要再次读取，直接调用本阶段保存工具：\n" + serialized));
+            }
+            return stepNo;
+        } catch (Exception exception) {
+            BusinessException normalized = normalizeToolFailure(exception);
+            runs.recordFailedToolStep(runId, toolStep, toolCode, "{}",
+                normalized.getErrorCode().name(), normalized.getMessage());
+            throw normalized;
+        }
+    }
+
     private int prepareStoryboardContext(
         Long runId,
         WorkflowAgentRecord agent,
@@ -579,20 +662,12 @@ public class WorkflowAgentRunner {
                 .map(this::providerTool)
                 .toList();
         }
-        if ("short-drama-asset-recognition".equals(agentCode)) {
-            List<String> remaining = remainingContractTools(contract, state);
-            if (remaining.isEmpty()) return List.of();
-            String next = remaining.get(0);
-            return allowedTools.stream()
-                .filter(tool -> next.equals(tool.code()))
-                .map(this::providerTool)
-                .toList();
+        if ("short-drama-asset-recognition".equals(agentCode)
+            || "short-drama-episode-summary".equals(agentCode)) {
+            return episodeSharedProviderTools();
         }
         if ("short-drama-storyboard".equals(agentCode)) {
-            return allowedTools.stream()
-                .filter(tool -> contract.isTerminal(tool.code()))
-                .map(this::providerTool)
-                .toList();
+            return episodeSharedProviderTools();
         }
         if (!splitting) {
             return allowedTools.stream().map(this::providerTool).toList();
@@ -602,6 +677,14 @@ public class WorkflowAgentRunner {
             : Set.of("read_current_script", "save_episode_splitting");
         return allowedTools.stream()
             .filter(tool -> activeCodes.contains(tool.code()))
+            .map(this::providerTool)
+            .toList();
+    }
+
+    private List<AiToolDefinition> episodeSharedProviderTools() {
+        return EPISODE_SHARED_TOOL_SCHEMA.stream()
+            .filter(tools::contains)
+            .map(tools::require)
             .map(this::providerTool)
             .toList();
     }

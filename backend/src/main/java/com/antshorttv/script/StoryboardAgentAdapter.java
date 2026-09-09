@@ -11,6 +11,8 @@ import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import com.antshorttv.workflowagent.tool.StoryboardToolDataService;
 import java.util.List;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -19,18 +21,31 @@ public class StoryboardAgentAdapter {
     private final WorkflowAgentRunner runner;
     private final StoryboardToolDataService storyboards;
     private final AiExecutionAttemptMapper attempts;
+    private final EpisodePromptContextService contexts;
     private final boolean enabled;
 
+    @Autowired
     public StoryboardAgentAdapter(
         WorkflowAgentRunner runner,
         StoryboardToolDataService storyboards,
         AiExecutionAttemptMapper attempts,
+        EpisodePromptContextService contexts,
         @Value("${ai.workflow-agent.storyboard-enabled:false}") boolean enabled
     ) {
         this.runner = runner;
         this.storyboards = storyboards;
         this.attempts = attempts;
+        this.contexts = contexts;
         this.enabled = enabled;
+    }
+
+    StoryboardAgentAdapter(
+        WorkflowAgentRunner runner,
+        StoryboardToolDataService storyboards,
+        AiExecutionAttemptMapper attempts,
+        boolean enabled
+    ) {
+        this(runner, storyboards, attempts, null, enabled);
     }
 
     public boolean enabled() { return enabled; }
@@ -41,14 +56,18 @@ public class StoryboardAgentAdapter {
         AiExecutionContext executionContext
     ) {
         if (!enabled) throw new IllegalStateException("分镜 Workflow Agent 尚未启用。");
+        Long modelId = executionContext.task().resolvedModelId == null
+            ? executionContext.task().requestedModelId : executionContext.task().resolvedModelId;
+        EpisodePromptContextService.Prepared prepared = contexts == null
+            ? null : contexts.prepareStoryboard(operation, episodeId, modelId);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             StoryboardAgentBootstrap.AGENT_CODE,
             "使用服务端准备的可信上下文，按 schemaVersion 3 规划当前集全部分镜，并一次调用 save_episode_storyboards 正式保存。",
             operation.tenantId, operation.projectId, episodeId, operation.scriptId, operation.id,
             null, operation.createdBy, executionContext.task().id, executionContext.claim().attemptId(),
-            executionContext.task().executionVersion,
-            executionContext.task().resolvedModelId == null
-                ? executionContext.task().requestedModelId : executionContext.task().resolvedModelId);
+            executionContext.task().executionVersion, modelId, null,
+            prepared == null ? null : prepared.commonPrefix(),
+            prepared == null ? null : prepared.cacheKey(), Map.of());
         try {
             WorkflowAgentRunResult run = runner.runFormal(input);
             if (!storyboards.hasCompleteRunSet(

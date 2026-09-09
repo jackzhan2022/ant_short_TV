@@ -283,6 +283,17 @@ export const ScriptAnalysisStateContainer = ({
         completedUnits: 0,
         totalUnits: 1,
       }));
+  const branchStatusText = (status?: string | null) => {
+    if (status === 'SUCCEEDED' || status === 'COMPLETED') return '已完成';
+    if (status === 'RUNNING' || status === 'DISPATCHED') return '进行中';
+    if (status === 'FAILED' || status === 'PARTIAL_FAILED') return '失败';
+    if (status === 'BLOCKED_FUNDS') return '积分不足';
+    if (status === 'BLOCKED_AUTH') return '权限不足';
+    if (status === 'PROTECTED') return '已保护人工成果';
+    if (status === 'STALE') return '正文已变更';
+    if (status === 'RETRYABLE') return '等待重试';
+    return '等待中';
+  };
 
   return (
     <section
@@ -370,6 +381,22 @@ export const ScriptAnalysisStateContainer = ({
                     {stage.fanout.currentEpisodeKey
                       ? ` · 当前 ${stage.fanout.currentEpisodeKey}`
                       : ''}
+                    <div>
+                      {stage.fanout.cache?.knownCalls
+                        ? `缓存 ${stage.fanout.cache.cachedInputTokens ?? 0}/${stage.fanout.cache.promptTokens ?? 0} tokens · 命中率 ${stage.fanout.cache.hitRate == null ? '未知' : `${(stage.fanout.cache.hitRate * 100).toFixed(1)}%`}`
+                        : `缓存遥测未知${stage.fanout.cache?.unknownCalls ? `（${stage.fanout.cache.unknownCalls} 次）` : ''}`}
+                    </div>
+                    {stage.fanout.timing?.totalMs != null ? (
+                      <div>
+                        总耗时 {(stage.fanout.timing.totalMs / 1000).toFixed(1)}s
+                        {stage.fanout.timing.modelMs != null
+                          ? ` · 模型 ${(stage.fanout.timing.modelMs / 1000).toFixed(1)}s`
+                          : ''}
+                        {stage.fanout.timing.firstByteMs == null
+                          ? ' · 首字节未知'
+                          : ` · 首字节 ${stage.fanout.timing.firstByteMs}ms`}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {stage.splitProgress?.mode === 'CHUNK_FALLBACK' ? (
@@ -451,6 +478,52 @@ export const ScriptAnalysisStateContainer = ({
           );
         })}
       </div>
+      {analysis.episodes?.length ? (
+        <div style={{ width: '100%', maxWidth: 760, marginTop: 36 }}>
+          <Flex justify="space-between" align="center" style={{ marginBottom: 10 }}>
+            <Typography.Text strong>逐集处理状态</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              自动分镜会消耗积分；已有或人工编辑的分镜不会被覆盖
+            </Typography.Text>
+          </Flex>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {analysis.episodes.map((episode) => (
+              <div
+                key={episode.episodeId}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '180px repeat(3, 1fr)',
+                  gap: 10,
+                  alignItems: 'center',
+                  padding: '10px 12px',
+                  border: '1px solid var(--app-color-border-secondary)',
+                  borderRadius: 8,
+                  background: '#fff',
+                  fontSize: 12,
+                }}
+              >
+                <Typography.Text strong>
+                  第{episode.episodeNo}集 · {episode.episodeKey}
+                </Typography.Text>
+                <span title={episode.summaryError || undefined}>
+                  概要：{branchStatusText(episode.summaryStatus)}
+                  {episode.summaryRunId ? ` #${episode.summaryRunId}` : ''}
+                </span>
+                <span title={episode.recognitionError || undefined}>
+                  识别：{branchStatusText(episode.recognitionStatus)}
+                  {episode.recognitionRunId ? ` #${episode.recognitionRunId}` : ''}
+                </span>
+                <span title={episode.storyboardError || undefined}>
+                  分镜：{branchStatusText(episode.storyboardStatus)}
+                  {episode.storyboardExecutionId
+                    ? ` #${episode.storyboardExecutionId}`
+                    : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {isFailed ? (
         <Typography.Text type="danger" style={{ marginTop: 24 }}>
           {analysis.errorMessage || '解析失败，请重试。'}

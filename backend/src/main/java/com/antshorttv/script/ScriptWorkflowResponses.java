@@ -206,13 +206,15 @@ record ScriptGlobalUnderstandingResponse(
 record ScriptAnalysisTaskResponse(
     Long id,
     Long scriptVersionId,
+    String pipelineVersion,
     String status,
     String currentStage,
     Integer overallProgress,
     String currentAction,
     String errorCode,
     String errorMessage,
-    List<ScriptAnalysisStageResponse> stages
+    List<ScriptAnalysisStageResponse> stages,
+    List<EpisodePipelineStatusResponse> episodes
 ) {
     static ScriptAnalysisTaskResponse from(
         ScriptAnalysisTaskEntity task,
@@ -249,12 +251,26 @@ record ScriptAnalysisTaskResponse(
         Map<Long, EpisodeFanoutProgressResponse> fanoutByStageId,
         Map<Long, EpisodeSplitProgressResponse> splitProgressByStageId
     ) {
+        return from(task, stages, resultsByStageId, agentRunsByStageId, fanoutByStageId,
+            splitProgressByStageId, List.of());
+    }
+
+    static ScriptAnalysisTaskResponse from(
+        ScriptAnalysisTaskEntity task,
+        List<ScriptAnalysisStageEntity> stages,
+        Map<Long, ScriptAnalysisResultEntity> resultsByStageId,
+        Map<Long, Long> agentRunsByStageId,
+        Map<Long, EpisodeFanoutProgressResponse> fanoutByStageId,
+        Map<Long, EpisodeSplitProgressResponse> splitProgressByStageId,
+        List<EpisodePipelineStatusResponse> episodes
+    ) {
         if (task == null) {
             return null;
         }
         return new ScriptAnalysisTaskResponse(
             task.getId(),
             task.getScriptVersionId(),
+            task.getPipelineVersion(),
             task.getStatus(),
             task.getCurrentStage(),
             task.getOverallProgress(),
@@ -263,7 +279,8 @@ record ScriptAnalysisTaskResponse(
             task.getErrorMessage(),
             stages.stream().map(stage -> ScriptAnalysisStageResponse.from(
                 stage, resultsByStageId.get(stage.getId()), agentRunsByStageId.get(stage.getId()),
-                fanoutByStageId.get(stage.getId()), splitProgressByStageId.get(stage.getId()))).toList()
+                fanoutByStageId.get(stage.getId()), splitProgressByStageId.get(stage.getId()))).toList(),
+            episodes
         );
     }
 }
@@ -355,7 +372,26 @@ record EpisodeFanoutProgressResponse(
     String currentEpisodeKey,
     Boolean retryable,
     Boolean stale,
-    List<EpisodeFanoutUnitResponse> units
+    List<EpisodeFanoutUnitResponse> units,
+    CacheUsageResponse cache,
+    TimingUsageResponse timing
+) {}
+
+record CacheUsageResponse(
+    Integer knownCalls,
+    Integer unknownCalls,
+    Long promptTokens,
+    Long cachedInputTokens,
+    Double hitRate
+) {}
+
+record TimingUsageResponse(
+    Long queueMs,
+    Long preparationMs,
+    Long modelMs,
+    Long validationSaveMs,
+    Long totalMs,
+    Long firstByteMs
 ) {}
 
 record EpisodeSplitProgressResponse(
@@ -374,4 +410,22 @@ record EpisodeFanoutUnitResponse(
     Long childRunId,
     String errorCode,
     String errorMessage
+) {}
+
+record EpisodePipelineStatusResponse(
+    Long episodeId,
+    String episodeKey,
+    Integer episodeNo,
+    String summaryStatus,
+    Long summaryRunId,
+    String summaryError,
+    String recognitionStatus,
+    Long recognitionRunId,
+    String recognitionError,
+    String storyboardStatus,
+    Long storyboardExecutionId,
+    Long storyboardId,
+    String storyboardError,
+    Boolean autoTriggered,
+    Boolean protectedExisting
 ) {}

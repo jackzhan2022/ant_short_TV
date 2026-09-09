@@ -9,8 +9,6 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class ScriptSplitChunkPlanner {
-    private static final Pattern EPISODE = Pattern.compile(
-        "(?m)^[\\t ]*(?:第[零一二三四五六七八九十百千万0-9]+集|EPISODE\\s+\\d+)\\b.*$");
     private static final Pattern SCENE = Pattern.compile(
         "(?m)^[\\t ]*(?:内景|外景|内外景|INT\\.?|EXT\\.?)[^\\r\\n]{0,200}$",
         Pattern.CASE_INSENSITIVE);
@@ -61,7 +59,8 @@ public class ScriptSplitChunkPlanner {
     }
 
     private Cut chooseCut(List<Signal> signals, int min, int max) {
-        for (String type : List.of("EPISODE_HEADING", "SCENE_HEADING", "PARAGRAPH", "LINE")) {
+        for (String type : List.of("EPISODE_HEADING", "EPISODE_GROUP_HEADING",
+            "SCENE_HEADING", "PARAGRAPH", "LINE")) {
             Signal selected = signals.stream()
                 .filter(signal -> signal.type().equals(type))
                 .filter(signal -> signal.offset() >= min && signal.offset() <= max)
@@ -75,7 +74,12 @@ public class ScriptSplitChunkPlanner {
 
     private List<Signal> signals(String source) {
         List<Signal> result = new ArrayList<>();
-        addSignals(result, EPISODE.matcher(source), "EPISODE_HEADING", true);
+        new EpisodeHeadingClassifier().scan(source).stream()
+            .filter(heading -> heading.type() == EpisodeHeadingClassifier.Type.SINGLE
+                || heading.type() == EpisodeHeadingClassifier.Type.GROUP)
+            .forEach(heading -> result.add(new Signal(heading.startOffset(),
+                heading.type() == EpisodeHeadingClassifier.Type.SINGLE
+                    ? "EPISODE_HEADING" : "EPISODE_GROUP_HEADING")));
         addSignals(result, SCENE.matcher(source), "SCENE_HEADING", true);
         addSignals(result, PARAGRAPH.matcher(source), "PARAGRAPH", false);
         addSignals(result, LINE.matcher(source), "LINE", false);

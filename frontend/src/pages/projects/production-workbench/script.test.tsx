@@ -226,6 +226,22 @@ describe('ProductionWorkbenchScript', () => {
           currentStage: 'EPISODE_SUMMARY',
           overallProgress: 50,
           currentAction: '正在提炼每集概要',
+          pipelineVersion: 'EPISODE_CONTEXT_V2',
+          episodes: [
+            {
+              episodeId: 101,
+              episodeKey: 'episode-1',
+              episodeNo: 1,
+              summaryStatus: 'SUCCEEDED',
+              summaryRunId: 701,
+              recognitionStatus: 'SUCCEEDED',
+              recognitionRunId: 801,
+              storyboardStatus: 'BLOCKED_FUNDS',
+              storyboardError: '积分不足',
+              autoTriggered: true,
+              protectedExisting: false,
+            },
+          ],
           stages: [],
         },
       },
@@ -371,6 +387,22 @@ describe('ProductionWorkbenchScript', () => {
           currentStage: 'EPISODE_SUMMARY',
           overallProgress: 56,
           currentAction: '正在提炼每集概要',
+          pipelineVersion: 'EPISODE_CONTEXT_V2',
+          episodes: [
+            {
+              episodeId: 101,
+              episodeKey: 'episode-1',
+              episodeNo: 1,
+              summaryStatus: 'SUCCEEDED',
+              summaryRunId: 701,
+              recognitionStatus: 'SUCCEEDED',
+              recognitionRunId: 801,
+              storyboardStatus: 'BLOCKED_FUNDS',
+              storyboardError: '积分不足',
+              autoTriggered: true,
+              protectedExisting: false,
+            },
+          ],
           stages: [
             {
               id: 1,
@@ -474,6 +506,11 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('45%')).toBeInTheDocument();
     expect(screen.getByText(/1\/3 集/)).toBeInTheDocument();
     expect(screen.getByText('episode-3失败')).toBeInTheDocument();
+    expect(screen.getByText('第1集 · episode-1')).toBeInTheDocument();
+    expect(screen.getByText(/概要：已完成/)).toBeInTheDocument();
+    expect(screen.getByText(/识别：已完成/)).toBeInTheDocument();
+    expect(screen.getByText(/分镜：积分不足/)).toBeInTheDocument();
+    expect(screen.getByText(/自动分镜会消耗积分/)).toBeInTheDocument();
     expect(screen.getByText('分块分析 7/12')).toBeInTheDocument();
     expect(
       screen.getByText('全文输出达到上限，已自动切换'),

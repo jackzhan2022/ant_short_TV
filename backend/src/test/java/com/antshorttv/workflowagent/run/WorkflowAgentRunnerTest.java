@@ -133,13 +133,79 @@ class WorkflowAgentRunnerTest {
         assertThat(requests.getValue().textRequest().messages())
             .extracting(AiChatMessage::content)
             .containsExactly(
-                requests.getValue().textRequest().messages().get(0).content(),
                 "公共规则\n结构索引\n冻结剧本",
+                requests.getValue().textRequest().messages().get(1).content(),
                 "仅检查时间线"
             );
+        assertThat(requests.getValue().textRequest().messages().get(1).content())
+            .contains("screenplay-agent", "rewrite-guide");
+        assertThat(requests.getValue().textRequest().messages())
+            .extracting(AiChatMessage::role)
+            .containsExactly(AiChatRole.SYSTEM, AiChatRole.SYSTEM, AiChatRole.USER);
         assertThat(requests.getValue().textRequest().promptCacheKey()).isEqualTo("review-cache-v1");
         assertThat(requests.getValue().textRequest().promptCacheOptions())
             .containsEntry("retention", "short");
+    }
+
+    @Test
+    void episodeSummaryHostPreloadsTrustedEpisodeBeforeTheFirstModelRequest() {
+        List<String> executed = new ArrayList<>();
+        WorkflowToolDefinition read = storyboardRead("read_current_episode", executed,
+            json.createObjectNode().put("content", "CURRENT_EPISODE").put("fingerprint", "fp"));
+        WorkflowToolDefinition save = tool("save_episode_summary");
+        runner = runnerWith(List.of(read, save), 30);
+        when(agents.loadForRun("short-drama-episode-summary")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-episode-summary", "概要", "", "概要阶段规则", 8L,
+            new BigDecimal("0.2"), 4096, 4, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", "save_episode_summary")));
+        when(invocation.invokeText(any())).thenAnswer(ignored -> {
+            assertThat(executed).containsExactly("read_current_episode");
+            return result(null, List.of(new AiToolCall("save", "save_episode_summary", "{}")), 504L);
+        });
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-episode-summary", "直接保存", 7L, 25L, 91L, 77L,
+            null, null, 9L, null, null, null, 8L, null,
+            "公共剧集上下文\nCURRENT_EPISODE", "episode-cache", Map.of()));
+
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation).invokeText(requests.capture());
+        assertThat(requests.getValue().textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("read_current_episode", "save_episode_summary");
+        assertThat(requests.getValue().textRequest().messages())
+            .extracting(AiChatMessage::content)
+            .satisfiesExactly(
+                content -> assertThat(content).isEqualTo("公共剧集上下文\nCURRENT_EPISODE"),
+                content -> assertThat(content).contains("概要阶段规则"),
+                content -> assertThat(content).isEqualTo("直接保存"));
+        verify(runs).recordToolStep(101L, 1, "read_current_episode", "{}",
+            "{\"content\":\"CURRENT_EPISODE\",\"fingerprint\":\"fp\"}");
+    }
+
+    @Test
+    void sharedEpisodeToolSchemaDoesNotGrantCrossStageExecutionPermission() {
+        WorkflowToolDefinition read = storyboardRead("read_current_episode", new ArrayList<>(),
+            json.createObjectNode().put("content", "CURRENT_EPISODE").put("fingerprint", "fp"));
+        runner = runnerWith(List.of(read, tool("save_episode_summary"), tool("save_episode_assets")), 30);
+        when(agents.loadForRun("short-drama-episode-summary")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-episode-summary", "概要", "", "概要阶段规则", 8L,
+            new BigDecimal("0.2"), 4096, 4, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", "save_episode_summary")));
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("cross-stage", "save_episode_assets", "{}")), 505L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-episode-summary", "直接保存", 7L, 25L, 91L, 77L,
+            null, null, 9L))).isInstanceOf(BusinessException.class).hasMessageContaining("未授权");
+
+        var request = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation).invokeText(request.capture());
+        assertThat(request.getValue().textRequest().tools())
+            .extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("read_current_episode", "save_episode_summary", "save_episode_assets");
     }
 
     @Test
@@ -843,7 +909,7 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
-    void assetRecognitionAllowsExactlyOneCorrectiveSaveAndOnlyExposesTheNextTool() throws Exception {
+    void assetRecognitionAllowsExactlyOneCorrectiveSaveWithStableToolSchema() throws Exception {
         AtomicInteger saves = new AtomicInteger();
         WorkflowToolDefinition save = new WorkflowToolDefinition(
             "save_episode_assets", "保存资产", "保存资产",
@@ -866,7 +932,6 @@ class WorkflowAgentRunnerTest {
             LocalDateTime.now(), LocalDateTime.now(), List.of(),
             List.of("read_current_episode", "save_episode_assets")));
         when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(new AiToolCall("read", "read_current_episode", "{}")), 931L))
             .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_assets", "{}")), 932L))
             .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_assets", "{}")), 933L));
 
@@ -878,10 +943,11 @@ class WorkflowAgentRunnerTest {
 
         assertThat(saves).hasValue(2);
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
-        assertThat(requests.getAllValues().get(1).textRequest().tools())
-            .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("save_episode_assets");
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
+        assertThat(requests.getAllValues()).allSatisfy(request ->
+            assertThat(request.textRequest().tools())
+                .extracting(com.antshorttv.ai.AiToolDefinition::code)
+                .containsExactly("read_current_episode", "save_episode_assets"));
         assertThat(requests.getAllValues()).allSatisfy(request -> {
             assertThat(request.textRequest().maxTokens()).isEqualTo(4096);
             assertThat(request.textRequest().retryCount()).isEqualTo(1);
@@ -916,7 +982,7 @@ class WorkflowAgentRunnerTest {
         verify(invocation, org.mockito.Mockito.times(1)).invokeText(requests.capture());
         assertThat(requests.getValue().textRequest().tools())
             .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("save_episode_storyboards");
+            .containsExactlyElementsOf(codes);
         assertThat(requests.getValue().textRequest().messages())
             .extracting(AiChatMessage::content)
             .anySatisfy(content -> assertThat(content)
@@ -1102,7 +1168,6 @@ class WorkflowAgentRunnerTest {
             LocalDateTime.now(), LocalDateTime.now(), List.of(),
             List.of("read_current_episode", "save_episode_assets")));
         when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(new AiToolCall("read", "read_current_episode", "{}")), 941L))
             .thenReturn(result(null, List.of(new AiToolCall("bad", "save_episode_assets", "{}")), 942L))
             .thenReturn(result(null, List.of(new AiToolCall("fixed", "save_episode_assets", "{}")), 943L));
 
@@ -1113,11 +1178,50 @@ class WorkflowAgentRunnerTest {
         assertThat(result.runId()).isEqualTo(101L);
         assertThat(saves).hasValue(2);
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
-        assertThat(requests.getAllValues().get(2).textRequest().messages())
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(1).textRequest().messages())
             .extracting(AiChatMessage::content)
             .anySatisfy(message -> assertThat(message)
                 .contains("$.scenes[1].evidence is required"));
+    }
+
+    @Test
+    void episodeStagesUseIndependentRequestAndRunBudgets() throws Exception {
+        WorkflowAgentProperties stageProperties = new WorkflowAgentProperties();
+        stageProperties.setRunTimeoutSeconds(30);
+        stageProperties.setAssetRecognitionRunTimeoutSeconds(40);
+        stageProperties.setAssetRecognitionRequestTimeoutSeconds(7);
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_episode_assets", "保存", "保存", json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                @Override
+                public JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    JsonNode arguments
+                ) {
+                    return json.createObjectNode();
+                }
+            });
+        runner = new WorkflowAgentRunner(
+            agents, skills, new WorkflowToolRegistry(List.of(tool("read_current_episode"), save)),
+            new WorkflowToolSchemaValidator(), invocation, runs, scopeGuard, stageProperties, json
+        );
+        when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 6, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", "save_episode_assets")));
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("save", "save_episode_assets", "{}")), 944L));
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L));
+
+        var request = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation).invokeText(request.capture());
+        assertThat(request.getValue().textRequest().timeoutSeconds()).isEqualTo(7);
     }
 
     @Test

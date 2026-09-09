@@ -21,6 +21,27 @@ class EpisodeSummaryAgentAdapterTest {
     private final ScriptEpisodeSummaryRepository summaries = mock(ScriptEpisodeSummaryRepository.class);
 
     @Test
+    void attachesTheFrozenEpisodeContextAndCacheIdentity() throws Exception {
+        EpisodePromptContextService contexts = mock(EpisodePromptContextService.class);
+        when(contexts.prepare(any(), any(), any())).thenReturn(
+            new EpisodePromptContextService.Prepared(501L, "COMMON_PREFIX", "CACHE_KEY", "HASH"));
+        EpisodeSummaryAgentAdapter adapter = new EpisodeSummaryAgentAdapter(runner, summaries, contexts, true);
+        when(runner.runFormal(any(WorkflowAgentRunInput.class)))
+            .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
+        when(summaries.findCurrent(7L, 9L, 101L)).thenReturn(Optional.of(
+            new ScriptEpisodeSummaryDocument(1L, 7L, 8L, 9L, 101L, 1,
+                new ObjectMapper().readTree("{\"summary\":\"本集\",\"highlights\":[],\"endingHook\":null}"),
+                "AI", 77L, 10L, 10L, null, null)));
+
+        adapter.executeChild(task(), stage(), 101L, null, 11L);
+
+        ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
+        verify(runner).runFormal(input.capture());
+        assertThat(input.getValue().stableContext()).isEqualTo("COMMON_PREFIX");
+        assertThat(input.getValue().promptCacheKey()).isEqualTo("CACHE_KEY");
+    }
+
+    @Test
     void runsExactlyOneEpisodeWithoutGlobalUnderstandingAndRequiresCommittedSummary() throws Exception {
         EpisodeSummaryAgentAdapter adapter = new EpisodeSummaryAgentAdapter(runner, summaries, true);
         when(runner.runFormal(any(WorkflowAgentRunInput.class)))

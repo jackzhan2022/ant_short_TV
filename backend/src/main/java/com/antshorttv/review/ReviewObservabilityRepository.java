@@ -43,7 +43,8 @@ public class ReviewObservabilityRepository {
         String placeholders = String.join(",", java.util.Collections.nCopies(runIds.size(), "?"));
         return jdbc.query("""
             select count(*) call_count,
-                   sum(case when cached_input_tokens is not null and cache_write_tokens is not null then 1 else 0 end) observed_count,
+                   sum(case when cached_input_tokens is not null then 1 else 0 end) cached_observed_count,
+                   sum(case when cache_write_tokens is not null then 1 else 0 end) cache_write_observed_count,
                    coalesce(sum(prompt_tokens), 0) prompt_tokens,
                    coalesce(sum(completion_tokens), 0) output_tokens,
                    coalesce(sum(duration_ms), 0) latency_ms,
@@ -59,19 +60,22 @@ public class ReviewObservabilityRepository {
             """.formatted(placeholders), result -> {
             if (!result.next()) return emptyCacheUsage();
             long callCount = result.getLong("call_count");
-            long observedCount = result.getLong("observed_count");
+            long cachedObservedCount = result.getLong("cached_observed_count");
+            long cacheWriteObservedCount = result.getLong("cache_write_observed_count");
             long promptTokens = result.getLong("prompt_tokens");
             long outputTokens = result.getLong("output_tokens");
             long latencyMs = result.getLong("latency_ms");
-            boolean observable = callCount > 0 && observedCount == callCount;
-            Long cached = observable ? result.getLong("cached_input_tokens") : null;
-            Long cacheWrite = observable ? result.getLong("cache_write_tokens") : null;
-            Long ordinary = observable ? Math.max(0, promptTokens - cached - cacheWrite) : null;
-            BigDecimal ratio = observable && promptTokens > 0
+            boolean cachedObservable = callCount > 0 && cachedObservedCount == callCount;
+            boolean cacheWriteObservable = callCount > 0 && cacheWriteObservedCount == callCount;
+            Long cached = cachedObservable ? result.getLong("cached_input_tokens") : null;
+            Long cacheWrite = cacheWriteObservable ? result.getLong("cache_write_tokens") : null;
+            Long ordinary = cachedObservable && cacheWriteObservable
+                ? Math.max(0, promptTokens - cached - cacheWrite) : null;
+            BigDecimal ratio = cachedObservable && promptTokens > 0
                 ? BigDecimal.valueOf(cached).divide(BigDecimal.valueOf(promptTokens), 4, RoundingMode.HALF_UP)
                 : null;
             return new ReviewCacheUsageResponse(promptTokens, ordinary, cached, cacheWrite, outputTokens,
-                latencyMs, ratio, observable);
+                latencyMs, ratio, cachedObservable);
         }, runIds.toArray());
     }
 
@@ -83,7 +87,8 @@ public class ReviewObservabilityRepository {
         String placeholders = String.join(",", java.util.Collections.nCopies(runIds.size(), "?"));
         return jdbc.query("""
             select s.run_id, count(*) call_count,
-                   sum(case when l.cached_input_tokens is not null and l.cache_write_tokens is not null then 1 else 0 end) observed_count,
+                   sum(case when l.cached_input_tokens is not null then 1 else 0 end) cached_observed_count,
+                   sum(case when l.cache_write_tokens is not null then 1 else 0 end) cache_write_observed_count,
                    coalesce(sum(l.prompt_tokens), 0) prompt_tokens, coalesce(sum(l.completion_tokens), 0) output_tokens,
                    coalesce(sum(l.duration_ms), 0) latency_ms, coalesce(sum(l.cached_input_tokens), 0) cached_input_tokens,
                    coalesce(sum(l.cache_write_tokens), 0) cache_write_tokens
@@ -95,13 +100,17 @@ public class ReviewObservabilityRepository {
                 long prompt = result.getLong("prompt_tokens");
                 long cached = result.getLong("cached_input_tokens");
                 long calls = result.getLong("call_count");
-                boolean observable = calls > 0 && result.getLong("observed_count") == calls;
+                boolean cachedObservable = calls > 0 && result.getLong("cached_observed_count") == calls;
+                boolean cacheWriteObservable = calls > 0 && result.getLong("cache_write_observed_count") == calls;
                 values.put(result.getLong("run_id"), new ReviewCacheUsageResponse(prompt,
-                    observable ? Math.max(0, prompt - cached - result.getLong("cache_write_tokens")) : null,
-                    observable ? cached : null, observable ? result.getLong("cache_write_tokens") : null,
+                    cachedObservable && cacheWriteObservable
+                        ? Math.max(0, prompt - cached - result.getLong("cache_write_tokens")) : null,
+                    cachedObservable ? cached : null,
+                    cacheWriteObservable ? result.getLong("cache_write_tokens") : null,
                     result.getLong("output_tokens"), result.getLong("latency_ms"),
-                    observable && prompt > 0 ? BigDecimal.valueOf(cached).divide(BigDecimal.valueOf(prompt), 4, RoundingMode.HALF_UP) : null,
-                    observable));
+                    cachedObservable && prompt > 0
+                        ? BigDecimal.valueOf(cached).divide(BigDecimal.valueOf(prompt), 4, RoundingMode.HALF_UP) : null,
+                    cachedObservable));
             }
             return values;
         }, runIds.toArray());

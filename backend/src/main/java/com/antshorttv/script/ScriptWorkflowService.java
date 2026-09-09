@@ -699,7 +699,8 @@ public class ScriptWorkflowService {
             }
         }
         return ScriptAnalysisTaskResponse.from(
-            task, stages, results, agentRuns, fanouts, splitProgress);
+            task, stages, results, agentRuns, fanouts, splitProgress,
+            episodePipelineStatuses(task, stages, fanouts));
     }
 
     private EpisodeSplitProgressResponse splitProgress(Long runId) {
@@ -746,6 +747,8 @@ public class ScriptWorkflowService {
         EpisodeFanoutUnitResponse current = units.stream()
             .filter(unit -> "RUNNING".equals(unit.status())).findFirst().orElse(null);
         String status = String.valueOf(snapshot.get("status"));
+        CacheUsageResponse cache = fanoutCacheUsage(snapshotId);
+        TimingUsageResponse timing = fanoutTimingUsage(snapshotId);
         return new EpisodeFanoutProgressResponse(
             snapshotId, status,
             ((Number) snapshot.get("total_units")).intValue(),
@@ -755,8 +758,147 @@ public class ScriptWorkflowService {
             current == null ? null : current.episodeKey(),
             units.stream().anyMatch(unit -> "FAILED".equals(unit.status())
                 || "PENDING".equals(unit.status()) || "STALE".equals(unit.status())),
-            "STALE".equals(status), units);
+            "STALE".equals(status), units, cache, timing);
     }
+
+    private TimingUsageResponse fanoutTimingUsage(long snapshotId) {
+        List<Map<String, Object>> executionRows = jdbcTemplate.queryForList("""
+            select execution.created_at, execution.started_at
+              from script_analysis_fanout_snapshot snapshot
+              join script_analysis_task task on task.id = snapshot.task_id
+              left join ai_execution_task execution on execution.id = task.execution_id
+             where snapshot.id = ?
+            """, snapshotId);
+        Long queueMs = executionRows.isEmpty() ? null : millis(
+            executionRows.get(0).get("created_at"), executionRows.get(0).get("started_at"));
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+            select unit.id, unit.started_at unit_started, unit.finished_at unit_finished,
+                   min(case when step.step_type='MODEL' then step.started_at end) first_model_started,
+                   max(case when step.step_type='MODEL' then step.finished_at end) last_model_finished,
+                   sum(case when step.step_type='MODEL' then coalesce(log.duration_ms, 0) else 0 end) model_ms
+              from script_analysis_fanout_unit unit
+              left join ai_workflow_agent_run_step step on step.run_id = unit.child_run_id
+              left join ai_call_log log on log.id = step.ai_call_log_id
+             where unit.snapshot_id = ?
+             group by unit.id, unit.started_at, unit.finished_at
+            """, snapshotId);
+        long preparation = 0L;
+        long model = 0L;
+        long validation = 0L;
+        long total = 0L;
+        boolean hasCompleted = false;
+        for (Map<String, Object> row : rows) {
+            Long unitTotal = millis(row.get("unit_started"), row.get("unit_finished"));
+            if (unitTotal != null) {
+                hasCompleted = true;
+                total += unitTotal;
+            }
+            Long prep = millis(row.get("unit_started"), row.get("first_model_started"));
+            if (prep != null) preparation += prep;
+            model += longNumber(row.get("model_ms"));
+            Long save = millis(row.get("last_model_finished"), row.get("unit_finished"));
+            if (save != null) validation += save;
+        }
+        return new TimingUsageResponse(queueMs, rows.isEmpty() ? null : preparation,
+            rows.isEmpty() ? null : model, rows.isEmpty() ? null : validation,
+            hasCompleted ? total : null, null);
+    }
+
+    private Long millis(Object from, Object to) {
+        java.time.LocalDateTime left = dateTime(from);
+        java.time.LocalDateTime right = dateTime(to);
+        return left == null || right == null ? null
+            : Math.max(0L, java.time.Duration.between(left, right).toMillis());
+    }
+
+    private java.time.LocalDateTime dateTime(Object value) {
+        if (value instanceof java.sql.Timestamp timestamp) return timestamp.toLocalDateTime();
+        return value instanceof java.time.LocalDateTime dateTime ? dateTime : null;
+    }
+
+    private CacheUsageResponse fanoutCacheUsage(long snapshotId) {
+        List<CacheUsageAggregator.Call> calls = jdbcTemplate.query("""
+            select log.prompt_tokens, log.cached_input_tokens
+              from script_analysis_fanout_unit unit
+              join ai_workflow_agent_run_step step on step.run_id = unit.child_run_id
+                   and step.step_type = 'MODEL'
+              join ai_call_log log on log.id = step.ai_call_log_id
+             where unit.snapshot_id = ?
+            """, (row, index) -> new CacheUsageAggregator.Call(
+                (Integer) row.getObject("prompt_tokens"),
+                (Integer) row.getObject("cached_input_tokens")), snapshotId);
+        return CacheUsageAggregator.aggregate(calls);
+    }
+
+    private List<EpisodePipelineStatusResponse> episodePipelineStatuses(
+        ScriptAnalysisTaskEntity task,
+        List<ScriptAnalysisStageEntity> stages,
+        Map<Long, EpisodeFanoutProgressResponse> fanouts
+    ) {
+        Map<Long, EpisodeFanoutUnitResponse> summaries = fanoutUnits(stages, fanouts, "EPISODE_SUMMARY");
+        Map<Long, EpisodeFanoutUnitResponse> recognitions = fanoutUnits(
+            stages, fanouts, "CHARACTER_SCENE_RECOGNITION");
+        Map<Long, Map<String, Object>> events = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select event.episode_id, event.status event_status, event.execution_id,
+                   event.error_message event_error, execution.status execution_status
+              from episode_auto_storyboard_event event
+              left join ai_execution_task execution on execution.id = event.execution_id
+             where event.tenant_id = ? and event.project_id = ? and event.script_id = ?
+             order by event.id desc
+            """, task.getTenantId(), task.getProjectId(), task.getScriptId()).forEach(row ->
+                events.putIfAbsent(longNumber(row.get("episode_id")), row));
+        Map<Long, Long> storyboards = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select episode_id, min(id) storyboard_id from storyboard
+             where tenant_id = ? and project_id = ? and script_id = ? and deleted_at is null
+             group by episode_id
+            """, task.getTenantId(), task.getProjectId(), task.getScriptId()).forEach(row ->
+                storyboards.put(longNumber(row.get("episode_id")), longNumber(row.get("storyboard_id"))));
+        return jdbcTemplate.queryForList("""
+            select id, stable_key, episode_no from script_episode
+             where tenant_id = ? and project_id = ? and script_id = ?
+               and status = 'ACTIVE' and retired_at is null order by episode_no, id
+            """, task.getTenantId(), task.getProjectId(), task.getScriptId()).stream().map(row -> {
+                long episodeId = longNumber(row.get("id"));
+                EpisodeFanoutUnitResponse summary = summaries.get(episodeId);
+                EpisodeFanoutUnitResponse recognition = recognitions.get(episodeId);
+                Map<String, Object> event = events.get(episodeId);
+                Long storyboardId = storyboards.get(episodeId);
+                String eventStatus = event == null ? null : string(event.get("event_status"));
+                String executionStatus = event == null ? null : string(event.get("execution_status"));
+                String storyboardStatus = storyboardId != null ? "SUCCEEDED"
+                    : executionStatus != null ? executionStatus : eventStatus;
+                return new EpisodePipelineStatusResponse(
+                    episodeId, string(row.get("stable_key")), number(row.get("episode_no")),
+                    status(summary), runId(summary), error(summary),
+                    status(recognition), runId(recognition), error(recognition),
+                    storyboardStatus,
+                    event == null ? null : nullableLong(event.get("execution_id")), storyboardId,
+                    event == null ? null : string(event.get("event_error")), event != null,
+                    "PROTECTED".equals(eventStatus));
+            }).toList();
+    }
+
+    private Map<Long, EpisodeFanoutUnitResponse> fanoutUnits(
+        List<ScriptAnalysisStageEntity> stages,
+        Map<Long, EpisodeFanoutProgressResponse> fanouts,
+        String stageCode
+    ) {
+        return stages.stream().filter(stage -> stageCode.equals(stage.getStageCode())).findFirst()
+            .map(stage -> fanouts.get(stage.getId())).map(EpisodeFanoutProgressResponse::units)
+            .orElse(List.of()).stream().collect(java.util.stream.Collectors.toMap(
+                EpisodeFanoutUnitResponse::episodeId, unit -> unit, (left, right) -> right,
+                LinkedHashMap::new));
+    }
+
+    private String status(EpisodeFanoutUnitResponse unit) { return unit == null ? "PENDING" : unit.status(); }
+    private Long runId(EpisodeFanoutUnitResponse unit) { return unit == null ? null : unit.childRunId(); }
+    private String error(EpisodeFanoutUnitResponse unit) { return unit == null ? null : unit.errorMessage(); }
+    private int number(Object value) { return value instanceof Number number ? number.intValue() : 0; }
+    private long longNumber(Object value) { return value instanceof Number number ? number.longValue() : 0L; }
+    private Long nullableLong(Object value) { return value instanceof Number number ? number.longValue() : null; }
+    private String string(Object value) { return value == null ? null : String.valueOf(value); }
 
     @Transactional
     public ScriptWorkspaceResponse generate(Long tenantId, Long projectId, GenerateScriptRequest request, HttpServletRequest servletRequest) {

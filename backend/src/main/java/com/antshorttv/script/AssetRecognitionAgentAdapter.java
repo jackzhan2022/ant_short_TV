@@ -8,6 +8,8 @@ import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import java.util.List;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -15,16 +17,28 @@ import org.springframework.stereotype.Component;
 public class AssetRecognitionAgentAdapter {
     private final WorkflowAgentRunner runner;
     private final EpisodeAssetPersistenceService assets;
+    private final EpisodePromptContextService contexts;
     private final boolean enabled;
 
+    @Autowired
     public AssetRecognitionAgentAdapter(
         WorkflowAgentRunner runner,
         EpisodeAssetPersistenceService assets,
+        EpisodePromptContextService contexts,
         @Value("${ai.workflow-agent.asset-recognition-enabled:false}") boolean enabled
     ) {
         this.runner = runner;
         this.assets = assets;
+        this.contexts = contexts;
         this.enabled = enabled;
+    }
+
+    AssetRecognitionAgentAdapter(
+        WorkflowAgentRunner runner,
+        EpisodeAssetPersistenceService assets,
+        boolean enabled
+    ) {
+        this(runner, assets, null, enabled);
     }
 
     public boolean enabled() { return enabled; }
@@ -37,6 +51,8 @@ public class AssetRecognitionAgentAdapter {
         AiExecutionContext executionContext,
         Long modelId
     ) {
+        EpisodePromptContextService.Prepared prepared = contexts == null
+            ? null : contexts.prepare(task, episodeId, modelId);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             AssetRecognitionAgentBootstrap.AGENT_CODE,
             "读取当前剧集并识别、匹配、保存本集正式角色、变装、场景、道具及形态。",
@@ -45,7 +61,9 @@ public class AssetRecognitionAgentAdapter {
             executionContext == null ? null : executionContext.task().id,
             executionContext == null ? null : executionContext.claim().attemptId(),
             executionContext == null ? null : executionContext.task().executionVersion,
-            modelId);
+            modelId, null,
+            prepared == null ? null : prepared.commonPrefix(),
+            prepared == null ? null : prepared.cacheKey(), Map.of());
         WorkflowAgentRunResult run = runner.runFormal(plan, input);
         if (!assets.hasCoverage(task.getTenantId(), task.getScriptId(), episodeId, run.runId())) {
             throw new IllegalStateException("Agent 未提交本次剧集正式资产识别结果。");

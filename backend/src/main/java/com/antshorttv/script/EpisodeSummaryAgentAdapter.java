@@ -8,6 +8,8 @@ import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import java.util.List;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -15,16 +17,28 @@ import org.springframework.stereotype.Component;
 public class EpisodeSummaryAgentAdapter {
     private final WorkflowAgentRunner runner;
     private final ScriptEpisodeSummaryRepository summaries;
+    private final EpisodePromptContextService contexts;
     private final boolean enabled;
 
+    @Autowired
     public EpisodeSummaryAgentAdapter(
         WorkflowAgentRunner runner,
         ScriptEpisodeSummaryRepository summaries,
+        EpisodePromptContextService contexts,
         @Value("${ai.workflow-agent.episode-summary-enabled:false}") boolean enabled
     ) {
         this.runner = runner;
         this.summaries = summaries;
+        this.contexts = contexts;
         this.enabled = enabled;
+    }
+
+    EpisodeSummaryAgentAdapter(
+        WorkflowAgentRunner runner,
+        ScriptEpisodeSummaryRepository summaries,
+        boolean enabled
+    ) {
+        this(runner, summaries, null, enabled);
     }
 
     public boolean enabled() {
@@ -49,6 +63,8 @@ public class EpisodeSummaryAgentAdapter {
         AiExecutionContext executionContext,
         Long modelId
     ) {
+        EpisodePromptContextService.Prepared prepared = contexts == null
+            ? null : contexts.prepare(task, episodeId, modelId);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             EpisodeSummaryAgentBootstrap.AGENT_CODE,
             "读取当前剧集并提炼、保存本集正式概要。",
@@ -57,7 +73,9 @@ public class EpisodeSummaryAgentAdapter {
             executionContext == null ? null : executionContext.task().id,
             executionContext == null ? null : executionContext.claim().attemptId(),
             executionContext == null ? null : executionContext.task().executionVersion,
-            modelId);
+            modelId, null,
+            prepared == null ? null : prepared.commonPrefix(),
+            prepared == null ? null : prepared.cacheKey(), Map.of());
         WorkflowAgentRunResult run = plan == null ? runner.runFormal(input) : runner.runFormal(plan, input);
         ScriptEpisodeSummaryDocument document = summaries.findCurrent(
                 task.getTenantId(), task.getScriptId(), episodeId)

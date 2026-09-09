@@ -23,6 +23,25 @@ class AssetRecognitionAgentAdapterTest {
     private final EpisodeAssetPersistenceService assets = mock(EpisodeAssetPersistenceService.class);
 
     @Test
+    void reusesTheSameFrozenContextContractWithoutSummaryData() {
+        EpisodePromptContextService contexts = mock(EpisodePromptContextService.class);
+        when(contexts.prepare(any(), any(), any())).thenReturn(
+            new EpisodePromptContextService.Prepared(501L, "COMMON_PREFIX", "CACHE_KEY", "HASH"));
+        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, contexts, true);
+        when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
+            .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
+        when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(true);
+
+        adapter.executeChild(plan(), task(), stage(), 101L, null, 99L);
+
+        ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
+        verify(runner).runFormal(any(WorkflowAgentExecutionPlan.class), input.capture());
+        assertThat(input.getValue().stableContext()).isEqualTo("COMMON_PREFIX");
+        assertThat(input.getValue().promptCacheKey()).isEqualTo("CACHE_KEY");
+        assertThat(input.getValue().input()).doesNotContain("概要");
+    }
+
+    @Test
     void runsOneEpisodeAgainstFrozenPlanAndRequiresFormalCoverage() {
         AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, true);
         WorkflowAgentExecutionPlan plan = plan();

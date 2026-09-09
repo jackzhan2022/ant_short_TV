@@ -51,7 +51,9 @@ public final class EpisodeSplitBoundaryResolver {
             episodes.add(new ScriptEpisodeResponse(index + 1, resolved.get(index).boundary().title(),
                 source.substring(contentStart, contentEnd)));
         }
-        return List.copyOf(episodes);
+        List<ScriptEpisodeResponse> result = List.copyOf(episodes);
+        new EpisodeGranularityValidator().validate(source, result);
+        return result;
     }
 
     private MarkerMatch uniqueMatch(String source, String marker) {

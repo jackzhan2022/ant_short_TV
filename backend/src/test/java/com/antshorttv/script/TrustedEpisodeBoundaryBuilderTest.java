@@ -32,6 +32,20 @@ class TrustedEpisodeBoundaryBuilderTest {
         assertThat(builder.build("无标题剧本", List.of())).isEmpty();
     }
 
+    @Test
+    void excludesNarrativeGroupLabelsAndAttachesThemToTheFollowingEpisode() {
+        String source = "第1集\nA\n第2集到第3集剧情\n第2集\nB\n第3集\nC";
+
+        List<EpisodeSplitBoundaryResolver.Boundary> boundaries = builder.build(source, List.of(
+            anchor(source, "第1集"), anchor(source, "第2集到第3集剧情"),
+            anchor(source, "第2集"), anchor(source, "第3集"))).orElseThrow();
+
+        assertThat(boundaries).hasSize(3);
+        assertThat(boundaries.get(1).startMarker()).isEqualTo("第2集到第3集剧情");
+        assertThat(boundaries).extracting(EpisodeSplitBoundaryResolver.Boundary::title)
+            .containsExactly("第1集", "第2集", "第3集");
+    }
+
     private ScriptSplitChunkPlanner.TrustedAnchor anchor(String source, String marker) {
         return new ScriptSplitChunkPlanner.TrustedAnchor(
             source.indexOf(marker), marker, "EPISODE_HEADING");

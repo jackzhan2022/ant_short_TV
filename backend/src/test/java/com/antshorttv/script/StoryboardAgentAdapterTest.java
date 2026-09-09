@@ -30,6 +30,27 @@ class StoryboardAgentAdapterTest {
     private final AiExecutionAttemptMapper attempts = mock(AiExecutionAttemptMapper.class);
 
     @Test
+    void attachesTheExistingEpisodeContextWithoutAGeneratedSummaryOrDynamicAssets() {
+        EpisodePromptContextService contexts = mock(EpisodePromptContextService.class);
+        when(contexts.prepareStoryboard(any(), any(), any())).thenReturn(
+            new EpisodePromptContextService.Prepared(501L, "COMMON_PREFIX", "CACHE_KEY", "HASH"));
+        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(
+            runner, storyboards, attempts, contexts, true);
+        when(runner.runFormal(any())).thenReturn(
+            new WorkflowAgentRunResult(601L, "{\"saved\":true}", List.of()));
+        when(storyboards.hasCompleteRunSet(11L, 22L, 44L, 601L)).thenReturn(true);
+        when(attempts.selectById(77L)).thenReturn(new AiExecutionAttemptEntity());
+
+        adapter.execute(operation(), 44L, execution());
+
+        ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
+        verify(runner).runFormal(input.capture());
+        assertThat(input.getValue().stableContext()).isEqualTo("COMMON_PREFIX")
+            .doesNotContain("summary", "assets");
+        assertThat(input.getValue().promptCacheKey()).isEqualTo("CACHE_KEY");
+    }
+
+    @Test
     void runsOneEpisodeWithTrustedExecutionScopeAndFrozenTextModel() {
         StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts, true);
         ScriptAiOperationEntity operation = operation();

@@ -207,6 +207,25 @@ class AiExecutionCoreServiceTest {
     }
 
     @Test
+    void claimsShareADatabaseBackedModelConcurrencyLimitAcrossTenants() {
+        long modelId = 888_888L;
+        var tasks = java.util.stream.LongStream.range(0, 5)
+            .mapToObj(index -> executionService.create(new AiExecutionCreateCommand(
+                82_100L + index, 82_200L + index, null, "MODEL_LIMIT", "TEXT",
+                "TEST_RESOURCE", 82_300L + index, modelId, "SUBMIT",
+                "model-limit-" + index, "trace-model-limit-" + index, true, null)))
+            .toList();
+
+        LocalDateTime now = LocalDateTime.now();
+        for (int index = 0; index < 4; index++) {
+            assertThat(claimService.claim(tasks.get(index).id, "model-worker-" + index,
+                now, Duration.ofMinutes(5))).isNotNull();
+        }
+        assertThat(claimService.claim(tasks.get(4).id, "model-worker-4",
+            now, Duration.ofMinutes(5))).isNull();
+    }
+
+    @Test
     void cancellationDispositionIsDerivedFromTheAtomicStateTransition() {
         AiExecutionTaskEntity pending = executionService.create(command(8251L, "cancel-pending", false));
         AiExecutionTaskEntity running = executionService.create(command(8252L, "cancel-running", false));

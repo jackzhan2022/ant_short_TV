@@ -24,19 +24,22 @@ class ScriptAiOperationService {
     private final AiExecutionResponseMapper responseMapper;
     private final ProjectAiConfigService projectAiConfigService;
     private final ObjectMapper objectMapper;
+    private final StoryboardGenerationAdmissionRepository storyboardAdmission;
 
     ScriptAiOperationService(
         ScriptAiOperationMapper operationMapper,
         AiExecutionService executionService,
         AiExecutionResponseMapper responseMapper,
         ProjectAiConfigService projectAiConfigService,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        StoryboardGenerationAdmissionRepository storyboardAdmission
     ) {
         this.operationMapper = operationMapper;
         this.executionService = executionService;
         this.responseMapper = responseMapper;
         this.projectAiConfigService = projectAiConfigService;
         this.objectMapper = objectMapper;
+        this.storyboardAdmission = storyboardAdmission;
     }
 
     @Transactional
@@ -56,6 +59,24 @@ class ScriptAiOperationService {
         );
         if (existing != null && existing.executionId != null) {
             return responseMapper.toResponse(executionService.requireTask(existing.executionId));
+        }
+
+        StoryboardGenerationAdmissionRepository.Admission admission = null;
+        String admissionOrigin = traceId != null && traceId.startsWith("auto-storyboard-")
+            ? "AUTO" : "MANUAL";
+        if (AiBusinessScene.STORYBOARD_BREAKDOWN == scene
+            && resumableInput instanceof StoryboardBreakdownRequest storyboardRequest) {
+            admission = storyboardAdmission.admit(
+                context.tenantId(), projectId, storyboardRequest.episodeId(), admissionOrigin);
+            if (admission.executionId() != null) {
+                AiExecutionTaskEntity admitted = executionService.requireTask(admission.executionId());
+                if ("PENDING".equals(admitted.status) || "RUNNING".equals(admitted.status)) {
+                    return responseMapper.toResponse(admitted);
+                }
+                storyboardAdmission.reopen(context.tenantId(), projectId,
+                    storyboardRequest.episodeId(), admission.sourceFingerprint(), admitted.id,
+                    admissionOrigin);
+            }
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -96,6 +117,10 @@ class ScriptAiOperationService {
         operation.executionId = execution.id;
         operation.updatedAt = LocalDateTime.now();
         operationMapper.updateById(operation);
+        if (admission != null && resumableInput instanceof StoryboardBreakdownRequest storyboardRequest) {
+            storyboardAdmission.attach(context.tenantId(), projectId, storyboardRequest.episodeId(),
+                admission.sourceFingerprint(), execution.id);
+        }
         return responseMapper.toResponse(execution);
     }
 

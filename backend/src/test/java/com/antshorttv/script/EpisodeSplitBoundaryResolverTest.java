@@ -42,15 +42,15 @@ class EpisodeSplitBoundaryResolverTest {
 
     @Test
     void resolvesUniqueMarkersWhenTheModelOnlyChangesPunctuationOrWhitespace() {
-        String source = "前言\r\n第一集\r\nSerena os: \"What is this place...?\"（这是什么地方……？）\r\n\r\n---\r\n第四集\r\n正文。";
+        String source = "前言\r\n第一集\r\nSerena os: \"What is this place...?\"（这是什么地方……？）\r\n\r\n---\r\n第二集\r\n正文。";
 
         List<ScriptEpisodeResponse> result = resolver.resolve(source, List.of(
             draft("坠落", "第一 集", "Serena os: \"What is this place...?\"（这是什么地方……）"),
-            draft("觉醒", "第四 集", "正文。")));
+            draft("觉醒", "第二 集", "正文。")));
 
         assertThat(result.stream().map(ScriptEpisodeResponse::content).reduce("", String::concat))
             .isEqualTo(source);
-        assertThat(result.get(1).content()).startsWith("第四集");
+        assertThat(result.get(1).content()).startsWith("第二集");
     }
 
     @Test

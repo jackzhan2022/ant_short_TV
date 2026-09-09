@@ -14,15 +14,14 @@ public class TrustedEpisodeBoundaryBuilder {
         if (source == null || source.isEmpty() || anchors == null) {
             return Optional.empty();
         }
-        List<ScriptSplitChunkPlanner.TrustedAnchor> headings = anchors.stream()
-            .filter(anchor -> "EPISODE_HEADING".equals(anchor.signal()))
-            .filter(anchor -> anchor.offset() >= 0 && anchor.offset() < source.length())
-            .sorted(Comparator.comparingInt(ScriptSplitChunkPlanner.TrustedAnchor::offset))
-            .collect(java.util.stream.Collectors.collectingAndThen(
-                java.util.stream.Collectors.toMap(
-                    ScriptSplitChunkPlanner.TrustedAnchor::offset, anchor -> anchor,
-                    (left, right) -> left, java.util.LinkedHashMap::new),
-                values -> List.copyOf(values.values())));
+        List<EpisodeHeadingClassifier.Heading> classified = new EpisodeHeadingClassifier().scan(source);
+        if (classified.stream().anyMatch(item -> item.type() == EpisodeHeadingClassifier.Type.AMBIGUOUS)) {
+            return Optional.empty();
+        }
+        List<EpisodeHeadingClassifier.Heading> headings = classified.stream()
+            .filter(item -> item.type() == EpisodeHeadingClassifier.Type.SINGLE)
+            .sorted(Comparator.comparingInt(EpisodeHeadingClassifier.Heading::startOffset))
+            .toList();
         if (headings.size() < 2) {
             return Optional.empty();
         }
@@ -32,15 +31,31 @@ public class TrustedEpisodeBoundaryBuilder {
         }
         List<EpisodeSplitBoundaryResolver.Boundary> boundaries = new java.util.ArrayList<>();
         for (int index = 0; index < headings.size(); index++) {
-            var heading = headings.get(index);
+            EpisodeHeadingClassifier.Heading heading = headings.get(index);
             String title = heading.marker().strip().replace('\r', ' ').replace('\n', ' ');
             if (title.length() > 200) title = title.substring(0, 200);
             String endMarker = index + 1 < headings.size()
-                ? headings.get(index + 1).marker() : finalMarker;
+                ? startMarker(classified, headings.get(index + 1)) : finalMarker;
             boundaries.add(new EpisodeSplitBoundaryResolver.Boundary(
-                title, heading.marker(), endMarker));
+                title, startMarker(classified, heading), endMarker));
         }
         return Optional.of(List.copyOf(boundaries));
+    }
+
+    private String startMarker(
+        List<EpisodeHeadingClassifier.Heading> classified,
+        EpisodeHeadingClassifier.Heading episode
+    ) {
+        EpisodeHeadingClassifier.Heading previous = null;
+        for (EpisodeHeadingClassifier.Heading candidate : classified) {
+            if (candidate.startOffset() >= episode.startOffset()) break;
+            previous = candidate;
+        }
+        if (previous != null && previous.type() == EpisodeHeadingClassifier.Type.GROUP
+            && previous.episodeNo() == episode.episodeNo()) {
+            return previous.marker();
+        }
+        return episode.marker();
     }
 
     private String uniqueFinalMarker(String source) {

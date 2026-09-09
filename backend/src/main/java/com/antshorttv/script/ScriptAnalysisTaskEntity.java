@@ -14,6 +14,7 @@ public class ScriptAnalysisTaskEntity {
     private Long scriptId;
     private Long scriptVersionId;
     private String workflowCode;
+    private String pipelineVersion;
     private String status;
     private String currentStage;
     private Integer overallProgress;
@@ -39,6 +40,8 @@ public class ScriptAnalysisTaskEntity {
     public void setScriptVersionId(Long scriptVersionId) { this.scriptVersionId = scriptVersionId; }
     public String getWorkflowCode() { return workflowCode; }
     public void setWorkflowCode(String workflowCode) { this.workflowCode = workflowCode; }
+    public String getPipelineVersion() { return pipelineVersion; }
+    public void setPipelineVersion(String pipelineVersion) { this.pipelineVersion = pipelineVersion; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public String getCurrentStage() { return currentStage; }
