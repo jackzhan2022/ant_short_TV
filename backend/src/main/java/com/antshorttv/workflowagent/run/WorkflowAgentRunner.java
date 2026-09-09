@@ -524,12 +524,15 @@ public class WorkflowAgentRunner {
             String serialized = json.writeValueAsString(output);
             runs.recordToolStep(runId, toolStep, toolCode, "{}", serialized);
             context.runState().recordSuccess(toolCode);
+            String handoff = "服务端已完成 read_current_episode，并已记录当前剧集的版本校验信息。"
+                + "Agent/Skill 中先读取当前剧集的要求已由服务端完成，不要再次读取。"
+                + "请基于已提供的当前剧集正文完成本阶段分析，直接调用 "
+                + contract.terminalToolCode() + " 保存结果。";
             if (input.stableContext() == null || input.stableContext().isBlank()
                 || "short-drama-asset-recognition".equals(agent.code())) {
-                messages.add(AiChatMessage.user(
-                    "以下为服务端已按可信作用域预加载并审计的当前剧集数据，"
-                        + "不要再次读取，直接调用本阶段保存工具：\n" + serialized));
+                handoff += "\n以下为服务端已按可信作用域预加载并审计的当前剧集数据：\n" + serialized;
             }
+            messages.add(AiChatMessage.user(handoff));
             return stepNo;
         } catch (Exception exception) {
             BusinessException normalized = normalizeToolFailure(exception);
@@ -670,7 +673,11 @@ public class WorkflowAgentRunner {
         }
         if ("short-drama-asset-recognition".equals(agentCode)
             || "short-drama-episode-summary".equals(agentCode)) {
-            return episodeSharedProviderTools();
+            // The host has already read the episode; only the stage's authorized save remains.
+            return allowedTools.stream()
+                .filter(tool -> contract.isTerminal(tool.code()))
+                .map(this::providerTool)
+                .toList();
         }
         if ("short-drama-storyboard".equals(agentCode)) {
             return episodeSharedProviderTools();

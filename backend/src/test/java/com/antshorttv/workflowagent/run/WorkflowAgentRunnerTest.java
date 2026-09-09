@@ -43,6 +43,8 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class WorkflowAgentRunnerTest {
     private final WorkflowAgentService agents = mock(WorkflowAgentService.class);
@@ -173,19 +175,21 @@ class WorkflowAgentRunnerTest {
         verify(invocation).invokeText(requests.capture());
         assertThat(requests.getValue().textRequest().tools())
             .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("read_current_episode", "save_episode_summary");
+            .containsExactly("save_episode_summary");
         assertThat(requests.getValue().textRequest().messages())
             .extracting(AiChatMessage::content)
             .satisfiesExactly(
                 content -> assertThat(content).isEqualTo("公共剧集上下文\nCURRENT_EPISODE"),
                 content -> assertThat(content).contains("概要阶段规则"),
-                content -> assertThat(content).isEqualTo("直接保存"));
+                content -> assertThat(content).isEqualTo("直接保存"),
+                content -> assertThat(content).contains("已完成 read_current_episode", "不要再次读取")
+                    .doesNotContain("CURRENT_EPISODE"));
         verify(runs).recordToolStep(101L, 1, "read_current_episode", "{}",
             "{\"content\":\"CURRENT_EPISODE\",\"fingerprint\":\"fp\"}");
     }
 
     @Test
-    void sharedEpisodeToolSchemaDoesNotGrantCrossStageExecutionPermission() {
+    void episodeSummaryDoesNotExposeOrAllowCrossStageTools() {
         WorkflowToolDefinition read = storyboardRead("read_current_episode", new ArrayList<>(),
             json.createObjectNode().put("content", "CURRENT_EPISODE").put("fingerprint", "fp"));
         runner = runnerWith(List.of(read, tool("save_episode_summary"), tool("save_episode_assets")), 30);
@@ -205,7 +209,59 @@ class WorkflowAgentRunnerTest {
         verify(invocation).invokeText(request.capture());
         assertThat(request.getValue().textRequest().tools())
             .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("read_current_episode", "save_episode_summary", "save_episode_assets");
+            .containsExactly("save_episode_summary");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "short-drama-episode-summary,save_episode_summary,true",
+        "short-drama-episode-summary,save_episode_summary,false",
+        "short-drama-asset-recognition,save_episode_assets,true",
+        "short-drama-asset-recognition,save_episode_assets,false"
+    })
+    void preloadedEpisodeStagesExposeOnlyTheirSaveAndAnnounceReadCompletion(
+        String agentCode, String saveCode, boolean stableContext
+    ) {
+        List<String> executed = new ArrayList<>();
+        var read = storyboardRead("read_current_episode", executed,
+            json.createObjectNode().put("content", "CURRENT_EPISODE").put("assetCatalog", "CURRENT_ASSETS"));
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            saveCode, "保存当前阶段", "保存当前阶段",
+            json.createObjectNode().put("type", "object"), json.createObjectNode().put("type", "object"),
+            ToolRiskLevel.WRITE, ToolFailurePolicy.TERMINAL, tool(saveCode).executor());
+        runner = runnerWith(List.of(read, save), 30);
+        when(agents.loadForRun(agentCode)).thenReturn(new WorkflowAgentRecord(
+            6L, agentCode, "当前阶段", "", "先读取当前剧集，再保存", 8L,
+            new BigDecimal("0.2"), 4096, 4, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", saveCode)));
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            assertThat(executed).containsExactly("read_current_episode");
+            com.antshorttv.ai.AiInvocationRequest request = call.getArgument(0);
+            assertThat(request.textRequest().tools()).extracting(com.antshorttv.ai.AiToolDefinition::code)
+                .containsExactly(saveCode);
+            var messages = request.textRequest().messages();
+            assertThat(messages.get(messages.size() - 1).content())
+                .contains("已完成 read_current_episode", "不要再次读取", saveCode);
+            if (stableContext) {
+                assertThat(messages.get(0).content()).isEqualTo("冻结上下文 CURRENT_EPISODE");
+                assertThat(request.textRequest().promptCacheKey()).isEqualTo("stable-cache-key");
+            }
+            if (!stableContext || agentCode.equals("short-drama-asset-recognition")) {
+                assertThat(messages.get(messages.size() - 1).content()).contains("CURRENT_EPISODE", "CURRENT_ASSETS");
+            }
+            String payload = saveCode.equals("save_episode_assets")
+                ? "{\"schemaVersion\":1,\"characters\":[],\"characterLooks\":[],\"scenes\":[],\"props\":[],\"propVariants\":[]}"
+                : "{}";
+            return result(null, List.of(new AiToolCall("save", saveCode, payload)), 506L);
+        });
+        runner.runFormal(new WorkflowAgentRunInput(
+            agentCode, "分析当前剧集", 7L, 25L, 91L, 77L, null, null, 9L,
+            null, null, null, 8L, null,
+            stableContext ? "冻结上下文 CURRENT_EPISODE" : null, "stable-cache-key", Map.of()));
+        assertThat(executed).containsExactly("read_current_episode");
+        verify(invocation).invokeText(any());
+        verify(runs).complete(org.mockito.ArgumentMatchers.eq(101L), any());
     }
 
     @Test
@@ -950,7 +1006,7 @@ class WorkflowAgentRunnerTest {
         assertThat(requests.getAllValues()).allSatisfy(request ->
             assertThat(request.textRequest().tools())
                 .extracting(com.antshorttv.ai.AiToolDefinition::code)
-                .containsExactly("read_current_episode", "save_episode_assets"));
+                .containsExactly("save_episode_assets"));
         assertThat(requests.getAllValues()).allSatisfy(request -> {
             assertThat(request.textRequest().maxTokens()).isEqualTo(4096);
             assertThat(request.textRequest().retryCount()).isEqualTo(1);

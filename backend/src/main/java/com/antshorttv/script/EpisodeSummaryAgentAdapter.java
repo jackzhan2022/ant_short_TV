@@ -67,7 +67,7 @@ public class EpisodeSummaryAgentAdapter {
             ? null : contexts.prepare(task, episodeId, modelId);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             EpisodeSummaryAgentBootstrap.AGENT_CODE,
-            "读取当前剧集并提炼、保存本集正式概要。",
+            "基于服务端已准备的当前剧集正文，提炼并保存本集正式概要。",
             task.getTenantId(), task.getProjectId(), episodeId, task.getScriptId(), task.getId(),
             stage.getId(), task.getCreatedBy(),
             executionContext == null ? null : executionContext.task().id,

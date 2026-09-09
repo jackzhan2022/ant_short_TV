@@ -55,7 +55,7 @@ public class AssetRecognitionAgentAdapter {
             ? null : contexts.prepare(task, episodeId, modelId);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             AssetRecognitionAgentBootstrap.AGENT_CODE,
-            "读取当前剧集并识别、匹配、保存本集正式角色、变装、场景、道具及形态。",
+            "基于服务端已准备的当前剧集正文和资产目录，识别、匹配并保存本集正式角色、变装、场景、道具及形态。",
             task.getTenantId(), task.getProjectId(), episodeId, task.getScriptId(), task.getId(),
             stage.getId(), task.getCreatedBy(),
             executionContext == null ? null : executionContext.task().id,
