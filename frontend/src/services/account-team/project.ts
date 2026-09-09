@@ -22,6 +22,7 @@ export type ProjectFormValues = {
   scriptType?: string;
   breakdownStrength?: string;
   visualStyle?: string;
+  scriptName?: string;
   initialScriptContent?: string;
 };
 

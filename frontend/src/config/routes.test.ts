@@ -27,7 +27,7 @@ describe('script review library route', () => {
     });
     expect(routes.find((item) => item.path === '/script-review')).toMatchObject({
       hideInMenu: true,
-      component: './script-review',
+      component: './script-review-legacy',
     });
   });
 });

@@ -6,7 +6,6 @@ import {
   InfoCircleOutlined,
   MobileOutlined,
   PlayCircleOutlined,
-  PlusOutlined,
   UploadOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
@@ -21,7 +20,6 @@ import {
   Input,
   Modal,
   Radio,
-  Segmented,
   Spin,
   Tooltip,
   Typography,
@@ -32,12 +30,15 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import type { TenantMember } from '@/services/account-team/types';
 import type { PublicStyle } from '../style-library/service';
+import styles from './index.module.css';
+import LazyInspirationThumbnail from './LazyInspirationThumbnail';
 import {
   aspectRatioOptions,
   breakdownStrengthOptions,
   fileFormatOptions,
   scriptTypeOptions,
 } from './options';
+import ScriptContentImport from './ScriptContentImport';
 import {
   createProject,
   type InspirationCreation,
@@ -47,8 +48,6 @@ import {
   queryStyleLibrary,
   queryTenantMembers,
 } from './service';
-import LazyInspirationThumbnail from './LazyInspirationThumbnail';
-import styles from './index.module.css';
 
 type CreationStep = 1 | 2;
 type DramaRegion = 'domestic' | 'overseas';
@@ -58,19 +57,6 @@ const inspirationTabs = [
   { key: 'overseas', label: '海外剧', icon: <GlobalOutlined /> },
 ] as const;
 const inspirationPageSize = 8;
-
-const readFileAsText = async (file: File) => {
-  if ('text' in file) {
-    return file.text();
-  }
-  return '';
-};
-
-const isTextLikeFile = (file: File) =>
-  file.type.startsWith('text/') ||
-  file.name.endsWith('.txt') ||
-  file.name.endsWith('.md') ||
-  file.name.endsWith('.json');
 
 const resolvePromptText = (detail?: InspirationCreationDetail) => {
   if (!detail?.detailJson) {
@@ -90,7 +76,8 @@ const resolvePromptText = (detail?: InspirationCreationDetail) => {
         : undefined,
     ];
     const prompt = candidates.find(
-      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+      (value): value is string =>
+        typeof value === 'string' && value.trim().length > 0,
     );
     return prompt?.trim() || detail.title || '暂无提示词';
   } catch {
@@ -104,7 +91,7 @@ const ShortDramaCreationPage = () => {
   const [step, setStep] = useState<CreationStep>(1);
   const [activeTab, setActiveTab] = useState<DramaRegion>('domestic');
   const [scriptDraft, setScriptDraft] = useState('');
-  const [scriptFileName, setScriptFileName] = useState<string>();
+  const [scriptSourceLabel, setScriptSourceLabel] = useState<string>();
   const [coverFileName, setCoverFileName] = useState<string>();
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string>();
   const [selectedStyle, setSelectedStyle] = useState<PublicStyle>();
@@ -134,29 +121,37 @@ const ShortDramaCreationPage = () => {
     breakdownStrength: 'MEDIUM',
   });
 
-  const loadInspirationPage = useCallback(async (page: number, append = false) => {
-    if (inspirationRequestInFlightRef.current) {
-      return;
-    }
-    inspirationRequestInFlightRef.current = true;
-    setInspirationLoading(true);
-    try {
-      const response = await queryInspirationCreations({
-        page,
-        pageSize: inspirationPageSize,
-      });
-      const data = response.data;
-      const records = data?.records || [];
-      setInspirationGallery((current) => (append ? [...current, ...records] : records));
-      setInspirationPage(data?.current || page);
-      setInspirationHasMore((data?.current || page) * (data?.pageSize || inspirationPageSize) < (data?.total || 0));
-    } catch {
-      message.error('灵感广场加载失败');
-    } finally {
-      inspirationRequestInFlightRef.current = false;
-      setInspirationLoading(false);
-    }
-  }, [message]);
+  const loadInspirationPage = useCallback(
+    async (page: number, append = false) => {
+      if (inspirationRequestInFlightRef.current) {
+        return;
+      }
+      inspirationRequestInFlightRef.current = true;
+      setInspirationLoading(true);
+      try {
+        const response = await queryInspirationCreations({
+          page,
+          pageSize: inspirationPageSize,
+        });
+        const data = response.data;
+        const records = data?.records || [];
+        setInspirationGallery((current) =>
+          append ? [...current, ...records] : records,
+        );
+        setInspirationPage(data?.current || page);
+        setInspirationHasMore(
+          (data?.current || page) * (data?.pageSize || inspirationPageSize) <
+            (data?.total || 0),
+        );
+      } catch {
+        message.error('灵感广场加载失败');
+      } finally {
+        inspirationRequestInFlightRef.current = false;
+        setInspirationLoading(false);
+      }
+    },
+    [message],
+  );
 
   useEffect(() => {
     if (!tenantId) {
@@ -164,10 +159,7 @@ const ShortDramaCreationPage = () => {
     }
     let active = true;
     setGalleryLoading(true);
-    Promise.all([
-      queryTenantMembers(tenantId),
-      queryStyleLibrary({}),
-    ])
+    Promise.all([queryTenantMembers(tenantId), queryStyleLibrary({})])
       .then(([memberResponse, styleResponse]) => {
         if (!active) {
           return;
@@ -221,21 +213,36 @@ const ShortDramaCreationPage = () => {
 
   useEffect(() => {
     const target = inspirationBottomRef.current;
-    if (!target || !hasScrolledGallery || !inspirationHasMore || inspirationLoading) {
+    if (
+      !target ||
+      !hasScrolledGallery ||
+      !inspirationHasMore ||
+      inspirationLoading
+    ) {
       return;
     }
-    const observer = new IntersectionObserver(([entry]) => {
-      if (
-        entry.isIntersecting
-        && lastPaginationScrollVersionRef.current !== galleryScrollVersion
-      ) {
-        lastPaginationScrollVersionRef.current = galleryScrollVersion;
-        void loadInspirationPage(inspirationPage + 1, true);
-      }
-    }, { rootMargin: '240px 0px' });
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry.isIntersecting &&
+          lastPaginationScrollVersionRef.current !== galleryScrollVersion
+        ) {
+          lastPaginationScrollVersionRef.current = galleryScrollVersion;
+          void loadInspirationPage(inspirationPage + 1, true);
+        }
+      },
+      { rootMargin: '240px 0px' },
+    );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [galleryScrollVersion, hasScrolledGallery, inspirationHasMore, inspirationLoading, inspirationPage, loadInspirationPage]);
+  }, [
+    galleryScrollVersion,
+    hasScrolledGallery,
+    inspirationHasMore,
+    inspirationLoading,
+    inspirationPage,
+    loadInspirationPage,
+  ]);
 
   const updateForm = (next: Partial<ProjectFormValues>) => {
     setProjectForm((current) => ({ ...current, ...next }));
@@ -259,23 +266,12 @@ const ShortDramaCreationPage = () => {
     updateForm({
       visualStyle: style.name,
       coverUrl: style.imageUrl,
-      coverSource: projectForm.coverSource === 'UPLOAD' ? 'UPLOAD' : 'FIRST_FRAME',
+      coverSource:
+        projectForm.coverSource === 'UPLOAD' ? 'UPLOAD' : 'FIRST_FRAME',
     });
     if (projectForm.coverSource !== 'UPLOAD') {
       setCoverPreviewUrl(style.imageUrl);
     }
-  };
-
-  const handleScriptUpload = async (file: File) => {
-    setScriptFileName(file.name);
-    if (isTextLikeFile(file)) {
-      const text = await readFileAsText(file);
-      setScriptDraft(text);
-      updateForm({ initialScriptContent: text });
-    } else {
-      message.info(`已选择 ${file.name}，可继续进入项目配置。`);
-    }
-    return false;
   };
 
   const handleCoverUpload = async (file: File) => {
@@ -323,6 +319,7 @@ const ShortDramaCreationPage = () => {
         scriptType: projectForm.scriptType,
         breakdownStrength: projectForm.breakdownStrength,
         visualStyle: projectForm.visualStyle || selectedStyle?.name,
+        scriptName: projectForm.scriptName?.trim() || undefined,
         initialScriptContent: scriptDraft.trim() || undefined,
       };
       const response = await createProject(payload);
@@ -351,7 +348,11 @@ const ShortDramaCreationPage = () => {
         <div className={styles.regionTabs}>
           {inspirationTabs.map((item) => (
             <button
-              className={activeTab === item.key ? styles.regionTabActive : styles.regionTab}
+              className={
+                activeTab === item.key
+                  ? styles.regionTabActive
+                  : styles.regionTab
+              }
               key={item.key}
               onClick={() => setActiveTab(item.key)}
               type="button"
@@ -370,27 +371,18 @@ const ShortDramaCreationPage = () => {
               setScriptDraft(event.target.value);
               updateForm({ initialScriptContent: event.target.value });
             }}
-            placeholder="复制粘贴剧本，或上传文件（支持txt、docx、pdf）"
+            placeholder="复制粘贴剧本，或导入文件（支持 txt、md、docx）"
             value={scriptDraft}
           />
-          <Upload
-            accept=".txt,.md,.docx,.pdf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            beforeUpload={(file) => {
-              void handleScriptUpload(file as File);
-              return false;
+          <ScriptContentImport
+            className={styles.uploadButton}
+            currentContent={scriptDraft}
+            onImport={(content, sourceLabel) => {
+              setScriptDraft(content);
+              setScriptSourceLabel(sourceLabel);
+              updateForm({ initialScriptContent: content });
             }}
-            showUploadList={false}
-          >
-            <Tooltip title="上传剧本文件">
-              <Button
-                aria-label="上传剧本文件"
-                className={styles.uploadButton}
-                icon={<PlusOutlined />}
-                shape="circle"
-                type="text"
-              />
-            </Tooltip>
-          </Upload>
+          />
           <Tooltip title="进入创作设置">
             <Button
               aria-label="开始创作"
@@ -415,14 +407,16 @@ const ShortDramaCreationPage = () => {
         </button>
       </Flex>
 
-      {(scriptFileName || scriptDraft.trim()) && (
+      {(scriptSourceLabel || scriptDraft.trim()) && (
         <Typography.Text className={styles.readyText} type="secondary">
-          {scriptFileName ? `已选择：${scriptFileName}` : '剧本内容已就绪'}
+          {scriptSourceLabel || '剧本内容已就绪'}
         </Typography.Text>
       )}
 
       <section className={styles.inspirationSection}>
-        <Typography.Text className={styles.sectionTitle}>灵感广场</Typography.Text>
+        <Typography.Text className={styles.sectionTitle}>
+          灵感广场
+        </Typography.Text>
         <Spin spinning={inspirationLoading && !inspirationGallery.length}>
           {inspirationGallery.length ? (
             <div className={styles.inspirationGrid}>
@@ -454,7 +448,10 @@ const ShortDramaCreationPage = () => {
             <Empty description="暂无灵感内容" />
           )}
           {inspirationHasMore && (
-            <div className={styles.inspirationLoadMore} ref={inspirationBottomRef}>
+            <div
+              className={styles.inspirationLoadMore}
+              ref={inspirationBottomRef}
+            >
               {inspirationLoading ? '加载中...' : ''}
             </div>
           )}
@@ -466,7 +463,11 @@ const ShortDramaCreationPage = () => {
   const secondStep = (
     <div className={styles.settingsPage}>
       <header className={styles.settingsHeader}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(1)} type="text">
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => setStep(1)}
+          type="text"
+        >
           初始设定
         </Button>
         <div className={styles.costNote}>
@@ -487,16 +488,41 @@ const ShortDramaCreationPage = () => {
       <main className={styles.settingsBody}>
         <section className={styles.settingBlock}>
           <Typography.Text className={styles.settingTitle}>
+            剧本名称
+          </Typography.Text>
+          <Input
+            aria-label="剧本名称"
+            maxLength={200}
+            onChange={(event) => updateForm({ scriptName: event.target.value })}
+            placeholder="请输入剧本名称"
+            value={projectForm.scriptName || ''}
+          />
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
             画面比例 <InfoCircleOutlined />
           </Typography.Text>
-          <Segmented
-            className={styles.pillSegment}
+          <Radio.Group
+            buttonStyle="solid"
+            className={styles.strengthGroup}
             options={aspectRatioOptions.map((item) => ({
               ...item,
-              icon: item.value === '16:9' ? <VideoCameraOutlined /> : <MobileOutlined />,
+              label: (
+                <>
+                  {item.value === '16:9' ? (
+                    <VideoCameraOutlined />
+                  ) : (
+                    <MobileOutlined />
+                  )}{' '}
+                  {item.label}
+                </>
+              ),
             }))}
-            onChange={(value) => updateForm({ aspectRatio: String(value) })}
-            shape="round"
+            onChange={(event) =>
+              updateForm({ aspectRatio: String(event.target.value) })
+            }
+            optionType="button"
             value={projectForm.aspectRatio}
           />
         </section>
@@ -505,11 +531,14 @@ const ShortDramaCreationPage = () => {
           <Typography.Text className={styles.settingTitle}>
             文件格式 <InfoCircleOutlined />
           </Typography.Text>
-          <Segmented
-            className={styles.pillSegment}
-            onChange={(value) => updateForm({ fileFormat: String(value) })}
+          <Radio.Group
+            buttonStyle="solid"
+            className={styles.strengthGroup}
+            onChange={(event) =>
+              updateForm({ fileFormat: String(event.target.value) })
+            }
+            optionType="button"
             options={fileFormatOptions}
-            shape="round"
             value={projectForm.fileFormat}
           />
         </section>
@@ -518,11 +547,14 @@ const ShortDramaCreationPage = () => {
           <Typography.Text className={styles.settingTitle}>
             剧本类型 <InfoCircleOutlined />
           </Typography.Text>
-          <Segmented
-            className={styles.pillSegment}
-            onChange={(value) => updateForm({ scriptType: String(value) })}
+          <Radio.Group
+            buttonStyle="solid"
+            className={styles.strengthGroup}
+            onChange={(event) =>
+              updateForm({ scriptType: String(event.target.value) })
+            }
+            optionType="button"
             options={scriptTypeOptions}
-            shape="round"
             value={projectForm.scriptType}
           />
         </section>
@@ -536,7 +568,9 @@ const ShortDramaCreationPage = () => {
             <Radio.Group
               buttonStyle="solid"
               className={styles.strengthGroup}
-              onChange={(event) => updateForm({ breakdownStrength: event.target.value })}
+              onChange={(event) =>
+                updateForm({ breakdownStrength: event.target.value })
+              }
               optionType="button"
               options={breakdownStrengthOptions}
               value={projectForm.breakdownStrength}
@@ -545,7 +579,9 @@ const ShortDramaCreationPage = () => {
         </section>
 
         <section className={styles.settingBlock}>
-          <Typography.Text className={styles.settingTitle}>剧本封面</Typography.Text>
+          <Typography.Text className={styles.settingTitle}>
+            剧本封面
+          </Typography.Text>
           <Flex align="center" gap={10} wrap>
             <div className={styles.coverPreview}>
               {coverPreviewUrl ? (
@@ -571,14 +607,21 @@ const ShortDramaCreationPage = () => {
               }}
               showUploadList={false}
             >
-              <Button icon={<UploadOutlined />}>{coverFileName || '上传图片'}</Button>
+              <Button icon={<UploadOutlined />}>
+                {coverFileName || '上传图片'}
+              </Button>
             </Upload>
           </Flex>
         </section>
 
         <section className={styles.settingBlock}>
-          <Typography.Text className={styles.settingTitle}>画面风格</Typography.Text>
-          <Typography.Text className={styles.selectedStyleText} type="secondary">
+          <Typography.Text className={styles.settingTitle}>
+            画面风格
+          </Typography.Text>
+          <Typography.Text
+            className={styles.selectedStyleText}
+            type="secondary"
+          >
             已选风格
           </Typography.Text>
           {selectedStyle && (
@@ -591,7 +634,10 @@ const ShortDramaCreationPage = () => {
               <span>{selectedStyle.name}</span>
             </button>
           )}
-          <Typography.Text className={styles.selectedStyleText} type="secondary">
+          <Typography.Text
+            className={styles.selectedStyleText}
+            type="secondary"
+          >
             平台风格
           </Typography.Text>
           <Spin spinning={galleryLoading}>
@@ -600,7 +646,9 @@ const ShortDramaCreationPage = () => {
                 const active = selectedStyle?.id === style.id;
                 return (
                   <button
-                    className={active ? styles.styleCardActive : styles.styleCard}
+                    className={
+                      active ? styles.styleCardActive : styles.styleCard
+                    }
                     key={style.externalId}
                     onClick={() => applyStyleSelection(style)}
                     type="button"
@@ -676,9 +724,12 @@ const ShortDramaCreationPage = () => {
               </div>
               <div className={styles.detailCopy}>
                 <Typography.Text className={styles.detailTitle}>
-                  {selectedInspiration.title || `灵感 ${selectedInspiration.id}`}
+                  {selectedInspiration.title ||
+                    `灵感 ${selectedInspiration.id}`}
                 </Typography.Text>
-                <Typography.Text className={styles.detailLabel}>素材提示词</Typography.Text>
+                <Typography.Text className={styles.detailLabel}>
+                  素材提示词
+                </Typography.Text>
                 <Typography.Paragraph className={styles.detailPrompt}>
                   {resolvePromptText(selectedInspiration)}
                 </Typography.Paragraph>

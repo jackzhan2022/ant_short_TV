@@ -20,6 +20,7 @@ record CreateProjectRequest(
     String scriptType,
     String breakdownStrength,
     String visualStyle,
+    @Size(max = 200) String scriptName,
     String initialScriptContent
 ) {
 }

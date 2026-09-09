@@ -141,6 +141,7 @@ class ProjectControllerTest {
                       "breakdownStrength":"MEDIUM",
                       "coverSource":"FIRST_FRAME",
                       "visualStyle":"3D风格-高清真实渲染",
+                      "scriptName":"雨夜归来",
                       "initialScriptContent":"第一场，雨夜重逢。"
                     }
                     """.formatted(ownerUserId)))
@@ -164,7 +165,7 @@ class ProjectControllerTest {
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.script.title", is("独立菜单短剧")))
+            .andExpect(jsonPath("$.data.script.title", is("雨夜归来")))
             .andExpect(jsonPath("$.data.script.content", is("第一场，雨夜重逢。")))
             .andExpect(jsonPath("$.data.script.sourceType", is("MANUAL_EDIT")))
             .andExpect(jsonPath("$.data.versions", hasSize(1)))

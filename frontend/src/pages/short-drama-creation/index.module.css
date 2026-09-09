@@ -23,7 +23,11 @@
 }
 
 .heroTitle span {
-  background: linear-gradient(90deg, var(--app-color-primary) 0%, var(--app-color-primary-hover) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--app-color-primary) 0%,
+    var(--app-color-primary-hover) 100%
+  );
   background-clip: text;
   color: transparent;
 }
@@ -37,7 +41,9 @@
   border-radius: 12px;
   background: var(--app-color-bg-container);
   box-shadow: 0 10px 30px rgba(33, 36, 50, 0.06);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .scriptPanel:focus-within {
@@ -65,7 +71,9 @@
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.18s ease, background-color 0.18s ease;
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease;
 }
 
 .regionTabActive {
@@ -136,7 +144,11 @@
   padding: 0 20px;
   border: 0;
   border-radius: 21px;
-  background: linear-gradient(90deg, var(--app-color-primary) 0%, var(--app-color-primary-hover) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--app-color-primary) 0%,
+    var(--app-color-primary-hover) 100%
+  );
   box-shadow: 0 8px 20px rgb(82 82 255 / 20%);
   font-size: 15px;
   font-weight: 700;
@@ -202,7 +214,9 @@
   background: var(--app-color-fill-secondary);
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(26, 29, 40, 0.04);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .inspirationCard img {
@@ -338,31 +352,7 @@
   height: 22px;
   border-radius: 8px;
   background: var(--app-color-primary);
-  content: '';
-}
-
-.pillSegment {
-  background: transparent;
-}
-
-.pillSegment :where(.ant-segmented-item) {
-  min-width: 112px;
-  height: 44px;
-  margin-right: 14px;
-  border-radius: 22px;
-  background: var(--app-color-fill-secondary);
-  color: var(--app-color-text-secondary);
-  font-size: 15px;
-  line-height: 44px;
-}
-
-.pillSegment :where(.ant-segmented-item-selected) {
-  background: var(--app-color-primary);
-  color: #fff;
-}
-
-.pillSegment :where(.ant-segmented-thumb) {
-  display: none;
+  content: "";
 }
 
 .strengthGroup :where(.ant-radio-button-wrapper) {

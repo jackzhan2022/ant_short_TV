@@ -26,6 +26,7 @@ import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.script.ScriptEpisodeParser;
 import com.antshorttv.script.ScriptEpisodeResponse;
+import com.antshorttv.scriptcontent.ScriptContentParser;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -36,9 +37,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,8 +53,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
-import org.apache.poi.hwpf.HWPFDocument;
-import org.apache.poi.hwpf.extractor.WordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -116,6 +113,7 @@ public class ReviewWorkbenchService {
     private final ReviewDeepAgentCoordinator reviewDeepAgentCoordinator;
     private final ReviewObservabilityRepository reviewObservabilityRepository;
     private final ReviewWorkflowFeatureFlags reviewWorkflowFeatureFlags;
+    private final ScriptContentParser scriptContentParser;
     private final int quickSafeCharacters;
     private final Path exportRoot;
 
@@ -146,6 +144,7 @@ public class ReviewWorkbenchService {
         ReviewDeepAgentCoordinator reviewDeepAgentCoordinator,
         ReviewObservabilityRepository reviewObservabilityRepository,
         ReviewWorkflowFeatureFlags reviewWorkflowFeatureFlags,
+        ScriptContentParser scriptContentParser,
         @Value("${review.workflow.quick-safe-characters:80000}") int quickSafeCharacters,
         @Value("${review.export-root:storage/review-exports}") String exportRoot
     ) {
@@ -175,6 +174,7 @@ public class ReviewWorkbenchService {
         this.reviewDeepAgentCoordinator = reviewDeepAgentCoordinator;
         this.reviewObservabilityRepository = reviewObservabilityRepository;
         this.reviewWorkflowFeatureFlags = reviewWorkflowFeatureFlags;
+        this.scriptContentParser = scriptContentParser;
         this.quickSafeCharacters = Math.min(50000, quickSafeCharacters);
         this.exportRoot = Path.of(exportRoot).toAbsolutePath().normalize();
     }
@@ -1587,31 +1587,9 @@ public class ReviewWorkbenchService {
 
     private String resolveImportedContent(MultipartFile file, String content) {
         if (file != null && !file.isEmpty()) {
-            return extractFileContent(file);
+            return scriptContentParser.parse(file);
         }
         return content == null ? "" : content.trim();
-    }
-
-    private String extractFileContent(MultipartFile file) {
-        String name = blankToNull(file.getOriginalFilename()) == null ? "" : file.getOriginalFilename().trim().toLowerCase(Locale.ROOT);
-        try {
-            if (name.endsWith(".docx")) {
-                try (InputStream input = new ByteArrayInputStream(file.getBytes()); XWPFDocument document = new XWPFDocument(input)) {
-                    return document.getParagraphs().stream()
-                        .map(paragraph -> paragraph.getText() == null ? "" : paragraph.getText().trim())
-                        .filter(text -> !text.isBlank())
-                        .collect(Collectors.joining("\n"));
-                }
-            }
-            if (name.endsWith(".doc")) {
-                try (InputStream input = new ByteArrayInputStream(file.getBytes()); HWPFDocument document = new HWPFDocument(input); WordExtractor extractor = new WordExtractor(document)) {
-                    return extractor.getText();
-                }
-            }
-            return new String(file.getBytes(), StandardCharsets.UTF_8);
-        } catch (Exception exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "文件解析失败：" + exception.getMessage());
-        }
     }
 
     private String inferProjectName(MultipartFile file, String content) {

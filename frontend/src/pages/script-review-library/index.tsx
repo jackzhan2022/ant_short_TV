@@ -16,6 +16,7 @@ import {
   List,
   Modal,
   Space,
+  Spin,
   Tag,
   Typography,
   Upload,
@@ -23,8 +24,8 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import {
   filterLibraryProjects,
-  libraryStateFromProject,
   type LibraryStateKey,
+  libraryStateFromProject,
 } from '../script-review/library';
 import type { ReviewProject } from '../script-review/service';
 import {
@@ -43,6 +44,7 @@ const stateColor: Record<LibraryStateKey, string> = {
 const ScriptReviewLibraryPage = () => {
   const { message } = App.useApp();
   const [items, setItems] = useState<ReviewProject[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<LibraryStateKey>();
   const [importOpen, setImportOpen] = useState(false);
@@ -57,7 +59,9 @@ const ScriptReviewLibraryPage = () => {
   };
 
   useEffect(() => {
-    loadProjects().catch(() => message.error('加载剧本库失败'));
+    loadProjects()
+      .catch(() => message.error('加载剧本库失败'))
+      .finally(() => setLoading(false));
   }, []);
 
   const states = useMemo(
@@ -177,10 +181,21 @@ const ScriptReviewLibraryPage = () => {
             <Typography.Text strong>剧本列表</Typography.Text>
             <Typography.Text type="secondary">按最近操作排序</Typography.Text>
           </div>
-          <List
-            dataSource={projects}
-            locale={{ emptyText: <Empty description="暂无独立剧本" /> }}
-            renderItem={(project) => {
+          {loading ? (
+            <div
+              style={{
+                display: 'grid',
+                minHeight: 240,
+                placeItems: 'center',
+              }}
+            >
+              <Spin description="正在加载剧本…" />
+            </div>
+          ) : (
+            <List
+              dataSource={projects}
+              locale={{ emptyText: <Empty description="暂无独立剧本" /> }}
+              renderItem={(project) => {
               const state = states.get(project.id);
               return (
                 <List.Item
@@ -231,8 +246,9 @@ const ScriptReviewLibraryPage = () => {
                   </div>
                 </List.Item>
               );
-            }}
-          />
+              }}
+            />
+          )}
         </Card>
       </div>
       <Modal

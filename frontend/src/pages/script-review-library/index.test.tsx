@@ -23,7 +23,9 @@ vi.mock('antd', () => ({
   Empty: ({ description }: any) => <div>{description}</div>,
   Input: Object.assign(({ value, onChange, placeholder }: any) => <input value={value} onChange={onChange} placeholder={placeholder} />, { Search: ({ value, onChange, placeholder }: any) => <input value={value} onChange={onChange} placeholder={placeholder} />, TextArea: ({ value, onChange, placeholder }: any) => <textarea value={value} onChange={onChange} placeholder={placeholder} /> }),
   List: Object.assign(
-    ({ dataSource = [], renderItem }: any) => <div>{dataSource.map(renderItem)}</div>,
+    ({ dataSource = [], locale, renderItem }: any) => (
+      <div>{dataSource.length ? dataSource.map(renderItem) : locale?.emptyText}</div>
+    ),
     {
       Item: Object.assign(
         ({ children, actions }: any) => <div>{children}{actions}</div>,
@@ -34,6 +36,7 @@ vi.mock('antd', () => ({
   Modal: ({ open, title, children, onCancel, onOk }: any) => open ? <section><h2>{title}</h2>{children}<button type="button" onClick={onCancel}>取消</button><button type="button" onClick={onOk}>导入剧本</button></section> : null,
   Select: ({ value, options, onChange }: any) => <select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
   Space: ({ children }: any) => <div>{children}</div>,
+  Spin: ({ description }: any) => <div>{description}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Typography: { Text: ({ children }: any) => <span>{children}</span> },
   Upload: { Dragger: ({ children }: any) => <div>{children}</div> },
@@ -74,5 +77,23 @@ describe('ScriptReviewLibraryPage', () => {
 
     expect(screen.getByText('已完成剧本')).toBeInTheDocument();
     expect(screen.queryByText('待处理剧本')).not.toBeInTheDocument();
+  });
+
+  it('shows centered loading feedback until the project list is ready', async () => {
+    let resolveProjects: (value: unknown) => void = () => undefined;
+    mocks.queryReviewProjects.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveProjects = resolve;
+      }),
+    );
+
+    render(<ScriptReviewLibraryPage />);
+
+    expect(screen.getByText('正在加载剧本…')).toBeInTheDocument();
+
+    resolveProjects({ data: [] });
+
+    expect(await screen.findByText('暂无独立剧本')).toBeInTheDocument();
+    expect(screen.queryByText('正在加载剧本…')).not.toBeInTheDocument();
   });
 });

@@ -39,3 +39,25 @@ export const queryInspirationCreationDetail = async (id: number) =>
   request<ApiResponse<InspirationCreationDetail>>(
     `/api/inspiration-creations/${id}`,
   );
+
+export type ParsedScriptContent = {
+  fileName: string;
+  content: string;
+};
+
+export const parseScriptFile = (file: File) => {
+  const data = new FormData();
+  data.append('file', file);
+  return request<ApiResponse<ParsedScriptContent>>('/api/script-content/parse', {
+    method: 'POST',
+    data,
+  });
+};
+
+export {
+  queryReviewProject,
+  queryReviewProjects,
+  type ReviewProject,
+  type ReviewProjectDetail,
+  type ReviewVersion,
+} from '../script-review/service';

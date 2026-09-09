@@ -241,7 +241,13 @@ public class ProjectService {
 
         Map<String, ProjectRoleEntity> defaultRoles = createDefaultRoles(tenantId, project.id, context.userId(), now);
         addOwnerMember(tenantId, project.id, request.ownerId(), defaultRoles.get("PROJECT_OWNER").id, context.userId(), now);
-        ScriptVersionEntity initialVersion = createInitialScriptIfNeeded(project, request.initialScriptContent(), context.userId(), now);
+        ScriptVersionEntity initialVersion = createInitialScriptIfNeeded(
+            project,
+            request.scriptName(),
+            request.initialScriptContent(),
+            context.userId(),
+            now
+        );
         if (initialVersion != null) {
             ScriptEntity initialScript = scriptMapper.selectById(initialVersion.getScriptId());
             try {
@@ -819,6 +825,7 @@ public class ProjectService {
 
     private ScriptVersionEntity createInitialScriptIfNeeded(
         ProjectEntity project,
+        String scriptName,
         String initialScriptContent,
         Long userId,
         LocalDateTime now
@@ -832,7 +839,7 @@ public class ProjectService {
         ScriptEntity script = new ScriptEntity();
         script.setTenantId(project.tenantId);
         script.setProjectId(project.id);
-        script.setTitle(project.name);
+        script.setTitle(scriptName == null || scriptName.isBlank() ? project.name : scriptName.trim());
         script.setSourceType("MANUAL_EDIT");
         script.setContent(content);
         script.setStatus("DRAFT");

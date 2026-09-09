@@ -1,5 +1,12 @@
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { App } from 'antd';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ShortDramaCreationPage from './index';
 
@@ -13,7 +20,9 @@ const mocks = vi.hoisted(() => ({
   queryTenantMembers: vi.fn(),
 }));
 
-const intersectionObservers = vi.hoisted(() => [] as IntersectionObserverCallback[]);
+const intersectionObservers = vi.hoisted(
+  () => [] as IntersectionObserverCallback[],
+);
 
 class MockIntersectionObserver {
   constructor(callback: IntersectionObserverCallback) {
@@ -57,6 +66,21 @@ vi.mock('./service', () => ({
   queryTenantMembers: mocks.queryTenantMembers,
 }));
 
+vi.mock('./ScriptContentImport', () => ({
+  default: ({
+    onImport,
+  }: {
+    onImport: (content: string, label: string) => void;
+  }) => (
+    <button
+      onClick={() => onImport('引用的版本内容', '已引用：审核剧本 A · 版本 2')}
+      type="button"
+    >
+      模拟导入
+    </button>
+  ),
+}));
+
 vi.mock('@ant-design/pro-components', () => ({
   PageContainer: ({ children, title }: any) => (
     <main>
@@ -76,55 +100,60 @@ describe('ShortDramaCreationPage', () => {
     });
     mocks.queryInspirationCreations.mockImplementation(({ page = 1 } = {}) =>
       Promise.resolve({
-        data: page === 1 ? {
-          records: [
-        {
-          id: 101,
-          externalId: '864900000000000001',
-          creationType: 'IMAGE',
-          taskType: 'STORY',
-          title: '线上灵感 A',
-          authorName: '管理员',
-          url: '/api/inspiration-creations/101/file',
-          thumbnailUrl: '/api/inspiration-creations/101/thumbnail',
-          mimeType: 'image/png',
-          sortOrder: 1,
-          sourceCreatedAt: '2026-08-22T10:00:00',
-        },
-        {
-          id: 102,
-          externalId: '864900000000000002',
-          creationType: 'IMAGE',
-          taskType: 'STORY',
-          title: '线上灵感 B',
-          authorName: '管理员',
-          url: '/api/inspiration-creations/102/file',
-          thumbnailUrl: '/api/inspiration-creations/102/thumbnail',
-          mimeType: 'image/png',
-          sortOrder: 2,
-          sourceCreatedAt: '2026-08-22T10:10:00',
-        },
-          ],
-          total: 9,
-          current: 1,
-          pageSize: 8,
-        } : {
-          records: [{
-            id: 103,
-            externalId: '864900000000000003',
-            creationType: 'IMAGE',
-            taskType: 'STORY',
-            title: '线上灵感 C',
-          authorName: '管理员',
-          url: '/api/inspiration-creations/103/file',
-          thumbnailUrl: '/api/inspiration-creations/103/thumbnail',
-          mimeType: 'image/png',
-            sortOrder: 3,
-          }],
-          total: 9,
-          current: 2,
-          pageSize: 8,
-        },
+        data:
+          page === 1
+            ? {
+                records: [
+                  {
+                    id: 101,
+                    externalId: '864900000000000001',
+                    creationType: 'IMAGE',
+                    taskType: 'STORY',
+                    title: '线上灵感 A',
+                    authorName: '管理员',
+                    url: '/api/inspiration-creations/101/file',
+                    thumbnailUrl: '/api/inspiration-creations/101/thumbnail',
+                    mimeType: 'image/png',
+                    sortOrder: 1,
+                    sourceCreatedAt: '2026-08-22T10:00:00',
+                  },
+                  {
+                    id: 102,
+                    externalId: '864900000000000002',
+                    creationType: 'IMAGE',
+                    taskType: 'STORY',
+                    title: '线上灵感 B',
+                    authorName: '管理员',
+                    url: '/api/inspiration-creations/102/file',
+                    thumbnailUrl: '/api/inspiration-creations/102/thumbnail',
+                    mimeType: 'image/png',
+                    sortOrder: 2,
+                    sourceCreatedAt: '2026-08-22T10:10:00',
+                  },
+                ],
+                total: 9,
+                current: 1,
+                pageSize: 8,
+              }
+            : {
+                records: [
+                  {
+                    id: 103,
+                    externalId: '864900000000000003',
+                    creationType: 'IMAGE',
+                    taskType: 'STORY',
+                    title: '线上灵感 C',
+                    authorName: '管理员',
+                    url: '/api/inspiration-creations/103/file',
+                    thumbnailUrl: '/api/inspiration-creations/103/thumbnail',
+                    mimeType: 'image/png',
+                    sortOrder: 3,
+                  },
+                ],
+                total: 9,
+                current: 2,
+                pageSize: 8,
+              },
       }),
     );
     mocks.queryInspirationCreationDetail.mockResolvedValue({
@@ -178,10 +207,16 @@ describe('ShortDramaCreationPage', () => {
     expect(screen.getByText('线上灵感 B')).toBeInTheDocument();
     expect(screen.queryByText('豪门继承人归来')).not.toBeInTheDocument();
     expect(screen.queryByText('3D风格-高清真实渲染')).not.toBeInTheDocument();
-    expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({ page: 1, pageSize: 8 });
+    expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 8,
+    });
     expect(screen.getByAltText('线上灵感 A')).not.toHaveAttribute('src');
     act(() => {
-      intersectionObservers[0]([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
+      intersectionObservers[0](
+        [{ isIntersecting: true }] as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      );
     });
     expect(screen.getByAltText('线上灵感 A')).toHaveAttribute(
       'src',
@@ -203,7 +238,9 @@ describe('ShortDramaCreationPage', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toBeInTheDocument();
     expect(screen.getByText('素材提示词')).toBeInTheDocument();
-    expect(screen.getByText('被误解的女主多年后带着证据回归。')).toBeInTheDocument();
+    expect(
+      screen.getByText('被误解的女主多年后带着证据回归。'),
+    ).toBeInTheDocument();
     expect(within(dialog).getAllByAltText('线上灵感 A')[0]).toHaveAttribute(
       'src',
       '/api/inspiration-creations/101/file',
@@ -218,7 +255,10 @@ describe('ShortDramaCreationPage', () => {
     );
 
     await screen.findByText('线上灵感 A');
-    intersectionObservers.at(-1)?.([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
+    intersectionObservers.at(-1)?.(
+      [{ isIntersecting: true }] as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
 
     await waitFor(() => {
       expect(mocks.queryInspirationCreations).toHaveBeenCalledTimes(1);
@@ -236,11 +276,20 @@ describe('ShortDramaCreationPage', () => {
     await screen.findByText('线上灵感 A');
     fireEvent.scroll(window, { target: { scrollY: 240 } });
     const paginationObserver = intersectionObservers.at(-1);
-    paginationObserver?.([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
-    paginationObserver?.([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver);
+    paginationObserver?.(
+      [{ isIntersecting: true }] as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    paginationObserver?.(
+      [{ isIntersecting: true }] as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
 
     expect(await screen.findByText('线上灵感 C')).toBeInTheDocument();
-    expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({ page: 2, pageSize: 8 });
+    expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({
+      page: 2,
+      pageSize: 8,
+    });
     expect(mocks.queryInspirationCreations).toHaveBeenCalledTimes(2);
   });
 
@@ -251,11 +300,15 @@ describe('ShortDramaCreationPage', () => {
       </App>,
     );
 
-    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({}));
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({}),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: '开始创作' }));
 
-    expect(screen.getByRole('button', { name: /初始设定/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /初始设定/ }),
+    ).toBeInTheDocument();
   });
 
   it('creates a project from the settings page and opens the script workbench', async () => {
@@ -267,15 +320,28 @@ describe('ShortDramaCreationPage', () => {
       </App>,
     );
 
-    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({}));
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({}),
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: '跳过上传，创建空白剧本' }),
+    );
+    const settingLabels = screen.getAllByText(
+      /剧本名称|画面比例|文件格式|剧本类型|剧本解析力度/,
+    );
+    expect(settingLabels[0]).toHaveTextContent('剧本名称');
+    expect(document.querySelectorAll('.ant-radio-group')).toHaveLength(4);
+    fireEvent.change(screen.getByRole('textbox', { name: '剧本名称' }), {
+      target: { value: '雨夜归来' },
+    });
     fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
 
     await waitFor(() => {
       expect(mocks.createProject).toHaveBeenCalledWith(
         expect.objectContaining({
           name: '未命名短剧',
+          scriptName: '雨夜归来',
           code: expect.stringMatching(/^SHORT_DRAMA_/),
           ownerId: 1,
         }),
@@ -284,5 +350,35 @@ describe('ShortDramaCreationPage', () => {
         '/projects/9/production-workbench/script',
       );
     });
+  });
+
+  it('allows imported script content to be edited before project creation', async () => {
+    mocks.createProject.mockResolvedValue({ data: { id: 9 } });
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({}),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '模拟导入' }));
+    const editor = screen.getByPlaceholderText(
+      '复制粘贴剧本，或导入文件（支持 txt、md、docx）',
+    );
+    expect(editor).toHaveValue('引用的版本内容');
+    fireEvent.change(editor, { target: { value: '引用后继续编辑' } });
+    fireEvent.click(screen.getByRole('button', { name: '开始创作' }));
+    fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
+
+    await waitFor(() =>
+      expect(mocks.createProject).toHaveBeenCalledWith(
+        expect.objectContaining({ initialScriptContent: '引用后继续编辑' }),
+      ),
+    );
+    const payload = mocks.createProject.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('reviewProjectId');
+    expect(payload).not.toHaveProperty('reviewVersionId');
   });
 });

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchScript from './script';
 
@@ -185,6 +191,49 @@ describe('ProductionWorkbenchScript', () => {
     });
   });
 
+  it('does not render script content before the workspace status is known', async () => {
+    let resolveWorkspace: (value: unknown) => void = () => undefined;
+    mocks.queryScriptWorkspace.mockReturnValue(
+      new Promise((resolve) => {
+        resolveWorkspace = resolve;
+      }),
+    );
+
+    render(<ProductionWorkbenchScript />);
+
+    expect(await screen.findByText('loading skeleton')).toBeInTheDocument();
+    expect(screen.queryByText('未命名剧本')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '补充剧本' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('故事概览')).not.toBeInTheDocument();
+    expect(screen.queryByText('分集剧情')).not.toBeInTheDocument();
+
+    resolveWorkspace({
+      data: {
+        projectId: 1,
+        script: { id: 11, title: '解析中的剧本', currentVersionId: 3 },
+        versions: [],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+        episodes: [],
+        analysis: {
+          id: 99,
+          scriptVersionId: 3,
+          status: 'RUNNING',
+          currentStage: 'EPISODE_SUMMARY',
+          overallProgress: 50,
+          currentAction: '正在提炼每集概要',
+          stages: [],
+        },
+      },
+    });
+
+    expect(await screen.findByText('当前剧集解析中')).toBeInTheDocument();
+  });
+
   it('renders the script workspace as a project-centric review page', async () => {
     render(<ProductionWorkbenchScript />);
 
@@ -211,7 +260,9 @@ describe('ProductionWorkbenchScript', () => {
       screen.queryByRole('button', { name: '第1集 致命捉迷藏' }),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '2' }));
-    expect(screen.getByDisplayValue('家人开始寻找失踪的孩子。')).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue('家人开始寻找失踪的孩子。'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('人物列表')).not.toBeInTheDocument();
     expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
     expect(screen.queryByText('大纲')).not.toBeInTheDocument();
@@ -260,14 +311,26 @@ describe('ProductionWorkbenchScript', () => {
     mocks.queryScriptWorkspace.mockResolvedValue({
       data: {
         projectId: 1,
-        script: { id: 11, projectId: 1, title: '人物剧本', sourceType: 'MANUAL_EDIT', content: '正文', status: 'DRAFT', currentVersionId: 1 },
+        script: {
+          id: 11,
+          projectId: 1,
+          title: '人物剧本',
+          sourceType: 'MANUAL_EDIT',
+          content: '正文',
+          status: 'DRAFT',
+          currentVersionId: 1,
+        },
         versions: [],
         characters: Array.from({ length: 7 }, (_, index) => ({
           id: index + 1,
           name: `人物${index + 1}`,
           visual: { variantCount: 0, variants: [], episodeBindings: [] },
         })),
-        scenes: [], props: [], storyboards: [], episodes: [{ episodeNo: 1, title: '第1集', content: '正文' }], analysis: null,
+        scenes: [],
+        props: [],
+        storyboards: [],
+        episodes: [{ episodeNo: 1, title: '第1集', content: '正文' }],
+        analysis: null,
       },
     });
 
@@ -277,7 +340,9 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.queryByText('人物7')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '查看更多人物' }));
     expect(screen.getByText('人物7')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '收起人物' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '收起人物' }),
+    ).toBeInTheDocument();
   });
 
   it('renders four analysis stages with percentages and intermediate result access', async () => {
@@ -362,9 +427,24 @@ describe('ProductionWorkbenchScript', () => {
                 retryable: true,
                 stale: false,
                 units: [
-                  { episodeId: 101, episodeKey: 'episode-1', status: 'SUCCEEDED', childRunId: 701 },
-                  { episodeId: 102, episodeKey: 'episode-2', status: 'RUNNING', childRunId: 702 },
-                  { episodeId: 103, episodeKey: 'episode-3', status: 'FAILED', errorCode: 'AI_PROVIDER_TIMEOUT' },
+                  {
+                    episodeId: 101,
+                    episodeKey: 'episode-1',
+                    status: 'SUCCEEDED',
+                    childRunId: 701,
+                  },
+                  {
+                    episodeId: 102,
+                    episodeKey: 'episode-2',
+                    status: 'RUNNING',
+                    childRunId: 702,
+                  },
+                  {
+                    episodeId: 103,
+                    episodeKey: 'episode-3',
+                    status: 'FAILED',
+                    errorCode: 'AI_PROVIDER_TIMEOUT',
+                  },
                 ],
               },
             },
@@ -395,7 +475,9 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText(/1\/3 集/)).toBeInTheDocument();
     expect(screen.getByText('episode-3失败')).toBeInTheDocument();
     expect(screen.getByText('分块分析 7/12')).toBeInTheDocument();
-    expect(screen.getByText('全文输出达到上限，已自动切换')).toBeInTheDocument();
+    expect(
+      screen.getByText('全文输出达到上限，已自动切换'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
     expect(screen.queryByText('分集剧情')).not.toBeInTheDocument();
   });
@@ -404,12 +486,42 @@ describe('ProductionWorkbenchScript', () => {
     mocks.queryScriptWorkspace.mockResolvedValue({
       data: {
         projectId: 1,
-        script: { id: 11, projectId: 1, title: '失败剧本', sourceType: 'MANUAL_EDIT', content: '正文', status: 'DRAFT', currentVersionId: 7 },
-        versions: [], characters: [], scenes: [], props: [], storyboards: [], episodes: [],
+        script: {
+          id: 11,
+          projectId: 1,
+          title: '失败剧本',
+          sourceType: 'MANUAL_EDIT',
+          content: '正文',
+          status: 'DRAFT',
+          currentVersionId: 7,
+        },
+        versions: [],
+        characters: [],
+        scenes: [],
+        props: [],
+        storyboards: [],
+        episodes: [],
         analysis: {
-          id: 99, scriptVersionId: 7, status: 'FAILED', currentStage: 'EPISODE_SUMMARY', overallProgress: 45,
-          currentAction: '分析失败', errorMessage: '模型服务暂时不可用',
-          stages: [{ id: 3, stageCode: 'EPISODE_SUMMARY', stageOrder: 3, status: 'FAILED', progressPercent: 45, completedUnits: 0, totalUnits: 1, errorMessage: '模型服务暂时不可用', retryable: true }],
+          id: 99,
+          scriptVersionId: 7,
+          status: 'FAILED',
+          currentStage: 'EPISODE_SUMMARY',
+          overallProgress: 45,
+          currentAction: '分析失败',
+          errorMessage: '模型服务暂时不可用',
+          stages: [
+            {
+              id: 3,
+              stageCode: 'EPISODE_SUMMARY',
+              stageOrder: 3,
+              status: 'FAILED',
+              progressPercent: 45,
+              completedUnits: 0,
+              totalUnits: 1,
+              errorMessage: '模型服务暂时不可用',
+              retryable: true,
+            },
+          ],
         },
       },
     });
@@ -418,10 +530,17 @@ describe('ProductionWorkbenchScript', () => {
     mocks.regenerateEpisodeAssets.mockResolvedValue({ data: {} });
     mocks.updateEpisodeSummary.mockResolvedValue({ data: {} });
     render(<ProductionWorkbenchScript />);
-    expect((await screen.findAllByText('模型服务暂时不可用')).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText('模型服务暂时不可用')).length,
+    ).toBeGreaterThan(0);
     expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重试此步骤' }));
-    await waitFor(() => expect(mocks.retryScriptAnalysis).toHaveBeenCalledWith(1, 'EPISODE_SUMMARY'));
+    await waitFor(() =>
+      expect(mocks.retryScriptAnalysis).toHaveBeenCalledWith(
+        1,
+        'EPISODE_SUMMARY',
+      ),
+    );
   });
 
   it('follows shared execution and refreshes the analysis workspace after reanalysis', async () => {
@@ -437,29 +556,68 @@ describe('ProductionWorkbenchScript', () => {
         currentVersionId: 7,
       },
       versions: [],
-      characters: [{
-        id: 1,
-        name: '林晚',
-        identity: '归来的姐姐',
-        personality: ['冷静', '坚韧'],
-        appearance: '雨夜归来，神情疲惫',
-        visual: {
-          variantCount: 2,
-          variants: [
-            { id: 101, name: '林晚-雨夜装', usable: true },
-            { id: 102, name: '林晚-居家装', usable: true },
-          ],
-          episodeBindings: [
-            { id: 1, variantId: 101, episodeNo: 1, episodeTitle: '第1集', preferred: true, status: 'ACTIVE' },
-            { id: 2, variantId: 102, episodeNo: 2, episodeTitle: '第2集', preferred: true, status: 'ACTIVE' },
-          ],
+      characters: [
+        {
+          id: 1,
+          name: '林晚',
+          identity: '归来的姐姐',
+          personality: ['冷静', '坚韧'],
+          appearance: '雨夜归来，神情疲惫',
+          visual: {
+            variantCount: 2,
+            variants: [
+              { id: 101, name: '林晚-雨夜装', usable: true },
+              { id: 102, name: '林晚-居家装', usable: true },
+            ],
+            episodeBindings: [
+              {
+                id: 1,
+                variantId: 101,
+                episodeNo: 1,
+                episodeTitle: '第1集',
+                preferred: true,
+                status: 'ACTIVE',
+              },
+              {
+                id: 2,
+                variantId: 102,
+                episodeNo: 2,
+                episodeTitle: '第2集',
+                preferred: true,
+                status: 'ACTIVE',
+              },
+            ],
+          },
         },
-      }],
+      ],
       scenes: [],
       props: [],
       storyboards: [],
-      episodes: [{ episodeId: 21, episodeNo: 1, title: '第1集', content: '一段剧本。', formalSummary: { id: 9, schemaVersion: 1, source: 'AI', content: { summary: '林晚回家', highlights: ['雨夜', '归来'], endingHook: '门后有人' } } }],
-      globalUnderstanding: { id: 5, schemaVersion: 1, content: { logline: '林晚雨夜归家' }, analyzedContentHash: 'hash', updatedAt: '' },
+      episodes: [
+        {
+          episodeId: 21,
+          episodeNo: 1,
+          title: '第1集',
+          content: '一段剧本。',
+          formalSummary: {
+            id: 9,
+            schemaVersion: 1,
+            source: 'AI',
+            content: {
+              summary: '林晚回家',
+              highlights: ['雨夜', '归来'],
+              endingHook: '门后有人',
+            },
+          },
+        },
+      ],
+      globalUnderstanding: {
+        id: 5,
+        schemaVersion: 1,
+        content: { logline: '林晚雨夜归家' },
+        analyzedContentHash: 'hash',
+        updatedAt: '',
+      },
       analysis: {
         id: 99,
         scriptVersionId: 7,
@@ -476,14 +634,18 @@ describe('ProductionWorkbenchScript', () => {
 
     const episodeHeader = (await screen.findByText('分集剧情')).parentElement;
     expect(
-      within(episodeHeader as HTMLElement).getByRole('button', { name: '单独重跑剧集拆分' }),
+      within(episodeHeader as HTMLElement).getByRole('button', {
+        name: '单独重跑剧集拆分',
+      }),
     ).toBeInTheDocument();
     expect(screen.queryByText('当前第1集')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '重新AI分析' }));
-    expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({
-      title: '重新AI分析',
-      content: '重新分析会覆盖对应正式数据；用户后续仍可继续编辑。',
-    }));
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '重新AI分析',
+        content: '重新分析会覆盖对应正式数据；用户后续仍可继续编辑。',
+      }),
+    );
     await mocks.confirm.mock.calls[0][0].onOk();
 
     await waitFor(() => {
@@ -508,28 +670,84 @@ describe('ProductionWorkbenchScript', () => {
   it('edits formal summaries and runs episode-scoped agents with overwrite warning', async () => {
     const completedWorkspace = {
       projectId: 1,
-      script: { id: 11, projectId: 1, title: '分析剧本', sourceType: 'MANUAL_EDIT', content: '一段剧本。', status: 'DRAFT', currentVersionId: 7 },
-      versions: [], characters: [], scenes: [], props: [], storyboards: [],
-      episodes: [{ episodeId: 21, episodeNo: 1, title: '第1集', content: '一段剧本。', formalSummary: { id: 9, schemaVersion: 1, source: 'AI', content: { summary: '旧概要', highlights: ['雨夜', '归来'], endingHook: '旧钩子' } } }],
-      analysis: { id: 99, scriptVersionId: 7, status: 'COMPLETED', currentStage: null, overallProgress: 100, currentAction: '分析已完成', stages: [] },
+      script: {
+        id: 11,
+        projectId: 1,
+        title: '分析剧本',
+        sourceType: 'MANUAL_EDIT',
+        content: '一段剧本。',
+        status: 'DRAFT',
+        currentVersionId: 7,
+      },
+      versions: [],
+      characters: [],
+      scenes: [],
+      props: [],
+      storyboards: [],
+      episodes: [
+        {
+          episodeId: 21,
+          episodeNo: 1,
+          title: '第1集',
+          content: '一段剧本。',
+          formalSummary: {
+            id: 9,
+            schemaVersion: 1,
+            source: 'AI',
+            content: {
+              summary: '旧概要',
+              highlights: ['雨夜', '归来'],
+              endingHook: '旧钩子',
+            },
+          },
+        },
+      ],
+      analysis: {
+        id: 99,
+        scriptVersionId: 7,
+        status: 'COMPLETED',
+        currentStage: null,
+        overallProgress: 100,
+        currentAction: '分析已完成',
+        stages: [],
+      },
     };
     mocks.queryScriptWorkspace.mockResolvedValue({ data: completedWorkspace });
     render(<ProductionWorkbenchScript />);
 
-    expect(await screen.findByRole('button', { name: '重新AI分析' })).toBeInTheDocument();
-    expect(screen.queryByText(/重跑 Agent 会覆盖对应正式数据/)).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: '重新AI分析' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/重跑 Agent 会覆盖对应正式数据/),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '编辑概要' }));
-    fireEvent.change(screen.getByLabelText('概要'), { target: { value: '新概要' } });
-    fireEvent.change(screen.getByLabelText('亮点'), { target: { value: '亮点一\n亮点二' } });
-    fireEvent.change(screen.getByLabelText('结尾钩子'), { target: { value: '新钩子' } });
+    fireEvent.change(screen.getByLabelText('概要'), {
+      target: { value: '新概要' },
+    });
+    fireEvent.change(screen.getByLabelText('亮点'), {
+      target: { value: '亮点一\n亮点二' },
+    });
+    fireEvent.change(screen.getByLabelText('结尾钩子'), {
+      target: { value: '新钩子' },
+    });
     fireEvent.click(screen.getByRole('button', { name: '保存概要' }));
-    await waitFor(() => expect(mocks.updateEpisodeSummary).toHaveBeenCalledWith(1, 21, {
-      summary: '新概要', highlights: ['亮点一', '亮点二'], endingHook: '新钩子', overwrite: true,
-    }));
+    await waitFor(() =>
+      expect(mocks.updateEpisodeSummary).toHaveBeenCalledWith(1, 21, {
+        summary: '新概要',
+        highlights: ['亮点一', '亮点二'],
+        endingHook: '新钩子',
+        overwrite: true,
+      }),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'AI 重生成本集概要' }));
-    await waitFor(() => expect(mocks.regenerateEpisodeSummary).toHaveBeenCalledWith(1, 21));
+    await waitFor(() =>
+      expect(mocks.regenerateEpisodeSummary).toHaveBeenCalledWith(1, 21),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'AI 重识别本集资产' }));
-    await waitFor(() => expect(mocks.regenerateEpisodeAssets).toHaveBeenCalledWith(1, 21));
+    await waitFor(() =>
+      expect(mocks.regenerateEpisodeAssets).toHaveBeenCalledWith(1, 21),
+    );
   });
 });

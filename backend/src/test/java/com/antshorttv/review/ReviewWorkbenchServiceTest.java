@@ -20,6 +20,7 @@ import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.TeamPointService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
+import com.antshorttv.scriptcontent.ScriptContentParser;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -90,6 +91,7 @@ class ReviewWorkbenchServiceTest {
             reviewContent, mock(ReviewFanoutSnapshotMapper.class),
             mock(ReviewFanoutUnitMapper.class), quickAgent, mock(ReviewDeepAgentCoordinator.class),
             mock(ReviewObservabilityRepository.class), new ReviewWorkflowFeatureFlags(true, true, true, true, true),
+            new ScriptContentParser(),
             50000, "target/review-exports");
 
         service.createTask(1L, 5L, new CreateReviewTaskRequest(
@@ -131,6 +133,7 @@ class ReviewWorkbenchServiceTest {
             mock(ReviewContentService.class), mock(ReviewFanoutSnapshotMapper.class),
             mock(ReviewFanoutUnitMapper.class), mock(ReviewQuickAgentAdapter.class), coordinator,
             mock(ReviewObservabilityRepository.class), new ReviewWorkflowFeatureFlags(true, true, true, true),
+            new ScriptContentParser(),
             50000, "target/review-exports");
 
         ReviewExecutionOutcome outcome = service.executeTask(7L, null);
