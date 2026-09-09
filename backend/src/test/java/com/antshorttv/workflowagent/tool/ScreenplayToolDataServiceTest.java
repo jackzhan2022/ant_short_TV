@@ -27,6 +27,10 @@ class ScreenplayToolDataServiceTest {
     @Autowired
     private ScreenplayToolDataService service;
     @Autowired
+    private WorkflowToolRegistry registry;
+    @Autowired
+    private WorkflowToolSchemaValidator schemaValidator;
+    @Autowired
     private JdbcTemplate jdbc;
     @MockBean
     private ProjectPermissionGuard permissionGuard;
@@ -511,6 +515,7 @@ class ScreenplayToolDataServiceTest {
             .isEqualTo("fingerprint-2");
         assertThat(episodeContext.runState().require("currentEpisodeSourceSegments", List.class))
             .hasSize(4);
+        schemaValidator.validate(registry.require("read_current_episode").outputSchema(), episode);
     }
 
     @Test
@@ -544,6 +549,36 @@ class ScreenplayToolDataServiceTest {
             .isEqualTo("ACTION");
         assertThat(episode.path("sourceSegments").get(4).path("classificationWarning").asText())
             .isEqualTo("SOURCE_SPEAKER_UNCONFIRMED");
+        schemaValidator.validate(registry.require("read_current_episode").outputSchema(), episode);
+    }
+
+    @Test
+    void analysisReadsOriginalDialogueIndependentlyOfCharacterCatalog() {
+        String source = "第2集：真相\r\n时间：晚上\r\n镜头：拉近\r\n"
+            + "Serena：别动。\r\nSera：听我说。\r\n神秘人：轮到你了。";
+        jdbc.update("update script_episode set content = ? where id = ?", source, episodeId);
+        JsonNode baseline = null;
+        for (String name : List.of("", "Serena", "神秘人")) {
+            if (!name.isEmpty()) {
+                jdbc.update("""
+                    insert into character_asset
+                      (tenant_id, project_id, script_id, name, normalized_name, role_type, status, source,
+                       content_json, created_by, created_at, updated_at)
+                    values (?, ?, ?, ?, ?, 'LEAD', 'CONFIRMED', 'MANUAL',
+                            '{"aliases":["Sera"]}', ?, now(), now())
+                    """, tenantId, projectId, scriptId, name, name.toLowerCase(), context.userId());
+            }
+            ToolExecutionContext analysisContext = new ToolExecutionContext(
+                tenantId, context.userId(), projectId, episodeId, scriptId, 100L, 101L, 777L,
+                Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
+            JsonNode episode = service.readCurrentEpisode(analysisContext);
+            assertThat(episode.path("content").asText()).isEqualTo(source);
+            assertThat(episode.path("sourceSegments")).extracting(value -> value.path("type").asText())
+                .containsExactly("METADATA", "ACTION", "ACTION", "DIALOGUE", "DIALOGUE", "DIALOGUE");
+            if (baseline == null) baseline = episode.path("sourceSegments");
+            assertThat(episode.path("sourceSegments")).isEqualTo(baseline);
+            schemaValidator.validate(registry.require("read_current_episode").outputSchema(), episode);
+        }
     }
 
     @Test
@@ -556,6 +591,8 @@ class ScreenplayToolDataServiceTest {
         JsonNode episode = service.readCurrentEpisode(storyboardContext);
 
         assertThat(episode.path("episodeNo").asInt()).isEqualTo(2);
+        assertThat(episode.path("classificationWarnings")).isEmpty();
+        schemaValidator.validate(registry.require("read_current_episode").outputSchema(), episode);
         verify(permissionGuard, never()).require(anyLong(), anyLong(), anyString());
     }
 

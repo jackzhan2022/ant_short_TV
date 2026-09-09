@@ -97,7 +97,14 @@ public class EpisodeSourceSegmenter {
     }
 
     private SourceSegmentType speechCueType(String value, SegmentationContext context) {
-        var cue = SPEECH_CUE.matcher(value.replaceFirst("^#+\\s*", ""));
+        String withoutHeading = value.replaceFirst("^#+\\s*", "");
+        if (STRUCTURAL_METADATA.matcher(withoutHeading).matches()
+            || STRUCTURAL_ACTION.matcher(withoutHeading).matches()
+            || isSubtitleOrActionLabel(withoutHeading)
+            || withoutHeading.matches("^(场景|场次)[：:].*")) {
+            return null;
+        }
+        var cue = SPEECH_CUE.matcher(withoutHeading);
         if (!cue.matches()) return null;
         SourceSegmentType explicit = explicitSpeechType(cue.group(1));
         if (explicit != null) return explicit;

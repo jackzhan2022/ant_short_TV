@@ -131,7 +131,16 @@ public class ScreenplayToolConfiguration {
             .add("NARRATION").add("INNER_OS");
         segmentFields.putObject("text").put("type", "string").put("maxLength", 200000);
         segmentFields.putObject("requiredCoverage").put("type", "boolean");
+        segmentFields.putObject("classificationWarning").put("type", "string").put("maxLength", 100);
         segments.set("items", segment);
+        ObjectNode warnings = fields.putObject("classificationWarnings").put("type", "array")
+            .put("maxItems", 10_000);
+        ObjectNode warning = objectSchema(json);
+        warning.putArray("required").add("segmentId").add("code");
+        ObjectNode warningFields = (ObjectNode) warning.path("properties");
+        warningFields.putObject("segmentId").put("type", "string").put("pattern", "^S\\d{4,}$");
+        warningFields.putObject("code").put("type", "string").put("maxLength", 100);
+        warnings.set("items", warning);
         ObjectNode catalog = objectSchema(json);
         catalog.putArray("required").add("characters").add("scenes").add("props");
         ObjectNode catalogFields = (ObjectNode) catalog.path("properties");
