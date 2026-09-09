@@ -10,6 +10,19 @@ class EpisodeSourceSegmenterTest {
     private final EpisodeSourceSegmenter segmenter = new EpisodeSourceSegmenter();
 
     @Test
+    void structuralLabelsOnSeparateLinesDoNotIntroduceDialogue() {
+        var segments = segmenter.segment("时间：\n晚上\n镜头：\n拉近\nSerena：\n别动。");
+        assertThat(segments).extracting(EpisodeSourceSegmenter.EpisodeSourceSegment::type)
+            .containsExactly(
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.ACTION,
+                EpisodeSourceSegmenter.SourceSegmentType.DIALOGUE);
+    }
+
+    @Test
     void assignsStableIdsTypesAndExactOffsetsToPhysicalLines() {
         String source = "第1集：门缝里的阴谋\r\n\r\n"
             + "场景：夜 内 走廊\r\n"

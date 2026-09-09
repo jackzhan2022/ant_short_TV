@@ -365,8 +365,12 @@ public class ScreenplayToolDataService {
         context.runState().put("currentEpisodeContentHash", sha256(content));
         context.runState().put("currentEpisodeContent", content);
         ArrayNode characters = currentScriptAssets(context, "character_asset", "CHARACTER", "c_");
+        // Analysis precedes asset extraction; text classification must not depend on its results.
+        // Storyboard runs retain catalog-backed classification for source coverage validation.
         List<EpisodeSourceSegmenter.EpisodeSourceSegment> sourceSegments =
-            episodeSourceSegmenter.segment(content, speakerContext(characters));
+            context.analysisStageId() != null
+                ? episodeSourceSegmenter.segment(content)
+                : episodeSourceSegmenter.segment(content, speakerContext(characters));
         if (sourceSegments.size() > 10_000) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                 "当前剧集原文片段过多，无法交给 Agent 处理。");

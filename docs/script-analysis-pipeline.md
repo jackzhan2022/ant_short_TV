@@ -15,6 +15,13 @@
 
 每个阶段独立返回 `status`、`progressPercent`、`completedUnits`、`totalUnits`、`currentAction`、错误信息和结果元数据。
 
+## 正文分类与角色资产的边界
+
+- 分析阶段的 `read_current_episode` 通过可信的 `analysisStageId` 识别分析作用域，按原文格式分类，不用角色资产是否存在来决定一行是不是对白。
+- 时间、镜头、动作等结构标记优先于对白格式判断；完整正文始终原样返回，资产目录作为补充信息。
+- 分镜等非分析调用保留基于角色名称与别名的严格分类，未确认说话人以分类警告返回。
+- 工具输出 Schema 同时声明片段级 `classificationWarning` 和汇总级 `classificationWarnings`；诊断字段不能因契约遗漏而阻断读取。
+
 ## 进度语义
 
 - 百分比表示服务端阶段进度，不表示模型供应商内部 token 或推理进度。
