@@ -48,11 +48,23 @@ class ScriptSourceSegmentIndexTest {
     }
 
     @Test
-    void preservesExplicitEpisodeGranularity() {
+    void acceptsMergedExplicitEpisodesWhenSourceIsFullyCovered() {
         var index = new ScriptSourceSegmentIndex("第1集\nA\n第2集\nB");
-        assertThatThrownBy(() -> index.resolve(List.of(
-            new ScriptSourceSegmentIndex.Range("错误合并", "S0001", "S0004"))))
-            .hasMessageContaining("不能将多集合并");
+        assertThat(index.resolve(List.of(
+            new ScriptSourceSegmentIndex.Range("合并", "S0001", "S0004")))).singleElement()
+            .extracting(ScriptEpisodeResponse::content).isEqualTo("第1集\nA\n第2集\nB");
+    }
+
+    @Test
+    void acceptsSkippedRepeatedHeadingsAndSplittingOneOriginalEpisode() {
+        String source = "\r\n第六集\r\n甲\r\n乙\r\n第八集\r\n丙\r\n第八集\r\n丁\r\n ";
+        var index = new ScriptSourceSegmentIndex(source);
+        var episodes = index.resolve(List.of(
+            new ScriptSourceSegmentIndex.Range("六上", "S0001", "S0002"),
+            new ScriptSourceSegmentIndex.Range("六下", "S0003", "S0003"),
+            new ScriptSourceSegmentIndex.Range("八", "S0004", "S0007")));
+        assertThat(episodes.stream().map(ScriptEpisodeResponse::content).reduce("", String::concat))
+            .isEqualTo(source);
     }
 
     @Test

@@ -21,6 +21,9 @@ public final class ScriptSourceSegmentIndex {
         candidates/anchors 中 startSegmentId 是候选起点，previousSegmentId 是上一集可用终点。
         最后一集结束于 segmentCatalog.lastSegmentId。recommendedEpisodes 是旧文本协议，
         新协议请使用编号字段，不要提交其中的文本标记。
+        分集只负责原文分段和 100% 覆盖，不要求集数编号连续，也不要求分段与原稿标题一一对应。
+        缺号、重号、跳号及拆集/合集差异仅供查看提示，不阻断保存。
+        不得为补齐集数编造正文、补写标题或丢弃原文；保留原稿标题，只提交原文范围即可。
         """;
 
     private final String source;

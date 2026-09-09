@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import { useParams } from '@umijs/max';
 import {
+  Alert,
   App,
   Button,
   Flex,
@@ -1279,6 +1280,23 @@ const ProductionWorkbenchScript = () => {
                 </Button>
               ) : null}
             </Flex>
+            {workspace.episodeWarnings?.length ? (
+              <Alert
+                type="warning"
+                showIcon
+                title="分集提示（不影响保存和后续处理）"
+                description={
+                  <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+                    {workspace.episodeWarnings.map((warning) => (
+                      <li key={warning.code + warning.message}>
+                        {warning.message}
+                      </li>
+                    ))}
+                  </ul>
+                }
+                style={{ marginTop: 14 }}
+              />
+            ) : null}
             <div
               style={{
                 display: 'grid',

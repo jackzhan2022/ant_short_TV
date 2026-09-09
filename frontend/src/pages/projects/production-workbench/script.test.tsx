@@ -26,6 +26,12 @@ vi.mock('@umijs/max', () => ({
 }));
 
 vi.mock('antd', () => ({
+  Alert: ({ title, description }: any) => (
+    <div role="alert">
+      {title}
+      {description}
+    </div>
+  ),
   App: {
     useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
   },
@@ -286,6 +292,41 @@ describe('ProductionWorkbenchScript', () => {
     await waitFor(() => {
       expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1);
     });
+  });
+
+  it('shows non-blocking episode warnings while keeping episode navigation available', async () => {
+    const baseline = await mocks.queryScriptWorkspace();
+    mocks.queryScriptWorkspace.mockResolvedValue({
+      data: {
+        ...baseline.data,
+        episodeWarnings: [
+          {
+            code: 'SOURCE_NUMBER_GAP',
+            message: '原稿标题从第 6 集跳到第 8 集，未识别到第 7 集标题。',
+          },
+        ],
+      },
+    });
+    render(<ProductionWorkbenchScript />);
+    const notice = await screen.findByRole('alert');
+    expect(notice).toHaveTextContent('分集提示');
+    expect(notice).toHaveTextContent('不影响保存和后续处理');
+    expect(notice).toHaveTextContent('未识别到第 7 集标题');
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    expect(
+      screen.getByDisplayValue('家人开始寻找失踪的孩子。'),
+    ).toBeInTheDocument();
+    expect(mocks.retryScriptAnalysis).not.toHaveBeenCalled();
+  });
+
+  it('does not show a notice when episode warnings are empty', async () => {
+    const baseline = await mocks.queryScriptWorkspace();
+    mocks.queryScriptWorkspace.mockResolvedValue({
+      data: { ...baseline.data, episodeWarnings: [] },
+    });
+    render(<ProductionWorkbenchScript />);
+    await screen.findByText('分集剧情');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('falls back to one episode when an older workspace omits episodes', async () => {

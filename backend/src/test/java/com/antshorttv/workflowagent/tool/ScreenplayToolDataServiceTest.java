@@ -741,6 +741,26 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void segmentSaveAllowsNumberingGapsDuplicatesAndSplitHeadingsWithoutLosingText() throws Exception {
+        String source = "\r\n第六集\r\n甲\r\n乙\r\n第八集\r\n丙\r\n第八集\r\n丁\r\n ";
+        jdbc.update("update script set content = ? where id = ?", source, scriptId);
+        ToolExecutionContext splitContext = scriptContext();
+        service.readCurrentScript(splitContext);
+        JsonNode ranges = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            [{"title":"六上","startSegmentId":"S0001","endSegmentId":"S0002"},
+             {"title":"六下","startSegmentId":"S0003","endSegmentId":"S0003"},
+             {"title":"八","startSegmentId":"S0004","endSegmentId":"S0007"}]
+            """);
+        JsonNode saved = service.saveEpisodeSplitting(splitContext, 2, ranges);
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        assertThat(saved.path("episodeCount").asInt()).isEqualTo(3);
+        assertThat(String.join("", jdbc.queryForList("""
+            select content from script_episode where script_id = ? and status = 'ACTIVE'
+             and retired_at is null order by episode_no
+            """, String.class, scriptId))).isEqualTo(source);
+    }
+
+    @Test
     void segmentSaveRejectsGapsBeforeChangingFormalEpisodes() throws Exception {
         jdbc.update("update script set content = 'A\nB\nC' where id = ?", scriptId);
         ToolExecutionContext splitContext = scriptContext();

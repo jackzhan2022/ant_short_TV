@@ -12,15 +12,11 @@ class EpisodeGranularityValidatorTest {
     private final EpisodeGranularityValidator validator = new EpisodeGranularityValidator();
 
     @Test
-    void rejectsFiftyNineExplicitEpisodesMergedIntoEightNarrativeGroups() {
+    void acceptsFiftyNineExplicitEpisodesMergedIntoEightNarrativeGroups() {
         String source = fiftyNineEpisodeSource();
         List<ScriptEpisodeResponse> merged = mergeIntoEight(source);
 
-        assertThatThrownBy(() -> validator.validate(source, merged))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("59")
-            .hasMessageContaining("8")
-            .hasMessageContaining("单集边界");
+        assertThatCode(() -> validator.validate(source, merged)).doesNotThrowAnyException();
     }
 
     @Test
@@ -43,13 +39,22 @@ class EpisodeGranularityValidatorTest {
     }
 
     @Test
-    void rejectsMissingOrDuplicateExplicitEpisodeNumbersAsAmbiguous() {
+    void acceptsMissingOrDuplicateExplicitEpisodeNumbers() {
         String source = "第1集\nA\n第2集\nB\n第2集\nC\n第4集\nD";
 
-        assertThatThrownBy(() -> validator.validate(source, List.of(
+        assertThatCode(() -> validator.validate(source, List.of(
             new ScriptEpisodeResponse(1, "1", source))))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("重复或缺号");
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsMissingChangedRepeatedOrReorderedOriginalContent() {
+        String source = "甲\r\n乙\n ";
+        for (String content : List.of("甲\r\n乙\n", "甲\n乙\n ", "甲\r\n乙\n 乙", "乙\n甲\r\n ")) {
+            assertThatThrownBy(() -> validator.validate(source,
+                List.of(new ScriptEpisodeResponse(1, "分段", content))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("原文");
+        }
     }
 
     private String fiftyNineEpisodeSource() {

@@ -183,6 +183,10 @@ record ScriptWorkspaceResponse(
     ScriptAnalysisTaskResponse analysis,
     ScriptGlobalUnderstandingResponse globalUnderstanding
 ) {
+    @com.fasterxml.jackson.annotation.JsonProperty("episodeWarnings")
+    public List<EpisodeSplitWarnings.Warning> episodeWarnings() {
+        return new EpisodeSplitWarnings().inspect(script == null ? null : script.content(), episodes);
+    }
 }
 
 record ScriptGlobalUnderstandingResponse(

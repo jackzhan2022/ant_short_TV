@@ -292,6 +292,7 @@ export type ScriptWorkspace = {
   props: PropAsset[];
   storyboards: StoryboardShot[];
   episodes?: ScriptEpisode[];
+  episodeWarnings?: { code: string; message: string }[];
   analysis?: ScriptAnalysisTask | null;
   globalUnderstanding?: ScriptGlobalUnderstanding | null;
 };
