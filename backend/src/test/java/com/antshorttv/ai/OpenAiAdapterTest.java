@@ -24,6 +24,11 @@ class OpenAiAdapterTest {
     private final OpenAiAdapter adapter = new OpenAiAdapter(aiSecretCodec, new ObjectMapper());
 
     @Test
+    void exposesDeepSeekAfterTheOpenAiGatewayIsReassignedToImageModels() {
+        assertThat(adapter.providerCode()).isEqualTo("DeepSeek");
+    }
+
+    @Test
     void sendsPromptCacheControlsAndParsesCacheUsageForGpt56() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

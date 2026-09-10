@@ -11,6 +11,6 @@ public class OpenAiAdapter extends AbstractCompatibleProviderAdapter {
 
     @Override
     public String providerCode() {
-        return "OpenAI";
+        return "DeepSeek";
     }
 }
