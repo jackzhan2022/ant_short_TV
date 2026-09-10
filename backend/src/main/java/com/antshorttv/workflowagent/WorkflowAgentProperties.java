@@ -32,7 +32,7 @@ public class WorkflowAgentProperties {
     private int episodeSummaryRequestTimeoutSeconds = 300;
 
     @Min(1)
-    private long assetRecognitionRunTimeoutSeconds = 300L;
+    private long assetRecognitionRunTimeoutSeconds = 600L;
 
     @Min(1)
     private int assetRecognitionRequestTimeoutSeconds = 300;

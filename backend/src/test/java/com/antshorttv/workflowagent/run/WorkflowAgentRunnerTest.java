@@ -967,8 +967,11 @@ class WorkflowAgentRunnerTest {
         verify(invocation, org.mockito.Mockito.times(3)).invokeText(any());
     }
 
-    @Test
-    void assetRecognitionAllowsExactlyOneCorrectiveSaveWithStableToolSchema() throws Exception {
+    @ParameterizedTest
+    @CsvSource({"8, 3, evidence invalid", "5, 2, 最大执行步数"})
+    void assetRecognitionBoundsCorrectiveSavesByAttemptsAndSteps(
+        int maxSteps, int expectedSaves, String errorMessage
+    ) throws Exception {
         AtomicInteger saves = new AtomicInteger();
         WorkflowToolDefinition save = new WorkflowToolDefinition(
             "save_episode_assets", "保存资产", "保存资产",
@@ -987,29 +990,30 @@ class WorkflowAgentRunnerTest {
         runner = runnerWith(List.of(tool("read_current_episode"), save), 30);
         when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
             6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
-            new BigDecimal("0.2"), 4096, 6, "ENABLED", 0L, 9L, 9L,
+            new BigDecimal("0.2"), 4096, maxSteps, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(),
             List.of("read_current_episode", "save_episode_assets")));
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_assets", "{}")), 932L))
-            .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_assets", "{}")), 933L));
+            .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_assets", "{}")), 933L))
+            .thenReturn(result(null, List.of(new AiToolCall("bad-3", "save_episode_assets", "{}")), 934L));
 
         assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
             null, null, 9L)))
             .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("evidence invalid");
+            .hasMessageContaining(errorMessage);
 
-        assertThat(saves).hasValue(2);
+        assertThat(saves).hasValue(expectedSaves);
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
+        verify(invocation, org.mockito.Mockito.times(expectedSaves)).invokeText(requests.capture());
         assertThat(requests.getAllValues()).allSatisfy(request ->
             assertThat(request.textRequest().tools())
                 .extracting(com.antshorttv.ai.AiToolDefinition::code)
                 .containsExactly("save_episode_assets"));
         assertThat(requests.getAllValues()).allSatisfy(request -> {
             assertThat(request.textRequest().maxTokens()).isEqualTo(4096);
-            assertThat(request.textRequest().retryCount()).isEqualTo(1);
+            assertThat(request.textRequest().retryCount()).isEqualTo(0);
         });
     }
 
@@ -1200,7 +1204,7 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
-    void assetRecognitionCanCorrectMissingEvidenceOnceAndThenSucceed() throws Exception {
+    void assetRecognitionCanCorrectSuccessiveEvidenceErrorsAndThenSucceed() throws Exception {
         AtomicInteger saves = new AtomicInteger();
         WorkflowToolDefinition save = new WorkflowToolDefinition(
             "save_episode_assets", "保存资产", "保存资产",
@@ -1212,10 +1216,9 @@ class WorkflowAgentRunnerTest {
                     com.antshorttv.workflowagent.tool.ToolExecutionContext context,
                     com.fasterxml.jackson.databind.JsonNode arguments
                 ) {
-                    if (saves.incrementAndGet() == 1) {
-                        throw new BusinessException(
-                            ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
-                            "工具调用失败：$.scenes[1].evidence is required");
+                    if (saves.incrementAndGet() <= 2) {
+                        throw WorkflowToolValidationException.aggregate(java.util.stream.IntStream.range(0, 100)
+                            .mapToObj(i -> "$.scenes[" + i + "].evidence is required").toList());
                     }
                     return json.createObjectNode().put("saved", true);
                 }
@@ -1223,25 +1226,101 @@ class WorkflowAgentRunnerTest {
         runner = runnerWith(List.of(tool("read_current_episode"), save), 30);
         when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
             6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
-            new BigDecimal("0.2"), 4096, 6, "ENABLED", 0L, 9L, 9L,
+            new BigDecimal("0.2"), 4096, 8, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(),
             List.of("read_current_episode", "save_episode_assets")));
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(new AiToolCall("bad", "save_episode_assets", "{}")), 942L))
-            .thenReturn(result(null, List.of(new AiToolCall("fixed", "save_episode_assets", "{}")), 943L));
+            .thenReturn(result(null, List.of(new AiToolCall("fixed", "save_episode_assets", "{}")), 943L))
+            .thenReturn(result(null, List.of(new AiToolCall("fixed-again", "save_episode_assets", "{}")), 944L));
 
         WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
             null, null, 9L));
 
         assertThat(result.runId()).isEqualTo(101L);
-        assertThat(saves).hasValue(2);
+        assertThat(saves).hasValue(3);
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
         assertThat(requests.getAllValues().get(1).textRequest().messages())
             .extracting(AiChatMessage::content)
             .anySatisfy(message -> assertThat(message)
-                .contains("$.scenes[1].evidence is required"));
+                .contains("$.scenes[1].evidence is required", "validationErrors", "$.scenes[99].evidence is required"));
+        assertThat(requests.getAllValues().get(2).textRequest().messages())
+            .extracting(AiChatMessage::content)
+            .anySatisfy(message -> assertThat(message).contains("evidenceRef", "usageEvidenceRef", "sourceSegments", "不得再次读取", "不得删除"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"WORKFLOW_AGENT_TIMEOUT", "WORKFLOW_AGENT_TOOL_UNAUTHORIZED"})
+    void assetRecognitionDoesNotCorrectNonValidationFailures(String code) throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_episode_assets", "保存", "保存", json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.RETURN_TO_MODEL, new WorkflowToolExecutor() {
+                @Override
+                public JsonNode execute(com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    JsonNode arguments) {
+                    saves.incrementAndGet();
+                    throw new BusinessException(ErrorCode.valueOf(code), "noncorrectable failure");
+                }
+            });
+        runner = runnerWith(List.of(tool("read_current_episode"), save), 30);
+        when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", "save_episode_assets")));
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("save", "save_episode_assets", "{}")), 944L));
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L))).isInstanceOf(BusinessException.class)
+            .hasMessageContaining("noncorrectable failure");
+        assertThat(saves).hasValue(1);
+        verify(invocation).invokeText(any());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"database", "state"})
+    void assetRecognitionDoesNotCorrectInfrastructureFailures(String kind) throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_episode_assets", "保存", "保存", json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.RETURN_TO_MODEL, new WorkflowToolExecutor() {
+                @Override
+                public JsonNode execute(com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    JsonNode arguments) {
+                    saves.incrementAndGet();
+                    if ("database".equals(kind)) {
+                        throw new org.springframework.dao.DataAccessResourceFailureException("storage unavailable");
+                    }
+                    throw new IllegalStateException("storage unavailable");
+                }
+            });
+        runner = runnerWith(List.of(tool("read_current_episode"), save), 30);
+        when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", "save_episode_assets")));
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("save", "save_episode_assets", "{}")), 944L));
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L))).isInstanceOf(BusinessException.class)
+            .hasMessageContaining("storage unavailable");
+        assertThat(saves).hasValue(1);
+        verify(invocation).invokeText(any());
+    }
+
+    @Test
+    void assetRecognitionDefaultsAllowTwoBoundedCorrections() {
+        WorkflowAgentProperties defaults = new WorkflowAgentProperties();
+        assertThat(defaults.getAssetRecognitionRunTimeoutSeconds()).isEqualTo(600);
+        assertThat(defaults.getAssetRecognitionRequestTimeoutSeconds()).isEqualTo(300);
     }
 
     @Test

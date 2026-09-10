@@ -4,12 +4,51 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 @Component
 public class WorkflowToolSchemaValidator {
     public void validate(JsonNode schema, JsonNode value) {
         validateAt(schema, value, "$", true);
+    }
+
+    /** Collect independent field errors for a single corrective model response. */
+    public List<String> collectErrors(JsonNode schema, JsonNode value) {
+        List<String> errors = new ArrayList<>();
+        collectAt(schema, value, "$", errors);
+        return errors;
+    }
+
+    private void collectAt(JsonNode schema, JsonNode value, String path, List<String> errors) {
+        if (!matches(schema.path("type"), value)) {
+            errors.add(path + " must be " + typeDescription(schema.path("type")));
+            return;
+        }
+        if (value == null || value.isNull()) return;
+        try {
+            validateBounds(schema, value, path);
+        } catch (IllegalArgumentException exception) {
+            errors.add(exception.getMessage());
+        }
+        if (value.isObject() && schema.has("properties")) {
+            for (JsonNode field : schema.path("required")) {
+                if (!value.has(field.asText())) errors.add(path + "." + field.asText() + " is required");
+            }
+            JsonNode properties = schema.path("properties");
+            value.fields().forEachRemaining(field -> {
+                if (properties.has(field.getKey())) {
+                    collectAt(properties.get(field.getKey()), field.getValue(), path + "." + field.getKey(), errors);
+                } else if (!schema.path("additionalProperties").asBoolean(true)) {
+                    errors.add(path + "." + field.getKey() + " is not allowed");
+                }
+            });
+        } else if (value.isArray() && schema.has("items")) {
+            for (int i = 0; i < value.size(); i++) {
+                collectAt(schema.get("items"), value.get(i), path + "[" + i + "]", errors);
+            }
+        }
     }
 
     private void validateAt(JsonNode schema, JsonNode value, String path, boolean root) {

@@ -31,7 +31,8 @@ class EpisodeAssetsToolSchemaTest {
         JsonNode schema = new ScreenplayToolConfiguration().saveEpisodeAssetsTool(null, json).inputSchema();
         JsonNode character = schema.path("properties").path("characters").path("items");
         assertThat(character.path("required").toString())
-            .contains("localKey", "name", "aliases", "evidence");
+            .contains("localKey", "name", "aliases");
+        assertThat(character.path("properties").has("evidenceRef")).isTrue();
         assertThat(character.path("properties").has("assetKey")).isTrue();
         assertThat(character.path("additionalProperties").asBoolean()).isFalse();
     }
@@ -58,8 +59,8 @@ class EpisodeAssetsToolSchemaTest {
             {"schemaVersion":1,"characters":[{"localKey":"c1","name":"小满"}]}
             """));
         WorkflowToolDefinition tool = new ScreenplayToolConfiguration().saveEpisodeAssetsTool(null, json);
-        assertThatThrownBy(() -> new WorkflowToolSchemaValidator()
-            .validate(tool.inputSchema(), missingEvidence))
+        assertThatThrownBy(() -> EpisodeAssetsPayloadNormalizer
+            .prepare(missingEvidence, tool.inputSchema(), "小满"))
             .isInstanceOf(RuntimeException.class)
             .hasMessageContaining("evidence");
     }

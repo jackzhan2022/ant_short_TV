@@ -275,7 +275,7 @@ public class ScreenplayToolConfiguration {
         outputFields.putObject("contentFingerprint").put("type", "string");
         outputFields.putObject("counts").put("type", "object");
         return definition("save_episode_assets", "保存本集角色场景道具",
-            "原子匹配或创建正式资产、视觉形态及当前剧集绑定。",
+            "原子匹配或创建正式资产、视觉形态及当前剧集绑定。证据优先使用当前集 sourceSegments 的 evidenceRef；旧 evidence 必须逐字来自正文。",
             episodeAssetsInput(json), output, ToolRiskLevel.WRITE, ToolFailurePolicy.RETURN_TO_MODEL,
             executor((context, arguments) -> data.saveEpisodeAssets(context, arguments)));
     }
@@ -360,7 +360,7 @@ public class ScreenplayToolConfiguration {
         return groups;
     }
 
-    private ObjectNode episodeAssetsInput(ObjectMapper json) {
+    public ObjectNode episodeAssetsInput(ObjectMapper json) {
         ObjectNode schema = objectSchema(json);
         schema.putArray("required").add("schemaVersion").add("characters")
             .add("characterLooks").add("scenes").add("props").add("propVariants");
@@ -377,13 +377,14 @@ public class ScreenplayToolConfiguration {
     private ObjectNode identityArray(ObjectMapper json, int maxItems) {
         ObjectNode array = json.createObjectNode().put("type", "array").put("maxItems", maxItems);
         ObjectNode item = objectSchema(json);
-        item.putArray("required").add("localKey").add("name").add("aliases").add("evidence");
+        item.putArray("required").add("localKey").add("name").add("aliases");
         ObjectNode fields = (ObjectNode) item.path("properties");
         fields.putObject("localKey").put("type", "string").put("minLength", 1).put("maxLength", 64);
         fields.set("assetKey", nullableType(json, "string").put("maxLength", 64));
         fields.putObject("name").put("type", "string").put("minLength", 1).put("maxLength", 100);
         fields.set("aliases", aliasArray(json));
         fields.putObject("evidence").put("type", "string").put("minLength", 1).put("maxLength", 1000);
+        fields.set("evidenceRef", evidenceReference(json));
         array.set("items", item);
         return array;
     }
@@ -394,6 +395,7 @@ public class ScreenplayToolConfiguration {
         fields.set("description", nullableType(json, "string").put("maxLength", 4000));
         fields.set("timeAtmosphere", nullableType(json, "string").put("maxLength", 500));
         fields.set("usageEvidence", nullableType(json, "string").put("maxLength", 1000));
+        fields.set("usageEvidenceRef", evidenceReference(json));
         return array;
     }
 
@@ -408,11 +410,12 @@ public class ScreenplayToolConfiguration {
     private ObjectNode aliasArray(ObjectMapper json) {
         ObjectNode array = json.createObjectNode().put("type", "array").put("maxItems", 30);
         ObjectNode item = objectSchema(json);
-        item.putArray("required").add("name").add("evidence");
+        item.putArray("required").add("name");
         ((ObjectNode) item.path("properties")).putObject("name")
             .put("type", "string").put("minLength", 1).put("maxLength", 100);
         ((ObjectNode) item.path("properties")).putObject("evidence")
             .put("type", "string").put("minLength", 1).put("maxLength", 1000);
+        ((ObjectNode) item.path("properties")).set("evidenceRef", evidenceReference(json));
         array.set("items", item);
         return array;
     }
@@ -421,7 +424,7 @@ public class ScreenplayToolConfiguration {
         ObjectNode array = json.createObjectNode().put("type", "array").put("maxItems", maxItems);
         ObjectNode item = objectSchema(json);
         item.putArray("required").add("localKey").add(ownerField).add("name")
-            .add("evidence").add("preferred");
+            .add("preferred");
         ObjectNode fields = (ObjectNode) item.path("properties");
         fields.putObject("localKey").put("type", "string").put("minLength", 1).put("maxLength", 64);
         fields.putObject(ownerField).put("type", "string").put("minLength", 1).put("maxLength", 64);
@@ -429,9 +432,22 @@ public class ScreenplayToolConfiguration {
         fields.putObject("name").put("type", "string").put("minLength", 1).put("maxLength", 100);
         fields.set("description", nullableType(json, "string").put("maxLength", 4000));
         fields.putObject("evidence").put("type", "string").put("minLength", 1).put("maxLength", 1000);
+        fields.set("evidenceRef", evidenceReference(json));
         fields.putObject("preferred").put("type", "boolean");
         array.set("items", item);
         return array;
+    }
+
+    private ObjectNode evidenceReference(ObjectMapper json) {
+        ObjectNode ref = objectSchema(json);
+        ref.put("description", "evidence 与 evidenceRef 至少提供一个；优先引用当前集 sourceSegments。"
+            + "segmentId 必须来自当前集。可选 start/end 为片段 text 内从 0 开始的 UTF-16 偏移，左闭右开，必须成对；省略时取整段，最多1000字符。");
+        ref.putArray("required").add("segmentId");
+        ObjectNode fields = (ObjectNode) ref.path("properties");
+        fields.putObject("segmentId").put("type", "string").put("maxLength", 16);
+        fields.putObject("start").put("type", "integer").put("minimum", 0);
+        fields.putObject("end").put("type", "integer").put("minimum", 1);
+        return ref;
     }
 
     private ObjectNode episodeSummaryInput(ObjectMapper json) {

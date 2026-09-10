@@ -712,6 +712,49 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void savesReferencedEvidenceAndRejectsChangedEpisodeBeforeResolvingReferences() throws Exception {
+        jdbc.update("update script_episode set content = ?, content_fingerprint = 'ref-fp' where id = ?",
+            "第一集\r\n林小满穿着红裙。\n走进咖啡厅。", episodeId);
+        ToolExecutionContext assetContext = summaryContext();
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"maxItems":200,
+             "characters":[{"localKey":"c1","name":"林小满","aliases":["小满"],"evidenceRef":{"segmentId":"S0002"}}],
+             "characterLooks":[{"localKey":"l1","characterLocalKey":"c1","name":"红裙","preferred":true,"evidenceRef":{"segmentId":"S0002"}}],
+             "scenes":[{"localKey":"s1","name":"咖啡厅","evidenceRef":{"segmentId":"S0003"},"usageEvidenceRef":{"segmentId":"S0003"}}]}
+            """);
+        assertThat(service.saveEpisodeAssets(assetContext, payload).path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("select content_json from character_asset where script_id = ?",
+            String.class, scriptId)).contains("林小满穿着红裙。");
+        jdbc.update("update script_episode set content = '正文已修改' where id = ?", episodeId);
+        assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("发生变化");
+    }
+
+    @Test
+    void reportsPreferredConflictAcrossLocalKeysResolvingToSameAssetWithPaths() throws Exception {
+        jdbc.update("update script_episode set content = ?, content_fingerprint = 'preferred-fp' where id = ?",
+            "林小满又名小满，穿红裙，后来换成白裙。", episodeId);
+        ToolExecutionContext assetContext = summaryContext();
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[
+              {"localKey":"c1","name":"林小满","aliases":[{"name":"小满","evidence":"又名小满"}],"evidence":"林小满"},
+              {"localKey":"c2","name":"小满","aliases":[],"evidence":"小满"}],
+             "characterLooks":[
+              {"localKey":"l1","characterLocalKey":"c1","name":"红裙","evidence":"红裙","preferred":true},
+              {"localKey":"l2","characterLocalKey":"c2","name":"白裙","evidence":"白裙","preferred":true}],
+             "scenes":[],"props":[],"propVariants":[]}
+            """);
+        assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
+            .hasMessageContaining("$.characterLooks[0].preferred")
+            .hasMessageContaining("$.characterLooks[1].preferred");
+        assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id = ?",
+            Integer.class, scriptId)).isZero();
+    }
+
+    @Test
     void splittingReadAndV2SaveUseDistinctSegmentIdsForRepeatedText() throws Exception {
         String source = "\r\n【黑场转场】\r\n\r\n【黑场转场】\r\n";
         jdbc.update("update script set content = ? where id = ?", source, scriptId);

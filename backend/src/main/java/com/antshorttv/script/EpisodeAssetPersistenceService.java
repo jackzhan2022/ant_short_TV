@@ -3,6 +3,9 @@ package com.antshorttv.script;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.workflowagent.tool.ToolExecutionContext;
+import com.antshorttv.workflowagent.tool.EpisodeAssetsPayloadNormalizer;
+import com.antshorttv.workflowagent.tool.ScreenplayToolConfiguration;
+import com.antshorttv.workflowagent.tool.WorkflowToolValidationException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -58,6 +61,8 @@ public class EpisodeAssetPersistenceService {
     @Transactional
     public JsonNode save(ToolExecutionContext context, JsonNode payload) {
         ReadEpisode read = requireReadEpisode(context);
+        payload = EpisodeAssetsPayloadNormalizer.prepare(payload,
+            new ScreenplayToolConfiguration().episodeAssetsInput(json), read.content());
         Map<String, ResolvedAsset> characters = resolveIdentities(
             context, read.content(), "CHARACTER", payload.path("characters"));
         Map<String, ResolvedAsset> scenes = resolveIdentities(
@@ -65,6 +70,12 @@ public class EpisodeAssetPersistenceService {
         Map<String, ResolvedAsset> props = resolveIdentities(
             context, read.content(), "PROP", payload.path("props"));
         validatePropOwners(payload.path("props"), characters);
+        List<String> preferredErrors = new ArrayList<>();
+        collectResolvedPreferredErrors(payload.path("characterLooks"), "characterLooks",
+            "characterLocalKey", characters, preferredErrors);
+        collectResolvedPreferredErrors(payload.path("propVariants"), "propVariants",
+            "propLocalKey", props, preferredErrors);
+        if (!preferredErrors.isEmpty()) throw WorkflowToolValidationException.aggregate(preferredErrors);
 
         List<Binding> bindings = new ArrayList<>();
         bindExplicitVariants(context, read.content(), "CHARACTER", "characterLocalKey",
@@ -504,6 +515,21 @@ public class EpisodeAssetPersistenceService {
             String owner = binding.type() + ":" + binding.assetId();
             if (preferred.merge(owner, 1, Integer::sum) > 1) {
                 invalid("同一资产在一集内只能有一个首选形态。");
+            }
+        }
+    }
+
+    private void collectResolvedPreferredErrors(JsonNode items, String field, String ownerField,
+                                               Map<String, ResolvedAsset> owners, List<String> errors) {
+        Map<Long, Integer> firstPreferred = new HashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            JsonNode item = items.get(i);
+            if (!item.path("preferred").asBoolean()) continue;
+            ResolvedAsset owner = owners.get(item.path(ownerField).asText());
+            Integer first = firstPreferred.putIfAbsent(owner.id(), i);
+            if (first != null) {
+                errors.add("$." + field + "[" + i + "].preferred 与 $." + field + "[" + first
+                    + "].preferred 引用了同一正式资产，只能保留一个首选形态；保留形态记录并修正 preferred。");
             }
         }
     }

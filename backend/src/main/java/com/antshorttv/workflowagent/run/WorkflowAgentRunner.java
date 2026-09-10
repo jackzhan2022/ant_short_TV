@@ -278,7 +278,7 @@ public class WorkflowAgentRunner {
         boolean reviewEvidenceRefreshPending = false;
         boolean reviewEvidenceRefreshUsed = false;
         boolean reviewHashCorrectionUsed = false;
-        boolean assetSaveCorrectionUsed = false;
+        int assetSaveCorrections = 0;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < maxSteps; modelRound++) {
             requireBeforeDeadline(deadline);
@@ -306,7 +306,7 @@ public class WorkflowAgentRunner {
                     .textRequest(new AiTextRequest(
                         null, null, agent.temperature().doubleValue(), agent.maxTokens(), null, false,
                         null, Math.min(remainingSeconds(deadline), stageRequestTimeoutSeconds(agent.code())),
-                        "short-drama-asset-recognition".equals(agent.code()) ? 1 : 0,
+                        0,
                         messages, activeProviderTools(allowedTools, splitting, runState,
                             agent.code(), contract, reviewTruncationRecovery, reviewEvidenceRefreshPending),
                         disableThinking(agent.code(), splitting) ? "disabled" : null,
@@ -406,7 +406,8 @@ public class WorkflowAgentRunner {
                     requireBoundedSavePayload(call.code(), call.argumentsJson());
                     JsonNode arguments = parseArguments(call.argumentsJson());
                     if ("save_episode_assets".equals(call.code())) {
-                        arguments = EpisodeAssetsPayloadNormalizer.normalize(arguments);
+                        arguments = EpisodeAssetsPayloadNormalizer.prepare(arguments, definition.inputSchema(),
+                            context.runState().get("currentEpisodeContent", String.class));
                     }
                     rejectTrustedScope(arguments);
                     schemaValidator.validate(definition.inputSchema(), arguments);
@@ -433,12 +434,19 @@ public class WorkflowAgentRunner {
                     runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
                         normalized.getErrorCode().name(), normalized.getMessage());
                     if ("save_episode_assets".equals(call.code())) {
-                        if (assetSaveCorrectionUsed) throw normalized;
-                        assetSaveCorrectionUsed = true;
+                        boolean correctable = exception instanceof BusinessException business
+                            ? business.getErrorCode() == ErrorCode.VALIDATION_ERROR
+                                || business.getErrorCode() == ErrorCode.WORKFLOW_AGENT_TOOL_INVALID
+                            : exception instanceof IllegalArgumentException;
+                        if (!correctable || assetSaveCorrections >= 2) throw normalized;
+                        assetSaveCorrections++;
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
                         messages.add(AiChatMessage.user(
                             "保存失败。仅修正错误中指出的字段并再次调用 save_episode_assets；"
-                                + "五个数组必须始终存在，证据必须逐字来自当前剧集，不得编造。"));
+                                + "五个数组必须始终存在，不得删除有效资产或清空数组来绕过校验。"
+                                + "不得再次读取正文或其他上下文；优先使用当前预加载 sourceSegments 中的"
+                                + " evidenceRef: {segmentId: \"S0001\"} 和 usageEvidenceRef，"
+                                + "segmentId 必须实际存在且支持对应证据；证据不得编造。"));
                         break;
                     }
                     if (reviewTruncationRecovery && isReviewSaveHashValidationFailure(call.code(), normalized)) {
@@ -528,6 +536,11 @@ public class WorkflowAgentRunner {
                 + "Agent/Skill 中先读取当前剧集的要求已由服务端完成，不要再次读取。"
                 + "请基于已提供的当前剧集正文完成本阶段分析，直接调用 "
                 + contract.terminalToolCode() + " 保存结果。";
+            if ("short-drama-asset-recognition".equals(agent.code())) {
+                handoff += "优先使用当前预加载 sourceSegments 中的 evidenceRef: {segmentId: \"S0001\"}"
+                    + " 和 usageEvidenceRef 引用证据；segmentId 必须实际存在且支持对应资产或用途。"
+                    + "不得再次读取正文；五个数组必须存在，不得删除有效资产或清空数组绕过校验。";
+            }
             if (input.stableContext() == null || input.stableContext().isBlank()
                 || "short-drama-asset-recognition".equals(agent.code())) {
                 handoff += "\n以下为服务端已按可信作用域预加载并审计的当前剧集数据：\n" + serialized;
