@@ -1335,6 +1335,7 @@ const ProductionWorkbenchSettings = () => {
                     open
                     width={1040}
                     footer={null}
+                    styles={{ body: { maxHeight: '88vh', overflowY: 'auto' } }}
                     onCancel={closeVisualGallery}
                   >
                     <Typography.Title level={5} style={{ margin: '0 0 16px' }}>
@@ -1579,11 +1580,12 @@ const ProductionWorkbenchSettings = () => {
                       {selectedVariant ? (
                         <section style={{ order: 1 }}>
                           <div
+                            data-testid="视觉形象主图预览"
                             style={{
                               display: 'grid',
                               placeItems: 'center',
                               position: 'relative',
-                              height: 430,
+                              height: 'clamp(260px, 48vh, 430px)',
                               overflow: 'hidden',
                               border:
                                 '1px solid var(--app-color-border-secondary)',

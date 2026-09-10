@@ -380,6 +380,9 @@ describe('ProductionWorkbenchSettings', () => {
     expect(
       screen.getByRole('region', { name: '视觉形象画廊' }),
     ).toBeInTheDocument();
+    expect(screen.getByTestId('视觉形象主图预览')).toHaveStyle({
+      height: 'clamp(260px, 48vh, 430px)',
+    });
     expect(
       screen.getByRole('button', { name: '选择日常形象' }),
     ).toBeInTheDocument();
