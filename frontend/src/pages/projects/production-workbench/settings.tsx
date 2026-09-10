@@ -13,6 +13,7 @@ import {
   Flex,
   Input,
   Modal,
+  Skeleton,
   Tag,
   Typography,
 } from 'antd';
@@ -21,6 +22,7 @@ import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import {
   type AssetCandidate,
+  type AssetSettingsWorkspace,
   type CharacterAsset,
   confirmScriptElement,
   createAiImageTask,
@@ -31,10 +33,9 @@ import {
   extractScriptElements,
   type PropAsset,
   queryAssetCandidates,
-  queryScriptWorkspace,
+  queryAssetSettingsWorkspace,
   type SceneAsset,
   type ScriptElementType,
-  type ScriptWorkspace,
   selectPrimaryVisualVariant,
   updateScriptElement,
   updateVisualVariant,
@@ -44,14 +45,11 @@ import {
 type ElementType = Exclude<ScriptElementType, 'ALL'>;
 type AssetRecord = CharacterAsset | SceneAsset | PropAsset;
 
-const emptyWorkspace = (projectId: number): ScriptWorkspace => ({
+const emptyWorkspace = (projectId: number): AssetSettingsWorkspace => ({
   projectId,
-  script: null,
-  versions: [],
   characters: [],
   scenes: [],
   props: [],
-  storyboards: [],
 });
 
 const elementLabels: Record<ElementType, string> = {
@@ -384,9 +382,12 @@ const ProductionWorkbenchSettings = () => {
   const { message } = App.useApp();
   const messageRef = useRef(message);
   messageRef.current = message;
-  const [workspace, setWorkspace] = useState<ScriptWorkspace>(() =>
+  const [workspace, setWorkspace] = useState<AssetSettingsWorkspace>(() =>
     emptyWorkspace(projectId || 0),
   );
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [activeType, setActiveType] = useState<ElementType>('CHARACTER');
   const [processingAction, setProcessingAction] = useState<string>();
   const [activeExecution, setActiveExecution] =
@@ -409,7 +410,7 @@ const ProductionWorkbenchSettings = () => {
 
   const reload = async () => {
     const [workspaceResponse, candidateResponse] = await Promise.all([
-      queryScriptWorkspace(projectId),
+      queryAssetSettingsWorkspace(projectId),
       queryAssetCandidates(projectId, { reviewStatus: 'PENDING_REVIEW' }),
     ]);
     setWorkspace({ ...emptyWorkspace(projectId), ...workspaceResponse.data });
@@ -422,8 +423,10 @@ const ProductionWorkbenchSettings = () => {
       return;
     }
     let active = true;
+    setLoading(true);
+    setLoadFailed(false);
     Promise.all([
-      queryScriptWorkspace(projectId),
+      queryAssetSettingsWorkspace(projectId),
       queryAssetCandidates(projectId, { reviewStatus: 'PENDING_REVIEW' }),
     ])
       .then(([response, candidateResponse]) => {
@@ -434,13 +437,19 @@ const ProductionWorkbenchSettings = () => {
       })
       .catch(() => {
         if (active) {
+          setLoadFailed(true);
           messageRef.current.error('设定页加载失败');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
         }
       });
     return () => {
       active = false;
     };
-  }, [projectId]);
+  }, [loadVersion, projectId]);
 
   const assetsByType = useMemo(
     () => ({
@@ -467,7 +476,7 @@ const ProductionWorkbenchSettings = () => {
   );
 
   const applyWorkspace = (
-    nextWorkspace: ScriptWorkspace | undefined,
+    nextWorkspace: AssetSettingsWorkspace | undefined,
     successText: string,
   ) => {
     setWorkspace({ ...emptyWorkspace(projectId), ...nextWorkspace });
@@ -607,7 +616,7 @@ const ProductionWorkbenchSettings = () => {
     }
     setProcessingAction(`confirm-all-${type}`);
     try {
-      let nextWorkspace: ScriptWorkspace | undefined;
+      let nextWorkspace: AssetSettingsWorkspace | undefined;
       for (const item of pendingItems) {
         const response = await confirmScriptElement(projectId, type, item.id);
         nextWorkspace = response.data;
@@ -651,6 +660,66 @@ const ProductionWorkbenchSettings = () => {
     return null;
   }
 
+  const notice = (
+    <section
+      style={{
+        marginBottom: 16,
+        padding: '10px 16px',
+        background: 'var(--app-color-primary-bg)',
+        border: '1px solid var(--app-color-primary-bg)',
+        borderRadius: 8,
+        color: 'var(--app-color-primary)',
+        fontSize: 13,
+        lineHeight: '20px',
+      }}
+    >
+      请确保角色、场景及道具已全部生成。点击角色图片可配置【变装】，未配置的变装将导致分镜无参考图可用，直接影响视频准确性。
+    </section>
+  );
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight: 'calc(100vh - 100px)',
+          padding: '24px 64px 96px',
+          background: 'var(--app-color-bg-layout)',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div style={{ width: '100%', margin: '0 auto' }}>
+          {notice}
+          <section aria-label="资产设定加载中" style={{ paddingTop: 20 }}>
+            <Skeleton active paragraph={{ rows: 2 }} />
+            <Skeleton active paragraph={{ rows: 3 }} style={{ marginTop: 24 }} />
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div
+        style={{
+          minHeight: 'calc(100vh - 100px)',
+          padding: '24px 64px 96px',
+          background: 'var(--app-color-bg-layout)',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div style={{ width: '100%', margin: '0 auto' }}>
+          {notice}
+          <Empty description="设定页加载失败">
+            <Button onClick={() => setLoadVersion((version) => version + 1)}>
+              重试
+            </Button>
+          </Empty>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -661,21 +730,7 @@ const ProductionWorkbenchSettings = () => {
       }}
     >
       <div style={{ width: '100%', margin: '0 auto' }}>
-        <section
-          style={{
-            marginBottom: 16,
-            padding: '10px 16px',
-            background: 'var(--app-color-primary-bg)',
-            border: '1px solid var(--app-color-primary-bg)',
-            borderRadius: 8,
-            color: 'var(--app-color-primary)',
-            fontSize: 13,
-            lineHeight: '20px',
-          }}
-        >
-          请确保角色、场景及道具已全部生成。点击角色图片可配置【变装】，未配置的变装将导致分镜无参考图可用，直接影响视频准确性。
-        </section>
-
+        {notice}
         {activeExecution ? (
           <div
             style={{

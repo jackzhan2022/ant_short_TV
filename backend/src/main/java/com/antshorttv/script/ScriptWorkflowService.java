@@ -596,6 +596,19 @@ public class ScriptWorkflowService {
         );
     }
 
+    public AssetSettingsWorkspaceResponse assetSettingsWorkspace(Long tenantId, Long projectId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
+        Long scriptId = script == null ? null : script.getId();
+        return new AssetSettingsWorkspaceResponse(
+            projectId,
+            characters(tenantId, projectId, scriptId),
+            scenes(tenantId, projectId, scriptId),
+            props(tenantId, projectId, scriptId)
+        );
+    }
+
     public ScriptAnalysisTaskResponse currentAnalysis(Long tenantId, Long projectId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProjectAccess(context, projectId);

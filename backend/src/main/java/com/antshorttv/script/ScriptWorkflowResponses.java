@@ -189,6 +189,14 @@ record ScriptWorkspaceResponse(
     }
 }
 
+record AssetSettingsWorkspaceResponse(
+    Long projectId,
+    List<CharacterAssetResponse> characters,
+    List<SceneAssetResponse> scenes,
+    List<PropAssetResponse> props
+) {
+}
+
 record ScriptGlobalUnderstandingResponse(
     Long id,
     Integer schemaVersion,

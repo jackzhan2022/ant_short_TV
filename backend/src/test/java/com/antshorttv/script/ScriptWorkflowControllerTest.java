@@ -68,6 +68,43 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.script", is((Object) null)))
             .andExpect(jsonPath("$.data.characters", hasSize(0)))
             .andExpect(jsonPath("$.data.storyboards", hasSize(0)));
+
+        mockMvc.perform(get("/api/projects/%d/asset-settings-workspace".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.characters", hasSize(0)))
+            .andExpect(jsonPath("$.data.scenes", hasSize(0)))
+            .andExpect(jsonPath("$.data.props", hasSize(0)));
+    }
+
+    @Test
+    void returnsLightweightAssetSettingsWorkspaceWithoutScriptFields() throws Exception {
+        String token = registerUser("13800013002", "Asset Settings Owner");
+        Long tenantId = createTenant(token, "资产设定团队");
+        Long ownerId = userIdByMobile("13800013002");
+        Long projectId = createProject(token, tenantId, ownerId, "资产设定项目", "ASSET_SETTINGS");
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, status, created_by, created_at, updated_at)
+            values (?, ?, '林晚', 'SUPPORTING', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, ownerId);
+
+        mockMvc.perform(get("/api/projects/%d/asset-settings-workspace".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.projectId", is(projectId.intValue())))
+            .andExpect(jsonPath("$.data.characters", hasSize(1)))
+            .andExpect(jsonPath("$.data.characters[0].name", is("林晚")))
+            .andExpect(jsonPath("$.data.characters[0].visual.variantCount", is(0)))
+            .andExpect(jsonPath("$.data.scenes", hasSize(0)))
+            .andExpect(jsonPath("$.data.props", hasSize(0)))
+            .andExpect(jsonPath("$.data.script").doesNotExist())
+            .andExpect(jsonPath("$.data.versions").doesNotExist())
+            .andExpect(jsonPath("$.data.episodes").doesNotExist())
+            .andExpect(jsonPath("$.data.storyboards").doesNotExist())
+            .andExpect(jsonPath("$.data.analysis").doesNotExist());
     }
 
     @Test
@@ -438,6 +475,30 @@ class ScriptWorkflowControllerTest {
         Long otherTenantId = createTenant(otherToken, "租户B");
 
         mockMvc.perform(get("/api/projects/%d/script-analysis/current".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))
+                .header("X-Tenant-Id", otherTenantId))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.errorCode", is("PROJECT_ACCESS_DENIED")));
+    }
+
+    @Test
+    void assetSettingsWorkspaceCannotReadProjectFromAnotherTenant() throws Exception {
+        String ownerToken = registerUser("13800013028", "Asset Tenant Owner");
+        Long ownerTenantId = createTenant(ownerToken, "资产租户A");
+        Long ownerId = userIdByMobile("13800013028");
+        Long projectId = createProject(
+            ownerToken,
+            ownerTenantId,
+            ownerId,
+            "资产隔离项目",
+            "ASSET_SETTINGS_TENANT_ISOLATION",
+            "第1集\n主角回家。"
+        );
+
+        String otherToken = registerUser("13800013029", "Asset Other Tenant Owner");
+        Long otherTenantId = createTenant(otherToken, "资产租户B");
+
+        mockMvc.perform(get("/api/projects/%d/asset-settings-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))
                 .header("X-Tenant-Id", otherTenantId))
             .andExpect(status().isForbidden())

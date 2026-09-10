@@ -297,6 +297,11 @@ export type ScriptWorkspace = {
   globalUnderstanding?: ScriptGlobalUnderstanding | null;
 };
 
+export type AssetSettingsWorkspace = Pick<
+  ScriptWorkspace,
+  'projectId' | 'characters' | 'scenes' | 'props'
+>;
+
 export type ScriptGlobalUnderstanding = {
   id: number;
   schemaVersion: number;
@@ -541,6 +546,11 @@ export type CreateAiImageTaskValues = {
 export const queryScriptWorkspace = async (projectId: number) =>
   request<ApiResponse<ScriptWorkspace>>(
     `/api/projects/${projectId}/script-workspace`,
+  );
+
+export const queryAssetSettingsWorkspace = async (projectId: number) =>
+  request<ApiResponse<AssetSettingsWorkspace>>(
+    `/api/projects/${projectId}/asset-settings-workspace`,
   );
 
 export const retryScriptAnalysis = async (

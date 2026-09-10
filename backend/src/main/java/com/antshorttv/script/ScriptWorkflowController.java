@@ -43,6 +43,16 @@ public class ScriptWorkflowController {
         return ApiResponse.success(scriptWorkflowService.workspace(tenantId(request), projectId));
     }
 
+    @GetMapping("/asset-settings-workspace")
+    @RequireProjectPermission("PROJECT:VIEW")
+    public ApiResponse<AssetSettingsWorkspaceResponse> assetSettingsWorkspace(
+        @PathVariable Long projectId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(
+            scriptWorkflowService.assetSettingsWorkspace(tenantId(request), projectId));
+    }
+
     @GetMapping("/script-analysis/current")
     @RequireProjectPermission("PROJECT:VIEW")
     public ApiResponse<ScriptAnalysisTaskResponse> currentAnalysis(
