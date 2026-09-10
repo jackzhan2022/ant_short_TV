@@ -47,6 +47,20 @@ vi.mock('@/services/ai-execution/task', () => ({
   aiExecutionTaskService: { poll: mocks.pollExecution },
 }));
 
+vi.mock('./ai-config/service', () => ({
+  queryProjectAiConfig: vi
+    .fn()
+    .mockResolvedValue({ data: { imageModelId: 8 } }),
+  queryProjectAiModels: vi.fn().mockResolvedValue({
+    data: {
+      textModels: [],
+      imageModels: [{ id: 8, name: 'GPT Image 2' }],
+      videoModels: [],
+      audioModels: [],
+    },
+  }),
+}));
+
 vi.mock('@/components/AiExecutionStatus', () => ({
   default: ({ task }: any) => (
     <div>
@@ -396,6 +410,14 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
     fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
     fireEvent.click(screen.getByRole('button', { name: '重新生成婚礼礼服' }));
+    expect(screen.getByLabelText('婚礼礼服引用图')).toHaveAttribute(
+      'src',
+      '/daily.png',
+    );
+    await screen.findByRole('option', { name: 'GPT Image 2' });
+    fireEvent.change(screen.getByLabelText('图片模型'), {
+      target: { value: '8' },
+    });
     fireEvent.change(screen.getByLabelText('婚礼礼服生成提示词'), {
       target: { value: '婚礼礼服，电影感' },
     });
@@ -413,6 +435,9 @@ describe('ProductionWorkbenchSettings', () => {
           targetId: 12,
           prompt: '婚礼礼服，电影感',
           referenceImages: ['/daily.png'],
+          modelId: 8,
+          aspectRatio: '3:4',
+          imageCount: 1,
         }),
       );
     });

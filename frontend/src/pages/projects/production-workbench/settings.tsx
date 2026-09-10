@@ -21,6 +21,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import {
+  queryProjectAiConfig,
+  queryProjectAiModels,
+  type ProjectModelOption,
+} from './ai-config/service';
+import {
   type AssetCandidate,
   type AssetSettingsWorkspace,
   type CharacterAsset,
@@ -99,7 +104,8 @@ const deriveVariantPrompt = (
   variant: VisualVariant,
 ) => {
   if (variant.prompt) return variant.prompt;
-  const base = item.prompt || `${item.name}，${getDescription(type, item) || ''}`;
+  const base =
+    item.prompt || `${item.name}，${getDescription(type, item) || ''}`;
   const appearance = variant.appearance ? `，${variant.appearance}` : '';
   if (type === 'CHARACTER') {
     return `${base}。当前视觉形象：${variant.name}${appearance}。保持与主体形象同一人物、五官、年龄、体型和画风一致，半身角色设定图，3:4竖图。`;
@@ -424,6 +430,10 @@ const ProductionWorkbenchSettings = () => {
   const [generationVariantId, setGenerationVariantId] = useState<number>();
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [generationSubmitting, setGenerationSubmitting] = useState(false);
+  const [imageModels, setImageModels] = useState<ProjectModelOption[]>([]);
+  const [generationModelId, setGenerationModelId] = useState<number>();
+  const [generationAspectRatio, setGenerationAspectRatio] = useState('3:4');
+  const [generationImageCount, setGenerationImageCount] = useState(1);
 
   const reload = async () => {
     const [workspaceResponse, candidateResponse] = await Promise.all([
@@ -600,7 +610,7 @@ const ProductionWorkbenchSettings = () => {
     }
   };
 
-  const openVariantGenerator = (variant: VisualVariant) => {
+  const openVariantGenerator = async (variant: VisualVariant) => {
     if (!visualAsset) return;
     const primaryImage = visualAsset?.item.visual?.resolvedImageUrl;
     if (
@@ -615,6 +625,19 @@ const ProductionWorkbenchSettings = () => {
     setGenerationPrompt(
       deriveVariantPrompt(visualAsset.type, visualAsset.item, variant),
     );
+    setGenerationAspectRatio(visualAsset.type === 'CHARACTER' ? '3:4' : '16:9');
+    setGenerationImageCount(1);
+    try {
+      const [modelsResponse, configResponse] = await Promise.all([
+        queryProjectAiModels(projectId),
+        queryProjectAiConfig(projectId),
+      ]);
+      setImageModels(modelsResponse.data.imageModels || []);
+      setGenerationModelId(configResponse.data.imageModelId || undefined);
+    } catch {
+      setImageModels([]);
+      setGenerationModelId(undefined);
+    }
   };
 
   const closeVisualGallery = () => {
@@ -638,19 +661,23 @@ const ProductionWorkbenchSettings = () => {
     setGenerationSubmitting(true);
     try {
       if (prompt !== defaultPrompt) {
-        await updateVisualVariant(projectId, variant.id, { ...variant, prompt });
+        await updateVisualVariant(projectId, variant.id, {
+          ...variant,
+          prompt,
+        });
       }
       await createAiImageTask(projectId, {
         taskType: visualAsset.type,
         targetType: 'VISUAL_VARIANT',
         targetId: variant.id,
+        modelId: generationModelId,
         prompt,
         referenceImages:
           visualAsset.type === 'CHARACTER' && !variant.primary && primaryImage
             ? [primaryImage]
             : undefined,
-        aspectRatio: visualAsset.type === 'CHARACTER' ? '3:4' : '16:9',
-        imageCount: 1,
+        aspectRatio: generationAspectRatio,
+        imageCount: generationImageCount,
       });
       await mutateVariant(async () => undefined, '已提交生成');
       setGenerationVariantId(undefined);
@@ -755,7 +782,11 @@ const ProductionWorkbenchSettings = () => {
           {notice}
           <section aria-label="资产设定加载中" style={{ paddingTop: 20 }}>
             <Skeleton active paragraph={{ rows: 2 }} />
-            <Skeleton active paragraph={{ rows: 3 }} style={{ marginTop: 24 }} />
+            <Skeleton
+              active
+              paragraph={{ rows: 3 }}
+              style={{ marginTop: 24 }}
+            />
           </section>
         </div>
       </div>
@@ -1275,289 +1306,313 @@ const ProductionWorkbenchSettings = () => {
               return (
                 <>
                   <Modal
-                  title="视觉形象画廊"
-                  open
-                  width={1040}
-                  footer={null}
-                  onCancel={closeVisualGallery}
-                >
-                  <Typography.Title level={5} style={{ margin: '0 0 16px' }}>
-                    {visualAsset.item.name} · 视觉形象管理
-                  </Typography.Title>
-                  <Input.TextArea
-                    defaultValue={visualAsset.item.prompt || ''}
-                    aria-label={`${visualAsset.item.name}主体提示词`}
-                    placeholder="主体生成提示词"
-                    autoSize={{ minRows: 2, maxRows: 4 }}
-                    onBlur={(event) => {
-                      if (event.target.value !== (visualAsset.item.prompt || '')) {
-                        void saveAsset(visualAsset.type, {
-                          ...visualAsset.item,
-                          prompt: event.target.value,
-                        });
-                      }
-                    }}
-                    style={{ marginBottom: 16 }}
-                  />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                    <aside
+                    title="视觉形象画廊"
+                    open
+                    width={1040}
+                    footer={null}
+                    onCancel={closeVisualGallery}
+                  >
+                    <Typography.Title level={5} style={{ margin: '0 0 16px' }}>
+                      {visualAsset.item.name} · 视觉形象管理
+                    </Typography.Title>
+                    <Input.TextArea
+                      defaultValue={visualAsset.item.prompt || ''}
+                      aria-label={`${visualAsset.item.name}主体提示词`}
+                      placeholder="主体生成提示词"
+                      autoSize={{ minRows: 2, maxRows: 4 }}
+                      onBlur={(event) => {
+                        if (
+                          event.target.value !== (visualAsset.item.prompt || '')
+                        ) {
+                          void saveAsset(visualAsset.type, {
+                            ...visualAsset.item,
+                            prompt: event.target.value,
+                          });
+                        }
+                      }}
+                      style={{ marginBottom: 16 }}
+                    />
+                    <div
                       style={{
-                        order: 2,
                         display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 12,
-                        paddingTop: 14,
-                        borderTop:
-                          '1px solid var(--app-color-border-secondary)',
+                        flexDirection: 'column',
+                        gap: 18,
                       }}
                     >
-                      <Flex gap={8} style={{ minWidth: 210 }}>
-                        <Input
-                          aria-label="新视觉形象名称"
-                          value={newVariantName}
-                          onChange={(event) =>
-                            setNewVariantName(event.target.value)
-                          }
-                          placeholder="新增变装名称"
-                        />
-                        <Button
-                          type="primary"
-                          aria-label="新增视觉形象"
-                          onClick={addVariant}
-                        >
-                          新增
-                        </Button>
-                      </Flex>
-                      <div
+                      <aside
                         style={{
+                          order: 2,
                           display: 'flex',
-                          flex: 1,
-                          gap: 10,
-                          overflowX: 'auto',
-                          paddingBottom: 2,
+                          alignItems: 'flex-start',
+                          gap: 12,
+                          paddingTop: 14,
+                          borderTop:
+                            '1px solid var(--app-color-border-secondary)',
                         }}
                       >
-                        {variants.map((variant) => {
-                          const selected = variant.id === selectedVariant?.id;
-                          return (
-                            <button
-                              key={variant.id}
-                              type="button"
-                              aria-label={`选择${variant.name}`}
-                              onClick={() =>
-                                setSelectedVisualVariantId(variant.id)
-                              }
-                              style={{
-                                padding: 0,
-                                flex: '0 0 92px',
-                                overflow: 'hidden',
-                                border: selected
-                                  ? '2px solid var(--app-color-primary)'
-                                  : '1px solid var(--app-color-border-secondary)',
-                                borderRadius: 6,
-                                background: 'var(--app-color-bg-container)',
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  aspectRatio: '1 / 1',
-                                  placeItems: 'center',
-                                  overflow: 'hidden',
-                                  background: 'var(--app-color-fill-secondary)',
-                                  color: 'var(--app-color-text-tertiary)',
-                                  fontSize: 22,
-                                }}
-                              >
-                                {variant.currentImageUrl ? (
-                                  <img
-                                    src={variant.currentImageUrl}
-                                    alt={`${variant.name}缩略图`}
-                                    style={{
-                                      width: '100%',
-                                      height: '100%',
-                                      objectFit: 'cover',
-                                    }}
-                                  />
-                                ) : (
-                                  variant.name.slice(0, 1)
-                                )}
-                              </div>
-                              <span
-                                style={{
-                                  display: 'block',
-                                  padding: '5px 6px',
-                                  overflow: 'hidden',
-                                  color: 'var(--app-color-text)',
-                                  fontSize: 12,
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {variant.name}
-                                {variant.primary ? ' · 主图' : ''}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </aside>
-                    {selectedVariant ? (
-                      <section style={{ order: 1 }}>
+                        <Flex gap={8} style={{ minWidth: 210 }}>
+                          <Input
+                            aria-label="新视觉形象名称"
+                            value={newVariantName}
+                            onChange={(event) =>
+                              setNewVariantName(event.target.value)
+                            }
+                            placeholder="新增变装名称"
+                          />
+                          <Button
+                            type="primary"
+                            aria-label="新增视觉形象"
+                            onClick={addVariant}
+                          >
+                            新增
+                          </Button>
+                        </Flex>
                         <div
                           style={{
-                            display: 'grid',
-                            placeItems: 'center',
-                            position: 'relative',
-                            height: 430,
-                            overflow: 'hidden',
-                            border:
-                              '1px solid var(--app-color-border-secondary)',
-                            borderRadius: 8,
-                            background: 'var(--app-color-fill-secondary)',
-                            color: 'var(--app-color-text-tertiary)',
-                            fontSize: 48,
+                            display: 'flex',
+                            flex: 1,
+                            gap: 10,
+                            overflowX: 'auto',
+                            paddingBottom: 2,
                           }}
                         >
-                          {selectedVariant.currentImageUrl ? (
-                            <img
-                              src={selectedVariant.currentImageUrl}
-                              alt={`${selectedVariant.name}预览图`}
-                              style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'contain',
-                              }}
-                            />
-                          ) : (
-                            selectedVariant.name.slice(0, 1)
-                          )}
-                          {variants.length > 1 ? (
-                            <>
-                              <Button
-                                aria-label="查看上一个视觉形象"
+                          {variants.map((variant) => {
+                            const selected = variant.id === selectedVariant?.id;
+                            return (
+                              <button
+                                key={variant.id}
+                                type="button"
+                                aria-label={`选择${variant.name}`}
                                 onClick={() =>
-                                  setSelectedVisualVariantId(
-                                    variants[
-                                      (selectedVariantIndex - 1 + variants.length) %
-                                        variants.length
-                                    ]?.id,
-                                  )
+                                  setSelectedVisualVariantId(variant.id)
                                 }
-                                style={{ position: 'absolute', left: 16, borderRadius: 999 }}
+                                style={{
+                                  padding: 0,
+                                  flex: '0 0 92px',
+                                  overflow: 'hidden',
+                                  border: selected
+                                    ? '2px solid var(--app-color-primary)'
+                                    : '1px solid var(--app-color-border-secondary)',
+                                  borderRadius: 6,
+                                  background: 'var(--app-color-bg-container)',
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                }}
                               >
-                                ‹
-                              </Button>
-                              <Button
-                                aria-label="查看下一个视觉形象"
-                                onClick={() =>
-                                  setSelectedVisualVariantId(
-                                    variants[(selectedVariantIndex + 1) % variants.length]?.id,
-                                  )
-                                }
-                                style={{ position: 'absolute', right: 16, borderRadius: 999 }}
-                              >
-                                ›
-                              </Button>
-                            </>
-                          ) : null}
-                          <span
-                            role="status"
-                            aria-label={`${selectedVariant.name}关联剧集`}
-                            title={episodeTooltip || '暂未关联剧集'}
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    aspectRatio: '1 / 1',
+                                    placeItems: 'center',
+                                    overflow: 'hidden',
+                                    background:
+                                      'var(--app-color-fill-secondary)',
+                                    color: 'var(--app-color-text-tertiary)',
+                                    fontSize: 22,
+                                  }}
+                                >
+                                  {variant.currentImageUrl ? (
+                                    <img
+                                      src={variant.currentImageUrl}
+                                      alt={`${variant.name}缩略图`}
+                                      style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                      }}
+                                    />
+                                  ) : (
+                                    variant.name.slice(0, 1)
+                                  )}
+                                </div>
+                                <span
+                                  style={{
+                                    display: 'block',
+                                    padding: '5px 6px',
+                                    overflow: 'hidden',
+                                    color: 'var(--app-color-text)',
+                                    fontSize: 12,
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {variant.name}
+                                  {variant.primary ? ' · 主图' : ''}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </aside>
+                      {selectedVariant ? (
+                        <section style={{ order: 1 }}>
+                          <div
                             style={{
-                              position: 'absolute',
-                              top: 10,
-                              left: 10,
-                              maxWidth: 'calc(100% - 20px)',
+                              display: 'grid',
+                              placeItems: 'center',
+                              position: 'relative',
+                              height: 430,
                               overflow: 'hidden',
-                              padding: '4px 8px',
-                              borderRadius: 4,
-                              background: 'rgb(0 0 0 / 52%)',
-                              color: 'var(--app-color-bg-container)',
-                              fontSize: 12,
-                              lineHeight: '18px',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
+                              border:
+                                '1px solid var(--app-color-border-secondary)',
+                              borderRadius: 8,
+                              background: 'var(--app-color-fill-secondary)',
+                              color: 'var(--app-color-text-tertiary)',
+                              fontSize: 48,
                             }}
                           >
-                            {episodeNumberLabel || '未关联'}
-                          </span>
-                        </div>
-                        <Flex
-                          justify="space-between"
-                          align="center"
-                          style={{ marginTop: 14 }}
-                        >
-                          <div>
-                            <Typography.Text strong>
-                              {selectedVariant.name}
-                            </Typography.Text>
-                            {selectedVariant.primary ? (
-                              <Tag color="blue">主形象</Tag>
+                            {selectedVariant.currentImageUrl ? (
+                              <img
+                                src={selectedVariant.currentImageUrl}
+                                alt={`${selectedVariant.name}预览图`}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'contain',
+                                }}
+                              />
+                            ) : (
+                              selectedVariant.name.slice(0, 1)
+                            )}
+                            {variants.length > 1 ? (
+                              <>
+                                <Button
+                                  aria-label="查看上一个视觉形象"
+                                  onClick={() =>
+                                    setSelectedVisualVariantId(
+                                      variants[
+                                        (selectedVariantIndex -
+                                          1 +
+                                          variants.length) %
+                                          variants.length
+                                      ]?.id,
+                                    )
+                                  }
+                                  style={{
+                                    position: 'absolute',
+                                    left: 16,
+                                    borderRadius: 999,
+                                  }}
+                                >
+                                  ‹
+                                </Button>
+                                <Button
+                                  aria-label="查看下一个视觉形象"
+                                  onClick={() =>
+                                    setSelectedVisualVariantId(
+                                      variants[
+                                        (selectedVariantIndex + 1) %
+                                          variants.length
+                                      ]?.id,
+                                    )
+                                  }
+                                  style={{
+                                    position: 'absolute',
+                                    right: 16,
+                                    borderRadius: 999,
+                                  }}
+                                >
+                                  ›
+                                </Button>
+                              </>
                             ) : null}
-                            <Tag>{selectedVariant.generationStatus}</Tag>
+                            <span
+                              role="status"
+                              aria-label={`${selectedVariant.name}关联剧集`}
+                              title={episodeTooltip || '暂未关联剧集'}
+                              style={{
+                                position: 'absolute',
+                                top: 10,
+                                left: 10,
+                                maxWidth: 'calc(100% - 20px)',
+                                overflow: 'hidden',
+                                padding: '4px 8px',
+                                borderRadius: 4,
+                                background: 'rgb(0 0 0 / 52%)',
+                                color: 'var(--app-color-bg-container)',
+                                fontSize: 12,
+                                lineHeight: '18px',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {episodeNumberLabel || '未关联'}
+                            </span>
                           </div>
-                          <Flex gap={8}>
-                            {!selectedVariant.primary ? (
+                          <Flex
+                            justify="space-between"
+                            align="center"
+                            style={{ marginTop: 14 }}
+                          >
+                            <div>
+                              <Typography.Text strong>
+                                {selectedVariant.name}
+                              </Typography.Text>
+                              {selectedVariant.primary ? (
+                                <Tag color="blue">主形象</Tag>
+                              ) : null}
+                              <Tag>{selectedVariant.generationStatus}</Tag>
+                            </div>
+                            <Flex gap={8}>
+                              {!selectedVariant.primary ? (
+                                <Button
+                                  size="small"
+                                  onClick={() =>
+                                    mutateVariant(
+                                      () =>
+                                        selectPrimaryVisualVariant(
+                                          projectId,
+                                          selectedVariant.id,
+                                        ),
+                                      '主形象已更新',
+                                    )
+                                  }
+                                >
+                                  设为主形象
+                                </Button>
+                              ) : null}
                               <Button
                                 size="small"
+                                aria-label={`${selectedVariant.generationStatus === 'FAILED' ? '重新生成' : '生成图片'}${selectedVariant.name}`}
+                                onClick={() =>
+                                  openVariantGenerator(selectedVariant)
+                                }
+                              >
+                                {selectedVariant.generationStatus === 'FAILED'
+                                  ? '重新生成'
+                                  : '生成图片'}
+                              </Button>
+                              <Button
+                                size="small"
+                                danger
                                 onClick={() =>
                                   mutateVariant(
                                     () =>
-                                      selectPrimaryVisualVariant(
+                                      deleteVisualVariant(
                                         projectId,
                                         selectedVariant.id,
                                       ),
-                                    '主形象已更新',
+                                    '视觉形象已删除',
                                   )
                                 }
                               >
-                                设为主形象
+                                删除
                               </Button>
-                            ) : null}
-                            <Button
-                              size="small"
-                              aria-label={`${selectedVariant.generationStatus === 'FAILED' ? '重新生成' : '生成图片'}${selectedVariant.name}`}
-                              onClick={() => openVariantGenerator(selectedVariant)}
-                            >
-                              {selectedVariant.generationStatus === 'FAILED'
-                                ? '重新生成'
-                                : '生成图片'}
-                            </Button>
-                            <Button
-                              size="small"
-                              danger
-                              onClick={() =>
-                                mutateVariant(
-                                  () =>
-                                    deleteVisualVariant(
-                                      projectId,
-                                      selectedVariant.id,
-                                    ),
-                                  '视觉形象已删除',
-                                )
-                              }
-                            >
-                              删除
-                            </Button>
+                            </Flex>
                           </Flex>
-                        </Flex>
-                        {selectedVariant.errorMessage ? (
-                          <Typography.Text
-                            type="danger"
-                            style={{ display: 'block', marginTop: 6 }}
-                          >
-                            {selectedVariant.errorMessage}
-                          </Typography.Text>
-                        ) : null}
-                      </section>
-                    ) : (
-                      <Empty description="暂无视觉形象" />
-                    )}
-                  </div>
+                          {selectedVariant.errorMessage ? (
+                            <Typography.Text
+                              type="danger"
+                              style={{ display: 'block', marginTop: 6 }}
+                            >
+                              {selectedVariant.errorMessage}
+                            </Typography.Text>
+                          ) : null}
+                        </section>
+                      ) : (
+                        <Empty description="暂无视觉形象" />
+                      )}
+                    </div>
                   </Modal>
                   <Modal
                     title="角色生成"
@@ -1571,34 +1626,138 @@ const ProductionWorkbenchSettings = () => {
                         <div
                           style={{
                             display: 'grid',
-                            placeItems: 'center',
-                            minHeight: 260,
-                            overflow: 'hidden',
-                            borderRadius: 10,
-                            background: 'var(--app-color-fill-secondary)',
+                            gridTemplateColumns: '1fr 1fr',
+                            gap: 14,
                           }}
                         >
-                          {generationVariant.currentImageUrl ? (
-                            <img
-                              src={generationVariant.currentImageUrl}
-                              alt={`${generationVariant.name}当前图`}
-                              style={{ maxWidth: '100%', maxHeight: 340, objectFit: 'contain' }}
-                            />
-                          ) : (
-                            <Typography.Text type="secondary">暂无当前图</Typography.Text>
-                          )}
+                          <div
+                            style={{
+                              display: 'grid',
+                              placeItems: 'center',
+                              minHeight: 260,
+                              overflow: 'hidden',
+                              borderRadius: 10,
+                              background: 'var(--app-color-fill-secondary)',
+                            }}
+                          >
+                            {generationVariant.currentImageUrl ? (
+                              <img
+                                src={generationVariant.currentImageUrl}
+                                alt={`${generationVariant.name}当前图`}
+                                style={{
+                                  maxWidth: '100%',
+                                  maxHeight: 340,
+                                  objectFit: 'contain',
+                                }}
+                              />
+                            ) : (
+                              <Typography.Text type="secondary">
+                                暂无当前图
+                              </Typography.Text>
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              display: 'grid',
+                              placeItems: 'center',
+                              minHeight: 260,
+                              overflow: 'hidden',
+                              borderRadius: 10,
+                              background: 'var(--app-color-fill-secondary)',
+                            }}
+                          >
+                            {visualAsset.type === 'CHARACTER' &&
+                            !generationVariant.primary &&
+                            visualAsset.item.visual?.resolvedImageUrl ? (
+                              <img
+                                src={visualAsset.item.visual.resolvedImageUrl}
+                                aria-label={`${generationVariant.name}引用图`}
+                                alt="主形象引用图"
+                                style={{
+                                  maxWidth: '100%',
+                                  maxHeight: 340,
+                                  objectFit: 'contain',
+                                }}
+                              />
+                            ) : (
+                              <Typography.Text type="secondary">
+                                主形象无需引用图
+                              </Typography.Text>
+                            )}
+                          </div>
                         </div>
-                        <div style={{ padding: 16, border: '1px solid var(--app-color-primary)', borderRadius: 12 }}>
-                          <Typography.Text strong>{generationVariant.name} · 视觉生成任务</Typography.Text>
+                        <div
+                          style={{
+                            padding: 16,
+                            border: '1px solid var(--app-color-primary)',
+                            borderRadius: 12,
+                          }}
+                        >
+                          <Typography.Text strong>
+                            {generationVariant.name} · 视觉生成任务
+                          </Typography.Text>
                           <Input.TextArea
                             aria-label={`${generationVariant.name}生成提示词`}
                             value={generationPrompt}
-                            onChange={(event) => setGenerationPrompt(event.target.value)}
+                            onChange={(event) =>
+                              setGenerationPrompt(event.target.value)
+                            }
                             autoSize={{ minRows: 6, maxRows: 10 }}
                             style={{ marginTop: 12 }}
                           />
+                          <Flex gap={8} style={{ marginTop: 12 }}>
+                            <select
+                              aria-label="图片模型"
+                              value={generationModelId ?? ''}
+                              onChange={(event) =>
+                                setGenerationModelId(
+                                  event.target.value
+                                    ? Number(event.target.value)
+                                    : undefined,
+                                )
+                              }
+                            >
+                              <option value="">使用项目默认模型</option>
+                              {imageModels.map((model) => (
+                                <option key={model.id} value={model.id}>
+                                  {model.name}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              aria-label="画面比例"
+                              value={generationAspectRatio}
+                              onChange={(event) =>
+                                setGenerationAspectRatio(event.target.value)
+                              }
+                            >
+                              <option value="3:4">3:4</option>
+                              <option value="1:1">1:1</option>
+                              <option value="16:9">16:9</option>
+                            </select>
+                            <select
+                              aria-label="生成数量"
+                              value={generationImageCount}
+                              onChange={(event) =>
+                                setGenerationImageCount(
+                                  Number(event.target.value),
+                                )
+                              }
+                            >
+                              <option value={1}>1 张</option>
+                              <option value={2}>2 张</option>
+                              <option value={4}>4 张</option>
+                            </select>
+                            <Typography.Text type="secondary">
+                              积分按所选模型实时结算
+                            </Typography.Text>
+                          </Flex>
                           <Flex justify="end" gap={8} style={{ marginTop: 12 }}>
-                            <Button onClick={() => setGenerationVariantId(undefined)}>取消</Button>
+                            <Button
+                              onClick={() => setGenerationVariantId(undefined)}
+                            >
+                              取消
+                            </Button>
                             <Button
                               type="primary"
                               aria-label={`提交${generationVariant.name}生成`}
