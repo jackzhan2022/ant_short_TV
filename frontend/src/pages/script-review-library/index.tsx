@@ -21,6 +21,7 @@ import {
   Typography,
   Upload,
 } from 'antd';
+import mammoth from 'mammoth';
 import { useEffect, useMemo, useState } from 'react';
 import {
   filterLibraryProjects,
@@ -40,6 +41,14 @@ const stateColor: Record<LibraryStateKey, string> = {
   READY_FOR_REVIEW: 'warning',
   COMPLETED: 'success',
 };
+
+const filenameWithoutExtension = (name: string) =>
+  name.replace(/\.[^.]+$/, '').trim();
+
+const isTextScript = (file: File) =>
+  file.type.startsWith('text/') || /\.(txt|md|markdown)$/i.test(file.name);
+
+const isDocxScript = (file: File) => /\.docx$/i.test(file.name);
 
 const ScriptReviewLibraryPage = () => {
   const { message } = App.useApp();
@@ -78,13 +87,15 @@ const ScriptReviewLibraryPage = () => {
   const stateFilters = useMemo(
     () => [
       { key: undefined, label: '全部剧本', count: items.length },
-      ...([
-        ['NOT_REVIEWED', '未审核'],
-        ['RUNNING', '审核中'],
-        ['ACTION_REQUIRED', '待处理'],
-        ['READY_FOR_REVIEW', '待复审'],
-        ['COMPLETED', '审核完成'],
-      ] as const).map(([key, label]) => ({
+      ...(
+        [
+          ['NOT_REVIEWED', '未审核'],
+          ['RUNNING', '审核中'],
+          ['ACTION_REQUIRED', '待处理'],
+          ['READY_FOR_REVIEW', '待复审'],
+          ['COMPLETED', '审核完成'],
+        ] as const
+      ).map(([key, label]) => ({
         key,
         label,
         count: [...states.values()].filter((state) => state.key === key).length,
@@ -95,6 +106,27 @@ const ScriptReviewLibraryPage = () => {
 
   const closeImport = () => {
     setImportOpen(false);
+  };
+
+  const selectScriptFile = async (file: File) => {
+    setProjectName(filenameWithoutExtension(file.name));
+    try {
+      if (isTextScript(file)) {
+        setContent(await file.text());
+      } else if (isDocxScript(file)) {
+        const result = await mammoth.extractRawText({
+          arrayBuffer: await file.arrayBuffer(),
+        });
+        setContent(result.value.trim());
+      } else {
+        setContent('');
+        message.info('旧版 Word 文件将在导入后解析正文');
+      }
+    } catch {
+      setContent('');
+      message.error('读取剧本内容失败，请重新选择文件');
+    }
+    return false;
   };
 
   const createProject = async () => {
@@ -141,7 +173,13 @@ const ScriptReviewLibraryPage = () => {
         </Button>,
       ]}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '240px minmax(0, 1fr)', gap: 16 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '240px minmax(0, 1fr)',
+          gap: 16,
+        }}
+      >
         <Card size="small">
           <Space vertical size="middle" style={{ width: '100%' }}>
             <Typography.Text strong>查找剧本</Typography.Text>
@@ -157,7 +195,11 @@ const ScriptReviewLibraryPage = () => {
                 <Button
                   block
                   key={item.key ?? 'ALL'}
-                  style={{ display: 'flex', justifyContent: 'space-between', textAlign: 'left' }}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    textAlign: 'left',
+                  }}
                   type={filter === item.key ? 'primary' : 'text'}
                   onClick={() => setFilter(item.key)}
                 >
@@ -204,7 +246,9 @@ const ScriptReviewLibraryPage = () => {
                       key="open"
                       type="link"
                       onClick={() =>
-                        history.push(`/script-review/projects/${project.id}/reviews`)
+                        history.push(
+                          `/script-review/projects/${project.id}/reviews`,
+                        )
                       }
                     >
                       {state?.actionLabel ?? '进入审核'}
@@ -218,7 +262,8 @@ const ScriptReviewLibraryPage = () => {
                       display: 'grid',
                       flex: 1,
                       gap: 16,
-                      gridTemplateColumns: 'minmax(220px, 2fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(120px, 1fr)',
+                      gridTemplateColumns:
+                        'minmax(220px, 2fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(120px, 1fr)',
                     }}
                   >
                     <List.Item.Meta
@@ -226,11 +271,14 @@ const ScriptReviewLibraryPage = () => {
                       title={project.name}
                       description={
                         <Typography.Text type="secondary">
-                          {project.sourceFileName || '直接录入'} · V{project.versionCount}
+                          {project.sourceFileName || '直接录入'} · V
+                          {project.versionCount}
                         </Typography.Text>
                       }
                     />
-                    <Typography.Text type="secondary">第 {project.latestRoundNo} 轮审核</Typography.Text>
+                    <Typography.Text type="secondary">
+                      第 {project.latestRoundNo} 轮审核
+                    </Typography.Text>
                     <Tag color={state ? stateColor[state.key] : 'default'}>
                       {state?.label ?? '未审核'}
                     </Tag>
@@ -240,7 +288,9 @@ const ScriptReviewLibraryPage = () => {
                       </Typography.Text>
                     ) : (
                       <Typography.Text type="secondary">
-                        {state?.key === 'COMPLETED' ? '审核结果已生成' : '暂无待处理问题'}
+                        {state?.key === 'COMPLETED'
+                          ? '审核结果已生成'
+                          : '暂无待处理问题'}
                       </Typography.Text>
                     )}
                   </div>
@@ -271,7 +321,7 @@ const ScriptReviewLibraryPage = () => {
           />
           <Upload.Dragger
             accept=".doc,.docx,.txt,.md,.markdown"
-            beforeUpload={() => false}
+            beforeUpload={selectScriptFile}
             fileList={uploadFile ? [uploadFile] : []}
             maxCount={1}
             onChange={({ fileList }) => setUploadFile(fileList[0])}

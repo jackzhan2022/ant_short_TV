@@ -14,14 +14,13 @@ import {
   Button,
   Card,
   Checkbox,
-  Col,
+  Drawer,
   Empty,
   Input,
   List,
   Modal,
   Progress,
   Radio,
-  Row,
   Select,
   Space,
   Tag,
@@ -31,11 +30,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import { statusText } from '@/utils/fieldDictionary';
-import type {
-  ReviewIssue,
-  ReviewProjectDetail,
-  ReviewTask,
-} from './service';
+import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from './dimensions';
+import styles from './index.module.css';
+import ReportIssueList from './ReportIssueList';
+import type { ReviewIssue, ReviewProjectDetail, ReviewTask } from './service';
 import {
   batchRepairReview,
   cancelReviewTask,
@@ -51,12 +49,10 @@ import {
   saveReviewVersion,
 } from './service';
 
-import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from './dimensions';
-import ReportIssueList from './ReportIssueList';
-import styles from './index.module.css';
-
 const taskIdFromPath = () => {
-  const match = window.location.pathname.match(/^\/script-review\/tasks\/(\d+)$/);
+  const match = window.location.pathname.match(
+    /^\/script-review\/tasks\/(\d+)$/,
+  );
   return match ? Number(match[1]) : undefined;
 };
 
@@ -88,7 +84,9 @@ const ScriptReviewPage = () => {
   const { message, modal } = App.useApp();
   const taskRouteId = taskIdFromPath();
   const [detail, setDetail] = useState<ReviewProjectDetail>();
-  const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>(() => {
+  const [selectedProjectId, setSelectedProjectId] = useState<
+    number | undefined
+  >(() => {
     const projectId = Number(
       new URLSearchParams(window.location.search).get('projectId'),
     );
@@ -103,6 +101,10 @@ const ScriptReviewPage = () => {
   const [taskDetailError, setTaskDetailError] = useState(false);
   const [selectedIssueId, setSelectedIssueId] = useState<number>();
   const [content, setContent] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [highlight, setHighlight] = useState('');
+  const hitRef = useRef<HTMLElement>(null);
   const [dimensions, setDimensions] = useState<string[]>(
     DEFAULT_REVIEW_DIMENSIONS,
   );
@@ -143,6 +145,34 @@ const ScriptReviewPage = () => {
     (version) => version.id === selectedVersionId,
   );
   const taskLocked = selectedTask?.status === 'RUNNING';
+  const versionMismatch = Boolean(
+    selectedTask && selectedVersionId !== selectedTask.scriptVersionId,
+  );
+  const highlightStart = highlight ? content.indexOf(highlight) : -1;
+
+  useEffect(() => {
+    if (!queueIssues.some((issue) => issue.id === selectedIssueId)) {
+      setSelectedIssueId(queueIssues[0]?.id);
+    }
+  }, [selectedTask, issueFilter, selectedIssueId]);
+
+  useEffect(() => {
+    setHighlight(
+      selectedIssue?.hits[0]?.excerpt?.trim() ||
+        selectedIssue?.excerpt?.trim() ||
+        '',
+    );
+  }, [selectedIssue]);
+
+  useEffect(() => {
+    if (!editing && highlightStart >= 0)
+      hitRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [highlight, highlightStart, editing]);
+
+  const selectIssue = (issue: ReviewIssue) => {
+    setSelectedIssueId(issue.id);
+    setHighlight(issue.hits[0]?.excerpt?.trim() || issue.excerpt?.trim() || '');
+  };
 
   const resolveTextarea = () => {
     const current = editorRef.current;
@@ -158,6 +188,17 @@ const ScriptReviewPage = () => {
     const target = hit.excerpt?.trim() || issue.excerpt?.trim();
     if (!target) {
       message.warning('当前问题没有可定位的原文片段');
+      return;
+    }
+    setHighlight(target);
+    if (!editing) {
+      if (!content.includes(target))
+        message.warning('当前版本未找到可高亮的命中片段');
+      else
+        hitRef.current?.scrollIntoView?.({
+          block: 'center',
+          behavior: 'smooth',
+        });
       return;
     }
     const textarea = resolveTextarea();
@@ -241,7 +282,10 @@ const ScriptReviewPage = () => {
         tasks: [task],
       });
       setContent(version.content);
-      setSelectedIssueId(task.issues.find((issue) => !issue.manuallyResolved)?.id ?? task.issues[0]?.id);
+      setSelectedIssueId(
+        task.issues.find((issue) => !issue.manuallyResolved)?.id ??
+          task.issues[0]?.id,
+      );
       setIssueFilter('PENDING');
     } finally {
       setLoading(false);
@@ -322,6 +366,7 @@ const ScriptReviewPage = () => {
       if (response.data) {
         message.success(`已保存为 V${response.data.versionNo}`);
         await loadProject(selectedProjectId);
+        setEditing(false);
       }
     } finally {
       setSaving(false);
@@ -338,7 +383,11 @@ const ScriptReviewPage = () => {
       .map((value) => value.trim())
       .filter(Boolean);
     if (scopeType !== 'ALL' && selectedScopeValues.length === 0) {
-      message.warning(scopeType === 'EPISODES' ? '请输入要审核的集数' : '请输入要审核的场次编号');
+      message.warning(
+        scopeType === 'EPISODES'
+          ? '请输入要审核的集数'
+          : '请输入要审核的场次编号',
+      );
       return;
     }
     const reviewScope =
@@ -453,375 +502,249 @@ const ScriptReviewPage = () => {
     URL.revokeObjectURL(downloadUrl);
   };
 
-  const selectIssueFilter = (filter: 'PENDING' | 'PROCESSED') => {
-    setIssueFilter(filter);
-    const issues = filter === 'PENDING' ? visibleIssues : processedIssues;
-    setSelectedIssueId(issues[0]?.id);
-  };
-
   const copyMarkdownReport = async () => {
     if (!selectedTask?.reportMarkdown) return;
     await navigator.clipboard.writeText(selectedTask.reportMarkdown);
     message.success('审核报告已复制');
   };
 
+  const selectIssueFilter = (filter: 'PENDING' | 'PROCESSED') => {
+    setIssueFilter(filter);
+    const issues = filter === 'PENDING' ? visibleIssues : processedIssues;
+    setSelectedIssueId(issues[0]?.id);
+  };
+
   return (
     <PageContainer
-      title="剧本审核工作台"
+      className={styles.page}
+      title={detail?.project.name ?? '剧本审核详情'}
       extra={[
+        <Button key="history" onClick={() => setHistoryOpen(true)}>
+          审核记录
+        </Button>,
         <Button
-          key="create-review"
-          icon={<AuditOutlined />}
-          type="primary"
-          onClick={() => setReviewModalOpen(true)}
+          key="export"
+          icon={<DownloadOutlined />}
+          disabled={!detail}
+          onClick={exportReport}
         >
-          发起审核
+          导出报告
         </Button>,
         <Button key="refresh" icon={<ReloadOutlined />} onClick={refresh}>
           刷新
         </Button>,
+        <Button
+          key="create-review"
+          icon={<AuditOutlined />}
+          type="primary"
+          disabled={!detail}
+          onClick={() => setReviewModalOpen(true)}
+        >
+          发起审核
+        </Button>,
       ]}
     >
-      <Row gutter={[16, 16]}>
-        <Col xs={24}>
-          {!detail ? (
-            <Card>
-              <Empty description="请选择或导入一个独立剧本" />
-            </Card>
-          ) : (
-            <Row gutter={[16, 16]} className={styles.workspace}>
-              <Col xs={24} md={14} className={styles.column}>
-              <Card
-                className={styles.panel}
-                title={detail.project.name}
-                extra={
-                  <Space>
-                    <Select
-                      value={selectedVersionId}
-                      style={{ width: 150 }}
-                      onChange={async (versionId) => {
-                        const nextVersionId = Number(versionId);
-                        setSelectedVersionId(nextVersionId);
-                        setContent(
-                          detail.versions.find(
-                            (version) => version.id === nextVersionId,
-                          )?.content ?? '',
+      {!detail ? (
+        <Card loading={loading}>
+          <Empty description="请选择或导入一个独立剧本" />
+        </Card>
+      ) : (
+        <>
+          <div className={styles.overview}>
+            <Space wrap>
+              {selectedTask && (
+                <>
+                  <Tag color={statusColor(selectedTask.status)}>
+                    {statusText(selectedTask.status)}
+                  </Tag>
+                  <span>
+                    第 {selectedTask.roundNo} 轮 ·{' '}
+                    {selectedTask.reviewMode === 'DEEP'
+                      ? '深度审核'
+                      : '快速审核'}
+                  </span>
+                </>
+              )}
+              <span>当前剧本 V{currentVersion?.versionNo ?? '-'}</span>
+              <span>
+                {visibleIssues.length} 项未处理 · {processedIssues.length}{' '}
+                项已处理
+              </span>
+              {versionMismatch && (
+                <Tag color="orange">
+                  当前正文与审核版本不同，请切回审核版本查看证据
+                </Tag>
+              )}
+            </Space>
+            {selectedTask &&
+              ['PENDING', 'RUNNING', 'FAILED'].includes(
+                selectedTask.status,
+              ) && (
+                <div className={styles.progress}>
+                  <Progress
+                    percent={selectedTask.overallProgress}
+                    size="small"
+                  />
+                  <Typography.Text type="secondary">
+                    {selectedTask.currentAction ??
+                      statusText(selectedTask.status)}
+                  </Typography.Text>
+                  <Button size="small" onClick={() => setHistoryOpen(true)}>
+                    查看执行详情
+                  </Button>
+                </div>
+              )}
+            {activeExecution && (
+              <AiExecutionStatus task={activeExecution} busy={saving} />
+            )}
+          </div>
+          <div className={styles.workspace}>
+            <section className={styles.reader} aria-label="剧本正文">
+              <div className={styles.toolbar}>
+                <Space wrap>
+                  <Select
+                    value={selectedVersionId}
+                    style={{ width: 150 }}
+                    disabled={content !== currentVersion?.content}
+                    onChange={async (versionId) => {
+                      const nextVersionId = Number(versionId);
+                      setSelectedVersionId(nextVersionId);
+                      setContent(
+                        detail.versions.find(
+                          (version) => version.id === nextVersionId,
+                        )?.content ?? '',
+                      );
+                      if (selectedProjectId) {
+                        const response = await queryReviewVersionHistory(
+                          selectedProjectId,
+                          nextVersionId,
                         );
-                        if (selectedProjectId) {
-                          const response = await queryReviewVersionHistory(
-                            selectedProjectId,
-                            nextVersionId,
-                          );
-                          setVersionHistory(response.data);
-                        }
-                      }}
-                      options={detail.versions.map((version) => ({
-                        value: version.id,
-                        label: `版本 V${version.versionNo}`,
-                      }))}
-                    />
-                    <Button icon={<DownloadOutlined />} onClick={exportReport}>
-                      导出
-                    </Button>
-                  </Space>
-                }
-              >
-                <div className={styles.reader}>
-                  <section aria-label="审核维度标签" style={{ marginBottom: 16 }}>
+                        setVersionHistory(response.data);
+                      }
+                    }}
+                    options={detail.versions.map((version) => ({
+                      value: version.id,
+                      label: `版本 V${version.versionNo}`,
+                    }))}
+                  />
+
+                  <Typography.Text type="secondary">
+                    {editing ? '编辑模式' : '阅读模式'}
+                  </Typography.Text>
+                </Space>
+                <Space wrap>
+                  <Button onClick={() => setHistoryOpen(true)}>版本历史</Button>
+                  <Button
+                    disabled={taskLocked}
+                    onClick={() => setEditing(!editing)}
+                  >
+                    {editing ? '返回阅读' : '编辑剧本'}
+                  </Button>
+                </Space>
+              </div>
+              <section aria-label="审核维度标签" style={{ marginBottom: 16 }}>
                     <Space wrap size={[4, 8]}>
                       {selectedTask?.selectedDimensions.map((dimension) => (
                         <Tag key={dimension} color="blue">{dimension}</Tag>
                       ))}
                     </Space>
                   </section>
-                  <div className={styles.editor}>
-                    <Input.TextArea
-                      ref={editorRef}
-                      value={content}
-                      onChange={(event) => setContent(event.target.value)}
-                      autoSize={false}
-                      disabled={taskLocked}
-                    />
-                    <Space style={{ marginTop: 12 }}>
-                      <Button
-                        type="primary"
-                        icon={taskLocked ? <LockOutlined /> : <SaveOutlined />}
-                        disabled={taskLocked}
-                        loading={saving}
-                        onClick={saveVersion}
-                      >
-                        保存为新版本
-                      </Button>
-                      <Button
-                        icon={<SwapOutlined />}
-                        disabled={!selectedVersionId}
-                        onClick={() =>
-                          modal.confirm({
-                            title: '还原此版本？',
-                            content:
-                              '还原会创建一个新的版本，不会删除现有历史。',
-                            onOk: async () => {
-                              if (!selectedProjectId || !selectedVersionId) {
-                                return;
-                              }
-                              await rollbackReviewVersion(
-                                selectedProjectId,
-                                selectedVersionId,
-                              );
-                              message.success('已生成还原版本');
-                              await loadProject(selectedProjectId);
-                            },
-                          })
-                        }
-                      >
-                        还原当前版本
-                      </Button>
-                    </Space>
-                  </div>
-                  <details className={styles.execution}>
-                    <summary style={{ cursor: 'pointer' }}>执行详情</summary>
-                    {activeExecution ? (
-                      <div style={{ marginTop: 12 }}>
-                        <AiExecutionStatus
-                          task={activeExecution}
-                          busy={saving}
-                        />
-                      </div>
-                    ) : null}
-                    {detail.tasks.map((task) => (
-                      <Card
-                        key={task.id}
-                        size="small"
-                        style={{ marginTop: 12, cursor: 'pointer' }}
-                        onClick={() => {
-                          setSelectedTaskId(task.id);
-                          setIssueFilter('PENDING');
-                          setSelectedIssueId(
-                            task.issues.find((issue) => !issue.manuallyResolved)
-                              ?.id ?? task.issues[0]?.id,
-                          );
-                        }}
-                        title={`第 ${task.roundNo} 轮 · ${task.reviewMode}`}
-                        extra={
-                          <Tag color={statusColor(task.status)}>
-                            {statusText(task.status)}
-                          </Tag>
-                        }
-                      >
-                        <Progress percent={task.overallProgress} size="small" />
-                        <Typography.Text type="secondary">
-                          {task.currentAction ?? '等待任务执行'}
-                        </Typography.Text>
-                        {task.workflowAgentCode ? (
-                          <div style={{ marginTop: 8 }}>
-                            <Space wrap>
-                              <Tag color="geekblue">Agent：剧本审核</Tag>
-                              <Tag>{task.workflowPhase ?? task.reviewMode}</Tag>
-                              {task.selectedDimensions.map((dimension) => (
-                                <Tag key={dimension}>Skill：{dimension}</Tag>
-                              ))}
-                              {task.retryKind ? <Tag>重试：{task.retryKind}</Tag> : null}
-                              {task.stale ? <Tag color="orange">输入已变化</Tag> : null}
-                            </Space>
-                          </div>
-                        ) : null}
-                        {task.fanout ? (
-                          <div style={{ marginTop: 8 }}>
-                            <Typography.Text type="secondary">
-                              {task.fanout.units.some((unit) => unit.dimension)
-                                ? '审核维度'
-                                : '深度单元'}{' '}
-                              {task.fanout.completedUnits}/{task.fanout.totalUnits}
-                              {task.fanout.failedUnits > 0
-                                ? ` · 失败 ${task.fanout.failedUnits}`
-                                : ''}
-                              {task.fanout.aggregationStatus
-                                ? ` · 聚合 ${task.fanout.aggregationStatus}`
-                                : ''}
-                              {task.fanout.currentUnitId
-                                ? ` · 当前 ${
-                                    task.fanout.units.find(
-                                      (unit) => unit.id === task.fanout?.currentUnitId,
-                                    )?.dimension ??
-                                    `单元 ${
-                                      task.fanout.units.find(
-                                        (unit) => unit.id === task.fanout?.currentUnitId,
-                                      )?.unitNo ?? task.fanout.currentUnitId
-                                    }`
-                                  }`
-                                : ''}
-                            </Typography.Text>
-                            {task.fanout.units.some((unit) => unit.dimension) ? (
-                              <div style={{ marginTop: 6 }}>
-                                <Space wrap size={[4, 4]}>
-                                  {task.fanout.units.map((unit) => (
-                                    <Tag
-                                      key={unit.id}
-                                      color={statusColor(unit.status)}
-                                      title={unit.errorMessage ?? undefined}
-                                    >
-                                      {unit.dimension} · {statusText(unit.status)}
-                                      {unit.attemptNo ? ` · 第 ${unit.attemptNo} 次` : ''}
-                                    </Tag>
-                                  ))}
-                                </Space>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {task.observability ? (
-                          <div style={{ marginTop: 8 }}>
-                            {task.observability.quality ? (
-                              <Typography.Text type="secondary">
-                                语义质检：
-                                {statusText(task.observability.quality.status)} · 候选{' '}
-                                {task.observability.quality.candidateCount ?? 0} / 裁决{' '}
-                                {task.observability.quality.decisionCount ?? 0}
-                              </Typography.Text>
-                            ) : null}
-                            <div style={{ marginTop: 6 }}>
-                              <Space wrap size={[4, 4]}>
-                                <Tag color="green">已确认 {task.observability.decisions.confirmed}</Tag>
-                                <Tag color="gold">
-                                  待人工 {task.observability.decisions.needsHumanReview}
-                                </Tag>
-                                <Tag>已驳回 {task.observability.decisions.rejected}</Tag>
-                                <Tag>
-                                  证据不足 {task.observability.decisions.insufficientEvidence}
-                                </Tag>
-                                {task.observability.quality?.anomalyRequired ? (
-                                  <Tag
-                                    color={
-                                      task.observability.quality.anomalyPassed
-                                        ? 'green'
-                                        : 'red'
-                                    }
-                                  >
-                                    {task.observability.quality.anomalyPassed
-                                      ? '异常复核通过'
-                                      : '异常复核未通过'}
-                                  </Tag>
-                                ) : null}
-                              </Space>
-                            </div>
-                            <div style={{ marginTop: 6 }}>
-                              <Typography.Text type="secondary">
-                                {formatReviewCacheUsage(task.observability.cacheUsage)}
-                              </Typography.Text>
-                            </div>
-                          </div>
-                        ) : null}
-                        <div style={{ marginTop: 8 }}>
-                          <Space>
-                            {['PENDING', 'RUNNING'].includes(task.status) && (
-                              <Button
-                                size="small"
-                                onClick={() => {
-                                  cancelReviewTask(task.id).then((response) =>
-                                    followReviewExecution(response.data),
-                                  );
-                                }}
-                              >
-                                取消
-                              </Button>
+              <div className={styles.document}>
+                {editing ? (
+                  <Input.TextArea
+                    ref={editorRef}
+                    value={content}
+                    onChange={(event) => setContent(event.target.value)}
+                    autoSize={{ minRows: 24 }}
+                    disabled={taskLocked}
+                    aria-label="编辑剧本正文"
+                  />
+                ) : (
+                  <div className={styles.paper}>
+                    {content ? (
+                      highlightStart >= 0 ? (
+                        <>
+                          {content.slice(0, highlightStart)}
+                          <mark ref={hitRef} className={styles.highlight}>
+                            {content.slice(
+                              highlightStart,
+                              highlightStart + highlight.length,
                             )}
-                            {task.status === 'FAILED' && (
-                              <Button
-                                size="small"
-                                onClick={() => {
-                                  retryReviewTask(task.id).then((response) =>
-                                    followReviewExecution(response.data),
-                                  );
-                                }}
-                              >
-                                {task.retryKind === 'AGGREGATION_ONLY'
-                                  ? '仅重试聚合'
-                                  : task.retryKind === 'FAILED_UNITS'
-                                    ? task.fanout?.units.some((unit) => unit.dimension)
-                                      ? '重试失败维度'
-                                      : '重试失败单元'
-                                    : '重试'}
-                              </Button>
-                            )}
-                          </Space>
-                        </div>
-                      </Card>
-                    ))}
-                  </details>
-                </div>
-              </Card>
-              </Col>
-
-              <Col xs={24} md={10} className={styles.column}>
-              {selectedTask?.resultFormat !== 'MARKDOWN' ? <div className={styles.queue}>
-                <Card title="问题队列" loading={loading}>
-                  {!selectedTask ? (
-                    <Empty description="创建审核任务后显示问题队列" />
-                  ) : (
-                    <Space vertical style={{ width: '100%' }}>
-                      <Space wrap>
-                        <Button
-                          type={issueFilter === 'PENDING' ? 'primary' : 'default'}
-                          onClick={() => selectIssueFilter('PENDING')}
-                        >
-                          未处理 ({visibleIssues.length})
-                        </Button>
-                        <Button
-                          type={issueFilter === 'PROCESSED' ? 'primary' : 'default'}
-                          onClick={() => selectIssueFilter('PROCESSED')}
-                        >
-                          已处理 ({processedIssues.length})
-                        </Button>
-                      </Space>
-                      <List
-                        size="small"
-                        dataSource={queueIssues}
-                        locale={{ emptyText: '当前筛选下没有问题' }}
-                        renderItem={(issue) => (
-                          <List.Item
-                            style={{
-                              cursor: 'pointer',
-                              background:
-                                issue.id === selectedIssueId
-                                  ? 'var(--app-color-primary-bg)'
-                                  : undefined,
-                            }}
-                            onClick={() => setSelectedIssueId(issue.id)}
-                          >
-                            <Space vertical size={0}>
-                              <Space wrap>
-                                <Tag color={statusColor(issue.severity)}>
-                                  {issue.issueNo}
-                                </Tag>
-                                <Tag>{issue.dimension}</Tag>
-                              </Space>
-                              <Typography.Text strong>{issue.title}</Typography.Text>
-                              <Typography.Text type="secondary">
-                                {issue.problem}
-                              </Typography.Text>
-                            </Space>
-                          </List.Item>
-                        )}
-                      />
-                    </Space>
-                  )}
-                </Card>
-              </div> : null}
-              <Card
-                className={styles.panel}
-                title={
-                  <Space>
-                    <span>审核问题</span>
-                    {selectedTask && (
-                      <Tag color={statusColor(selectedTask.status)}>
-                        {selectedTask.summary?.overallConclusion ??
-                          selectedTask.status}
-                      </Tag>
+                          </mark>
+                          {content.slice(highlightStart + highlight.length)}
+                        </>
+                      ) : (
+                        content
+                      )
+                    ) : (
+                      <Empty description="当前版本没有正文" />
                     )}
+                  </div>
+                )}
+              </div>
+              <div className={styles.readerFooter}>
+                {editing || content !== currentVersion?.content ? (
+                  <Space wrap>
+                    <Button
+                      type="primary"
+                      icon={taskLocked ? <LockOutlined /> : <SaveOutlined />}
+                      disabled={taskLocked}
+                      loading={saving}
+                      onClick={saveVersion}
+                    >
+                      保存为新版本
+                    </Button>
                   </Space>
-                }
-                loading={loading}
-              >
+                ) : (
+                  <Typography.Text type="secondary">
+                    选择右侧问题，定位原文证据
+                  </Typography.Text>
+                )}
+                <Typography.Text type="secondary">
+                  {content.length.toLocaleString()} 字符
+                  {content !== currentVersion?.content ? ' · 有未保存修改' : ''}
+                </Typography.Text>
+              </div>
+            </section>
+            <aside className={styles.review} aria-label="审核问题">
+              <div className={styles.reviewHeader}>
+                <div className={styles.reviewTitle}>
+                  审核问题{' '}
+                  {selectedTask?.summary?.overallConclusion && (
+                    <Tag>{selectedTask.summary.overallConclusion}</Tag>
+                  )}
+                </div>
+                <p className={styles.summary}>
+                  {selectedTask?.summary?.summary ??
+                    '逐条核对证据，确认修改建议。'}
+                </p>
+                {selectedTask?.summary?.summary && (
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => setHistoryOpen(true)}
+                  >
+                    完整摘要
+                  </Button>
+                )}
+                {selectedTask?.resultFormat !== 'MARKDOWN' ? (
+                <Space wrap>
+                  <Button
+                    type={issueFilter === 'PENDING' ? 'primary' : 'default'}
+                    onClick={() => selectIssueFilter('PENDING')}
+                  >
+                    未处理 ({visibleIssues.length})
+                  </Button>
+                  <Button
+                    type={issueFilter === 'PROCESSED' ? 'primary' : 'default'}
+                    onClick={() => selectIssueFilter('PROCESSED')}
+                  >
+                    已处理 ({processedIssues.length})
+                  </Button>
+                </Space>
+                ) : null}
+              </div>
+              <div className={styles.issueList}>
                 {!selectedTask ? (
                   <Empty description="创建审核任务后，这里会显示问题卡" />
                 ) : selectedTask.resultFormat === 'MARKDOWN' ? (
@@ -860,11 +783,7 @@ const ScriptReviewPage = () => {
                     )}
                   </div>
                 ) : (
-                  <Space vertical style={{ width: '100%' }}>
-                    <Typography.Paragraph type="secondary">
-                      {selectedTask.summary?.summary ||
-                        '问题会按维度聚合，支持多命中片段和人工处理。'}
-                    </Typography.Paragraph>
+                  <>
                     {selectedTask.observability?.humanReviewFindings.length ? (
                       <Card
                         size="small"
@@ -872,7 +791,9 @@ const ScriptReviewPage = () => {
                       >
                         <List
                           size="small"
-                          dataSource={selectedTask.observability.humanReviewFindings}
+                          dataSource={
+                            selectedTask.observability.humanReviewFindings
+                          }
                           rowKey="candidateId"
                           renderItem={(finding) => (
                             <List.Item>
@@ -881,7 +802,8 @@ const ScriptReviewPage = () => {
                                   <Space wrap>
                                     <Tag color="gold">{finding.dimension}</Tag>
                                     <Typography.Text strong>
-                                      {typeof finding.candidate.title === 'string'
+                                      {typeof finding.candidate.title ===
+                                      'string'
                                         ? finding.candidate.title
                                         : `候选 ${finding.candidateId}`}
                                     </Typography.Text>
@@ -894,197 +816,376 @@ const ScriptReviewPage = () => {
                         />
                       </Card>
                     ) : null}
-                    {selectedIssue ? (
-                      <Card size="small" title="问题详情">
-                        <Space vertical style={{ width: '100%' }}>
-                          <Space wrap>
-                            <Tag color={statusColor(selectedIssue.severity)}>
-                              {selectedIssue.issueNo}
-                            </Tag>
-                            <Tag>{selectedIssue.dimension}</Tag>
-                            <Typography.Text strong>
-                              {selectedIssue.title}
-                            </Typography.Text>
-                          </Space>
-                          <Typography.Text>{selectedIssue.problem}</Typography.Text>
-                          <Typography.Text type="secondary">
-                            原文：{selectedIssue.excerpt || '未提供片段'}
-                          </Typography.Text>
-                          {selectedIssue.suggestion ? (
-                            <Typography.Text type="success">
-                              建议：{selectedIssue.suggestion}
-                            </Typography.Text>
-                          ) : null}
-                          {!selectedIssue.manuallyResolved ? (
-                            <Space>
-                              <Button
-                                icon={<CheckCircleOutlined />}
-                                onClick={() => confirmResolve(selectedIssue)}
-                              >
-                                已处理
-                              </Button>
-                              <Button
-                                type="primary"
-                                onClick={() => applyRepair(selectedIssue)}
-                              >
-                                预览修订
-                              </Button>
-                            </Space>
-                          ) : (
-                            <Typography.Text type="success">
-                              已于 {selectedIssue.manuallyResolvedAt ?? '当前轮次'} 人工处理
-                            </Typography.Text>
-                          )}
-                        </Space>
-                      </Card>
-                    ) : null}
-                    <List
-                      loading={taskDetailLoading}
-                      dataSource={queueIssues}
-                      locale={{
-                        emptyText: taskDetailError
-                          ? '审核问题加载失败，请刷新重试'
-                          : issueFilter === 'PENDING'
+
+                    {taskDetailLoading ? (
+                      <Typography.Text type="secondary">
+                        正在加载审核问题…
+                      </Typography.Text>
+                    ) : taskDetailError ? (
+                      <Empty description="审核问题加载失败，请刷新重试" />
+                    ) : queueIssues.length === 0 ? (
+                      <Empty
+                        description={
+                          issueFilter === 'PENDING'
                             ? '当前没有未处理问题'
-                            : '暂无人工处理记录',
-                      }}
-                      renderItem={(issue) => (
-                        <List.Item
-                          actions={
-                            issue.manuallyResolved
-                              ? []
-                              : [
-                                  <Button
-                                    key="repair"
-                                    size="small"
-                                    type="primary"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      applyRepair(issue);
-                                    }}
-                                  >
-                                    批量修复
-                                  </Button>,
-                                ]
+                            : '暂无人工处理记录'
+                        }
+                      />
+                    ) : (
+                      queueIssues.map((issue) => (
+                        <section
+                          key={issue.id}
+                          className={
+                            issue.id === selectedIssueId
+                              ? styles.activeIssue
+                              : styles.issue
                           }
-                          style={{
-                            cursor: 'pointer',
-                            background:
-                              issue.id === selectedIssueId
-                                ? 'var(--app-color-primary-bg)'
-                                : undefined,
-                          }}
-                          onClick={() => setSelectedIssueId(issue.id)}
                         >
-                          <List.Item.Meta
-                            title={
-                              <Space wrap>
-                                <Tag color={statusColor(issue.severity)}>
-                                  {issue.issueNo}
-                                </Tag>
-                                <Tag>{issue.dimension}</Tag>
-                                <Tag color={statusColor(issue.status)}>
-                                  {statusText(issue.status)}
-                                </Tag>
-                                <Typography.Text strong>
-                                  {issue.title}
-                                </Typography.Text>
-                              </Space>
-                            }
-                            description={
-                              <Space vertical size={4}>
-                                <Typography.Text>
-                                  {issue.problem}
-                                </Typography.Text>
-                                <Typography.Text type="secondary">
-                                  原文：{issue.excerpt || '未提供片段'} · 命中{' '}
-                                  {issue.hits.length} 处
-                                </Typography.Text>
-                                {issue.hits.length > 0 && (
-                                  <Space vertical style={{ width: '100%' }}>
-                                    <Checkbox.Group
-                                      value={
-                                        hitSelections[issue.id] ??
-                                        issue.hits.map((hit) => hit.id)
-                                      }
-                                      onChange={(values) =>
-                                        setHitSelections((current) => ({
-                                          ...current,
-                                          [issue.id]: values as number[],
-                                        }))
-                                      }
-                                      options={issue.hits.map((hit) => ({
-                                        label: `${hit.hitNo}. ${hit.anchorLabel ?? '未标注位置'}：${hit.excerpt}`,
-                                        value: hit.id,
-                                      }))}
-                                    />
-                                    <Space wrap>
-                                      {issue.hits.map((hit) => (
-                                        <Button
-                                          key={hit.id}
-                                          size="small"
-                                          type="link"
-                                          onClick={() =>
-                                            openIssueHit(issue, hit)
-                                          }
-                                        >
-                                          定位命中 {hit.hitNo}
-                                        </Button>
-                                      ))}
-                                    </Space>
+                          <button
+                            type="button"
+                            className={styles.issueToggle}
+                            aria-expanded={issue.id === selectedIssueId}
+                            onClick={() => selectIssue(issue)}
+                          >
+                            <span className={styles.issueMeta}>
+                              <Tag color={statusColor(issue.severity)}>
+                                {issue.severity}
+                              </Tag>
+                              <span>
+                                {issue.issueNo} · {issue.dimension}
+                              </span>
+                            </span>
+                            <strong>{issue.title}</strong>
+                            <span className={styles.issueMeta}>
+                              {issue.hits[0]?.anchorLabel ?? '查看原文证据'} ·
+                              命中 {issue.hits.length} 处
+                            </span>
+                          </button>
+                          {issue.id === selectedIssueId && (
+                            <div className={styles.issueBody}>
+                              <div className={styles.label}>问题详情</div>
+                              <Typography.Paragraph>
+                                {issue.problem}
+                              </Typography.Paragraph>
+                              <div className={styles.quote}>
+                                原文：{issue.excerpt || '未提供片段'}
+                              </div>
+                              {issue.suggestion && (
+                                <div className={styles.suggestion}>
+                                  建议：{issue.suggestion}
+                                </div>
+                              )}
+                              {issue.hits.length > 0 && (
+                                <div className={styles.hits}>
+                                  <div className={styles.label}>
+                                    选择修订片段
+                                  </div>
+                                  <Checkbox.Group
+                                    className={styles.hitOptions}
+                                    value={
+                                      hitSelections[issue.id] ??
+                                      issue.hits.map((hit) => hit.id)
+                                    }
+                                    onChange={(values) =>
+                                      setHitSelections((current) => ({
+                                        ...current,
+                                        [issue.id]: values as number[],
+                                      }))
+                                    }
+                                    options={issue.hits.map((hit) => ({
+                                      label: `${hit.hitNo}. ${hit.anchorLabel ?? '未标注位置'}：${hit.excerpt}`,
+                                      value: hit.id,
+                                    }))}
+                                  />
+                                  <Space wrap>
+                                    {issue.hits.map((hit) => (
+                                      <Button
+                                        key={hit.id}
+                                        size="small"
+                                        type="link"
+                                        onClick={() => openIssueHit(issue, hit)}
+                                      >
+                                        定位命中 {hit.hitNo}
+                                      </Button>
+                                    ))}
                                   </Space>
-                                )}
-                                {issue.suggestion && (
-                                  <Typography.Text type="success">
-                                    建议：{issue.suggestion}
-                                  </Typography.Text>
-                                )}
-                              </Space>
-                            }
-                          />
-                        </List.Item>
-                      )}
-                    />
-                    {versionHistory && (
-                      <Card size="small" title="版本历史">
-                        <Space vertical style={{ width: '100%' }}>
-                          <Typography.Text>
-                            当前版本 V
-                            {versionHistory.selectedVersion?.versionNo}
-                          </Typography.Text>
-                          <Typography.Text type="secondary">
-                            差异行数：+
-                            {versionHistory.diffLines?.[0]?.addedLines ?? 0} / -
-                            {versionHistory.diffLines?.[0]?.removedLines ?? 0}
-                          </Typography.Text>
-                          <List
-                            size="small"
-                            dataSource={versionHistory.roundHistory ?? []}
-                            renderItem={(item: any) => (
-                              <List.Item>
-                                <Space vertical size={0}>
-                                  <Typography.Text>
-                                    第 {item.roundNo} 轮 · {statusText(item.status)}
-                                  </Typography.Text>
-                                  <Typography.Text type="secondary">
-                                    问题 {item.issueCount} · 已处理{' '}
-                                    {item.processedIssueCount}
-                                  </Typography.Text>
-                                </Space>
-                              </List.Item>
-                            )}
-                          />
+                                </div>
+                              )}
+                              {issue.manuallyResolved ? (
+                                <Typography.Text type="success">
+                                  已于 {issue.manuallyResolvedAt ?? '当前轮次'}{' '}
+                                  人工处理
+                                </Typography.Text>
+                              ) : (
+                                <div className={styles.issueActions}>
+                                  <Button
+                                    icon={<CheckCircleOutlined />}
+                                    onClick={() => confirmResolve(issue)}
+                                  >
+                                    已处理
+                                  </Button>
+                                  <Button
+                                    type="primary"
+                                    onClick={() => applyRepair(issue)}
+                                  >
+                                    预览修订
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </section>
+                      ))
+                    )}
+                  </>
+                )}
+              </div>
+              <div className={styles.reviewFooter}>
+                AI 建议仅供参考，修改由你决定。
+              </div>
+            </aside>
+          </div>
+          <Drawer
+            title="审核记录与版本历史"
+            open={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            size={560}
+            destroyOnHidden
+          >
+            {selectedTask?.summary?.summary && (
+              <Card size="small" title="审核摘要">
+                <Typography.Paragraph>
+                  {selectedTask.summary.summary}
+                </Typography.Paragraph>
+              </Card>
+            )}
+            {detail.tasks.map((task) => (
+              <Card
+                key={task.id}
+                size="small"
+                style={{ marginTop: 12, cursor: 'pointer' }}
+                onClick={() => {
+                  setSelectedTaskId(task.id);
+                  setIssueFilter('PENDING');
+                  setSelectedIssueId(
+                    task.issues.find((issue) => !issue.manuallyResolved)?.id ??
+                      task.issues[0]?.id,
+                  );
+                }}
+                title={`第 ${task.roundNo} 轮 · ${task.reviewMode}`}
+                extra={
+                  <Tag color={statusColor(task.status)}>
+                    {statusText(task.status)}
+                  </Tag>
+                }
+              >
+                <Progress percent={task.overallProgress} size="small" />
+                <Typography.Text type="secondary">
+                  {task.currentAction ?? '等待任务执行'}
+                </Typography.Text>
+                {task.workflowAgentCode ? (
+                  <div style={{ marginTop: 8 }}>
+                    <Space wrap>
+                      <Tag color="geekblue">Agent：剧本审核</Tag>
+                      <Tag>{task.workflowPhase ?? task.reviewMode}</Tag>
+                      {task.selectedDimensions.map((dimension) => (
+                        <Tag key={dimension}>Skill：{dimension}</Tag>
+                      ))}
+                      {task.retryKind ? (
+                        <Tag>重试：{task.retryKind}</Tag>
+                      ) : null}
+                      {task.stale ? <Tag color="orange">输入已变化</Tag> : null}
+                    </Space>
+                  </div>
+                ) : null}
+                {task.fanout ? (
+                  <div style={{ marginTop: 8 }}>
+                    <Typography.Text type="secondary">
+                      {task.fanout.units.some((unit) => unit.dimension)
+                        ? '审核维度'
+                        : '深度单元'}{' '}
+                      {task.fanout.completedUnits}/{task.fanout.totalUnits}
+                      {task.fanout.failedUnits > 0
+                        ? ` · 失败 ${task.fanout.failedUnits}`
+                        : ''}
+                      {task.fanout.aggregationStatus
+                        ? ` · 聚合 ${task.fanout.aggregationStatus}`
+                        : ''}
+                      {task.fanout.currentUnitId
+                        ? ` · 当前 ${
+                            task.fanout.units.find(
+                              (unit) => unit.id === task.fanout?.currentUnitId,
+                            )?.dimension ??
+                            `单元 ${
+                              task.fanout.units.find(
+                                (unit) =>
+                                  unit.id === task.fanout?.currentUnitId,
+                              )?.unitNo ?? task.fanout.currentUnitId
+                            }`
+                          }`
+                        : ''}
+                    </Typography.Text>
+                    {task.fanout.units.some((unit) => unit.dimension) ? (
+                      <div style={{ marginTop: 6 }}>
+                        <Space wrap size={[4, 4]}>
+                          {task.fanout.units.map((unit) => (
+                            <Tag
+                              key={unit.id}
+                              color={statusColor(unit.status)}
+                              title={unit.errorMessage ?? undefined}
+                            >
+                              {unit.dimension} · {statusText(unit.status)}
+                              {unit.attemptNo
+                                ? ` · 第 ${unit.attemptNo} 次`
+                                : ''}
+                            </Tag>
+                          ))}
                         </Space>
-                      </Card>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {task.observability ? (
+                  <div style={{ marginTop: 8 }}>
+                    {task.observability.quality ? (
+                      <Typography.Text type="secondary">
+                        语义质检：
+                        {statusText(task.observability.quality.status)} · 候选{' '}
+                        {task.observability.quality.candidateCount ?? 0} / 裁决{' '}
+                        {task.observability.quality.decisionCount ?? 0}
+                      </Typography.Text>
+                    ) : null}
+                    <div style={{ marginTop: 6 }}>
+                      <Space wrap size={[4, 4]}>
+                        <Tag color="green">
+                          已确认 {task.observability.decisions.confirmed}
+                        </Tag>
+                        <Tag color="gold">
+                          待人工 {task.observability.decisions.needsHumanReview}
+                        </Tag>
+                        <Tag>
+                          已驳回 {task.observability.decisions.rejected}
+                        </Tag>
+                        <Tag>
+                          证据不足{' '}
+                          {task.observability.decisions.insufficientEvidence}
+                        </Tag>
+                        {task.observability.quality?.anomalyRequired ? (
+                          <Tag
+                            color={
+                              task.observability.quality.anomalyPassed
+                                ? 'green'
+                                : 'red'
+                            }
+                          >
+                            {task.observability.quality.anomalyPassed
+                              ? '异常复核通过'
+                              : '异常复核未通过'}
+                          </Tag>
+                        ) : null}
+                      </Space>
+                    </div>
+                    <div style={{ marginTop: 6 }}>
+                      <Typography.Text type="secondary">
+                        {formatReviewCacheUsage(task.observability.cacheUsage)}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                ) : null}
+                <div style={{ marginTop: 8 }}>
+                  <Space>
+                    {['PENDING', 'RUNNING'].includes(task.status) && (
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          cancelReviewTask(task.id).then((response) =>
+                            followReviewExecution(response.data),
+                          );
+                        }}
+                      >
+                        取消
+                      </Button>
+                    )}
+                    {task.status === 'FAILED' && (
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          retryReviewTask(task.id).then((response) =>
+                            followReviewExecution(response.data),
+                          );
+                        }}
+                      >
+                        {task.retryKind === 'AGGREGATION_ONLY'
+                          ? '仅重试聚合'
+                          : task.retryKind === 'FAILED_UNITS'
+                            ? task.fanout?.units.some((unit) => unit.dimension)
+                              ? '重试失败维度'
+                              : '重试失败单元'
+                            : '重试'}
+                      </Button>
                     )}
                   </Space>
-                )}
+                </div>
               </Card>
-              </Col>
-            </Row>
-          )}
-        </Col>
-      </Row>
+            ))}
+
+            {versionHistory && (
+              <Card size="small" title="版本历史">
+                <Space vertical style={{ width: '100%' }}>
+                  <Typography.Text>
+                    当前版本 V{versionHistory.selectedVersion?.versionNo}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">
+                    差异行数：+
+                    {versionHistory.diffLines?.[0]?.addedLines ?? 0} / -
+                    {versionHistory.diffLines?.[0]?.removedLines ?? 0}
+                  </Typography.Text>
+                  <List
+                    size="small"
+                    dataSource={versionHistory.roundHistory ?? []}
+                    renderItem={(item: any) => (
+                      <List.Item>
+                        <Space vertical size={0}>
+                          <Typography.Text>
+                            第 {item.roundNo} 轮 · {statusText(item.status)}
+                          </Typography.Text>
+                          <Typography.Text type="secondary">
+                            问题 {item.issueCount} · 已处理{' '}
+                            {item.processedIssueCount}
+                          </Typography.Text>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                </Space>
+              </Card>
+            )}
+            <Button
+              icon={<SwapOutlined />}
+              disabled={!selectedVersionId}
+              onClick={() =>
+                modal.confirm({
+                  title: '还原此版本？',
+                  content: '还原会创建一个新的版本，不会删除现有历史。',
+                  onOk: async () => {
+                    if (!selectedProjectId || !selectedVersionId) {
+                      return;
+                    }
+                    await rollbackReviewVersion(
+                      selectedProjectId,
+                      selectedVersionId,
+                    );
+                    message.success('已生成还原版本');
+                    await loadProject(selectedProjectId);
+                  },
+                })
+              }
+            >
+              还原当前版本
+            </Button>
+          </Drawer>
+        </>
+      )}
       <Modal
         centered
         confirmLoading={saving}

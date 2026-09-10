@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import ScriptReviewLibraryPage from '.';
 
@@ -11,37 +11,148 @@ const mocks = vi.hoisted(() => ({
   message: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
 
+vi.mock('mammoth', () => ({
+  default: {
+    extractRawText: vi.fn(async () => ({
+      value: '第一集\n从 Word 提取的正文。',
+    })),
+  },
+}));
+
 vi.mock('@umijs/max', () => ({ history: { push: mocks.push } }));
 vi.mock('@ant-design/pro-components', () => ({
-  PageContainer: ({ children, extra, title }: any) => <main><h1>{title}</h1>{extra}{children}</main>,
+  PageContainer: ({ children, extra, title }: any) => (
+    <main>
+      <h1>{title}</h1>
+      {extra}
+      {children}
+    </main>
+  ),
 }));
 vi.mock('antd', () => ({
   App: { useApp: () => ({ message: mocks.message }) },
   Badge: ({ count }: any) => <span>{count}</span>,
-  Button: ({ children, onClick }: any) => <button type="button" onClick={onClick}>{children}</button>,
-  Card: ({ children, title }: any) => <section><h2>{title}</h2>{children}</section>,
+  Button: ({ children, onClick }: any) => (
+    <button type="button" onClick={onClick}>
+      {children}
+    </button>
+  ),
+  Card: ({ children, title }: any) => (
+    <section>
+      <h2>{title}</h2>
+      {children}
+    </section>
+  ),
   Empty: ({ description }: any) => <div>{description}</div>,
-  Input: Object.assign(({ value, onChange, placeholder }: any) => <input value={value} onChange={onChange} placeholder={placeholder} />, { Search: ({ value, onChange, placeholder }: any) => <input value={value} onChange={onChange} placeholder={placeholder} />, TextArea: ({ value, onChange, placeholder }: any) => <textarea value={value} onChange={onChange} placeholder={placeholder} /> }),
+  Input: Object.assign(
+    ({ value, onChange, placeholder }: any) => (
+      <input value={value} onChange={onChange} placeholder={placeholder} />
+    ),
+    {
+      Search: ({ value, onChange, placeholder }: any) => (
+        <input value={value} onChange={onChange} placeholder={placeholder} />
+      ),
+      TextArea: ({ value, onChange, placeholder }: any) => (
+        <textarea value={value} onChange={onChange} placeholder={placeholder} />
+      ),
+    },
+  ),
+  Spin: ({ description }: any) => <div>{description}</div>,
   List: Object.assign(
     ({ dataSource = [], locale, renderItem }: any) => (
       <div>{dataSource.length ? dataSource.map(renderItem) : locale?.emptyText}</div>
     ),
     {
       Item: Object.assign(
-        ({ children, actions }: any) => <div>{children}{actions}</div>,
-        { Meta: ({ title, description }: any) => <div>{title}{description}</div> },
+        ({ children, actions }: any) => (
+          <div>
+            {children}
+            {actions}
+          </div>
+        ),
+        {
+          Meta: ({ title, description }: any) => (
+            <div>
+              {title}
+              {description}
+            </div>
+          ),
+        },
       ),
     },
   ),
-  Modal: ({ open, title, children, onCancel, onOk }: any) => open ? <section><h2>{title}</h2>{children}<button type="button" onClick={onCancel}>取消</button><button type="button" onClick={onOk}>导入剧本</button></section> : null,
-  Select: ({ value, options, onChange }: any) => <select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
+  Modal: ({ open, title, children, onCancel, onOk }: any) =>
+    open ? (
+      <section>
+        <h2>{title}</h2>
+        {children}
+        <button type="button" onClick={onCancel}>
+          取消
+        </button>
+        <button type="button" onClick={onOk}>
+          导入剧本
+        </button>
+      </section>
+    ) : null,
+  Select: ({ value, options, onChange }: any) => (
+    <select value={value} onChange={(event) => onChange(event.target.value)}>
+      {options.map((option: any) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
   Space: ({ children }: any) => <div>{children}</div>,
-  Spin: ({ description }: any) => <div>{description}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Typography: { Text: ({ children }: any) => <span>{children}</span> },
-  Upload: { Dragger: ({ children }: any) => <div>{children}</div> },
+  Upload: {
+    Dragger: ({ beforeUpload, children, onChange }: any) => (
+      <div>
+        {children}
+        <button
+          type="button"
+          aria-label="选择测试剧本文件"
+          onClick={async () => {
+            const file = {
+              name: '雨夜来信.md',
+              type: 'text/markdown',
+              text: async () => '第一集\n雨夜，林晚收到一封信。',
+            } as File;
+            await beforeUpload(file);
+            onChange({
+              fileList: [{ uid: '1', name: file.name, originFileObj: file }],
+            });
+          }}
+        >
+          选择文件
+        </button>
+        <button
+          type="button"
+          aria-label="选择测试Word剧本"
+          onClick={async () => {
+            const file = {
+              name: '雨夜来信.docx',
+              type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              arrayBuffer: async () => new ArrayBuffer(8),
+            } as File;
+            await beforeUpload(file);
+            onChange({
+              fileList: [{ uid: '2', name: file.name, originFileObj: file }],
+            });
+          }}
+        >
+          选择 Word 文件
+        </button>
+      </div>
+    ),
+  },
 }));
-vi.mock('@ant-design/icons', () => ({ CloudUploadOutlined: () => null, FileTextOutlined: () => null, PlusOutlined: () => null }));
+vi.mock('@ant-design/icons', () => ({
+  CloudUploadOutlined: () => null,
+  FileTextOutlined: () => null,
+  PlusOutlined: () => null,
+}));
 vi.mock('../script-review/service', () => ({
   queryReviewProjects: mocks.queryReviewProjects,
   queryReviewProject: mocks.queryReviewProject,
@@ -51,10 +162,32 @@ vi.mock('../script-review/service', () => ({
 describe('ScriptReviewLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.queryReviewProjects.mockResolvedValue({ data: [
-      { id: 1, name: '待处理剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 2, latestRoundNo: 1, reviewState: 'ACTION_REQUIRED', outstandingIssueCount: 1, actionLabel: '处理问题' },
-      { id: 2, name: '已完成剧本', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 1, latestRoundNo: 1, reviewState: 'COMPLETED', outstandingIssueCount: 0, actionLabel: '查看报告' },
-    ] });
+    mocks.queryReviewProjects.mockResolvedValue({
+      data: [
+        {
+          id: 1,
+          name: '待处理剧本',
+          sourceType: 'TEXT',
+          status: 'ACTIVE',
+          versionCount: 2,
+          latestRoundNo: 1,
+          reviewState: 'ACTION_REQUIRED',
+          outstandingIssueCount: 1,
+          actionLabel: '处理问题',
+        },
+        {
+          id: 2,
+          name: '已完成剧本',
+          sourceType: 'TEXT',
+          status: 'ACTIVE',
+          versionCount: 1,
+          latestRoundNo: 1,
+          reviewState: 'COMPLETED',
+          outstandingIssueCount: 0,
+          actionLabel: '查看报告',
+        },
+      ],
+    });
   });
 
   it('renders the library from lightweight summaries and navigates to project history', async () => {
@@ -65,7 +198,9 @@ describe('ScriptReviewLibraryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '新建剧本' }));
     expect(screen.getByText('新建独立剧本')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '处理问题' }));
-    expect(mocks.push).toHaveBeenCalledWith('/script-review/projects/1/reviews');
+    expect(mocks.push).toHaveBeenCalledWith(
+      '/script-review/projects/1/reviews',
+    );
   });
 
   it('filters projects from the left review-status navigation', async () => {
@@ -79,6 +214,31 @@ describe('ScriptReviewLibraryPage', () => {
     expect(screen.queryByText('待处理剧本')).not.toBeInTheDocument();
   });
 
+  it('fills the script name and content after choosing a text script', async () => {
+    render(<ScriptReviewLibraryPage />);
+    fireEvent.click(screen.getByRole('button', { name: '新建剧本' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择测试剧本文件' }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('剧本名称')).toHaveValue('雨夜来信');
+      expect(screen.getByPlaceholderText('或直接粘贴剧本内容')).toHaveValue(
+        '第一集\n雨夜，林晚收到一封信。',
+      );
+    });
+  });
+
+  it('fills the script content after choosing a docx script', async () => {
+    render(<ScriptReviewLibraryPage />);
+    fireEvent.click(screen.getByRole('button', { name: '新建剧本' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择测试Word剧本' }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('剧本名称')).toHaveValue('雨夜来信');
+      expect(screen.getByPlaceholderText('或直接粘贴剧本内容')).toHaveValue(
+        '第一集\n从 Word 提取的正文。',
+      );
+    });
+  });
   it('shows centered loading feedback until the project list is ready', async () => {
     let resolveProjects: (value: unknown) => void = () => undefined;
     mocks.queryReviewProjects.mockReturnValueOnce(

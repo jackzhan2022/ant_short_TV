@@ -48,6 +48,7 @@
     "d3": "^7.9.0",
     "dayjs": "^1.11.21",
     "highlight.js": "^11.11.1",
+    "mammoth": "^1.12.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "topojson-client": "^3.1.0"
