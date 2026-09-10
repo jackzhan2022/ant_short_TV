@@ -601,6 +601,7 @@ const ProductionWorkbenchSettings = () => {
   };
 
   const openVariantGenerator = (variant: VisualVariant) => {
+    if (!visualAsset) return;
     const primaryImage = visualAsset?.item.visual?.resolvedImageUrl;
     if (
       visualAsset?.type === 'CHARACTER' &&

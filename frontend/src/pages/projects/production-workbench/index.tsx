@@ -9,29 +9,14 @@ import {
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import { history, Outlet, useLocation, useParams } from '@umijs/max';
-import { App, Button, Flex, Result, Typography } from 'antd';
+import { App, Button, Flex, Input, Modal, Result, Spin, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
-import { queryProject } from '@/services/account-team/project';
-
-type ProjectLite = {
-  id: number;
-  name: string;
-  code?: string;
-  status?: string;
-  coverUrl?: string | null;
-  aspectRatio?: string | null;
-  fileFormat?: string | null;
-  scriptType?: string | null;
-  breakdownStrength?: string | null;
-  visualStyle?: string | null;
-  effectivePermissions?: string[];
-  capabilities?: {
-    canView: boolean;
-    canEdit: boolean;
-  };
-};
+import type { Project } from '@/services/account-team/types';
+import { queryProject, updateProject } from '@/services/account-team/project';
+import { queryScriptWorkspace } from './service';
+import ProjectAiConfigPage from './ai-config';
 
 const topSteps = [
   { key: 'script', label: '剧本', icon: <BookOutlined /> },
@@ -52,9 +37,16 @@ const ProductionWorkbench = () => {
   const location = useLocation();
   const projectId = Number(params.id);
   const { message } = App.useApp();
-  const [project, setProject] = useState<ProjectLite>();
+  const [project, setProject] = useState<Project>();
   const [pointBalance, setPointBalance] = useState<number>();
   const [forbidden, setForbidden] = useState(false);
+  const [aiConfigOpen, setAiConfigOpen] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceContent, setSourceContent] = useState('');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     if (!projectId) {
@@ -112,6 +104,49 @@ const ProductionWorkbench = () => {
 
   const nextStep = activeStep === 'script' ? 'settings' : activeStep === 'settings' ? 'storyboard' : undefined;
 
+  const openSource = async () => {
+    setSourceOpen(true);
+    setSourceLoading(true);
+    try {
+      const response = await queryScriptWorkspace(projectId);
+      setSourceContent(response.data.script?.content || '暂无剧本原文');
+    } catch {
+      setSourceContent('剧本原文加载失败');
+      message.error('剧本原文加载失败');
+    } finally {
+      setSourceLoading(false);
+    }
+  };
+
+  const saveProjectName = async () => {
+    if (!project || !projectName.trim()) return;
+    setRenaming(true);
+    try {
+      const response = await updateProject(project.id, {
+        name: projectName.trim(),
+        code: project.code,
+        description: project.description || undefined,
+        coverUrl: project.coverUrl || undefined,
+        coverSource: project.coverSource || undefined,
+        ownerId: project.ownerId,
+        startDate: project.startDate || undefined,
+        endDate: project.endDate || undefined,
+        aspectRatio: project.aspectRatio || undefined,
+        fileFormat: project.fileFormat || undefined,
+        scriptType: project.scriptType || undefined,
+        breakdownStrength: project.breakdownStrength || undefined,
+        visualStyle: project.visualStyle || undefined,
+      });
+      setProject(response.data);
+      setRenameOpen(false);
+      message.success('项目名称已更新');
+    } catch {
+      message.error('项目名称更新失败');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   if (!projectId) {
     return null;
   }
@@ -160,6 +195,10 @@ const ProductionWorkbench = () => {
                   icon={<EditOutlined />}
                   aria-label="编辑项目名"
                   style={{ paddingInline: 2, height: 20 }}
+                  onClick={() => {
+                    setProjectName(project?.name || '');
+                    setRenameOpen(true);
+                  }}
                 />
               )}
             </Flex>
@@ -176,11 +215,9 @@ const ProductionWorkbench = () => {
                 size="small"
                 icon={<BookOutlined />}
                 style={{ padding: 0, height: 'auto' }}
-                onClick={() =>
-                  history.push(`/projects/${projectId}/production-workbench/script`)
-                }
+                onClick={openSource}
               >
-                查看剧本
+                  查看原文
               </Button>
               {project?.effectivePermissions?.includes('PROJECT_AI_CONFIG_VIEW') && (
                 <Button
@@ -189,11 +226,7 @@ const ProductionWorkbench = () => {
                   icon={<RobotOutlined />}
                   aria-label="AI 模型"
                   style={{ padding: 0, height: 'auto', marginLeft: 10 }}
-                  onClick={() =>
-                    history.push(
-                      `/projects/${projectId}/production-workbench/ai-config`,
-                    )
-                  }
+                  onClick={() => setAiConfigOpen(true)}
                 >
                   AI 模型
                 </Button>
@@ -278,6 +311,20 @@ const ProductionWorkbench = () => {
       >
         <Outlet />
       </main>
+
+      <Modal title="项目 AI 模型" open={aiConfigOpen} footer={null} width={1100} onCancel={() => setAiConfigOpen(false)}>
+        <ProjectAiConfigPage />
+      </Modal>
+      <Modal title="剧本原文" open={sourceOpen} footer={null} width={860} onCancel={() => setSourceOpen(false)}>
+        <Spin spinning={sourceLoading}>
+          <Typography.Paragraph style={{ maxHeight: '60vh', overflow: 'auto', margin: 0, whiteSpace: 'pre-wrap' }}>
+            {sourceContent}
+          </Typography.Paragraph>
+        </Spin>
+      </Modal>
+      <Modal title="编辑项目名称" open={renameOpen} okText="保存" confirmLoading={renaming} okButtonProps={{ disabled: !projectName.trim() }} onOk={saveProjectName} onCancel={() => setRenameOpen(false)}>
+        <Input aria-label="项目名称" value={projectName} onChange={(event) => setProjectName(event.target.value)} onPressEnter={saveProjectName} autoFocus />
+      </Modal>
 
       {nextStep ? (
         <Button
