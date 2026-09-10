@@ -13,9 +13,10 @@ const mocks = vi.hoisted(() => ({
   queryAssetCandidates: vi.fn(),
   decideAssetCandidate: vi.fn(),
   createVisualVariant: vi.fn(),
+  createAiImageTask: vi.fn(),
   selectPrimaryVisualVariant: vi.fn(),
   bindVisualVariantEpisodes: vi.fn(),
-  createAiImageTask: vi.fn(),
+  updateVisualVariant: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -36,9 +37,10 @@ vi.mock('./service', () => ({
   queryAssetCandidates: mocks.queryAssetCandidates,
   decideAssetCandidate: mocks.decideAssetCandidate,
   createVisualVariant: mocks.createVisualVariant,
-  selectPrimaryVisualVariant: mocks.selectPrimaryVisualVariant,
-  bindVisualVariantEpisodes: mocks.bindVisualVariantEpisodes,
   createAiImageTask: mocks.createAiImageTask,
+  selectPrimaryVisualVariant: mocks.selectPrimaryVisualVariant,
+  updateVisualVariant: mocks.updateVisualVariant,
+  bindVisualVariantEpisodes: mocks.bindVisualVariantEpisodes,
 }));
 
 vi.mock('@/services/ai-execution/task', () => ({
@@ -267,9 +269,10 @@ describe('ProductionWorkbenchSettings', () => {
     });
     mocks.decideAssetCandidate.mockResolvedValue({ data: {} });
     mocks.createVisualVariant.mockResolvedValue({ data: {} });
-    mocks.selectPrimaryVisualVariant.mockResolvedValue({ data: {} });
-    mocks.bindVisualVariantEpisodes.mockResolvedValue({ data: [] });
     mocks.createAiImageTask.mockResolvedValue({ data: {} });
+    mocks.selectPrimaryVisualVariant.mockResolvedValue({ data: {} });
+    mocks.updateVisualVariant.mockResolvedValue({ data: {} });
+    mocks.bindVisualVariantEpisodes.mockResolvedValue({ data: [] });
   });
 
   it('shows a skeleton while the initial asset settings data is loading', () => {
@@ -384,24 +387,58 @@ describe('ProductionWorkbenchSettings', () => {
     });
   });
 
-  it('uses the primary character image as a costume reference and fills its prompt', async () => {
+  it('opens a separate generator and saves the changed prompt before submitting', async () => {
     render(<ProductionWorkbenchSettings />);
-    await screen.findByText(/变装 2 个/);
+
+    await screen.findByRole('button', { name: '审核资产 2' });
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
     fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
     fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
+    fireEvent.click(screen.getByRole('button', { name: '重新生成婚礼礼服' }));
+    fireEvent.change(screen.getByLabelText('婚礼礼服生成提示词'), {
+      target: { value: '婚礼礼服，电影感' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提交婚礼礼服生成' }));
 
-    expect(
-      (screen.getByLabelText('婚礼礼服提示词') as HTMLInputElement).value,
-    ).toContain('婚礼礼服');
-    fireEvent.click(screen.getByRole('button', { name: '重新生成' }));
     await waitFor(() => {
+      expect(mocks.updateVisualVariant).toHaveBeenCalledWith(
+        1,
+        12,
+        expect.objectContaining({ prompt: '婚礼礼服，电影感' }),
+      );
       expect(mocks.createAiImageTask).toHaveBeenCalledWith(
         1,
-        expect.objectContaining({ referenceImages: ['/daily.png'] }),
+        expect.objectContaining({
+          targetId: 12,
+          prompt: '婚礼礼服，电影感',
+          referenceImages: ['/daily.png'],
+        }),
       );
     });
   });
 
+  it('submits the existing prompt without an unnecessary visual variant update', async () => {
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findByRole('button', { name: '审核资产 2' });
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成图片日常形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '提交日常形象生成' }));
+
+    await waitFor(() => {
+      expect(mocks.createAiImageTask).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          targetId: 11,
+          prompt: expect.stringContaining('日常形象'),
+        }),
+      );
+    });
+    expect(mocks.updateVisualVariant).not.toHaveBeenCalled();
+  });
   it('renders the reference-style asset workbench instead of the old image task table', async () => {
     render(<ProductionWorkbenchSettings />);
 

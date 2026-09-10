@@ -421,6 +421,9 @@ const ProductionWorkbenchSettings = () => {
   const [selectedVisualVariantId, setSelectedVisualVariantId] =
     useState<number>();
   const [newVariantName, setNewVariantName] = useState('');
+  const [generationVariantId, setGenerationVariantId] = useState<number>();
+  const [generationPrompt, setGenerationPrompt] = useState('');
+  const [generationSubmitting, setGenerationSubmitting] = useState(false);
 
   const reload = async () => {
     const [workspaceResponse, candidateResponse] = await Promise.all([
@@ -597,7 +600,7 @@ const ProductionWorkbenchSettings = () => {
     }
   };
 
-  const generateVariant = (variant: VisualVariant) => {
+  const openVariantGenerator = (variant: VisualVariant) => {
     const primaryImage = visualAsset?.item.visual?.resolvedImageUrl;
     if (
       visualAsset?.type === 'CHARACTER' &&
@@ -607,26 +610,54 @@ const ProductionWorkbenchSettings = () => {
       message.error('请先生成主体主图');
       return;
     }
-    void mutateVariant(
-      () =>
-        createAiImageTask(projectId, {
-          taskType: visualAsset?.type ?? 'CHARACTER',
-          targetType: 'VISUAL_VARIANT',
-          targetId: variant.id,
-          prompt: deriveVariantPrompt(
-            visualAsset?.type ?? 'CHARACTER',
-            visualAsset?.item ?? ({} as AssetRecord),
-            variant,
-          ),
-          referenceImages:
-            visualAsset?.type === 'CHARACTER' && !variant.primary && primaryImage
-              ? [primaryImage]
-              : undefined,
-          aspectRatio: visualAsset?.type === 'CHARACTER' ? '3:4' : '16:9',
-          imageCount: 1,
-        }),
-      variant.generationStatus === 'FAILED' ? '已重新提交生成' : '已提交生成',
+    setGenerationVariantId(variant.id);
+    setGenerationPrompt(
+      deriveVariantPrompt(visualAsset.type, visualAsset.item, variant),
     );
+  };
+
+  const closeVisualGallery = () => {
+    setGenerationVariantId(undefined);
+    setVisualAsset(undefined);
+  };
+
+  const submitVariantGeneration = async () => {
+    if (!visualAsset || !generationVariantId) return;
+    const variant = visualAsset.item.visual?.variants?.find(
+      (item) => item.id === generationVariantId,
+    );
+    if (!variant) return;
+    const defaultPrompt = deriveVariantPrompt(
+      visualAsset.type,
+      visualAsset.item,
+      variant,
+    );
+    const prompt = generationPrompt.trim() || defaultPrompt;
+    const primaryImage = visualAsset.item.visual?.resolvedImageUrl;
+    setGenerationSubmitting(true);
+    try {
+      if (prompt !== defaultPrompt) {
+        await updateVisualVariant(projectId, variant.id, { ...variant, prompt });
+      }
+      await createAiImageTask(projectId, {
+        taskType: visualAsset.type,
+        targetType: 'VISUAL_VARIANT',
+        targetId: variant.id,
+        prompt,
+        referenceImages:
+          visualAsset.type === 'CHARACTER' && !variant.primary && primaryImage
+            ? [primaryImage]
+            : undefined,
+        aspectRatio: visualAsset.type === 'CHARACTER' ? '3:4' : '16:9',
+        imageCount: 1,
+      });
+      await mutateVariant(async () => undefined, '已提交生成');
+      setGenerationVariantId(undefined);
+    } catch {
+      message.error('提交生成失败');
+    } finally {
+      setGenerationSubmitting(false);
+    }
   };
 
   const confirmAsset = async (type: ElementType, id: number) => {
@@ -1234,13 +1265,20 @@ const ProductionWorkbenchSettings = () => {
                     `第${binding.episodeNo}集${binding.episodeTitle ? ` ${binding.episodeTitle}` : ''}`,
                 )
                 .join('、');
+              const generationVariant = variants.find(
+                (variant) => variant.id === generationVariantId,
+              );
+              const selectedVariantIndex = variants.findIndex(
+                (variant) => variant.id === selectedVariant?.id,
+              );
               return (
-                <Modal
+                <>
+                  <Modal
                   title="视觉形象画廊"
                   open
-                  width={920}
+                  width={1040}
                   footer={null}
-                  onCancel={() => setVisualAsset(undefined)}
+                  onCancel={closeVisualGallery}
                 >
                   <Typography.Title level={5} style={{ margin: '0 0 16px' }}>
                     {visualAsset.item.name} · 视觉形象管理
@@ -1260,22 +1298,19 @@ const ProductionWorkbenchSettings = () => {
                     }}
                     style={{ marginBottom: 16 }}
                   />
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '220px minmax(0, 1fr)',
-                      gap: 20,
-                      minHeight: 440,
-                    }}
-                  >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                     <aside
                       style={{
-                        paddingRight: 16,
-                        borderRight:
+                        order: 2,
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 12,
+                        paddingTop: 14,
+                        borderTop:
                           '1px solid var(--app-color-border-secondary)',
                       }}
                     >
-                      <Flex gap={8} style={{ marginBottom: 12 }}>
+                      <Flex gap={8} style={{ minWidth: 210 }}>
                         <Input
                           aria-label="新视觉形象名称"
                           value={newVariantName}
@@ -1294,9 +1329,11 @@ const ProductionWorkbenchSettings = () => {
                       </Flex>
                       <div
                         style={{
-                          display: 'grid',
-                          gridTemplateColumns: '1fr 1fr',
-                          gap: 8,
+                          display: 'flex',
+                          flex: 1,
+                          gap: 10,
+                          overflowX: 'auto',
+                          paddingBottom: 2,
                         }}
                       >
                         {variants.map((variant) => {
@@ -1311,6 +1348,7 @@ const ProductionWorkbenchSettings = () => {
                               }
                               style={{
                                 padding: 0,
+                                flex: '0 0 92px',
                                 overflow: 'hidden',
                                 border: selected
                                   ? '2px solid var(--app-color-primary)'
@@ -1366,13 +1404,13 @@ const ProductionWorkbenchSettings = () => {
                       </div>
                     </aside>
                     {selectedVariant ? (
-                      <section>
+                      <section style={{ order: 1 }}>
                         <div
                           style={{
                             display: 'grid',
                             placeItems: 'center',
                             position: 'relative',
-                            height: 230,
+                            height: 430,
                             overflow: 'hidden',
                             border:
                               '1px solid var(--app-color-border-secondary)',
@@ -1395,6 +1433,35 @@ const ProductionWorkbenchSettings = () => {
                           ) : (
                             selectedVariant.name.slice(0, 1)
                           )}
+                          {variants.length > 1 ? (
+                            <>
+                              <Button
+                                aria-label="查看上一个视觉形象"
+                                onClick={() =>
+                                  setSelectedVisualVariantId(
+                                    variants[
+                                      (selectedVariantIndex - 1 + variants.length) %
+                                        variants.length
+                                    ]?.id,
+                                  )
+                                }
+                                style={{ position: 'absolute', left: 16, borderRadius: 999 }}
+                              >
+                                ‹
+                              </Button>
+                              <Button
+                                aria-label="查看下一个视觉形象"
+                                onClick={() =>
+                                  setSelectedVisualVariantId(
+                                    variants[(selectedVariantIndex + 1) % variants.length]?.id,
+                                  )
+                                }
+                                style={{ position: 'absolute', right: 16, borderRadius: 999 }}
+                              >
+                                ›
+                              </Button>
+                            </>
+                          ) : null}
                           <span
                             role="status"
                             aria-label={`${selectedVariant.name}关联剧集`}
@@ -1452,7 +1519,8 @@ const ProductionWorkbenchSettings = () => {
                             ) : null}
                             <Button
                               size="small"
-                              onClick={() => generateVariant(selectedVariant)}
+                              aria-label={`${selectedVariant.generationStatus === 'FAILED' ? '重新生成' : '生成图片'}${selectedVariant.name}`}
+                              onClick={() => openVariantGenerator(selectedVariant)}
                             >
                               {selectedVariant.generationStatus === 'FAILED'
                                 ? '重新生成'
@@ -1484,42 +1552,67 @@ const ProductionWorkbenchSettings = () => {
                             {selectedVariant.errorMessage}
                           </Typography.Text>
                         ) : null}
-                        <Input
-                          key={selectedVariant.id}
-                          defaultValue={deriveVariantPrompt(
-                            visualAsset.type,
-                            visualAsset.item,
-                            selectedVariant,
-                          )}
-                          aria-label={`${selectedVariant.name}提示词`}
-                          placeholder="视觉生成提示词"
-                          onBlur={(event) => {
-                            if (
-                              event.target.value !==
-                              (selectedVariant.prompt || '')
-                            ) {
-                              void mutateVariant(
-                                () =>
-                                  updateVisualVariant(
-                                    projectId,
-                                    selectedVariant.id,
-                                    {
-                                      ...selectedVariant,
-                                      prompt: event.target.value,
-                                    },
-                                  ),
-                                '视觉形象已保存',
-                              );
-                            }
-                          }}
-                          style={{ marginTop: 12 }}
-                        />
                       </section>
                     ) : (
                       <Empty description="暂无视觉形象" />
                     )}
                   </div>
-                </Modal>
+                  </Modal>
+                  <Modal
+                    title="角色生成"
+                    open={Boolean(generationVariant)}
+                    width={860}
+                    footer={null}
+                    onCancel={() => setGenerationVariantId(undefined)}
+                  >
+                    {generationVariant ? (
+                      <div style={{ display: 'grid', gap: 18 }}>
+                        <div
+                          style={{
+                            display: 'grid',
+                            placeItems: 'center',
+                            minHeight: 260,
+                            overflow: 'hidden',
+                            borderRadius: 10,
+                            background: 'var(--app-color-fill-secondary)',
+                          }}
+                        >
+                          {generationVariant.currentImageUrl ? (
+                            <img
+                              src={generationVariant.currentImageUrl}
+                              alt={`${generationVariant.name}当前图`}
+                              style={{ maxWidth: '100%', maxHeight: 340, objectFit: 'contain' }}
+                            />
+                          ) : (
+                            <Typography.Text type="secondary">暂无当前图</Typography.Text>
+                          )}
+                        </div>
+                        <div style={{ padding: 16, border: '1px solid var(--app-color-primary)', borderRadius: 12 }}>
+                          <Typography.Text strong>{generationVariant.name} · 视觉生成任务</Typography.Text>
+                          <Input.TextArea
+                            aria-label={`${generationVariant.name}生成提示词`}
+                            value={generationPrompt}
+                            onChange={(event) => setGenerationPrompt(event.target.value)}
+                            autoSize={{ minRows: 6, maxRows: 10 }}
+                            style={{ marginTop: 12 }}
+                          />
+                          <Flex justify="end" gap={8} style={{ marginTop: 12 }}>
+                            <Button onClick={() => setGenerationVariantId(undefined)}>取消</Button>
+                            <Button
+                              type="primary"
+                              aria-label={`提交${generationVariant.name}生成`}
+                              loading={generationSubmitting}
+                              disabled={generationSubmitting}
+                              onClick={submitVariantGeneration}
+                            >
+                              生成图片
+                            </Button>
+                          </Flex>
+                        </div>
+                      </div>
+                    ) : null}
+                  </Modal>
+                </>
               );
             })()
           : null}
