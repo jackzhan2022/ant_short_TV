@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   createVisualVariant: vi.fn(),
   selectPrimaryVisualVariant: vi.fn(),
   bindVisualVariantEpisodes: vi.fn(),
+  createAiImageTask: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -37,6 +38,7 @@ vi.mock('./service', () => ({
   createVisualVariant: mocks.createVisualVariant,
   selectPrimaryVisualVariant: mocks.selectPrimaryVisualVariant,
   bindVisualVariantEpisodes: mocks.bindVisualVariantEpisodes,
+  createAiImageTask: mocks.createAiImageTask,
 }));
 
 vi.mock('@/services/ai-execution/task', () => ({
@@ -267,6 +269,7 @@ describe('ProductionWorkbenchSettings', () => {
     mocks.createVisualVariant.mockResolvedValue({ data: {} });
     mocks.selectPrimaryVisualVariant.mockResolvedValue({ data: {} });
     mocks.bindVisualVariantEpisodes.mockResolvedValue({ data: [] });
+    mocks.createAiImageTask.mockResolvedValue({ data: {} });
   });
 
   it('shows a skeleton while the initial asset settings data is loading', () => {
@@ -377,6 +380,24 @@ describe('ProductionWorkbenchSettings', () => {
         'CHARACTER',
         1,
         expect.objectContaining({ name: '雨夜造型' }),
+      );
+    });
+  });
+
+  it('uses the primary character image as a costume reference and fills its prompt', async () => {
+    render(<ProductionWorkbenchSettings />);
+    await screen.findByText(/变装 2 个/);
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
+
+    expect(
+      (screen.getByLabelText('婚礼礼服提示词') as HTMLInputElement).value,
+    ).toContain('婚礼礼服');
+    fireEvent.click(screen.getByRole('button', { name: '重新生成' }));
+    await waitFor(() => {
+      expect(mocks.createAiImageTask).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ referenceImages: ['/daily.png'] }),
       );
     });
   });

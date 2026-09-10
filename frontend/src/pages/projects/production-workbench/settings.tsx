@@ -93,6 +93,20 @@ const getDescription = (type: ElementType, item: AssetRecord) => {
   return prop.appearance || prop.plotFunction || prop.prompt;
 };
 
+const deriveVariantPrompt = (
+  type: ElementType,
+  item: AssetRecord,
+  variant: VisualVariant,
+) => {
+  if (variant.prompt) return variant.prompt;
+  const base = item.prompt || `${item.name}，${getDescription(type, item) || ''}`;
+  const appearance = variant.appearance ? `，${variant.appearance}` : '';
+  if (type === 'CHARACTER') {
+    return `${base}。当前视觉形象：${variant.name}${appearance}。保持与主体形象同一人物、五官、年龄、体型和画风一致，半身角色设定图，3:4竖图。`;
+  }
+  return `${base}。当前视觉形象：${variant.name}${appearance}。${type === 'SCENE' ? '电影感场景设定图，16:9。' : '道具设定特写，16:9。'}`;
+};
+
 const assetSections = [
   { type: 'CHARACTER' as const, title: '角色设定' },
   { type: 'SCENE' as const, title: '场景设定' },
@@ -583,19 +597,37 @@ const ProductionWorkbenchSettings = () => {
     }
   };
 
-  const generateVariant = (variant: VisualVariant) =>
-    mutateVariant(
+  const generateVariant = (variant: VisualVariant) => {
+    const primaryImage = visualAsset?.item.visual?.resolvedImageUrl;
+    if (
+      visualAsset?.type === 'CHARACTER' &&
+      !variant.primary &&
+      !primaryImage
+    ) {
+      message.error('请先生成主体主图');
+      return;
+    }
+    void mutateVariant(
       () =>
         createAiImageTask(projectId, {
           taskType: visualAsset?.type ?? 'CHARACTER',
           targetType: 'VISUAL_VARIANT',
           targetId: variant.id,
-          prompt: variant.prompt || variant.appearance || variant.name,
+          prompt: deriveVariantPrompt(
+            visualAsset?.type ?? 'CHARACTER',
+            visualAsset?.item ?? ({} as AssetRecord),
+            variant,
+          ),
+          referenceImages:
+            visualAsset?.type === 'CHARACTER' && !variant.primary && primaryImage
+              ? [primaryImage]
+              : undefined,
           aspectRatio: visualAsset?.type === 'CHARACTER' ? '3:4' : '16:9',
           imageCount: 1,
         }),
       variant.generationStatus === 'FAILED' ? '已重新提交生成' : '已提交生成',
     );
+  };
 
   const confirmAsset = async (type: ElementType, id: number) => {
     setProcessingAction(`confirm-${type}-${id}`);
@@ -1213,6 +1245,21 @@ const ProductionWorkbenchSettings = () => {
                   <Typography.Title level={5} style={{ margin: '0 0 16px' }}>
                     {visualAsset.item.name} · 视觉形象管理
                   </Typography.Title>
+                  <Input.TextArea
+                    defaultValue={visualAsset.item.prompt || ''}
+                    aria-label={`${visualAsset.item.name}主体提示词`}
+                    placeholder="主体生成提示词"
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                    onBlur={(event) => {
+                      if (event.target.value !== (visualAsset.item.prompt || '')) {
+                        void saveAsset(visualAsset.type, {
+                          ...visualAsset.item,
+                          prompt: event.target.value,
+                        });
+                      }
+                    }}
+                    style={{ marginBottom: 16 }}
+                  />
                   <div
                     style={{
                       display: 'grid',
@@ -1438,7 +1485,12 @@ const ProductionWorkbenchSettings = () => {
                           </Typography.Text>
                         ) : null}
                         <Input
-                          defaultValue={selectedVariant.prompt || ''}
+                          key={selectedVariant.id}
+                          defaultValue={deriveVariantPrompt(
+                            visualAsset.type,
+                            visualAsset.item,
+                            selectedVariant,
+                          )}
                           aria-label={`${selectedVariant.name}提示词`}
                           placeholder="视觉生成提示词"
                           onBlur={(event) => {

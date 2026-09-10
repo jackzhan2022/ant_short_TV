@@ -270,6 +270,40 @@ public class AssetVisualVariantService {
             primary.getCurrentImageUrl(), "PRIMARY_VARIANT");
     }
 
+    @Transactional
+    public GenerationInput prepareGeneration(Long tenantId, Long projectId, Long variantId) {
+        AssetVisualVariantEntity variant = requireVariant(tenantId, projectId, variantId, true);
+        AssetType type = AssetType.fromStorageValue(variant.getAssetType());
+        String table = switch (type) {
+            case CHARACTER -> "character_asset";
+            case SCENE -> "scene_asset";
+            case PROP -> "prop_asset";
+        };
+        java.util.Map<String, Object> asset = jdbc.queryForMap("select name, prompt from " + table
+            + " where id = ? and tenant_id = ? and project_id = ? and deleted_at is null",
+            variant.getAssetId(), tenantId, projectId);
+        if (variant.getPrompt() == null || variant.getPrompt().isBlank()) {
+            String base = asset.get("prompt") == null || asset.get("prompt").toString().isBlank()
+                ? asset.get("name").toString() : asset.get("prompt").toString();
+            String appearance = variant.getAppearance() == null || variant.getAppearance().isBlank()
+                ? "" : "，" + variant.getAppearance();
+            String suffix = type == AssetType.CHARACTER
+                ? "。保持与主体形象同一人物、五官、年龄、体型和画风一致，半身角色设定图，3:4竖图。"
+                : type == AssetType.SCENE ? "。电影感场景设定图，16:9。" : "。道具设定特写，16:9。";
+            variant.setPrompt(base + "。当前视觉形象：" + variant.getName() + appearance + suffix);
+            variant.setUpdatedAt(LocalDateTime.now());
+            variantMapper.updateById(variant);
+        }
+        if (type != AssetType.CHARACTER || Boolean.TRUE.equals(variant.getIsPrimary())) {
+            return new GenerationInput(variant.getPrompt(), List.of());
+        }
+        ResolvedVisual primary = primaryVisual(tenantId, projectId, "CHARACTER", variant.getAssetId());
+        if (primary == null || primary.imageUrl() == null || primary.imageUrl().isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先生成主体主图。");
+        }
+        return new GenerationInput(variant.getPrompt(), List.of(primary.imageUrl()));
+    }
+
     private void clearPrimary(Long tenantId, Long projectId, AssetType type, Long assetId) {
         jdbc.update("""
             update asset_visual_variant set is_primary = false, updated_at = now()
@@ -414,4 +448,5 @@ public class AssetVisualVariantService {
         String currentImageUrl, String errorCode, String errorMessage, boolean primary, boolean usable
     ) {}
     public record ResolvedVisual(Long variantId, Long imageResultId, String imageUrl, String source) {}
+    public record GenerationInput(String prompt, List<String> referenceImages) {}
 }

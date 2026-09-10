@@ -117,6 +117,8 @@ public class AiImageTaskService {
             return toResponse(existing);
         }
         ResolvedImageModel resolved = resolveImageModel(tenantId, projectId, request.modelId());
+        AssetVisualVariantService.GenerationInput variantInput = "VISUAL_VARIANT".equals(request.targetType())
+            ? assetVisualVariantService.prepareGeneration(tenantId, projectId, request.targetId()) : null;
         String taskType = request.taskType().trim();
         LocalDateTime now = LocalDateTime.now();
 
@@ -129,10 +131,10 @@ public class AiImageTaskService {
         task.setModelId(resolved.modelId());
         task.setProviderCode(resolved.providerCode());
         task.setModel(resolved.modelName());
-        task.setPrompt(request.prompt().trim());
+        task.setPrompt(variantInput == null ? request.prompt().trim() : variantInput.prompt());
         task.setNegativePrompt(blankToNull(request.negativePrompt()));
-        task.setReferenceImages(ReferenceImagesCodec.encode(resolveReferenceImages(
-            tenantId, projectId, request)));
+        task.setReferenceImages(ReferenceImagesCodec.encode(variantInput == null
+            ? resolveReferenceImages(tenantId, projectId, request) : variantInput.referenceImages()));
         task.setAspectRatio(request.aspectRatio().trim());
         task.setImageCount(request.imageCount());
         task.setStyle(blankToNull(request.style()));
