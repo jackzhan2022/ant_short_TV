@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   queryAssetCandidates: vi.fn(),
   decideAssetCandidate: vi.fn(),
   createVisualVariant: vi.fn(),
+  deleteVisualVariant: vi.fn(),
   createAiImageTask: vi.fn(),
   selectPrimaryVisualVariant: vi.fn(),
   bindVisualVariantEpisodes: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock('./service', () => ({
   queryAssetCandidates: mocks.queryAssetCandidates,
   decideAssetCandidate: mocks.decideAssetCandidate,
   createVisualVariant: mocks.createVisualVariant,
+  deleteVisualVariant: mocks.deleteVisualVariant,
   createAiImageTask: mocks.createAiImageTask,
   selectPrimaryVisualVariant: mocks.selectPrimaryVisualVariant,
   updateVisualVariant: mocks.updateVisualVariant,
@@ -92,6 +94,14 @@ vi.mock('antd', () => ({
     open ? <section aria-label={title}>{children}</section> : null,
   Modal: ({ children, open, title }: any) =>
     open ? <section aria-label={title}>{children}</section> : null,
+  Popconfirm: ({ children, onConfirm, title }: any) => (
+    <span>
+      {children}
+      <button type="button" aria-label={title} onClick={onConfirm}>
+        确认
+      </button>
+    </span>
+  ),
   Empty: ({ children, description }: any) => (
     <div>
       {description || '暂无数据'}
@@ -387,10 +397,11 @@ describe('ProductionWorkbenchSettings', () => {
     expect(
       screen.queryByRole('button', { name: '绑定婚礼礼服到剧集' }),
     ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '新增变装' }));
     fireEvent.change(screen.getByLabelText('新视觉形象名称'), {
       target: { value: '雨夜造型' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '新增视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认新增视觉形象' }));
     await waitFor(() => {
       expect(mocks.createVisualVariant).toHaveBeenCalledWith(
         1,
@@ -398,6 +409,16 @@ describe('ProductionWorkbenchSettings', () => {
         1,
         expect.objectContaining({ name: '雨夜造型' }),
       );
+    });
+    expect(
+      screen.queryByRole('button', { name: '删除' }),
+    ).not.toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByTestId('视觉形象缩略图-婚礼礼服'));
+    fireEvent.click(screen.getByRole('button', { name: '删除婚礼礼服' }));
+    expect(mocks.deleteVisualVariant).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '确认删除婚礼礼服' }));
+    await waitFor(() => {
+      expect(mocks.deleteVisualVariant).toHaveBeenCalledWith(1, 12);
     });
   });
 

@@ -2,6 +2,7 @@ import {
   CheckOutlined,
   DeleteOutlined,
   EditOutlined,
+  PlusOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
 import { useIntl, useParams } from '@umijs/max';
@@ -13,6 +14,7 @@ import {
   Flex,
   Input,
   Modal,
+  Popconfirm,
   Skeleton,
   Tag,
   Typography,
@@ -21,9 +23,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import {
+  type ProjectModelOption,
   queryProjectAiConfig,
   queryProjectAiModels,
-  type ProjectModelOption,
 } from './ai-config/service';
 import {
   type AssetCandidate,
@@ -427,6 +429,8 @@ const ProductionWorkbenchSettings = () => {
   const [selectedVisualVariantId, setSelectedVisualVariantId] =
     useState<number>();
   const [newVariantName, setNewVariantName] = useState('');
+  const [addingVariant, setAddingVariant] = useState(false);
+  const [hoveredThumbnailId, setHoveredThumbnailId] = useState<number>();
   const [generationVariantId, setGenerationVariantId] = useState<number>();
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [generationSubmitting, setGenerationSubmitting] = useState(false);
@@ -580,6 +584,7 @@ const ProductionWorkbenchSettings = () => {
         },
       );
       setNewVariantName('');
+      setAddingVariant(false);
       await reload();
       message.success('视觉形象已新增');
     } catch {
@@ -1350,27 +1355,9 @@ const ProductionWorkbenchSettings = () => {
                             '1px solid var(--app-color-border-secondary)',
                         }}
                       >
-                        <Flex gap={8} style={{ minWidth: 210 }}>
-                          <Input
-                            aria-label="新视觉形象名称"
-                            value={newVariantName}
-                            onChange={(event) =>
-                              setNewVariantName(event.target.value)
-                            }
-                            placeholder="新增变装名称"
-                          />
-                          <Button
-                            type="primary"
-                            aria-label="新增视觉形象"
-                            onClick={addVariant}
-                          >
-                            新增
-                          </Button>
-                        </Flex>
                         <div
                           style={{
                             display: 'flex',
-                            flex: 1,
                             gap: 10,
                             overflowX: 'auto',
                             paddingBottom: 2,
@@ -1379,69 +1366,166 @@ const ProductionWorkbenchSettings = () => {
                           {variants.map((variant) => {
                             const selected = variant.id === selectedVariant?.id;
                             return (
-                              <button
+                              <div
                                 key={variant.id}
-                                type="button"
-                                aria-label={`选择${variant.name}`}
-                                onClick={() =>
-                                  setSelectedVisualVariantId(variant.id)
+                                data-testid={`视觉形象缩略图-${variant.name}`}
+                                onMouseEnter={() =>
+                                  setHoveredThumbnailId(variant.id)
+                                }
+                                onMouseLeave={() =>
+                                  setHoveredThumbnailId(undefined)
                                 }
                                 style={{
-                                  padding: 0,
                                   flex: '0 0 92px',
-                                  overflow: 'hidden',
-                                  border: selected
-                                    ? '2px solid var(--app-color-primary)'
-                                    : '1px solid var(--app-color-border-secondary)',
-                                  borderRadius: 6,
-                                  background: 'var(--app-color-bg-container)',
-                                  textAlign: 'left',
-                                  cursor: 'pointer',
+                                  position: 'relative',
                                 }}
                               >
-                                <div
+                                <button
+                                  type="button"
+                                  aria-label={`选择${variant.name}`}
+                                  onClick={() =>
+                                    setSelectedVisualVariantId(variant.id)
+                                  }
                                   style={{
-                                    display: 'grid',
-                                    aspectRatio: '1 / 1',
-                                    placeItems: 'center',
+                                    width: '100%',
+                                    padding: 0,
                                     overflow: 'hidden',
-                                    background:
-                                      'var(--app-color-fill-secondary)',
-                                    color: 'var(--app-color-text-tertiary)',
-                                    fontSize: 22,
+                                    border: selected
+                                      ? '2px solid var(--app-color-primary)'
+                                      : '1px solid var(--app-color-border-secondary)',
+                                    borderRadius: 6,
+                                    background: 'var(--app-color-bg-container)',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
                                   }}
                                 >
-                                  {variant.currentImageUrl ? (
-                                    <img
-                                      src={variant.currentImageUrl}
-                                      alt={`${variant.name}缩略图`}
-                                      style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        objectFit: 'cover',
-                                      }}
-                                    />
-                                  ) : (
-                                    variant.name.slice(0, 1)
-                                  )}
-                                </div>
-                                <span
-                                  style={{
-                                    display: 'block',
-                                    padding: '5px 6px',
-                                    overflow: 'hidden',
-                                    color: 'var(--app-color-text)',
-                                    fontSize: 12,
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                  }}
+                                  <div
+                                    style={{
+                                      display: 'grid',
+                                      aspectRatio: '1 / 1',
+                                      placeItems: 'center',
+                                      overflow: 'hidden',
+                                      background:
+                                        'var(--app-color-fill-secondary)',
+                                      color: 'var(--app-color-text-tertiary)',
+                                      fontSize: 22,
+                                    }}
+                                  >
+                                    {variant.currentImageUrl ? (
+                                      <img
+                                        src={variant.currentImageUrl}
+                                        alt={`${variant.name}缩略图`}
+                                        style={{
+                                          width: '100%',
+                                          height: '100%',
+                                          objectFit: 'cover',
+                                        }}
+                                      />
+                                    ) : (
+                                      variant.name.slice(0, 1)
+                                    )}
+                                  </div>
+                                  <span
+                                    style={{
+                                      display: 'block',
+                                      padding: '5px 6px',
+                                      overflow: 'hidden',
+                                      color: 'var(--app-color-text)',
+                                      fontSize: 12,
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {variant.name}
+                                    {variant.primary ? ' · 主图' : ''}
+                                  </span>
+                                </button>
+                                <Popconfirm
+                                  title={`确认删除${variant.name}`}
+                                  description="删除后无法恢复，确定继续吗？"
+                                  okText="删除"
+                                  cancelText="取消"
+                                  onConfirm={() =>
+                                    mutateVariant(
+                                      () =>
+                                        deleteVisualVariant(
+                                          projectId,
+                                          variant.id,
+                                        ),
+                                      '视觉形象已删除',
+                                    )
+                                  }
                                 >
-                                  {variant.name}
-                                  {variant.primary ? ' · 主图' : ''}
-                                </span>
-                              </button>
+                                  <Button
+                                    size="small"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    aria-label={`删除${variant.name}`}
+                                    onClick={(event) => event.stopPropagation()}
+                                    style={{
+                                      position: 'absolute',
+                                      top: 4,
+                                      right: 4,
+                                      opacity:
+                                        hoveredThumbnailId === variant.id
+                                          ? 1
+                                          : 0,
+                                      pointerEvents:
+                                        hoveredThumbnailId === variant.id
+                                          ? 'auto'
+                                          : 'none',
+                                    }}
+                                  />
+                                </Popconfirm>
+                              </div>
                             );
                           })}
+                          {addingVariant ? (
+                            <div
+                              style={{
+                                flex: '0 0 160px',
+                                display: 'grid',
+                                gap: 8,
+                              }}
+                            >
+                              <Input
+                                aria-label="新视觉形象名称"
+                                value={newVariantName}
+                                onChange={(event) =>
+                                  setNewVariantName(event.target.value)
+                                }
+                                placeholder="新增变装名称"
+                              />
+                              <Button
+                                type="primary"
+                                aria-label="确认新增视觉形象"
+                                onClick={addVariant}
+                              >
+                                新增
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label="新增变装"
+                              onClick={() => setAddingVariant(true)}
+                              style={{
+                                flex: '0 0 92px',
+                                display: 'grid',
+                                placeItems: 'center',
+                                gap: 6,
+                                minHeight: 118,
+                                border: '1px dashed var(--app-color-border)',
+                                borderRadius: 6,
+                                background: 'transparent',
+                                color: 'var(--app-color-text-secondary)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <PlusOutlined />
+                              新增变装
+                            </button>
+                          )}
                         </div>
                       </aside>
                       {selectedVariant ? (
@@ -1581,22 +1665,6 @@ const ProductionWorkbenchSettings = () => {
                                 {selectedVariant.generationStatus === 'FAILED'
                                   ? '重新生成'
                                   : '生成图片'}
-                              </Button>
-                              <Button
-                                size="small"
-                                danger
-                                onClick={() =>
-                                  mutateVariant(
-                                    () =>
-                                      deleteVisualVariant(
-                                        projectId,
-                                        selectedVariant.id,
-                                      ),
-                                    '视觉形象已删除',
-                                  )
-                                }
-                              >
-                                删除
                               </Button>
                             </Flex>
                           </Flex>
