@@ -413,6 +413,22 @@ describe('ProductionWorkbenchSettings', () => {
     expect(
       screen.queryByRole('button', { name: '删除' }),
     ).not.toBeInTheDocument();
+    const thumbnailViewport = screen.getByLabelText('视觉形象缩略图列表');
+    Object.defineProperties(thumbnailViewport, {
+      clientWidth: { configurable: true, value: 180 },
+      scrollWidth: { configurable: true, value: 600 },
+    });
+    const wheelEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 80,
+    });
+    fireEvent(thumbnailViewport, wheelEvent);
+    expect(thumbnailViewport.scrollLeft).toBe(80);
+    expect(wheelEvent.defaultPrevented).toBe(true);
+    expect(screen.getByLabelText('视觉形象新增入口')).toContainElement(
+      screen.getByRole('button', { name: '新增变装' }),
+    );
     fireEvent.mouseEnter(screen.getByTestId('视觉形象缩略图-婚礼礼服'));
     fireEvent.click(screen.getByRole('button', { name: '删除婚礼礼服' }));
     expect(mocks.deleteVisualVariant).not.toHaveBeenCalled();
