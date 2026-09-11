@@ -3,9 +3,9 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/platform/ai/workflow-agents */
-export async function list12(
+export async function list13(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list12Params,
+  params: API.list13Params,
   options?: { [key: string]: any }
 ) {
   return request<API.ApiResponseListWorkflowAgentRecord>(
@@ -21,7 +21,7 @@ export async function list12(
 }
 
 /** 此处后端没有提供注释 POST /api/platform/ai/workflow-agents */
-export async function create8(
+export async function create9(
   body: API.CreateAgentRequest,
   options?: { [key: string]: any }
 ) {
@@ -56,9 +56,9 @@ export async function detail11(
 }
 
 /** 此处后端没有提供注释 PUT /api/platform/ai/workflow-agents/${param0} */
-export async function update3(
+export async function update4(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.update3Params,
+  params: API.update4Params,
   body: API.UpdateAgentRequest,
   options?: { [key: string]: any }
 ) {
@@ -117,9 +117,9 @@ export async function copy1(
 }
 
 /** 此处后端没有提供注释 POST /api/platform/ai/workflow-agents/${param0}/disable */
-export async function disable(
+export async function disable1(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.disableParams,
+  params: API.disable1Params,
   options?: { [key: string]: any }
 ) {
   const { code: param0, ...queryParams } = params;
@@ -134,9 +134,9 @@ export async function disable(
 }
 
 /** 此处后端没有提供注释 POST /api/platform/ai/workflow-agents/${param0}/enable */
-export async function enable(
+export async function enable1(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.enableParams,
+  params: API.enable1Params,
   options?: { [key: string]: any }
 ) {
   const { code: param0, ...queryParams } = params;

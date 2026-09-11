@@ -48,7 +48,7 @@ public class ReviewWorkbenchController {
 
     @PostMapping(value = "/projects", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<ReviewProjectDetailResponse> importProject(
-        @RequestPart(value = "mainProjectId", required = false) Long mainProjectId,
+        @RequestParam(value = "mainProjectId", required = false) Long mainProjectId,
         @RequestPart(value = "file", required = false) MultipartFile file,
         @RequestPart(value = "content", required = false) String content,
         @RequestPart(value = "name", required = false) String name,

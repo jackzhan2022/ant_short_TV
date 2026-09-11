@@ -351,6 +351,27 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseAssetSettingsSummaryResponse = {
+    success?: boolean;
+    data?: AssetSettingsSummaryResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseAssetSettingsWorkspaceResponse = {
+    success?: boolean;
+    data?: AssetSettingsWorkspaceResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseAssetVisualWorkspace = {
+    success?: boolean;
+    data?: AssetVisualWorkspace;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseAuthBootstrapResponse = {
     success?: boolean;
     data?: AuthBootstrapResponse;
@@ -396,6 +417,13 @@ declare namespace API {
   type ApiResponseCandidateResponse = {
     success?: boolean;
     data?: CandidateResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseCommercialEntitlementDefinitionResponse = {
+    success?: boolean;
+    data?: CommercialEntitlementDefinitionResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -470,6 +498,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseInspirationThumbnailBackfillResult = {
+    success?: boolean;
+    data?: InspirationThumbnailBackfillResult;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseListAiImageTaskResponse = {
     success?: boolean;
     data?: AiImageTaskResponse[];
@@ -529,6 +564,13 @@ declare namespace API {
   type ApiResponseListCommercialCatalogItemResponse = {
     success?: boolean;
     data?: CommercialCatalogItemResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListCommercialEntitlementDefinitionResponse = {
+    success?: boolean;
+    data?: CommercialEntitlementDefinitionResponse[];
     errorCode?: string;
     errorMessage?: string;
   };
@@ -648,6 +690,20 @@ declare namespace API {
   type ApiResponseListProjectRoleResponse = {
     success?: boolean;
     data?: ProjectRoleResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListReviewProjectListSummaryResponse = {
+    success?: boolean;
+    data?: ReviewProjectListSummaryResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseListReviewProjectMetricsResponse = {
+    success?: boolean;
+    data?: ReviewProjectMetricsResponse[];
     errorCode?: string;
     errorMessage?: string;
   };
@@ -911,6 +967,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseReviewProjectReviewHistoryResponse = {
+    success?: boolean;
+    data?: ReviewProjectReviewHistoryResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseReviewTaskResponse = {
     success?: boolean;
     data?: ReviewTaskResponse;
@@ -946,9 +1009,44 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseScriptContentParseResponse = {
+    success?: boolean;
+    data?: ScriptContentParseResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseScriptEpisodeResponse = {
+    success?: boolean;
+    data?: ScriptEpisodeResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseScriptEpisodeSummaryDocument = {
     success?: boolean;
     data?: ScriptEpisodeSummaryDocument;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseScriptPageWorkspaceResponse = {
+    success?: boolean;
+    data?: ScriptPageWorkspaceResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseScriptResponse = {
+    success?: boolean;
+    data?: ScriptResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseScriptVersionResponse = {
+    success?: boolean;
+    data?: ScriptVersionResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -984,6 +1082,13 @@ declare namespace API {
   type ApiResponseStoryboardSubtitleResponse = {
     success?: boolean;
     data?: StoryboardSubtitleResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseStoryboardWorkspacePageResponse = {
+    success?: boolean;
+    data?: StoryboardWorkspacePageResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -1125,6 +1230,28 @@ declare namespace API {
     pageSize?: number;
   };
 
+  type assetSettingsSummaryParams = {
+    projectId: number;
+  };
+
+  type AssetSettingsSummaryResponse = {
+    projectId?: number;
+    characters?: CharacterAssetSummaryResponse[];
+    scenes?: SceneAssetSummaryResponse[];
+    props?: PropAssetSummaryResponse[];
+  };
+
+  type assetSettingsWorkspaceParams = {
+    projectId: number;
+  };
+
+  type AssetSettingsWorkspaceResponse = {
+    projectId?: number;
+    characters?: CharacterAssetResponse[];
+    scenes?: SceneAssetResponse[];
+    props?: PropAssetResponse[];
+  };
+
   type AssetVisualWorkspace = {
     variantCount?: number;
     primaryVariant?: VariantResponse;
@@ -1134,6 +1261,12 @@ declare namespace API {
     normalizationReviewStatus?: string;
     resolvedImageUrl?: string;
     resolvedImageSource?: string;
+  };
+
+  type assetVisualWorkspaceParams = {
+    projectId: number;
+    elementType: string;
+    elementId: number;
   };
 
   type AuthBootstrapResponse = {
@@ -1151,6 +1284,10 @@ declare namespace API {
     tenants?: TenantSummaryResponse[];
     nextAction?: string;
     expiresAt?: string;
+  };
+
+  type backfillParams = {
+    limit?: number;
   };
 
   type batchRepairParams = {
@@ -1280,6 +1417,14 @@ declare namespace API {
     category?: string;
   };
 
+  type CacheUsageResponse = {
+    knownCalls?: number;
+    unknownCalls?: number;
+    promptTokens?: number;
+    cachedInputTokens?: number;
+    hitRate?: number;
+  };
+
   type cancel1Params = {
     tenantId: number;
     executionId: number;
@@ -1360,6 +1505,21 @@ declare namespace API {
     visual?: AssetVisualWorkspace;
   };
 
+  type CharacterAssetSummaryResponse = {
+    id?: number;
+    name?: string;
+    roleType?: string;
+    gender?: string;
+    ageRange?: string;
+    identity?: string;
+    personality?: string[];
+    appearance?: string;
+    prompt?: string;
+    status?: string;
+    mergeTargetId?: number;
+    mainImageUrl?: string;
+  };
+
   type CommercialCatalogItemResponse = {
     packageId?: number;
     packageVersionId?: number;
@@ -1373,6 +1533,24 @@ declare namespace API {
     listPrice?: number;
     currency?: string;
     entitlements?: CommercialEntitlementInput[];
+  };
+
+  type CommercialDisplayEntitlementCommand = {
+    name?: string;
+    description?: string;
+    sortOrder?: number;
+  };
+
+  type CommercialEntitlementDefinitionResponse = {
+    id?: number;
+    code?: string;
+    name?: string;
+    description?: string;
+    category?: string;
+    status?: string;
+    sortOrder?: number;
+    createdAt?: string;
+    updatedAt?: string;
   };
 
   type CommercialEntitlementGrantEntity = {
@@ -1394,6 +1572,8 @@ declare namespace API {
   type CommercialEntitlementInput = {
     type?: string;
     value?: number;
+    name?: string;
+    category?: string;
   };
 
   type CommercialOrderCreateRequest = {
@@ -1639,6 +1819,7 @@ declare namespace API {
     scriptType?: string;
     breakdownStrength?: string;
     visualStyle?: string;
+    scriptName?: string;
     initialScriptContent?: string;
   };
 
@@ -1932,12 +2113,16 @@ declare namespace API {
     batchId: number;
   };
 
+  type disable1Params = {
+    code: string;
+  };
+
   type disableModelParams = {
     id: number;
   };
 
   type disableParams = {
-    code: string;
+    id: number;
   };
 
   type disableProviderParams = {
@@ -2007,12 +2192,16 @@ declare namespace API {
     published?: boolean;
   };
 
+  type enable1Params = {
+    code: string;
+  };
+
   type enableModelParams = {
     id: number;
   };
 
   type enableParams = {
-    code: string;
+    id: number;
   };
 
   type enableProviderParams = {
@@ -2092,6 +2281,8 @@ declare namespace API {
     retryable?: boolean;
     stale?: boolean;
     units?: EpisodeFanoutUnitResponse[];
+    cache?: CacheUsageResponse;
+    timing?: TimingUsageResponse;
   };
 
   type EpisodeFanoutUnitResponse = {
@@ -2105,6 +2296,24 @@ declare namespace API {
 
   type episodeParams = {
     episodeId: number;
+  };
+
+  type EpisodePipelineStatusResponse = {
+    episodeId?: number;
+    episodeKey?: string;
+    episodeNo?: number;
+    summaryStatus?: string;
+    summaryRunId?: number;
+    summaryError?: string;
+    recognitionStatus?: string;
+    recognitionRunId?: number;
+    recognitionError?: string;
+    storyboardStatus?: string;
+    storyboardExecutionId?: number;
+    storyboardId?: number;
+    storyboardError?: string;
+    autoTriggered?: boolean;
+    protectedExisting?: boolean;
   };
 
   type EpisodeSplitProgressResponse = {
@@ -2154,6 +2363,7 @@ declare namespace API {
   type ExportReviewReportRequest = {
     exportType: string;
     versionId: number;
+    taskId?: number;
   };
 
   type exportUsingPOSTParams = {
@@ -2217,6 +2427,10 @@ declare namespace API {
     externalId: string;
   };
 
+  type importProjectParams = {
+    mainProjectId?: number;
+  };
+
   type InspirationCreationDetailResponse = {
     id?: number;
     externalId?: string;
@@ -2226,6 +2440,7 @@ declare namespace API {
     title?: string;
     authorName?: string;
     url?: string;
+    thumbnailUrl?: string;
     mimeType?: string;
     fileSize?: number;
     sortOrder?: number;
@@ -2242,6 +2457,7 @@ declare namespace API {
     title?: string;
     authorName?: string;
     url?: string;
+    thumbnailUrl?: string;
     mimeType?: string;
     fileSize?: number;
     sortOrder?: number;
@@ -2253,6 +2469,11 @@ declare namespace API {
     total?: number;
     current?: number;
     pageSize?: number;
+  };
+
+  type InspirationThumbnailBackfillResult = {
+    processed?: number;
+    failed?: number;
   };
 
   type JsonNode = true;
@@ -2273,20 +2494,20 @@ declare namespace API {
     pageSize?: number;
   };
 
-  type list11Params = {
-    query?: string;
-  };
-
   type list12Params = {
     query?: string;
   };
 
   type list13Params = {
+    query?: string;
+  };
+
+  type list14Params = {
     agentCode?: string;
     limit?: number;
   };
 
-  type list14Params = {
+  type list15Params = {
     page?: number;
     pageSize?: number;
   };
@@ -2802,6 +3023,18 @@ declare namespace API {
     visual?: AssetVisualWorkspace;
   };
 
+  type PropAssetSummaryResponse = {
+    id?: number;
+    name?: string;
+    propType?: string;
+    appearance?: string;
+    plotFunction?: string;
+    prompt?: string;
+    status?: string;
+    mergeTargetId?: number;
+    mainImageUrl?: string;
+  };
+
   type ProviderFailureRate = {
     provider?: string;
     total?: number;
@@ -2984,6 +3217,24 @@ declare namespace API {
     phase?: string;
   };
 
+  type ReviewCacheUsageResponse = {
+    promptTokens?: number;
+    ordinaryInputTokens?: number;
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    outputTokens?: number;
+    latencyMs?: number;
+    cacheHitRatio?: number;
+    cacheObservable?: boolean;
+  };
+
+  type ReviewDecisionCountsResponse = {
+    confirmed?: number;
+    needsHumanReview?: number;
+    rejected?: number;
+    insufficientEvidence?: number;
+  };
+
   type ReviewExportRecordResponse = {
     id?: number;
     projectId?: number;
@@ -3006,6 +3257,43 @@ declare namespace API {
     currentUnitId?: number;
     aggregationStatus?: string;
     units?: ReviewUnitProgressResponse[];
+  };
+
+  type reviewHistoryParams = {
+    projectId: number;
+    page?: number;
+    pageSize?: number;
+  };
+
+  type ReviewHistoryTaskResponse = {
+    id?: number;
+    scriptVersionId?: number;
+    roundNo?: number;
+    reviewMode?: string;
+    selectedDimensions?: string[];
+    reviewScopeType?: string;
+    resultFormat?: string;
+    reportMarkdown?: string;
+    status?: string;
+    overallProgress?: number;
+    issueCount?: number;
+    outstandingIssueCount?: number;
+    createdBy?: number;
+    createdAt?: string;
+    completedAt?: string;
+    canceledAt?: string;
+    errorMessage?: string;
+  };
+
+  type ReviewHumanReviewFindingResponse = {
+    candidateId?: number;
+    unitId?: number;
+    dimension?: string;
+    confidence?: number;
+    rationale?: string;
+    severityDecision?: string;
+    evidenceRefs?: string[];
+    candidate?: Record<string, any>;
   };
 
   type ReviewIssueHitResponse = {
@@ -3057,10 +3345,48 @@ declare namespace API {
     hits?: ReviewIssueHitResponse[];
   };
 
+  type ReviewObservabilityResponse = {
+    quality?: ReviewQualityProgressResponse;
+    decisions?: ReviewDecisionCountsResponse;
+    humanReviewFindings?: ReviewHumanReviewFindingResponse[];
+    cacheUsage?: ReviewCacheUsageResponse;
+  };
+
   type ReviewProjectDetailResponse = {
     project?: ReviewProjectSummaryResponse;
     versions?: ReviewVersionResponse[];
     tasks?: ReviewTaskResponse[];
+  };
+
+  type ReviewProjectListSummaryResponse = {
+    id?: number;
+    mainProjectId?: number;
+    accessSource?: string;
+    name?: string;
+    sourceFileName?: string;
+    sourceType?: string;
+    currentVersionId?: number;
+    status?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+
+  type ReviewProjectMetricsResponse = {
+    projectId?: number;
+    versionCount?: number;
+    latestRoundNo?: number;
+    reviewState?: string;
+    outstandingIssueCount?: number;
+    actionLabel?: string;
+  };
+
+  type ReviewProjectReviewHistoryResponse = {
+    project?: ReviewProjectSummaryResponse;
+    versions?: ReviewVersionMetadataResponse[];
+    items?: ReviewHistoryTaskResponse[];
+    page?: number;
+    pageSize?: number;
+    total?: number;
   };
 
   type ReviewProjectSummaryResponse = {
@@ -3075,8 +3401,21 @@ declare namespace API {
     status?: string;
     versionCount?: number;
     latestRoundNo?: number;
+    reviewState?: string;
+    outstandingIssueCount?: number;
+    actionLabel?: string;
     createdAt?: string;
     updatedAt?: string;
+  };
+
+  type ReviewQualityProgressResponse = {
+    status?: string;
+    runId?: number;
+    attemptNo?: number;
+    candidateCount?: number;
+    decisionCount?: number;
+    anomalyRequired?: boolean;
+    anomalyPassed?: boolean;
   };
 
   type ReviewReviewSummaryResponse = {
@@ -3105,6 +3444,8 @@ declare namespace API {
     selectedDimensions?: string[];
     reviewScopeType?: string;
     reviewScope?: Record<string, any>;
+    resultFormat?: string;
+    reportMarkdown?: string;
     status?: string;
     currentStage?: string;
     overallProgress?: number;
@@ -3121,20 +3462,27 @@ declare namespace API {
     retryKind?: string;
     stale?: boolean;
     fanout?: ReviewFanoutProgressResponse;
+    observability?: ReviewObservabilityResponse;
     completedAt?: string;
     canceledAt?: string;
     summary?: ReviewReviewSummaryResponse;
     issues?: ReviewIssueResponse[];
+    boundVersion?: ReviewVersionResponse;
   };
 
   type ReviewUnitProgressResponse = {
     id?: number;
     unitNo?: number;
     unitKey?: string;
+    stageType?: string;
+    dimension?: string;
     status?: string;
+    childRunId?: number;
+    attemptNo?: number;
     candidateSaved?: boolean;
     errorCode?: string;
     errorMessage?: string;
+    cacheUsage?: ReviewCacheUsageResponse;
   };
 
   type ReviewVersionDiffLineResponse = {
@@ -3159,6 +3507,15 @@ declare namespace API {
     diffLines?: ReviewVersionDiffResponse[];
     roundHistory?: ReviewRoundHistoryResponse[];
     issueMappings?: ReviewIssueMappingResponse[];
+  };
+
+  type ReviewVersionMetadataResponse = {
+    id?: number;
+    projectId?: number;
+    versionNo?: number;
+    sourceType?: string;
+    fileName?: string;
+    createdAt?: string;
   };
 
   type ReviewVersionResponse = {
@@ -3326,6 +3683,19 @@ declare namespace API {
     visual?: AssetVisualWorkspace;
   };
 
+  type SceneAssetSummaryResponse = {
+    id?: number;
+    name?: string;
+    sceneType?: string;
+    atmosphere?: string;
+    description?: string;
+    visualStyle?: string;
+    prompt?: string;
+    status?: string;
+    mergeTargetId?: number;
+    mainImageUrl?: string;
+  };
+
   type screenplaysParams = {
     batchId: number;
   };
@@ -3357,6 +3727,7 @@ declare namespace API {
   type ScriptAnalysisTaskResponse = {
     id?: number;
     scriptVersionId?: number;
+    pipelineVersion?: string;
     status?: string;
     currentStage?: string;
     overallProgress?: number;
@@ -3364,6 +3735,21 @@ declare namespace API {
     errorCode?: string;
     errorMessage?: string;
     stages?: ScriptAnalysisStageResponse[];
+    episodes?: EpisodePipelineStatusResponse[];
+  };
+
+  type scriptContentParams = {
+    projectId: number;
+  };
+
+  type ScriptContentParseResponse = {
+    fileName?: string;
+    content?: string;
+  };
+
+  type scriptEpisodeParams = {
+    projectId: number;
+    episodeId: number;
   };
 
   type ScriptEpisodeResponse = {
@@ -3393,6 +3779,16 @@ declare namespace API {
     updatedAt?: string;
   };
 
+  type ScriptEpisodeSummaryResponse = {
+    episodeId?: number;
+    episodeNo?: number;
+    title?: string;
+    summary?: string;
+    contentFingerprint?: string;
+    generatedByRunId?: number;
+    formalSummary?: ScriptEpisodeSummaryDocument;
+  };
+
   type ScriptGlobalUnderstandingResponse = {
     id?: number;
     schemaVersion?: number;
@@ -3400,6 +3796,30 @@ declare namespace API {
     analyzedContentHash?: string;
     lastAgentRunId?: number;
     updatedAt?: string;
+  };
+
+  type ScriptPageScriptResponse = {
+    id?: number;
+    projectId?: number;
+    title?: string;
+    sourceType?: string;
+    status?: string;
+    currentVersionId?: number;
+    updatedAt?: string;
+  };
+
+  type scriptPageWorkspaceParams = {
+    projectId: number;
+  };
+
+  type ScriptPageWorkspaceResponse = {
+    projectId?: number;
+    script?: ScriptPageScriptResponse;
+    versions?: ScriptVersionSummaryResponse[];
+    episodes?: ScriptEpisodeSummaryResponse[];
+    episodeWarnings?: Warning[];
+    analysis?: ScriptAnalysisTaskResponse;
+    globalUnderstanding?: ScriptGlobalUnderstandingResponse;
   };
 
   type ScriptResponse = {
@@ -3413,6 +3833,11 @@ declare namespace API {
     updatedAt?: string;
   };
 
+  type scriptVersionParams = {
+    projectId: number;
+    versionId: number;
+  };
+
   type ScriptVersionResponse = {
     id?: number;
     scriptId?: number;
@@ -3420,6 +3845,16 @@ declare namespace API {
     sourceType?: string;
     inputSummary?: string;
     content?: string;
+    status?: string;
+    createdAt?: string;
+  };
+
+  type ScriptVersionSummaryResponse = {
+    id?: number;
+    scriptId?: number;
+    versionNo?: number;
+    sourceType?: string;
+    inputSummary?: string;
     status?: string;
     createdAt?: string;
   };
@@ -3435,6 +3870,7 @@ declare namespace API {
     episodes?: ScriptEpisodeResponse[];
     analysis?: ScriptAnalysisTaskResponse;
     globalUnderstanding?: ScriptGlobalUnderstandingResponse;
+    episodeWarnings?: Warning[];
   };
 
   type SelectedTenantResponse = {
@@ -3590,6 +4026,23 @@ declare namespace API {
     segments?: SubtitleSegmentResponse[];
   };
 
+  type StoryboardWorkspacePageResponse = {
+    projectId?: number;
+    episodes?: ScriptEpisodeSummaryResponse[];
+    episodeNo?: number;
+    current?: number;
+    pageSize?: number;
+    total?: number;
+    storyboards?: StoryboardResponse[];
+  };
+
+  type storyboardWorkspaceParams = {
+    projectId: number;
+    episodeNo?: number;
+    current?: number;
+    pageSize?: number;
+  };
+
   type StyleLibraryResponse = {
     id?: number;
     externalId?: string;
@@ -3740,6 +4193,19 @@ declare namespace API {
     taskId?: number;
   };
 
+  type thumbnailParams = {
+    id: number;
+  };
+
+  type TimingUsageResponse = {
+    queueMs?: number;
+    preparationMs?: number;
+    modelMs?: number;
+    validationSaveMs?: number;
+    totalMs?: number;
+    firstByteMs?: number;
+  };
+
   type transactionsParams = {
     tenantId: number;
     current?: number;
@@ -3764,10 +4230,14 @@ declare namespace API {
   };
 
   type update2Params = {
-    code: string;
+    id: number;
   };
 
   type update3Params = {
+    code: string;
+  };
+
+  type update4Params = {
     code: string;
   };
 
@@ -4213,6 +4683,11 @@ declare namespace API {
     storyboardId?: number;
   };
 
+  type Warning = {
+    code?: string;
+    message?: string;
+  };
+
   type WorkflowAgentModelCall = {
     callLogId?: number;
     modelId?: number;
@@ -4221,6 +4696,10 @@ declare namespace API {
     transportOutcome?: string;
     businessOutcome?: string;
     attemptId?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
   };
 
   type WorkflowAgentRecord = {

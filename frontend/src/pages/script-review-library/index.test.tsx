@@ -322,4 +322,62 @@ describe('ScriptReviewLibraryPage', () => {
     expect(mocks.queryReviewProjectSummaries).toHaveBeenCalledTimes(1);
     expect(mocks.queryReviewProjectMetrics).toHaveBeenCalledTimes(2);
   });
+
+  it('merges a completed metrics response into the rendered summary row', async () => {
+    render(<ScriptReviewLibraryPage />);
+
+    expect(await screen.findByRole('button', { name: '处理问题' })).toBeInTheDocument();
+    expect(screen.getByText('待处理 1 项')).toBeInTheDocument();
+    expect(mocks.queryReviewProjectSummaries).toHaveBeenCalledTimes(1);
+    expect(mocks.queryReviewProjectMetrics).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes summaries and starts a new metrics request after importing a project', async () => {
+    mocks.importReviewProject.mockResolvedValue({ data: { project: { id: 3 } } });
+    mocks.queryReviewProjectSummaries
+      .mockResolvedValueOnce({ data: [{ id: 1, name: '旧剧本', sourceType: 'TEXT', status: 'ACTIVE' }] })
+      .mockResolvedValueOnce({ data: [{ id: 3, name: '新剧本', sourceType: 'TEXT', status: 'ACTIVE' }] });
+
+    render(<ScriptReviewLibraryPage />);
+    expect(await screen.findByText('旧剧本')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '新建剧本' }));
+    fireEvent.change(screen.getByPlaceholderText('剧本名称'), { target: { value: '新剧本' } });
+    fireEvent.change(screen.getByPlaceholderText('或直接粘贴剧本内容'), { target: { value: '第一集\\n新内容' } });
+    fireEvent.click(screen.getByRole('button', { name: '导入剧本' }));
+
+    expect(await screen.findByText('新剧本')).toBeInTheDocument();
+    expect(mocks.queryReviewProjectSummaries).toHaveBeenCalledTimes(2);
+    expect(mocks.queryReviewProjectMetrics).toHaveBeenCalledTimes(2);
+    expect(mocks.push).toHaveBeenCalledWith('/script-review/projects/3/reviews');
+  });
+
+  it('ignores metrics that resolve after a newer summary refresh', async () => {
+    let resolveFirstMetrics: (value: unknown) => void = () => undefined;
+    let resolveSecondMetrics: (value: unknown) => void = () => undefined;
+    mocks.importReviewProject.mockResolvedValue({ data: { project: { id: 3 } } });
+    mocks.queryReviewProjectSummaries
+      .mockResolvedValueOnce({ data: [{ id: 1, name: '旧剧本', sourceType: 'TEXT', status: 'ACTIVE' }] })
+      .mockResolvedValueOnce({ data: [{ id: 3, name: '新剧本', sourceType: 'TEXT', status: 'ACTIVE' }] });
+    mocks.queryReviewProjectMetrics
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirstMetrics = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecondMetrics = resolve; }));
+
+    render(<ScriptReviewLibraryPage />);
+    expect(await screen.findByText('旧剧本')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '新建剧本' }));
+    fireEvent.change(screen.getByPlaceholderText('剧本名称'), { target: { value: '新剧本' } });
+    fireEvent.change(screen.getByPlaceholderText('或直接粘贴剧本内容'), { target: { value: '第一集\\n新内容' } });
+    fireEvent.click(screen.getByRole('button', { name: '导入剧本' }));
+    expect(await screen.findByText('新剧本')).toBeInTheDocument();
+
+    resolveFirstMetrics({
+      data: [{ projectId: 1, versionCount: 99, latestRoundNo: 9, reviewState: 'COMPLETED', outstandingIssueCount: 0, actionLabel: '旧响应' }],
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: '旧响应' })).not.toBeInTheDocument());
+
+    resolveSecondMetrics({
+      data: [{ projectId: 3, versionCount: 1, latestRoundNo: 1, reviewState: 'COMPLETED', outstandingIssueCount: 0, actionLabel: '查看报告' }],
+    });
+    expect(await screen.findByRole('button', { name: '查看报告' })).toBeInTheDocument();
+  });
 });

@@ -3,6 +3,7 @@ package com.antshorttv.review;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -38,6 +39,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.mockito.ArgumentCaptor;
 
 @SpringBootTest(properties = "review.workflow.features.cache-observability=true")
@@ -144,6 +146,58 @@ class ReviewWorkbenchControllerTest {
             .andExpect(jsonPath("$.data[?(@.projectId == %d)].reviewState".formatted(readyForReviewProjectId), hasItem("READY_FOR_REVIEW")))
             .andExpect(jsonPath("$.data[?(@.projectId == %d)].outstandingIssueCount".formatted(readyForReviewProjectId), hasItem(0)))
             .andExpect(jsonPath("$.data[?(@.projectId == %d)].reviewState".formatted(notReviewedProjectId), hasItem("NOT_REVIEWED")));
+    }
+
+    @Test
+    void scopesProgressiveReadsToCreatorTenantViewerAndActiveBoundProjectMember() throws Exception {
+        String ownerToken = registerUser("13800017113", "Review Access Owner");
+        Long tenantId = createTenant(ownerToken, "剧本审核访问团队");
+        Long ownerId = userIdByMobile("13800017113");
+        Long mainProjectId = createMainProject(ownerToken, tenantId, ownerId, "审核绑定项目", "REVIEW_ACCESS_PROJECT");
+        Long personalDraftId = importReviewProject(ownerToken, tenantId, "创建者草稿");
+        Long boundProjectId = importBoundReviewProject(ownerToken, tenantId, mainProjectId, "项目审核稿");
+
+        String memberToken = registerUser("13800017114", "Review Project Member");
+        Long memberId = userIdByMobile("13800017114");
+        Long memberTenantMembershipId = addTenantMember(tenantId, memberId);
+        Long projectMemberRoleId = jdbcTemplate.queryForObject(
+            "select id from project_role where project_id = ? and code = 'MEMBER'", Long.class, mainProjectId);
+        jdbcTemplate.update("""
+            insert into project_member
+              (tenant_id, project_id, user_id, role_id, joined_at, status, created_by, created_at, updated_at)
+            values (?, ?, ?, ?, now(), 'ACTIVE', ?, now(), now())
+            """, tenantId, mainProjectId, memberId, projectMemberRoleId, ownerId);
+
+        String viewerToken = registerUser("13800017115", "Review Tenant Viewer");
+        Long viewerId = userIdByMobile("13800017115");
+        Long viewerMembershipId = addTenantMember(tenantId, viewerId);
+        Long viewerRoleId = grantTenantWideProjectView(tenantId, ownerId, viewerMembershipId);
+
+        String outsiderToken = registerUser("13800017116", "Review Outsider");
+        Long outsiderId = userIdByMobile("13800017116");
+        addTenantMember(tenantId, outsiderId);
+
+        String crossTenantOwnerToken = registerUser("13800017117", "Review Cross Tenant");
+        Long crossTenantId = createTenant(crossTenantOwnerToken, "跨租户审核团队");
+        Long crossTenantProjectId = importReviewProject(crossTenantOwnerToken, crossTenantId, "跨租户剧本");
+
+        assertProjectIds(ownerToken, tenantId, "/summaries", personalDraftId, boundProjectId);
+        assertMetricProjectIds(ownerToken, tenantId, personalDraftId, boundProjectId);
+        assertProjectIds(memberToken, tenantId, "/summaries", boundProjectId);
+        assertMetricProjectIds(memberToken, tenantId, boundProjectId);
+        assertProjectIds(viewerToken, tenantId, "/summaries", personalDraftId, boundProjectId);
+        assertMetricProjectIds(viewerToken, tenantId, personalDraftId, boundProjectId);
+        assertProjectIds(outsiderToken, tenantId, "/summaries");
+        assertMetricProjectIds(outsiderToken, tenantId);
+
+        jdbcTemplate.update("update project_member set status = 'REMOVED' where project_id = ? and user_id = ?",
+            mainProjectId, memberId);
+        assertProjectIds(memberToken, tenantId, "/summaries");
+        assertMetricProjectIds(memberToken, tenantId);
+
+        assertThat(viewerRoleId).isNotNull();
+        assertThat(memberTenantMembershipId).isNotNull();
+        assertThat(crossTenantProjectId).isNotEqualTo(personalDraftId);
     }
 
     @Test
@@ -1061,6 +1115,88 @@ class ReviewWorkbenchControllerTest {
                status, manually_resolved, created_at, updated_at)
             values (?, ?, ?, ?, 1, ?, '台词合理性', 'P1', '指标测试问题', 'OPEN', ?, now(), now())
             """, tenantId, projectId, taskId, versionId, issueNo, manuallyResolved);
+    }
+
+    private void assertProjectIds(String token, Long tenantId, String path, Long... projectIds) throws Exception {
+        ResultActions request = mockMvc.perform(get("/api/script-review/projects" + path)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk());
+        if (projectIds.length == 0) {
+            request.andExpect(jsonPath("$.data", hasSize(0)));
+            return;
+        }
+        request.andExpect(jsonPath("$.data[*].id", containsInAnyOrder(
+            java.util.Arrays.stream(projectIds).map(Long::intValue).toArray(Integer[]::new))));
+    }
+
+    private void assertMetricProjectIds(String token, Long tenantId, Long... projectIds) throws Exception {
+        ResultActions request = mockMvc.perform(get("/api/script-review/projects/metrics")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk());
+        if (projectIds.length == 0) {
+            request.andExpect(jsonPath("$.data", hasSize(0)));
+            return;
+        }
+        request.andExpect(jsonPath("$.data[*].projectId", containsInAnyOrder(
+            java.util.Arrays.stream(projectIds).map(Long::intValue).toArray(Integer[]::new))));
+    }
+
+    private Long createMainProject(String token, Long tenantId, Long ownerId, String name, String code) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/projects")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"%s","code":"%s","description":"审核访问测试","ownerId":%d}
+                    """.formatted(name, code, ownerId)))
+            .andExpect(status().isOk())
+            .andReturn();
+        return readLong(result, "$.data.id");
+    }
+
+    private Long importBoundReviewProject(String token, Long tenantId, Long mainProjectId, String name) throws Exception {
+        MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
+                .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE,
+                    ("第一集\\n" + name).getBytes()))
+                .param("name", name)
+                .param("mainProjectId", mainProjectId.toString())
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andReturn();
+        return readLong(imported, "$.data.project.id");
+    }
+
+    private Long addTenantMember(Long tenantId, Long userId) {
+        jdbcTemplate.update("""
+            insert into tenant_member (tenant_id, user_id, member_type, status, joined_at, created_at, updated_at)
+            values (?, ?, 'MEMBER', 'ACTIVE', now(), now(), now())
+            """, tenantId, userId);
+        return jdbcTemplate.queryForObject(
+            "select id from tenant_member where tenant_id = ? and user_id = ?", Long.class, tenantId, userId);
+    }
+
+    private Long grantTenantWideProjectView(Long tenantId, Long creatorId, Long membershipId) {
+        jdbcTemplate.update("""
+            insert into `role`
+              (tenant_id, code, name, description, role_type, status, is_default, created_by, created_at, updated_at)
+            values (?, 'REVIEW_LIST_VIEWER', '审核列表查看者', null, 'CUSTOM', 'ACTIVE', false, ?, now(), now())
+            """, tenantId, creatorId);
+        Long roleId = jdbcTemplate.queryForObject(
+            "select id from `role` where tenant_id = ? and code = 'REVIEW_LIST_VIEWER'", Long.class, tenantId);
+        Long permissionId = jdbcTemplate.queryForObject(
+            "select id from permission where code = 'PROJECT:VIEW_ALL'", Long.class);
+        jdbcTemplate.update("insert into role_permission (role_id, permission_id, created_at) values (?, ?, now())",
+            roleId, permissionId);
+        jdbcTemplate.update("insert into member_role (member_id, role_id, created_by, created_at) values (?, ?, ?, now())",
+            membershipId, roleId, creatorId);
+        return roleId;
+    }
+
+    private Long userIdByMobile(String mobile) {
+        return jdbcTemplate.queryForObject("select id from app_user where mobile = ?", Long.class, mobile);
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

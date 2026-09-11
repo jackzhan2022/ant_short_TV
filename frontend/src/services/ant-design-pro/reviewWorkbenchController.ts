@@ -51,8 +51,9 @@ export async function projects(options?: { [key: string]: any }) {
 
 /** 此处后端没有提供注释 POST /api/script-review/projects */
 export async function importProject(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.importProjectParams,
   body: {
-    mainProjectId?: number;
     content?: string;
     name?: string;
   },
@@ -88,6 +89,9 @@ export async function importProject(
     "/api/script-review/projects",
     {
       method: "POST",
+      params: {
+        ...params,
+      },
       data: formData,
       requestType: "form",
       ...(options || {}),
@@ -151,6 +155,29 @@ export async function exportUsingPost(
       },
       params: { ...queryParams },
       data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/script-review/projects/${param0}/reviews */
+export async function reviewHistory(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.reviewHistoryParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseReviewProjectReviewHistoryResponse>(
+    `/api/script-review/projects/${param0}/reviews`,
+    {
+      method: "GET",
+      params: {
+        // page has a default value: 1
+        page: "1",
+        // pageSize has a default value: 20
+        pageSize: "20",
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );
@@ -251,6 +278,28 @@ export async function versionHistory(
     {
       method: "GET",
       params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/script-review/projects/metrics */
+export async function projectMetrics(options?: { [key: string]: any }) {
+  return request<API.ApiResponseListReviewProjectMetricsResponse>(
+    "/api/script-review/projects/metrics",
+    {
+      method: "GET",
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/script-review/projects/summaries */
+export async function projectSummaries(options?: { [key: string]: any }) {
+  return request<API.ApiResponseListReviewProjectListSummaryResponse>(
+    "/api/script-review/projects/summaries",
+    {
+      method: "GET",
       ...(options || {}),
     }
   );

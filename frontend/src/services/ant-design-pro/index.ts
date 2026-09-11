@@ -12,6 +12,7 @@ import * as projectAiConfigController from "./projectAiConfigController";
 import * as aiImageTaskController from "./aiImageTaskController";
 import * as projectController from "./projectController";
 import * as platformTenantController from "./platformTenantController";
+import * as platformCommercialEntitlementController from "./platformCommercialEntitlementController";
 import * as workflowSkillController from "./workflowSkillController";
 import * as workflowAgentController from "./workflowAgentController";
 import * as platformAiManagementController from "./platformAiManagementController";
@@ -20,7 +21,9 @@ import * as tenantMemberController from "./tenantMemberController";
 import * as tenantInvitationController from "./tenantInvitationController";
 import * as commercialOrderController from "./commercialOrderController";
 import * as aiExecutionController from "./aiExecutionController";
+import * as scriptContentController from "./scriptContentController";
 import * as aiVideoTaskController from "./aiVideoTaskController";
+import * as inspirationThumbnailBackfillController from "./inspirationThumbnailBackfillController";
 import * as platformCommercialPackageController from "./platformCommercialPackageController";
 import * as platformCommercialOrderController from "./platformCommercialOrderController";
 import * as workflowAgentRunController from "./workflowAgentRunController";
@@ -49,6 +52,7 @@ export default {
   aiImageTaskController,
   projectController,
   platformTenantController,
+  platformCommercialEntitlementController,
   workflowSkillController,
   workflowAgentController,
   platformAiManagementController,
@@ -57,7 +61,9 @@ export default {
   tenantInvitationController,
   commercialOrderController,
   aiExecutionController,
+  scriptContentController,
   aiVideoTaskController,
+  inspirationThumbnailBackfillController,
   platformCommercialPackageController,
   platformCommercialOrderController,
   workflowAgentRunController,

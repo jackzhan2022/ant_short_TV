@@ -64,6 +64,40 @@ export async function decideAssetCandidate(
   );
 }
 
+/** 此处后端没有提供注释 GET /api/projects/${param0}/asset-settings-summary */
+export async function assetSettingsSummary(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.assetSettingsSummaryParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseAssetSettingsSummaryResponse>(
+    `/api/projects/${param0}/asset-settings-summary`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/asset-settings-workspace */
+export async function assetSettingsWorkspace(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.assetSettingsWorkspaceParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseAssetSettingsWorkspaceResponse>(
+    `/api/projects/${param0}/asset-settings-workspace`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 POST /api/projects/${param0}/episodes/${param1}/assets/regenerate */
 export async function regenerateEpisodeAssets(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -232,6 +266,23 @@ export async function reanalyzeVersion(
   );
 }
 
+/** 此处后端没有提供注释 GET /api/projects/${param0}/script-content */
+export async function scriptContent(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.scriptContentParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseScriptResponse>(
+    `/api/projects/${param0}/script-content`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 PUT /api/projects/${param0}/script-elements/${param1}/${param2} */
 export async function updateElement(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -369,6 +420,79 @@ export async function createVisualVariant(
       },
       params: { ...queryParams },
       data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/script-elements/${param1}/${param2}/visual-workspace */
+export async function assetVisualWorkspace(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.assetVisualWorkspaceParams,
+  options?: { [key: string]: any }
+) {
+  const {
+    projectId: param0,
+    elementType: param1,
+    elementId: param2,
+    ...queryParams
+  } = params;
+  return request<API.ApiResponseAssetVisualWorkspace>(
+    `/api/projects/${param0}/script-elements/${param1}/${param2}/visual-workspace`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/script-episodes/${param1} */
+export async function scriptEpisode(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.scriptEpisodeParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, episodeId: param1, ...queryParams } = params;
+  return request<API.ApiResponseScriptEpisodeResponse>(
+    `/api/projects/${param0}/script-episodes/${param1}`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/script-page-workspace */
+export async function scriptPageWorkspace(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.scriptPageWorkspaceParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseScriptPageWorkspaceResponse>(
+    `/api/projects/${param0}/script-page-workspace`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/script-versions/${param1} */
+export async function scriptVersion(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.scriptVersionParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, versionId: param1, ...queryParams } = params;
+  return request<API.ApiResponseScriptVersionResponse>(
+    `/api/projects/${param0}/script-versions/${param1}`,
+    {
+      method: "GET",
+      params: { ...queryParams },
       ...(options || {}),
     }
   );
@@ -547,6 +671,25 @@ export async function latestStoryboardBatch(
     {
       method: "GET",
       params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/storyboard-workspace */
+export async function storyboardWorkspace(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.storyboardWorkspaceParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseStoryboardWorkspacePageResponse>(
+    `/api/projects/${param0}/storyboard-workspace`,
+    {
+      method: "GET",
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );

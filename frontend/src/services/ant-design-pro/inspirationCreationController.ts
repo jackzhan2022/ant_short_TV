@@ -3,9 +3,9 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/inspiration-creations */
-export async function list14(
+export async function list15(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list14Params,
+  params: API.list15Params,
   options?: { [key: string]: any }
 ) {
   return request<API.ApiResponseInspirationCreationPageResponse>(
@@ -49,6 +49,20 @@ export async function file(
 ) {
   const { id: param0, ...queryParams } = params;
   return request<string>(`/api/inspiration-creations/${param0}/file`, {
+    method: "GET",
+    params: { ...queryParams },
+    ...(options || {}),
+  });
+}
+
+/** 此处后端没有提供注释 GET /api/inspiration-creations/${param0}/thumbnail */
+export async function thumbnail(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.thumbnailParams,
+  options?: { [key: string]: any }
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<string>(`/api/inspiration-creations/${param0}/thumbnail`, {
     method: "GET",
     params: { ...queryParams },
     ...(options || {}),
