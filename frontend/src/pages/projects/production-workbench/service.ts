@@ -12,7 +12,7 @@ export type ScriptInfo = {
   projectId: number;
   title: string;
   sourceType: string;
-  content: string;
+  content?: string;
   status: string;
   currentVersionId?: number | null;
   updatedAt?: string;
@@ -33,7 +33,7 @@ export type ScriptEpisode = {
   episodeId?: number;
   episodeNo: number;
   title: string;
-  content: string;
+  content?: string;
   summary?: string | null;
   contentFingerprint?: string | null;
   generatedByRunId?: number | null;
@@ -574,9 +574,19 @@ export const queryScriptPageWorkspace = async (projectId: number) =>
     `/api/projects/${projectId}/script-page-workspace`,
   );
 
+export const queryScriptContent = async (projectId: number) =>
+  request<ApiResponse<ScriptInfo | null>>(
+    `/api/projects/${projectId}/script-content`,
+  );
+
 export const queryScriptVersion = async (projectId: number, versionId: number) =>
   request<ApiResponse<ScriptVersion>>(
     `/api/projects/${projectId}/script-versions/${versionId}`,
+  );
+
+export const queryScriptEpisode = async (projectId: number, episodeId: number) =>
+  request<ApiResponse<ScriptEpisode>>(
+    `/api/projects/${projectId}/script-episodes/${episodeId}`,
   );
 
 export const queryCurrentScriptAnalysis = async (projectId: number) =>

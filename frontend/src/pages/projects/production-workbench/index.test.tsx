@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   queryProject: vi.fn(),
   updateProject: vi.fn(),
   queryTeamPointAccount: vi.fn(),
-  queryScriptWorkspace: vi.fn(),
+  queryScriptContent: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -34,7 +34,7 @@ vi.mock('./ai-config/service', () => ({
 }));
 
 vi.mock('./service', () => ({
-  queryScriptPageWorkspace: mocks.queryScriptWorkspace,
+  queryScriptContent: mocks.queryScriptContent,
 }));
 
 vi.mock('@/services/account-team/auth', () => ({
@@ -112,22 +112,14 @@ describe('ProductionWorkbench shell', () => {
     mocks.queryTeamPointAccount.mockResolvedValue({
       data: { balance: 88 },
     });
-    mocks.queryScriptWorkspace.mockResolvedValue({
+    mocks.queryScriptContent.mockResolvedValue({
       data: {
+        id: 2,
         projectId: 1,
-        script: {
-          id: 2,
-          projectId: 1,
-          title: '第一稿',
-          sourceType: 'TEXT',
-          content: '这是完整原文。\n第二段也需要展示。',
-          status: 'READY',
-        },
-        versions: [],
-        characters: [],
-        scenes: [],
-        props: [],
-        storyboards: [],
+        title: '第一稿',
+        sourceType: 'TEXT',
+        content: '这是完整原文。\n第二段也需要展示。',
+        status: 'READY',
       },
     });
     mocks.updateProject.mockResolvedValue({

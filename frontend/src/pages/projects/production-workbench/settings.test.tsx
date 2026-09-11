@@ -314,6 +314,21 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.getByLabelText('资产设定加载中')).toBeInTheDocument();
   });
 
+  it('loads only the opened visual detail and retains assets on detail failure', async () => {
+    mocks.queryAssetVisualWorkspace.mockRejectedValueOnce(new Error('offline'));
+    render(<ProductionWorkbenchSettings />);
+    const open = await screen.findByRole('button', { name: '管理斌斌视觉形象' });
+    expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
+    expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(open);
+    await screen.findByText('视觉形象加载失败');
+    expect(screen.getByTestId('asset-image-CHARACTER-1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试视觉形象' }));
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('视觉形象加载失败')).not.toBeInTheDocument());
+    expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a retry action when the initial asset settings request fails', async () => {
     mocks.queryAssetSettingsSummary
       .mockRejectedValueOnce(new Error('load failed'))
@@ -418,6 +433,10 @@ describe('ProductionWorkbenchSettings', () => {
         1,
         expect.objectContaining({ name: '雨夜造型' }),
       );
+      expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledTimes(2);
+      expect(mocks.queryAssetVisualWorkspace).toHaveBeenLastCalledWith(1, 'CHARACTER', 1);
+      expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(2);
+      expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
     });
     expect(
       screen.queryByRole('button', { name: '删除' }),

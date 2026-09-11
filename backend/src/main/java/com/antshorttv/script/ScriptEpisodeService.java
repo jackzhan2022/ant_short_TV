@@ -117,6 +117,15 @@ public class ScriptEpisodeService {
             .toList();
     }
 
+    public ScriptEpisodeResponse currentEpisode(Long tenantId, Long projectId, Long episodeId) {
+        ScriptEpisodeEntity item = episodeMapper.selectById(episodeId);
+        if (item == null || !tenantId.equals(item.getTenantId()) || !projectId.equals(item.getProjectId())
+            || item.getRetiredAt() != null) return null;
+        return new ScriptEpisodeResponse(item.getId(), item.getEpisodeNo(), item.getTitle(), item.getContent(),
+            item.getSummary(), item.getContentFingerprint(), item.getGeneratedByRunId(),
+            summaryRepository.findCurrent(tenantId, item.getScriptId(), item.getId()).orElse(null));
+    }
+
     private List<ScriptEpisodeEntity> activeEntities(Long tenantId, Long projectId, Long scriptId) {
         return episodeMapper.selectList(new QueryWrapper<ScriptEpisodeEntity>()
             .eq("tenant_id", tenantId)

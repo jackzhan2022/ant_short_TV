@@ -119,15 +119,31 @@ class ScriptWorkflowControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"title\":\"按需加载项目\",\"content\":\"第1集：开始\\n正文\",\"status\":\"DRAFT\"}"))
             .andExpect(status().isOk());
+        Long episodeId = jdbcTemplate.queryForObject(
+            "select id from script_episode where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
 
         mockMvc.perform(get("/api/projects/%d/script-page-workspace".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.script.content", is("第1集：开始\n正文")))
+            .andExpect(jsonPath("$.data.script.content").doesNotExist())
             .andExpect(jsonPath("$.data.versions[0].content").doesNotExist())
+            .andExpect(jsonPath("$.data.episodes[0].content").doesNotExist())
             .andExpect(jsonPath("$.data.characters").doesNotExist())
             .andExpect(jsonPath("$.data.storyboards").doesNotExist());
+
+        mockMvc.perform(get("/api/projects/%d/script-content".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.content", is("第1集：开始\n正文")));
+
+        mockMvc.perform(get("/api/projects/%d/script-episodes/%d".formatted(projectId, episodeId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.content", is("正文")));
 
         mockMvc.perform(get("/api/projects/%d/asset-settings-summary".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -225,9 +241,11 @@ class ScriptWorkflowControllerTest {
 
         for (String path : List.of(
             "/script-page-workspace",
+            "/script-content",
             "/asset-settings-summary",
             "/storyboard-workspace",
-            "/script-versions/" + versionId
+            "/script-versions/" + versionId,
+            "/script-episodes/999999999"
         )) {
             mockMvc.perform(get("/api/projects/%d%s".formatted(projectId, path))
                     .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))

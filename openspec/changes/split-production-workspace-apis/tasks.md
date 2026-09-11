@@ -2,7 +2,7 @@
 
 - [x] 1.1 Add failing controller tests for script-page workspace, authorized version detail, asset-settings summary, single-asset visual workspace, and episode-paged storyboard endpoints.
 - [x] 1.2 Add failing isolation and validation tests for cross-tenant/project resources, invalid asset types, missing resources, and bounded storyboard pagination.
-- [ ] 1.3 Add a service-level query-boundary test proving asset-summary loading does not expand visual workspaces per asset and keep a compatibility test for the legacy aggregate.
+- [x] 1.3 Add a service-level query-boundary test proving asset-summary loading does not expand visual workspaces per asset and keep a compatibility test for the legacy aggregate.
 
 ## 2. Backend Focused Reads
 
@@ -16,29 +16,30 @@
 ## 3. Frontend Service Contracts
 
 - [x] 3.1 Add page-local TypeScript types and request functions for the focused script, version-detail, asset-summary, asset-visual, analysis-status, and storyboard-page contracts.
-- [ ] 3.2 Add failing frontend service/component tests that assert each page calls only its focused bootstrap endpoints.
+- [x] 3.2 Add failing frontend service/component tests that assert each page calls only its focused bootstrap endpoints.
 
 ## 4. Script Page Migration
 
-- [ ] 4.1 Migrate the script page bootstrap to the focused script-page workspace and load full historical version content only when selected.
+- [x] 4.1 Migrate the script page bootstrap to the focused script-page workspace and load full historical version content only when selected.
 - [x] 4.2 Replace five-second aggregate polling with current-analysis polling, stop on terminal state, and refresh the focused script workspace at most once when reconciliation is required.
-- [ ] 4.3 Add tests for active polling, completion/failure transitions, on-demand version loading, and retained shell/error behavior.
+- [x] 4.3 Add tests for active polling, completion/failure transitions, on-demand version loading, and retained shell/error behavior.
 
 ## 5. Settings Page Migration
 
 - [x] 5.1 Migrate the settings page to asset-summary loading and adapt list/card state to summary fields.
 - [x] 5.2 Load one asset's visual workspace when its gallery/editor opens, with local loading and error states and stale-response protection.
-- [ ] 5.3 Refresh only the active asset detail and affected summary after visual mutations, with tests covering open, failure, mutation, and refresh flows.
+- [x] 5.3 Refresh only the active asset detail and affected summary after visual mutations, with tests covering open, failure, mutation, and refresh flows.
 
 ## 6. Storyboard and Video Page Migration
 
 - [x] 6.1 Migrate storyboard bootstrap and episode switching to bounded episode pages while keeping episode navigation independent from the active page of shots.
 - [x] 6.2 Add pagination state, stale-response protection, and active-page refresh after storyboard mutations.
 - [x] 6.3 Migrate video/shot consumers that currently use `script-workspace` to the smallest focused storyboard read needed for their initial render.
-- [ ] 6.4 Add tests for episode switching, pagination, optional media-task failures, and mutation refresh behavior.
+- [x] 6.4 Add tests for episode switching, pagination, optional media-task failures, and mutation refresh behavior.
 
 ## 7. Verification and Performance Evidence
 
-- [ ] 7.1 Run focused backend and frontend tests, then full backend tests, frontend tests, Biome/type checks, Ant Design lint, and production build.
+- [x] 7.1 Run focused backend and frontend tests, then full backend tests, frontend tests, Biome/type checks, Ant Design lint, and production build.
+  - Evidence: verification.md records the full backend run and corrected-failure rerun separately; frontend 300/300, lint/type checks and final build pass. Existing lint warnings are retained and documented.
 - [ ] 7.2 Compare authenticated request duration, query count, and response size for project 33 across legacy and focused endpoints and record the results in the change notes or implementation summary.
 - [x] 7.3 Verify no known production-workbench page uses `script-workspace` for initial loading or polling, while the legacy endpoint remains contract-compatible.

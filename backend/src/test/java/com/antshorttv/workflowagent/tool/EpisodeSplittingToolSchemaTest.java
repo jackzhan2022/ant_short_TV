@@ -11,7 +11,7 @@ class EpisodeSplittingToolSchemaTest {
     @Autowired private WorkflowToolRegistry tools;
 
     @Test
-    void splitSaveAcceptsOnlyOrderedTitlesAndSourceMarkers() {
+    void splitSaveSupportsLegacyMarkersAndVersionTwoSegmentIdsWithoutFullContent() {
         WorkflowToolDefinition tool = tools.require("save_episode_splitting");
         var input = tool.inputSchema();
         var item = input.path("properties").path("episodes").path("items");
@@ -24,9 +24,11 @@ class EpisodeSplittingToolSchemaTest {
         assertThat(input.path("properties").path("episodes").path("maxItems").asInt()).isBetween(2, 500);
         assertThat(item.path("additionalProperties").asBoolean()).isFalse();
         assertThat(item.path("required")).extracting(node -> node.asText())
-            .containsExactly("title", "startMarker", "endMarker");
+            .containsExactly("title");
+        assertThat(input.path("properties").path("schemaVersion").path("minimum").asInt()).isEqualTo(1);
+        assertThat(input.path("properties").path("schemaVersion").path("maximum").asInt()).isEqualTo(2);
         assertThat(item.path("properties").fieldNames()).toIterable()
-            .containsExactlyInAnyOrder("title", "startMarker", "endMarker")
+            .containsExactlyInAnyOrder("title", "startMarker", "endMarker", "startSegmentId", "endSegmentId")
             .doesNotContain("content", "episodeId", "scriptId", "contentFingerprint");
         assertThat(item.path("properties").path("title").path("maxLength").asInt()).isPositive();
         assertThat(item.path("properties").path("startMarker").path("minLength").asInt()).isEqualTo(1);

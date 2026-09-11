@@ -207,15 +207,31 @@ record ScriptVersionSummaryResponse(
 
 record ScriptPageWorkspaceResponse(
     Long projectId,
-    ScriptResponse script,
+    ScriptPageScriptResponse script,
     List<ScriptVersionSummaryResponse> versions,
-    List<ScriptEpisodeResponse> episodes,
+    List<ScriptEpisodeSummaryResponse> episodes,
+    List<EpisodeSplitWarnings.Warning> episodeWarnings,
     ScriptAnalysisTaskResponse analysis,
     ScriptGlobalUnderstandingResponse globalUnderstanding
+) {}
+
+record ScriptPageScriptResponse(
+    Long id, Long projectId, String title, String sourceType, String status,
+    Long currentVersionId, LocalDateTime updatedAt
 ) {
-    @com.fasterxml.jackson.annotation.JsonProperty("episodeWarnings")
-    public List<EpisodeSplitWarnings.Warning> episodeWarnings() {
-        return new EpisodeSplitWarnings().inspect(script == null ? null : script.content(), episodes);
+    static ScriptPageScriptResponse from(ScriptEntity entity) {
+        return entity == null ? null : new ScriptPageScriptResponse(entity.getId(), entity.getProjectId(),
+            entity.getTitle(), entity.getSourceType(), entity.getStatus(), entity.getCurrentVersionId(), entity.getUpdatedAt());
+    }
+}
+
+record ScriptEpisodeSummaryResponse(
+    Long episodeId, Integer episodeNo, String title, String summary, String contentFingerprint,
+    Long generatedByRunId, ScriptEpisodeSummaryDocument formalSummary
+) {
+    static ScriptEpisodeSummaryResponse from(ScriptEpisodeResponse episode) {
+        return new ScriptEpisodeSummaryResponse(episode.episodeId(), episode.episodeNo(), episode.title(),
+            episode.summary(), episode.contentFingerprint(), episode.generatedByRunId(), episode.formalSummary());
     }
 }
 

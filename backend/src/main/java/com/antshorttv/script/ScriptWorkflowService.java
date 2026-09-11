@@ -608,7 +608,9 @@ public class ScriptWorkflowService {
         if (episodes.isEmpty()) {
             episodes = ScriptEpisodeParser.parse(script == null ? null : script.getContent());
         }
-        return new ScriptPageWorkspaceResponse(projectId, ScriptResponse.from(script), versions, episodes,
+        return new ScriptPageWorkspaceResponse(projectId, ScriptPageScriptResponse.from(script), versions,
+            episodes.stream().map(ScriptEpisodeSummaryResponse::from).toList(),
+            new EpisodeSplitWarnings().inspect(script == null ? null : script.getContent(), episodes),
             analysis(tenantId, projectId, script), script == null || globalUnderstandingRepository == null ? null
                 : globalUnderstandingRepository.findCurrent(tenantId, script.getId())
                     .map(ScriptGlobalUnderstandingResponse::from).orElse(null));
@@ -622,6 +624,20 @@ public class ScriptWorkflowService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "剧本版本不存在。");
         }
         return ScriptVersionResponse.from(version);
+    }
+
+    public ScriptEpisodeResponse scriptEpisode(Long tenantId, Long projectId, Long episodeId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        ScriptEpisodeResponse episode = scriptEpisodeService.currentEpisode(tenantId, projectId, episodeId);
+        if (episode == null) throw new BusinessException(ErrorCode.NOT_FOUND, "剧集不存在。");
+        return episode;
+    }
+
+    public ScriptResponse scriptContent(Long tenantId, Long projectId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        return ScriptResponse.from(scriptMapper.selectCurrentByProject(tenantId, projectId));
     }
 
     public AssetSettingsSummaryResponse assetSettingsSummary(Long tenantId, Long projectId) {

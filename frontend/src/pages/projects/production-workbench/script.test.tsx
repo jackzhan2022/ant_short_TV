@@ -1,5 +1,6 @@
 import {
   fireEvent,
+  act,
   render,
   screen,
   waitFor,
@@ -12,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   queryScriptWorkspace: vi.fn(),
   queryAssetSettingsSummary: vi.fn(),
   queryCurrentScriptAnalysis: vi.fn(),
+  queryScriptEpisode: vi.fn(),
+  queryScriptVersion: vi.fn(),
   queryProject: vi.fn(),
   retryScriptAnalysis: vi.fn(),
   reanalyzeScript: vi.fn(),
@@ -85,6 +88,8 @@ vi.mock('./service', () => ({
   queryScriptPageWorkspace: mocks.queryScriptWorkspace,
   queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
   queryCurrentScriptAnalysis: mocks.queryCurrentScriptAnalysis,
+  queryScriptEpisode: mocks.queryScriptEpisode,
+  queryScriptVersion: mocks.queryScriptVersion,
   retryScriptAnalysis: mocks.retryScriptAnalysis,
   reanalyzeScript: mocks.reanalyzeScript,
   regenerateEpisodeSplitting: mocks.regenerateEpisodeSplitting,
@@ -109,7 +114,51 @@ vi.mock('@/services/account-team/project', () => ({
   queryProject: mocks.queryProject,
 }));
 
+vi.mock('@/services/account-team/auth', () => ({
+  getCurrentTenantId: () => 10,
+}));
+
 describe('ProductionWorkbenchScript', () => {
+  it.each(['COMPLETED', 'FAILED'])('polls only status then reconciles once and stops at %s', async (terminalStatus) => {
+    vi.useFakeTimers();
+    try {
+      const running = { projectId: 1, script: null, versions: [], episodes: [], analysis: {
+        status: 'RUNNING', stages: [{ stageCode: 'GLOBAL_UNDERSTANDING', status: 'RUNNING', progress: 10 }],
+      } };
+      mocks.queryScriptWorkspace.mockResolvedValueOnce({ data: running }).mockResolvedValue({ data: {
+        ...running, analysis: { status: terminalStatus, stages: [] },
+      } });
+      mocks.queryCurrentScriptAnalysis.mockResolvedValueOnce({ data: running.analysis })
+        .mockResolvedValue({ data: { status: terminalStatus, stages: [] } });
+      render(<ProductionWorkbenchScript />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(mocks.queryCurrentScriptAnalysis).toHaveBeenCalledTimes(1);
+      expect(mocks.queryScriptWorkspace).toHaveBeenCalledTimes(1);
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(mocks.queryScriptWorkspace).toHaveBeenCalledTimes(2);
+      await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+      expect(mocks.queryCurrentScriptAnalysis).toHaveBeenCalledTimes(2);
+      expect(mocks.queryScriptWorkspace).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+  it('loads version bodies only after selection and recovers from a detail failure', async () => {
+    mocks.queryScriptWorkspace.mockResolvedValue({ data: {
+      projectId: 1, script: null, episodes: [],
+      versions: [{ id: 7, versionNo: 1 }, { id: 8, versionNo: 2 }],
+    } });
+    mocks.queryScriptVersion.mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ data: { content: '历史版本正文内容' } });
+    render(<ProductionWorkbenchScript />);
+    const selector = await screen.findByRole('combobox', { name: '选择历史版本' });
+    expect(mocks.queryScriptVersion).not.toHaveBeenCalled();
+    fireEvent.change(selector, { target: { value: '7' } });
+    await screen.findByText('版本正文加载失败');
+    expect(mocks.queryScriptVersion).toHaveBeenCalledWith(1, 7);
+    fireEvent.click(screen.getByRole('button', { name: '重试版本' }));
+    expect(await screen.findByText('历史版本正文内容')).toBeInTheDocument();
+    expect(mocks.queryScriptVersion).toHaveBeenCalledTimes(2);
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.queryProject.mockResolvedValue({
@@ -190,6 +239,7 @@ describe('ProductionWorkbenchScript', () => {
         analysis: null,
       },
     });
+    mocks.queryScriptEpisode.mockResolvedValue({ data: { episodeId: 1, episodeNo: 1, title: '第1集', content: '正文' } });
     mocks.queryAssetSettingsSummary.mockResolvedValue({
       data: { projectId: 1, characters: [], scenes: [], props: [] },
     });
@@ -202,6 +252,14 @@ describe('ProductionWorkbenchScript', () => {
       status: 'SUCCEEDED',
       progress: 100,
     });
+  });
+
+  it('loads the script page without requesting the heavyweight project detail', async () => {
+    render(<ProductionWorkbenchScript />);
+
+    await waitFor(() => expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1));
+
+    expect(mocks.queryProject).not.toHaveBeenCalled();
   });
 
   it('does not render script content before the workspace status is known', async () => {

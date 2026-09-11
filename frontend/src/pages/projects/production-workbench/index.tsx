@@ -15,7 +15,7 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
 import type { Project } from '@/services/account-team/types';
 import { queryProject, updateProject } from '@/services/account-team/project';
-import { queryScriptPageWorkspace } from './service';
+import { queryScriptContent } from './service';
 import ProjectAiConfigPage from './ai-config';
 
 const topSteps = [
@@ -108,8 +108,8 @@ const ProductionWorkbench = () => {
     setSourceOpen(true);
     setSourceLoading(true);
     try {
-      const response = await queryScriptPageWorkspace(projectId);
-      setSourceContent(response.data.script?.content || '暂无剧本原文');
+      const response = await queryScriptContent(projectId);
+      setSourceContent(response.data?.content || '暂无剧本原文');
     } catch {
       setSourceContent('剧本原文加载失败');
       message.error('剧本原文加载失败');
@@ -309,7 +309,7 @@ const ProductionWorkbench = () => {
           minHeight: 'calc(100vh - 100px)',
         }}
       >
-        <Outlet />
+        <Outlet context={{ project }} />
       </main>
 
       <Modal title="项目 AI 模型" open={aiConfigOpen} footer={null} width={1100} onCancel={() => setAiConfigOpen(false)}>

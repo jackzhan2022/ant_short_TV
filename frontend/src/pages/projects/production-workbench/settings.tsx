@@ -434,6 +434,7 @@ const ProductionWorkbenchSettings = () => {
     item: AssetRecord;
   }>();
   const [visualLoading, setVisualLoading] = useState(false);
+  const [visualError, setVisualError] = useState(false);
   const visualRequestIdRef = useRef(0);
   const [selectedVisualVariantId, setSelectedVisualVariantId] =
     useState<number>();
@@ -595,8 +596,7 @@ const ProductionWorkbenchSettings = () => {
       );
       setNewVariantName('');
       setAddingVariant(false);
-      await reload();
-      message.success('视觉形象已新增');
+      await mutateVariant(async () => undefined, '视觉形象已新增');
     } catch {
       message.error('新增视觉形象失败');
     }
@@ -621,7 +621,13 @@ const ProductionWorkbenchSettings = () => {
   ) => {
     try {
       await action();
-      const next = await reload();
+      const requestId = visualRequestIdRef.current;
+      const [summaryResponse, detailResponse] = await Promise.all([
+        queryAssetSettingsSummary(projectId),
+        visualAsset ? queryAssetVisualWorkspace(projectId, visualAsset.type, visualAsset.item.id) : Promise.resolve(undefined),
+      ]);
+      const next = summaryResponse.data;
+      setWorkspace({ ...emptyWorkspace(projectId), ...next });
       if (visualAsset) {
         const list =
           visualAsset.type === 'CHARACTER'
@@ -630,7 +636,9 @@ const ProductionWorkbenchSettings = () => {
               ? next.scenes
               : next.props;
         const item = list.find((asset) => asset.id === visualAsset.item.id);
-        if (item) setVisualAsset({ type: visualAsset.type, item });
+        if (item && visualRequestIdRef.current === requestId) {
+          setVisualAsset({ type: visualAsset.type, item: { ...item, visual: detailResponse?.data } });
+        }
       }
       message.success(successText);
     } catch {
@@ -681,6 +689,7 @@ const ProductionWorkbenchSettings = () => {
     setVisualAsset({ type, item });
     setSelectedVisualVariantId(undefined);
     setVisualLoading(true);
+    setVisualError(false);
     try {
       const response = await queryAssetVisualWorkspace(projectId, type, item.id);
       if (visualRequestIdRef.current !== requestId) return;
@@ -694,6 +703,7 @@ const ProductionWorkbenchSettings = () => {
       );
     } catch {
       if (visualRequestIdRef.current === requestId) {
+        setVisualError(true);
         messageRef.current.error('视觉形象加载失败');
       }
     } finally {
@@ -1377,6 +1387,7 @@ const ProductionWorkbenchSettings = () => {
                     {visualLoading ? (
                       <div role="status">视觉形象加载中</div>
                     ) : null}
+                    {visualError ? <div role="alert">视觉形象加载失败 <button type="button" onClick={() => void openVisualGallery(visualAsset.type, visualAsset.item)}>重试视觉形象</button></div> : null}
                     <Input.TextArea
                       defaultValue={visualAsset.item.prompt || ''}
                       aria-label={`${visualAsset.item.name}主体提示词`}

@@ -1419,11 +1419,24 @@ const ProductionWorkbenchStoryboard = () => {
     }
   };
 
+  const reloadStoryboardPage = async (episodeNo = activeEpisode, current = storyboardPage) => {
+    const requestId = ++storyboardRequestId.current;
+    const response = await queryStoryboardWorkspace(projectId, { episodeNo, current, pageSize: storyboardPageSize });
+    if (requestId !== storyboardRequestId.current) return;
+    const shots = response.data.storyboards || [];
+    setWorkspace((previous) => ({ ...previous, storyboards: shots }));
+    setStoryboardPage(response.data.current || current);
+    setStoryboardTotal(response.data.total ?? shots.length);
+    setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
+      scriptText: getStoryboardScriptText(item), videoPrompt: getStoryboardPrompt(item), promptDocument: item.promptDocument,
+    }])));
+  };
+
   const selectEpisode = async (episodeNo: number) => {
     setActiveEpisode(episodeNo);
     setStoryboardPage(1);
     try {
-      await reloadWorkspace(episodeNo, 1);
+      await reloadStoryboardPage(episodeNo, 1);
     } catch {
       message.error('该集分镜加载失败');
     }
@@ -1434,7 +1447,7 @@ const ProductionWorkbenchStoryboard = () => {
       return;
     }
     try {
-      await reloadWorkspace(activeEpisode, nextPage);
+      await reloadStoryboardPage(activeEpisode, nextPage);
     } catch {
       message.error('分镜分页加载失败');
     }
@@ -1613,13 +1626,6 @@ const ProductionWorkbenchStoryboard = () => {
     }
   };
 
-  const syncStoryboardsFromResponse = (
-    nextWorkspace: ScriptWorkspace | undefined,
-  ) => {
-    if (nextWorkspace?.storyboards?.length) {
-      setWorkspace(nextWorkspace);
-    }
-  };
 
   const createVideoTaskForStoryboard = async (storyboard: StoryboardShot) => {
     const prompt =
@@ -1706,7 +1712,7 @@ const ProductionWorkbenchStoryboard = () => {
     const videoPrompt =
       drafts[storyboard.id]?.videoPrompt || getStoryboardPrompt(nextStoryboard);
     try {
-      const response = await updateStoryboard(projectId, storyboard.id, {
+      await updateStoryboard(projectId, storyboard.id, {
         visualDescription: parsedScript.visualDescription,
         scene: parsedScript.scene,
         dialogue: parsedScript.dialogue,
@@ -1722,7 +1728,7 @@ const ProductionWorkbenchStoryboard = () => {
           item.id === storyboard.id ? nextStoryboard : item,
         ),
       }));
-      syncStoryboardsFromResponse(response.data);
+      await reloadStoryboardPage();
       message.success('分镜已保存');
     } catch {
       message.error('分镜保存失败');
@@ -1755,14 +1761,14 @@ const ProductionWorkbenchStoryboard = () => {
     }));
 
     try {
-      const response = await updateStoryboard(
+      await updateStoryboard(
         projectId,
         storyboard.id,
         getStoryboardSavePayload(nextStoryboard, {
           videoPrompt: nextVideoPrompt,
         }),
       );
-      syncStoryboardsFromResponse(response.data);
+      await reloadStoryboardPage();
       message.success('分镜已保存');
     } catch {
       message.error('分镜保存失败');

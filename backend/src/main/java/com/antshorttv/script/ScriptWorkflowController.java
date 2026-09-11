@@ -51,12 +51,28 @@ public class ScriptWorkflowController {
         return ApiResponse.success(scriptWorkflowService.scriptPageWorkspace(tenantId(request), projectId));
     }
 
+    @GetMapping("/script-content")
+    @RequireProjectPermission("PROJECT:VIEW")
+    public ApiResponse<ScriptResponse> scriptContent(
+        @PathVariable Long projectId, HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.scriptContent(tenantId(request), projectId));
+    }
+
     @GetMapping("/script-versions/{versionId}")
     @RequireProjectPermission("PROJECT:VIEW")
     public ApiResponse<ScriptVersionResponse> scriptVersion(
         @PathVariable Long projectId, @PathVariable Long versionId, HttpServletRequest request
     ) {
         return ApiResponse.success(scriptWorkflowService.scriptVersion(tenantId(request), projectId, versionId));
+    }
+
+    @GetMapping("/script-episodes/{episodeId}")
+    @RequireProjectPermission("PROJECT:VIEW")
+    public ApiResponse<ScriptEpisodeResponse> scriptEpisode(
+        @PathVariable Long projectId, @PathVariable Long episodeId, HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.scriptEpisode(tenantId(request), projectId, episodeId));
     }
 
     @GetMapping("/asset-settings-workspace")

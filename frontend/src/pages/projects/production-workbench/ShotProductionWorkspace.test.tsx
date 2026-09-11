@@ -193,6 +193,7 @@ describe('ShotProductionWorkspace', () => {
 
     await waitFor(() => {
       expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1);
+      expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
       expect(mocks.queryAiVoiceTasks).toHaveBeenCalledWith(1, {});
       expect(mocks.queryStoryboardSubtitles).toHaveBeenCalledWith(1, {});
       expect(mocks.queryShotComposeTasks).toHaveBeenCalledWith(1, {});

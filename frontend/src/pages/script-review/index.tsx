@@ -162,7 +162,7 @@ const ScriptReviewPage = () => {
         selectedIssue?.excerpt?.trim() ||
         '',
     );
-  }, [selectedIssue]);
+  }, [selectedIssue?.id, selectedIssue?.hits[0]?.excerpt, selectedIssue?.excerpt]);
 
   useEffect(() => {
     if (!editing && highlightStart >= 0)

@@ -619,7 +619,18 @@ describe('ProductionWorkbench script page', () => {
         current: 2,
         pageSize: 20,
       });
+      expect(mocks.queryScriptPageWorkspace).toHaveBeenCalledTimes(1);
+      expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('keeps storyboards visible when optional media requests fail', async () => {
+    mocks.queryAiImageTasks.mockRejectedValue(new Error('image unavailable'));
+    mocks.queryAiVideoTasks.mockRejectedValue(new Error('video unavailable'));
+    render(<ProductionWorkbench />);
+    expect(await screen.findByLabelText('分镜1剧本原文')).toBeInTheDocument();
+    expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1);
+    expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
   });
 
   it('ignores a stale episode page response after switching back', async () => {
@@ -1005,6 +1016,9 @@ describe('ProductionWorkbench script page', () => {
         imagePrompt: '停车场首帧提示词',
         videoPrompt: '画风：写实都市。镜头1 1s 远景摇镜停车场内灰色轿车。',
       });
+      expect(mocks.queryStoryboardWorkspace).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 1, pageSize: 20 });
+      expect(mocks.queryScriptPageWorkspace).toHaveBeenCalledTimes(1);
+      expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(1);
     });
   });
 

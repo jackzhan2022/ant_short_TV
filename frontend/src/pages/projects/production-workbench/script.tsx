@@ -19,12 +19,15 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
-import { queryProject } from '@/services/account-team/project';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import { getCurrentTenantId } from '@/services/account-team/auth';
 import {
   queryAssetSettingsSummary,
   queryCurrentScriptAnalysis,
+  queryScriptEpisode,
+  queryScriptVersion,
   queryScriptPageWorkspace,
   reanalyzeScript,
   regenerateEpisodeAssets,
@@ -229,7 +232,7 @@ const getEpisodeBlocks = (workspace: ScriptWorkspace): EpisodeBlock[] => {
     return workspace.episodes.map((episode) => ({
       episodeNo: episode.episodeNo,
       title: episode.title || `第${episode.episodeNo}集`,
-      copy: episode.content,
+      copy: episode.content || '',
     }));
   }
   if (workspace.script?.content?.trim()) {
@@ -539,9 +542,37 @@ export const ScriptAnalysisStateContainer = ({
 const ProductionWorkbenchScript = () => {
   const params = useParams<{ id: string }>();
   const { message } = App.useApp();
+  const messageRef = useRef(message);
+  messageRef.current = message;
   const projectId = Number(params.id);
+  const outletContext = useOutletContext<{ project?: ProjectLite } | null>();
+  const project = outletContext?.project;
+  const [selectedVersionId, setSelectedVersionId] = useState<number>();
+  const [versionContent, setVersionContent] = useState('');
+  const [versionLoading, setVersionLoading] = useState(false);
+  const [versionError, setVersionError] = useState(false);
+  const [versionRetry, setVersionRetry] = useState(0);
+  useEffect(() => {
+    setSelectedVersionId(undefined);
+    setVersionContent('');
+  }, [projectId]);
+  useEffect(() => {
+    if (!selectedVersionId) return;
+    let active = true;
+    setVersionLoading(true);
+    setVersionError(false);
+    setVersionContent('');
+    queryScriptVersion(projectId, selectedVersionId)
+      .then((response) => {
+        if (active) setVersionContent(response.data.content || '暂无版本正文');
+      })
+      .catch(() => { if (active) setVersionError(true); })
+      .finally(() => { if (active) setVersionLoading(false); });
+    return () => { active = false; };
+  }, [projectId, selectedVersionId, versionRetry]);
   const [workspace, setWorkspace] = useState<ScriptWorkspace | null>(null);
-  const [project, setProject] = useState<ProjectLite>();
+  const [episodeContents, setEpisodeContents] = useState<Record<string, string>>({});
+  const loadedEpisodeIds = useRef(new Set<string>());
   const [loading, setLoading] = useState(false);
   const [currentEpisodeNo, setCurrentEpisodeNo] = useState(1);
   const [showAllCharacters, setShowAllCharacters] = useState(false);
@@ -565,10 +596,9 @@ const ProductionWorkbenchScript = () => {
         setLoading(true);
       }
       try {
-        const [workspaceResponse, assetResponse, projectResponse] = await Promise.all([
+        const [workspaceResponse, assetResponse] = await Promise.all([
           queryScriptPageWorkspace(projectId),
           queryAssetSettingsSummary(projectId),
-          queryProject(projectId),
         ]);
         if (active) {
           setWorkspace({
@@ -594,11 +624,10 @@ const ProductionWorkbenchScript = () => {
                 : (workspaceResponse.data as Partial<ScriptWorkspace>).props || [],
             storyboards: [],
           });
-          setProject(projectResponse.data);
         }
       } catch {
         if (active) {
-          message.error('剧本页加载失败');
+          messageRef.current.error('剧本页加载失败');
         }
       } finally {
         if (active && showLoading) {
@@ -610,7 +639,7 @@ const ProductionWorkbenchScript = () => {
     return () => {
       active = false;
     };
-  }, [message, projectId]);
+  }, [projectId]);
 
   const hasActiveAnalysis = (workspace?.analysis?.stages || []).some((stage) =>
     ['PENDING', 'RUNNING', 'RETRYING'].includes(stage.status),
@@ -651,9 +680,9 @@ const ProductionWorkbenchScript = () => {
       return;
     }
     if (workspace.analysis.errorMessage) {
-      message.error(workspace.analysis.errorMessage);
+      messageRef.current.error(workspace.analysis.errorMessage);
     }
-  }, [message, workspace?.analysis?.errorMessage, workspace?.analysis?.status]);
+  }, [workspace?.analysis?.errorMessage, workspace?.analysis?.status]);
 
   const episodeBlocks = useMemo(
     () =>
@@ -667,21 +696,46 @@ const ProductionWorkbenchScript = () => {
           props: [],
           storyboards: [],
         },
-      ),
-    [projectId, workspace],
+      ).map((episode) => {
+        const sourceEpisode = workspace?.episodes?.find((item) => item.episodeNo === episode.episodeNo);
+        const content = sourceEpisode?.episodeId
+          ? episodeContents[String(sourceEpisode.episodeId)]
+          : undefined;
+        return { ...episode, copy: content ?? episode.copy };
+      }),
+    [episodeContents, projectId, workspace],
   );
   const activeEpisode =
     episodeBlocks.find((item) => item.episodeNo === currentEpisodeNo) ||
     episodeBlocks[0];
   const script = workspace?.script;
   const analysis = workspace?.analysis;
-  const tenantId =
-    project?.tenantId ?? Number(localStorage.getItem('currentTenantId'));
+  const tenantId = getCurrentTenantId();
+
+  useEffect(() => {
+    const episode = workspace?.episodes?.find((item) => item.episodeNo === currentEpisodeNo);
+    const cacheKey = episode?.episodeId ? String(episode.episodeId) : undefined;
+    if (!episode?.episodeId || !cacheKey || loadedEpisodeIds.current.has(cacheKey)) return;
+    let active = true;
+    queryScriptEpisode(projectId, episode.episodeId)
+      .then((response) => {
+        if (active) {
+          loadedEpisodeIds.current.add(cacheKey);
+          setEpisodeContents((current) => ({ ...current, [cacheKey]: response.data.content || '' }));
+        }
+      })
+      .catch(() => {
+        loadedEpisodeIds.current.delete(cacheKey);
+      });
+    return () => { active = false; };
+  }, [currentEpisodeNo, projectId, workspace?.episodes]);
   const refreshWorkspace = async () => {
     const [workspaceResponse, assetResponse] = await Promise.all([
       queryScriptPageWorkspace(projectId),
       queryAssetSettingsSummary(projectId),
     ]);
+    loadedEpisodeIds.current.clear();
+    setEpisodeContents({});
     setWorkspace({
       projectId,
       script: workspaceResponse.data.script,
@@ -819,6 +873,30 @@ const ProductionWorkbenchScript = () => {
       }}
     >
       <div style={{ width: 1000, margin: '0 auto' }}>
+        {workspace?.versions.length ? (
+          <section aria-label="历史版本" style={{ marginBottom: 16 }}>
+            <label>
+              历史版本　
+              <select
+                aria-label="选择历史版本"
+                value={selectedVersionId || ''}
+                onChange={(event) => setSelectedVersionId(Number(event.target.value) || undefined)}
+              >
+                <option value="">请选择版本</option>
+                {workspace.versions.map((version) => (
+                  <option key={version.id} value={version.id}>版本 {version.versionNo}</option>
+                ))}
+              </select>
+            </label>
+            {selectedVersionId ? (
+              <section aria-label="历史版本正文" aria-busy={versionLoading}>
+                {versionLoading ? '正在加载版本正文...' : versionError ? (
+                  <div role="alert">版本正文加载失败 <button type="button" onClick={() => setVersionRetry((value) => value + 1)}>重试版本</button></div>
+                ) : <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 400, overflow: 'auto' }}>{versionContent}</pre>}
+              </section>
+            ) : null}
+          </section>
+        ) : null}
         <Flex
           justify="space-between"
           align="center"
@@ -1574,7 +1652,10 @@ const ProductionWorkbenchScript = () => {
               </div>
             ) : null}
             <Input.TextArea
-              value={activeEpisode?.copy || ''}
+              value={
+                activeEpisode?.copy ||
+                (currentEpisode?.episodeId ? '正在加载本集正文...' : '暂无本集正文')
+              }
               readOnly
               autoSize={{ minRows: 22, maxRows: 34 }}
               style={{
