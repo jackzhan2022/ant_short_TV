@@ -782,19 +782,10 @@ public class ScriptWorkflowService {
         Map<Long, ScriptAnalysisResultEntity> results = scriptAnalysisResultMapper.selectLatestByStageIds(
             stages.stream().map(ScriptAnalysisStageEntity::getId).toList());
         if (results == null) results = Map.of();
-        Map<Long, Long> agentRuns = new LinkedHashMap<>();
+        Map<Long, Long> agentRuns = latestAgentRuns(stages);
         Map<Long, EpisodeFanoutProgressResponse> fanouts = new LinkedHashMap<>();
         Map<Long, EpisodeSplitProgressResponse> splitProgress = new LinkedHashMap<>();
         for (ScriptAnalysisStageEntity stage : stages) {
-            List<Long> runIds = jdbcTemplate.queryForList("""
-                select id from ai_workflow_agent_run
-                 where analysis_stage_id = ?
-                 order by created_at desc, id desc
-                 limit 1
-                """, Long.class, stage.getId());
-            if (!runIds.isEmpty()) {
-                agentRuns.put(stage.getId(), runIds.get(0));
-            }
             EpisodeFanoutProgressResponse fanout = fanoutProgress(stage.getId());
             if (fanout != null) fanouts.put(stage.getId(), fanout);
             if ("EPISODE_SPLITTING".equals(stage.getStageCode())) {
@@ -804,6 +795,20 @@ public class ScriptWorkflowService {
         return ScriptAnalysisTaskResponse.from(
             task, stages, results, agentRuns, fanouts, splitProgress,
             episodePipelineStatuses(task, stages, fanouts));
+    }
+
+    private Map<Long, Long> latestAgentRuns(List<ScriptAnalysisStageEntity> stages) {
+        List<Long> stageIds = stages.stream().map(ScriptAnalysisStageEntity::getId).toList();
+        if (stageIds.isEmpty()) return Map.of();
+        String placeholders = stageIds.stream().map(item -> "?").collect(java.util.stream.Collectors.joining(", "));
+        Map<Long, Long> latest = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select analysis_stage_id, id from ai_workflow_agent_run
+             where analysis_stage_id in (%s)
+             order by analysis_stage_id, created_at desc, id desc
+            """.formatted(placeholders), stageIds.toArray()).forEach(row -> latest.putIfAbsent(
+                longNumber(row.get("analysis_stage_id")), longNumber(row.get("id"))));
+        return latest;
     }
 
     private EpisodeSplitProgressResponse splitProgress(Long runId) {

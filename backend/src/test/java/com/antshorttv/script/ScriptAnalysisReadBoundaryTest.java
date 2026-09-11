@@ -4,6 +4,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.antshorttv.project.ProjectAccessContext;
 import com.antshorttv.project.ProjectAccessResolver;
@@ -57,6 +59,10 @@ class ScriptAnalysisReadBoundaryTest {
             .selectLatestByStage(11L);
         verify((ScriptAnalysisResultMapper) dependencies.get(ScriptAnalysisResultMapper.class), never())
             .selectLatestByStage(12L);
+        verify((org.springframework.jdbc.core.JdbcTemplate) dependencies.get(org.springframework.jdbc.core.JdbcTemplate.class),
+            never()).queryForList(anyString(), eq(Long.class), eq(11L));
+        verify((org.springframework.jdbc.core.JdbcTemplate) dependencies.get(org.springframework.jdbc.core.JdbcTemplate.class),
+            never()).queryForList(anyString(), eq(Long.class), eq(12L));
     }
 
     private static ScriptAnalysisStageEntity stage(Long id, Long taskId, String code, int order) {
