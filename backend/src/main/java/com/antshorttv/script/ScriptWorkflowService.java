@@ -603,14 +603,18 @@ public class ScriptWorkflowService {
         List<ScriptVersionSummaryResponse> versions = script == null ? List.of()
             : scriptVersionMapper.selectByScript(tenantId, script.getId()).stream()
                 .map(ScriptVersionSummaryResponse::from).toList();
-        List<ScriptEpisodeResponse> episodes = script == null ? List.of()
-            : scriptEpisodeService.currentEpisodes(tenantId, projectId, script.getId());
-        if (episodes.isEmpty()) {
-            episodes = ScriptEpisodeParser.parse(script == null ? null : script.getContent());
+        List<ScriptEpisodeNavigation> navigation = script == null ? List.of()
+            : scriptEpisodeService.currentEpisodeNavigation(tenantId, projectId, script.getId());
+        if (navigation.isEmpty()) {
+            navigation = ScriptEpisodeParser.parse(script == null ? null : script.getContent()).stream()
+                .map(item -> new ScriptEpisodeNavigation(item.episodeId(), item.episodeNo(), item.title(), item.summary(),
+                    item.contentFingerprint(), item.generatedByRunId(), item.formalSummary()))
+                .toList();
         }
         return new ScriptPageWorkspaceResponse(projectId, ScriptPageScriptResponse.from(script), versions,
-            episodes.stream().map(ScriptEpisodeSummaryResponse::from).toList(),
-            new EpisodeSplitWarnings().inspect(script == null ? null : script.getContent(), episodes),
+            navigation.stream().map(ScriptEpisodeSummaryResponse::from).toList(),
+            new EpisodeSplitWarnings().inspect(script == null ? null : script.getContent(),
+                navigation.stream().map(ScriptEpisodeNavigation::withoutContent).toList()),
             analysis(tenantId, projectId, script), script == null || globalUnderstandingRepository == null ? null
                 : globalUnderstandingRepository.findCurrent(tenantId, script.getId())
                     .map(ScriptGlobalUnderstandingResponse::from).orElse(null));
@@ -664,17 +668,23 @@ public class ScriptWorkflowService {
         int safeCurrent = current == null || current < 1 ? 1 : current;
         int safePageSize = pageSize == null || pageSize < 1 ? 20 : Math.min(pageSize, 100);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
-        List<ScriptEpisodeResponse> episodes = script == null ? List.of()
-            : scriptEpisodeService.currentEpisodes(tenantId, projectId, script.getId());
-        if (episodes.isEmpty()) episodes = ScriptEpisodeParser.parse(script == null ? null : script.getContent());
-        int selectedEpisode = episodeNo == null ? episodes.stream().findFirst().map(ScriptEpisodeResponse::episodeNo)
+        List<ScriptEpisodeNavigation> navigation = script == null ? List.of()
+            : scriptEpisodeService.currentEpisodeNavigation(tenantId, projectId, script.getId());
+        if (navigation.isEmpty()) {
+            navigation = ScriptEpisodeParser.parse(script == null ? null : script.getContent()).stream()
+                .map(item -> new ScriptEpisodeNavigation(item.episodeId(), item.episodeNo(), item.title(), item.summary(),
+                    item.contentFingerprint(), item.generatedByRunId(), item.formalSummary()))
+                .toList();
+        }
+        int selectedEpisode = episodeNo == null ? navigation.stream().findFirst().map(ScriptEpisodeNavigation::episodeNo)
             .orElse(1) : episodeNo;
         Long total = jdbcTemplate.queryForObject("""
             select count(*) from storyboard where tenant_id = ? and project_id = ? and episode_no = ? and deleted_at is null
             """, Long.class, tenantId, projectId, selectedEpisode);
         List<StoryboardResponse> storyboards = storyboardPage(tenantId, projectId, selectedEpisode,
             safePageSize, (safeCurrent - 1) * safePageSize);
-        return new StoryboardWorkspacePageResponse(projectId, episodes, selectedEpisode, safeCurrent,
+        return new StoryboardWorkspacePageResponse(projectId,
+            navigation.stream().map(ScriptEpisodeSummaryResponse::from).toList(), selectedEpisode, safeCurrent,
             safePageSize, total == null ? 0L : total, storyboards);
     }
 

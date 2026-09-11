@@ -117,6 +117,13 @@ public class ScriptEpisodeService {
             .toList();
     }
 
+    public List<ScriptEpisodeNavigation> currentEpisodeNavigation(Long tenantId, Long projectId, Long scriptId) {
+        Map<Long, ScriptEpisodeSummaryDocument> summaries = summaryRepository.findCurrentByScript(tenantId, scriptId);
+        return episodeMapper.selectNavigation(tenantId, projectId, scriptId).stream()
+            .map(item -> ScriptEpisodeNavigation.from(item, summaries.get(item.getId())))
+            .toList();
+    }
+
     public ScriptEpisodeResponse currentEpisode(Long tenantId, Long projectId, Long episodeId) {
         ScriptEpisodeEntity item = episodeMapper.selectById(episodeId);
         if (item == null || !tenantId.equals(item.getTenantId()) || !projectId.equals(item.getProjectId())

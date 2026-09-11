@@ -233,6 +233,11 @@ record ScriptEpisodeSummaryResponse(
         return new ScriptEpisodeSummaryResponse(episode.episodeId(), episode.episodeNo(), episode.title(),
             episode.summary(), episode.contentFingerprint(), episode.generatedByRunId(), episode.formalSummary());
     }
+
+    static ScriptEpisodeSummaryResponse from(ScriptEpisodeNavigation episode) {
+        return new ScriptEpisodeSummaryResponse(episode.episodeId(), episode.episodeNo(), episode.title(),
+            episode.summary(), episode.contentFingerprint(), episode.generatedByRunId(), episode.formalSummary());
+    }
 }
 
 record CharacterAssetSummaryResponse(
@@ -260,7 +265,7 @@ record AssetSettingsSummaryResponse(
 
 record StoryboardWorkspacePageResponse(
     Long projectId,
-    List<ScriptEpisodeResponse> episodes,
+    List<ScriptEpisodeSummaryResponse> episodes,
     Integer episodeNo,
     Integer current,
     Integer pageSize,
