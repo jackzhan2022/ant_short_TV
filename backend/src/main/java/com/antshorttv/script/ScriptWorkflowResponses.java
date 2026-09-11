@@ -243,17 +243,17 @@ record ScriptEpisodeSummaryResponse(
 record CharacterAssetSummaryResponse(
     Long id, String name, String roleType, String gender, String ageRange, String identity,
     List<String> personality, String appearance, String prompt, String status, Long mergeTargetId,
-    String mainImageUrl
+    String mainImageUrl, String mainImageThumbnailUrl
 ) {}
 
 record SceneAssetSummaryResponse(
     Long id, String name, String sceneType, String atmosphere, String description, String visualStyle,
-    String prompt, String status, Long mergeTargetId, String mainImageUrl
+    String prompt, String status, Long mergeTargetId, String mainImageUrl, String mainImageThumbnailUrl
 ) {}
 
 record PropAssetSummaryResponse(
     Long id, String name, String propType, String appearance, String plotFunction, String prompt,
-    String status, Long mergeTargetId, String mainImageUrl
+    String status, Long mergeTargetId, String mainImageUrl, String mainImageThumbnailUrl
 ) {}
 
 record AssetSettingsSummaryResponse(

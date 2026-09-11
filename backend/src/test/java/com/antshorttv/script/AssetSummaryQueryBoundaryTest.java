@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -45,6 +46,10 @@ class AssetSummaryQueryBoundaryTest {
         assertThat(result.scenes()).hasSize(50);
         assertThat(result.props()).hasSize(50);
         verify(jdbc, times(3)).query(anyString(), any(RowMapper.class), eq(10L), eq(33L), isNull());
+        ArgumentCaptor<String> queries = ArgumentCaptor.forClass(String.class);
+        verify(jdbc, times(3)).query(queries.capture(), any(RowMapper.class), eq(10L), eq(33L), isNull());
+        assertThat(queries.getAllValues()).allSatisfy(query ->
+            assertThat(query).contains("thumbnail_url"));
         verifyNoMoreInteractions(jdbc);
         verify((ProjectAccessResolver) dependencies.get(ProjectAccessResolver.class)).requireView(10L, 33L);
         for (Class<?> type : List.of(AssetVisualVariantService.class, AssetVisualBindingService.class,

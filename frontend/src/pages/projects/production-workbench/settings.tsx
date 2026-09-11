@@ -176,6 +176,10 @@ const AssetCard = ({
 }) => {
   const [imageHovered, setImageHovered] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const thumbnailUrl = thumbnailFailed
+    ? undefined
+    : item.mainImageThumbnailUrl || item.visual?.resolvedImageUrl;
   const bindings = item.visual?.episodeBindings ?? [];
   const variantEpisodes = (item.visual?.variants ?? []).flatMap((variant) => {
     const episodeNos = [
@@ -224,7 +228,7 @@ const AssetCard = ({
             placeItems: 'end start',
             position: 'relative',
             aspectRatio: '2 / 1',
-            padding: item.visual?.resolvedImageUrl ? 0 : '16px 18px',
+            padding: thumbnailUrl ? 0 : '16px 18px',
             border: '1px solid var(--app-color-border-secondary)',
             borderRadius: 8,
             overflow: 'hidden',
@@ -234,10 +238,12 @@ const AssetCard = ({
             fontWeight: 700,
           }}
         >
-          {item.visual?.resolvedImageUrl ? (
+          {thumbnailUrl ? (
             <img
-              src={item.visual.resolvedImageUrl}
+              src={thumbnailUrl}
               alt={`${item.name}当前视觉形象`}
+              loading="lazy"
+              onError={() => setThumbnailFailed(true)}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (

@@ -1691,39 +1691,54 @@ public class ScriptWorkflowService {
 
     private List<CharacterAssetSummaryResponse> characterSummaries(Long tenantId, Long projectId, Long scriptId) {
         return jdbcTemplate.query("""
-            select id, name, role_type, gender, age_range, identity, personality, appearance, prompt, status,
-                   merge_target_id, main_image_url from character_asset
-             where tenant_id = ? and project_id = ? and deleted_at is null and (script_id = ? or script_id is null)
-             order by id
+            select asset.id, asset.name, asset.role_type, asset.gender, asset.age_range, asset.identity,
+                   asset.personality, asset.appearance, asset.prompt, asset.status, asset.merge_target_id,
+                   asset.main_image_url, image_result.thumbnail_url
+              from character_asset asset
+              left join ai_image_result image_result on image_result.id = asset.main_image_result_id
+             where asset.tenant_id = ? and asset.project_id = ? and asset.deleted_at is null
+               and (asset.script_id = ? or asset.script_id is null)
+             order by asset.id
             """, (rs, rowNum) -> new CharacterAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
                 rs.getString("role_type"), rs.getString("gender"), rs.getString("age_range"),
                 rs.getString("identity"), splitTags(rs.getString("personality")), rs.getString("appearance"),
                 rs.getString("prompt"), rs.getString("status"), rs.getObject("merge_target_id", Long.class),
-                materialFileAccessService.publicUrl(rs.getString("main_image_url"))), tenantId, projectId, scriptId);
+                materialFileAccessService.publicUrl(rs.getString("main_image_url")),
+                materialFileAccessService.publicUrl(rs.getString("thumbnail_url"))), tenantId, projectId, scriptId);
     }
 
     private List<SceneAssetSummaryResponse> sceneSummaries(Long tenantId, Long projectId, Long scriptId) {
         return jdbcTemplate.query("""
-            select id, name, scene_type, time_atmosphere, description, visual_style, prompt, status,
-                   merge_target_id, main_image_url from scene_asset
-             where tenant_id = ? and project_id = ? and deleted_at is null and (script_id = ? or script_id is null)
-             order by id
+            select asset.id, asset.name, asset.scene_type, asset.time_atmosphere, asset.description,
+                   asset.visual_style, asset.prompt, asset.status, asset.merge_target_id, asset.main_image_url,
+                   image_result.thumbnail_url
+              from scene_asset asset
+              left join ai_image_result image_result on image_result.id = asset.main_image_result_id
+             where asset.tenant_id = ? and asset.project_id = ? and asset.deleted_at is null
+               and (asset.script_id = ? or asset.script_id is null)
+             order by asset.id
             """, (rs, rowNum) -> new SceneAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
                 rs.getString("scene_type"), rs.getString("time_atmosphere"), rs.getString("description"),
                 rs.getString("visual_style"), rs.getString("prompt"), rs.getString("status"),
-                rs.getObject("merge_target_id", Long.class), materialFileAccessService.publicUrl(rs.getString("main_image_url"))),
+                rs.getObject("merge_target_id", Long.class), materialFileAccessService.publicUrl(rs.getString("main_image_url")),
+                materialFileAccessService.publicUrl(rs.getString("thumbnail_url"))),
             tenantId, projectId, scriptId);
     }
 
     private List<PropAssetSummaryResponse> propSummaries(Long tenantId, Long projectId, Long scriptId) {
         return jdbcTemplate.query("""
-            select id, name, prop_type, appearance, plot_function, prompt, status, merge_target_id, main_image_url
-              from prop_asset where tenant_id = ? and project_id = ? and deleted_at is null
-                and (script_id = ? or script_id is null) order by id
+            select asset.id, asset.name, asset.prop_type, asset.appearance, asset.plot_function, asset.prompt,
+                   asset.status, asset.merge_target_id, asset.main_image_url, image_result.thumbnail_url
+              from prop_asset asset
+              left join ai_image_result image_result on image_result.id = asset.main_image_result_id
+             where asset.tenant_id = ? and asset.project_id = ? and asset.deleted_at is null
+               and (asset.script_id = ? or asset.script_id is null)
+             order by asset.id
             """, (rs, rowNum) -> new PropAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
                 rs.getString("prop_type"), rs.getString("appearance"), rs.getString("plot_function"),
                 rs.getString("prompt"), rs.getString("status"), rs.getObject("merge_target_id", Long.class),
-                materialFileAccessService.publicUrl(rs.getString("main_image_url"))), tenantId, projectId, scriptId);
+                materialFileAccessService.publicUrl(rs.getString("main_image_url")),
+                materialFileAccessService.publicUrl(rs.getString("thumbnail_url"))), tenantId, projectId, scriptId);
     }
 
     private List<StoryboardResponse> storyboardPage(Long tenantId, Long projectId, int episodeNo, int limit, int offset) {
