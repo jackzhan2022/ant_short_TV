@@ -63,6 +63,10 @@ class ScriptAnalysisReadBoundaryTest {
             never()).queryForList(anyString(), eq(Long.class), eq(11L));
         verify((org.springframework.jdbc.core.JdbcTemplate) dependencies.get(org.springframework.jdbc.core.JdbcTemplate.class),
             never()).queryForList(anyString(), eq(Long.class), eq(12L));
+        verify((org.springframework.jdbc.core.JdbcTemplate) dependencies.get(org.springframework.jdbc.core.JdbcTemplate.class),
+            never()).queryForList(anyString(), eq(11L));
+        verify((org.springframework.jdbc.core.JdbcTemplate) dependencies.get(org.springframework.jdbc.core.JdbcTemplate.class),
+            never()).queryForList(anyString(), eq(12L));
     }
 
     private static ScriptAnalysisStageEntity stage(Long id, Long taskId, String code, int order) {

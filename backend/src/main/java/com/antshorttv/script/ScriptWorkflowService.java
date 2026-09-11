@@ -783,10 +783,11 @@ public class ScriptWorkflowService {
             stages.stream().map(ScriptAnalysisStageEntity::getId).toList());
         if (results == null) results = Map.of();
         Map<Long, Long> agentRuns = latestAgentRuns(stages);
+        Map<Long, Map<String, Object>> fanoutSnapshots = latestFanoutSnapshots(stages);
         Map<Long, EpisodeFanoutProgressResponse> fanouts = new LinkedHashMap<>();
         Map<Long, EpisodeSplitProgressResponse> splitProgress = new LinkedHashMap<>();
         for (ScriptAnalysisStageEntity stage : stages) {
-            EpisodeFanoutProgressResponse fanout = fanoutProgress(stage.getId());
+            EpisodeFanoutProgressResponse fanout = fanoutProgress(fanoutSnapshots.get(stage.getId()));
             if (fanout != null) fanouts.put(stage.getId(), fanout);
             if ("EPISODE_SPLITTING".equals(stage.getStageCode())) {
                 splitProgress.put(stage.getId(), splitProgress(agentRuns.get(stage.getId())));
@@ -808,6 +809,21 @@ public class ScriptWorkflowService {
              order by analysis_stage_id, created_at desc, id desc
             """.formatted(placeholders), stageIds.toArray()).forEach(row -> latest.putIfAbsent(
                 longNumber(row.get("analysis_stage_id")), longNumber(row.get("id"))));
+        return latest;
+    }
+
+    private Map<Long, Map<String, Object>> latestFanoutSnapshots(List<ScriptAnalysisStageEntity> stages) {
+        List<Long> stageIds = stages.stream().map(ScriptAnalysisStageEntity::getId).toList();
+        if (stageIds.isEmpty()) return Map.of();
+        String placeholders = stageIds.stream().map(item -> "?").collect(java.util.stream.Collectors.joining(", "));
+        Map<Long, Map<String, Object>> latest = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select id, stage_id, status, total_units, completed_units, failed_units, episode_set_hash
+              from script_analysis_fanout_snapshot
+             where stage_id in (%s)
+             order by stage_id, attempt_no desc, id desc
+            """.formatted(placeholders), stageIds.toArray()).forEach(row -> latest.putIfAbsent(
+                longNumber(row.get("stage_id")), row));
         return latest;
     }
 
@@ -833,14 +849,8 @@ public class ScriptWorkflowService {
             "STALE".equals(String.valueOf(row.get("status"))));
     }
 
-    private EpisodeFanoutProgressResponse fanoutProgress(Long stageId) {
-        List<Map<String, Object>> snapshots = jdbcTemplate.queryForList("""
-            select id, status, total_units, completed_units, failed_units, episode_set_hash
-              from script_analysis_fanout_snapshot
-             where stage_id = ? order by attempt_no desc, id desc limit 1
-            """, stageId);
-        if (snapshots.isEmpty()) return null;
-        Map<String, Object> snapshot = snapshots.get(0);
+    private EpisodeFanoutProgressResponse fanoutProgress(Map<String, Object> snapshot) {
+        if (snapshot == null) return null;
         long snapshotId = ((Number) snapshot.get("id")).longValue();
         List<EpisodeFanoutUnitResponse> units = jdbcTemplate.queryForList("""
             select episode_id, episode_key, status, child_run_id, error_code, error_message
