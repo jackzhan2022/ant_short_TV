@@ -3,6 +3,8 @@ package com.antshorttv.script;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
@@ -55,5 +57,18 @@ interface ScriptAnalysisResultMapper extends BaseMapper<ScriptAnalysisResultEnti
             .eq(ScriptAnalysisResultEntity::getStageId, stageId)
             .orderByDesc(ScriptAnalysisResultEntity::getCreatedAt)
             .last("limit 1"));
+    }
+
+    default Map<Long, ScriptAnalysisResultEntity> selectLatestByStageIds(List<Long> stageIds) {
+        if (stageIds == null || stageIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, ScriptAnalysisResultEntity> latest = new LinkedHashMap<>();
+        selectList(new LambdaQueryWrapper<ScriptAnalysisResultEntity>()
+            .in(ScriptAnalysisResultEntity::getStageId, stageIds)
+            .orderByAsc(ScriptAnalysisResultEntity::getStageId)
+            .orderByDesc(ScriptAnalysisResultEntity::getCreatedAt, ScriptAnalysisResultEntity::getId))
+            .forEach(item -> latest.putIfAbsent(item.getStageId(), item));
+        return latest;
     }
 }

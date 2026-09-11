@@ -779,15 +779,13 @@ public class ScriptWorkflowService {
 
     private ScriptAnalysisTaskResponse analysisResponse(ScriptAnalysisTaskEntity task) {
         List<ScriptAnalysisStageEntity> stages = scriptAnalysisStageMapper.selectByTask(task.getId());
-        Map<Long, ScriptAnalysisResultEntity> results = new LinkedHashMap<>();
+        Map<Long, ScriptAnalysisResultEntity> results = scriptAnalysisResultMapper.selectLatestByStageIds(
+            stages.stream().map(ScriptAnalysisStageEntity::getId).toList());
+        if (results == null) results = Map.of();
         Map<Long, Long> agentRuns = new LinkedHashMap<>();
         Map<Long, EpisodeFanoutProgressResponse> fanouts = new LinkedHashMap<>();
         Map<Long, EpisodeSplitProgressResponse> splitProgress = new LinkedHashMap<>();
         for (ScriptAnalysisStageEntity stage : stages) {
-            ScriptAnalysisResultEntity result = scriptAnalysisResultMapper.selectLatestByStage(stage.getId());
-            if (result != null) {
-                results.put(stage.getId(), result);
-            }
             List<Long> runIds = jdbcTemplate.queryForList("""
                 select id from ai_workflow_agent_run
                  where analysis_stage_id = ?
