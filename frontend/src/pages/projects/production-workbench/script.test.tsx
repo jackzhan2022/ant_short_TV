@@ -10,6 +10,8 @@ import ProductionWorkbenchScript from './script';
 
 const mocks = vi.hoisted(() => ({
   queryScriptWorkspace: vi.fn(),
+  queryAssetSettingsSummary: vi.fn(),
+  queryCurrentScriptAnalysis: vi.fn(),
   queryProject: vi.fn(),
   retryScriptAnalysis: vi.fn(),
   reanalyzeScript: vi.fn(),
@@ -80,7 +82,9 @@ vi.mock('antd', () => ({
 }));
 
 vi.mock('./service', () => ({
-  queryScriptWorkspace: mocks.queryScriptWorkspace,
+  queryScriptPageWorkspace: mocks.queryScriptWorkspace,
+  queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
+  queryCurrentScriptAnalysis: mocks.queryCurrentScriptAnalysis,
   retryScriptAnalysis: mocks.retryScriptAnalysis,
   reanalyzeScript: mocks.reanalyzeScript,
   regenerateEpisodeSplitting: mocks.regenerateEpisodeSplitting,
@@ -185,6 +189,9 @@ describe('ProductionWorkbenchScript', () => {
         ],
         analysis: null,
       },
+    });
+    mocks.queryAssetSettingsSummary.mockResolvedValue({
+      data: { projectId: 1, characters: [], scenes: [], props: [] },
     });
     mocks.reanalyzeScript.mockResolvedValue({
       data: { id: 501, businessId: 99, status: 'PENDING', progress: 0 },

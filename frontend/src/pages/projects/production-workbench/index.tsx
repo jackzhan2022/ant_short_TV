@@ -15,7 +15,7 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
 import type { Project } from '@/services/account-team/types';
 import { queryProject, updateProject } from '@/services/account-team/project';
-import { queryScriptWorkspace } from './service';
+import { queryScriptPageWorkspace } from './service';
 import ProjectAiConfigPage from './ai-config';
 
 const topSteps = [
@@ -108,7 +108,7 @@ const ProductionWorkbench = () => {
     setSourceOpen(true);
     setSourceLoading(true);
     try {
-      const response = await queryScriptWorkspace(projectId);
+      const response = await queryScriptPageWorkspace(projectId);
       setSourceContent(response.data.script?.content || '暂无剧本原文');
     } catch {
       setSourceContent('剧本原文加载失败');

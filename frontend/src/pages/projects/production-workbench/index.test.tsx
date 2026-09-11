@@ -34,7 +34,7 @@ vi.mock('./ai-config/service', () => ({
 }));
 
 vi.mock('./service', () => ({
-  queryScriptWorkspace: mocks.queryScriptWorkspace,
+  queryScriptPageWorkspace: mocks.queryScriptWorkspace,
 }));
 
 vi.mock('@/services/account-team/auth', () => ({

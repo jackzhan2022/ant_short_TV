@@ -5,6 +5,9 @@ import ProductionWorkbench from './storyboard';
 const mocks = vi.hoisted(() => ({
   queryProject: vi.fn(),
   queryScriptWorkspace: vi.fn(),
+  queryScriptPageWorkspace: vi.fn(),
+  queryAssetSettingsSummary: vi.fn(),
+  queryStoryboardWorkspace: vi.fn(),
   queryAiImageTasks: vi.fn(),
   queryAiImageTask: vi.fn(),
   createAiImageTask: vi.fn(),
@@ -68,7 +71,9 @@ vi.mock('@/components/AiExecutionStatus', () => ({
 }));
 
 vi.mock('./service', () => ({
-  queryScriptWorkspace: mocks.queryScriptWorkspace,
+  queryScriptPageWorkspace: mocks.queryScriptPageWorkspace,
+  queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
+  queryStoryboardWorkspace: mocks.queryStoryboardWorkspace,
   queryAiImageTasks: mocks.queryAiImageTasks,
   queryAiImageTask: mocks.queryAiImageTask,
   createAiImageTask: mocks.createAiImageTask,
@@ -293,8 +298,7 @@ const setupWorkspaceResponse = (
       coverUrl: '/cover.png',
     },
   });
-  mocks.queryScriptWorkspace.mockResolvedValue({
-    data: {
+  const workspaceData = {
       script: {
         id: 11,
         projectId: 1,
@@ -362,7 +366,22 @@ const setupWorkspaceResponse = (
           currentVideoUrl: null,
         },
       ],
+  };
+  mocks.queryScriptWorkspace.mockResolvedValue({ data: workspaceData });
+  mocks.queryScriptPageWorkspace.mockResolvedValue({
+    data: {
+      script: workspaceData.script,
+      versions: [],
+      episodes: workspaceData.episodes,
+      analysis: null,
+      globalUnderstanding: null,
     },
+  });
+  mocks.queryAssetSettingsSummary.mockResolvedValue({
+    data: { characters: workspaceData.characters, scenes: workspaceData.scenes, props: workspaceData.props },
+  });
+  mocks.queryStoryboardWorkspace.mockResolvedValue({
+    data: { current: 1, pageSize: 20, total: workspaceData.storyboards.length, storyboards: workspaceData.storyboards },
   });
   mocks.queryAiImageTasks.mockResolvedValue({
     data: overrides?.imageTasks ?? [
@@ -524,7 +543,10 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
 
     await waitFor(() => {
-      expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1);
+      expect(mocks.queryScriptPageWorkspace).toHaveBeenCalledWith(1);
+      expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledWith(1);
+      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1);
+      expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
       expect(mocks.queryAiImageTasks).toHaveBeenCalledWith(1, undefined);
       expect(mocks.queryAiVideoTasks).toHaveBeenCalledWith(1, undefined);
     });
@@ -556,10 +578,93 @@ describe('ProductionWorkbench script page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '2' }));
 
+    await waitFor(() => {
+      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, {
+        episodeNo: 2,
+        current: 1,
+        pageSize: 20,
+      });
+    });
     expect(screen.getByText('第2集 夜色警报')).toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(screen.getAllByDisplayValue(/别出声/).length).toBeGreaterThan(0);
     expect(screen.queryByText('分镜2')).not.toBeInTheDocument();
+  });
+
+  it('loads the requested shot page independently from the selected episode', async () => {
+    mocks.queryStoryboardWorkspace.mockResolvedValue({
+      data: {
+        current: 1,
+        pageSize: 20,
+        total: 21,
+        storyboards: [
+          {
+            id: 101,
+            shotNo: 1,
+            episodeNo: 1,
+            visualDescription: '第一页镜头',
+            durationSeconds: 5,
+          },
+        ],
+      },
+    });
+    render(<ProductionWorkbench />);
+
+    await screen.findByRole('button', { name: '下一页' });
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+
+    await waitFor(() => {
+      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, {
+        episodeNo: 1,
+        current: 2,
+        pageSize: 20,
+      });
+    });
+  });
+
+  it('ignores a stale episode page response after switching back', async () => {
+    let resolveEpisodeTwo: (value: unknown) => void = () => undefined;
+    let resolveEpisodeOne: (value: unknown) => void = () => undefined;
+    const episodeTwo = new Promise((resolve) => {
+      resolveEpisodeTwo = resolve;
+    });
+    const episodeOne = new Promise((resolve) => {
+      resolveEpisodeOne = resolve;
+    });
+    render(<ProductionWorkbench />);
+    await screen.findByText('分镜表');
+    mocks.queryStoryboardWorkspace
+      .mockImplementationOnce(() => episodeTwo)
+      .mockImplementationOnce(() => episodeOne);
+
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    fireEvent.click(screen.getByRole('button', { name: '1' }));
+    await waitFor(() => {
+      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(3);
+    });
+    resolveEpisodeOne({
+      data: {
+        current: 1,
+        pageSize: 20,
+        total: 1,
+        storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, visualDescription: '最新第一集镜头', durationSeconds: 5 }],
+      },
+    });
+    expect(await screen.findByText('最新第一集镜头')).toBeInTheDocument();
+    resolveEpisodeTwo({
+      data: {
+        current: 1,
+        pageSize: 20,
+        total: 1,
+        storyboards: [{ id: 302, shotNo: 1, episodeNo: 2, visualDescription: '过期第二集镜头', durationSeconds: 5 }],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await waitFor(() => {
+      expect(screen.getByText('最新第一集镜头')).toBeInTheDocument();
+      expect(screen.queryByText('过期第二集镜头')).not.toBeInTheDocument();
+    });
   });
 
   it('creates an AI video task from the edited storyboard prompt', async () => {
@@ -606,7 +711,7 @@ describe('ProductionWorkbench script page', () => {
         7100,
         expect.any(Function),
       );
-      expect(mocks.queryScriptWorkspace.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(mocks.queryScriptPageWorkspace.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 

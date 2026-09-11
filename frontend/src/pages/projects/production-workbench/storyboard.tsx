@@ -52,9 +52,11 @@ import {
   queryAiImageTask,
   queryAiImageTasks,
   queryAiVideoTasks,
-  queryScriptWorkspace,
+  queryAssetSettingsSummary,
+  queryScriptPageWorkspace,
   queryLatestStoryboardBatch,
   queryStoryboardBatch,
+  queryStoryboardWorkspace,
   regenerateAiImageTask,
   regenerateAiVideoTask,
   updateStoryboard,
@@ -78,6 +80,7 @@ const terminalStoryboardBatchStatuses = new Set([
   'FAILED',
 ]);
 const supportedVideoDurations = [5, 8, 10];
+const storyboardPageSize = 20;
 
 const getTaskImage = (
   imageTasks: AiImageTask[],
@@ -1160,6 +1163,8 @@ const ProductionWorkbenchStoryboard = () => {
   const [imageTasks, setImageTasks] = useState<AiImageTask[]>([]);
   const [videoTasks, setVideoTasks] = useState<AiVideoTask[]>([]);
   const [activeEpisode, setActiveEpisode] = useState(1);
+  const [storyboardPage, setStoryboardPage] = useState(1);
+  const [storyboardTotal, setStoryboardTotal] = useState(0);
   const [selectedModel, setSelectedModel] = useState('Doubao-Seedance-2.5');
   const [drafts, setDrafts] = useState<StoryboardDraft>({});
   const [storyboardExecution, setStoryboardExecution] =
@@ -1168,6 +1173,7 @@ const ProductionWorkbenchStoryboard = () => {
   const [storyboardBatch, setStoryboardBatch] = useState<StoryboardBatch>();
   const [storyboardBatchBusy, setStoryboardBatchBusy] = useState(false);
   const reservedShotNos = useRef<Record<number, number>>({});
+  const storyboardRequestId = useRef(0);
   const [workspace, setWorkspace] = useState<ScriptWorkspace>({
     projectId: projectId || 0,
     script: null,
@@ -1183,30 +1189,50 @@ const ProductionWorkbenchStoryboard = () => {
       return;
     }
     let active = true;
+    const requestId = storyboardRequestId.current + 1;
+    storyboardRequestId.current = requestId;
     Promise.all([
-      queryScriptWorkspace(projectId),
+      queryScriptPageWorkspace(projectId),
+      queryAssetSettingsSummary(projectId),
+      queryStoryboardWorkspace(projectId),
       queryAiImageTasks(projectId, undefined).catch(() => ({ data: [] })),
       queryAiVideoTasks(projectId, undefined).catch(() => ({ data: [] })),
       queryLatestStoryboardBatch(projectId).catch(() => ({ data: null })),
     ])
-      .then(([workspaceResponse, imageTaskResponse, videoTaskResponse, batchResponse]) => {
-        if (!active) {
+      .then(([workspaceResponse, assetResponse, storyboardResponse, imageTaskResponse, videoTaskResponse, batchResponse]) => {
+        if (!active || storyboardRequestId.current !== requestId) {
           return;
         }
         const nextWorkspace = {
           projectId,
           script: workspaceResponse.data?.script || null,
           versions: workspaceResponse.data?.versions || [],
-          characters: workspaceResponse.data?.characters || [],
-          scenes: workspaceResponse.data?.scenes || [],
-          props: workspaceResponse.data?.props || [],
-          storyboards: workspaceResponse.data?.storyboards || [],
+          characters:
+            assetResponse.data?.characters ||
+            (workspaceResponse.data as Partial<ScriptWorkspace>)?.characters ||
+            [],
+          scenes:
+            assetResponse.data?.scenes ||
+            (workspaceResponse.data as Partial<ScriptWorkspace>)?.scenes ||
+            [],
+          props:
+            assetResponse.data?.props ||
+            (workspaceResponse.data as Partial<ScriptWorkspace>)?.props ||
+            [],
+          storyboards:
+            storyboardResponse.data?.storyboards ||
+            (workspaceResponse.data as Partial<ScriptWorkspace>)?.storyboards ||
+            [],
           episodes: workspaceResponse.data?.episodes || [],
           analysis: workspaceResponse.data?.analysis || null,
           globalUnderstanding:
             workspaceResponse.data?.globalUnderstanding || null,
         };
         setWorkspace(nextWorkspace);
+        setStoryboardPage(storyboardResponse.data?.current || 1);
+        setStoryboardTotal(
+          storyboardResponse.data?.total ?? nextWorkspace.storyboards.length,
+        );
         setImageTasks(imageTaskResponse.data || []);
         const nextVideoTasks = videoTaskResponse.data || [];
         setVideoTasks(nextVideoTasks);
@@ -1333,13 +1359,54 @@ const ProductionWorkbenchStoryboard = () => {
     setImageTasks(response.data || []);
   };
 
-  const reloadWorkspace = async () => {
-    const response = await queryScriptWorkspace(projectId);
-    if (response.data) {
-      setWorkspace(response.data);
+  const reloadWorkspace = async (
+    episodeNo = activeEpisode,
+    current = storyboardPage,
+  ) => {
+    const requestId = storyboardRequestId.current + 1;
+    storyboardRequestId.current = requestId;
+    const [scriptResponse, assetResponse, storyboardResponse] = await Promise.all([
+      queryScriptPageWorkspace(projectId),
+      queryAssetSettingsSummary(projectId),
+      queryStoryboardWorkspace(projectId, {
+        episodeNo,
+        current,
+        pageSize: storyboardPageSize,
+      }),
+    ]);
+    if (storyboardRequestId.current === requestId && scriptResponse.data) {
+      const nextWorkspace: ScriptWorkspace = {
+        projectId,
+        script: scriptResponse.data.script,
+        versions: scriptResponse.data.versions,
+        characters:
+          assetResponse.data?.characters ||
+          (scriptResponse.data as Partial<ScriptWorkspace>).characters ||
+          [],
+        scenes:
+          assetResponse.data?.scenes ||
+          (scriptResponse.data as Partial<ScriptWorkspace>).scenes ||
+          [],
+        props:
+          assetResponse.data?.props ||
+          (scriptResponse.data as Partial<ScriptWorkspace>).props ||
+          [],
+        storyboards:
+          storyboardResponse.data?.storyboards ||
+          (scriptResponse.data as Partial<ScriptWorkspace>).storyboards ||
+          [],
+        episodes: scriptResponse.data.episodes,
+        analysis: scriptResponse.data.analysis,
+        globalUnderstanding: scriptResponse.data.globalUnderstanding,
+      };
+      setWorkspace(nextWorkspace);
+      setStoryboardPage(storyboardResponse.data?.current || current);
+      setStoryboardTotal(
+        storyboardResponse.data?.total ?? nextWorkspace.storyboards.length,
+      );
       setDrafts(
         Object.fromEntries(
-          response.data.storyboards.map((item) => [
+          nextWorkspace.storyboards.map((item) => [
             item.id,
             {
               scriptText: getStoryboardScriptText(item),
@@ -1349,6 +1416,27 @@ const ProductionWorkbenchStoryboard = () => {
           ]),
         ),
       );
+    }
+  };
+
+  const selectEpisode = async (episodeNo: number) => {
+    setActiveEpisode(episodeNo);
+    setStoryboardPage(1);
+    try {
+      await reloadWorkspace(episodeNo, 1);
+    } catch {
+      message.error('该集分镜加载失败');
+    }
+  };
+
+  const changeStoryboardPage = async (nextPage: number) => {
+    if (nextPage < 1 || nextPage > Math.ceil(storyboardTotal / storyboardPageSize)) {
+      return;
+    }
+    try {
+      await reloadWorkspace(activeEpisode, nextPage);
+    } catch {
+      message.error('分镜分页加载失败');
     }
   };
 
@@ -1805,7 +1893,7 @@ const ProductionWorkbenchStoryboard = () => {
             <button
               key={episode}
               type="button"
-              onClick={() => setActiveEpisode(episode)}
+              onClick={() => void selectEpisode(episode)}
               style={{
                 width: 36,
                 height: 36,
@@ -1966,6 +2054,27 @@ const ProductionWorkbenchStoryboard = () => {
             <Empty description="暂无分镜，请先完成剧本分镜拆解" />
           </div>
         )}
+        {storyboardTotal > storyboardPageSize ? (
+          <Flex justify="center" align="center" gap={12} style={{ marginTop: 20 }}>
+            <Button
+              size="small"
+              disabled={storyboardPage <= 1}
+              onClick={() => void changeStoryboardPage(storyboardPage - 1)}
+            >
+              上一页
+            </Button>
+            <Typography.Text type="secondary">
+              第 {storyboardPage} / {Math.ceil(storyboardTotal / storyboardPageSize)} 页，共 {storyboardTotal} 个镜头
+            </Typography.Text>
+            <Button
+              size="small"
+              disabled={storyboardPage >= Math.ceil(storyboardTotal / storyboardPageSize)}
+              onClick={() => void changeStoryboardPage(storyboardPage + 1)}
+            >
+              下一页
+            </Button>
+          </Flex>
+        ) : null}
       </div>
     </div>
   );

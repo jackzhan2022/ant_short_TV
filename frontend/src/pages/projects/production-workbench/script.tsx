@@ -23,7 +23,9 @@ import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { queryProject } from '@/services/account-team/project';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import {
-  queryScriptWorkspace,
+  queryAssetSettingsSummary,
+  queryCurrentScriptAnalysis,
+  queryScriptPageWorkspace,
   reanalyzeScript,
   regenerateEpisodeAssets,
   regenerateEpisodeSplitting,
@@ -563,12 +565,35 @@ const ProductionWorkbenchScript = () => {
         setLoading(true);
       }
       try {
-        const [workspaceResponse, projectResponse] = await Promise.all([
-          queryScriptWorkspace(projectId),
+        const [workspaceResponse, assetResponse, projectResponse] = await Promise.all([
+          queryScriptPageWorkspace(projectId),
+          queryAssetSettingsSummary(projectId),
           queryProject(projectId),
         ]);
         if (active) {
-          setWorkspace(workspaceResponse.data);
+          setWorkspace({
+            projectId,
+            script: workspaceResponse.data.script,
+            versions: workspaceResponse.data.versions,
+            episodes: workspaceResponse.data.episodes,
+            episodeWarnings: workspaceResponse.data.episodeWarnings,
+            analysis: workspaceResponse.data.analysis,
+            globalUnderstanding: workspaceResponse.data.globalUnderstanding,
+            characters:
+              assetResponse.data.characters?.length
+                ? assetResponse.data.characters
+                : (workspaceResponse.data as Partial<ScriptWorkspace>)
+                    .characters || [],
+            scenes:
+              assetResponse.data.scenes?.length
+                ? assetResponse.data.scenes
+                : (workspaceResponse.data as Partial<ScriptWorkspace>).scenes || [],
+            props:
+              assetResponse.data.props?.length
+                ? assetResponse.data.props
+                : (workspaceResponse.data as Partial<ScriptWorkspace>).props || [],
+            storyboards: [],
+          });
           setProject(projectResponse.data);
         }
       } catch {
@@ -587,20 +612,35 @@ const ProductionWorkbenchScript = () => {
     };
   }, [message, projectId]);
 
+  const hasActiveAnalysis = (workspace?.analysis?.stages || []).some((stage) =>
+    ['PENDING', 'RUNNING', 'RETRYING'].includes(stage.status),
+  );
+
   useEffect(() => {
-    const stages = workspace?.analysis?.stages || [];
-    const activeAnalysis = stages.some((stage) =>
-      ['PENDING', 'RUNNING', 'RETRYING'].includes(stage.status),
-    );
-    if (!activeAnalysis) {
+    if (!hasActiveAnalysis) {
       return undefined;
     }
+    let reconciled = false;
     const timer = window.setInterval(async () => {
-      const response = await queryScriptWorkspace(projectId);
-      setWorkspace(response.data);
+      try {
+        const response = await queryCurrentScriptAnalysis(projectId);
+        setWorkspace((current) =>
+          current ? { ...current, analysis: response.data } : current,
+        );
+        const stillActive = (response.data?.stages || []).some((stage) =>
+          ['PENDING', 'RUNNING', 'RETRYING'].includes(stage.status),
+        );
+        if (!stillActive && !reconciled) {
+          reconciled = true;
+          window.clearInterval(timer);
+          await refreshWorkspace();
+        }
+      } catch {
+        // Keep the current shell and try again on the next polling tick.
+      }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [projectId, workspace?.analysis]);
+  }, [hasActiveAnalysis, projectId]);
 
   /*
    * The page keeps its shell visible while the initial workspace request is
@@ -638,8 +678,32 @@ const ProductionWorkbenchScript = () => {
   const tenantId =
     project?.tenantId ?? Number(localStorage.getItem('currentTenantId'));
   const refreshWorkspace = async () => {
-    const response = await queryScriptWorkspace(projectId);
-    setWorkspace(response.data);
+    const [workspaceResponse, assetResponse] = await Promise.all([
+      queryScriptPageWorkspace(projectId),
+      queryAssetSettingsSummary(projectId),
+    ]);
+    setWorkspace({
+      projectId,
+      script: workspaceResponse.data.script,
+      versions: workspaceResponse.data.versions,
+      episodes: workspaceResponse.data.episodes,
+      episodeWarnings: workspaceResponse.data.episodeWarnings,
+      analysis: workspaceResponse.data.analysis,
+      globalUnderstanding: workspaceResponse.data.globalUnderstanding,
+      characters:
+        assetResponse.data.characters?.length
+          ? assetResponse.data.characters
+          : (workspaceResponse.data as Partial<ScriptWorkspace>).characters || [],
+      scenes:
+        assetResponse.data.scenes?.length
+          ? assetResponse.data.scenes
+          : (workspaceResponse.data as Partial<ScriptWorkspace>).scenes || [],
+      props:
+        assetResponse.data.props?.length
+          ? assetResponse.data.props
+          : (workspaceResponse.data as Partial<ScriptWorkspace>).props || [],
+      storyboards: [],
+    });
   };
   const followExecution = async (task?: API.AiExecutionResponse) => {
     if (!task?.id || !tenantId) {

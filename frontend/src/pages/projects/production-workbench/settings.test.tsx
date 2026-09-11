@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   extractScriptElements: vi.fn(),
   queryScriptWorkspace: vi.fn(),
   queryAssetSettingsWorkspace: vi.fn(),
+  queryAssetSettingsSummary: vi.fn(),
+  queryAssetVisualWorkspace: vi.fn(),
   updateScriptElement: vi.fn(),
   pollExecution: vi.fn(),
   queryAssetCandidates: vi.fn(),
@@ -33,7 +35,8 @@ vi.mock('./service', () => ({
   deleteScriptElement: mocks.deleteScriptElement,
   extractScriptElements: mocks.extractScriptElements,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
-  queryAssetSettingsWorkspace: mocks.queryAssetSettingsWorkspace,
+  queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
+  queryAssetVisualWorkspace: mocks.queryAssetVisualWorkspace,
   updateScriptElement: mocks.updateScriptElement,
   queryAssetCandidates: mocks.queryAssetCandidates,
   decideAssetCandidate: mocks.decideAssetCandidate,
@@ -234,13 +237,16 @@ describe('ProductionWorkbenchSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.queryScriptWorkspace.mockResolvedValue({ data: workspace });
-    mocks.queryAssetSettingsWorkspace.mockResolvedValue({
+    mocks.queryAssetSettingsSummary.mockResolvedValue({
       data: {
         projectId: 1,
         characters: workspace.characters,
         scenes: workspace.scenes,
         props: workspace.props,
       },
+    });
+    mocks.queryAssetVisualWorkspace.mockResolvedValue({
+      data: workspace.characters[0].visual,
     });
     localStorage.setItem('currentTenantId', '10');
     mocks.extractScriptElements.mockResolvedValue({
@@ -300,7 +306,7 @@ describe('ProductionWorkbenchSettings', () => {
   });
 
   it('shows a skeleton while the initial asset settings data is loading', () => {
-    mocks.queryAssetSettingsWorkspace.mockReturnValue(new Promise(() => {}));
+    mocks.queryAssetSettingsSummary.mockReturnValue(new Promise(() => {}));
     mocks.queryAssetCandidates.mockReturnValue(new Promise(() => {}));
 
     render(<ProductionWorkbenchSettings />);
@@ -309,7 +315,7 @@ describe('ProductionWorkbenchSettings', () => {
   });
 
   it('shows a retry action when the initial asset settings request fails', async () => {
-    mocks.queryAssetSettingsWorkspace
+    mocks.queryAssetSettingsSummary
       .mockRejectedValueOnce(new Error('load failed'))
       .mockResolvedValueOnce({
         data: {
@@ -325,7 +331,7 @@ describe('ProductionWorkbenchSettings', () => {
     expect(await screen.findByText('设定页加载失败')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     await waitFor(() => {
-      expect(mocks.queryAssetSettingsWorkspace).toHaveBeenCalledTimes(2);
+      expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -528,7 +534,7 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.queryByText('AI图片生产')).not.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(mocks.queryAssetSettingsWorkspace).toHaveBeenCalledWith(1);
+      expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledWith(1);
     });
   });
 
@@ -556,7 +562,7 @@ describe('ProductionWorkbenchSettings', () => {
         expect.any(Function),
       );
       expect(
-        mocks.queryAssetSettingsWorkspace.mock.calls.length,
+        mocks.queryAssetSettingsSummary.mock.calls.length,
       ).toBeGreaterThanOrEqual(2);
     });
     expect(screen.getByText('execution-601-SUCCEEDED')).toBeInTheDocument();

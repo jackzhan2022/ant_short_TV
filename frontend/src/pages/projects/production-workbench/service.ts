@@ -302,6 +302,27 @@ export type AssetSettingsWorkspace = Pick<
   'projectId' | 'characters' | 'scenes' | 'props'
 >;
 
+export type ScriptPageWorkspace = Pick<
+  ScriptWorkspace,
+  | 'projectId'
+  | 'script'
+  | 'versions'
+  | 'episodes'
+  | 'episodeWarnings'
+  | 'analysis'
+  | 'globalUnderstanding'
+>;
+
+export type StoryboardWorkspacePage = {
+  projectId: number;
+  episodes: ScriptEpisode[];
+  episodeNo: number;
+  current: number;
+  pageSize: number;
+  total: number;
+  storyboards: StoryboardShot[];
+};
+
 export type ScriptGlobalUnderstanding = {
   id: number;
   schemaVersion: number;
@@ -548,9 +569,47 @@ export const queryScriptWorkspace = async (projectId: number) =>
     `/api/projects/${projectId}/script-workspace`,
   );
 
+export const queryScriptPageWorkspace = async (projectId: number) =>
+  request<ApiResponse<ScriptPageWorkspace>>(
+    `/api/projects/${projectId}/script-page-workspace`,
+  );
+
+export const queryScriptVersion = async (projectId: number, versionId: number) =>
+  request<ApiResponse<ScriptVersion>>(
+    `/api/projects/${projectId}/script-versions/${versionId}`,
+  );
+
+export const queryCurrentScriptAnalysis = async (projectId: number) =>
+  request<ApiResponse<ScriptAnalysisTask | null>>(
+    `/api/projects/${projectId}/script-analysis/current`,
+  );
+
 export const queryAssetSettingsWorkspace = async (projectId: number) =>
   request<ApiResponse<AssetSettingsWorkspace>>(
     `/api/projects/${projectId}/asset-settings-workspace`,
+  );
+
+export const queryAssetSettingsSummary = async (projectId: number) =>
+  request<ApiResponse<AssetSettingsWorkspace>>(
+    `/api/projects/${projectId}/asset-settings-summary`,
+  );
+
+export const queryAssetVisualWorkspace = async (
+  projectId: number,
+  elementType: Exclude<ScriptElementType, 'ALL'>,
+  elementId: number,
+) =>
+  request<ApiResponse<AssetVisualWorkspace>>(
+    `/api/projects/${projectId}/script-elements/${elementType}/${elementId}/visual-workspace`,
+  );
+
+export const queryStoryboardWorkspace = async (
+  projectId: number,
+  params: { episodeNo?: number; current?: number; pageSize?: number } = {},
+) =>
+  request<ApiResponse<StoryboardWorkspacePage>>(
+    `/api/projects/${projectId}/storyboard-workspace`,
+    { params },
   );
 
 export const retryScriptAnalysis = async (

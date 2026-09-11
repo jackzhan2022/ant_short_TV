@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   createStoryboardSubtitle: vi.fn(),
   queryAiVoiceTasks: vi.fn(),
   queryScriptWorkspace: vi.fn(),
+  queryStoryboardWorkspace: vi.fn(),
   queryShotComposeTasks: vi.fn(),
   queryStoryboardSubtitles: vi.fn(),
   regenerateAiVoiceTask: vi.fn(),
@@ -145,7 +146,7 @@ vi.mock('./service', () => ({
   createShotComposeTask: mocks.createShotComposeTask,
   createStoryboardSubtitle: mocks.createStoryboardSubtitle,
   queryAiVoiceTasks: mocks.queryAiVoiceTasks,
-  queryScriptWorkspace: mocks.queryScriptWorkspace,
+  queryStoryboardWorkspace: mocks.queryStoryboardWorkspace,
   queryShotComposeTasks: mocks.queryShotComposeTasks,
   queryStoryboardSubtitles: mocks.queryStoryboardSubtitles,
   regenerateAiVoiceTask: mocks.regenerateAiVoiceTask,
@@ -158,7 +159,7 @@ vi.mock('./service', () => ({
 describe('ShotProductionWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.queryScriptWorkspace.mockResolvedValue({
+    mocks.queryStoryboardWorkspace.mockResolvedValue({
       success: true,
       data: {
         storyboards: [
@@ -191,7 +192,7 @@ describe('ShotProductionWorkspace', () => {
     expect(screen.getByText('合成文本')).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1);
+      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1);
       expect(mocks.queryAiVoiceTasks).toHaveBeenCalledWith(1, {});
       expect(mocks.queryStoryboardSubtitles).toHaveBeenCalledWith(1, {});
       expect(mocks.queryShotComposeTasks).toHaveBeenCalledWith(1, {});

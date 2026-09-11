@@ -189,6 +189,69 @@ record ScriptWorkspaceResponse(
     }
 }
 
+record ScriptVersionSummaryResponse(
+    Long id,
+    Long scriptId,
+    Integer versionNo,
+    String sourceType,
+    String inputSummary,
+    String status,
+    LocalDateTime createdAt
+) {
+    static ScriptVersionSummaryResponse from(ScriptVersionEntity entity) {
+        return new ScriptVersionSummaryResponse(
+            entity.getId(), entity.getScriptId(), entity.getVersionNo(), entity.getSourceType(),
+            entity.getInputSummary(), entity.getStatus(), entity.getCreatedAt());
+    }
+}
+
+record ScriptPageWorkspaceResponse(
+    Long projectId,
+    ScriptResponse script,
+    List<ScriptVersionSummaryResponse> versions,
+    List<ScriptEpisodeResponse> episodes,
+    ScriptAnalysisTaskResponse analysis,
+    ScriptGlobalUnderstandingResponse globalUnderstanding
+) {
+    @com.fasterxml.jackson.annotation.JsonProperty("episodeWarnings")
+    public List<EpisodeSplitWarnings.Warning> episodeWarnings() {
+        return new EpisodeSplitWarnings().inspect(script == null ? null : script.content(), episodes);
+    }
+}
+
+record CharacterAssetSummaryResponse(
+    Long id, String name, String roleType, String gender, String ageRange, String identity,
+    List<String> personality, String appearance, String prompt, String status, Long mergeTargetId,
+    String mainImageUrl
+) {}
+
+record SceneAssetSummaryResponse(
+    Long id, String name, String sceneType, String atmosphere, String description, String visualStyle,
+    String prompt, String status, Long mergeTargetId, String mainImageUrl
+) {}
+
+record PropAssetSummaryResponse(
+    Long id, String name, String propType, String appearance, String plotFunction, String prompt,
+    String status, Long mergeTargetId, String mainImageUrl
+) {}
+
+record AssetSettingsSummaryResponse(
+    Long projectId,
+    List<CharacterAssetSummaryResponse> characters,
+    List<SceneAssetSummaryResponse> scenes,
+    List<PropAssetSummaryResponse> props
+) {}
+
+record StoryboardWorkspacePageResponse(
+    Long projectId,
+    List<ScriptEpisodeResponse> episodes,
+    Integer episodeNo,
+    Integer current,
+    Integer pageSize,
+    Long total,
+    List<StoryboardResponse> storyboards
+) {}
+
 record AssetSettingsWorkspaceResponse(
     Long projectId,
     List<CharacterAssetResponse> characters,

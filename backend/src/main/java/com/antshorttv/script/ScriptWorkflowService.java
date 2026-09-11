@@ -596,6 +596,72 @@ public class ScriptWorkflowService {
         );
     }
 
+    public ScriptPageWorkspaceResponse scriptPageWorkspace(Long tenantId, Long projectId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
+        List<ScriptVersionSummaryResponse> versions = script == null ? List.of()
+            : scriptVersionMapper.selectByScript(tenantId, script.getId()).stream()
+                .map(ScriptVersionSummaryResponse::from).toList();
+        List<ScriptEpisodeResponse> episodes = script == null ? List.of()
+            : scriptEpisodeService.currentEpisodes(tenantId, projectId, script.getId());
+        if (episodes.isEmpty()) {
+            episodes = ScriptEpisodeParser.parse(script == null ? null : script.getContent());
+        }
+        return new ScriptPageWorkspaceResponse(projectId, ScriptResponse.from(script), versions, episodes,
+            analysis(tenantId, projectId, script), script == null || globalUnderstandingRepository == null ? null
+                : globalUnderstandingRepository.findCurrent(tenantId, script.getId())
+                    .map(ScriptGlobalUnderstandingResponse::from).orElse(null));
+    }
+
+    public ScriptVersionResponse scriptVersion(Long tenantId, Long projectId, Long versionId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        ScriptVersionEntity version = scriptVersionMapper.selectById(versionId);
+        if (version == null || !tenantId.equals(version.getTenantId()) || !projectId.equals(version.getProjectId())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "剧本版本不存在。");
+        }
+        return ScriptVersionResponse.from(version);
+    }
+
+    public AssetSettingsSummaryResponse assetSettingsSummary(Long tenantId, Long projectId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
+        Long scriptId = script == null ? null : script.getId();
+        return new AssetSettingsSummaryResponse(projectId,
+            characterSummaries(tenantId, projectId, scriptId), sceneSummaries(tenantId, projectId, scriptId),
+            propSummaries(tenantId, projectId, scriptId));
+    }
+
+    public AssetVisualWorkspace assetVisualWorkspace(Long tenantId, Long projectId, String assetType, Long assetId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:VIEW", projectId);
+        return buildAssetVisualWorkspace(tenantId, projectId, normalizeElementType(assetType), assetId);
+    }
+
+    public StoryboardWorkspacePageResponse storyboardWorkspace(Long tenantId, Long projectId, Integer episodeNo,
+        Integer current, Integer pageSize) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        int safeCurrent = current == null || current < 1 ? 1 : current;
+        int safePageSize = pageSize == null || pageSize < 1 ? 20 : Math.min(pageSize, 100);
+        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
+        List<ScriptEpisodeResponse> episodes = script == null ? List.of()
+            : scriptEpisodeService.currentEpisodes(tenantId, projectId, script.getId());
+        if (episodes.isEmpty()) episodes = ScriptEpisodeParser.parse(script == null ? null : script.getContent());
+        int selectedEpisode = episodeNo == null ? episodes.stream().findFirst().map(ScriptEpisodeResponse::episodeNo)
+            .orElse(1) : episodeNo;
+        Long total = jdbcTemplate.queryForObject("""
+            select count(*) from storyboard where tenant_id = ? and project_id = ? and episode_no = ? and deleted_at is null
+            """, Long.class, tenantId, projectId, selectedEpisode);
+        List<StoryboardResponse> storyboards = storyboardPage(tenantId, projectId, selectedEpisode,
+            safePageSize, (safeCurrent - 1) * safePageSize);
+        return new StoryboardWorkspacePageResponse(projectId, episodes, selectedEpisode, safeCurrent,
+            safePageSize, total == null ? 0L : total, storyboards);
+    }
+
     public AssetSettingsWorkspaceResponse assetSettingsWorkspace(Long tenantId, Long projectId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
@@ -1469,7 +1535,7 @@ public class ScriptWorkflowService {
                 rs.getString("prompt"),
                 rs.getString("status"),
                 rs.getObject("merge_target_id", Long.class),
-                assetVisualWorkspace(tenantId, projectId, "CHARACTER", rs.getLong("id"))
+                buildAssetVisualWorkspace(tenantId, projectId, "CHARACTER", rs.getLong("id"))
             ), tenantId, projectId, scriptId);
     }
 
@@ -1491,7 +1557,7 @@ public class ScriptWorkflowService {
                 rs.getString("prompt"),
                 rs.getString("status"),
                 rs.getObject("merge_target_id", Long.class),
-                assetVisualWorkspace(tenantId, projectId, "SCENE", rs.getLong("id"))
+                buildAssetVisualWorkspace(tenantId, projectId, "SCENE", rs.getLong("id"))
             ), tenantId, projectId, scriptId);
     }
 
@@ -1512,11 +1578,11 @@ public class ScriptWorkflowService {
                 rs.getString("prompt"),
                 rs.getString("status"),
                 rs.getObject("merge_target_id", Long.class),
-                assetVisualWorkspace(tenantId, projectId, "PROP", rs.getLong("id"))
+                buildAssetVisualWorkspace(tenantId, projectId, "PROP", rs.getLong("id"))
             ), tenantId, projectId, scriptId);
     }
 
-    private AssetVisualWorkspace assetVisualWorkspace(
+    private AssetVisualWorkspace buildAssetVisualWorkspace(
         Long tenantId, Long projectId, String assetType, Long assetId
     ) {
         List<AssetVisualVariantService.VariantResponse> variants =
@@ -1573,6 +1639,63 @@ public class ScriptWorkflowService {
                 rs.getObject("current_video_result_id", Long.class),
                 materialFileAccessService.publicUrl(rs.getString("current_video_url"))
             ), tenantId, projectId);
+    }
+
+    private List<CharacterAssetSummaryResponse> characterSummaries(Long tenantId, Long projectId, Long scriptId) {
+        return jdbcTemplate.query("""
+            select id, name, role_type, gender, age_range, identity, personality, appearance, prompt, status,
+                   merge_target_id, main_image_url from character_asset
+             where tenant_id = ? and project_id = ? and deleted_at is null and (script_id = ? or script_id is null)
+             order by id
+            """, (rs, rowNum) -> new CharacterAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
+                rs.getString("role_type"), rs.getString("gender"), rs.getString("age_range"),
+                rs.getString("identity"), splitTags(rs.getString("personality")), rs.getString("appearance"),
+                rs.getString("prompt"), rs.getString("status"), rs.getObject("merge_target_id", Long.class),
+                materialFileAccessService.publicUrl(rs.getString("main_image_url"))), tenantId, projectId, scriptId);
+    }
+
+    private List<SceneAssetSummaryResponse> sceneSummaries(Long tenantId, Long projectId, Long scriptId) {
+        return jdbcTemplate.query("""
+            select id, name, scene_type, time_atmosphere, description, visual_style, prompt, status,
+                   merge_target_id, main_image_url from scene_asset
+             where tenant_id = ? and project_id = ? and deleted_at is null and (script_id = ? or script_id is null)
+             order by id
+            """, (rs, rowNum) -> new SceneAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
+                rs.getString("scene_type"), rs.getString("time_atmosphere"), rs.getString("description"),
+                rs.getString("visual_style"), rs.getString("prompt"), rs.getString("status"),
+                rs.getObject("merge_target_id", Long.class), materialFileAccessService.publicUrl(rs.getString("main_image_url"))),
+            tenantId, projectId, scriptId);
+    }
+
+    private List<PropAssetSummaryResponse> propSummaries(Long tenantId, Long projectId, Long scriptId) {
+        return jdbcTemplate.query("""
+            select id, name, prop_type, appearance, plot_function, prompt, status, merge_target_id, main_image_url
+              from prop_asset where tenant_id = ? and project_id = ? and deleted_at is null
+                and (script_id = ? or script_id is null) order by id
+            """, (rs, rowNum) -> new PropAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
+                rs.getString("prop_type"), rs.getString("appearance"), rs.getString("plot_function"),
+                rs.getString("prompt"), rs.getString("status"), rs.getObject("merge_target_id", Long.class),
+                materialFileAccessService.publicUrl(rs.getString("main_image_url"))), tenantId, projectId, scriptId);
+    }
+
+    private List<StoryboardResponse> storyboardPage(Long tenantId, Long projectId, int episodeNo, int limit, int offset) {
+        return jdbcTemplate.query("""
+            select id, shot_no, coalesce(storyboard_no, shot_no) storyboard_no, episode_id, episode_no,
+                   shot_type, visual_description, characters, scene, dialogue, duration_seconds, shot_plan_json,
+                   prompt_document_json, material_binding_status, source_fingerprint, generated_by_run_id,
+                   image_prompt, video_prompt, first_frame_url, current_video_result_id, current_video_url
+              from storyboard where tenant_id = ? and project_id = ? and episode_no = ? and deleted_at is null
+             order by shot_no, id limit ? offset ?
+            """, (rs, rowNum) -> new StoryboardResponse(rs.getLong("id"), rs.getInt("shot_no"),
+                rs.getInt("storyboard_no"), rs.getObject("episode_id", Long.class), rs.getInt("episode_no"),
+                rs.getString("shot_type"), rs.getString("visual_description"), rs.getString("characters"),
+                rs.getString("scene"), rs.getString("dialogue"), rs.getObject("duration_seconds", Integer.class),
+                readJson(rs.getString("shot_plan_json")), readJson(rs.getString("prompt_document_json")),
+                rs.getString("material_binding_status"), rs.getString("source_fingerprint"),
+                rs.getObject("generated_by_run_id", Long.class), rs.getString("image_prompt"),
+                rs.getString("video_prompt"), materialFileAccessService.publicUrl(rs.getString("first_frame_url")),
+                rs.getObject("current_video_result_id", Long.class),
+                materialFileAccessService.publicUrl(rs.getString("current_video_url"))), tenantId, projectId, episodeNo, limit, offset);
     }
 
     private com.fasterxml.jackson.databind.JsonNode readJson(String value) {

@@ -46,7 +46,8 @@ import {
   extractScriptElements,
   type PropAsset,
   queryAssetCandidates,
-  queryAssetSettingsWorkspace,
+  queryAssetSettingsSummary,
+  queryAssetVisualWorkspace,
   type SceneAsset,
   type ScriptElementType,
   selectPrimaryVisualVariant,
@@ -432,6 +433,8 @@ const ProductionWorkbenchSettings = () => {
     type: ElementType;
     item: AssetRecord;
   }>();
+  const [visualLoading, setVisualLoading] = useState(false);
+  const visualRequestIdRef = useRef(0);
   const [selectedVisualVariantId, setSelectedVisualVariantId] =
     useState<number>();
   const [newVariantName, setNewVariantName] = useState('');
@@ -448,7 +451,7 @@ const ProductionWorkbenchSettings = () => {
 
   const reload = async () => {
     const [workspaceResponse, candidateResponse] = await Promise.all([
-      queryAssetSettingsWorkspace(projectId),
+      queryAssetSettingsSummary(projectId),
       queryAssetCandidates(projectId, { reviewStatus: 'PENDING_REVIEW' }),
     ]);
     setWorkspace({ ...emptyWorkspace(projectId), ...workspaceResponse.data });
@@ -464,7 +467,7 @@ const ProductionWorkbenchSettings = () => {
     setLoading(true);
     setLoadFailed(false);
     Promise.all([
-      queryAssetSettingsWorkspace(projectId),
+      queryAssetSettingsSummary(projectId),
       queryAssetCandidates(projectId, { reviewStatus: 'PENDING_REVIEW' }),
     ])
       .then(([response, candidateResponse]) => {
@@ -666,8 +669,38 @@ const ProductionWorkbenchSettings = () => {
   };
 
   const closeVisualGallery = () => {
+    visualRequestIdRef.current += 1;
+    setVisualLoading(false);
     setGenerationVariantId(undefined);
     setVisualAsset(undefined);
+  };
+
+  const openVisualGallery = async (type: ElementType, item: AssetRecord) => {
+    const requestId = visualRequestIdRef.current + 1;
+    visualRequestIdRef.current = requestId;
+    setVisualAsset({ type, item });
+    setSelectedVisualVariantId(undefined);
+    setVisualLoading(true);
+    try {
+      const response = await queryAssetVisualWorkspace(projectId, type, item.id);
+      if (visualRequestIdRef.current !== requestId) return;
+      setVisualAsset((current) =>
+        current?.type === type && current.item.id === item.id
+          ? { ...current, item: { ...current.item, visual: response.data } }
+          : current,
+      );
+      setSelectedVisualVariantId(
+        response.data.primaryVariant?.id ?? response.data.variants[0]?.id,
+      );
+    } catch {
+      if (visualRequestIdRef.current === requestId) {
+        messageRef.current.error('视觉形象加载失败');
+      }
+    } finally {
+      if (visualRequestIdRef.current === requestId) {
+        setVisualLoading(false);
+      }
+    }
   };
 
   const submitVariantGeneration = async () => {
@@ -1341,6 +1374,9 @@ const ProductionWorkbenchSettings = () => {
                     <Typography.Title level={5} style={{ margin: '0 0 16px' }}>
                       {visualAsset.item.name} · 视觉形象管理
                     </Typography.Title>
+                    {visualLoading ? (
+                      <div role="status">视觉形象加载中</div>
+                    ) : null}
                     <Input.TextArea
                       defaultValue={visualAsset.item.prompt || ''}
                       aria-label={`${visualAsset.item.name}主体提示词`}
@@ -2037,11 +2073,7 @@ const ProductionWorkbenchSettings = () => {
                       onDelete={deleteAsset}
                       onSave={saveAsset}
                       onManageVisual={(type, item) => {
-                        setVisualAsset({ type, item });
-                        setSelectedVisualVariantId(
-                          item.visual?.primaryVariant?.id ??
-                            item.visual?.variants?.[0]?.id,
-                        );
+                        void openVisualGallery(type, item);
                       }}
                     />
                   ))}

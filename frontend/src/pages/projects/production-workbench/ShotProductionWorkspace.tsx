@@ -32,7 +32,7 @@ import {
   regenerateAiVoiceTask,
   regenerateShotComposeTask,
   queryAiVoiceTasks,
-  queryScriptWorkspace,
+  queryStoryboardWorkspace,
   queryShotComposeTasks,
   queryStoryboardSubtitles,
   saveAiVoiceResultAsMaterial,
@@ -227,7 +227,7 @@ const ShotProductionWorkspace = ({
   const loadStoryboards = async () => {
     setLoadingStoryboards(true);
     try {
-      const response = await queryScriptWorkspace(projectId);
+      const response = await queryStoryboardWorkspace(projectId);
       setStoryboards(response.data?.storyboards || []);
     } catch {
       message.warning('分镜数据加载失败');

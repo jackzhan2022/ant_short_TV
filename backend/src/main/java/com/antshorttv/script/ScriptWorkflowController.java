@@ -43,6 +43,22 @@ public class ScriptWorkflowController {
         return ApiResponse.success(scriptWorkflowService.workspace(tenantId(request), projectId));
     }
 
+    @GetMapping("/script-page-workspace")
+    @RequireProjectPermission("PROJECT:VIEW")
+    public ApiResponse<ScriptPageWorkspaceResponse> scriptPageWorkspace(
+        @PathVariable Long projectId, HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.scriptPageWorkspace(tenantId(request), projectId));
+    }
+
+    @GetMapping("/script-versions/{versionId}")
+    @RequireProjectPermission("PROJECT:VIEW")
+    public ApiResponse<ScriptVersionResponse> scriptVersion(
+        @PathVariable Long projectId, @PathVariable Long versionId, HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.scriptVersion(tenantId(request), projectId, versionId));
+    }
+
     @GetMapping("/asset-settings-workspace")
     @RequireProjectPermission("PROJECT:VIEW")
     public ApiResponse<AssetSettingsWorkspaceResponse> assetSettingsWorkspace(
@@ -51,6 +67,27 @@ public class ScriptWorkflowController {
     ) {
         return ApiResponse.success(
             scriptWorkflowService.assetSettingsWorkspace(tenantId(request), projectId));
+    }
+
+    @GetMapping("/asset-settings-summary")
+    @RequireProjectPermission("PROJECT:VIEW")
+    public ApiResponse<AssetSettingsSummaryResponse> assetSettingsSummary(
+        @PathVariable Long projectId, HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.assetSettingsSummary(tenantId(request), projectId));
+    }
+
+    @GetMapping("/storyboard-workspace")
+    @RequireProjectPermission("PROJECT:VIEW")
+    public ApiResponse<StoryboardWorkspacePageResponse> storyboardWorkspace(
+        @PathVariable Long projectId,
+        @RequestParam(required = false) Integer episodeNo,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.storyboardWorkspace(
+            tenantId(request), projectId, episodeNo, current, pageSize));
     }
 
     @GetMapping("/script-analysis/current")
@@ -232,6 +269,16 @@ public class ScriptWorkflowController {
         HttpServletRequest request
     ) {
         return ApiResponse.success(scriptWorkflowService.visualVariants(
+            tenantId(request), projectId, elementType, elementId));
+    }
+
+    @GetMapping("/script-elements/{elementType}/{elementId}/visual-workspace")
+    @RequireProjectPermission("ELEMENT:VIEW")
+    public ApiResponse<AssetVisualWorkspace> assetVisualWorkspace(
+        @PathVariable Long projectId, @PathVariable String elementType, @PathVariable Long elementId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.assetVisualWorkspace(
             tenantId(request), projectId, elementType, elementId));
     }
 

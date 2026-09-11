@@ -108,6 +108,144 @@ class ScriptWorkflowControllerTest {
     }
 
     @Test
+    void returnsFocusedPageWorkspacesWithoutUnrelatedCollections() throws Exception {
+        String token = registerUser("13800013003", "Focused Workspace Owner");
+        Long tenantId = createTenant(token, "按需加载团队");
+        Long ownerId = userIdByMobile("13800013003");
+        Long projectId = createProject(token, tenantId, ownerId, "按需加载项目", "FOCUSED_WORKSPACE");
+        mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"按需加载项目\",\"content\":\"第1集：开始\\n正文\",\"status\":\"DRAFT\"}"))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/projects/%d/script-page-workspace".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.script.content", is("第1集：开始\n正文")))
+            .andExpect(jsonPath("$.data.versions[0].content").doesNotExist())
+            .andExpect(jsonPath("$.data.characters").doesNotExist())
+            .andExpect(jsonPath("$.data.storyboards").doesNotExist());
+
+        mockMvc.perform(get("/api/projects/%d/asset-settings-summary".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.characters", hasSize(0)));
+
+        mockMvc.perform(get("/api/projects/%d/storyboard-workspace?episodeNo=1&current=1&pageSize=999".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.current", is(1)))
+            .andExpect(jsonPath("$.data.pageSize", is(100)))
+            .andExpect(jsonPath("$.data.storyboards", hasSize(0)));
+    }
+
+    @Test
+    void returnsFocusedDetailsAndBoundedStoryboardPages() throws Exception {
+        String token = registerUser("13800013034", "Focused Detail Owner");
+        Long tenantId = createTenant(token, "按需详情团队");
+        Long ownerId = userIdByMobile("13800013034");
+        Long projectId = createProject(
+            token, tenantId, ownerId, "按需详情项目", "FOCUSED_DETAIL",
+            "第1集：开端\n主角进入房间。"
+        );
+        Long scriptId = jdbcTemplate.queryForObject(
+            "select id from script where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        Long versionId = jdbcTemplate.queryForObject(
+            "select id from script_version where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, status, created_by, created_at, updated_at)
+            values (?, ?, '林晚', 'LEAD', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long characterId = jdbcTemplate.queryForObject(
+            "select id from character_asset where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        for (int shotNo = 1; shotNo <= 3; shotNo++) {
+            jdbcTemplate.update("""
+                insert into storyboard
+                  (tenant_id, project_id, script_id, episode_no, shot_no, visual_description,
+                   status, created_by, created_at, updated_at)
+                values (?, ?, ?, 1, ?, ?, 'CONFIRMED', ?, now(), now())
+                """, tenantId, projectId, scriptId, shotNo, "镜头" + shotNo, ownerId);
+        }
+
+        mockMvc.perform(get("/api/projects/%d/script-versions/%d".formatted(projectId, versionId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id", is(versionId.intValue())))
+            .andExpect(jsonPath("$.data.content", is("第1集：开端\n主角进入房间。")));
+        mockMvc.perform(get("/api/projects/%d/asset-settings-summary".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.characters[0].name", is("林晚")))
+            .andExpect(jsonPath("$.data.characters[0].visual").doesNotExist());
+        mockMvc.perform(get("/api/projects/%d/script-elements/CHARACTER/%d/visual-workspace".formatted(projectId, characterId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.variantCount", is(0)));
+        mockMvc.perform(get("/api/projects/%d/storyboard-workspace?episodeNo=1&current=1&pageSize=2".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total", is(3)))
+            .andExpect(jsonPath("$.data.current", is(1)))
+            .andExpect(jsonPath("$.data.pageSize", is(2)))
+            .andExpect(jsonPath("$.data.storyboards", hasSize(2)))
+            .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(1)));
+        mockMvc.perform(get("/api/projects/%d/storyboard-workspace?episodeNo=1&current=2&pageSize=2".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.storyboards", hasSize(1)))
+            .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(3)));
+    }
+
+    @Test
+    void focusedEndpointsRejectCrossTenantAndInvalidResources() throws Exception {
+        String ownerToken = registerUser("13800013035", "Focused Access Owner");
+        Long ownerTenantId = createTenant(ownerToken, "按需隔离团队A");
+        Long ownerId = userIdByMobile("13800013035");
+        Long projectId = createProject(
+            ownerToken, ownerTenantId, ownerId, "按需隔离项目", "FOCUSED_ACCESS",
+            "第1集\n隔离正文。"
+        );
+        Long versionId = jdbcTemplate.queryForObject(
+            "select id from script_version where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, ownerTenantId, projectId);
+        String otherToken = registerUser("13800013036", "Focused Access Other");
+        Long otherTenantId = createTenant(otherToken, "按需隔离团队B");
+
+        for (String path : List.of(
+            "/script-page-workspace",
+            "/asset-settings-summary",
+            "/storyboard-workspace",
+            "/script-versions/" + versionId
+        )) {
+            mockMvc.perform(get("/api/projects/%d%s".formatted(projectId, path))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))
+                    .header("X-Tenant-Id", otherTenantId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode", is("PROJECT_ACCESS_DENIED")));
+        }
+        mockMvc.perform(get("/api/projects/%d/script-elements/UNKNOWN/1/visual-workspace".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
+                .header("X-Tenant-Id", ownerTenantId))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/projects/%d/script-versions/999999999/".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
+                .header("X-Tenant-Id", ownerTenantId))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
     void returnsParsedEpisodesInScriptWorkspace() throws Exception {
         String token = registerUser("13800013020", "Episode Owner");
         Long tenantId = createTenant(token, "分集团队");
