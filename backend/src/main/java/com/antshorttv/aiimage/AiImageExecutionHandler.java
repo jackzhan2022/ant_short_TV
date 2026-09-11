@@ -12,6 +12,8 @@ import com.antshorttv.ai.AiImageResponse;
 import com.antshorttv.ai.AiInvocationRequest;
 import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiInvocationService;
+import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
 import com.antshorttv.execution.AiExecutionAttemptEntity;
 import com.antshorttv.execution.AiExecutionAttemptMapper;
 import com.antshorttv.execution.AiExecutionClaimLostException;
@@ -29,15 +31,23 @@ import com.antshorttv.points.AiSettlementOutcome;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.antshorttv.script.AssetVisualVariantService;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AiImageExecutionHandler extends AiExecutionHandler {
+    private static final Pattern INTERNAL_RESULT_DOWNLOAD = Pattern.compile(
+        "^/api/projects/(\\d+)/ai-image-results/(\\d+)/download$");
     private final AiImageTaskMapper taskMapper;
     private final AiImageResultMapper resultMapper;
     private final AiImageStorageService storageService;
@@ -149,10 +159,39 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
                 execution.id, execution.executionVersion, context.claim().phase()))
             .imageRequest(new AiImageRequest(
                 task.getPrompt(), task.getNegativePrompt(), null, task.getAspectRatio(),
-                task.getImageCount(), ReferenceImagesCodec.decode(task.getReferenceImages())
+                task.getImageCount(), resolveReferenceImages(task)
             ))
             .requestSummary(task.getPrompt())
             .build();
+    }
+
+    private List<String> resolveReferenceImages(AiImageTaskEntity task) {
+        List<String> references = new ArrayList<>();
+        for (String reference : ReferenceImagesCodec.decode(task.getReferenceImages())) {
+            String value = reference.trim();
+            if (value.startsWith("data:") || value.startsWith("http://") || value.startsWith("https://")) {
+                references.add(value);
+                continue;
+            }
+            Matcher matcher = INTERNAL_RESULT_DOWNLOAD.matcher(value);
+            if (!matcher.matches()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "参考图地址不受支持。");
+            }
+            Long projectId = Long.valueOf(matcher.group(1));
+            Long resultId = Long.valueOf(matcher.group(2));
+            AiImageResultEntity result = resultMapper.selectById(resultId);
+            if (result == null || !task.getTenantId().equals(result.getTenantId())
+                || !task.getProjectId().equals(projectId) || !projectId.equals(result.getProjectId())
+                || !AiImageResultStatus.ACTIVE.name().equals(result.getStatus())) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "参考图不存在或不可用。");
+            }
+            try (InputStream stream = storageService.resource(result).getInputStream()) {
+                references.add("data:" + result.getMimeType() + ";base64," + Base64.getEncoder().encodeToString(stream.readAllBytes()));
+            } catch (Exception exception) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "参考图读取失败：" + exception.getMessage());
+            }
+        }
+        return references;
     }
 
     private void markAttempt(AiExecutionContext context, AiInvocationResult<AiImageResponse> result) {

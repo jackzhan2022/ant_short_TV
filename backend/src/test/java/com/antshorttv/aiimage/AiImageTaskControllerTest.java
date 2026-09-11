@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.Base64;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -661,6 +662,50 @@ class AiImageTaskControllerTest {
                 String.class,
                 executionId
             )).containsExactly("CALL", "IMAGE");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void sendsStoredReferenceImageToProviderAsDataUrl() throws Exception {
+        String token = registerUser("13800014022", "Reference Image Editor");
+        Long tenantId = createTenant(token, "参考图编辑团队");
+        Long ownerId = userIdByMobile("13800014022");
+        Long projectId = createProject(token, tenantId, ownerId, "参考图编辑项目", "IMAGE_REFERENCE_EDIT");
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 5);
+        AtomicReference<String> providerRequest = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/responses", exchange -> {
+            providerRequest.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = ("{\"id\":\"resp-image\",\"output\":[{\"type\":\"image_generation_call\",\"result\":\"" + pngBase64() + "\"}]}")
+                .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            createImageService(token, tenantId, "http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-reference-image");
+            Long sourceTaskId = readLong(createImageTask(token, tenantId, projectId, "reference-source", """
+                {"taskType":"STORYBOARD_FIRST_FRAME","targetType":"STORYBOARD","targetId":%d,
+                 "prompt":"源图","aspectRatio":"9:16","imageCount":1}
+                """.formatted(storyboardId)), "$.data.id");
+            MvcResult source = waitForTaskSuccess(token, tenantId, projectId, sourceTaskId);
+            String referenceImage = JsonPath.read(source.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
+
+            Long editTaskId = readLong(createImageTask(token, tenantId, projectId, "reference-edit", """
+                {"taskType":"STORYBOARD_FIRST_FRAME","targetType":"STORYBOARD","targetId":%d,
+                 "prompt":"编辑源图","aspectRatio":"9:16","imageCount":1,
+                 "referenceImages":["%s"]}
+                """.formatted(storyboardId, referenceImage)), "$.data.id");
+            waitForTaskSuccess(token, tenantId, projectId, editTaskId);
+
+            String imageUrl = JsonPath.read(providerRequest.get(), "$.input[0].content[1].image_url");
+            assertThat(imageUrl).startsWith("data:image/png;base64,");
         } finally {
             server.stop(0);
         }
