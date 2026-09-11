@@ -1,5 +1,21 @@
 # 验证记录（2026-09-11）
 
+## 后端读取链优化（待本次提交后的发布验收）
+
+- 轻量分集导航、分析阶段的三类批量读取和访问上下文复用已实现；完整范围及未完成项见 `handoff.md`。
+- 提交前重新执行 `mvn -f backend/pom.xml '-Dtest=ScriptWorkflowReadBoundaryTest,ScriptAnalysisReadBoundaryTest,ScopedPermissionGuardTest,ScriptWorkflowControllerTest,ScriptEpisodeServiceTest' test`：32 项通过，0 failures，0 errors，0 skipped（2026-09-11 19:07）。
+- 随后执行 `mvn -f backend/pom.xml -DskipTests package`：退出码 0，生成 Spring Boot JAR（2026-09-11 19:07）。
+- 认证态项目 33 性能对比不在本地测试范围内，仍保持任务 7.2 未完成。
+
+## 线上部署（15:49）
+
+- 已确认 GitHub master 为 `c536c33618a0e0eb5a6fc19a7b00b71bb96afcf0`，发布目录 `/opt/antv/releases/202609111542-c536c33` 已切换生效。
+- 数据库与 Skill 备份位于 `/opt/antv/backups/202609111542-c536c33`，gzip 与 tar 完整性检查通过。旧版本 `/opt/antv/releases/202609111120-8a2d823` 保留用于回滚。
+- 发布前重跑前端 300 项测试、lint/type checks、Ant Design lint 及前后端构建，退出码均为 0；既有警告保留。前后端上传包 SHA-256 与本地一致。
+- 服务状态 `active/running`，`NRestarts=0`；公网首页 HTTP 200，公网首页与服务器及本地 index.html SHA-256 一致。
+- 未认证访问 currentUser、script-workspace、script-page-workspace、asset-settings-summary、带分页参数的 storyboard-workspace 和 script-content 均返回 401。这仅验证服务及认证拦截，不证明认证后的业务响应正确或性能达标。
+- 7.2 继续保持未勾选：本轮浏览器桥接仍报 `nodeRepl.fetch request failed`，未取得项目 33 的认证态耗时、响应大小及 SQL 查询数。最新版本未部署这一前置阻碍现已解除。
+
 ## 后续实现与复验（15:29 更新，取代下文的早期缺口结论）
 
 - 当前任务清单为 **23/24 完成**，仅 7.2 保持未勾选；下文早期审计为历史记录，不代表当前状态。
