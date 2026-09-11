@@ -151,6 +151,7 @@ const workspace = {
       appearance: '圆脸，黄色上衣',
       prompt: '6岁男孩，写实都市风格',
       status: 'CONFIRMED',
+      mainImageThumbnailUrl: '/daily-thumb.png',
       visual: {
         variantCount: 2,
         primaryVariant: {
@@ -314,6 +315,14 @@ describe('ProductionWorkbenchSettings', () => {
     render(<ProductionWorkbenchSettings />);
 
     expect(screen.getByLabelText('资产设定加载中')).toBeInTheDocument();
+  });
+
+  it('renders summary thumbnails with native lazy loading', async () => {
+    render(<ProductionWorkbenchSettings />);
+
+    const thumbnail = await screen.findByAltText('斌斌当前视觉形象');
+    expect(thumbnail).toHaveAttribute('src', '/daily-thumb.png');
+    expect(thumbnail).toHaveAttribute('loading', 'lazy');
   });
 
   it('loads only the opened visual detail and retains assets on detail failure', async () => {

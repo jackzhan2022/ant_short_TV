@@ -102,6 +102,7 @@ export type CharacterAsset = {
   prompt: string;
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
+  mainImageThumbnailUrl?: string | null;
   visual?: AssetVisualWorkspace;
 };
 
@@ -115,6 +116,7 @@ export type SceneAsset = {
   prompt: string;
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
+  mainImageThumbnailUrl?: string | null;
   visual?: AssetVisualWorkspace;
 };
 
@@ -127,6 +129,7 @@ export type PropAsset = {
   prompt: string;
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
+  mainImageThumbnailUrl?: string | null;
   visual?: AssetVisualWorkspace;
 };
 
