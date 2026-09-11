@@ -18,10 +18,16 @@ import com.antshorttv.ai.AiSecretCodec;
 import com.antshorttv.execution.AiExecutionDispatcher;
 import com.jayway.jsonpath.JsonPath;
 import com.sun.net.httpserver.HttpServer;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.util.Base64;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -37,6 +43,30 @@ import org.springframework.test.web.servlet.MvcResult;
 @SpringBootTest(properties = "ai.execution.dispatcher.enabled=false")
 @AutoConfigureMockMvc
 class AiImageTaskControllerTest {
+    private static HttpServer responsesServer;
+
+    @BeforeAll
+    static void startResponsesServer() throws Exception {
+        responsesServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        responsesServer.createContext("/v1/responses", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            ByteArrayOutputStream image = new ByteArrayOutputStream();
+            ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB), "png", image);
+            String encodedImage = Base64.getEncoder().encodeToString(image.toByteArray());
+            byte[] body = ("{\"id\":\"test-response\",\"output\":[{\"type\":\"image_generation_call\",\"result\":\"" + encodedImage + "\"}]}")
+                .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        responsesServer.start();
+    }
+
+    @AfterAll
+    static void stopResponsesServer() {
+        if (responsesServer != null) responsesServer.stop(0);
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -478,6 +508,9 @@ class AiImageTaskControllerTest {
         MvcResult completed = waitForTaskSuccess(token, tenantId, projectId, taskId);
         Long resultId = readLong(completed, "$.data.results[0].id");
         String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
+        String thumbnailUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].thumbnailUrl");
+        assertThat(imageUrl).contains("/download").doesNotContain("data:image");
+        assertThat(thumbnailUrl).contains("/thumbnail").doesNotContain("data:image");
 
         mockMvc.perform(get("/api/projects/%d/ai-image-tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -491,6 +524,18 @@ class AiImageTaskControllerTest {
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.IMAGE_PNG));
+
+        mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId, resultId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(content().contentType(MediaType.IMAGE_PNG));
+
+        String unauthorizedToken = registerUser("13800014021", "Unauthorized Image Reader");
+        mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId, resultId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(unauthorizedToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/projects/%d/ai-image-results/%d/save-material".formatted(projectId, resultId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -538,7 +583,7 @@ class AiImageTaskControllerTest {
     }
 
     @Test
-    void storesProviderImageUrlWhenGatewayReturnsRealImages() throws Exception {
+    void storesGeneratedImageAsOriginalAndThumbnailResources() throws Exception {
         String token = registerUser("13800014005", "Real Image Creator");
         Long tenantId = createTenant(token, "真实图片团队");
         Long ownerId = userIdByMobile("13800014005");
@@ -546,11 +591,10 @@ class AiImageTaskControllerTest {
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 5);
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/images/generations", exchange -> {
+        server.createContext("/v1/responses", exchange -> {
             exchange.getRequestBody().readAllBytes();
-            byte[] body = """
-                {"data":[{"url":"https://cdn.example.com/generated-first-frame.png"}]}
-                """.getBytes(StandardCharsets.UTF_8);
+            byte[] body = ("{\"id\":\"resp-image\",\"output\":[{\"type\":\"image_generation_call\",\"result\":\"" + pngBase64() + "\"}]}")
+                .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
@@ -581,7 +625,9 @@ class AiImageTaskControllerTest {
             MvcResult completed = waitForTaskSuccess(token, tenantId, projectId, taskId);
 
             String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
-            org.assertj.core.api.Assertions.assertThat(imageUrl).isEqualTo("https://cdn.example.com/generated-first-frame.png");
+            String thumbnailUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].thumbnailUrl");
+            org.assertj.core.api.Assertions.assertThat(imageUrl).contains("/download").doesNotContain("data:image");
+            org.assertj.core.api.Assertions.assertThat(thumbnailUrl).contains("/thumbnail").doesNotContain("data:image");
             Long executionId = readLong(completed, "$.data.executionId");
             Long callLogExecutionId = jdbcTemplate.queryForObject("""
                 select log.execution_id
@@ -615,14 +661,14 @@ class AiImageTaskControllerTest {
         Long projectId = createProject(token, tenantId, ownerId, "取消项目", "IMAGE_TASK_CANCEL");
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/images/generations", exchange -> {
+        server.createContext("/v1/responses", exchange -> {
             exchange.getRequestBody().readAllBytes();
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
             }
-            byte[] body = "{\"data\":[{\"url\":\"https://cdn.example.com/late.png\"}]}"
+            byte[] body = ("{\"id\":\"late\",\"output\":[{\"type\":\"image_generation_call\",\"result\":\"" + pngBase64() + "\"}]}")
                 .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
@@ -678,7 +724,7 @@ class AiImageTaskControllerTest {
         Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
         grantTeamPoints(tenantId, 5);
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/images/generations", exchange -> {
+        server.createContext("/v1/responses", exchange -> {
             exchange.getRequestBody().readAllBytes();
             try {
                 Thread.sleep(250);
@@ -793,7 +839,18 @@ class AiImageTaskControllerTest {
     }
 
     private void createImageService(String token, Long tenantId) throws Exception {
-        createImageService(token, tenantId, "https://api.openai.com/v1", "test-key");
+        createImageService(token, tenantId,
+            "http://127.0.0.1:%d/v1".formatted(responsesServer.getAddress().getPort()), "test-key");
+    }
+
+    private static String pngBase64() {
+        try {
+            ByteArrayOutputStream image = new ByteArrayOutputStream();
+            ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB), "png", image);
+            return Base64.getEncoder().encodeToString(image.toByteArray());
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private void createImageService(String token, Long tenantId, String baseUrl, String apiKey) throws Exception {
@@ -817,7 +874,7 @@ class AiImageTaskControllerTest {
                 """
                     insert into ai_model
                       (provider_id, code, name, model_code, service_type, status, is_default, sort, created_at, updated_at)
-                    values (?, 'TEST_OPENAI_IMAGE', '测试图片模型', 'local-image-model', 'IMAGE', 'ENABLED', true, 100, now(), now())
+                    values (?, 'TEST_OPENAI_IMAGE', '测试图片模型', 'gpt-image-2', 'IMAGE', 'ENABLED', true, 100, now(), now())
                     """,
                 providerId
             );
@@ -834,7 +891,7 @@ class AiImageTaskControllerTest {
                 modelId
             );
         } else {
-            jdbcTemplate.update("update ai_model set status = 'ENABLED', is_default = true where id = ?", modelId);
+            jdbcTemplate.update("update ai_model set model_code = 'gpt-image-2', status = 'ENABLED', is_default = true where id = ?", modelId);
         }
         com.antshorttv.support.ModelBillingTestSupport.publish(
             jdbcTemplate, modelId, "IMAGE", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE

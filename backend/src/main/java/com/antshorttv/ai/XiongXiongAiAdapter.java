@@ -1,14 +1,15 @@
 package com.antshorttv.ai;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.antshorttv.common.ErrorCode;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,7 +19,7 @@ import org.springframework.stereotype.Component;
 /** OpenAI-compatible adapter dedicated to the XiongXiongAI gateway. */
 @Component
 public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
-    private static final Set<String> IMAGE_MODELS = Set.of("gpt-image-2", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare");
+    private static final String DEFAULT_RESPONSES_MODEL = "gpt-5.6-terra";
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
@@ -35,7 +36,6 @@ public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
     @Override
     public AiImageResponse image(AiProviderEntity provider, AiProviderConfigEntity config, AiModelEntity model,
                                  AiImageRequest request, String idempotencyKey) {
-        if (!IMAGE_MODELS.contains(model.getModelCode())) return super.image(provider, config, model, request, idempotencyKey);
         if (config.getApiKeyCipher() == null || config.getApiKeyCipher().isBlank()) {
             throw new AiGatewayException(ErrorCode.AI_AUTH_FAILED, "AI 服务商未配置 API Key。");
         }
@@ -44,27 +44,34 @@ public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
             JsonNode options = model.getConfigJson() == null || model.getConfigJson().isBlank()
                 ? objectMapper.createObjectNode() : objectMapper.readTree(model.getConfigJson());
             String quality = option(options, "quality", "auto", qualities(model.getModelCode()));
-            String background = option(options, "background", "auto", Set.of("auto", "opaque", "transparent"));
             String outputFormat = option(options, "outputFormat", "png", Set.of("png", "jpeg", "webp"));
-            String moderation = option(options, "moderation", "auto", Set.of("auto", "low"));
-            Integer compression = options.has("outputCompression") ? options.path("outputCompression").asInt(-1) : null;
-            if (compression != null && (compression < 0 || compression > 100 || "png".equals(outputFormat))) {
-                throw new AiGatewayException(ErrorCode.AI_RESPONSE_INVALID, "outputCompression 仅支持 JPEG/WebP 的 0-100 整数。");
-            }
-            Map<String, Object> body = new java.util.LinkedHashMap<>();
-            body.put("model", model.getModelCode());
-            body.put("prompt", request.prompt() == null ? "" : request.prompt());
-            body.put("n", request.count() == null ? 1 : request.count());
-            body.put("size", imageSize(request));
-            body.put("quality", quality);
-            body.put("background", background);
-            body.put("output_format", outputFormat);
-            body.put("moderation", moderation);
-            if (compression != null) body.put("output_compression", compression);
             boolean hasReferences = request.referenceImages() != null && !request.referenceImages().isEmpty();
-            if (hasReferences) body.put("images", request.referenceImages());
+
+            Map<String, Object> tool = new LinkedHashMap<>();
+            tool.put("type", "image_generation");
+            tool.put("model", model.getModelCode());
+            tool.put("size", imageSize(request));
+            tool.put("quality", quality);
+            tool.put("output_format", outputFormat);
+            tool.put("action", hasReferences ? "edit" : "generate");
+
+            List<Map<String, Object>> content = new ArrayList<>();
+            content.add(Map.of("type", "input_text", "text", request.prompt() == null ? "" : request.prompt()));
+            if (hasReferences) {
+                for (String reference : request.referenceImages()) {
+                    if (reference != null && !reference.isBlank()) {
+                        content.add(Map.of("type", "input_image", "image_url", reference));
+                    }
+                }
+            }
+            Map<String, Object> input = Map.of("role", "user", "content", content);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("model", responsesModel(options));
+            body.put("input", List.of(input));
+            body.put("tools", List.of(tool));
+
             String baseUrl = config.getBaseUrl() == null ? "" : config.getBaseUrl().replaceAll("/+$", "");
-            HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(baseUrl + (hasReferences ? "/images/edits" : "/images/generations")))
+            HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(baseUrl + "/responses"))
                 .timeout(Duration.ofSeconds(60))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + aiSecretCodec.requireDecrypted(config.getApiKeyCipher()))
@@ -76,20 +83,32 @@ public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
                     "熊熊爱图片服务返回 HTTP " + response.statusCode() + "：" + response.body());
             }
             JsonNode root = objectMapper.readTree(response.body());
-            List<String> images = new ArrayList<>();
-            for (JsonNode item : root.path("data")) {
-                String b64 = item.path("b64_json").asText();
-                String url = item.path("url").asText();
-                if (!b64.isBlank()) images.add("data:image/" + outputFormat + ";base64," + b64);
-                else if (!url.isBlank()) images.add(url);
-            }
+            List<String> images = imageResults(root, outputFormat);
             if (images.isEmpty()) throw new AiGatewayException(ErrorCode.AI_RESPONSE_INVALID, "熊熊爱图片服务未返回图片数据。");
-            return new AiImageResponse(images, root.path("id").asText(null), Math.max(1, System.currentTimeMillis() - started), Map.of("provider", provider.getCode()));
+            return new AiImageResponse(images, root.path("id").asText(null), Math.max(1, System.currentTimeMillis() - started),
+                Map.of("provider", provider.getCode()));
         } catch (AiGatewayException exception) {
             throw exception;
         } catch (Exception exception) {
             throw new AiGatewayException(ErrorCode.AI_PROVIDER_ERROR, "熊熊爱图片调用失败：" + exception.getMessage());
         }
+    }
+
+    private List<String> imageResults(JsonNode root, String fallbackFormat) {
+        List<String> images = new ArrayList<>();
+        for (JsonNode item : root.path("output")) {
+            if (!"image_generation_call".equals(item.path("type").asText())) continue;
+            String result = item.path("result").asText();
+            if (result.isBlank()) continue;
+            String format = item.path("output_format").asText(fallbackFormat);
+            images.add("data:image/" + format + ";base64," + result);
+        }
+        return images;
+    }
+
+    private String responsesModel(JsonNode options) {
+        String configured = options.path("responsesModel").asText("").trim();
+        return configured.isBlank() ? DEFAULT_RESPONSES_MODEL : configured;
     }
 
     private Set<String> qualities(String modelCode) {

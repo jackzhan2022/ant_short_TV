@@ -318,7 +318,7 @@ public class AiImageTaskService {
             material.setName("AI图片结果-" + result.getId());
             material.setUrl(result.getImageUrl());
             material.setStoragePath(result.getStoragePath());
-            material.setMimeType("image/png");
+            material.setMimeType(result.getMimeType() == null ? "image/png" : result.getMimeType());
             material.setFileSize(result.getFileSize());
             material.setWidth(result.getWidth());
             material.setHeight(result.getHeight());
@@ -336,6 +336,16 @@ public class AiImageTaskService {
     public Resource download(Long tenantId, Long projectId, Long resultId) {
         requireProject(tenantId, projectId);
         return storageService.resource(requireResult(tenantId, projectId, resultId));
+    }
+
+    public Resource thumbnail(Long tenantId, Long projectId, Long resultId) {
+        requireProject(tenantId, projectId);
+        return storageService.thumbnailResource(requireResult(tenantId, projectId, resultId));
+    }
+
+    public AiImageResultEntity result(Long tenantId, Long projectId, Long resultId) {
+        requireProject(tenantId, projectId);
+        return requireResult(tenantId, projectId, resultId);
     }
 
     @Transactional

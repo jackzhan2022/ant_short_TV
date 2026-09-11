@@ -283,8 +283,8 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         result.setExecutionId(context.task().id);
         result.setTargetType(task.getTargetType());
         result.setTargetId(task.getTargetId());
-        result.setImageUrl(providerImageUrl == null ? "" : providerImageUrl);
-        result.setThumbnailUrl(providerImageUrl == null ? "" : providerImageUrl);
+        result.setImageUrl("");
+        result.setThumbnailUrl("");
         result.setIsSelected(false);
         result.setStatus(AiImageResultStatus.ACTIVE.name());
         result.setCreatedAt(LocalDateTime.now());
@@ -292,18 +292,25 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         resultMapper.insert(result);
         createdResultIds.add(result.getId());
 
-        if (providerImageUrl == null || providerImageUrl.isBlank()) {
-            StoredImage storedImage = storageService.createPlaceholder(task, result.getId(), index);
-            String url = "/api/projects/%d/ai-image-results/%d/download".formatted(task.getProjectId(), result.getId());
-            result.setImageUrl(url);
-            result.setThumbnailUrl(url);
+        try {
+            StoredImage storedImage = providerImageUrl == null || providerImageUrl.isBlank()
+                ? storageService.createPlaceholder(task, result.getId(), index)
+                : storageService.storeGenerated(task, result.getId(), index, providerImageUrl);
+            result.setImageUrl("/api/projects/%d/ai-image-results/%d/download".formatted(task.getProjectId(), result.getId()));
+            result.setThumbnailUrl("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(task.getProjectId(), result.getId()));
             result.setStoragePath(storedImage.storagePath());
+            result.setThumbnailPath(storedImage.thumbnailPath());
+            result.setMimeType(storedImage.mimeType());
             result.setWidth(storedImage.width());
             result.setHeight(storedImage.height());
             result.setFileSize(storedImage.fileSize());
+            result.setUpdatedAt(LocalDateTime.now());
+            resultMapper.updateById(result);
+        } catch (RuntimeException exception) {
+            resultMapper.deleteById(result.getId());
+            createdResultIds.remove(result.getId());
+            throw exception;
         }
-        result.setUpdatedAt(LocalDateTime.now());
-        resultMapper.updateById(result);
         requireActiveClaim(context);
         if (index == 1 && "VISUAL_VARIANT".equals(task.getTargetType())) {
             boolean published = assetVisualVariantService.generationSucceededIfClaimActive(

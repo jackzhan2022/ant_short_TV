@@ -102,14 +102,24 @@ public class AiImageTaskController {
         @PathVariable Long resultId,
         HttpServletRequest request
     ) {
+        AiImageResultEntity result = aiImageTaskService.result(tenantId(request), projectId, resultId);
         Resource resource = aiImageTaskService.download(tenantId(request), projectId, resultId);
         return ResponseEntity.ok()
-            .contentType(MediaType.IMAGE_PNG)
+            .contentType(MediaType.parseMediaType(result.getMimeType() == null ? "image/png" : result.getMimeType()))
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
-                .filename("ai-image-result-%d.png".formatted(resultId))
+                .filename("ai-image-result-%d.%s".formatted(resultId, extension(result.getMimeType())))
                 .build()
                 .toString())
             .body(resource);
+    }
+
+    @GetMapping("/ai-image-results/{resultId}/thumbnail")
+    @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
+    public ResponseEntity<Resource> thumbnailResult(
+        @PathVariable Long projectId, @PathVariable Long resultId, HttpServletRequest request
+    ) {
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG)
+            .body(aiImageTaskService.thumbnail(tenantId(request), projectId, resultId));
     }
 
     @PostMapping("/ai-image-results/{resultId}/save-material")
@@ -146,5 +156,11 @@ public class AiImageTaskController {
 
     private Long tenantId(HttpServletRequest request) {
         return TenantRequestSupport.tenantId(request);
+    }
+
+    private String extension(String mimeType) {
+        if ("image/jpeg".equals(mimeType)) return "jpg";
+        if ("image/webp".equals(mimeType)) return "webp";
+        return "png";
     }
 }
