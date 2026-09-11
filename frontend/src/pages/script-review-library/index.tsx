@@ -22,16 +22,17 @@ import {
   Upload,
 } from 'antd';
 import mammoth from 'mammoth';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   filterLibraryProjects,
+  type LibraryProject,
   type LibraryStateKey,
   libraryStateFromProject,
 } from '../script-review/library';
-import type { ReviewProject } from '../script-review/service';
 import {
   importReviewProject,
-  queryReviewProjects,
+  queryReviewProjectMetrics,
+  queryReviewProjectSummaries,
 } from '../script-review/service';
 
 const stateColor: Record<LibraryStateKey, string> = {
@@ -52,8 +53,11 @@ const isDocxScript = (file: File) => /\.docx$/i.test(file.name);
 
 const ScriptReviewLibraryPage = () => {
   const { message } = App.useApp();
-  const [items, setItems] = useState<ReviewProject[]>([]);
+  const [items, setItems] = useState<LibraryProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsFailed, setMetricsFailed] = useState(false);
+  const [metricsReady, setMetricsReady] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<LibraryStateKey>();
   const [importOpen, setImportOpen] = useState(false);
@@ -61,10 +65,43 @@ const ScriptReviewLibraryPage = () => {
   const [content, setContent] = useState('');
   const [uploadFile, setUploadFile] = useState<UploadFile>();
   const [saving, setSaving] = useState(false);
+  const loadGeneration = useRef(0);
+
+  const loadMetrics = async (generation: number) => {
+    setMetricsLoading(true);
+    setMetricsFailed(false);
+    try {
+      const metricsResponse = await queryReviewProjectMetrics();
+      if (generation !== loadGeneration.current) return;
+      const metricsByProjectId = new Map(
+        (metricsResponse.data ?? []).map((metric) => [metric.projectId, metric]),
+      );
+      setItems((current) =>
+        current.map((project) => ({
+          ...project,
+          ...metricsByProjectId.get(project.id),
+        })),
+      );
+      setMetricsReady(true);
+    } catch {
+      if (generation === loadGeneration.current) setMetricsFailed(true);
+    } finally {
+      if (generation === loadGeneration.current) setMetricsLoading(false);
+    }
+  };
 
   const loadProjects = async () => {
-    const response = await queryReviewProjects();
-    setItems(response.data ?? []);
+    const generation = ++loadGeneration.current;
+    setLoading(true);
+    setMetricsLoading(false);
+    setMetricsFailed(false);
+    setMetricsReady(false);
+    const response = await queryReviewProjectSummaries();
+    if (generation !== loadGeneration.current) return;
+    const summaries = response.data ?? [];
+    setItems(summaries);
+    setLoading(false);
+    void loadMetrics(generation);
   };
 
   useEffect(() => {
@@ -81,8 +118,8 @@ const ScriptReviewLibraryPage = () => {
     [items],
   );
   const projects = useMemo(
-    () => filterLibraryProjects(items, states, query, filter),
-    [filter, items, query, states],
+    () => filterLibraryProjects(items, states, query, metricsReady ? filter : undefined),
+    [filter, items, metricsReady, query, states],
   );
   const stateFilters = useMemo(
     () => [
@@ -201,6 +238,7 @@ const ScriptReviewLibraryPage = () => {
                     textAlign: 'left',
                   }}
                   type={filter === item.key ? 'primary' : 'text'}
+                  disabled={!metricsReady && item.key !== undefined}
                   onClick={() => setFilter(item.key)}
                 >
                   {item.label}
@@ -221,7 +259,21 @@ const ScriptReviewLibraryPage = () => {
             }}
           >
             <Typography.Text strong>剧本列表</Typography.Text>
-            <Typography.Text type="secondary">按最近操作排序</Typography.Text>
+            <Space size="small">
+              {metricsLoading ? (
+                <Typography.Text type="secondary">审核指标加载中…</Typography.Text>
+              ) : null}
+              {metricsFailed ? (
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => void loadMetrics(loadGeneration.current)}
+                >
+                  重试审核指标
+                </Button>
+              ) : null}
+              <Typography.Text type="secondary">按最近操作排序</Typography.Text>
+            </Space>
           </div>
           {loading ? (
             <div
@@ -251,7 +303,7 @@ const ScriptReviewLibraryPage = () => {
                         )
                       }
                     >
-                      {state?.actionLabel ?? '进入审核'}
+                      {metricsReady ? state?.actionLabel ?? '进入审核' : '进入审核'}
                     </Button>,
                   ]}
                   style={{ padding: '16px' }}
@@ -272,15 +324,19 @@ const ScriptReviewLibraryPage = () => {
                       description={
                         <Typography.Text type="secondary">
                           {project.sourceFileName || '直接录入'} · V
-                          {project.versionCount}
+                          {project.versionCount ?? '—'}
                         </Typography.Text>
                       }
                     />
                     <Typography.Text type="secondary">
-                      第 {project.latestRoundNo} 轮审核
+                      第 {project.latestRoundNo ?? '—'} 轮审核
                     </Typography.Text>
                     <Tag color={state ? stateColor[state.key] : 'default'}>
-                      {state?.label ?? '未审核'}
+                      {!metricsReady
+                        ? metricsFailed
+                          ? '指标暂不可用'
+                          : '指标加载中'
+                        : state?.label ?? '未审核'}
                     </Tag>
                     {state?.outstandingIssueCount ? (
                       <Typography.Text type="danger">
@@ -288,7 +344,11 @@ const ScriptReviewLibraryPage = () => {
                       </Typography.Text>
                     ) : (
                       <Typography.Text type="secondary">
-                        {state?.key === 'COMPLETED'
+                        {!metricsReady
+                          ? metricsFailed
+                            ? '请重试加载审核指标'
+                            : '审核指标加载中'
+                          : state?.key === 'COMPLETED'
                           ? '审核结果已生成'
                           : '暂无待处理问题'}
                       </Typography.Text>

@@ -56,8 +56,12 @@ export const parseScriptFile = (file: File) => {
 
 export {
   queryReviewProject,
+  queryReviewProjectMetrics,
+  queryReviewProjectSummaries,
   queryReviewProjects,
   type ReviewProject,
   type ReviewProjectDetail,
+  type ReviewProjectMetrics,
+  type ReviewProjectSummary,
   type ReviewVersion,
 } from '../script-review/service';

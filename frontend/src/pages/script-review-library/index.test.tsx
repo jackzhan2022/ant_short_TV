@@ -4,7 +4,8 @@ import { vi } from 'vitest';
 import ScriptReviewLibraryPage from '.';
 
 const mocks = vi.hoisted(() => ({
-  queryReviewProjects: vi.fn(),
+  queryReviewProjectSummaries: vi.fn(),
+  queryReviewProjectMetrics: vi.fn(),
   queryReviewProject: vi.fn(),
   importReviewProject: vi.fn(),
   push: vi.fn(),
@@ -32,8 +33,8 @@ vi.mock('@ant-design/pro-components', () => ({
 vi.mock('antd', () => ({
   App: { useApp: () => ({ message: mocks.message }) },
   Badge: ({ count }: any) => <span>{count}</span>,
-  Button: ({ children, onClick }: any) => (
-    <button type="button" onClick={onClick}>
+  Button: ({ children, disabled, onClick }: any) => (
+    <button disabled={disabled} type="button" onClick={onClick}>
       {children}
     </button>
   ),
@@ -154,7 +155,8 @@ vi.mock('@ant-design/icons', () => ({
   PlusOutlined: () => null,
 }));
 vi.mock('../script-review/service', () => ({
-  queryReviewProjects: mocks.queryReviewProjects,
+  queryReviewProjectSummaries: mocks.queryReviewProjectSummaries,
+  queryReviewProjectMetrics: mocks.queryReviewProjectMetrics,
   queryReviewProject: mocks.queryReviewProject,
   importReviewProject: mocks.importReviewProject,
 }));
@@ -162,13 +164,26 @@ vi.mock('../script-review/service', () => ({
 describe('ScriptReviewLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.queryReviewProjects.mockResolvedValue({
+    mocks.queryReviewProjectSummaries.mockResolvedValue({
       data: [
         {
           id: 1,
           name: '待处理剧本',
           sourceType: 'TEXT',
           status: 'ACTIVE',
+        },
+        {
+          id: 2,
+          name: '已完成剧本',
+          sourceType: 'TEXT',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+    mocks.queryReviewProjectMetrics.mockResolvedValue({
+      data: [
+        {
+          projectId: 1,
           versionCount: 2,
           latestRoundNo: 1,
           reviewState: 'ACTION_REQUIRED',
@@ -176,10 +191,7 @@ describe('ScriptReviewLibraryPage', () => {
           actionLabel: '处理问题',
         },
         {
-          id: 2,
-          name: '已完成剧本',
-          sourceType: 'TEXT',
-          status: 'ACTIVE',
+          projectId: 2,
           versionCount: 1,
           latestRoundNo: 1,
           reviewState: 'COMPLETED',
@@ -241,7 +253,7 @@ describe('ScriptReviewLibraryPage', () => {
   });
   it('shows centered loading feedback until the project list is ready', async () => {
     let resolveProjects: (value: unknown) => void = () => undefined;
-    mocks.queryReviewProjects.mockReturnValueOnce(
+    mocks.queryReviewProjectSummaries.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveProjects = resolve;
       }),
@@ -255,5 +267,59 @@ describe('ScriptReviewLibraryPage', () => {
 
     expect(await screen.findByText('暂无独立剧本')).toBeInTheDocument();
     expect(screen.queryByText('正在加载剧本…')).not.toBeInTheDocument();
+  });
+
+  it('renders summary rows before review metrics resolve', async () => {
+    let resolveMetrics: (value: unknown) => void = () => undefined;
+    mocks.queryReviewProjectMetrics.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveMetrics = resolve;
+      }),
+    );
+
+    render(<ScriptReviewLibraryPage />);
+
+    expect(await screen.findByText('待处理剧本')).toBeInTheDocument();
+    expect(screen.getAllByText('指标加载中').length).toBeGreaterThan(0);
+    expect(mocks.queryReviewProjectMetrics).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByPlaceholderText('搜索剧本名称'), {
+      target: { value: '待处理' },
+    });
+    expect(screen.queryByText('已完成剧本')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '进入审核' }));
+    expect(mocks.push).toHaveBeenCalledWith('/script-review/projects/1/reviews');
+    fireEvent.click(screen.getByRole('button', { name: '新建剧本' }));
+    expect(screen.getByText('新建独立剧本')).toBeInTheDocument();
+
+    resolveMetrics({ data: [] });
+    await waitFor(() => {
+      expect(screen.queryByText('审核指标加载中…')).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps summary rows and retries only failed metrics', async () => {
+    mocks.queryReviewProjectMetrics
+      .mockRejectedValueOnce(new Error('metrics unavailable'))
+      .mockResolvedValueOnce({
+        data: [
+          {
+            projectId: 1,
+            versionCount: 2,
+            latestRoundNo: 1,
+            reviewState: 'ACTION_REQUIRED',
+            outstandingIssueCount: 1,
+            actionLabel: '处理问题',
+          },
+        ],
+      });
+    render(<ScriptReviewLibraryPage />);
+
+    expect(await screen.findByText('待处理剧本')).toBeInTheDocument();
+    expect(await screen.findByText('重试审核指标')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试审核指标' }));
+
+    expect(await screen.findByRole('button', { name: '处理问题' })).toBeInTheDocument();
+    expect(mocks.queryReviewProjectSummaries).toHaveBeenCalledTimes(1);
+    expect(mocks.queryReviewProjectMetrics).toHaveBeenCalledTimes(2);
   });
 });

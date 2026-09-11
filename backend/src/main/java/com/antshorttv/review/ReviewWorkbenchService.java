@@ -22,6 +22,7 @@ import com.antshorttv.points.AiPointReservationEntity;
 import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.AiSettlementOutcome;
+import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.script.ScriptEpisodeParser;
@@ -89,6 +90,7 @@ public class ReviewWorkbenchService {
 
     private final TenantContextResolver tenantContextResolver;
     private final ReviewAccessGuard reviewAccessGuard;
+    private final RbacPermissionService permissionService;
     private final ReviewProjectMapper projectMapper;
     private final ReviewScriptVersionMapper versionMapper;
     private final ReviewTaskMapper taskMapper;
@@ -120,6 +122,7 @@ public class ReviewWorkbenchService {
     public ReviewWorkbenchService(
         TenantContextResolver tenantContextResolver,
         ReviewAccessGuard reviewAccessGuard,
+        RbacPermissionService permissionService,
         ReviewProjectMapper projectMapper,
         ReviewScriptVersionMapper versionMapper,
         ReviewTaskMapper taskMapper,
@@ -150,6 +153,7 @@ public class ReviewWorkbenchService {
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.reviewAccessGuard = reviewAccessGuard;
+        this.permissionService = permissionService;
         this.projectMapper = projectMapper;
         this.versionMapper = versionMapper;
         this.taskMapper = taskMapper;
@@ -1502,6 +1506,85 @@ public class ReviewWorkbenchService {
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
         return task;
+    }
+
+    public List<ReviewProjectListSummaryResponse> listProjectSummaries(Long tenantId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        return visibleProjectRows(context).stream().map(this::toProjectListSummary).toList();
+    }
+
+    public List<ReviewProjectMetricsResponse> listProjectMetrics(Long tenantId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        List<ReviewProjectListRow> projects = visibleProjectRows(context);
+        if (projects.isEmpty()) return List.of();
+        List<Long> projectIds = projects.stream().map(ReviewProjectListRow::getId).toList();
+        Map<Long, Integer> versionCounts = versionMapper.selectCountsByProjects(context.tenantId(), projectIds).stream()
+            .collect(Collectors.toMap(ReviewProjectCountRow::getProjectId, ReviewProjectCountRow::getVersionCount));
+        Map<Long, ReviewProjectLatestTaskRow> latestTasks = taskMapper.selectLatestRowsByProjects(
+            context.tenantId(), projectIds).stream()
+            .collect(Collectors.toMap(ReviewProjectLatestTaskRow::getProjectId, task -> task));
+        List<Long> taskIds = latestTasks.values().stream().map(ReviewProjectLatestTaskRow::getTaskId).toList();
+        Map<Long, ReviewTaskIssueCountRow> issueCounts = taskIds.isEmpty() ? Map.of()
+            : issueMapper.selectCountsByTasks(taskIds).stream()
+                .collect(Collectors.toMap(ReviewTaskIssueCountRow::getTaskId, issue -> issue));
+        return projects.stream().map(project -> {
+            ReviewProjectLatestTaskRow task = latestTasks.get(project.getId());
+            ReviewTaskIssueCountRow issues = task == null ? null : issueCounts.get(task.getTaskId());
+            return toProjectMetrics(project.getId(), versionCounts.getOrDefault(project.getId(), 0), task, issues);
+        }).toList();
+    }
+
+    private List<ReviewProjectListRow> visibleProjectRows(TenantContext context) {
+        boolean tenantWide = permissionService.permissionCodes(context).contains("PROJECT:VIEW_ALL");
+        return projectMapper.selectVisibleListRows(context.tenantId(), context.userId(), tenantWide);
+    }
+
+    private ReviewProjectListSummaryResponse toProjectListSummary(ReviewProjectListRow project) {
+        return new ReviewProjectListSummaryResponse(
+            project.getId(), project.getMainProjectId(),
+            project.getMainProjectId() == null ? "PERSONAL_DRAFT" : "PROJECT",
+            project.getName(), project.getSourceFileName(), project.getSourceType(),
+            project.getCurrentVersionId(), project.getStatus(), project.getCreatedAt(), project.getUpdatedAt()
+        );
+    }
+
+    private ReviewProjectMetricsResponse toProjectMetrics(
+        Long projectId,
+        int versionCount,
+        ReviewProjectLatestTaskRow task,
+        ReviewTaskIssueCountRow issues
+    ) {
+        if (task == null) {
+            return new ReviewProjectMetricsResponse(projectId, versionCount, 0,
+                "NOT_REVIEWED", 0, "发起审核");
+        }
+        int issueCount = issues == null || issues.getIssueCount() == null ? 0 : issues.getIssueCount();
+        int outstandingIssueCount = issues == null || issues.getOutstandingIssueCount() == null
+            ? 0 : issues.getOutstandingIssueCount();
+        String reviewState = "COMPLETED";
+        String actionLabel = "查看报告";
+        if (List.of("PENDING", "RUNNING").contains(task.getStatus())) {
+            reviewState = "RUNNING";
+            actionLabel = "查看进度";
+            outstandingIssueCount = 0;
+        } else if ("MARKDOWN".equals(task.getResultFormat())
+            && "COMPLETED".equals(task.getStatus())
+            && Boolean.TRUE.equals(task.getHasReportMarkdown())) {
+            outstandingIssueCount = 0;
+        } else if ("MARKDOWN".equals(task.getResultFormat())
+            && List.of("FAILED", "CANCELED").contains(task.getStatus())) {
+            reviewState = "NOT_REVIEWED";
+            actionLabel = "重试审核";
+            outstandingIssueCount = 0;
+        } else if (outstandingIssueCount > 0) {
+            reviewState = "ACTION_REQUIRED";
+            actionLabel = "处理问题";
+        } else if (issueCount > 0) {
+            reviewState = "READY_FOR_REVIEW";
+            actionLabel = "发起复审";
+        }
+        return new ReviewProjectMetricsResponse(projectId, versionCount, task.getRoundNo(),
+            reviewState, outstandingIssueCount, actionLabel);
     }
 
     private String effectiveResultFormat(ReviewTaskEntity task) {

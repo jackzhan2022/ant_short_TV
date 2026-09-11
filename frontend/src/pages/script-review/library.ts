@@ -1,4 +1,4 @@
-import type { ReviewIssue, ReviewProject } from './service';
+import type { ReviewIssue, ReviewProject, ReviewProjectSummary } from './service';
 
 export type LibraryStateKey =
   | 'NOT_REVIEWED'
@@ -15,12 +15,24 @@ export type LibraryState = {
 };
 
 type ProjectReviewSnapshot = {
-  project: ReviewProject;
+  project: LibraryProject;
   task?: {
     status: string;
     issues: Array<Pick<ReviewIssue, 'manuallyResolved'>>;
   };
 };
+
+export type LibraryProject = ReviewProjectSummary &
+  Partial<
+    Pick<
+      ReviewProject,
+      | 'versionCount'
+      | 'latestRoundNo'
+      | 'reviewState'
+      | 'outstandingIssueCount'
+      | 'actionLabel'
+    >
+  >;
 
 export const deriveLibraryState = ({ task }: ProjectReviewSnapshot): LibraryState => {
   if (!task) {
@@ -67,7 +79,7 @@ export const deriveLibraryState = ({ task }: ProjectReviewSnapshot): LibraryStat
   };
 };
 
-export const libraryStateFromProject = (project: ReviewProject): LibraryState => {
+export const libraryStateFromProject = (project: LibraryProject): LibraryState => {
   if (project.reviewState) {
     const labels: Record<LibraryStateKey, string> = {
       NOT_REVIEWED: '未审核',
@@ -94,7 +106,7 @@ export const libraryStateFromProject = (project: ReviewProject): LibraryState =>
 };
 
 export const filterLibraryProjects = (
-  projects: ReviewProject[],
+  projects: LibraryProject[],
   states: Map<number, Pick<LibraryState, 'key'>>,
   query: string,
   state?: LibraryStateKey,

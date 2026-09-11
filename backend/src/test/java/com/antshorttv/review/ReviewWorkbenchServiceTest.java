@@ -18,6 +18,7 @@ import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.TeamPointService;
+import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.scriptcontent.ScriptContentParser;
@@ -81,7 +82,7 @@ class ReviewWorkbenchServiceTest {
         }).when(tasks).insert(any(ReviewTaskEntity.class));
 
         ReviewWorkbenchService service = new ReviewWorkbenchService(
-            tenantContexts, accessGuard, projects, versions, tasks,
+            tenantContexts, accessGuard, mock(RbacPermissionService.class), projects, versions, tasks,
             mock(ReviewIssueMapper.class), mock(ReviewIssueHitMapper.class),
             mock(ReviewIssueEventMapper.class), mock(ReviewBatchRepairMapper.class),
             mock(ReviewExportRecordMapper.class), mock(AiInvocationService.class),
@@ -122,7 +123,7 @@ class ReviewWorkbenchServiceTest {
         when(coordinator.recoverCommittedAggregation(task)).thenReturn(
             new ReviewDeepAgentCoordinator.Execution(50L, 200L, List.of(call)));
         ReviewWorkbenchService service = new ReviewWorkbenchService(
-            mock(TenantContextResolver.class), mock(ReviewAccessGuard.class),
+            mock(TenantContextResolver.class), mock(ReviewAccessGuard.class), mock(RbacPermissionService.class),
             mock(ReviewProjectMapper.class), mock(ReviewScriptVersionMapper.class), tasks,
             mock(ReviewIssueMapper.class), mock(ReviewIssueHitMapper.class),
             mock(ReviewIssueEventMapper.class), mock(ReviewBatchRepairMapper.class),

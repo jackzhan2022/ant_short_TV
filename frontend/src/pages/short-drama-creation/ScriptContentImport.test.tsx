@@ -6,13 +6,15 @@ import ScriptContentImport from './ScriptContentImport';
 const mocks = vi.hoisted(() => ({
   parseScriptFile: vi.fn(),
   queryReviewProject: vi.fn(),
-  queryReviewProjects: vi.fn(),
+  queryReviewProjectSummaries: vi.fn(),
+  queryReviewProjectMetrics: vi.fn(),
 }));
 
 vi.mock('./service', () => ({
   parseScriptFile: mocks.parseScriptFile,
   queryReviewProject: mocks.queryReviewProject,
-  queryReviewProjects: mocks.queryReviewProjects,
+  queryReviewProjectSummaries: mocks.queryReviewProjectSummaries,
+  queryReviewProjectMetrics: mocks.queryReviewProjectMetrics,
 }));
 
 const renderImport = (currentContent = '', onImport = vi.fn()) => {
@@ -34,6 +36,7 @@ const chooseLocalFile = async (file: File) => {
 describe('ScriptContentImport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.queryReviewProjectMetrics.mockResolvedValue({ data: [] });
   });
 
   it('reads txt and markdown locally without calling the parse API', async () => {
@@ -64,8 +67,8 @@ describe('ScriptContentImport', () => {
   });
 
   it('loads all versions for an expanded review project and imports a selected version', async () => {
-    mocks.queryReviewProjects.mockResolvedValue({
-      data: [{ id: 7, name: '审核剧本 A', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 2, latestRoundNo: 1 }],
+    mocks.queryReviewProjectSummaries.mockResolvedValue({
+      data: [{ id: 7, name: '审核剧本 A', sourceType: 'TEXT', status: 'ACTIVE' }],
     });
     mocks.queryReviewProject.mockResolvedValue({
       data: {
@@ -89,6 +92,25 @@ describe('ScriptContentImport', () => {
     expect(onImport).toHaveBeenCalledWith('修订版', '已引用：审核剧本 A · 版本 2');
   });
 
+  it('shows selectable project summaries before version-count metrics resolve', async () => {
+    let resolveMetrics: (value: unknown) => void = () => undefined;
+    mocks.queryReviewProjectSummaries.mockResolvedValue({
+      data: [{ id: 7, name: '审核剧本 A', sourceType: 'TEXT', status: 'ACTIVE' }],
+    });
+    mocks.queryReviewProjectMetrics.mockReturnValueOnce(new Promise((resolve) => {
+      resolveMetrics = resolve;
+    }));
+    renderImport();
+
+    fireEvent.click(screen.getByRole('button', { name: '导入剧本内容' }));
+    fireEvent.click(await screen.findByText('从审核剧本引用'));
+    expect(await screen.findByText('审核剧本 A')).toBeInTheDocument();
+    expect(screen.getByText('版本数加载中')).toBeInTheDocument();
+
+    resolveMetrics({ data: [{ projectId: 7, versionCount: 2, latestRoundNo: 0 }] });
+    expect(await screen.findByText('2 个版本')).toBeInTheDocument();
+  });
+
   it('preserves an existing draft when replacement is canceled', async () => {
     const { onImport } = renderImport('正在编辑');
     const file = new File(['替换内容'], 'story.md', { type: 'text/markdown' });
@@ -104,10 +126,10 @@ describe('ScriptContentImport', () => {
   });
 
   it('retries loading review projects after a request failure', async () => {
-    mocks.queryReviewProjects
+    mocks.queryReviewProjectSummaries
       .mockRejectedValueOnce(new Error('load failed'))
       .mockResolvedValueOnce({
-        data: [{ id: 7, name: '审核剧本 A', sourceType: 'TEXT', status: 'ACTIVE', versionCount: 1, latestRoundNo: 0 }],
+        data: [{ id: 7, name: '审核剧本 A', sourceType: 'TEXT', status: 'ACTIVE' }],
       });
     renderImport();
 
@@ -116,7 +138,7 @@ describe('ScriptContentImport', () => {
     fireEvent.click(await screen.findByRole('button', { name: '重新加载' }));
 
     expect(await screen.findByText('审核剧本 A')).toBeInTheDocument();
-    expect(mocks.queryReviewProjects).toHaveBeenCalledTimes(2);
+    expect(mocks.queryReviewProjectSummaries).toHaveBeenCalledTimes(2);
   });
 
   it('does not replace content when a file is empty or parsing fails', async () => {

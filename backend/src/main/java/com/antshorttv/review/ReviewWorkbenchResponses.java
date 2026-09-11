@@ -25,6 +25,28 @@ record ReviewProjectSummaryResponse(
 ) {
 }
 
+record ReviewProjectListSummaryResponse(
+    Long id,
+    Long mainProjectId,
+    String accessSource,
+    String name,
+    String sourceFileName,
+    String sourceType,
+    Long currentVersionId,
+    String status,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt
+) {}
+
+record ReviewProjectMetricsResponse(
+    Long projectId,
+    Integer versionCount,
+    Integer latestRoundNo,
+    String reviewState,
+    Integer outstandingIssueCount,
+    String actionLabel
+) {}
+
 record ReviewProjectDetailResponse(
     ReviewProjectSummaryResponse project,
     List<ReviewVersionResponse> versions,

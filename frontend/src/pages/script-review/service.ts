@@ -24,6 +24,32 @@ export type ReviewProject = {
   updatedAt?: string;
 };
 
+export type ReviewProjectSummary = Pick<
+  ReviewProject,
+  | 'id'
+  | 'name'
+  | 'sourceFileName'
+  | 'sourceType'
+  | 'currentVersionId'
+  | 'status'
+  | 'createdAt'
+  | 'updatedAt'
+> & {
+  mainProjectId?: number | null;
+  accessSource?: string | null;
+};
+
+export type ReviewProjectMetrics = Pick<
+  ReviewProject,
+  | 'reviewState'
+  | 'outstandingIssueCount'
+  | 'actionLabel'
+  | 'versionCount'
+  | 'latestRoundNo'
+> & {
+  projectId: number;
+};
+
 export type ReviewVersion = {
   id: number;
   projectId: number;
@@ -265,6 +291,16 @@ export type ReviewVersionHistory = {
 
 export const queryReviewProjects = () =>
   request<ApiResponse<ReviewProject[]>>('/api/script-review/projects');
+
+export const queryReviewProjectSummaries = () =>
+  request<ApiResponse<ReviewProjectSummary[]>>(
+    '/api/script-review/projects/summaries',
+  );
+
+export const queryReviewProjectMetrics = () =>
+  request<ApiResponse<ReviewProjectMetrics[]>>(
+    '/api/script-review/projects/metrics',
+  );
 
 export const importReviewProject = async (
   name: string,

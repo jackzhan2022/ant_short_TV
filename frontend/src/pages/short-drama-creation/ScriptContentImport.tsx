@@ -16,8 +16,10 @@ import { useRef, useState } from 'react';
 import {
   parseScriptFile,
   queryReviewProject,
-  queryReviewProjects,
-  type ReviewProject,
+  queryReviewProjectMetrics,
+  queryReviewProjectSummaries,
+  type ReviewProjectMetrics,
+  type ReviewProjectSummary,
   type ReviewVersion,
 } from './service';
 
@@ -28,7 +30,7 @@ type ScriptContentImportProps = {
 };
 
 type SelectedVersion = {
-  project: ReviewProject;
+  project: ReviewProjectSummary;
   version: ReviewVersion;
 };
 
@@ -40,7 +42,7 @@ const ScriptContentImport = ({ className, currentContent, onImport }: ScriptCont
   const { message, modal } = App.useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [projects, setProjects] = useState<ReviewProject[]>([]);
+  const [projects, setProjects] = useState<Array<ReviewProjectSummary & Partial<ReviewProjectMetrics>>>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsFailed, setProjectsFailed] = useState(false);
   const [versionsByProject, setVersionsByProject] = useState<Record<number, ReviewVersion[]>>({});
@@ -93,8 +95,19 @@ const ScriptContentImport = ({ className, currentContent, onImport }: ScriptCont
     setProjectsLoading(true);
     setProjectsFailed(false);
     try {
-      const response = await queryReviewProjects();
+      const response = await queryReviewProjectSummaries();
       setProjects(response.data || []);
+      void queryReviewProjectMetrics()
+        .then((metricsResponse) => {
+          const metricsByProjectId = new Map(
+            (metricsResponse.data || []).map((metric) => [metric.projectId, metric]),
+          );
+          setProjects((current) => current.map((project) => ({
+            ...project,
+            ...metricsByProjectId.get(project.id),
+          })));
+        })
+        .catch(() => undefined);
     } catch {
       setProjectsFailed(true);
       message.error('审核剧本列表加载失败');
@@ -182,7 +195,9 @@ const ScriptContentImport = ({ className, currentContent, onImport }: ScriptCont
                 label: (
                   <Space>
                     <Typography.Text strong>{project.name}</Typography.Text>
-                    <Typography.Text type="secondary">{project.versionCount} 个版本</Typography.Text>
+                    <Typography.Text type="secondary">
+                      {project.versionCount === undefined ? '版本数加载中' : `${project.versionCount} 个版本`}
+                    </Typography.Text>
                   </Space>
                 ),
                 children: versionLoading[project.id] ? (

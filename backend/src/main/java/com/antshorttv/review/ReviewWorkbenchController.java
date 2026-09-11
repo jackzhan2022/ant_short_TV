@@ -36,6 +36,16 @@ public class ReviewWorkbenchController {
         return ApiResponse.success(reviewWorkbenchService.listProjects(tenantId(request)));
     }
 
+    @GetMapping("/projects/summaries")
+    public ApiResponse<List<ReviewProjectListSummaryResponse>> projectSummaries(HttpServletRequest request) {
+        return ApiResponse.success(reviewWorkbenchService.listProjectSummaries(tenantId(request)));
+    }
+
+    @GetMapping("/projects/metrics")
+    public ApiResponse<List<ReviewProjectMetricsResponse>> projectMetrics(HttpServletRequest request) {
+        return ApiResponse.success(reviewWorkbenchService.listProjectMetrics(tenantId(request)));
+    }
+
     @PostMapping(value = "/projects", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<ReviewProjectDetailResponse> importProject(
         @RequestPart(value = "mainProjectId", required = false) Long mainProjectId,

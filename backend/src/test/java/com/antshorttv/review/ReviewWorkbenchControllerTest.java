@@ -1,6 +1,7 @@
 package com.antshorttv.review;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,6 +61,90 @@ class ReviewWorkbenchControllerTest {
 
     @MockBean
     private TeamPointService teamPointService;
+
+    @Test
+    void returnsRenderCriticalSummariesBeforeBatchReviewMetrics() throws Exception {
+        String token = registerUser("13800017111", "Review Summary");
+        Long tenantId = createTenant(token, "剧本审核摘要团队");
+
+        MvcResult firstProject = mockMvc.perform(multipart("/api/script-review/projects")
+                .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第一本剧本".getBytes()))
+                .param("name", "first-summary")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andReturn();
+        MvcResult secondProject = mockMvc.perform(multipart("/api/script-review/projects")
+                .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE, "第二本剧本".getBytes()))
+                .param("name", "second-summary")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long firstProjectId = readLong(firstProject, "$.data.project.id");
+        Long secondProjectId = readLong(secondProject, "$.data.project.id");
+
+        mockMvc.perform(get("/api/script-review/projects/summaries")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(2)))
+            .andExpect(jsonPath("$.data[0].id", is(secondProjectId.intValue())))
+            .andExpect(jsonPath("$.data[1].id", is(firstProjectId.intValue())))
+            .andExpect(jsonPath("$.data[0].sourceType").exists())
+            .andExpect(jsonPath("$.data[0].originalContent").doesNotExist())
+            .andExpect(jsonPath("$.data[0].versionCount").doesNotExist())
+            .andExpect(jsonPath("$.data[0].reviewState").doesNotExist());
+
+        mockMvc.perform(get("/api/script-review/projects/metrics")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(2)))
+            .andExpect(jsonPath("$.data[0].projectId").exists())
+            .andExpect(jsonPath("$.data[0].versionCount", is(1)))
+            .andExpect(jsonPath("$.data[0].name").doesNotExist())
+            .andExpect(jsonPath("$.data[0].reviewState", is("NOT_REVIEWED")));
+
+        mockMvc.perform(get("/api/script-review/projects")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(2)))
+            .andExpect(jsonPath("$.data[0].versionCount", is(1)));
+    }
+
+    @Test
+    void batchesMetricsForUnreviewedActionRequiredAndReadyForRereviewProjects() throws Exception {
+        String token = registerUser("13800017112", "Review Metrics");
+        Long tenantId = createTenant(token, "剧本审核指标团队");
+        Long actionRequiredProjectId = importReviewProject(token, tenantId, "待处理");
+        Long readyForReviewProjectId = importReviewProject(token, tenantId, "待复审");
+        Long notReviewedProjectId = importReviewProject(token, tenantId, "未审核");
+        Long userId = jdbcTemplate.queryForObject(
+            "select created_by from review_project where id = ?", Long.class, actionRequiredProjectId);
+        Long actionVersionId = jdbcTemplate.queryForObject(
+            "select current_version_id from review_project where id = ?", Long.class, actionRequiredProjectId);
+        Long readyVersionId = jdbcTemplate.queryForObject(
+            "select current_version_id from review_project where id = ?", Long.class, readyForReviewProjectId);
+
+        Long actionTaskId = insertCompletedReviewTask(tenantId, actionRequiredProjectId, actionVersionId, userId, "metric-action");
+        Long readyTaskId = insertCompletedReviewTask(tenantId, readyForReviewProjectId, readyVersionId, userId, "metric-ready");
+        insertReviewIssue(tenantId, actionRequiredProjectId, actionTaskId, actionVersionId, false, "M-01");
+        insertReviewIssue(tenantId, readyForReviewProjectId, readyTaskId, readyVersionId, true, "M-02");
+
+        mockMvc.perform(get("/api/script-review/projects/metrics")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(3)))
+            .andExpect(jsonPath("$.data[?(@.projectId == %d)].versionCount".formatted(actionRequiredProjectId), hasItem(1)))
+            .andExpect(jsonPath("$.data[?(@.projectId == %d)].reviewState".formatted(actionRequiredProjectId), hasItem("ACTION_REQUIRED")))
+            .andExpect(jsonPath("$.data[?(@.projectId == %d)].outstandingIssueCount".formatted(actionRequiredProjectId), hasItem(1)))
+            .andExpect(jsonPath("$.data[?(@.projectId == %d)].reviewState".formatted(readyForReviewProjectId), hasItem("READY_FOR_REVIEW")))
+            .andExpect(jsonPath("$.data[?(@.projectId == %d)].outstandingIssueCount".formatted(readyForReviewProjectId), hasItem(0)))
+            .andExpect(jsonPath("$.data[?(@.projectId == %d)].reviewState".formatted(notReviewedProjectId), hasItem("NOT_REVIEWED")));
+    }
 
     @Test
     void retriesOnlyFailedDeepUnitsThenAggregationAndSupportsFullRegeneration() throws Exception {
@@ -929,6 +1014,53 @@ class ReviewWorkbenchControllerTest {
               (tenant_id, balance, total_granted, total_consumed, created_at, updated_at)
             values (?, ?, ?, 0, now(), now())
             """, tenantId, amount, amount);
+    }
+
+    private Long importReviewProject(String token, Long tenantId, String name) throws Exception {
+        MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
+                .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE,
+                    ("第一集\\n" + name).getBytes()))
+                .param("name", name)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andReturn();
+        return readLong(imported, "$.data.project.id");
+    }
+
+    private Long insertCompletedReviewTask(
+        Long tenantId,
+        Long projectId,
+        Long versionId,
+        Long userId,
+        String idempotencyKey
+    ) {
+        jdbcTemplate.update("""
+            insert into review_task
+              (tenant_id, project_id, script_version_id, round_no, review_mode,
+               selected_dimensions_json, review_scope_type, result_json, status,
+               overall_progress, idempotency_key, created_by, created_at, updated_at, completed_at)
+            values (?, ?, ?, 1, 'QUICK', '[]', 'ALL', '{}', 'COMPLETED',
+                    100, ?, ?, now(), now(), now())
+            """, tenantId, projectId, versionId, idempotencyKey, userId);
+        return jdbcTemplate.queryForObject(
+            "select max(id) from review_task where project_id = ?", Long.class, projectId);
+    }
+
+    private void insertReviewIssue(
+        Long tenantId,
+        Long projectId,
+        Long taskId,
+        Long versionId,
+        boolean manuallyResolved,
+        String issueNo
+    ) {
+        jdbcTemplate.update("""
+            insert into review_issue
+              (tenant_id, project_id, task_id, script_version_id, round_no, issue_no, dimension, severity, title,
+               status, manually_resolved, created_at, updated_at)
+            values (?, ?, ?, ?, 1, ?, '台词合理性', 'P1', '指标测试问题', 'OPEN', ?, now(), now())
+            """, tenantId, projectId, taskId, versionId, issueNo, manuallyResolved);
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

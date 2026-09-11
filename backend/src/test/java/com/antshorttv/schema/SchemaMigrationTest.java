@@ -351,6 +351,22 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void flywayAddsIndexesForProgressiveReviewLibraryReads() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+        Integer indexCount = jdbc.queryForObject("""
+            select count(distinct lower(index_name))
+              from information_schema.indexes
+             where (lower(table_name) = 'review_project'
+                    and lower(index_name) = 'idx_review_project_list_summary')
+                or (lower(table_name) = 'review_task'
+                    and lower(index_name) = 'idx_review_task_project_latest')
+            """, Integer.class);
+
+        assertThat(indexCount).isEqualTo(2);
+    }
+
+    @Test
     void flywayKeepsPlatformAiTablesAndRemovesLegacyConfigurationTables() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 

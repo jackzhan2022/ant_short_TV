@@ -4,9 +4,45 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 @Mapper
 interface ReviewProjectMapper extends BaseMapper<ReviewProjectEntity> {
+    @Select("""
+        select rp.id, rp.main_project_id, rp.name, rp.source_file_name, rp.source_type,
+               rp.current_version_id, rp.status, rp.created_at, rp.updated_at
+          from review_project rp
+         where rp.tenant_id = #{tenantId}
+           and rp.deleted_at is null
+           and (
+             #{tenantWide} = true
+             or (rp.main_project_id is null and rp.created_by = #{userId})
+             or exists (
+               select 1
+                 from project_member pm
+                 join project_role pr on pr.id = pm.role_id
+                   and pr.tenant_id = pm.tenant_id
+                   and pr.project_id = pm.project_id
+                   and pr.status = 'ACTIVE'
+                 join project_role_permission prp on prp.tenant_id = pm.tenant_id
+                   and prp.project_id = pm.project_id
+                   and prp.role_id = pm.role_id
+                 join permission permission on permission.id = prp.permission_id
+                where pm.tenant_id = rp.tenant_id
+                  and pm.project_id = rp.main_project_id
+                  and pm.user_id = #{userId}
+                  and pm.status = 'ACTIVE'
+                  and permission.code = 'PROJECT:VIEW'
+             )
+           )
+         order by rp.updated_at desc, rp.id desc
+        """)
+    List<ReviewProjectListRow> selectVisibleListRows(
+        @Param("tenantId") Long tenantId,
+        @Param("userId") Long userId,
+        @Param("tenantWide") boolean tenantWide
+    );
     default List<ReviewProjectEntity> selectActive(Long tenantId) {
         return selectList(new LambdaQueryWrapper<ReviewProjectEntity>()
             .eq(ReviewProjectEntity::getTenantId, tenantId)
@@ -25,6 +61,17 @@ interface ReviewProjectMapper extends BaseMapper<ReviewProjectEntity> {
 
 @Mapper
 interface ReviewScriptVersionMapper extends BaseMapper<ReviewScriptVersionEntity> {
+    @Select({"<script>", """
+        select project_id, count(*) as version_count
+          from review_script_version
+         where tenant_id = #{tenantId} and deleted_at is null
+           and project_id in
+        """, "<foreach collection='projectIds' item='projectId' open='(' separator=',' close=')'>#{projectId}</foreach>",
+        "group by project_id", "</script>"})
+    List<ReviewProjectCountRow> selectCountsByProjects(
+        @Param("tenantId") Long tenantId,
+        @Param("projectIds") List<Long> projectIds
+    );
     default List<ReviewScriptVersionEntity> selectByProjects(Long tenantId, List<Long> projectIds) {
         if (projectIds == null || projectIds.isEmpty()) return List.of();
         return selectList(new LambdaQueryWrapper<ReviewScriptVersionEntity>()
@@ -53,6 +100,26 @@ interface ReviewScriptVersionMapper extends BaseMapper<ReviewScriptVersionEntity
 
 @Mapper
 interface ReviewTaskMapper extends BaseMapper<ReviewTaskEntity> {
+    @Select({"<script>", """
+        select task.project_id, task.id as task_id, task.round_no, task.status, task.result_format,
+               case when task.report_markdown is null or trim(task.report_markdown) = ''
+                    then false else true end as has_report_markdown
+          from review_task task
+         where task.tenant_id = #{tenantId}
+           and task.project_id in
+        """, "<foreach collection='projectIds' item='projectId' open='(' separator=',' close=')'>#{projectId}</foreach>", """
+           and not exists (
+             select 1 from review_task newer
+              where newer.tenant_id = task.tenant_id
+                and newer.project_id = task.project_id
+                and (newer.created_at > task.created_at
+                  or (newer.created_at = task.created_at and newer.id > task.id))
+           )
+        """, "</script>"})
+    List<ReviewProjectLatestTaskRow> selectLatestRowsByProjects(
+        @Param("tenantId") Long tenantId,
+        @Param("projectIds") List<Long> projectIds
+    );
     default long countByProject(Long tenantId, Long projectId) {
         return selectCount(new LambdaQueryWrapper<ReviewTaskEntity>()
             .eq(ReviewTaskEntity::getTenantId, tenantId)
@@ -104,6 +171,14 @@ interface ReviewTaskMapper extends BaseMapper<ReviewTaskEntity> {
 
 @Mapper
 interface ReviewIssueMapper extends BaseMapper<ReviewIssueEntity> {
+    @Select({"<script>", """
+        select task_id, count(*) as issue_count,
+               sum(case when manually_resolved = false then 1 else 0 end) as outstanding_issue_count
+          from review_issue
+         where task_id in
+        """, "<foreach collection='taskIds' item='taskId' open='(' separator=',' close=')'>#{taskId}</foreach>",
+        "group by task_id", "</script>"})
+    List<ReviewTaskIssueCountRow> selectCountsByTasks(@Param("taskIds") List<Long> taskIds);
     default List<ReviewIssueEntity> selectByTasks(List<Long> taskIds) {
         if (taskIds == null || taskIds.isEmpty()) return List.of();
         return selectList(new LambdaQueryWrapper<ReviewIssueEntity>()
