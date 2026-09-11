@@ -60,3 +60,29 @@ The system SHALL retain `GET /api/projects/{projectId}/script-workspace` with it
 - **WHEN** an authorized legacy client requests `script-workspace`
 - **THEN** the backend returns the existing aggregate contract
 - **AND** the focused endpoint implementation does not remove or rename its fields
+
+### Requirement: Focused workspaces use bounded internal episode reads
+The system SHALL load episode navigation for focused script and storyboard workspaces through a projection that excludes persisted episode body content. The full episode body SHALL remain available only through an authorized on-demand detail contract and existing write/agent workflows.
+
+#### Scenario: Open script or storyboard workspace for a project with many episodes
+- **WHEN** an authorized user loads a focused script or storyboard workspace
+- **THEN** the backend reads and returns only the selected navigation fields for all episodes
+- **AND** it does not read or serialize every episode body
+- **AND** the requested storyboard page remains bounded by `pageSize`
+
+### Requirement: Focused reads reuse verified access context
+The system SHALL resolve active membership and project access once for each focused workspace or detail read, and SHALL reuse that verified context only within the current request.
+
+#### Scenario: Read a focused workspace
+- **WHEN** an authorized user requests a focused workspace
+- **THEN** membership and project authorization are enforced before data loading
+- **AND** internal helper calls do not repeat the same authorization lookup
+- **AND** no authorization result is cached across requests
+
+### Requirement: Focused read performance evidence is sanitized
+The system SHALL collect request-level HTTP duration, SQL query count, and cumulative SQL duration for focused production-workspace reads using a normalized route label.
+
+#### Scenario: A focused workspace request completes
+- **WHEN** a selected focused GET request completes or fails
+- **THEN** the performance record contains only normalized route, status, HTTP duration, SQL count, and cumulative SQL duration
+- **AND** it does not contain project IDs, request headers, credentials, SQL text, parameters, script content, or response bodies

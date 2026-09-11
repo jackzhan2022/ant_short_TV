@@ -18,3 +18,9 @@ The system SHALL restore the latest current-script stage and episode-unit state 
 - **WHEN** the current formal coverage remains complete
 - **THEN** the UI displays completed percentages and formal results
 - **AND** does not restart any Agent or polling timer
+
+#### Scenario: Assemble current analysis for multiple stages
+- **WHEN** the focused script workspace or current-analysis endpoint returns a task with multiple stages
+- **THEN** related results, runs, fan-out state, and split state are loaded with a bounded number of bulk reads
+- **AND** the number of database reads does not grow linearly with the number of stages
+- **AND** stage order and persisted status semantics remain unchanged

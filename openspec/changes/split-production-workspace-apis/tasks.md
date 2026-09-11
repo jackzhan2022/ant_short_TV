@@ -43,3 +43,10 @@
   - Evidence: verification.md records the full backend run and corrected-failure rerun separately; frontend 300/300, lint/type checks and final build pass. Existing lint warnings are retained and documented.
 - [ ] 7.2 Compare authenticated request duration, query count, and response size for project 33 across legacy and focused endpoints and record the results in the change notes or implementation summary.
 - [x] 7.3 Verify no known production-workbench page uses `script-workspace` for initial loading or polling, while the legacy endpoint remains contract-compatible.
+
+## 8. Internal Read-Path Optimization
+
+- [ ] 8.1 Add failing service and controller tests proving focused script and storyboard reads use a lightweight episode projection without persisted episode bodies.
+- [ ] 8.2 Batch analysis-stage result, Run, fan-out and split reads so focused analysis response query count does not grow with the stage count.
+- [ ] 8.3 Reuse one verified tenant/project access context per focused read and retain authorization isolation coverage.
+- [ ] 8.4 Add sanitized request-level HTTP and SQL timing observation for selected production-workspace GET routes.

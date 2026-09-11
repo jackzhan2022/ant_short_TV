@@ -77,3 +77,9 @@ Frontend tests will assert endpoint selection, lazy-load timing, stale-response 
 ## Open Questions
 
 None. Endpoint naming, page-size bounds, and exact DTO field lists may follow existing project conventions during implementation without changing these behavioral boundaries.
+
+## Follow-up: Internal Read Boundaries
+
+Authenticated project-33 measurements after the initial deployment showed that response transmission was not the main source of latency. `script-page-workspace`, `asset-settings-summary`, and `storyboard-workspace` spent most of their sampled duration waiting for the server. The storyboard response also still contained every persisted episode body, even when the selected episode had no storyboards.
+
+Focused response DTOs therefore must be paired with focused internal reads. Script and storyboard navigation use an explicit lightweight episode projection that excludes `content`; the existing full-episode read remains only for on-demand episode detail and write/agent flows. Analysis response assembly batches stage-related reads by task/stage IDs rather than querying per stage. Public focused reads resolve tenant membership and project access once, then pass the verified context to internal helpers. A request-scoped, sanitized observer records normalized route name, HTTP duration, SQL count, and cumulative SQL duration without retaining headers, parameters, SQL text, or response content. Database connection wait remains explicitly unavailable until it can be measured independently.
