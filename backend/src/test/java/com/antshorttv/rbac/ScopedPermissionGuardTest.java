@@ -1,7 +1,9 @@
 package com.antshorttv.rbac;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -86,5 +88,25 @@ class ScopedPermissionGuardTest {
         when(projectAccessResolver.requireView(11L, 23L)).thenReturn(projectMember);
         assertThatThrownBy(() -> guard.require(11L, 23L, "PROJECT:VIEW"))
             .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void projectGuardAcceptsAnAlreadyVerifiedProjectAccessContextWithoutResolvingAgain() {
+        ProjectPermissionGuard guard = new ProjectPermissionGuard(projectAccessResolver);
+        TenantContext context = new TenantContext(7L, 11L, 13L, "MEMBER");
+        ProjectEntity project = new ProjectEntity();
+        project.id = 23L;
+        project.tenantId = 11L;
+        ProjectAccessContext access = new ProjectAccessContext(
+            context, project, ProjectAccessSource.PROJECT_MEMBER, null, null,
+            java.util.Set.of("ELEMENT:VIEW"),
+            new ProjectCapabilities(false, false, false, false, false)
+        );
+
+        assertThatCode(() -> ProjectPermissionGuard.class
+            .getMethod("require", ProjectAccessContext.class, String.class)
+            .invoke(guard, access, "ELEMENT:VIEW")).doesNotThrowAnyException();
+
+        verifyNoInteractions(projectAccessResolver);
     }
 }

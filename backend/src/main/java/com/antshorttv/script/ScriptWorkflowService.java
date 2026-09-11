@@ -19,6 +19,7 @@ import com.antshorttv.common.ErrorCode;
 import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.project.ProjectAccessResolver;
+import com.antshorttv.project.ProjectAccessContext;
 import com.antshorttv.material.MaterialFileAccessService;
 import com.antshorttv.points.TeamPointService;
 import com.antshorttv.rbac.ProjectPermissionGuard;
@@ -656,8 +657,8 @@ public class ScriptWorkflowService {
 
     public AssetVisualWorkspace assetVisualWorkspace(Long tenantId, Long projectId, String assetType, Long assetId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        requireProjectAccess(context, projectId);
-        requirePermission(context, "ELEMENT:VIEW", projectId);
+        ProjectAccessContext access = requireProjectAccessContext(context, projectId);
+        requirePermission(access, "ELEMENT:VIEW");
         return buildAssetVisualWorkspace(tenantId, projectId, normalizeElementType(assetType), assetId);
     }
 
@@ -1547,11 +1548,19 @@ public class ScriptWorkflowService {
     }
 
     private ProjectEntity requireProjectAccess(TenantContext context, Long projectId) {
-        return projectAccessResolver.requireView(context.tenantId(), projectId).project();
+        return requireProjectAccessContext(context, projectId).project();
+    }
+
+    private ProjectAccessContext requireProjectAccessContext(TenantContext context, Long projectId) {
+        return projectAccessResolver.requireView(context.tenantId(), projectId);
     }
 
     private void requirePermission(TenantContext context, String permissionCode, Long projectId) {
         projectPermissionGuard.require(context.tenantId(), projectId, permissionCode);
+    }
+
+    private void requirePermission(ProjectAccessContext access, String permissionCode) {
+        projectPermissionGuard.require(access, permissionCode);
     }
 
     private List<CharacterAssetResponse> characters(Long tenantId, Long projectId, Long scriptId) {

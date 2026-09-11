@@ -28,7 +28,13 @@ public class ProjectPermissionGuard {
         if (tenantId == null || projectId == null || permissionCode == null) {
             throw forbidden();
         }
-        ProjectAccessContext access = projectAccessResolver.requireView(tenantId, projectId);
+        return require(projectAccessResolver.requireView(tenantId, projectId), permissionCode);
+    }
+
+    public TenantContext require(ProjectAccessContext access, String permissionCode) {
+        if (permissionCode == null) {
+            throw forbidden();
+        }
         if (access == null) {
             throw forbidden();
         }

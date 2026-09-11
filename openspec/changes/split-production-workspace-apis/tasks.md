@@ -49,5 +49,6 @@
 - [x] 8.1 Add failing service and controller tests proving focused script and storyboard reads use a lightweight episode projection without persisted episode bodies.
   - Evidence: `ScriptWorkflowReadBoundaryTest` was red against `currentEpisodes`, then green after the navigation projection; focused controller coverage remains green.
 - [ ] 8.2 Batch analysis-stage result, Run, fan-out and split reads so focused analysis response query count does not grow with the stage count.
-- [ ] 8.3 Reuse one verified tenant/project access context per focused read and retain authorization isolation coverage.
+- [x] 8.3 Reuse one verified tenant/project access context per focused read and retain authorization isolation coverage.
+  - Evidence: visual detail now passes its first verified `ProjectAccessContext` to the permission guard; `ScopedPermissionGuardTest` verifies no second resolver call.
 - [ ] 8.4 Add sanitized request-level HTTP and SQL timing observation for selected production-workspace GET routes.
