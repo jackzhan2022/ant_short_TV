@@ -531,11 +531,24 @@ class AiImageTaskControllerTest {
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.IMAGE_PNG));
 
+        mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/download".formatted(projectId, resultId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk())
+            .andExpect(content().contentType(MediaType.IMAGE_PNG));
+
+        mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId, resultId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk())
+            .andExpect(content().contentType(MediaType.IMAGE_PNG));
+
         String unauthorizedToken = registerUser("13800014021", "Unauthorized Image Reader");
         mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId, resultId))
-                .with(com.antshorttv.support.SessionTestSupport.authenticated(unauthorizedToken))
-                .header("X-Tenant-Id", tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(unauthorizedToken)))
             .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId + 999999, resultId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isNotFound());
 
         mockMvc.perform(post("/api/projects/%d/ai-image-results/%d/save-material".formatted(projectId, resultId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))

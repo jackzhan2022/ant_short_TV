@@ -181,6 +181,22 @@ class ScriptWorkflowControllerTest {
             """, tenantId, projectId, ownerId);
         Long characterId = jdbcTemplate.queryForObject(
             "select id from character_asset where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into ai_image_result
+              (tenant_id, project_id, task_id, target_type, target_id, image_url, storage_path, thumbnail_url,
+               is_selected, status, created_at, updated_at)
+            values (?, ?, 1, 'VISUAL_VARIANT', ?, '/images/original.png', 'images/original.png',
+                    '/images/thumbnail.png', true, 'ACTIVE', now(), now())
+            """, tenantId, projectId, characterId);
+        Long imageResultId = jdbcTemplate.queryForObject(
+            "select id from ai_image_result where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, source_type, generation_status,
+               current_image_result_id, current_image_url, is_primary, created_by, created_at, updated_at)
+            values (?, ?, 'CHARACTER', ?, '默认形象', 'AI_GENERATED', 'COMPLETED', ?,
+                    '/images/original.png', true, ?, now(), now())
+            """, tenantId, projectId, characterId, imageResultId, ownerId);
         for (int shotNo = 1; shotNo <= 3; shotNo++) {
             jdbcTemplate.update("""
                 insert into storyboard
@@ -206,7 +222,9 @@ class ScriptWorkflowControllerTest {
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.variantCount", is(0)));
+            .andExpect(jsonPath("$.data.variantCount", is(1)))
+            .andExpect(jsonPath("$.data.variants[0].currentImageUrl", is("/images/original.png")))
+            .andExpect(jsonPath("$.data.variants[0].currentImageThumbnailUrl", is("/images/thumbnail.png")));
         mockMvc.perform(get("/api/projects/%d/storyboard-workspace?episodeNo=1&current=1&pageSize=2".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))

@@ -426,8 +426,19 @@ public class AssetVisualVariantService {
         return new VariantResponse(entity.getId(), entity.getAssetType(), entity.getAssetId(), entity.getName(),
             entity.getAppearance(), entity.getPrompt(), entity.getSourceType(), entity.getGenerationStatus(),
             entity.getGenerationTaskId(), entity.getCurrentImageResultId(), entity.getCurrentImageUrl(),
+            currentImageThumbnailUrl(entity),
             entity.getGenerationErrorCode(), entity.getGenerationErrorMessage(),
             Boolean.TRUE.equals(entity.getIsPrimary()), usable(entity));
+    }
+
+    private String currentImageThumbnailUrl(AssetVisualVariantEntity entity) {
+        if (entity.getCurrentImageResultId() == null) return null;
+        List<String> urls = jdbc.query("""
+            select thumbnail_url
+              from ai_image_result
+             where id = ? and tenant_id = ? and project_id = ? and status = 'ACTIVE'
+            """, (rs, rowNum) -> rs.getString(1), entity.getCurrentImageResultId(), entity.getTenantId(), entity.getProjectId());
+        return urls.isEmpty() ? null : urls.get(0);
     }
 
     private String blankToNull(String value) {
@@ -445,7 +456,8 @@ public class AssetVisualVariantService {
     public record VariantResponse(
         Long id, String assetType, Long assetId, String name, String appearance, String prompt,
         String sourceType, String generationStatus, Long generationTaskId, Long currentImageResultId,
-        String currentImageUrl, String errorCode, String errorMessage, boolean primary, boolean usable
+        String currentImageUrl, String currentImageThumbnailUrl, String errorCode, String errorMessage,
+        boolean primary, boolean usable
     ) {}
     public record ResolvedVisual(Long variantId, Long imageResultId, String imageUrl, String source) {}
     public record GenerationInput(String prompt, List<String> referenceImages) {}

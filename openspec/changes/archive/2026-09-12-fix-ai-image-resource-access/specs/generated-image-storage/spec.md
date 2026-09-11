@@ -1,20 +1,4 @@
-# generated-image-storage Specification
-
-## Purpose
-Persist generated image originals and list-ready thumbnail renditions without storing provider Base64 data in result URL fields.
-
-## Requirements
-
-### Requirement: Generated images are persisted as paired object-storage resources
-The system SHALL persist every newly completed generated image as an original object and a proportional PNG thumbnail object in object storage before completing its image result. The thumbnail's longest edge SHALL not exceed 512 pixels, and the system SHALL retain the original dimensions, size, MIME type, and storage path.
-
-#### Scenario: Generated image is stored successfully
-- **WHEN** an image-generation provider returns a decodable image result
-- **THEN** the system stores both the original and its PNG thumbnail in object storage and completes the result with original metadata
-
-#### Scenario: Thumbnail storage fails
-- **WHEN** the original is decoded but its thumbnail cannot be created or stored
-- **THEN** the system SHALL not publish a completed image result with only an original resource
+## MODIFIED Requirements
 
 ### Requirement: Image result URLs select the intended rendition
 The system SHALL return a short authenticated original-image URL and thumbnail URL for every newly completed generated result. Browser-native requests to these URLs SHALL authorize from the authenticated session and persisted result ownership without requiring a custom tenant header. Image list consumers SHALL use the thumbnail URL, while original preview and download consumers SHALL use the original URL.
@@ -39,8 +23,8 @@ The system SHALL provide an authenticated project-scoped endpoint that streams t
 - **THEN** the system streams the stored thumbnail as `image/png`
 
 #### Scenario: Unauthorized thumbnail request
-- **WHEN** a caller without access to the result project requests its thumbnail
-- **THEN** the system rejects the request without exposing the object-storage resource
+- **WHEN** an authenticated caller without access to the result project requests its thumbnail
+- **THEN** the system returns a forbidden response without exposing or reading the object-storage resource
 
 #### Scenario: Result does not belong to path project
 - **WHEN** an authenticated caller requests an image result under a different project identifier

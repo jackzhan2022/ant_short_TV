@@ -96,30 +96,28 @@ public class AiImageTaskController {
     }
 
     @GetMapping("/ai-image-results/{resultId}/download")
-    @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
     public ResponseEntity<Resource> downloadResult(
         @PathVariable Long projectId,
-        @PathVariable Long resultId,
-        HttpServletRequest request
+        @PathVariable Long resultId
     ) {
-        AiImageResultEntity result = aiImageTaskService.result(tenantId(request), projectId, resultId);
-        Resource resource = aiImageTaskService.download(tenantId(request), projectId, resultId);
+        var stored = aiImageTaskService.originalResource(projectId, resultId);
+        AiImageResultEntity result = stored.result();
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(result.getMimeType() == null ? "image/png" : result.getMimeType()))
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
                 .filename("ai-image-result-%d.%s".formatted(resultId, extension(result.getMimeType())))
                 .build()
                 .toString())
-            .body(resource);
+            .body(stored.resource());
     }
 
     @GetMapping("/ai-image-results/{resultId}/thumbnail")
-    @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
     public ResponseEntity<Resource> thumbnailResult(
-        @PathVariable Long projectId, @PathVariable Long resultId, HttpServletRequest request
+        @PathVariable Long projectId, @PathVariable Long resultId
     ) {
+        var stored = aiImageTaskService.thumbnailResource(projectId, resultId);
         return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG)
-            .body(aiImageTaskService.thumbnail(tenantId(request), projectId, resultId));
+            .body(stored.resource());
     }
 
     @PostMapping("/ai-image-results/{resultId}/save-material")

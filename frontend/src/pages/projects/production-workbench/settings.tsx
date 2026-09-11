@@ -1497,9 +1497,14 @@ const ProductionWorkbenchSettings = () => {
                                         fontSize: 22,
                                       }}
                                     >
-                                      {variant.currentImageUrl ? (
+                                      {variant.currentImageThumbnailUrl ||
+                                      variant.currentImageUrl ? (
                                         <img
-                                          src={variant.currentImageUrl}
+                                          src={
+                                            variant.currentImageThumbnailUrl ||
+                                            variant.currentImageUrl ||
+                                            undefined
+                                          }
                                           alt={`${variant.name}缩略图`}
                                           style={{
                                             width: '100%',

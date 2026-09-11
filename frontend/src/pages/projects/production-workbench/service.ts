@@ -62,6 +62,7 @@ export type VisualVariant = {
   generationTaskId?: number | null;
   currentImageResultId?: number | null;
   currentImageUrl?: string | null;
+  currentImageThumbnailUrl?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
   primary: boolean;

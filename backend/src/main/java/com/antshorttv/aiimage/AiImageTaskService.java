@@ -19,6 +19,7 @@ import com.antshorttv.points.AiPointSettlementService;
 import com.antshorttv.points.AiSettlementOutcome;
 import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
+import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.script.AssetVisualVariantService;
@@ -43,6 +44,7 @@ public class AiImageTaskService {
 
     private final TenantContextResolver tenantContextResolver;
     private final ProjectMapper projectMapper;
+    private final ProjectPermissionGuard projectPermissionGuard;
     private final AiModelRouter aiModelRouter;
     private final ProjectAiConfigService projectAiConfigService;
     private final AiImageTaskMapper taskMapper;
@@ -61,6 +63,7 @@ public class AiImageTaskService {
     public AiImageTaskService(
         TenantContextResolver tenantContextResolver,
         ProjectMapper projectMapper,
+        ProjectPermissionGuard projectPermissionGuard,
         AiModelRouter aiModelRouter,
         ProjectAiConfigService projectAiConfigService,
         AiImageTaskMapper taskMapper,
@@ -78,6 +81,7 @@ public class AiImageTaskService {
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.projectMapper = projectMapper;
+        this.projectPermissionGuard = projectPermissionGuard;
         this.aiModelRouter = aiModelRouter;
         this.projectAiConfigService = projectAiConfigService;
         this.taskMapper = taskMapper;
@@ -333,19 +337,16 @@ public class AiImageTaskService {
         return AiImageResultResponse.from(result);
     }
 
-    public Resource download(Long tenantId, Long projectId, Long resultId) {
-        requireProject(tenantId, projectId);
-        return storageService.resource(requireResult(tenantId, projectId, resultId));
+    public ResultResource originalResource(Long projectId, Long resultId) {
+        AiImageResultEntity result = requireResourceResult(projectId, resultId);
+        projectPermissionGuard.require(result.getTenantId(), projectId, "AI_IMAGE_TASK:VIEW");
+        return new ResultResource(result, storageService.resource(result));
     }
 
-    public Resource thumbnail(Long tenantId, Long projectId, Long resultId) {
-        requireProject(tenantId, projectId);
-        return storageService.thumbnailResource(requireResult(tenantId, projectId, resultId));
-    }
-
-    public AiImageResultEntity result(Long tenantId, Long projectId, Long resultId) {
-        requireProject(tenantId, projectId);
-        return requireResult(tenantId, projectId, resultId);
+    public ResultResource thumbnailResource(Long projectId, Long resultId) {
+        AiImageResultEntity result = requireResourceResult(projectId, resultId);
+        projectPermissionGuard.require(result.getTenantId(), projectId, "AI_IMAGE_TASK:VIEW");
+        return new ResultResource(result, storageService.thumbnailResource(result));
     }
 
     @Transactional
@@ -493,6 +494,9 @@ public class AiImageTaskService {
     private record ResolvedImageModel(Long modelId, String providerCode, String modelName) {
     }
 
+    public record ResultResource(AiImageResultEntity result, Resource resource) {
+    }
+
     private AiImageTaskEntity requireTask(Long tenantId, Long projectId, Long taskId) {
         AiImageTaskEntity task = taskMapper.selectOne(new LambdaQueryWrapper<AiImageTaskEntity>()
             .eq(AiImageTaskEntity::getTenantId, tenantId)
@@ -508,6 +512,15 @@ public class AiImageTaskService {
     private AiImageResultEntity requireResult(Long tenantId, Long projectId, Long resultId) {
         AiImageResultEntity result = resultMapper.selectById(resultId);
         if (result == null || !tenantId.equals(result.getTenantId()) || !projectId.equals(result.getProjectId())
+            || !AiImageResultStatus.ACTIVE.name().equals(result.getStatus())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "图片结果不存在。");
+        }
+        return result;
+    }
+
+    private AiImageResultEntity requireResourceResult(Long projectId, Long resultId) {
+        AiImageResultEntity result = resultMapper.selectById(resultId);
+        if (result == null || !projectId.equals(result.getProjectId())
             || !AiImageResultStatus.ACTIVE.name().equals(result.getStatus())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "图片结果不存在。");
         }

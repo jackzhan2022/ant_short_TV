@@ -160,6 +160,7 @@ const workspace = {
           usable: true,
           generationStatus: 'COMPLETED',
           currentImageUrl: '/daily.png',
+          currentImageThumbnailUrl: '/daily-thumb.png',
         },
         variants: [
           {
@@ -169,6 +170,7 @@ const workspace = {
             usable: true,
             generationStatus: 'COMPLETED',
             currentImageUrl: '/daily.png',
+            currentImageThumbnailUrl: '/daily-thumb.png',
           },
           {
             id: 12,
@@ -404,6 +406,14 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.getByTestId('视觉形象主图预览')).toHaveStyle({
       height: 'clamp(260px, 48vh, 430px)',
     });
+    expect(screen.getByAltText('日常形象缩略图')).toHaveAttribute(
+      'src',
+      '/daily-thumb.png',
+    );
+    expect(screen.getByAltText('日常形象预览图')).toHaveAttribute(
+      'src',
+      '/daily.png',
+    );
     expect(
       screen.getByRole('button', { name: '选择日常形象' }),
     ).toBeInTheDocument();
