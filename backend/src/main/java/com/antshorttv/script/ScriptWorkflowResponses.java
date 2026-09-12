@@ -104,7 +104,6 @@ record AssetVisualWorkspace(
     List<AssetVisualVariantService.VariantResponse> variants,
     Map<String, Long> generationSummary,
     List<AssetVisualBindingService.BindingResponse> episodeBindings,
-    String normalizationReviewStatus,
     String resolvedImageUrl,
     String resolvedImageSource
 ) {
@@ -168,24 +167,6 @@ record StoryboardResponse(
         } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
             return null;
         }
-    }
-}
-
-record ScriptWorkspaceResponse(
-    Long projectId,
-    ScriptResponse script,
-    List<ScriptVersionResponse> versions,
-    List<CharacterAssetResponse> characters,
-    List<SceneAssetResponse> scenes,
-    List<PropAssetResponse> props,
-    List<StoryboardResponse> storyboards,
-    List<ScriptEpisodeResponse> episodes,
-    ScriptAnalysisTaskResponse analysis,
-    ScriptGlobalUnderstandingResponse globalUnderstanding
-) {
-    @com.fasterxml.jackson.annotation.JsonProperty("episodeWarnings")
-    public List<EpisodeSplitWarnings.Warning> episodeWarnings() {
-        return new EpisodeSplitWarnings().inspect(script == null ? null : script.content(), episodes);
     }
 }
 
@@ -273,13 +254,6 @@ record StoryboardWorkspacePageResponse(
     List<StoryboardResponse> storyboards
 ) {}
 
-record AssetSettingsWorkspaceResponse(
-    Long projectId,
-    List<CharacterAssetResponse> characters,
-    List<SceneAssetResponse> scenes,
-    List<PropAssetResponse> props
-) {
-}
 
 record ScriptGlobalUnderstandingResponse(
     Long id,
@@ -302,7 +276,6 @@ record ScriptGlobalUnderstandingResponse(
 record ScriptAnalysisTaskResponse(
     Long id,
     Long scriptVersionId,
-    String pipelineVersion,
     String status,
     String currentStage,
     Integer overallProgress,
@@ -366,7 +339,6 @@ record ScriptAnalysisTaskResponse(
         return new ScriptAnalysisTaskResponse(
             task.getId(),
             task.getScriptVersionId(),
-            task.getPipelineVersion(),
             task.getStatus(),
             task.getCurrentStage(),
             task.getOverallProgress(),

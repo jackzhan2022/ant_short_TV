@@ -138,7 +138,6 @@ public record AiInvocationRequest(
             if (scene != null) {
                 this.capability = scene.capability();
                 this.promptTemplateId = scene.promptTemplateId();
-                this.agentCode = scene.agentCode();
             }
             return this;
         }

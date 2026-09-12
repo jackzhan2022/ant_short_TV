@@ -111,11 +111,11 @@ class AiInvocationServiceTest {
     }
 
     @Test
-    void invokesScriptReviewThroughUnifiedContractWithResolvedAgentContext() {
+    void recordsExplicitAgentContextWithoutResolvingLegacyDefinitions() {
         AiModelRoute route = route(AiCapability.TEXT);
         when(router.route(801L, "TEXT")).thenReturn(route);
         when(route.adapter().text(any(), any(), any(), any(), any()))
-            .thenReturn(new AiTextResponse("{\"overallScore\":90,\"conclusion\":\"PASS\",\"issues\":[]}", "req-review", 1, 2, 3, 66L, Map.of()));
+            .thenReturn(new AiTextResponse("# 审核报告\n未发现明显问题。", "req-review", 1, 2, 3, 66L, Map.of()));
         when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9005L);
 
         AiInvocationResult<AiTextResponse> result = service.invokeText(AiInvocationRequest.text()
@@ -124,6 +124,7 @@ class AiInvocationServiceTest {
             .projectId(3L)
             .modelId(801L)
             .scene(AiBusinessScene.SCRIPT_REVIEW)
+            .agentCode("script-review")
             .userPrompt("审核剧本")
             .build());
 

@@ -10,7 +10,6 @@ import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -18,31 +17,23 @@ public class EpisodeSummaryAgentAdapter {
     private final WorkflowAgentRunner runner;
     private final ScriptEpisodeSummaryRepository summaries;
     private final EpisodePromptContextService contexts;
-    private final boolean enabled;
 
     @Autowired
     public EpisodeSummaryAgentAdapter(
         WorkflowAgentRunner runner,
         ScriptEpisodeSummaryRepository summaries,
-        EpisodePromptContextService contexts,
-        @Value("${ai.workflow-agent.episode-summary-enabled:false}") boolean enabled
+        EpisodePromptContextService contexts
     ) {
         this.runner = runner;
         this.summaries = summaries;
         this.contexts = contexts;
-        this.enabled = enabled;
     }
 
     EpisodeSummaryAgentAdapter(
         WorkflowAgentRunner runner,
-        ScriptEpisodeSummaryRepository summaries,
-        boolean enabled
+        ScriptEpisodeSummaryRepository summaries
     ) {
-        this(runner, summaries, null, enabled);
-    }
-
-    public boolean enabled() {
-        return enabled;
+        this(runner, summaries, null);
     }
 
     public Execution executeChild(
@@ -63,6 +54,20 @@ public class EpisodeSummaryAgentAdapter {
         AiExecutionContext executionContext,
         Long modelId
     ) {
+        return execute(plan, task, stage, episodeId, executionContext, modelId, Map.of());
+    }
+
+    public Execution executeClaimedChild(
+        WorkflowAgentExecutionPlan plan, ScriptAnalysisTaskEntity task, ScriptAnalysisStageEntity stage,
+        EpisodeFanoutCoordinator.EpisodeUnit episode, AiExecutionContext executionContext, Long modelId
+    ) {
+        return execute(plan, task, stage, episode.episodeId(), executionContext, modelId, episode.trustedToolState());
+    }
+
+    private Execution execute(
+        WorkflowAgentExecutionPlan plan, ScriptAnalysisTaskEntity task, ScriptAnalysisStageEntity stage,
+        Long episodeId, AiExecutionContext executionContext, Long modelId, Map<String, Object> trustedToolState
+    ) {
         EpisodePromptContextService.Prepared prepared = contexts == null
             ? null : contexts.prepare(task, episodeId, modelId);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
@@ -75,7 +80,7 @@ public class EpisodeSummaryAgentAdapter {
             executionContext == null ? null : executionContext.task().executionVersion,
             modelId, null,
             prepared == null ? null : prepared.commonPrefix(),
-            prepared == null ? null : prepared.cacheKey(), Map.of());
+            prepared == null ? null : prepared.cacheKey(), Map.of()).withTrustedToolState(trustedToolState);
         WorkflowAgentRunResult run = plan == null ? runner.runFormal(input) : runner.runFormal(plan, input);
         ScriptEpisodeSummaryDocument document = summaries.findCurrent(
                 task.getTenantId(), task.getScriptId(), episodeId)

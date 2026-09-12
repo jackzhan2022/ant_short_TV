@@ -19,11 +19,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 @SpringBootTest(properties = {
     "ai.testing.mock-provider-enabled=false",
-    "ai.execution.dispatcher.enabled=false",
-    "ai.workflow-agent.global-understanding-enabled=true",
-    "ai.workflow-agent.episode-splitting-enabled=true",
-    "ai.workflow-agent.episode-summary-enabled=true",
-    "ai.workflow-agent.asset-recognition-enabled=true",
     "ai.workflow-agent.run-timeout-seconds=600"
 })
 @EnabledIfEnvironmentVariable(named = "RUN_LIVE_SHORT_DRAMA_SMOKE", matches = "true")

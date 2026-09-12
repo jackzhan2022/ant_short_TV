@@ -27,6 +27,8 @@ class ScriptAnalysisExecutionCoordinatorTest {
         AiExecutionResponseMapper responseMapper = mock(AiExecutionResponseMapper.class);
         ScriptAnalysisExecutionCoordinator coordinator = new ScriptAnalysisExecutionCoordinator(
             taskMapper, versionMapper, projectAiConfig, executionService, responseMapper);
+        var modelLookup = mock(com.antshorttv.workflowagent.agent.WorkflowAgentModelLookup.class);
+        ReflectionTestUtils.setField(coordinator, "workflowAgentModelLookup", modelLookup);
 
         ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
         task.setId(22L);
@@ -46,13 +48,17 @@ class ScriptAnalysisExecutionCoordinatorTest {
 
         when(executionService.requireTask(79014L)).thenReturn(canceled);
         when(versionMapper.selectById(18L)).thenReturn(version);
-        when(projectAiConfig.resolveModelId(4L, 27L, "TEXT")).thenReturn(7L);
+        var snapshots = mock(ScriptAnalysisConfigSnapshotService.class);
+        ReflectionTestUtils.setField(coordinator, "configSnapshotService", snapshots);
+        when(snapshots.modelIdFor(22L)).thenReturn(7L);
         when(executionService.restartCanceledWithReservation(
             eq(79014L), eq(22L), eq(7L), contains("79014"), contains("79014"), anyMap(), anyMap()
         )).thenReturn(restarted);
         when(responseMapper.toResponse(restarted)).thenReturn(response);
 
         assertThat(coordinator.retry(task)).isSameAs(response);
+        verify(modelLookup).requireEnabledTextModel(7L);
+        org.mockito.Mockito.verifyNoInteractions(projectAiConfig);
         ArgumentCaptor<ScriptAnalysisTaskEntity> saved = ArgumentCaptor.forClass(ScriptAnalysisTaskEntity.class);
         verify(taskMapper).updateById(saved.capture());
         assertThat(saved.getValue().getExecutionId()).isEqualTo(79015L);
@@ -65,10 +71,6 @@ class ScriptAnalysisExecutionCoordinatorTest {
             mock(ProjectAiConfigService.class), mock(AiExecutionService.class),
             mock(AiExecutionResponseMapper.class));
 
-        ReflectionTestUtils.setField(coordinator, "globalUnderstandingAgentEnabled", false);
-        assertThat(coordinator.maximumCallCount("script")).isEqualTo(4);
-
-        ReflectionTestUtils.setField(coordinator, "globalUnderstandingAgentEnabled", true);
         assertThat(coordinator.maximumCallCount("script")).isEqualTo(5);
     }
 }

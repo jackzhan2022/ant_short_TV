@@ -34,7 +34,7 @@ import type {
   SaveStoryboardValues,
   SceneAsset,
   ScriptEpisode,
-  ScriptWorkspace,
+  ProductionWorkspaceState,
   StoryboardShot,
   StoryboardBatch,
   StoryboardPromptDocument,
@@ -130,16 +130,6 @@ const getPlaceholderBackground = (key: string) => {
     'linear-gradient(90deg, #fff 0%, #e8f2ff 34%, #fbfdff 35%, #fff 100%)',
     'linear-gradient(90deg, #fff 0%, #8b1f2c 34%, #fff 35%, #fff 100%)',
   ][Number(key.at(-1)) || 0];
-};
-
-const episodeTitles: Record<number, string> = {
-  1: '致命捉迷藏',
-  2: '夜色警报',
-};
-
-const episodeSummaries: Record<number, string> = {
-  1: '斌斌独自下楼玩耍，为躲猫猫爬进一辆未关后备箱的灰色轿车，后备箱意外锁死。奶奶刘凤英却只顾跳广场舞，对孙子的危险一无所知。',
-  2: '夜幕压低小区楼影，家人意识到斌斌失踪后开始寻找，停车场与楼道里的线索逐渐指向同一辆灰色轿车。',
 };
 
 const splitNames = (value?: string | null) =>
@@ -365,26 +355,6 @@ const normalizeVideoDuration = (durationSeconds?: number) => {
     supportedVideoDurations[0]
   );
 };
-
-const toLocalStoryboard = (
-  values: SaveStoryboardValues,
-  fallbackId: number,
-): StoryboardWithProps => ({
-  id: fallbackId,
-  shotNo: values.shotNo || 1,
-  episodeNo: values.episodeNo || 1,
-  shotType: values.shotType || '中景',
-  visualDescription: values.visualDescription,
-  characters: values.characters || '',
-  scene: values.scene || '',
-  props: values.props || '',
-  dialogue: values.dialogue || '',
-  durationSeconds: values.durationSeconds || 5,
-  imagePrompt: values.imagePrompt || '',
-  videoPrompt: values.videoPrompt || '',
-  firstFrameUrl: null,
-  currentVideoUrl: null,
-});
 
 const getStoryboardVideo = (
   storyboard: StoryboardShot,
@@ -1165,6 +1135,7 @@ const ProductionWorkbenchStoryboard = () => {
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [storyboardPage, setStoryboardPage] = useState(1);
   const [storyboardTotal, setStoryboardTotal] = useState(0);
+  const [mutationRefreshFailed, setMutationRefreshFailed] = useState(false);
   const [selectedModel, setSelectedModel] = useState('Doubao-Seedance-2.5');
   const [drafts, setDrafts] = useState<StoryboardDraft>({});
   const [storyboardExecution, setStoryboardExecution] =
@@ -1174,7 +1145,7 @@ const ProductionWorkbenchStoryboard = () => {
   const [storyboardBatchBusy, setStoryboardBatchBusy] = useState(false);
   const reservedShotNos = useRef<Record<number, number>>({});
   const storyboardRequestId = useRef(0);
-  const [workspace, setWorkspace] = useState<ScriptWorkspace>({
+  const [workspace, setWorkspace] = useState<ProductionWorkspaceState>({
     projectId: projectId || 0,
     script: null,
     versions: [],
@@ -1209,19 +1180,15 @@ const ProductionWorkbenchStoryboard = () => {
           versions: workspaceResponse.data?.versions || [],
           characters:
             assetResponse.data?.characters ||
-            (workspaceResponse.data as Partial<ScriptWorkspace>)?.characters ||
             [],
           scenes:
             assetResponse.data?.scenes ||
-            (workspaceResponse.data as Partial<ScriptWorkspace>)?.scenes ||
             [],
           props:
             assetResponse.data?.props ||
-            (workspaceResponse.data as Partial<ScriptWorkspace>)?.props ||
             [],
           storyboards:
             storyboardResponse.data?.storyboards ||
-            (workspaceResponse.data as Partial<ScriptWorkspace>)?.storyboards ||
             [],
           episodes: workspaceResponse.data?.episodes || [],
           analysis: workspaceResponse.data?.analysis || null,
@@ -1319,6 +1286,14 @@ const ProductionWorkbenchStoryboard = () => {
       ),
     ).sort((a, b) => a - b);
   }, [workspace.episodes, workspace.storyboards]);
+  const currentEpisode = workspace.episodes?.find(
+    (episode) => episode.episodeNo === activeEpisode,
+  );
+  const episodeTitle = currentEpisode?.title?.trim();
+  const episodeSummary =
+    currentEpisode?.formalSummary?.content.summary?.trim() ||
+    currentEpisode?.summary?.trim() ||
+    '暂无本集概要';
   const visibleStoryboards = workspace.storyboards.filter(
     (item) => item.episodeNo === activeEpisode,
   );
@@ -1375,25 +1350,25 @@ const ProductionWorkbenchStoryboard = () => {
       }),
     ]);
     if (storyboardRequestId.current === requestId && scriptResponse.data) {
-      const nextWorkspace: ScriptWorkspace = {
+      const nextWorkspace: ProductionWorkspaceState = {
         projectId,
         script: scriptResponse.data.script,
         versions: scriptResponse.data.versions,
         characters:
           assetResponse.data?.characters ||
-          (scriptResponse.data as Partial<ScriptWorkspace>).characters ||
+          (scriptResponse.data as Partial<ProductionWorkspaceState>).characters ||
           [],
         scenes:
           assetResponse.data?.scenes ||
-          (scriptResponse.data as Partial<ScriptWorkspace>).scenes ||
+          (scriptResponse.data as Partial<ProductionWorkspaceState>).scenes ||
           [],
         props:
           assetResponse.data?.props ||
-          (scriptResponse.data as Partial<ScriptWorkspace>).props ||
+          (scriptResponse.data as Partial<ProductionWorkspaceState>).props ||
           [],
         storyboards:
           storyboardResponse.data?.storyboards ||
-          (scriptResponse.data as Partial<ScriptWorkspace>).storyboards ||
+          (scriptResponse.data as Partial<ProductionWorkspaceState>).storyboards ||
           [],
         episodes: scriptResponse.data.episodes,
         analysis: scriptResponse.data.analysis,
@@ -1430,6 +1405,18 @@ const ProductionWorkbenchStoryboard = () => {
     setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
       scriptText: getStoryboardScriptText(item), videoPrompt: getStoryboardPrompt(item), promptDocument: item.promptDocument,
     }])));
+  };
+
+  const refreshAfterMutation = async () => {
+    try {
+      await reloadStoryboardPage();
+      setMutationRefreshFailed(false);
+      return true;
+    } catch {
+      setMutationRefreshFailed(true);
+      message.error('操作已完成，但分镜刷新失败，请重试加载');
+      return false;
+    }
   };
 
   const selectEpisode = async (episodeNo: number) => {
@@ -1728,8 +1715,7 @@ const ProductionWorkbenchStoryboard = () => {
           item.id === storyboard.id ? nextStoryboard : item,
         ),
       }));
-      await reloadStoryboardPage();
-      message.success('分镜已保存');
+      if (await refreshAfterMutation()) message.success('分镜已保存');
     } catch {
       message.error('分镜保存失败');
     }
@@ -1768,8 +1754,7 @@ const ProductionWorkbenchStoryboard = () => {
           videoPrompt: nextVideoPrompt,
         }),
       );
-      await reloadStoryboardPage();
-      message.success('分镜已保存');
+      if (await refreshAfterMutation()) message.success('分镜已保存');
     } catch {
       message.error('分镜保存失败');
     }
@@ -1780,24 +1765,8 @@ const ProductionWorkbenchStoryboard = () => {
     successText: string,
   ) => {
     try {
-      const response = await createStoryboard(projectId, values);
-      setWorkspace((previous) => {
-        const responseStoryboards = response.data?.storyboards;
-        if (
-          responseStoryboards?.length &&
-          responseStoryboards.length >= previous.storyboards.length
-        ) {
-          return response.data;
-        }
-        return {
-          ...previous,
-          storyboards: [
-            ...previous.storyboards,
-            toLocalStoryboard(values, Date.now()),
-          ],
-        };
-      });
-      message.success(successText);
+      await createStoryboard(projectId, values);
+      if (await refreshAfterMutation()) message.success(successText);
     } catch {
       message.error('分镜创建失败');
     }
@@ -1922,6 +1891,12 @@ const ProductionWorkbenchStoryboard = () => {
       </aside>
 
       <div style={{ minWidth: 0, padding: '16px 24px 34px' }}>
+        {mutationRefreshFailed ? (
+          <div role="alert">
+            操作已完成，但分镜刷新失败。
+            <button type="button" onClick={() => void refreshAfterMutation()}>重试加载分镜</button>
+          </div>
+        ) : null}
         <Flex justify="space-between" align="center">
           <Button style={{ height: 32, fontWeight: 700 }}>分镜表</Button>
           <Flex gap={10}>
@@ -1968,10 +1943,7 @@ const ProductionWorkbenchStoryboard = () => {
         <section style={{ marginTop: 18, paddingLeft: 2 }}>
           <Flex justify="space-between" align="center" gap={16} wrap>
             <Typography.Title level={4} style={{ margin: 0, fontSize: 16 }}>
-              第{activeEpisode}集{' '}
-              {workspace.episodes?.find(
-                (episode) => episode.episodeNo === activeEpisode,
-              )?.title || episodeTitles[activeEpisode] || `第${activeEpisode}集`}
+              第{activeEpisode}集{episodeTitle ? ` ${episodeTitle}` : ''}
             </Typography.Title>
             <Button
               type="primary"
@@ -1992,8 +1964,7 @@ const ProductionWorkbenchStoryboard = () => {
               fontSize: 14,
             }}
           >
-            {episodeSummaries[activeEpisode] ||
-              '本集分镜内容已按镜头拆解，可继续编辑提示词并生成视频。'}
+            {episodeSummary}
             <Button type="link" size="small" style={{ paddingInline: 8 }}>
               详情
             </Button>

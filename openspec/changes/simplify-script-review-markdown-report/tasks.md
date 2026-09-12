@@ -1,3 +1,5 @@
+> 2026-09-12 替代声明：`remove-legacy-ai-workflow-paths` 是最终目标。历史结构化展示、结果格式切换、旧表/工具兼容及开关回滚条款已被替代；QUICK/DEEP 仅保留 Markdown。 原勾选和验证记录为历史证据，不据此恢复旧链路。归档时先合并仍有效的基础能力，最后合并 remove-legacy-ai-workflow-paths；之后不得再导入这些已退役条款。
+
 ## 1. Persistence and compatibility
 
 - [x] 1.1 Add a database migration for nullable task `result_format` and `report_markdown` fields and persisted DEEP unit Markdown fragments, preserving all existing structured rows.

@@ -10,11 +10,7 @@ import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-@SpringBootTest(properties = {
-    "ai.workflow-agent.episode-splitting-enabled=true",
-    "ai.workflow-agent.episode-summary-enabled=true",
-    "ai.workflow-agent.asset-recognition-enabled=true"
-})
+@SpringBootTest
 class RemainingAnalysisAgentBootstrapTest {
     @Autowired private EpisodeSplittingAgentBootstrap splitting;
     @Autowired private EpisodeSummaryAgentBootstrap summary;

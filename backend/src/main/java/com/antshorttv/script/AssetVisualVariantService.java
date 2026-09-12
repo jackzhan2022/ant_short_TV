@@ -77,6 +77,7 @@ public class AssetVisualVariantService {
         entity.setName(command.name().trim());
         entity.setAppearance(blankToNull(command.appearance()));
         entity.setPrompt(blankToNull(command.prompt()));
+        entity.setSourceType("MANUAL");
         entity.setUpdatedAt(LocalDateTime.now());
         variantMapper.updateById(entity);
         if (Boolean.TRUE.equals(command.primary()) && !Boolean.TRUE.equals(entity.getIsPrimary())) {

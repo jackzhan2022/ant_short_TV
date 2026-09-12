@@ -54,9 +54,9 @@ public class AutoStoryboardEventRepository {
                    source_fingerprint, asset_analysis_id, context_snapshot_id, policy_version,
                    status, attempt_no, execution_id, created_by
               from episode_auto_storyboard_event
-             where status in ('PENDING', 'RETRYABLE')
+             where status in ('PENDING', 'RETRYABLE', 'BLOCKED_FUNDS')
                and (next_attempt_at is null or next_attempt_at <= now())
-             order by case when status = 'RETRYABLE' then 1 else 0 end, id
+             order by case when status = 'PENDING' then 0 else 1 end, id
              limit 1 for update
             """, (row, index) -> event(row));
         if (events.isEmpty()) return Optional.empty();
@@ -96,9 +96,11 @@ public class AutoStoryboardEventRepository {
     public void markOutcome(long id, String status, String errorCode, String errorMessage) {
         jdbc.update("""
             update episode_auto_storyboard_event
-               set status=?, error_code=?, error_message=?, finished_at=now(), updated_at=now()
+               set status=?, error_code=?, error_message=?,
+                   next_attempt_at=case when ?='BLOCKED_FUNDS' then timestampadd(second, 30, now()) else null end,
+                   finished_at=case when ?='BLOCKED_FUNDS' then null else now() end, updated_at=now()
              where id=?
-            """, status, errorCode, errorMessage, id);
+            """, status, errorCode, errorMessage, status, status, id);
     }
 
     public void markFailed(long id, String errorCode, String errorMessage, boolean retryable) {

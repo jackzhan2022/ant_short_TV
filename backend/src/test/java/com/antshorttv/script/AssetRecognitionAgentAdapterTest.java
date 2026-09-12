@@ -27,23 +27,27 @@ class AssetRecognitionAgentAdapterTest {
         EpisodePromptContextService contexts = mock(EpisodePromptContextService.class);
         when(contexts.prepare(any(), any(), any())).thenReturn(
             new EpisodePromptContextService.Prepared(501L, "COMMON_PREFIX", "CACHE_KEY", "HASH"));
-        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, contexts, true);
+        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, contexts);
         when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
             .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
         when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(true);
 
-        adapter.executeChild(plan(), task(), stage(), 101L, null, 99L);
+        adapter.executeClaimedChild(plan(), task(), stage(),
+            new EpisodeFanoutCoordinator.EpisodeUnit(101L, "e1", "fp", "RUNNING", 50L, 2), null, 99L);
 
         ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
         verify(runner).runFormal(any(WorkflowAgentExecutionPlan.class), input.capture());
         assertThat(input.getValue().stableContext()).isEqualTo("COMMON_PREFIX");
         assertThat(input.getValue().promptCacheKey()).isEqualTo("CACHE_KEY");
+        assertThat(input.getValue().trustedToolState()).containsEntry("fanoutSnapshotId", 50L)
+            .containsEntry("fanoutUnitAttemptNo", 2);
+        assertThat(input.getValue().promptCacheOptions()).doesNotContainKeys("fanoutSnapshotId", "fanoutUnitAttemptNo");
         assertThat(input.getValue().input()).doesNotContain("概要");
     }
 
     @Test
     void runsOneEpisodeAgainstFrozenPlanAndRequiresFormalCoverage() {
-        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, true);
+        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets);
         WorkflowAgentExecutionPlan plan = plan();
         when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
             .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
@@ -62,7 +66,7 @@ class AssetRecognitionAgentAdapterTest {
 
     @Test
     void forwardsCharacterScopeToTheFormalAgentRun() {
-        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, true);
+        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets);
         when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
             .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
         when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(true);
@@ -75,11 +79,12 @@ class AssetRecognitionAgentAdapterTest {
         assertThat(input.getValue().promptCacheOptions())
             .containsEntry("assetScope", "CHARACTER")
             .containsEntry("assetPromptPolicy", "FILL_EMPTY");
+        assertThat(input.getValue().input()).contains("FILL_EMPTY仅补齐空提示词", "REGENERATE_ALL可覆盖", "不得删除人工资产");
     }
 
     @Test
     void rejectsModelTextWithoutTerminalFormalSave() {
-        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, true);
+        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets);
         when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
             .thenReturn(new WorkflowAgentRunResult(77L, "识别完成"));
         when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(false);

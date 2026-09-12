@@ -34,14 +34,6 @@ public class ScriptWorkflowController {
         this.storyboardBatchService = storyboardBatchService;
     }
 
-    @GetMapping("/script-workspace")
-    @RequireProjectPermission("PROJECT:VIEW")
-    public ApiResponse<ScriptWorkspaceResponse> workspace(
-        @PathVariable Long projectId,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(scriptWorkflowService.workspace(tenantId(request), projectId));
-    }
 
     @GetMapping("/script-page-workspace")
     @RequireProjectPermission("PROJECT:VIEW")
@@ -75,15 +67,6 @@ public class ScriptWorkflowController {
         return ApiResponse.success(scriptWorkflowService.scriptEpisode(tenantId(request), projectId, episodeId));
     }
 
-    @GetMapping("/asset-settings-workspace")
-    @RequireProjectPermission("PROJECT:VIEW")
-    public ApiResponse<AssetSettingsWorkspaceResponse> assetSettingsWorkspace(
-        @PathVariable Long projectId,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(
-            scriptWorkflowService.assetSettingsWorkspace(tenantId(request), projectId));
-    }
 
     @GetMapping("/asset-settings-summary")
     @RequireProjectPermission("PROJECT:VIEW")
@@ -166,7 +149,7 @@ public class ScriptWorkflowController {
 
     @PutMapping("/scripts/current")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> saveCurrent(
+    public ApiResponse<Void> saveCurrent(
         @PathVariable Long projectId,
         @Valid @RequestBody SaveScriptRequest body,
         HttpServletRequest request
@@ -176,7 +159,7 @@ public class ScriptWorkflowController {
 
     @PutMapping("/scripts/versions/{versionId}/apply")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> applyVersion(
+    public ApiResponse<Void> applyVersion(
         @PathVariable Long projectId,
         @PathVariable Long versionId,
         HttpServletRequest request
@@ -184,15 +167,6 @@ public class ScriptWorkflowController {
         return ApiResponse.success(scriptWorkflowService.applyVersion(tenantId(request), projectId, versionId, request));
     }
 
-    @PostMapping("/scripts/ai-extract-elements")
-    @RequireProjectPermission("AI_SERVICE:USE")
-    public ResponseEntity<ApiResponse<AiExecutionResponse>> extractElements(
-        @PathVariable Long projectId,
-        @Valid @RequestBody ExtractScriptElementsRequest body,
-        HttpServletRequest request
-    ) {
-        return accepted(scriptWorkflowService.submitExtractElements(tenantId(request), projectId, body, request));
-    }
 
     @GetMapping("/asset-reextraction/preflight")
     @RequireProjectPermission("AI_SERVICE:USE")
@@ -261,42 +235,8 @@ public class ScriptWorkflowController {
             tenantId(request), projectId, episodeId));
     }
 
-    @GetMapping("/asset-candidates")
-    @RequireProjectPermission("ELEMENT:VIEW")
-    public ApiResponse<ScriptAssetCandidateReviewService.CandidatePage> assetCandidates(
-        @PathVariable Long projectId,
-        @RequestParam(required = false) String reviewStatus,
-        @RequestParam(required = false) String assetType,
-        @RequestParam(defaultValue = "1") Integer page,
-        @RequestParam(defaultValue = "20") Integer pageSize,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(scriptWorkflowService.assetCandidates(
-            tenantId(request), projectId, reviewStatus, assetType, page, pageSize));
-    }
 
-    @GetMapping("/asset-candidates/{candidateId}")
-    @RequireProjectPermission("ELEMENT:VIEW")
-    public ApiResponse<ScriptAssetCandidateReviewService.CandidateResponse> assetCandidate(
-        @PathVariable Long projectId,
-        @PathVariable Long candidateId,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(scriptWorkflowService.assetCandidate(
-            tenantId(request), projectId, candidateId));
-    }
 
-    @PostMapping("/asset-candidates/{candidateId}/decisions")
-    @RequireProjectPermission("ELEMENT:EDIT")
-    public ApiResponse<ScriptAssetCandidateReviewService.DecisionResponse> decideAssetCandidate(
-        @PathVariable Long projectId,
-        @PathVariable Long candidateId,
-        @RequestBody ScriptAssetCandidateReviewService.DecisionCommand body,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(scriptWorkflowService.decideAssetCandidate(
-            tenantId(request), projectId, candidateId, body));
-    }
 
     @GetMapping("/script-elements/{elementType}/{elementId}/visual-variants")
     @RequireProjectPermission("ELEMENT:VIEW")
@@ -393,7 +333,7 @@ public class ScriptWorkflowController {
 
     @PutMapping("/script-elements/{elementType}/{elementId}")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> updateElement(
+    public ApiResponse<Void> updateElement(
         @PathVariable Long projectId,
         @PathVariable String elementType,
         @PathVariable Long elementId,
@@ -403,20 +343,10 @@ public class ScriptWorkflowController {
         return ApiResponse.success(scriptWorkflowService.updateElement(tenantId(request), projectId, elementType, elementId, body, request));
     }
 
-    @PutMapping("/script-elements/{elementType}/{elementId}/confirm")
-    @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> confirmElement(
-        @PathVariable Long projectId,
-        @PathVariable String elementType,
-        @PathVariable Long elementId,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(scriptWorkflowService.confirmElement(tenantId(request), projectId, elementType, elementId, request));
-    }
 
     @DeleteMapping("/script-elements/{elementType}/{elementId}")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> deleteElement(
+    public ApiResponse<Void> deleteElement(
         @PathVariable Long projectId,
         @PathVariable String elementType,
         @PathVariable Long elementId,
@@ -469,7 +399,7 @@ public class ScriptWorkflowController {
 
     @PostMapping("/storyboards")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> createStoryboard(
+    public ApiResponse<Void> createStoryboard(
         @PathVariable Long projectId,
         @Valid @RequestBody SaveStoryboardRequest body,
         HttpServletRequest request
@@ -479,7 +409,7 @@ public class ScriptWorkflowController {
 
     @PutMapping("/storyboards/{storyboardId}")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> updateStoryboard(
+    public ApiResponse<Void> updateStoryboard(
         @PathVariable Long projectId,
         @PathVariable Long storyboardId,
         @Valid @RequestBody SaveStoryboardRequest body,
@@ -490,7 +420,7 @@ public class ScriptWorkflowController {
 
     @PutMapping("/storyboards/{storyboardId}/move")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> moveStoryboard(
+    public ApiResponse<Void> moveStoryboard(
         @PathVariable Long projectId,
         @PathVariable Long storyboardId,
         @Valid @RequestBody MoveStoryboardRequest body,
@@ -501,7 +431,7 @@ public class ScriptWorkflowController {
 
     @PutMapping("/storyboards/confirm")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> confirmStoryboards(
+    public ApiResponse<Void> confirmStoryboards(
         @PathVariable Long projectId,
         HttpServletRequest request
     ) {
@@ -510,7 +440,7 @@ public class ScriptWorkflowController {
 
     @DeleteMapping("/storyboards/{storyboardId}")
     @RequireProjectPermission("SCRIPT:EDIT")
-    public ApiResponse<ScriptWorkspaceResponse> deleteStoryboard(
+    public ApiResponse<Void> deleteStoryboard(
         @PathVariable Long projectId,
         @PathVariable Long storyboardId,
         HttpServletRequest request

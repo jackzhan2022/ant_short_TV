@@ -101,7 +101,7 @@ interface ReviewScriptVersionMapper extends BaseMapper<ReviewScriptVersionEntity
 @Mapper
 interface ReviewTaskMapper extends BaseMapper<ReviewTaskEntity> {
     @Select({"<script>", """
-        select task.project_id, task.id as task_id, task.round_no, task.status, task.result_format,
+        select task.project_id, task.id as task_id, task.round_no, task.status,
                case when task.report_markdown is null or trim(task.report_markdown) = ''
                     then false else true end as has_report_markdown
           from review_task task
@@ -170,60 +170,6 @@ interface ReviewTaskMapper extends BaseMapper<ReviewTaskEntity> {
 }
 
 @Mapper
-interface ReviewIssueMapper extends BaseMapper<ReviewIssueEntity> {
-    @Select({"<script>", """
-        select task_id, count(*) as issue_count,
-               sum(case when manually_resolved = false then 1 else 0 end) as outstanding_issue_count
-          from review_issue
-         where task_id in
-        """, "<foreach collection='taskIds' item='taskId' open='(' separator=',' close=')'>#{taskId}</foreach>",
-        "group by task_id", "</script>"})
-    List<ReviewTaskIssueCountRow> selectCountsByTasks(@Param("taskIds") List<Long> taskIds);
-    default List<ReviewIssueEntity> selectByTasks(List<Long> taskIds) {
-        if (taskIds == null || taskIds.isEmpty()) return List.of();
-        return selectList(new LambdaQueryWrapper<ReviewIssueEntity>()
-            .in(ReviewIssueEntity::getTaskId, taskIds));
-    }
-
-    default List<ReviewIssueEntity> selectByTask(Long taskId) {
-        return selectList(new LambdaQueryWrapper<ReviewIssueEntity>()
-            .eq(ReviewIssueEntity::getTaskId, taskId)
-            .orderByAsc(ReviewIssueEntity::getId));
-    }
-
-    default List<ReviewIssueEntity> selectByLatestProject(Long tenantId, Long projectId) {
-        return selectList(new LambdaQueryWrapper<ReviewIssueEntity>()
-            .eq(ReviewIssueEntity::getTenantId, tenantId)
-            .eq(ReviewIssueEntity::getProjectId, projectId)
-            .orderByDesc(ReviewIssueEntity::getCreatedAt));
-    }
-}
-
-@Mapper
-interface ReviewIssueHitMapper extends BaseMapper<ReviewIssueHitEntity> {
-    default List<ReviewIssueHitEntity> selectByIssues(List<Long> issueIds) {
-        if (issueIds == null || issueIds.isEmpty()) return List.of();
-        return selectList(new LambdaQueryWrapper<ReviewIssueHitEntity>()
-            .in(ReviewIssueHitEntity::getIssueId, issueIds)
-            .orderByAsc(ReviewIssueHitEntity::getHitNo));
-    }
-
-    default List<ReviewIssueHitEntity> selectByIssue(Long issueId) {
-        return selectList(new LambdaQueryWrapper<ReviewIssueHitEntity>()
-            .eq(ReviewIssueHitEntity::getIssueId, issueId)
-            .orderByAsc(ReviewIssueHitEntity::getHitNo));
-    }
-}
-
-@Mapper
-interface ReviewIssueEventMapper extends BaseMapper<ReviewIssueEventEntity> {
-}
-
-@Mapper
-interface ReviewBatchRepairMapper extends BaseMapper<ReviewBatchRepairEntity> {
-}
-
-@Mapper
 interface ReviewExportRecordMapper extends BaseMapper<ReviewExportRecordEntity> {
     default List<ReviewExportRecordEntity> selectByVersion(Long tenantId, Long projectId, Long versionId) {
         return selectList(new LambdaQueryWrapper<ReviewExportRecordEntity>()
@@ -263,25 +209,5 @@ interface ReviewFanoutUnitMapper extends BaseMapper<ReviewFanoutUnitEntity> {
             .eq(ReviewFanoutUnitEntity::getSnapshotId, snapshotId)
             .orderByAsc(ReviewFanoutUnitEntity::getUnitNo)
             .orderByAsc(ReviewFanoutUnitEntity::getId));
-    }
-}
-
-@Mapper
-interface ReviewPipelineStageMapper extends BaseMapper<ReviewPipelineStageEntity> {
-}
-
-@Mapper
-interface ReviewUnitResultMapper extends BaseMapper<ReviewUnitResultEntity> {
-    default ReviewUnitResultEntity selectCurrent(Long snapshotId, Long unitId) {
-        return selectOne(new LambdaQueryWrapper<ReviewUnitResultEntity>()
-            .eq(ReviewUnitResultEntity::getSnapshotId, snapshotId)
-            .eq(ReviewUnitResultEntity::getUnitId, unitId)
-            .last("limit 1"));
-    }
-
-    default List<ReviewUnitResultEntity> selectOrdered(Long snapshotId) {
-        return selectList(new LambdaQueryWrapper<ReviewUnitResultEntity>()
-            .eq(ReviewUnitResultEntity::getSnapshotId, snapshotId)
-            .orderByAsc(ReviewUnitResultEntity::getUnitId));
     }
 }

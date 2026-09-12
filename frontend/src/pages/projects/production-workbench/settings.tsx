@@ -1,15 +1,13 @@
 import {
-  CheckOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import { useIntl, useParams } from '@umijs/max';
+import { useParams } from '@umijs/max';
 import {
   App,
   Button,
-  Drawer,
   Empty,
   Flex,
   Input,
@@ -35,19 +33,15 @@ import {
   queryProjectAiModels,
 } from './ai-config/service';
 import {
-  type AssetCandidate,
-  type AssetSettingsWorkspace,
+  type AssetSettingsSummary,
   type CharacterAsset,
-  confirmScriptElement,
   createAiImageTask,
   createVisualVariant,
-  decideAssetCandidate,
   deleteScriptElement,
   deleteVisualVariant,
   type AssetPromptPolicy,
   type AssetReextractionPreflight,
   type PropAsset,
-  queryAssetCandidates,
   queryAssetReextractionPreflight,
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
@@ -63,7 +57,7 @@ import {
 type ElementType = Exclude<ScriptElementType, 'ALL'>;
 type AssetRecord = CharacterAsset | SceneAsset | PropAsset;
 
-const emptyWorkspace = (projectId: number): AssetSettingsWorkspace => ({
+const emptyWorkspace = (projectId: number): AssetSettingsSummary => ({
   projectId,
   characters: [],
   scenes: [],
@@ -122,48 +116,15 @@ const assetSections = [
   { type: 'PROP' as const, title: '道具设定' },
 ];
 
-type CandidateFilter = 'ALL' | 'MERGE' | 'NEW' | 'INVALID';
-
-const getCandidateErrors = (candidate: AssetCandidate) => {
-  try {
-    const parsed = JSON.parse(candidate.validationErrorsJson || '[]');
-    return Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
-  } catch {
-    return [candidate.validationErrorsJson || '字段校验失败'];
-  }
-};
-
-const getCandidateFields = (candidate: AssetCandidate) => {
-  try {
-    const parsed: unknown = JSON.parse(candidate.candidateJson || '{}');
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return [];
-    }
-    return Object.entries(parsed)
-      .filter(([, value]) => value != null && value !== '')
-      .slice(0, 3)
-      .map(([key, value]) => [key, String(value)] as const);
-  } catch {
-    return [];
-  }
-};
-
-const getCandidateCategory = (candidate: AssetCandidate): CandidateFilter => {
-  if (candidate.validationStatus !== 'VALID') return 'INVALID';
-  return candidate.proposedTargetId ? 'MERGE' : 'NEW';
-};
-
 const AssetCard = ({
   item,
   type,
-  onConfirm,
   onDelete,
   onSave,
   onManageVisual,
 }: {
   item: AssetRecord;
   type: ElementType;
-  onConfirm: (type: ElementType, id: number) => void;
   onDelete: (type: ElementType, id: number) => void;
   onSave: (type: ElementType, item: AssetRecord) => void;
   onManageVisual: (type: ElementType, item: AssetRecord) => void;
@@ -288,15 +249,6 @@ const AssetCard = ({
                   <Button
                     type="text"
                     size="small"
-                    icon={<CheckOutlined />}
-                    aria-label={`确认${item.name}`}
-                    onClick={() => onConfirm(type, item.id)}
-                  >
-                    确认资产
-                  </Button>
-                  <Button
-                    type="text"
-                    size="small"
                     icon={<EditOutlined />}
                     aria-label={`保存${item.name}`}
                     onClick={() => onSave(type, item)}
@@ -406,12 +358,11 @@ const AssetCard = ({
 
 const ProductionWorkbenchSettings = () => {
   const params = useParams<{ id: string }>();
-  const { formatMessage } = useIntl();
   const projectId = Number(params.id);
   const { message } = App.useApp();
   const messageRef = useRef(message);
   messageRef.current = message;
-  const [workspace, setWorkspace] = useState<AssetSettingsWorkspace>(() =>
+  const [workspace, setWorkspace] = useState<AssetSettingsSummary>(() =>
     emptyWorkspace(projectId || 0),
   );
   const [loading, setLoading] = useState(true);
@@ -425,14 +376,6 @@ const ProductionWorkbenchSettings = () => {
     useState<AssetReextractionPreflight>();
   const [reextractionPolicy, setReextractionPolicy] =
     useState<AssetPromptPolicy>('FILL_EMPTY');
-  const [candidates, setCandidates] = useState<AssetCandidate[]>([]);
-  const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false);
-  const [candidateFilter, setCandidateFilter] =
-    useState<CandidateFilter>('ALL');
-  const [activeCandidateId, setActiveCandidateId] = useState<number>();
-  const [candidateTargets, setCandidateTargets] = useState<
-    Record<number, number | undefined>
-  >({});
   const [visualAsset, setVisualAsset] = useState<{
     type: ElementType;
     item: AssetRecord;
@@ -454,14 +397,26 @@ const ProductionWorkbenchSettings = () => {
   const [generationAspectRatio, setGenerationAspectRatio] = useState('3:4');
   const [generationImageCount, setGenerationImageCount] = useState(1);
 
+  const workspaceRequestId = useRef(0);
+  const currentProjectId = useRef(projectId);
+  currentProjectId.current = projectId;
+
   const reload = async () => {
-    const [workspaceResponse, candidateResponse] = await Promise.all([
-      queryAssetSettingsSummary(projectId),
-      queryAssetCandidates(projectId, { reviewStatus: 'PENDING_REVIEW' }),
-    ]);
-    setWorkspace({ ...emptyWorkspace(projectId), ...workspaceResponse.data });
-    setCandidates(candidateResponse.data?.items ?? []);
-    return workspaceResponse.data;
+    if (projectId !== currentProjectId.current) return undefined;
+    const requestId = ++workspaceRequestId.current;
+    try {
+      const response = await queryAssetSettingsSummary(projectId);
+      if (requestId !== workspaceRequestId.current || projectId !== currentProjectId.current) return;
+      setWorkspace({ ...emptyWorkspace(projectId), ...response.data });
+      setLoadFailed(false);
+      return response.data;
+    } catch {
+      if (requestId === workspaceRequestId.current && projectId === currentProjectId.current) {
+        setLoadFailed(true);
+        message.error('操作已完成，但设定刷新失败，请重试加载');
+      }
+      return undefined;
+    }
   };
 
   useEffect(() => {
@@ -469,31 +424,29 @@ const ProductionWorkbenchSettings = () => {
       return;
     }
     let active = true;
+    const requestId = ++workspaceRequestId.current;
     setLoading(true);
     setLoadFailed(false);
-    Promise.all([
-      queryAssetSettingsSummary(projectId),
-      queryAssetCandidates(projectId, { reviewStatus: 'PENDING_REVIEW' }),
-    ])
-      .then(([response, candidateResponse]) => {
-        if (active) {
+    queryAssetSettingsSummary(projectId)
+      .then((response) => {
+        if (active && requestId === workspaceRequestId.current) {
           setWorkspace({ ...emptyWorkspace(projectId), ...response.data });
-          setCandidates(candidateResponse.data?.items ?? []);
         }
       })
       .catch(() => {
-        if (active) {
+        if (active && requestId === workspaceRequestId.current) {
           setLoadFailed(true);
           messageRef.current.error('设定页加载失败');
         }
       })
       .finally(() => {
-        if (active) {
+        if (active && requestId === workspaceRequestId.current) {
           setLoading(false);
         }
       });
     return () => {
       active = false;
+      workspaceRequestId.current += 1;
     };
   }, [loadVersion, projectId]);
 
@@ -521,14 +474,6 @@ const ProductionWorkbenchSettings = () => {
     { completed: 0, generating: 0, failed: 0 },
   );
 
-  const applyWorkspace = (
-    nextWorkspace: AssetSettingsWorkspace | undefined,
-    successText: string,
-  ) => {
-    setWorkspace({ ...emptyWorkspace(projectId), ...nextWorkspace });
-    message.success(successText);
-  };
-
   const submitReextraction = async (
     targetType: ScriptElementType,
     promptPolicy: AssetPromptPolicy,
@@ -550,11 +495,7 @@ const ProductionWorkbenchSettings = () => {
       );
       setActiveExecution(terminal);
       if (terminal.status === 'SUCCEEDED') {
-        const nextWorkspace = await reload();
-        applyWorkspace(
-          nextWorkspace,
-          `${scopeLabels[targetType]}已重新提取`,
-        );
+        if (await reload()) message.success(`${scopeLabels[targetType]}已重新提取`);
       } else if (terminal.errorMessage) {
         message.error(terminal.errorMessage);
       }
@@ -582,32 +523,6 @@ const ProductionWorkbenchSettings = () => {
       setProcessingAction(undefined);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '资产影响预检失败');
-      setProcessingAction(undefined);
-    }
-  };
-
-  const decideCandidate = async (
-    candidate: AssetCandidate,
-    decisionType: 'ACCEPT_NEW' | 'ACCEPT_MERGE' | 'RETARGET' | 'REJECT',
-  ) => {
-    const targetAssetId =
-      decisionType === 'ACCEPT_MERGE'
-        ? (candidate.proposedTargetId ?? undefined)
-        : decisionType === 'RETARGET'
-          ? candidateTargets[candidate.id]
-          : undefined;
-    setProcessingAction(`candidate-${candidate.id}`);
-    try {
-      await decideAssetCandidate(projectId, candidate.id, {
-        decisionType,
-        targetAssetId,
-        idempotencyKey: crypto.randomUUID(),
-      });
-      await reload();
-      message.success('识别结果已处理');
-    } catch {
-      message.error('识别结果处理失败');
-    } finally {
       setProcessingAction(undefined);
     }
   };
@@ -650,15 +565,16 @@ const ProductionWorkbenchSettings = () => {
     action: () => Promise<unknown>,
     successText: string,
   ) => {
+    let applied = false;
     try {
       await action();
+      applied = true;
       const requestId = visualRequestIdRef.current;
-      const [summaryResponse, detailResponse] = await Promise.all([
-        queryAssetSettingsSummary(projectId),
+      const [next, detailResponse] = await Promise.all([
+        reload(),
         visualAsset ? queryAssetVisualWorkspace(projectId, visualAsset.type, visualAsset.item.id) : Promise.resolve(undefined),
       ]);
-      const next = summaryResponse.data;
-      setWorkspace({ ...emptyWorkspace(projectId), ...next });
+      if (!next) return;
       if (visualAsset) {
         const list =
           visualAsset.type === 'CHARACTER'
@@ -673,7 +589,12 @@ const ProductionWorkbenchSettings = () => {
       }
       message.success(successText);
     } catch {
-      message.error('视觉形象操作失败');
+      if (applied) {
+        setVisualError(true);
+        message.error('操作已完成，但视觉形象刷新失败，请重试加载');
+      } else {
+        message.error('视觉形象操作失败');
+      }
     }
   };
 
@@ -784,43 +705,11 @@ const ProductionWorkbenchSettings = () => {
     }
   };
 
-  const confirmAsset = async (type: ElementType, id: number) => {
-    setProcessingAction(`confirm-${type}-${id}`);
-    try {
-      const response = await confirmScriptElement(projectId, type, id);
-      applyWorkspace(response.data, '设定已确认');
-    } catch {
-      message.error('确认设定失败');
-    } finally {
-      setProcessingAction(undefined);
-    }
-  };
-
-  const confirmAssets = async (type: ElementType, items: AssetRecord[]) => {
-    const pendingItems = items.filter((item) => item.status !== 'CONFIRMED');
-    if (!pendingItems.length) {
-      return;
-    }
-    setProcessingAction(`confirm-all-${type}`);
-    try {
-      let nextWorkspace: AssetSettingsWorkspace | undefined;
-      for (const item of pendingItems) {
-        const response = await confirmScriptElement(projectId, type, item.id);
-        nextWorkspace = response.data;
-      }
-      applyWorkspace(nextWorkspace, `${elementLabels[type]}已批量确认`);
-    } catch {
-      message.error('批量确认失败');
-    } finally {
-      setProcessingAction(undefined);
-    }
-  };
-
   const deleteAsset = async (type: ElementType, id: number) => {
     setProcessingAction(`delete-${type}-${id}`);
     try {
-      const response = await deleteScriptElement(projectId, type, id);
-      applyWorkspace(response.data, '设定已删除');
+      await deleteScriptElement(projectId, type, id);
+      if (await reload()) message.success('设定已删除');
     } catch {
       message.error('删除设定失败');
     } finally {
@@ -831,11 +720,11 @@ const ProductionWorkbenchSettings = () => {
   const saveAsset = async (type: ElementType, item: AssetRecord) => {
     setProcessingAction(`save-${type}-${item.id}`);
     try {
-      const response = await updateScriptElement(projectId, type, item.id, {
+      await updateScriptElement(projectId, type, item.id, {
         ...item,
         status: 'DRAFT',
       });
-      applyWorkspace(response.data, '设定已保存');
+      if (await reload()) message.success('设定已保存');
     } catch {
       message.error('保存设定失败');
     } finally {
@@ -972,436 +861,6 @@ const ProductionWorkbenchSettings = () => {
             </Flex>
           ) : null}
         </Modal>
-
-        <Drawer
-          title={formatMessage({
-            id: 'pages.productionWorkbench.assets.reviewQueue',
-            defaultMessage: '待审核识别结果',
-          })}
-          placement="right"
-          width={760}
-          open={reviewDrawerOpen}
-          onClose={() => setReviewDrawerOpen(false)}
-          styles={{ body: { padding: 0 } }}
-        >
-          {(() => {
-            const filteredCandidates = candidates.filter(
-              (candidate) =>
-                candidateFilter === 'ALL' ||
-                getCandidateCategory(candidate) === candidateFilter,
-            );
-            const activeCandidate =
-              filteredCandidates.find(
-                (candidate) => candidate.id === activeCandidateId,
-              ) ??
-              filteredCandidates[0] ??
-              candidates[0];
-            if (!activeCandidate) {
-              return <Empty description="暂无待审核资产" />;
-            }
-            const typeAssets = assetsByType[activeCandidate.assetType];
-            const targetAsset = typeAssets.find(
-              (asset) => asset.id === activeCandidate.proposedTargetId,
-            );
-            const targetRecord = targetAsset as unknown as
-              | Record<string, unknown>
-              | undefined;
-            const candidateFields = getCandidateFields(activeCandidate);
-            const errors = getCandidateErrors(activeCandidate);
-            const category = getCandidateCategory(activeCandidate);
-            const categoryLabel =
-              category === 'MERGE'
-                ? '建议合并'
-                : category === 'NEW'
-                  ? '可新建'
-                  : '字段异常';
-            const candidateName =
-              activeCandidate.name ||
-              `未命名${elementLabels[activeCandidate.assetType]}`;
-            const summary = candidateFields.length
-              ? candidateFields
-                  .map(([key, value]) => `${key}：${value}`)
-                  .join('；')
-              : activeCandidate.aliases.map((alias) => alias.name).join('；') ||
-                '暂无可展示的候选摘要';
-            const categoryCount = (filter: CandidateFilter) =>
-              filter === 'ALL'
-                ? candidates.length
-                : candidates.filter(
-                    (candidate) => getCandidateCategory(candidate) === filter,
-                  ).length;
-            const comparisonRows = [
-              ['名称', targetAsset?.name || '—', candidateName],
-              [
-                '匹配依据',
-                activeCandidate.matchType || '—',
-                activeCandidate.matchConfidence != null
-                  ? `${Math.round(activeCandidate.matchConfidence * 100)}%`
-                  : '—',
-              ],
-              ...candidateFields.map(([key, value]) => [
-                key,
-                String(targetRecord?.[key] ?? '—'),
-                value,
-              ]),
-            ];
-            return (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '218px minmax(0, 1fr)',
-                  height: 'calc(100vh - 64px)',
-                }}
-              >
-                <aside
-                  style={{
-                    overflow: 'auto',
-                    background: 'var(--app-color-bg-layout)',
-                    borderRight: '1px solid var(--app-color-border)',
-                  }}
-                >
-                  <div
-                    style={{
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1,
-                      padding: 12,
-                      background: 'var(--app-color-bg-layout)',
-                      borderBottom:
-                        '1px solid var(--app-color-border-secondary)',
-                    }}
-                  >
-                    <Typography.Text strong style={{ fontSize: 13 }}>
-                      审核队列
-                    </Typography.Text>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: 6,
-                        marginTop: 10,
-                      }}
-                    >
-                      {(
-                        [
-                          ['ALL', '全部'],
-                          ['MERGE', '建议合并'],
-                          ['NEW', '可新建'],
-                          ['INVALID', '异常'],
-                        ] as const
-                      ).map(([filter, label]) => (
-                        <button
-                          key={filter}
-                          type="button"
-                          onClick={() => setCandidateFilter(filter)}
-                          style={{
-                            height: 28,
-                            border: 0,
-                            borderRadius: 5,
-                            background:
-                              candidateFilter === filter
-                                ? 'var(--app-color-primary-bg)'
-                                : 'transparent',
-                            color:
-                              candidateFilter === filter
-                                ? 'var(--app-color-primary)'
-                                : 'var(--app-color-text-secondary)',
-                            fontSize: 12,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {label} {categoryCount(filter)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {filteredCandidates.map((candidate) => {
-                    const candidateCategory = getCandidateCategory(candidate);
-                    const selected = candidate.id === activeCandidate.id;
-                    const label =
-                      candidateCategory === 'MERGE'
-                        ? '建议合并'
-                        : candidateCategory === 'NEW'
-                          ? '可新建'
-                          : '字段异常';
-                    return (
-                      <button
-                        key={candidate.id}
-                        type="button"
-                        aria-label={`审核候选${candidate.name || candidate.id}`}
-                        onClick={() => setActiveCandidateId(candidate.id)}
-                        style={{
-                          display: 'block',
-                          width: '100%',
-                          padding: '10px 12px',
-                          border: 0,
-                          borderLeft: selected
-                            ? '2px solid var(--app-color-primary)'
-                            : '2px solid transparent',
-                          background: selected
-                            ? 'var(--app-color-bg-container)'
-                            : 'transparent',
-                          color: 'var(--app-color-text)',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Flex justify="space-between" gap={6}>
-                          <span
-                            style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              fontSize: 13,
-                            }}
-                          >
-                            {candidate.name ||
-                              `未命名${elementLabels[candidate.assetType]}`}
-                          </span>
-                          <span
-                            style={{
-                              flex: '0 0 auto',
-                              color:
-                                candidateCategory === 'INVALID'
-                                  ? 'var(--app-color-primary-active)'
-                                  : 'var(--app-color-primary)',
-                              fontSize: 11,
-                            }}
-                          >
-                            {label}
-                          </span>
-                        </Flex>
-                        <span
-                          style={{
-                            display: 'block',
-                            marginTop: 3,
-                            overflow: 'hidden',
-                            color: 'var(--app-color-text-tertiary)',
-                            fontSize: 12,
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {candidate.matchConfidence != null
-                            ? `匹配度 ${Math.round(candidate.matchConfidence * 100)}%`
-                            : candidate.validationStatus === 'VALID'
-                              ? '无重复候选'
-                              : errors.join('；')}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </aside>
-                <section
-                  style={{ overflow: 'auto', padding: '20px 24px 30px' }}
-                >
-                  <Flex justify="space-between" align="flex-start" gap={12}>
-                    <div>
-                      <Flex gap={8} align="center">
-                        <Tag color="blue">
-                          {elementLabels[activeCandidate.assetType]}
-                        </Tag>
-                        <Typography.Text
-                          type="secondary"
-                          style={{ fontSize: 12 }}
-                        >
-                          {activeCandidate.matchConfidence != null
-                            ? `匹配度 ${Math.round(activeCandidate.matchConfidence * 100)}%`
-                            : categoryLabel}
-                        </Typography.Text>
-                      </Flex>
-                      <Typography.Title
-                        level={4}
-                        style={{ margin: '7px 0 5px' }}
-                      >
-                        {candidateName}
-                      </Typography.Title>
-                    </div>
-                    <Button
-                      type="text"
-                      size="small"
-                      onClick={() => {
-                        const index = filteredCandidates.findIndex(
-                          (candidate) => candidate.id === activeCandidate.id,
-                        );
-                        const next =
-                          filteredCandidates[index + 1] ??
-                          filteredCandidates[0];
-                        setActiveCandidateId(next?.id);
-                      }}
-                    >
-                      下一条
-                    </Button>
-                  </Flex>
-                  <Typography.Paragraph
-                    type="secondary"
-                    style={{ margin: 0, fontSize: 13, lineHeight: '21px' }}
-                  >
-                    {summary}
-                  </Typography.Paragraph>
-                  <div
-                    style={{
-                      marginTop: 18,
-                      padding: 12,
-                      background: 'var(--app-color-primary-bg)',
-                      border: '1px solid var(--app-color-primary-bg)',
-                      borderRadius: 8,
-                    }}
-                  >
-                    <Typography.Text strong style={{ fontSize: 13 }}>
-                      {category === 'MERGE' && targetAsset
-                        ? `建议合并至「${targetAsset.name}」`
-                        : category === 'NEW'
-                          ? '建议作为新资产入库'
-                          : '需补充字段后重新提取'}
-                    </Typography.Text>
-                    <Typography.Text
-                      type="secondary"
-                      style={{ display: 'block', marginTop: 2, fontSize: 12 }}
-                    >
-                      {category === 'MERGE'
-                        ? '名称与现有资产匹配，请核对候选字段后确认。'
-                        : category === 'NEW'
-                          ? '未发现可合并的正式资产。'
-                          : errors.join('；')}
-                    </Typography.Text>
-                  </div>
-                  <Typography.Text
-                    strong
-                    style={{ display: 'block', marginTop: 20, fontSize: 14 }}
-                  >
-                    候选信息与正式资产对比
-                  </Typography.Text>
-                  <div
-                    style={{
-                      marginTop: 10,
-                      overflow: 'hidden',
-                      border: '1px solid var(--app-color-border-secondary)',
-                      borderRadius: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '86px 1fr 1fr',
-                        gap: 10,
-                        padding: '9px 12px',
-                        background: 'var(--app-color-bg-layout)',
-                        color: 'var(--app-color-text-tertiary)',
-                        fontSize: 12,
-                      }}
-                    >
-                      <span>字段</span>
-                      <span>正式资产</span>
-                      <span>候选识别</span>
-                    </div>
-                    {comparisonRows.map(([label, current, next]) => (
-                      <div
-                        key={`${label}-${next}`}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '86px 1fr 1fr',
-                          gap: 10,
-                          padding: '9px 12px',
-                          borderTop:
-                            '1px solid var(--app-color-border-secondary)',
-                          fontSize: 12,
-                        }}
-                      >
-                        <span
-                          style={{ color: 'var(--app-color-text-tertiary)' }}
-                        >
-                          {label}
-                        </span>
-                        <span
-                          style={{ color: 'var(--app-color-text-secondary)' }}
-                        >
-                          {current}
-                        </span>
-                        <span>{next}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: 10,
-                      marginTop: 18,
-                    }}
-                  >
-                    <Button
-                      type="primary"
-                      disabled={category === 'INVALID'}
-                      loading={
-                        processingAction === `candidate-${activeCandidate.id}`
-                      }
-                      onClick={() =>
-                        decideCandidate(
-                          activeCandidate,
-                          category === 'MERGE' ? 'ACCEPT_MERGE' : 'ACCEPT_NEW',
-                        )
-                      }
-                    >
-                      {category === 'MERGE' ? '确认合并' : '作为新资产入库'}
-                    </Button>
-                    <Button
-                      disabled={category === 'INVALID'}
-                      onClick={() =>
-                        decideCandidate(activeCandidate, 'ACCEPT_NEW')
-                      }
-                      aria-label={`新建${activeCandidate.name || activeCandidate.id}`}
-                    >
-                      {category === 'MERGE' ? '作为新资产入库' : '查看相似资产'}
-                    </Button>
-                  </div>
-                  <Flex justify="center" gap={16} style={{ marginTop: 12 }}>
-                    <select
-                      aria-label={`重定向${activeCandidate.name || activeCandidate.id}`}
-                      value={candidateTargets[activeCandidate.id] ?? ''}
-                      onChange={(event) =>
-                        setCandidateTargets((current) => ({
-                          ...current,
-                          [activeCandidate.id]: event.target.value
-                            ? Number(event.target.value)
-                            : undefined,
-                        }))
-                      }
-                    >
-                      <option value="">更改合并目标</option>
-                      {typeAssets.map((asset) => (
-                        <option key={asset.id} value={asset.id}>
-                          {asset.name}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      type="text"
-                      size="small"
-                      disabled={
-                        category === 'INVALID' ||
-                        !candidateTargets[activeCandidate.id]
-                      }
-                      onClick={() =>
-                        decideCandidate(activeCandidate, 'RETARGET')
-                      }
-                    >
-                      重定向合并
-                    </Button>
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      onClick={() => decideCandidate(activeCandidate, 'REJECT')}
-                    >
-                      拒绝候选
-                    </Button>
-                  </Flex>
-                </section>
-              </div>
-            );
-          })()}
-        </Drawer>
 
         {visualAsset
           ? (() => {
@@ -2095,27 +1554,6 @@ const ProductionWorkbenchSettings = () => {
             <span>生成中 {activeGeneration.generating}</span>
             <span style={{ color: 'var(--app-color-border)' }}>|</span>
             <span>失败 {activeGeneration.failed}</span>
-            {candidates.length ? (
-              <Button
-                type="text"
-                size="small"
-                onClick={() => setReviewDrawerOpen(true)}
-              >
-                审核资产 {candidates.length}
-              </Button>
-            ) : null}
-            <Button
-              type="text"
-              size="small"
-              icon={<CheckOutlined />}
-              disabled={
-                !activeAssets.some((item) => item.status !== 'CONFIRMED')
-              }
-              loading={processingAction === `confirm-all-${activeType}`}
-              onClick={() => confirmAssets(activeType, activeAssets)}
-            >
-              批量确认
-            </Button>
             <Button
               type="text"
               size="small"
@@ -2160,7 +1598,6 @@ const ProductionWorkbenchSettings = () => {
                       key={`${section.type}-${item.id}`}
                       item={item}
                       type={section.type}
-                      onConfirm={confirmAsset}
                       onDelete={deleteAsset}
                       onSave={saveAsset}
                       onManageVisual={(type, item) => {

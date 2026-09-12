@@ -100,52 +100,48 @@ class ReviewProjectProgressiveReadIntegrationTest {
         long runningProject = seedProject(tenantId, userId, 920_020L, "running", false);
         long markdownCompleteProject = seedProject(tenantId, userId, 920_030L, "markdown-complete", false);
         long markdownFailedProject = seedProject(tenantId, userId, 920_040L, "markdown-failed", false);
-        long actionRequiredProject = seedProject(tenantId, userId, 920_050L, "action-required", false);
-        long readyProject = seedProject(tenantId, userId, 920_060L, "ready", false);
+        long activeProject = seedProject(tenantId, userId, 920_050L, "active", false);
+        long canceledProject = seedProject(tenantId, userId, 920_060L, "canceled", false);
         long latestTaskProject = seedProject(tenantId, userId, 920_070L, "latest-task", false);
 
         long runningVersion = seedVersion(tenantId, runningProject, 920_021L, 1, userId);
         long markdownVersion = seedVersion(tenantId, markdownCompleteProject, 920_031L, 1, userId);
         seedVersion(tenantId, markdownCompleteProject, 920_032L, 2, userId);
         long failedVersion = seedVersion(tenantId, markdownFailedProject, 920_041L, 1, userId);
-        long actionVersion = seedVersion(tenantId, actionRequiredProject, 920_051L, 1, userId);
-        long readyVersion = seedVersion(tenantId, readyProject, 920_061L, 1, userId);
+        long activeVersion = seedVersion(tenantId, activeProject, 920_051L, 1, userId);
+        long canceledVersion = seedVersion(tenantId, canceledProject, 920_061L, 1, userId);
         long latestVersion = seedVersion(tenantId, latestTaskProject, 920_071L, 1, userId);
 
-        seedTask(tenantId, runningProject, runningVersion, 920_022L, 1, "PENDING", null, null, userId, CREATED_AT);
-        long markdownTask = seedTask(tenantId, markdownCompleteProject, markdownVersion, 920_033L, 2,
-            "COMPLETED", "MARKDOWN", "# report", userId, CREATED_AT);
-        seedIssue(tenantId, markdownCompleteProject, markdownTask, markdownVersion, 920_034L, false);
+        seedTask(tenantId, runningProject, runningVersion, 920_022L, 1, "PENDING", null, userId, CREATED_AT);
+        seedTask(tenantId, markdownCompleteProject, markdownVersion, 920_033L, 2,
+            "COMPLETED", "# report", userId, CREATED_AT);
         seedTask(tenantId, markdownFailedProject, failedVersion, 920_042L, 1,
-            "FAILED", "MARKDOWN", null, userId, CREATED_AT);
-        long actionTask = seedTask(tenantId, actionRequiredProject, actionVersion, 920_052L, 1,
-            "COMPLETED", "STRUCTURED_JSON", null, userId, CREATED_AT);
-        seedIssue(tenantId, actionRequiredProject, actionTask, actionVersion, 920_053L, false);
-        long readyTask = seedTask(tenantId, readyProject, readyVersion, 920_062L, 1,
-            "COMPLETED", "STRUCTURED_JSON", null, userId, CREATED_AT);
-        seedIssue(tenantId, readyProject, readyTask, readyVersion, 920_063L, true);
-        long olderTask = seedTask(tenantId, latestTaskProject, latestVersion, 920_072L, 1,
-            "COMPLETED", "STRUCTURED_JSON", null, userId, CREATED_AT);
-        seedIssue(tenantId, latestTaskProject, olderTask, latestVersion, 920_073L, false);
+            "FAILED", null, userId, CREATED_AT);
+        seedTask(tenantId, activeProject, activeVersion, 920_052L, 1,
+            "RUNNING", null, userId, CREATED_AT);
+        seedTask(tenantId, canceledProject, canceledVersion, 920_062L, 1,
+            "CANCELED", null, userId, CREATED_AT);
+        seedTask(tenantId, latestTaskProject, latestVersion, 920_072L, 1,
+            "FAILED", null, userId, CREATED_AT);
         seedTask(tenantId, latestTaskProject, latestVersion, 920_074L, 2,
-            "COMPLETED", "STRUCTURED_JSON", null, userId, CREATED_AT);
+            "COMPLETED", "# latest report", userId, CREATED_AT);
 
         List<ReviewProjectMetricsResponse> metrics = service.listProjectMetrics(tenantId);
         Map<Long, ReviewProjectMetricsResponse> byProject = metrics.stream()
             .collect(Collectors.toMap(ReviewProjectMetricsResponse::projectId, metric -> metric));
 
         assertThat(metrics).hasSize(7);
-        assertMetric(byProject.get(emptyProject), 0, 0, "NOT_REVIEWED", 0, "发起审核");
-        assertMetric(byProject.get(runningProject), 1, 1, "RUNNING", 0, "查看进度");
-        assertMetric(byProject.get(markdownCompleteProject), 2, 2, "COMPLETED", 0, "查看报告");
-        assertMetric(byProject.get(markdownFailedProject), 1, 1, "NOT_REVIEWED", 0, "重试审核");
-        assertMetric(byProject.get(actionRequiredProject), 1, 1, "ACTION_REQUIRED", 1, "处理问题");
-        assertMetric(byProject.get(readyProject), 1, 1, "READY_FOR_REVIEW", 0, "发起复审");
-        assertMetric(byProject.get(latestTaskProject), 1, 2, "COMPLETED", 0, "查看报告");
+        assertMetric(byProject.get(emptyProject), 0, 0, "NOT_REVIEWED", "发起审核");
+        assertMetric(byProject.get(runningProject), 1, 1, "RUNNING", "查看进度");
+        assertMetric(byProject.get(markdownCompleteProject), 2, 2, "COMPLETED", "查看报告");
+        assertMetric(byProject.get(markdownFailedProject), 1, 1, "NOT_REVIEWED", "重试审核");
+        assertMetric(byProject.get(activeProject), 1, 1, "RUNNING", "查看进度");
+        assertMetric(byProject.get(canceledProject), 1, 1, "NOT_REVIEWED", "重试审核");
+        assertMetric(byProject.get(latestTaskProject), 1, 2, "COMPLETED", "查看报告");
     }
 
     @Test
-    void metricsKeepFourNarrowDataQueriesAsProjectCountGrows() {
+    void metricsKeepThreeNarrowDataQueriesAsProjectCountGrows() {
         long tenantId = 930_000L;
         long userId = 930_001L;
         seedOwner(tenantId, userId, 930_002L);
@@ -156,7 +152,7 @@ class ReviewProjectProgressiveReadIntegrationTest {
         assertThat(service.listProjectMetrics(tenantId)).hasSize(1);
         List<String> smallDataSql = sqlRecorder.reviewDataStatements();
 
-        assertThat(smallDataSql).hasSize(4);
+        assertThat(smallDataSql).hasSize(3);
         assertNarrowMetricProjections(smallDataSql);
 
         for (int index = 0; index < 12; index++) {
@@ -168,7 +164,7 @@ class ReviewProjectProgressiveReadIntegrationTest {
         assertThat(service.listProjectMetrics(tenantId)).hasSize(13);
         List<String> largeDataSql = sqlRecorder.reviewDataStatements();
 
-        assertThat(largeDataSql).hasSize(4);
+        assertThat(largeDataSql).hasSize(3);
         assertNarrowMetricProjections(largeDataSql);
     }
 
@@ -193,9 +189,7 @@ class ReviewProjectProgressiveReadIntegrationTest {
         assertThat(statements).anySatisfy(sql -> assertThat(sql)
             .contains("as has_report_markdown")
             .doesNotContain("task.report_markdown as report_markdown"));
-        assertThat(statements).anySatisfy(sql -> assertThat(sql)
-            .contains("select task_id, count(*) as issue_count")
-            .doesNotContain("excerpt", "problem", "evidence_json", "suggestion"));
+        assertThat(combined).doesNotContain("review_issue", "review_issue_hit", "review_issue_event");
     }
 
     private void assertMetric(
@@ -203,14 +197,12 @@ class ReviewProjectProgressiveReadIntegrationTest {
         int versionCount,
         int roundNo,
         String state,
-        int outstandingIssues,
         String actionLabel
     ) {
         assertThat(metric).isNotNull();
         assertThat(metric.versionCount()).isEqualTo(versionCount);
         assertThat(metric.latestRoundNo()).isEqualTo(roundNo);
         assertThat(metric.reviewState()).isEqualTo(state);
-        assertThat(metric.outstandingIssueCount()).isEqualTo(outstandingIssues);
         assertThat(metric.actionLabel()).isEqualTo(actionLabel);
     }
 
@@ -270,7 +262,6 @@ class ReviewProjectProgressiveReadIntegrationTest {
         long taskId,
         int roundNo,
         String status,
-        String resultFormat,
         String reportMarkdown,
         long userId,
         LocalDateTime createdAt
@@ -278,41 +269,21 @@ class ReviewProjectProgressiveReadIntegrationTest {
         jdbc.update("""
             insert into review_task
               (id, tenant_id, project_id, script_version_id, round_no, review_mode,
-               selected_dimensions_json, review_scope_type, result_json, result_format,
+               selected_dimensions_json, review_scope_type,
                report_markdown, status, overall_progress, idempotency_key, created_by,
                created_at, updated_at)
-            values (?, ?, ?, ?, ?, 'QUICK', '[]', 'ALL', '{}', ?, ?, ?, 100, ?, ?, ?, ?)
-            """, taskId, tenantId, projectId, versionId, roundNo, resultFormat, reportMarkdown,
+            values (?, ?, ?, ?, ?, 'QUICK', '[]', 'ALL', ?, ?, 100, ?, ?, ?, ?)
+            """, taskId, tenantId, projectId, versionId, roundNo, reportMarkdown,
             status, "progressive-task-" + taskId, userId,
             Timestamp.valueOf(createdAt), Timestamp.valueOf(createdAt));
         return taskId;
     }
 
-    private void seedIssue(
-        long tenantId,
-        long projectId,
-        long taskId,
-        long versionId,
-        long issueId,
-        boolean manuallyResolved
-    ) {
-        jdbc.update("""
-            insert into review_issue
-              (id, tenant_id, project_id, task_id, script_version_id, round_no, issue_no,
-               dimension, severity, title, position_json, excerpt, problem, evidence_json,
-               suggestion, status, manually_resolved, created_at, updated_at)
-            values (?, ?, ?, ?, ?, 1, ?, 'PLOT', 'P1', 'issue', '{}', 'excerpt',
-                    'problem', '[]', 'suggestion', 'OPEN', ?, ?, ?)
-            """, issueId, tenantId, projectId, taskId, versionId, "issue-" + issueId,
-            manuallyResolved, Timestamp.valueOf(CREATED_AT), Timestamp.valueOf(CREATED_AT));
-    }
-
     private void seedMetricFixture(long tenantId, long userId, long baseId) {
         long projectId = seedProject(tenantId, userId, baseId, "metric-" + baseId, false);
         long versionId = seedVersion(tenantId, projectId, baseId + 1, 1, userId);
-        long taskId = seedTask(tenantId, projectId, versionId, baseId + 2, 1,
-            "COMPLETED", "STRUCTURED_JSON", null, userId, CREATED_AT);
-        seedIssue(tenantId, projectId, taskId, versionId, baseId + 3, false);
+        seedTask(tenantId, projectId, versionId, baseId + 2, 1,
+            "COMPLETED", "# report", userId, CREATED_AT);
     }
 
     private void authenticate(long userId) {

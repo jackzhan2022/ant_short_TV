@@ -18,7 +18,7 @@ class ScriptExecutionContractTest {
     void providerFacingScriptEndpointsExposeExecutionEnvelope() throws Exception {
         assertExecutionResponse("generate", GenerateScriptRequest.class);
         assertExecutionResponse("rewrite", RewriteScriptRequest.class);
-        assertExecutionResponse("extractElements", ExtractScriptElementsRequest.class);
+        assertExecutionResponse("scopedAssetReextraction", ScopedAssetReextractionRequest.class);
         assertExecutionResponse("breakdownStoryboards", StoryboardBreakdownRequest.class);
         assertExecutionResponse("generatePrompts", GeneratePromptRequest.class);
     }

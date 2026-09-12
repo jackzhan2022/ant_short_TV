@@ -167,6 +167,30 @@ class StoryboardToolDataServiceTest {
             .hasMessageContaining("已变化");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void automaticRunCannotOverwriteManualWorkCreatedAfterDispatch(boolean unlinkedManual) throws Exception {
+        if (unlinkedManual) jdbc.update("update storyboard set episode_id=null where episode_id=?", episodeId);
+        jdbc.update("""
+            insert into ai_execution_task
+              (id, tenant_id, user_id, project_id, scene, capability, business_type,
+               status, phase, client_idempotency_key, trace_id, created_at, updated_at)
+            values (?, ?, ?, ?, 'storyboard_breakdown', 'TEXT', 'SCRIPT_AI_OPERATION',
+                    'RUNNING', 'SUBMIT', 'auto-race', 'auto-storyboard-event-race', now(), now())
+            """, projectId, tenantId, userId, projectId);
+        jdbc.update("""
+            insert into storyboard_generation_admission
+              (tenant_id, project_id, episode_id, source_fingerprint, origin, execution_id, created_at, updated_at)
+            values (?, ?, ?, 'fp-1', 'AUTO', ?, now(), now())
+            """, tenantId, projectId, episodeId, projectId);
+        ToolExecutionContext original = context();
+        ToolExecutionContext automatic = new ToolExecutionContext(tenantId,userId,projectId,episodeId,
+            scriptId,500L,null,700L,projectId,900L,1,original.permissions(),original.deadline(),original.runState());
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(automatic, validPayload()))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class).hasMessageContaining("已有分镜");
+        assertThat(jdbc.queryForObject("select count(*) from storyboard where project_id=? and visual_description='old storyboard' and deleted_at is null",Integer.class,projectId)).isEqualTo(1);
+    }
+
     @Test
     void acceptsAdjacentRangesAndRejectsUnknownGapOverlapAndReversedRanges() throws Exception {
         JsonNode twoBoards = twoBoardPayload();

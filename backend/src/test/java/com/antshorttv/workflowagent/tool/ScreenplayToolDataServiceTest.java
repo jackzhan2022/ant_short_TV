@@ -105,16 +105,25 @@ class ScreenplayToolDataServiceTest {
         String previous = "前".repeat(900) + "PREVIOUS_END";
         String next = "NEXT_START" + "后".repeat(900);
         jdbc.update("""
-            update script_episode set summary = 'previous summary', content = ?
+            update script_episode set content = ?
              where project_id = ? and episode_no = 1
             """, previous, projectId);
         jdbc.update("""
-            update script_episode set summary = 'next summary', content = ?
+            update script_episode set content = ?
              where project_id = ? and episode_no = 3
             """, next, projectId);
 
+        jdbc.update("""
+            insert into script_episode_summary
+              (tenant_id, project_id, script_id, episode_id, schema_version, content_json,
+               source, created_by, updated_by, created_at, updated_at)
+            select tenant_id, project_id, script_id, id, 1, '{"summary":"previous summary"}',
+                   'USER', ?, ?, now(), now()
+              from script_episode where project_id = ? and episode_no = 1
+            """, context.userId(), context.userId(), projectId);
         JsonNode adjacent = service.readAdjacentEpisodes(context);
 
+        assertThat(adjacent.path("next").path("summary").isNull()).isTrue();
         assertThat(adjacent.path("previous").has("content")).isFalse();
         assertThat(adjacent.path("previous").path("summary").asText())
             .isEqualTo("previous summary");
@@ -341,6 +350,110 @@ class ScreenplayToolDataServiceTest {
             .isEqualTo("canonical character prompt");
         assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, lookId))
             .isEqualTo("red dress delta");
+    }
+
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
+
+    @Test
+    void formalAssetCoverageAndAutomaticEventCommitOrRollbackTogether() throws Exception {
+        long versionId = jdbc.queryForObject("select id from script_version where script_id=?", Long.class, scriptId);
+        jdbc.update("""
+            insert into script_analysis_task
+              (tenant_id,project_id,script_id,script_version_id,workflow_code,status,overall_progress,
+               idempotency_key,created_by,created_at,updated_at)
+            values (?,?,?,?,'SCRIPT_INITIAL_ANALYSIS','RUNNING',0,?, ?,now(),now())
+            """,tenantId,projectId,scriptId,versionId,"event-atomic-"+episodeId,context.userId());
+        long taskId = jdbc.queryForObject("select id from script_analysis_task where script_id=?", Long.class,scriptId);
+        jdbc.update("""
+            insert into ai_execution_task
+              (tenant_id,user_id,project_id,scene,capability,business_type,business_id,status,phase,
+               client_idempotency_key,trace_id,created_at,updated_at)
+            values (?,?,?,'script_analysis','TEXT','SCRIPT_ANALYSIS_TASK',?,'RUNNING','ANALYSIS',?,?,now(),now())
+            """,tenantId,context.userId(),projectId,taskId,"event-atomic-"+episodeId,"event-atomic-"+episodeId);
+        long executionId=jdbc.queryForObject("select id from ai_execution_task where project_id=?",Long.class,projectId);
+        jdbc.update("update script_analysis_task set execution_id=? where id=?",executionId,taskId);
+        ToolExecutionContext assetContext = new ToolExecutionContext(tenantId,context.userId(),projectId,
+            episodeId,scriptId,taskId,null,null,executionId,null,1,Set.of("SCRIPT:VIEW","SCRIPT:EDIT"),null,new WorkflowToolRunState());
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[],"scenes":[],"props":[],"characterLooks":[],"propVariants":[]}
+            """);
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status -> {
+            service.saveEpisodeAssets(assetContext,payload);
+            status.setRollbackOnly();
+        });
+        assertThat(jdbc.queryForObject("select count(*) from script_episode_asset_analysis where episode_id=?",Integer.class,episodeId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from episode_auto_storyboard_event where episode_id=?",Integer.class,episodeId)).isZero();
+        service.saveEpisodeAssets(assetContext,payload);
+        service.saveEpisodeAssets(assetContext,payload);
+        assertThat(jdbc.queryForObject("select count(*) from script_episode_asset_analysis where episode_id=?",Integer.class,episodeId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from episode_auto_storyboard_event where episode_id=?",Integer.class,episodeId)).isEqualTo(1);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"ALL", "CHARACTER", "SCENE", "PROP"})
+    void scopedSavesKeepOtherTypesAndHumanPrompts(String scope) throws Exception {
+        jdbc.update("update script_episode set content='小满走进客厅，拿起怀表。', content_fingerprint='scope-fp' where id=?", episodeId);
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var all = json.readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"c1","name":"小满","aliases":[],"evidence":"小满","prompt":"角色原稿"}],
+             "scenes":[{"localKey":"s1","name":"客厅","aliases":[],"evidence":"客厅","prompt":"场景原稿"}],
+             "props":[{"localKey":"p1","name":"怀表","aliases":[],"evidence":"怀表","prompt":"道具原稿"}],
+             "characterLooks":[],"propVariants":[]}
+            """);
+        ToolExecutionContext initial = summaryContext();
+        service.readCurrentEpisode(initial);
+        service.saveEpisodeAssets(initial, all);
+        var bindings = jdbc.queryForList("select id, asset_type, retired_at from asset_visual_variant_episode where episode_id=? order by id", episodeId);
+        for (String table : java.util.List.of("character_asset", "scene_asset", "prop_asset")) {
+            jdbc.update("update " + table + " set source='USER', prompt='人工提示词' where script_id=?", scriptId);
+        }
+        var payload = ((com.fasterxml.jackson.databind.node.ObjectNode) all).deepCopy();
+        var fields = java.util.Map.of("CHARACTER", "characters", "SCENE", "scenes", "PROP", "props");
+        fields.forEach((type, field) -> {
+            if (!scope.equals("ALL") && !scope.equals(type)) payload.putArray(field);
+            else ((com.fasterxml.jackson.databind.node.ObjectNode) payload.path(field).get(0)).put("prompt", "AI新稿");
+        });
+        ToolExecutionContext scoped = summaryContext();
+        scoped.runState().put("assetScope", scope);
+        scoped.runState().put("assetPromptPolicy", "FILL_EMPTY");
+        service.readCurrentEpisode(scoped);
+        service.saveEpisodeAssets(scoped, payload);
+        for (String table : java.util.List.of("character_asset", "scene_asset", "prop_asset")) {
+            assertThat(jdbc.queryForObject("select prompt from " + table + " where script_id=?", String.class, scriptId))
+                .isEqualTo("人工提示词");
+            assertThat(jdbc.queryForObject("select count(*) from " + table + " where script_id=? and deleted_at is null", Integer.class, scriptId)).isEqualTo(1);
+        }
+        for (var binding : bindings) {
+            if (!scope.equals("ALL") && !scope.equals(binding.get("asset_type"))) {
+                assertThat(jdbc.queryForObject("select count(*) from asset_visual_variant_episode where id=? and retired_at is null", Integer.class, binding.get("id"))).isEqualTo(1);
+            }
+        }
+        if (!scope.equals("ALL")) {
+            assertThatThrownBy(() -> service.saveEpisodeAssets(scoped, all))
+                .isInstanceOf(com.antshorttv.common.BusinessException.class).hasMessageContaining("范围");
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"FILL_EMPTY", "REGENERATE_ALL"})
+    void scopedPromptPolicyWritesOnlyItsDeclaredTarget(String policy) throws Exception {
+        jdbc.update("update script_episode set content='小满出现。', content_fingerprint='prompt-fp' where id=?", episodeId);
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var payload = json.readTree("""
+            {"schemaVersion":1,"characters":[{"localKey":"c1","name":"小满","aliases":[],"evidence":"小满","prompt":"原稿"}],
+             "scenes":[],"props":[],"characterLooks":[],"propVariants":[]}
+            """);
+        ToolExecutionContext scoped = summaryContext();
+        scoped.runState().put("assetScope", "CHARACTER");
+        scoped.runState().put("assetPromptPolicy", policy);
+        service.readCurrentEpisode(scoped);
+        service.saveEpisodeAssets(scoped, payload);
+        jdbc.update("update character_asset set prompt=? where script_id=?", policy.equals("FILL_EMPTY") ? "" : "已有稿", scriptId);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) payload.path("characters").get(0)).put("prompt", "新提示词");
+        service.saveEpisodeAssets(scoped, payload);
+        assertThat(jdbc.queryForObject("select prompt from character_asset where script_id=?", String.class, scriptId)).isEqualTo("新提示词");
     }
 
     @Test
@@ -917,7 +1030,7 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
-    void summarySaveInsertsThenCompletelyOverwritesFormalDocumentAndLegacyMirror() throws Exception {
+    void summarySaveOverwritesFormalDocumentAndAllReadsUseIt() throws Exception {
         ToolExecutionContext summaryContext = summaryContext();
         service.readCurrentEpisode(summaryContext);
         var json = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -937,8 +1050,12 @@ class ScreenplayToolDataServiceTest {
             "select content_json from script_episode_summary where episode_id = ?",
             String.class, episodeId)).contains("第二版概要", "新亮点三", "结尾悬念")
             .doesNotContain("第一版概要");
-        assertThat(jdbc.queryForObject("select summary from script_episode where id = ?",
-            String.class, episodeId)).isEqualTo("第二版概要");
+        assertThat(service.readEpisodeScript(context).path("summary").asText())
+            .isEqualTo("第二版概要");
+        assertThat(service.listEpisodeScripts(context).path("episodes").get(1).path("summary").asText())
+            .isEqualTo("第二版概要");
+        assertThat(service.readProjectFullScript(context).path("episodes").get(1).path("summary").asText())
+            .isEqualTo("第二版概要");
     }
 
     @Test

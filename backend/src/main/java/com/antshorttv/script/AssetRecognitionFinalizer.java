@@ -69,7 +69,7 @@ public class AssetRecognitionFinalizer {
             if (!effectiveScope.includes(type)) continue;
             jdbc.update("update asset_visual_variant variant set deleted_at = now(), updated_at = now()"
                 + " where variant.tenant_id = ? and variant.project_id = ?"
-                + " and variant.asset_type = ? and variant.generated_by_run_id is not null"
+                + " and variant.asset_type = ? and variant.source_type = 'AI' and variant.generated_by_run_id is not null"
                 + " and variant.deleted_at is null"
                 + " and exists (select 1 from " + table + " owner where owner.id = variant.asset_id"
                 + " and owner.tenant_id = variant.tenant_id and owner.project_id = variant.project_id"
@@ -84,8 +84,11 @@ public class AssetRecognitionFinalizer {
                 + " and not exists (select 1 from asset_visual_variant_episode binding"
                 + " where binding.tenant_id = asset.tenant_id and binding.project_id = asset.project_id"
                 + " and binding.asset_type = ? and binding.asset_id = asset.id"
-                + " and binding.retired_at is null and binding.binding_status = 'ACTIVE')",
-                tenantId, projectId, scriptId, type);
+                + " and binding.retired_at is null and binding.binding_status = 'ACTIVE')"
+                + " and not exists (select 1 from asset_visual_variant variant where variant.tenant_id = asset.tenant_id"
+                + " and variant.project_id = asset.project_id and variant.asset_type = ? and variant.asset_id = asset.id"
+                + " and variant.source_type <> 'AI' and variant.deleted_at is null)",
+                tenantId, projectId, scriptId, type, type);
         }
     }
 }

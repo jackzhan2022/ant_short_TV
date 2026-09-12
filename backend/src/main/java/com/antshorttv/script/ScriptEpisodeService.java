@@ -89,7 +89,6 @@ public class ScriptEpisodeService {
             entity.setEpisodeNo(item.episodeNo());
             entity.setTitle(item.title());
             entity.setContent(item.content());
-            entity.setSummary(item.summary());
             entity.setContentFingerprint(item.contentFingerprint());
             entity.setHeadingKey(item.headingKey());
             entity.setReconciliationStatus(item.status());
@@ -104,7 +103,7 @@ public class ScriptEpisodeService {
                 episodeMapper.updateById(entity);
             }
             return new ScriptEpisodeResponse(
-                entity.getId(), entity.getEpisodeNo(), entity.getTitle(), entity.getContent(), entity.getSummary());
+                entity.getId(), entity.getEpisodeNo(), entity.getTitle(), entity.getContent(), null);
         }).toList();
     }
 
@@ -112,7 +111,7 @@ public class ScriptEpisodeService {
         Map<Long, ScriptEpisodeSummaryDocument> summaries = summaryRepository.findCurrentByScript(tenantId, scriptId);
         return activeEntities(tenantId, projectId, scriptId).stream()
             .map(item -> new ScriptEpisodeResponse(
-                item.getId(), item.getEpisodeNo(), item.getTitle(), item.getContent(), item.getSummary(),
+                item.getId(), item.getEpisodeNo(), item.getTitle(), item.getContent(), ScriptEpisodeSummaryDocument.summaryText(summaries.get(item.getId())),
                 item.getContentFingerprint(), item.getGeneratedByRunId(), summaries.get(item.getId())))
             .toList();
     }
@@ -128,9 +127,10 @@ public class ScriptEpisodeService {
         ScriptEpisodeEntity item = episodeMapper.selectById(episodeId);
         if (item == null || !tenantId.equals(item.getTenantId()) || !projectId.equals(item.getProjectId())
             || item.getRetiredAt() != null) return null;
+        ScriptEpisodeSummaryDocument summary = summaryRepository.findCurrent(
+            tenantId, item.getScriptId(), item.getId()).orElse(null);
         return new ScriptEpisodeResponse(item.getId(), item.getEpisodeNo(), item.getTitle(), item.getContent(),
-            item.getSummary(), item.getContentFingerprint(), item.getGeneratedByRunId(),
-            summaryRepository.findCurrent(tenantId, item.getScriptId(), item.getId()).orElse(null));
+            ScriptEpisodeSummaryDocument.summaryText(summary), item.getContentFingerprint(), item.getGeneratedByRunId(), summary);
     }
 
     private List<ScriptEpisodeEntity> activeEntities(Long tenantId, Long projectId, Long scriptId) {

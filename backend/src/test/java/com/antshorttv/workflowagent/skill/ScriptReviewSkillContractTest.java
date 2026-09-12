@@ -1,17 +1,17 @@
 package com.antshorttv.workflowagent.skill;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
 class ScriptReviewSkillContractTest {
     private static final List<String> DIMENSION_SKILLS = List.of(
         "script-review-dimension-plot-logic",
@@ -29,11 +29,26 @@ class ScriptReviewSkillContractTest {
         "script-review-dimension-foreshadowing"
     );
 
-    @Autowired private WorkflowSkillService skills;
-    @Autowired private ObjectMapper objectMapper;
+    private final WorkflowSkillService skills = new WorkflowSkillService(
+        new FileSkillRepository(Path.of("skills"), 1024 * 1024, new SkillDocumentParser()),
+        mock(SkillReferenceLookup.class));
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void commonAndDimensionSkillsDefineTrustedEvidenceAndSaveBoundaries() {
+    void productReviewSkillsExposeOnlyMarkdownPhasesAndCurrentVersionEvidence() throws Exception {
+        String foundation = Files.readString(Path.of("skills/script-review-foundation/SKILL.md"));
+        String framework = Files.readString(Path.of("skills/script-review-execution-framework/SKILL.md"));
+        assertThat(foundation).doesNotContain("范围内正文和历史")
+            .contains("不得读取或参考历史审核问题");
+        assertThat(framework)
+            .contains("MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD", "MARKDOWN_DEEP_AGGREGATION")
+            .doesNotContain("DEEP_SEMANTIC", "save_review_semantic_decisions",
+                "legacy structured", "历史结构化任务");
+        assertThat(Files.exists(Path.of("skills/script-review-semantic-quality/SKILL.md"))).isFalse();
+    }
+
+    @Test
+    void commonAndDimensionSkillsDefineTrustedEvidenceAndMarkdownBoundaries() {
         assertThat(skills.detail("script-review-foundation").content())
             .contains("可信来源", "精确引文", "严重程度", "不确定", "范围", "内容已变化", "Markdown")
             .doesNotContain("必须以一次成功 `save_review_result`");
@@ -48,9 +63,8 @@ class ScriptReviewSkillContractTest {
         assertThat(skills.detail("script-review-cross-episode-synthesis").content())
             .contains("跨单元", "身份", "时间线", "场景", "道具", "视觉", "情绪", "因果", "悬念", "反转", "伏笔",
                 "Markdown", "相同维度", "根因", "稳定位置", "保留全部不同引用");
-        assertThat(skills.detail("script-review-semantic-quality").content())
-            .contains("证据支持", "规则适用", "替代解释", "严重度", "建议有效", "重复聚类",
-                "CONFIRMED", "NEEDS_HUMAN_REVIEW", "REJECTED", "INSUFFICIENT_EVIDENCE");
+        assertThat(skills.list("script-review")).extracting(WorkflowSkillView::code)
+            .doesNotContain("script-review-semantic-quality");
     }
 
     @Test

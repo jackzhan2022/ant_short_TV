@@ -18,4 +18,8 @@ public record ScriptEpisodeSummaryDocument(
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
+    public static String summaryText(ScriptEpisodeSummaryDocument document) {
+        return document == null || document.content() == null
+            ? null : document.content().path("summary").asText(null);
+    }
 }

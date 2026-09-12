@@ -30,60 +30,18 @@ class ScriptReviewAgentRunContractTest {
     }
 
     @Test
-    void quickRequiresTrustedReadsThenExactlyOneFormalSave() {
-        WorkflowAgentRunContract contract = WorkflowAgentRunContract.forReviewPhase("QUICK");
-        assertThat(contract.requiredToolSequence()).containsExactly(
-            "read_review_context", "read_review_content", "save_review_result");
-        assertReviewReadsBeforeSave(contract, "read_review_content");
-    }
-
-    @Test
-    void childCanOnlyPersistItsCandidateAndAggregationMustReadCandidatesBeforeFormalSave() {
-        WorkflowAgentRunContract child = WorkflowAgentRunContract.forReviewPhase("DEEP_CHILD");
-        assertThat(child.requiredToolSequence()).containsExactly(
-            "read_review_context", "read_review_content", "save_review_unit_result");
-        assertReviewReadsBeforeSave(child, "read_review_content");
-        WorkflowAgentRunContract aggregation = WorkflowAgentRunContract.forReviewPhase("DEEP_AGGREGATION");
-        assertThat(aggregation.requiredToolSequence()).containsExactly(
-            "read_review_context", "read_review_unit_results", "read_review_content", "save_review_result");
-        assertReviewReadsBeforeSave(aggregation, "read_review_unit_results", "read_review_content");
-    }
-
-    @Test
-    void semanticQualityRequiresFrozenCandidatesAndSourceBeforeOneTerminalSave() {
-        WorkflowAgentRunContract quality = WorkflowAgentRunContract.forReviewPhase("DEEP_SEMANTIC");
-        assertThat(quality.requiredToolSequence()).containsExactly(
-            "read_review_context", "read_review_candidates", "read_review_content",
-            "save_review_semantic_decisions");
-        assertReviewReadsBeforeSave(quality, "read_review_content", "read_review_candidates");
-    }
-
-    private void assertReviewReadsBeforeSave(
-        WorkflowAgentRunContract contract,
-        String... reads
-    ) {
-        WorkflowToolRunState state = new WorkflowToolRunState();
-        assertThatThrownBy(() -> contract.requireNext(state, contract.terminalToolCode()))
-            .isInstanceOf(BusinessException.class);
-        contract.requireNext(state, "read_review_context");
-        state.recordSuccess("read_review_context");
-        for (int index = 0; index < reads.length; index++) {
-            String read = reads[index];
-            contract.requireNext(state, read);
-            state.recordSuccess(read);
-            if (index == 0) {
-                contract.requireNext(state, read);
-                state.recordSuccess(read);
-            }
-            if (index < reads.length - 1) {
-                assertThatThrownBy(() -> contract.requireNext(state, contract.terminalToolCode()))
-                    .isInstanceOf(BusinessException.class);
-            }
+    void rejectsRetiredPhasesAndRequiresTrustedReadOrder() {
+        for (String phase : java.util.List.of("QUICK", "DEEP_CHILD", "DEEP_SEMANTIC", "DEEP_AGGREGATION")) {
+            assertThatThrownBy(() -> WorkflowAgentRunContract.forReviewPhase(phase))
+                .isInstanceOf(BusinessException.class);
         }
-        contract.requireNext(state, contract.terminalToolCode());
-        state.recordSuccess(contract.terminalToolCode());
-        contract.requireComplete(state);
-        assertThatThrownBy(() -> contract.requireNext(state, contract.terminalToolCode()))
+        WorkflowAgentRunContract contract = WorkflowAgentRunContract.forReviewPhase("MARKDOWN_QUICK");
+        WorkflowToolRunState state = new WorkflowToolRunState();
+        assertThatThrownBy(() -> contract.requireNext(state, "read_review_content"))
+            .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> contract.requireComplete(state)).isInstanceOf(BusinessException.class);
+        state.recordSuccess("read_review_context");
+        assertThatThrownBy(() -> contract.requireNext(state, "save_review_result"))
             .isInstanceOf(BusinessException.class);
     }
 }

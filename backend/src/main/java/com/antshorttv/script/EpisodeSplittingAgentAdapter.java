@@ -7,27 +7,19 @@ import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class EpisodeSplittingAgentAdapter {
     private final WorkflowAgentRunner runner;
     private final ScriptEpisodeService episodes;
-    private final boolean enabled;
 
     public EpisodeSplittingAgentAdapter(
         WorkflowAgentRunner runner,
-        ScriptEpisodeService episodes,
-        @Value("${ai.workflow-agent.episode-splitting-enabled:false}") boolean enabled
+        ScriptEpisodeService episodes
     ) {
         this.runner = runner;
         this.episodes = episodes;
-        this.enabled = enabled;
-    }
-
-    public boolean enabled() {
-        return enabled;
     }
 
     public Execution execute(

@@ -19,7 +19,6 @@ public class AutoStoryboardDispatchService {
     private final ScriptAiOperationService operations;
     private final RbacPermissionService permissions;
     private final JdbcTemplate jdbc;
-    private final boolean enabled;
     private final int staleDispatchSeconds;
 
     public AutoStoryboardDispatchService(
@@ -27,20 +26,17 @@ public class AutoStoryboardDispatchService {
         ScriptAiOperationService operations,
         RbacPermissionService permissions,
         JdbcTemplate jdbc,
-        @Value("${ai.workflow-agent.auto-storyboard-enabled:false}") boolean enabled,
         @Value("${ai.workflow-agent.auto-storyboard-stale-dispatch-seconds:120}") int staleDispatchSeconds
     ) {
         this.events = events;
         this.operations = operations;
         this.permissions = permissions;
         this.jdbc = jdbc;
-        this.enabled = enabled;
         this.staleDispatchSeconds = staleDispatchSeconds;
     }
 
     @Scheduled(fixedDelayString = "${ai.workflow-agent.auto-storyboard-dispatch-delay-ms:3000}")
     public void dispatchOne() {
-        if (!enabled) return;
         events.recoverStaleDispatching(staleDispatchSeconds);
         events.claimNext().ifPresent(this::dispatch);
     }
@@ -48,7 +44,7 @@ public class AutoStoryboardDispatchService {
     private void dispatch(AutoStoryboardEventRepository.Event event) {
         try {
             List<Map<String, Object>> episodes = jdbc.queryForList("""
-                select content_fingerprint from script_episode
+                select content_fingerprint, episode_no from script_episode
                  where id=? and tenant_id=? and project_id=? and script_id=?
                    and stable_key=? and status='ACTIVE' and retired_at is null
                 """, event.episodeId(), event.tenantId(), event.projectId(), event.scriptId(),
@@ -61,8 +57,10 @@ public class AutoStoryboardDispatchService {
             }
             Integer existing = jdbc.queryForObject("""
                 select count(*) from storyboard
-                 where tenant_id=? and project_id=? and episode_id=? and deleted_at is null
-                """, Integer.class, event.tenantId(), event.projectId(), event.episodeId());
+                 where tenant_id=? and project_id=? and deleted_at is null
+                   and (episode_id=? or (episode_id is null and script_id=? and episode_no=?))
+                """, Integer.class, event.tenantId(), event.projectId(), event.episodeId(),
+                event.scriptId(), episodes.get(0).get("episode_no"));
             if (existing != null && existing > 0) {
                 events.markOutcome(event.id(), "PROTECTED", "STORYBOARD_EXISTS",
                     "已存在分镜，自动任务未覆盖现有成果。");

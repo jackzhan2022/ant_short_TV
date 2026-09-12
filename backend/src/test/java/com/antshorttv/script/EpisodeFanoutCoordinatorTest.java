@@ -30,6 +30,45 @@ class EpisodeFanoutCoordinatorTest {
     private final WorkflowAgentRunner runner = mock(WorkflowAgentRunner.class);
 
     @Test
+    void propagatesOwnershipLossWithoutPublishingAUnitFailure() {
+        var coordinator = new EpisodeFanoutCoordinator(store, runner, 1);
+        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan());
+        when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units());
+        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(57L);
+        when(store.runnableUnits(57L)).thenReturn(List.of(units().get(0)));
+        when(store.markRunning(57L, 1L)).thenReturn(1);
+
+        assertThatThrownBy(() -> coordinator.execute(task(), stage(), null, 99L,
+            "short-drama-episode-summary", false,
+            (plan, task, stage, execution, episode) -> {
+                throw new com.antshorttv.execution.AiExecutionClaimLostException(700L);
+            }, snapshot -> { }))
+            .isInstanceOf(com.antshorttv.execution.AiExecutionClaimLostException.class);
+        verify(store, never()).markFailed(anyLong(), anyLong(), any(Integer.class), any(), any());
+    }
+
+    @Test
+    void resumesCommittedUnitWithoutAnotherModelCall() {
+        var coordinator = new EpisodeFanoutCoordinator(store, runner, 1);
+        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan());
+        when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units());
+        when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(56L);
+        when(store.runnableUnits(56L)).thenReturn(List.of(units().get(0)));
+        when(store.markRunning(56L, 1L)).thenReturn(2);
+        when(store.recoverCommitted(56L, 1L)).thenReturn(java.util.Optional.of(
+            new EpisodeFanoutCoordinator.ChildResult(901L, List.of())));
+        when(store.progress(56L)).thenReturn(new EpisodeFanoutCoordinator.Progress(3, 3, 0, 0, 0, "SUCCEEDED"));
+        when(store.snapshotMatches(eq(56L), any())).thenReturn(true);
+
+        coordinator.execute(task(), stage(), null, 99L, "short-drama-episode-summary", false,
+            (plan, task, stage, execution, episode) -> { throw new AssertionError("Committed unit must not call AI again"); },
+            snapshot -> { });
+
+        verify(store).markSucceeded(56L, 1L, 2, 901L);
+        verify(store).complete(56L);
+    }
+
+    @Test
     void freezesOnePlanCreatesOneChildPerSnapshotEpisodeAndBoundsConcurrency() {
         EpisodeFanoutCoordinator coordinator = new EpisodeFanoutCoordinator(store, runner, 2);
         WorkflowAgentExecutionPlan plan = plan();

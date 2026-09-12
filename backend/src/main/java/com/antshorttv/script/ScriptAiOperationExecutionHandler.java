@@ -81,10 +81,6 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         return List.of(
             "script_generate",
             "script_rewrite",
-            "script_element_extract",
-            "character_extract",
-            "scene_extract",
-            "prop_extract",
             "scoped_asset_reextraction",
             "storyboard_breakdown",
             "prompt_generate"
@@ -196,13 +192,6 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
                     RewriteScriptRequest.class
                 );
                 return workflowService.executeRewriteOperation(operation, request, context);
-            }
-            if ("ELEMENT_EXTRACT".equals(operation.operationType)) {
-                ExtractScriptElementsRequest request = objectMapper.readValue(
-                    operation.redactedInputJson,
-                    ExtractScriptElementsRequest.class
-                );
-                return workflowService.executeElementExtractionOperation(operation, request, context);
             }
             if ("SCOPED_ASSET_REEXTRACTION".equals(operation.operationType)) {
                 ScopedAssetReextractionRequest request = objectMapper.readValue(

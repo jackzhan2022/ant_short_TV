@@ -5,8 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antshorttv.execution.AiExecutionClaim;
@@ -14,7 +15,6 @@ import com.antshorttv.execution.AiExecutionContext;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.workflowagent.agent.WorkflowAgentRecord;
 import com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan;
-import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import com.antshorttv.workflowagent.run.WorkflowAgentTruncatedOutputException;
@@ -23,14 +23,36 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 class ReviewQuickAgentAdapterTest {
+    @Test
+    void cancellationBetweenReadAndInitialProgressWritePreventsPaidCall() {
+        ReviewAgentExecutionPlanFactory plans = mock(ReviewAgentExecutionPlanFactory.class);
+        WorkflowAgentRunner runner = mock(WorkflowAgentRunner.class);
+        ReviewTaskMapper tasks = mock(ReviewTaskMapper.class);
+        WorkflowAgentRecord agent = new WorkflowAgentRecord(1L, "script-review", "审核", "", "", 9L,
+            BigDecimal.ZERO, 4096, 8, "ENABLED", 3L, 1L, 1L, LocalDateTime.now(), LocalDateTime.now(),
+            List.of(), List.of("read_review_context", "read_review_content"));
+        when(plans.freeze(any(), any())).thenReturn(new WorkflowAgentExecutionPlan(agent, List.of()));
+        ReviewTaskEntity task = task();
+        when(tasks.selectById(7L)).thenReturn(task());
+        when(tasks.update(any(), any())).thenReturn(0);
+        when(runner.runFormal(any(), any())).thenReturn(new WorkflowAgentRunResult(88L, "# 报告"));
+        ReviewQuickAgentAdapter adapter = new ReviewQuickAgentAdapter(plans, runner, tasks, new ObjectMapper());
+
+        assertThatThrownBy(() -> adapter.execute(task, execution(), 9L))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class).hasMessageContaining("取消");
+
+        verify(tasks, never()).updateById(any(ReviewTaskEntity.class));
+        verify(runner, never()).runFormal(any(), any());
+    }
+
     @Test
     void retainsProviderTruncatedMarkdownAndMarksTheTaskFailed() {
         ReviewAgentExecutionPlanFactory plans = mock(ReviewAgentExecutionPlanFactory.class);
         WorkflowAgentRunner runner = mock(WorkflowAgentRunner.class);
         ReviewTaskMapper tasks = mock(ReviewTaskMapper.class);
+        when(tasks.selectById(7L)).thenAnswer(invocation -> task());
         when(tasks.update(any(), any())).thenReturn(1);
         WorkflowAgentExecutionPlan plan = new WorkflowAgentExecutionPlan(
             new WorkflowAgentRecord(1L, "script-review", "审核", "", "", 9L, BigDecimal.ZERO,
@@ -40,9 +62,8 @@ class ReviewQuickAgentAdapterTest {
         when(runner.runFormal(any(), any())).thenThrow(
             new WorkflowAgentTruncatedOutputException(88L, "# 未完整报告", List.of()));
         ReviewTaskEntity task = task();
-        task.setResultFormat("MARKDOWN");
         ReviewQuickAgentAdapter adapter = new ReviewQuickAgentAdapter(plans, runner, tasks,
-            new ObjectMapper(), true);
+            new ObjectMapper());
 
         assertThatThrownBy(() -> adapter.execute(task, execution(), 9L))
             .isInstanceOf(WorkflowAgentTruncatedOutputException.class);
@@ -54,8 +75,13 @@ class ReviewQuickAgentAdapterTest {
     @Test
     void persistsArbitraryMarkdownWithoutAFormalSaveTool() {
         ReviewAgentExecutionPlanFactory plans = mock(ReviewAgentExecutionPlanFactory.class);
+        when(plans.freeze(any(), eq("QUICK"))).thenAnswer(invocation -> {
+            assertThat((String) invocation.getArgument(1)).startsWith("MARKDOWN_");
+            return null;
+        });
         WorkflowAgentRunner runner = mock(WorkflowAgentRunner.class);
         ReviewTaskMapper tasks = mock(ReviewTaskMapper.class);
+        when(tasks.selectById(7L)).thenAnswer(invocation -> task());
         when(tasks.update(any(), any())).thenReturn(1);
         WorkflowAgentRecord agent = new WorkflowAgentRecord(1L, "script-review", "审核", "", "", 9L,
             BigDecimal.ZERO, 4096, 8, "ENABLED", 3L, 1L, 1L, LocalDateTime.now(), LocalDateTime.now(),
@@ -65,15 +91,14 @@ class ReviewQuickAgentAdapterTest {
         String markdown = "# 自定义结论\n\n|位置|建议|\n|---|---|\n|第1集|保留|";
         when(runner.runFormal(any(), any())).thenReturn(new WorkflowAgentRunResult(88L, markdown));
         ReviewTaskEntity task = task();
-        task.setResultFormat("MARKDOWN");
 
         ReviewQuickAgentAdapter adapter = new ReviewQuickAgentAdapter(plans, runner, tasks,
-            new ObjectMapper(), true);
+            new ObjectMapper());
         ReviewQuickAgentAdapter.Execution result = adapter.execute(task, execution(), 9L);
 
         assertThat(result.runId()).isEqualTo(88L);
-        verify(tasks).updateById(task);
-        verify(tasks).update(eq(task), any());
+        verify(tasks, never()).updateById(any(ReviewTaskEntity.class));
+        verify(tasks, times(2)).update(eq(task), any());
         assertThat(task.getStatus()).isEqualTo("COMPLETED");
         assertThat(task.getReportMarkdown()).isEqualTo(markdown);
         assertThat(task.getWorkflowAgentRunId()).isEqualTo(88L);
@@ -84,6 +109,8 @@ class ReviewQuickAgentAdapterTest {
         ReviewAgentExecutionPlanFactory plans = mock(ReviewAgentExecutionPlanFactory.class);
         WorkflowAgentRunner runner = mock(WorkflowAgentRunner.class);
         ReviewTaskMapper tasks = mock(ReviewTaskMapper.class);
+        when(tasks.selectById(7L)).thenAnswer(invocation -> task());
+        when(tasks.update(any(), any())).thenReturn(1);
         WorkflowAgentRecord agent = new WorkflowAgentRecord(1L, "script-review", "审核", "", "", 9L,
             BigDecimal.ZERO, 4096, 8, "ENABLED", 3L, 1L, 1L, LocalDateTime.now(), LocalDateTime.now(),
             List.of(), List.of("read_review_context", "read_review_content"));
@@ -91,43 +118,13 @@ class ReviewQuickAgentAdapterTest {
         when(plans.freeze(List.of("台词合理性"), "MARKDOWN_QUICK")).thenReturn(plan);
         when(runner.runFormal(any(), any())).thenReturn(new WorkflowAgentRunResult(88L, "  \n"));
         ReviewTaskEntity task = task();
-        task.setResultFormat("MARKDOWN");
 
         ReviewQuickAgentAdapter adapter = new ReviewQuickAgentAdapter(plans, runner, tasks,
-            new ObjectMapper(), true);
+            new ObjectMapper());
 
         assertThatThrownBy(() -> adapter.execute(task, execution(), 9L))
             .isInstanceOf(com.antshorttv.common.BusinessException.class)
             .hasMessageContaining("Markdown");
-    }
-
-    @Test
-    void dispatchesOneFrozenQuickRunAndRequiresItsFormalCommit() {
-        ReviewAgentExecutionPlanFactory plans = mock(ReviewAgentExecutionPlanFactory.class);
-        WorkflowAgentRunner runner = mock(WorkflowAgentRunner.class);
-        ReviewTaskMapper tasks = mock(ReviewTaskMapper.class);
-        WorkflowAgentRecord agent = new WorkflowAgentRecord(1L, "script-review", "审核", "", "", 9L,
-            BigDecimal.ZERO, 4096, 8, "ENABLED", 3L, 1L, 1L, LocalDateTime.now(), LocalDateTime.now(),
-            List.of(), List.of("read_review_context", "save_review_result"));
-        WorkflowAgentExecutionPlan plan = new WorkflowAgentExecutionPlan(agent, List.of());
-        when(plans.freeze(List.of("台词合理性"), "QUICK")).thenReturn(plan);
-        when(runner.runFormal(any(), any())).thenReturn(new WorkflowAgentRunResult(88L, "saved"));
-        ReviewTaskEntity task = task();
-        ReviewTaskEntity committed = task();
-        committed.setStatus("COMPLETED");
-        committed.setWorkflowAgentRunId(88L);
-        when(tasks.selectById(7L)).thenReturn(committed);
-
-        ReviewQuickAgentAdapter adapter = new ReviewQuickAgentAdapter(plans, runner, tasks,
-            new ObjectMapper(), true);
-        ReviewQuickAgentAdapter.Execution result = adapter.execute(task, execution(), 9L);
-
-        assertThat(result.runId()).isEqualTo(88L);
-        ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
-        verify(runner).runFormal(org.mockito.ArgumentMatchers.eq(plan), input.capture());
-        assertThat(input.getValue().reviewScope().phase()).isEqualTo("QUICK");
-        assertThat(input.getValue().reviewScope().versionId()).isEqualTo(6L);
-        assertThat(input.getValue().input()).doesNotContain("林夏");
     }
 
     private ReviewTaskEntity task() {

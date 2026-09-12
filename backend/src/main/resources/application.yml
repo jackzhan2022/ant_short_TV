@@ -92,8 +92,8 @@ ai:
     asset-recognition-request-timeout-seconds: ${AI_WORKFLOW_ASSET_RECOGNITION_REQUEST_TIMEOUT_SECONDS:300}
     storyboard-run-timeout-seconds: ${AI_WORKFLOW_STORYBOARD_RUN_TIMEOUT_SECONDS:300}
     storyboard-request-timeout-seconds: ${AI_WORKFLOW_STORYBOARD_REQUEST_TIMEOUT_SECONDS:300}
-    review-semantic-max-steps: ${AI_WORKFLOW_REVIEW_SEMANTIC_MAX_STEPS:96}
-    review-semantic-run-timeout-seconds: ${AI_WORKFLOW_REVIEW_SEMANTIC_RUN_TIMEOUT_SECONDS:1800}
+    review-deep-max-steps: ${AI_WORKFLOW_REVIEW_DEEP_MAX_STEPS:96}
+    review-deep-run-timeout-seconds: ${AI_WORKFLOW_REVIEW_DEEP_RUN_TIMEOUT_SECONDS:1800}
     max-log-payload-bytes: ${AI_WORKFLOW_MAX_LOG_PAYLOAD_BYTES:262144}
     split-chunk-target-min: ${AI_WORKFLOW_SPLIT_CHUNK_TARGET_MIN:15000}
     split-chunk-target-max: ${AI_WORKFLOW_SPLIT_CHUNK_TARGET_MAX:20000}
@@ -103,24 +103,13 @@ ai:
     split-safe-context-tokens: ${AI_WORKFLOW_SPLIT_SAFE_CONTEXT_TOKENS:800000}
     split-prompt-reserve-tokens: ${AI_WORKFLOW_SPLIT_PROMPT_RESERVE_TOKENS:12000}
     split-tool-reserve-tokens: ${AI_WORKFLOW_SPLIT_TOOL_RESERVE_TOKENS:24000}
-    global-understanding-enabled: ${AI_WORKFLOW_GLOBAL_UNDERSTANDING_ENABLED:false}
-    episode-splitting-enabled: ${AI_WORKFLOW_EPISODE_SPLITTING_ENABLED:false}
-    episode-summary-enabled: ${AI_WORKFLOW_EPISODE_SUMMARY_ENABLED:false}
-    asset-recognition-enabled: ${AI_WORKFLOW_ASSET_RECOGNITION_ENABLED:false}
-    episode-context-pipeline-enabled: ${AI_WORKFLOW_EPISODE_CONTEXT_PIPELINE_ENABLED:false}
-    auto-storyboard-enabled: ${AI_WORKFLOW_AUTO_STORYBOARD_ENABLED:false}
     auto-storyboard-dispatch-delay-ms: ${AI_WORKFLOW_AUTO_STORYBOARD_DISPATCH_DELAY_MS:3000}
     auto-storyboard-stale-dispatch-seconds: ${AI_WORKFLOW_AUTO_STORYBOARD_STALE_DISPATCH_SECONDS:120}
-    storyboard-enabled: ${AI_WORKFLOW_STORYBOARD_ENABLED:false}
-    review-bootstrap-enabled: ${AI_WORKFLOW_REVIEW_BOOTSTRAP_ENABLED:true}
-    review-quick-enabled: ${AI_WORKFLOW_REVIEW_QUICK_ENABLED:false}
-    review-deep-enabled: ${AI_WORKFLOW_REVIEW_DEEP_ENABLED:false}
     fanout-concurrency: ${AI_WORKFLOW_FANOUT_CONCURRENCY:2}
   testing:
     mock-provider-enabled: ${AI_TESTING_MOCK_PROVIDER_ENABLED:false}
   execution:
     dispatcher:
-      enabled: ${AI_EXECUTION_DISPATCHER_ENABLED:true}
       batch-size: ${AI_EXECUTION_DISPATCHER_BATCH_SIZE:20}
       fixed-delay-ms: ${AI_EXECUTION_DISPATCHER_FIXED_DELAY_MS:5000}
     claim-timeout: ${AI_EXECUTION_CLAIM_TIMEOUT:PT10M}
@@ -136,8 +125,6 @@ ai:
     poll-retry-limit: ${AI_VIDEO_POLL_RETRY_LIMIT:3}
     due-task-batch-size: ${AI_VIDEO_DUE_TASK_BATCH_SIZE:20}
     poll-fixed-delay-ms: ${AI_VIDEO_POLL_FIXED_DELAY_MS:15000}
-    scheduler:
-      enabled: ${AI_VIDEO_SCHEDULER_ENABLED:true}
 
 review:
   workflow:
@@ -145,9 +132,3 @@ review:
     deep-unit-characters: ${REVIEW_WORKFLOW_DEEP_UNIT_CHARACTERS:24000}
     deep-unit-overlap: ${REVIEW_WORKFLOW_DEEP_UNIT_OVERLAP:1200}
     deep-max-concurrency: ${REVIEW_WORKFLOW_DEEP_MAX_CONCURRENCY:3}
-    features:
-      cache-observability: ${REVIEW_WORKFLOW_CACHE_OBSERVABILITY_ENABLED:false}
-      dimensional-orchestration: ${REVIEW_WORKFLOW_DIMENSIONAL_ORCHESTRATION_ENABLED:false}
-      semantic-review: ${REVIEW_WORKFLOW_SEMANTIC_REVIEW_ENABLED:false}
-      anomaly-gate: ${REVIEW_WORKFLOW_ANOMALY_GATE_ENABLED:false}
-      markdown-reports: ${REVIEW_WORKFLOW_MARKDOWN_REPORTS_ENABLED:false}

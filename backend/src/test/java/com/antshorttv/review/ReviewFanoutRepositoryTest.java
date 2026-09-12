@@ -48,7 +48,8 @@ class ReviewFanoutRepositoryTest {
             assertThat(fragment.dimension()).isEqualTo("台词合理性");
             assertThat(fragment.reportMarkdown()).isEqualTo(second);
         });
-        assertThat(repository.currentCandidate(snapshotId, unitId).getReportMarkdown()).isEqualTo(second);
+        assertThat(jdbc.queryForObject("select report_markdown from review_unit_result where unit_id=?",
+            String.class, unitId)).isEqualTo(second);
         assertThat(jdbc.queryForObject("select count(*) from review_unit_result where unit_id=?",
             Integer.class, unitId)).isOne();
     }
@@ -69,38 +70,36 @@ class ReviewFanoutRepositoryTest {
     }
 
     @Test
-    void replacesCurrentCandidateFindsHashesAndUsesCompareAndSetStatus() {
+    void matchesFrozenHashesAndExcludesCanceledSnapshots() {
         long snapshotId = repository.openSnapshot(snapshot(1));
-        long unitId = repository.addUnit(new ReviewFanoutRepository.UnitDraft(snapshotId, 1, "u1", "{}", 0, 3, "f1"));
-        long run1 = insertRun();
-        long run2 = insertRun();
-
-        repository.replaceCandidate(candidate(snapshotId, unitId, run1, "payload-1"));
-        repository.replaceCandidate(candidate(snapshotId, unitId, run2, "payload-2"));
-
-        assertThat(repository.currentCandidate(snapshotId, unitId).getPayloadHash()).isEqualTo("payload-2");
-        assertThat(jdbc.queryForObject("select count(*) from review_unit_result where unit_id = ?", Integer.class, unitId)).isOne();
         assertThat(repository.findMatchingSnapshot(98503, "version", "scope", "dimensions", "units"))
             .isEqualTo(snapshotId);
-        assertThat(repository.findMatchingSnapshot(98503, "version", "scope", "dimensions", "changed-units"))
-            .isNull();
-        assertThat(repository.findMatchingSnapshot(98503, "version", "changed-scope", "dimensions", "units"))
-            .isNull();
-        assertThat(repository.findMatchingSnapshot(98503, "version", "scope", "changed-dimensions", "units"))
-            .isNull();
-        assertThat(repository.transitionUnit(unitId, ReviewUnitStatus.PENDING, ReviewUnitStatus.RUNNING)).isTrue();
-        assertThat(repository.transitionUnit(unitId, ReviewUnitStatus.PENDING, ReviewUnitStatus.RUNNING)).isFalse();
+        assertThat(repository.findMatchingSnapshot(98503, "version", "scope", "dimensions", "changed-units")).isNull();
+        assertThat(repository.findMatchingSnapshot(98503, "version", "changed-scope", "dimensions", "units")).isNull();
+        assertThat(repository.findMatchingSnapshot(98503, "version", "scope", "changed-dimensions", "units")).isNull();
+        jdbc.update("update review_fanout_snapshot set status='CANCELED' where id=?", snapshotId);
+        assertThat(repository.findMatchingSnapshot(98503, "version", "scope", "dimensions", "units")).isNull();
+    }
+
+    @Test
+    void canceledTaskRejectsFragmentCompletion() {
+        long snapshotId = repository.openSnapshot(snapshot(1));
+        long unitId = repository.addUnit(new ReviewFanoutRepository.UnitDraft(snapshotId, 1, "u1", "{}", 0, 3, "f1"));
+        long runId = insertRun();
+        jdbc.update("update review_fanout_unit set status='RUNNING' where id=?", unitId);
+        jdbc.update("update review_task set status='CANCELED' where id=98503");
+        assertThatThrownBy(() -> repository.replaceMarkdownFragment(new ReviewFanoutRepository.MarkdownFragmentDraft(
+            snapshotId, unitId, runId, 1, "version", "scope", "dimensions", "f1", "# late report", "hash")))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
+        assertThat(repository.orderedMarkdownFragments(snapshotId)).isEmpty();
+        assertThat(jdbc.queryForObject("select status from review_fanout_unit where id=?", String.class, unitId))
+            .isEqualTo("RUNNING");
     }
 
     private ReviewFanoutRepository.SnapshotDraft snapshot(int attempt) {
         return new ReviewFanoutRepository.SnapshotDraft(98500, 98501, 98503, 98502, attempt,
             "script-review", 1, "[]", modelId, "[\"台词合理性\"]", "{}",
             "version", "scope", "dimensions", "units", 2, 2);
-    }
-
-    private ReviewFanoutRepository.CandidateDraft candidate(long snapshot, long unit, long run, String hash) {
-        return new ReviewFanoutRepository.CandidateDraft(snapshot, unit, run, 1, "version", "scope",
-            "dimensions", "f1", "{}", "[]", hash);
     }
 
     private long insertRun() {

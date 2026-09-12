@@ -19,16 +19,17 @@ describe('video script decomposition route', () => {
 
 describe('script review library route', () => {
   it('uses the library as the visible script review menu entry', () => {
-    expect(routes.find((item) => item.path === '/script-review-library')).toMatchObject({
+    expect(
+      routes.find((item) => item.path === '/script-review-library'),
+    ).toMatchObject({
       path: '/script-review-library',
       name: 'script-review',
       component: './script-review-library',
       access: 'canViewScriptReview',
     });
-    expect(routes.find((item) => item.path === '/script-review')).toMatchObject({
-      hideInMenu: true,
-      component: './script-review-legacy',
-    });
+    expect(
+      routes.find((item) => item.path === '/script-review'),
+    ).toBeUndefined();
   });
 });
 
@@ -60,7 +61,7 @@ describe('short drama creation route', () => {
 });
 
 describe('built-in Agent catalog route', () => {
-  it('redirects the legacy route into model management without a visible menu entry', () => {
+  it('removes the retired Agent route', () => {
     const parent = routes.find(
       (item) => item.path === '/ai-service-management',
     );
@@ -68,11 +69,7 @@ describe('built-in Agent catalog route', () => {
       (item) => item.path === '/ai-service-management/agents',
     );
 
-    expect(route).toMatchObject({
-      path: '/ai-service-management/agents',
-      hideInMenu: true,
-      redirect: '/ai-service-management/model-management',
-    });
+    expect(route).toBeUndefined();
   });
 });
 

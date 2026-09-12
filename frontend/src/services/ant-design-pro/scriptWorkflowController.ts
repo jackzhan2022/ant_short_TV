@@ -2,56 +2,16 @@
 /* eslint-disable */
 import { request } from "@umijs/max";
 
-/** 此处后端没有提供注释 GET /api/projects/${param0}/asset-candidates */
-export async function assetCandidates(
+/** 此处后端没有提供注释 POST /api/projects/${param0}/asset-reextraction */
+export async function scopedAssetReextraction(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.assetCandidatesParams,
+  params: API.scopedAssetReextractionParams,
+  body: API.ScopedAssetReextractionRequest,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseCandidatePage>(
-    `/api/projects/${param0}/asset-candidates`,
-    {
-      method: "GET",
-      params: {
-        // page has a default value: 1
-        page: "1",
-        // pageSize has a default value: 20
-        pageSize: "20",
-        ...queryParams,
-      },
-      ...(options || {}),
-    }
-  );
-}
-
-/** 此处后端没有提供注释 GET /api/projects/${param0}/asset-candidates/${param1} */
-export async function assetCandidate(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.assetCandidateParams,
-  options?: { [key: string]: any }
-) {
-  const { projectId: param0, candidateId: param1, ...queryParams } = params;
-  return request<API.ApiResponseCandidateResponse>(
-    `/api/projects/${param0}/asset-candidates/${param1}`,
-    {
-      method: "GET",
-      params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
-}
-
-/** 此处后端没有提供注释 POST /api/projects/${param0}/asset-candidates/${param1}/decisions */
-export async function decideAssetCandidate(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.decideAssetCandidateParams,
-  body: API.DecisionCommand,
-  options?: { [key: string]: any }
-) {
-  const { projectId: param0, candidateId: param1, ...queryParams } = params;
-  return request<API.ApiResponseDecisionResponse>(
-    `/api/projects/${param0}/asset-candidates/${param1}/decisions`,
+  return request<API.ApiResponseAiExecutionResponse>(
+    `/api/projects/${param0}/asset-reextraction`,
     {
       method: "POST",
       headers: {
@@ -59,6 +19,25 @@ export async function decideAssetCandidate(
       },
       params: { ...queryParams },
       data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/asset-reextraction/preflight */
+export async function assetReextractionPreflight(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.assetReextractionPreflightParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseAssetReextractionPreflight>(
+    `/api/projects/${param0}/asset-reextraction/preflight`,
+    {
+      method: "GET",
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );
@@ -73,23 +52,6 @@ export async function assetSettingsSummary(
   const { projectId: param0, ...queryParams } = params;
   return request<API.ApiResponseAssetSettingsSummaryResponse>(
     `/api/projects/${param0}/asset-settings-summary`,
-    {
-      method: "GET",
-      params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
-}
-
-/** 此处后端没有提供注释 GET /api/projects/${param0}/asset-settings-workspace */
-export async function assetSettingsWorkspace(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.assetSettingsWorkspaceParams,
-  options?: { [key: string]: any }
-) {
-  const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseAssetSettingsWorkspaceResponse>(
-    `/api/projects/${param0}/asset-settings-workspace`,
     {
       method: "GET",
       params: { ...queryParams },
@@ -296,7 +258,7 @@ export async function updateElement(
     elementId: param2,
     ...queryParams
   } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseVoid>(
     `/api/projects/${param0}/script-elements/${param1}/${param2}`,
     {
       method: "PUT",
@@ -322,32 +284,10 @@ export async function deleteElement(
     elementId: param2,
     ...queryParams
   } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseVoid>(
     `/api/projects/${param0}/script-elements/${param1}/${param2}`,
     {
       method: "DELETE",
-      params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
-}
-
-/** 此处后端没有提供注释 PUT /api/projects/${param0}/script-elements/${param1}/${param2}/confirm */
-export async function confirmElement(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.confirmElementParams,
-  options?: { [key: string]: any }
-) {
-  const {
-    projectId: param0,
-    elementType: param1,
-    elementId: param2,
-    ...queryParams
-  } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
-    `/api/projects/${param0}/script-elements/${param1}/${param2}/confirm`,
-    {
-      method: "PUT",
       params: { ...queryParams },
       ...(options || {}),
     }
@@ -498,45 +438,6 @@ export async function scriptVersion(
   );
 }
 
-/** 此处后端没有提供注释 GET /api/projects/${param0}/script-workspace */
-export async function workspace(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.workspaceParams,
-  options?: { [key: string]: any }
-) {
-  const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
-    `/api/projects/${param0}/script-workspace`,
-    {
-      method: "GET",
-      params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
-}
-
-/** 此处后端没有提供注释 POST /api/projects/${param0}/scripts/ai-extract-elements */
-export async function extractElements(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.extractElementsParams,
-  body: API.ExtractScriptElementsRequest,
-  options?: { [key: string]: any }
-) {
-  const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseAiExecutionResponse>(
-    `/api/projects/${param0}/scripts/ai-extract-elements`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      params: { ...queryParams },
-      data: body,
-      ...(options || {}),
-    }
-  );
-}
-
 /** 此处后端没有提供注释 POST /api/projects/${param0}/scripts/ai-generate */
 export async function generate(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -589,7 +490,7 @@ export async function saveCurrent(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseVoid>(
     `/api/projects/${param0}/scripts/current`,
     {
       method: "PUT",
@@ -610,7 +511,7 @@ export async function applyVersion(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, versionId: param1, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseVoid>(
     `/api/projects/${param0}/scripts/versions/${param1}/apply`,
     {
       method: "PUT",
@@ -703,18 +604,15 @@ export async function createStoryboard(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
-    `/api/projects/${param0}/storyboards`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      params: { ...queryParams },
-      data: body,
-      ...(options || {}),
-    }
-  );
+  return request<API.ApiResponseVoid>(`/api/projects/${param0}/storyboards`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    params: { ...queryParams },
+    data: body,
+    ...(options || {}),
+  });
 }
 
 /** 此处后端没有提供注释 PUT /api/projects/${param0}/storyboards/${param1} */
@@ -725,7 +623,7 @@ export async function updateStoryboard(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, storyboardId: param1, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseVoid>(
     `/api/projects/${param0}/storyboards/${param1}`,
     {
       method: "PUT",
@@ -746,7 +644,7 @@ export async function deleteStoryboard(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, storyboardId: param1, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseVoid>(
     `/api/projects/${param0}/storyboards/${param1}`,
     {
       method: "DELETE",
@@ -764,7 +662,7 @@ export async function moveStoryboard(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, storyboardId: param1, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseVoid>(
     `/api/projects/${param0}/storyboards/${param1}/move`,
     {
       method: "PUT",
@@ -807,7 +705,7 @@ export async function confirmStoryboards(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseScriptWorkspaceResponse>(
+  return request<API.ApiResponseVoid>(
     `/api/projects/${param0}/storyboards/confirm`,
     {
       method: "PUT",

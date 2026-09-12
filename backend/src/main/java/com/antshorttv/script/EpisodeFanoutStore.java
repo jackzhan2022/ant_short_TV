@@ -21,6 +21,8 @@ public interface EpisodeFanoutStore {
 
     int markRunning(long snapshotId, Long episodeId);
 
+    java.util.Optional<EpisodeFanoutCoordinator.ChildResult> recoverCommitted(long snapshotId, Long episodeId);
+
     void markSucceeded(long snapshotId, Long episodeId, int unitAttemptNo, Long childRunId);
 
     void markFailed(

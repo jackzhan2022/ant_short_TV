@@ -115,19 +115,19 @@ class RemainingAnalysisAgentsEndToEndTest {
         saveSummary(firstIds.get(1), "林夏变装后发现怀表已经破损。", "怀表为何破损");
         saveAssets(firstIds.get(0), """
             {"schemaVersion":1,
-             "characters":[{"localKey":"c1","assetKey":null,"name":"林夏","aliases":[],"evidence":"林夏"}],
-             "characterLooks":[{"localKey":"l1","characterLocalKey":"c1","variantKey":null,"name":"日常装","description":"日常装","evidence":"日常装","preferred":true}],
-             "scenes":[{"localKey":"s1","assetKey":null,"name":"客厅","aliases":[],"evidence":"客厅","description":null,"timeAtmosphere":null,"usageEvidence":"走进客厅"}],
-             "props":[{"localKey":"p1","assetKey":null,"name":"怀表","aliases":[],"evidence":"怀表","ownerCharacterLocalKey":"c1","description":null}],
-             "propVariants":[{"localKey":"v1","propLocalKey":"p1","variantKey":null,"name":"完好","description":"完好","evidence":"完好怀表","preferred":true}]}
+             "characters":[{"localKey":"c1","assetKey":null,"name":"林夏","aliases":[],"prompt":"清晰主体、完整外观与一致构图","evidence":"林夏"}],
+             "characterLooks":[{"localKey":"l1","characterLocalKey":"c1","variantKey":null,"name":"日常装","description":"日常装","prompt":"清晰主体、完整外观与一致构图","evidence":"日常装","preferred":true}],
+             "scenes":[{"localKey":"s1","assetKey":null,"name":"客厅","aliases":[],"prompt":"清晰主体、完整外观与一致构图","evidence":"客厅","description":null,"timeAtmosphere":null,"usageEvidence":"走进客厅"}],
+             "props":[{"localKey":"p1","assetKey":null,"name":"怀表","aliases":[],"prompt":"清晰主体、完整外观与一致构图","evidence":"怀表","ownerCharacterLocalKey":"c1","description":null}],
+             "propVariants":[{"localKey":"v1","propLocalKey":"p1","variantKey":null,"name":"完好","description":"完好","prompt":"清晰主体、完整外观与一致构图","evidence":"完好怀表","preferred":true}]}
             """);
         saveAssets(firstIds.get(1), """
             {"schemaVersion":1,
-             "characters":[{"localKey":"c2","assetKey":null,"name":"林夏","aliases":[],"evidence":"林夏"}],
-             "characterLooks":[{"localKey":"l2","characterLocalKey":"c2","variantKey":null,"name":"晚礼服","description":"晚礼服","evidence":"晚礼服","preferred":true}],
-             "scenes":[{"localKey":"s2","assetKey":null,"name":"客厅","aliases":[],"evidence":"客厅","description":null,"timeAtmosphere":null,"usageEvidence":"回到客厅"}],
-             "props":[{"localKey":"p2","assetKey":null,"name":"怀表","aliases":[],"evidence":"怀表","ownerCharacterLocalKey":"c2","description":null}],
-             "propVariants":[{"localKey":"v2","propLocalKey":"p2","variantKey":null,"name":"破损","description":"破损","evidence":"破损状态","preferred":true}]}
+             "characters":[{"localKey":"c2","assetKey":null,"name":"林夏","aliases":[],"prompt":"清晰主体、完整外观与一致构图","evidence":"林夏"}],
+             "characterLooks":[{"localKey":"l2","characterLocalKey":"c2","variantKey":null,"name":"晚礼服","description":"晚礼服","prompt":"清晰主体、完整外观与一致构图","evidence":"晚礼服","preferred":true}],
+             "scenes":[{"localKey":"s2","assetKey":null,"name":"客厅","aliases":[],"prompt":"清晰主体、完整外观与一致构图","evidence":"客厅","description":null,"timeAtmosphere":null,"usageEvidence":"回到客厅"}],
+             "props":[{"localKey":"p2","assetKey":null,"name":"怀表","aliases":[],"prompt":"清晰主体、完整外观与一致构图","evidence":"怀表","ownerCharacterLocalKey":"c2","description":null}],
+             "propVariants":[{"localKey":"v2","propLocalKey":"p2","variantKey":null,"name":"破损","description":"破损","prompt":"清晰主体、完整外观与一致构图","evidence":"破损状态","preferred":true}]}
             """);
 
         assertThat(count("character_asset", "script_id = " + scriptId)).isEqualTo(1);
@@ -159,13 +159,16 @@ class RemainingAnalysisAgentsEndToEndTest {
         assertThat(fanoutStore.progress(snapshotId).status()).isEqualTo("SUCCEEDED");
         assertThat(fanoutStore.runnableUnits(snapshotId)).isEmpty();
 
-        ScriptWorkspaceResponse workspace = workspaceService.workspace(tenantId, projectId);
+        ScriptPageWorkspaceResponse workspace = workspaceService.scriptPageWorkspace(tenantId, projectId);
+        AssetSettingsSummaryResponse assets = workspaceService.assetSettingsSummary(tenantId, projectId);
         assertThat(workspace.episodes()).hasSize(2)
             .allSatisfy(episode -> assertThat(episode.formalSummary()).isNotNull());
-        assertThat(workspace.characters()).singleElement()
-            .satisfies(character -> assertThat(character.visual().variants()).hasSizeGreaterThanOrEqualTo(2));
-        assertThat(workspace.props()).singleElement()
-            .satisfies(prop -> assertThat(prop.visual().episodeBindings()).hasSize(2));
+        assertThat(assets.characters()).singleElement()
+            .satisfies(character -> assertThat(workspaceService.assetVisualWorkspace(tenantId, projectId,
+                "CHARACTER", character.id()).variants()).hasSizeGreaterThanOrEqualTo(2));
+        assertThat(assets.props()).singleElement()
+            .satisfies(prop -> assertThat(workspaceService.assetVisualWorkspace(tenantId, projectId,
+                "PROP", prop.id()).episodeBindings()).hasSize(2));
         assertThat(workspace.analysis().stages()).singleElement()
             .satisfies(stage -> assertThat(stage.fanout().completed()).isEqualTo(2));
     }

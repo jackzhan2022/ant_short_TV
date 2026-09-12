@@ -31,6 +31,15 @@ public class EpisodePromptContextService {
             modelId, episode, global);
     }
 
+    public Prepared prepareReextraction(ScriptAnalysisTaskEntity scope, Long episodeId, Long modelId) {
+        if (modelId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产重提取缺少冻结文本模型。");
+        }
+        EpisodeSource episode = episode(scope.getTenantId(), scope.getProjectId(), scope.getScriptId(), episodeId);
+        return create(scope.getTenantId(), scope.getProjectId(), scope.getScriptId(), episodeId,
+            modelId, episode, null);
+    }
+
     public Prepared prepareStoryboard(
         ScriptAiOperationEntity operation,
         Long episodeId,

@@ -13,7 +13,6 @@ import com.antshorttv.workflowagent.tool.StoryboardToolDataService;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -22,40 +21,34 @@ public class StoryboardAgentAdapter {
     private final StoryboardToolDataService storyboards;
     private final AiExecutionAttemptMapper attempts;
     private final EpisodePromptContextService contexts;
-    private final boolean enabled;
 
     @Autowired
     public StoryboardAgentAdapter(
         WorkflowAgentRunner runner,
         StoryboardToolDataService storyboards,
         AiExecutionAttemptMapper attempts,
-        EpisodePromptContextService contexts,
-        @Value("${ai.workflow-agent.storyboard-enabled:false}") boolean enabled
+        EpisodePromptContextService contexts
     ) {
         this.runner = runner;
         this.storyboards = storyboards;
         this.attempts = attempts;
         this.contexts = contexts;
-        this.enabled = enabled;
     }
 
     StoryboardAgentAdapter(
         WorkflowAgentRunner runner,
         StoryboardToolDataService storyboards,
-        AiExecutionAttemptMapper attempts,
-        boolean enabled
+        AiExecutionAttemptMapper attempts
     ) {
-        this(runner, storyboards, attempts, null, enabled);
+        this(runner, storyboards, attempts, null);
     }
 
-    public boolean enabled() { return enabled; }
 
     public Execution execute(
         ScriptAiOperationEntity operation,
         Long episodeId,
         AiExecutionContext executionContext
     ) {
-        if (!enabled) throw new IllegalStateException("分镜 Workflow Agent 尚未启用。");
         Long modelId = executionContext.task().resolvedModelId == null
             ? executionContext.task().requestedModelId : executionContext.task().resolvedModelId;
         EpisodePromptContextService.Prepared prepared = contexts == null

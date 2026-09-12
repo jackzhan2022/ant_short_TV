@@ -537,7 +537,7 @@ describe('ScriptReviewPage', () => {
     });
   });
 
-  it('shows Markdown reports with copy and md download while hiding issue actions', async () => {
+  it('shows only Markdown reports without a legacy format discriminator or issue payload', async () => {
     const markdownTask = {
       id: 12,
       projectId: 1,
@@ -547,25 +547,49 @@ describe('ScriptReviewPage', () => {
       selectedDimensions: ['台词合理性'],
       reviewScopeType: 'ALL',
       reviewScope: {},
-      resultFormat: 'MARKDOWN',
       reportMarkdown: '# 自定义审核\n\n|位置|建议|\n|---|---|\n|第1集|保留|',
       status: 'COMPLETED',
       overallProgress: 100,
-      issues: [],
     };
     mocks.queryReviewProject.mockResolvedValueOnce({
       data: {
-        project: { id: 1, name: '审稿样例', sourceType: 'TEXT', currentVersionId: 2, lastTaskId: 12, status: 'ACTIVE', versionCount: 1, latestRoundNo: 3 },
-        versions: [{ id: 2, projectId: 1, versionNo: 1, sourceType: 'IMPORT', content: '第1集\n正文' }],
-        tasks: [markdownTask],
+        project: {
+          id: 1,
+          name: '审稿样例',
+          sourceType: 'TEXT',
+          currentVersionId: 2,
+          lastTaskId: 12,
+          status: 'ACTIVE',
+          versionCount: 1,
+          latestRoundNo: 3,
+        },
+        versions: [
+          {
+            id: 2,
+            projectId: 1,
+            versionNo: 1,
+            sourceType: 'IMPORT',
+            content: '第1集\n正文',
+          },
+        ],
+        tasks: [{ ...markdownTask, reportMarkdown: undefined }],
       },
     });
     mocks.queryReviewTask.mockResolvedValueOnce({ data: markdownTask });
-    mocks.exportReviewReport.mockResolvedValue({ data: { fileName: 'report.md' } });
+    mocks.exportReviewReport.mockResolvedValue({
+      data: { fileName: 'report.md' },
+    });
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:markdown-report');
-    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const createObjectURL = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:markdown-report');
+    const revokeObjectURL = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => undefined);
     let downloadedFile: { download: string; href: string } | undefined;
     const downloadClick = vi
       .spyOn(HTMLAnchorElement.prototype, 'click')
@@ -575,35 +599,91 @@ describe('ScriptReviewPage', () => {
 
     render(<ScriptReviewPage />);
 
-    expect(await screen.findByTestId('markdown-report-reader')).toHaveTextContent('自定义审核');
-    expect(screen.getByTestId('markdown-report-reader')).toHaveTextContent('第1集|保留');
-    expect(screen.queryByRole('button', { name: /未处理/ })).not.toBeInTheDocument();
+    expect(
+      await screen.findByTestId('markdown-report-reader'),
+    ).toHaveTextContent('自定义审核');
+    expect(mocks.queryReviewTask).toHaveBeenCalledWith(markdownTask.id);
+    expect(screen.getByTestId('markdown-report-reader')).toHaveTextContent(
+      '第1集|保留',
+    );
+    expect(
+      screen.queryByRole('button', { name: /未处理/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('问题详情')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '复制报告' }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdownTask.reportMarkdown));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(markdownTask.reportMarkdown),
+    );
     fireEvent.click(screen.getByRole('button', { name: '下载 .md' }));
-    await waitFor(() => expect(mocks.exportReviewReport).toHaveBeenCalledWith(1, 2, 'MARKDOWN', 12));
+    await waitFor(() =>
+      expect(mocks.exportReviewReport).toHaveBeenCalledWith(
+        1,
+        2,
+        'MARKDOWN',
+        12,
+      ),
+    );
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-    expect(downloadedFile).toEqual({ download: 'report.md', href: 'blob:markdown-report' });
+    expect(downloadedFile).toEqual({
+      download: 'report.md',
+      href: 'blob:markdown-report',
+    });
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:markdown-report');
     downloadClick.mockRestore();
   });
 
   it('shows a completed task report as right-side findings when structured issues are empty', async () => {
     window.history.replaceState({}, '', '/script-review/tasks/30');
-    mocks.queryReviewTask.mockResolvedValue({ data: {
-      id: 30, projectId: 9, scriptVersionId: 9, roundNo: 1, reviewMode: 'DEEP', selectedDimensions: ['人物动机', '台词合理性'], reviewScopeType: 'ALL', reviewScope: {}, status: 'COMPLETED', overallProgress: 100, issues: [],
-      resultFormat: 'MARKDOWN',
-      reportMarkdown: '## 二、合并后的主要问题\n### 1. 角色转折缺少铺垫\n建议补充转折动机\n### 2. 字幕名称不一致\n建议统一译名\n## 三、各维度审核结论\n审核总结',
-      boundVersion: { id: 9, projectId: 9, versionNo: 1, sourceType: 'IMPORT', content: '剧本原文仍然可读' },
-    } });
+    mocks.queryReviewTask.mockResolvedValue({
+      data: {
+        id: 30,
+        projectId: 9,
+        scriptVersionId: 9,
+        roundNo: 1,
+        reviewMode: 'DEEP',
+        selectedDimensions: ['人物动机', '台词合理性'],
+        reviewScopeType: 'ALL',
+        reviewScope: {},
+        status: 'COMPLETED',
+        overallProgress: 100,
+        issues: [],
+        resultFormat: 'MARKDOWN',
+        issueCount: 0,
+        pendingIssueCount: 0,
+        reportMarkdown: `## 二、合并后的主要问题\n${Array.from(
+          { length: 20 },
+          (_, index) => `### ${index + 1}. 角色转折缺少铺垫\n建议补充转折动机`,
+        ).join('\n')}\n## 三、各维度审核结论\n### 1. 台词合理性\n审核总结`,
+        boundVersion: {
+          id: 9,
+          projectId: 9,
+          versionNo: 1,
+          sourceType: 'IMPORT',
+          content: '剧本原文仍然可读',
+        },
+      },
+    });
     render(<ScriptReviewPage />);
-    expect(await screen.findByRole('list', { name: '审核问题列表' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '1. 角色转折缺少铺垫' })).toBeVisible();
-    expect(screen.getByText('共 2 项问题')).toBeVisible();
+    expect(
+      await screen.findByRole('list', { name: '审核问题列表' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: '1. 角色转折缺少铺垫' }),
+    ).toBeVisible();
+    expect(screen.getByText('共 20 项问题')).toBeVisible();
+    expect(screen.getByLabelText('报告问题总数')).toHaveTextContent(
+      '20 项问题',
+    );
+    expect(
+      screen.queryByText(/0\s*项未处理|0\s*项已处理/),
+    ).not.toBeInTheDocument();
     expect(screen.getByText('剧本原文仍然可读')).toBeVisible();
-    expect(screen.getByRole('region', { name: '审核维度标签' })).toHaveTextContent('人物动机');
-    expect(screen.getByRole('region', { name: '审核维度标签' })).toHaveTextContent('台词合理性');
+    expect(
+      screen.getByRole('region', { name: '审核维度标签' }),
+    ).toHaveTextContent('人物动机');
+    expect(
+      screen.getByRole('region', { name: '审核维度标签' }),
+    ).toHaveTextContent('台词合理性');
     expect(screen.queryByText('审核记录与版本历史')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '审核记录' }));
     expect(screen.getByText('审核记录与版本历史')).toBeVisible();
@@ -640,24 +720,9 @@ describe('ScriptReviewPage', () => {
     expect(mocks.queryReviewProject).not.toHaveBeenCalled();
   });
 
-  it('renders each issue once and locates evidence in reading mode', async () => {
-    render(<ScriptReviewPage />);
-    expect(screen.getByRole('main').className).toContain('page');
-    expect(await screen.findAllByText('人名混乱')).toHaveLength(1);
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /人名混乱/ }));
-    expect(
-      screen.getByRole('region', { name: '剧本正文' }).querySelector('mark'),
-    ).toHaveTextContent('林晚说：别走。');
-    fireEvent.click(screen.getByRole('button', { name: '编辑剧本' }));
-    expect(screen.getByRole('textbox')).toHaveValue(
-      '第1集\n林晚说：别走。\n周野说：我会回来。',
-    );
-  });
-
   it('keeps review history out of the reading workspace until requested', async () => {
     render(<ScriptReviewPage />);
-    await screen.findByText('人名混乱');
+    await screen.findByText('审核报告');
     expect(screen.queryByText('第 2 轮 · QUICK')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '审核记录' }));
     expect(screen.getByText('第 2 轮 · QUICK')).toBeInTheDocument();
@@ -674,117 +739,6 @@ describe('ScriptReviewPage', () => {
     expect(screen.getByRole('combobox')).toBeDisabled();
   });
 
-  it('switches the highlighted evidence when choosing another hit', async () => {
-    render(<ScriptReviewPage />);
-    fireEvent.click(await screen.findByRole('button', { name: '定位命中 2' }));
-    expect(
-      screen.getByRole('region', { name: '剧本正文' }).querySelector('mark'),
-    ).toHaveTextContent('周野说：我会回来。');
-  });
-
-  it('loads issue details for a summarized selected task', async () => {
-    mocks.queryReviewProject.mockResolvedValueOnce({
-      data: {
-        project: {
-          id: 1,
-          name: '审稿样例',
-          sourceType: 'TEXT',
-          currentVersionId: 2,
-          lastTaskId: 7,
-          status: 'ACTIVE',
-          versionCount: 1,
-          latestRoundNo: 1,
-        },
-        versions: [
-          {
-            id: 2,
-            projectId: 1,
-            versionNo: 1,
-            sourceType: 'IMPORT',
-            content: '第1集\n正文',
-          },
-        ],
-        tasks: [
-          {
-            id: 7,
-            projectId: 1,
-            scriptVersionId: 2,
-            roundNo: 1,
-            reviewMode: 'QUICK',
-            selectedDimensions: ['台词合理性'],
-            reviewScopeType: 'ALL',
-            reviewScope: {},
-            status: 'COMPLETED',
-            overallProgress: 100,
-            issues: [],
-          },
-        ],
-      },
-    });
-    mocks.queryReviewTask.mockResolvedValueOnce({
-      data: {
-        id: 7,
-        projectId: 1,
-        scriptVersionId: 2,
-        roundNo: 1,
-        reviewMode: 'QUICK',
-        selectedDimensions: ['台词合理性'],
-        reviewScopeType: 'ALL',
-        reviewScope: {},
-        status: 'COMPLETED',
-        overallProgress: 100,
-        issues: [
-          {
-            id: 21,
-            taskId: 7,
-            scriptVersionId: 2,
-            roundNo: 1,
-            issueNo: 'R1-01',
-            dimension: '台词合理性',
-            severity: 'MEDIUM',
-            title: '真实问题',
-            position: {},
-            excerpt: '正文',
-            problem: '存在问题',
-            evidence: ['正文'],
-            suggestion: '调整',
-            status: 'new',
-            manuallyResolved: false,
-            hits: [],
-          },
-        ],
-      },
-    });
-
-    render(<ScriptReviewPage />);
-
-    await waitFor(() => expect(mocks.queryReviewTask).toHaveBeenCalledWith(7));
-    expect((await screen.findAllByText('真实问题')).length).toBeGreaterThan(0);
-    expect(screen.getByText('存在问题')).toBeInTheDocument();
-  });
-
-  it('highlights issue hits in the editor and shows version history', async () => {
-    render(<ScriptReviewPage />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '版本历史' }));
-    fireEvent.click(screen.getByRole('button', { name: '编辑剧本' }));
-    fireEvent.click(screen.getByRole('button', { name: '定位命中 1' }));
-
-    const editor = screen
-      .getAllByRole('textbox')
-      .filter((node) => node.tagName === 'TEXTAREA')[0] as HTMLTextAreaElement;
-    await waitFor(() => {
-      expect(editor.value).toContain('林晚说：别走。');
-      expect(editor.selectionStart).toBeGreaterThanOrEqual(0);
-      expect(editor.selectionEnd).toBeGreaterThan(editor.selectionStart);
-    });
-    expect(screen.getByText('当前版本 V2')).toBeInTheDocument();
-    expect(screen.getByText('第 1 轮 · 已完成')).toBeInTheDocument();
-    expect(screen.getByText('问题 2 · 已处理 1')).toBeInTheDocument();
-    expect(screen.getAllByText('整体良好')).toHaveLength(2);
-    expect(screen.getByText('PASS')).toBeInTheDocument();
-  });
-
   it('loads history for the version selected in the editor', async () => {
     render(<ScriptReviewPage />);
 
@@ -798,21 +752,10 @@ describe('ScriptReviewPage', () => {
     });
   });
 
-  it('selects the first issue when switching review rounds', async () => {
-    render(<ScriptReviewPage />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '审核记录' }));
-    fireEvent.click(await screen.findByText('第 2 轮 · QUICK'));
-    expect((await screen.findAllByText('因果链缺失')).length).toBeGreaterThan(
-      0,
-    );
-    expect(screen.getAllByText('人物离开的原因未交代')).not.toHaveLength(0);
-  });
-
   it('opens review configuration in a modal before creating a task', async () => {
     render(<ScriptReviewPage />);
 
-    await screen.findByText('审核问题');
+    await screen.findByText('审核报告');
     expect(
       await screen.findByRole('button', { name: '发起审核' }),
     ).toBeInTheDocument();
@@ -821,54 +764,10 @@ describe('ScriptReviewPage', () => {
     expect(screen.getByText('新建审核任务')).toBeInTheDocument();
   });
 
-  it('shows the selected issue in the issue detail panel', async () => {
-    render(<ScriptReviewPage />);
-
-    fireEvent.click((await screen.findAllByText('人名混乱'))[0]);
-    expect(screen.getByText('问题详情')).toBeInTheDocument();
-    expect(screen.getAllByText('同一句台词里称呼不一致')).not.toHaveLength(0);
-  });
-
-  it('filters the problem queue between pending and processed issues', async () => {
-    render(<ScriptReviewPage />);
-
-    expect(
-      await screen.findByRole('button', { name: '未处理 (1)' }),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '已处理 (1)' }));
-    expect(screen.getAllByText('已处理问题')).not.toHaveLength(0);
-    expect(screen.queryAllByText('人名混乱')).toHaveLength(0);
-
-    fireEvent.click(screen.getByRole('button', { name: '未处理 (1)' }));
-    expect(screen.getAllByText('人名混乱')).not.toHaveLength(0);
-  });
-
-  it('uses selected hit fragments for batch repair and keeps processed issues folded away', async () => {
-    render(<ScriptReviewPage />);
-
-    expect(await screen.findByText('审核问题')).toBeInTheDocument();
-    const firstHit = screen.getByLabelText('1. 台词：林晚说：别走。');
-    fireEvent.click(firstHit);
-    await waitFor(() => expect(firstHit).not.toBeChecked());
-    fireEvent.click(screen.getByRole('button', { name: '预览修订' }));
-
-    await waitFor(() => {
-      expect(mocks.batchRepairReview).toHaveBeenCalledWith(7, {
-        actionType: 'GLOBAL_REPLACE',
-        replacementFrom: '林晚说：别走。',
-        replacementTo: '林晚说：别走。',
-        selectedHitIds: [102],
-      });
-    });
-    expect(
-      screen.getByRole('button', { name: '已处理 (1)' }),
-    ).toBeInTheDocument();
-  });
-
   it('follows the shared review execution and selects its domain task', async () => {
     render(<ScriptReviewPage />);
 
-    await screen.findByText('审核问题');
+    await screen.findByText('审核报告');
     fireEvent.click(await screen.findByRole('button', { name: '发起审核' }));
     fireEvent.click(screen.getByRole('button', { name: '开始审核' }));
 
@@ -888,7 +787,7 @@ describe('ScriptReviewPage', () => {
   it('submits a single QUICK dimension with an explicit trusted scene scope', async () => {
     render(<ScriptReviewPage />);
 
-    await screen.findByText('审核问题');
+    await screen.findByText('审核报告');
     fireEvent.click(await screen.findByRole('button', { name: '发起审核' }));
     fireEvent.click(screen.getByLabelText('人物关系一致性'));
     fireEvent.click(screen.getByLabelText('人物认知一致性'));
@@ -926,7 +825,7 @@ describe('ScriptReviewPage', () => {
   it('submits the default ordered multi-dimension QUICK review', async () => {
     render(<ScriptReviewPage />);
 
-    await screen.findByText('审核问题');
+    await screen.findByText('审核报告');
     fireEvent.click(await screen.findByRole('button', { name: '发起审核' }));
     fireEvent.click(screen.getByRole('button', { name: '开始审核' }));
 
@@ -978,7 +877,7 @@ describe('ScriptReviewPage', () => {
             overallProgress: 60,
             currentAction: '逐维审核 2/4',
             workflowAgentCode: 'script-review',
-            workflowPhase: 'DEEP_CHILD',
+            workflowPhase: 'MARKDOWN_DEEP_CHILD',
             retryKind: 'FAILED_UNITS',
             stale: true,
             issues: [],
@@ -999,7 +898,7 @@ describe('ScriptReviewPage', () => {
                   dimension: '台词合理性',
                   attemptNo: 2,
                   status: 'FAILED',
-                  candidateSaved: false,
+                  reportSaved: false,
                   errorMessage: '模型调用失败',
                 },
               ],
@@ -1062,12 +961,10 @@ describe('ScriptReviewPage', () => {
     expect(screen.getByText('台词合理性 · 失败 · 第 2 次')).toBeInTheDocument();
     expect(screen.getByText('输入已变化')).toBeInTheDocument();
     expect(screen.getByText('Skill：台词合理性')).toBeInTheDocument();
-    expect(
-      screen.getByText('语义质检：已完成 · 候选 4 / 裁决 4'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('已确认 2')).toBeInTheDocument();
-    expect(screen.getByText('待人工 1')).toBeInTheDocument();
-    expect(screen.getByText('异常复核通过')).toBeInTheDocument();
+    expect(screen.queryByText(/语义质检/)).not.toBeInTheDocument();
+    expect(screen.queryByText('已确认 2')).not.toBeInTheDocument();
+    expect(screen.queryByText('待人工 1')).not.toBeInTheDocument();
+    expect(screen.queryByText('异常复核通过')).not.toBeInTheDocument();
     expect(
       screen.getByText('缓存 8960 / 9631 tokens · 命中率 93.03% · 耗时 1.2s'),
     ).toBeInTheDocument();
@@ -1075,7 +972,7 @@ describe('ScriptReviewPage', () => {
     await waitFor(() => expect(mocks.retryReviewTask).toHaveBeenCalledWith(9));
   });
 
-  it('retries only DEEP aggregation when child candidates are complete', async () => {
+  it('retries only DEEP aggregation when Markdown units are complete', async () => {
     mocks.queryReviewProject.mockResolvedValueOnce({
       data: {
         project: {
@@ -1112,7 +1009,7 @@ describe('ScriptReviewPage', () => {
             overallProgress: 90,
             currentAction: '聚合失败，可仅重试聚合',
             workflowAgentCode: 'script-review',
-            workflowPhase: 'DEEP_AGGREGATION',
+            workflowPhase: 'MARKDOWN_DEEP_AGGREGATION',
             retryKind: 'AGGREGATION_ONLY',
             stale: false,
             issues: [],
@@ -1175,9 +1072,11 @@ describe('ScriptReviewPage', () => {
         '缓存明细不可观测 · 输入 2100 tokens · 输出 120 · 耗时 0.9s',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('待人工复核 (1)')).toBeInTheDocument();
-    expect(screen.getByText('人物决定缺少动机')).toBeInTheDocument();
-    expect(screen.getByText('可能存在未明说的人物动机')).toBeInTheDocument();
+    expect(screen.queryByText('待人工复核 (1)')).not.toBeInTheDocument();
+    expect(screen.queryByText('人物决定缺少动机')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('可能存在未明说的人物动机'),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '仅重试聚合' }));
     await waitFor(() => expect(mocks.retryReviewTask).toHaveBeenCalledWith(10));
   });

@@ -161,15 +161,27 @@ class ProjectControllerTest {
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[0].initialScriptContent").doesNotExist());
-        mockMvc.perform(get("/api/projects/%d/script-workspace".formatted(createdId.longValue()))
+        MvcResult workspace = mockMvc.perform(get("/api/projects/%d/script-page-workspace".formatted(createdId.longValue()))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.script.title", is("雨夜归来")))
-            .andExpect(jsonPath("$.data.script.content", is("第一场，雨夜重逢。")))
+            .andExpect(jsonPath("$.data.script.content").doesNotExist())
             .andExpect(jsonPath("$.data.script.sourceType", is("MANUAL_EDIT")))
             .andExpect(jsonPath("$.data.versions", hasSize(1)))
-            .andExpect(jsonPath("$.data.versions[0].content", is("第一场，雨夜重逢。")));
+            .andExpect(jsonPath("$.data.versions[0].content").doesNotExist())
+            .andReturn();
+        Number versionId = JsonPath.read(workspace.getResponse().getContentAsString(), "$.data.versions[0].id");
+        mockMvc.perform(get("/api/projects/%d/script-content".formatted(createdId.longValue()))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.content", is("第一场，雨夜重逢。")));
+        mockMvc.perform(get("/api/projects/%d/script-versions/%d".formatted(createdId.longValue(), versionId.longValue()))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.content", is("第一场，雨夜重逢。")));
 
         mockMvc.perform(get("/api/projects/%d".formatted(createdId.longValue()))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))

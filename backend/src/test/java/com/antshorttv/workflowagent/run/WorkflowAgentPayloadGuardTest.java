@@ -10,7 +10,7 @@ class WorkflowAgentPayloadGuardTest {
     @ParameterizedTest
     @ValueSource(strings = {
         "save_episode_splitting", "save_episode_summary", "save_episode_assets",
-        "save_review_unit_result", "save_review_result"
+        "save_episode_storyboards", "save_global_understanding"
     })
     void boundsEveryNewFormalSavePayload(String toolCode) {
         WorkflowAgentPayloadGuard.requireBounded(toolCode, "{}", 8);

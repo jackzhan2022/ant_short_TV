@@ -18,10 +18,6 @@ record GenerateScriptRequest(
 ) {
 }
 
-record ExtractScriptElementsRequest(
-    @NotBlank @Size(max = 32) String elementType
-) {
-}
 
 record RewriteScriptRequest(
     @NotBlank @Size(max = 32) String rewriteType,

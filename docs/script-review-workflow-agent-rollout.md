@@ -1,37 +1,29 @@
-# 剧本审核 Workflow Agent 上线说明
+# 剧本审核 Workflow Agent 运行说明
 
-## 能力与数据归属
+## 当前唯一契约
 
-- 公共 Agent code 为 `script-review`，启动时注册到“Agent（新）”。Agent 定义持有 2 个公共 Skill、13 个审核维度 Skill、1 个跨单元综合 Skill，以及 6 个审核工具的最大授权集合。
-- 每次运行由服务端按所选维度和阶段冻结更小的 Skill/工具集合。客户端和模型都不能传入 Skill code、任务 ID、版本 ID、快照 ID 或单元 ID。
-- QUICK 使用一次 Agent Run；DEEP 使用冻结单元的子 Run，全部候选成功后再启动一次聚合 Run。
-- `review_unit_result` 只保存当前快照单元的候选文档。只有 `save_review_result` 能在一个事务中写入 `review_task.result_json`、`review_issue`、`review_issue_hit`、`review_issue_event` 和任务完成态。
-- Agent 默认最大步骤数为 `20`，为可信读取、分页、纠错和最终保存预留足够预算。
-- 既有审核轮次不迁移为候选数据，原问题、修复、导出、版本历史和回滚读取保持兼容。
+Agent 管理中的 `script-review` 用于全部 QUICK/DEEP 任务。输入冻结为独立审核剧本版本、范围和维度；只能使用 `read_review_context`、`read_review_content` 可信读取工具，聚合不开放工具。
+
+QUICK 直接返回 Markdown；DEEP 按冻结维度/范围生成 Markdown 单元，全部成功后按顺序聚合。服务端保存非空、未截断的最终报告；没有结构化问题、候选、语义裁决或终态保存工具。空白或截断输出失败，部分输出仅用于诊断。
+
+`review_unit_result` 保存 Markdown 片段，必须保留。成功单元复用、聚合恢复、取消、Run 日志和积分结算继续生效。只有失败单元重试与全部重新生成的区别，不存在新旧链路选择。
 
 ## 配置
 
 | 环境变量 | 默认值 | 说明 |
 |---|---:|---|
-| `AI_WORKFLOW_REVIEW_BOOTSTRAP_ENABLED` | `true` | 注册 Agent 定义；不代表业务切流 |
-| `AI_WORKFLOW_REVIEW_QUICK_ENABLED` | `false` | 新 QUICK 任务切到 Workflow Agent |
-| `AI_WORKFLOW_REVIEW_DEEP_ENABLED` | `false` | 新 DEEP 任务切到单元扇出与聚合 |
-| `REVIEW_WORKFLOW_QUICK_SAFE_CHARACTERS` | `50000` | QUICK 完整可信读取上限 |
-| `REVIEW_WORKFLOW_DEEP_UNIT_CHARACTERS` | `24000` | DEEP 单元字符上限 |
-| `REVIEW_WORKFLOW_DEEP_UNIT_OVERLAP` | `1200` | 相邻单元重叠字符数 |
-| `REVIEW_WORKFLOW_DEEP_MAX_CONCURRENCY` | `3` | 快照记录的最大并发预算 |
+| `REVIEW_WORKFLOW_QUICK_SAFE_CHARACTERS` | 50000 | QUICK 完整可信读取上限 |
+| `REVIEW_WORKFLOW_DEEP_UNIT_CHARACTERS` | 24000 | DEEP 单元字符上限 |
+| `REVIEW_WORKFLOW_DEEP_UNIT_OVERLAP` | 1200 | 单元重叠字符数 |
+| `REVIEW_WORKFLOW_DEEP_MAX_CONCURRENCY` | 3 | 并发预算 |
 
-## 上线顺序
+启动自动幂等初始化缺省 Agent/文件 Skill；保留管理员当前配置。没有 bootstrap、QUICK、DEEP、缓存观测或维度编排启用开关。
 
-1. 执行 V84 迁移，保持 QUICK/DEEP 两个切流开关关闭；确认 Agent、Skills 和 6 个工具在管理页可见。
-2. 非生产环境开启 QUICK，验证 ALL、EPISODES、SCENES、单维度、多维度、历史问题匹配、账单和取消。
-3. 生产小流量开启 QUICK，监控工具校验失败、重复保存、过大范围、延迟和调用量。
-4. 非生产开启 DEEP，验证无集标题剧本、失败单元重试、聚合重试、取消和服务重启后的进度恢复。
-5. 再逐步开启生产 DEEP。
+## 升级与恢复
 
-## 回滚
+按 `openspec/changes/remove-legacy-ai-workflow-paths/data-cleanup-manifest.md` 核对目标环境，停止旧进程、释放未完成预扣、保留恢复快照，再执行后续迁移并协调启动。验证可信范围、Markdown 报告、失败单元/聚合重试和取消。
 
-关闭 `AI_WORKFLOW_REVIEW_QUICK_ENABLED` 和 `AI_WORKFLOW_REVIEW_DEEP_ENABLED` 后，新执行回到旧的直接调用路径。已产生的 Agent Run、快照、候选和正式数据保留可读；不得删除 V84 表或回填历史候选。进行中的 DEEP 任务应先取消，避免晚到聚合写入。
+恢复必须使用一致快照与匹配程序，不通过旧直连回退。以下历史记录仅保留原验证证据，不能作为当前契约或本次验证通过证明。
 
 ## 2026-08-31 上线验证记录
 

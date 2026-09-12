@@ -35,7 +35,7 @@ import {
   regenerateEpisodeSummary,
   retryScriptAnalysis,
   type ScriptAnalysisStage,
-  type ScriptWorkspace,
+  type ProductionWorkspaceState,
   updateEpisodeSummary,
 } from './service';
 
@@ -78,24 +78,6 @@ const analysisStageLabels: Record<string, string> = {
   CHARACTER_SCENE_RECOGNITION: '角色场景识别',
 };
 
-const analysisStageDescriptions: Record<string, string> = {
-  GLOBAL_UNDERSTANDING: '先把主线、人物和冲突看清楚。',
-  EPISODE_SPLITTING: '按规则或 AI 把正文切成可追踪的分集。',
-  EPISODE_SUMMARY: '把每集的概要和钩子提炼出来。',
-  CHARACTER_SCENE_RECOGNITION: '识别角色、场景和关键道具。',
-};
-
-const safeJsonParse = (value?: string | null) => {
-  if (!value) {
-    return null;
-  }
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-};
-
 const listText = (value: unknown) => {
   if (!Array.isArray(value) || !value.length) {
     return '-';
@@ -106,128 +88,9 @@ const listText = (value: unknown) => {
     .join(' / ');
 };
 
-const renderResultSummary = (stageCode: string, resultJson?: string | null) => {
-  const parsed = safeJsonParse(resultJson);
-  if (!parsed) {
-    return (
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        暂无可解析结果
-      </Typography.Text>
-    );
-  }
-
-  if (stageCode === 'GLOBAL_UNDERSTANDING') {
-    return (
-      <div
-        style={{
-          display: 'grid',
-          gap: 6,
-          fontSize: 12,
-          color: 'var(--app-color-text)',
-        }}
-      >
-        <div>一句话：{parsed.logline || '-'}</div>
-        <div>主题：{listText(parsed.themes)}</div>
-        <div>人物：{listText(parsed.characters)}</div>
-        <div>关系：{listText(parsed.relationships)}</div>
-        <div>核心冲突：{parsed.coreConflict || '-'}</div>
-        <div>转折：{listText(parsed.turningPoints)}</div>
-        <div>悬念：{parsed.endingHook || '-'}</div>
-      </div>
-    );
-  }
-
-  if (stageCode === 'EPISODE_SPLITTING' || stageCode === 'EPISODE_SUMMARY') {
-    const episodes = Array.isArray(parsed.episodes) ? parsed.episodes : [];
-    return (
-      <div style={{ display: 'grid', gap: 8 }}>
-        {episodes.slice(0, 3).map((episode: any) => (
-          <div
-            key={episode.episodeNo}
-            style={{
-              padding: '8px 10px',
-              borderRadius: 6,
-              background: 'var(--app-color-bg-layout)',
-              border: '1px solid var(--app-color-border)',
-              fontSize: 12,
-              lineHeight: '18px',
-            }}
-          >
-            <div style={{ fontWeight: 700, color: 'var(--app-color-text)' }}>
-              第{episode.episodeNo || '-'}集{' '}
-              {episode.title ? `· ${episode.title}` : ''}
-            </div>
-            {stageCode === 'EPISODE_SPLITTING' ? (
-              <>
-                <div>概要：{episode.summary || '-'}</div>
-                <div>收尾：{episode.endingHook || '-'}</div>
-                <div style={{ color: '#6b7280' }}>
-                  正文：{episode.content || '-'}
-                </div>
-              </>
-            ) : (
-              <>
-                <div>概要：{episode.summary || '-'}</div>
-                <div>亮点：{listText(episode.highlights)}</div>
-                <div>收尾：{episode.endingHook || '-'}</div>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (stageCode === 'CHARACTER_SCENE_RECOGNITION') {
-    const characters = Array.isArray(parsed.characters)
-      ? parsed.characters
-      : [];
-    const scenes = Array.isArray(parsed.scenes) ? parsed.scenes : [];
-    const props = Array.isArray(parsed.props) ? parsed.props : [];
-    return (
-      <div style={{ display: 'grid', gap: 8, fontSize: 12 }}>
-        <div>
-          角色：
-          {characters
-            .map((item: any) => item.name)
-            .filter(Boolean)
-            .join(' / ') || '-'}
-        </div>
-        <div>
-          场景：
-          {scenes
-            .map((item: any) => item.name)
-            .filter(Boolean)
-            .join(' / ') || '-'}
-        </div>
-        <div>
-          道具：
-          {props
-            .map((item: any) => item.name)
-            .filter(Boolean)
-            .join(' / ') || '-'}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <pre
-      style={{
-        margin: 0,
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        fontSize: 12,
-        lineHeight: '18px',
-        color: 'var(--app-color-text)',
-      }}
-    >
-      {resultJson}
-    </pre>
-  );
-};
-
-const getEpisodeBlocks = (workspace: ScriptWorkspace): EpisodeBlock[] => {
+const getEpisodeBlocks = (
+  workspace: ProductionWorkspaceState,
+): EpisodeBlock[] => {
   if (workspace.episodes?.length) {
     return workspace.episodes.map((episode) => ({
       episodeNo: episode.episodeNo,
@@ -256,16 +119,8 @@ const labelStyle = {
   lineHeight: '18px',
 } as const;
 
-const valueStyle = {
-  marginTop: 6,
-  color: 'var(--app-color-text)',
-  fontSize: 15,
-  fontWeight: 700,
-  lineHeight: '22px',
-} as const;
-
 type ScriptAnalysisStateContainerProps = {
-  analysis: NonNullable<ScriptWorkspace['analysis']>;
+  analysis: NonNullable<ProductionWorkspaceState['analysis']>;
   onRetryStage: (stageCode: string) => void;
 };
 
@@ -394,7 +249,8 @@ export const ScriptAnalysisStateContainer = ({
                     </div>
                     {stage.fanout.timing?.totalMs != null ? (
                       <div>
-                        总耗时 {(stage.fanout.timing.totalMs / 1000).toFixed(1)}s
+                        总耗时 {(stage.fanout.timing.totalMs / 1000).toFixed(1)}
+                        s
                         {stage.fanout.timing.modelMs != null
                           ? ` · 模型 ${(stage.fanout.timing.modelMs / 1000).toFixed(1)}s`
                           : ''}
@@ -486,7 +342,11 @@ export const ScriptAnalysisStateContainer = ({
       </div>
       {analysis.episodes?.length ? (
         <div style={{ width: '100%', maxWidth: 760, marginTop: 36 }}>
-          <Flex justify="space-between" align="center" style={{ marginBottom: 10 }}>
+          <Flex
+            justify="space-between"
+            align="center"
+            style={{ marginBottom: 10 }}
+          >
             <Typography.Text strong>逐集处理状态</Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               自动分镜会消耗积分；已有或人工编辑的分镜不会被覆盖
@@ -517,7 +377,9 @@ export const ScriptAnalysisStateContainer = ({
                 </span>
                 <span title={episode.recognitionError || undefined}>
                   识别：{branchStatusText(episode.recognitionStatus)}
-                  {episode.recognitionRunId ? ` #${episode.recognitionRunId}` : ''}
+                  {episode.recognitionRunId
+                    ? ` #${episode.recognitionRunId}`
+                    : ''}
                 </span>
                 <span title={episode.storyboardError || undefined}>
                   分镜：{branchStatusText(episode.storyboardStatus)}
@@ -566,12 +428,22 @@ const ProductionWorkbenchScript = () => {
       .then((response) => {
         if (active) setVersionContent(response.data.content || '暂无版本正文');
       })
-      .catch(() => { if (active) setVersionError(true); })
-      .finally(() => { if (active) setVersionLoading(false); });
-    return () => { active = false; };
+      .catch(() => {
+        if (active) setVersionError(true);
+      })
+      .finally(() => {
+        if (active) setVersionLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [projectId, selectedVersionId, versionRetry]);
-  const [workspace, setWorkspace] = useState<ScriptWorkspace | null>(null);
-  const [episodeContents, setEpisodeContents] = useState<Record<string, string>>({});
+  const [workspace, setWorkspace] = useState<ProductionWorkspaceState | null>(
+    null,
+  );
+  const [episodeContents, setEpisodeContents] = useState<
+    Record<string, string>
+  >({});
   const loadedEpisodeIds = useRef(new Set<string>());
   const [loading, setLoading] = useState(false);
   const [currentEpisodeNo, setCurrentEpisodeNo] = useState(1);
@@ -609,19 +481,9 @@ const ProductionWorkbenchScript = () => {
             episodeWarnings: workspaceResponse.data.episodeWarnings,
             analysis: workspaceResponse.data.analysis,
             globalUnderstanding: workspaceResponse.data.globalUnderstanding,
-            characters:
-              assetResponse.data.characters?.length
-                ? assetResponse.data.characters
-                : (workspaceResponse.data as Partial<ScriptWorkspace>)
-                    .characters || [],
-            scenes:
-              assetResponse.data.scenes?.length
-                ? assetResponse.data.scenes
-                : (workspaceResponse.data as Partial<ScriptWorkspace>).scenes || [],
-            props:
-              assetResponse.data.props?.length
-                ? assetResponse.data.props
-                : (workspaceResponse.data as Partial<ScriptWorkspace>).props || [],
+            characters: assetResponse.data.characters || [],
+            scenes: assetResponse.data.scenes || [],
+            props: assetResponse.data.props || [],
             storyboards: [],
           });
         }
@@ -697,7 +559,9 @@ const ProductionWorkbenchScript = () => {
           storyboards: [],
         },
       ).map((episode) => {
-        const sourceEpisode = workspace?.episodes?.find((item) => item.episodeNo === episode.episodeNo);
+        const sourceEpisode = workspace?.episodes?.find(
+          (item) => item.episodeNo === episode.episodeNo,
+        );
         const content = sourceEpisode?.episodeId
           ? episodeContents[String(sourceEpisode.episodeId)]
           : undefined;
@@ -713,21 +577,33 @@ const ProductionWorkbenchScript = () => {
   const tenantId = getCurrentTenantId();
 
   useEffect(() => {
-    const episode = workspace?.episodes?.find((item) => item.episodeNo === currentEpisodeNo);
+    const episode = workspace?.episodes?.find(
+      (item) => item.episodeNo === currentEpisodeNo,
+    );
     const cacheKey = episode?.episodeId ? String(episode.episodeId) : undefined;
-    if (!episode?.episodeId || !cacheKey || loadedEpisodeIds.current.has(cacheKey)) return;
+    if (
+      !episode?.episodeId ||
+      !cacheKey ||
+      loadedEpisodeIds.current.has(cacheKey)
+    )
+      return;
     let active = true;
     queryScriptEpisode(projectId, episode.episodeId)
       .then((response) => {
         if (active) {
           loadedEpisodeIds.current.add(cacheKey);
-          setEpisodeContents((current) => ({ ...current, [cacheKey]: response.data.content || '' }));
+          setEpisodeContents((current) => ({
+            ...current,
+            [cacheKey]: response.data.content || '',
+          }));
         }
       })
       .catch(() => {
         loadedEpisodeIds.current.delete(cacheKey);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [currentEpisodeNo, projectId, workspace?.episodes]);
   const refreshWorkspace = async () => {
     const [workspaceResponse, assetResponse] = await Promise.all([
@@ -744,18 +620,9 @@ const ProductionWorkbenchScript = () => {
       episodeWarnings: workspaceResponse.data.episodeWarnings,
       analysis: workspaceResponse.data.analysis,
       globalUnderstanding: workspaceResponse.data.globalUnderstanding,
-      characters:
-        assetResponse.data.characters?.length
-          ? assetResponse.data.characters
-          : (workspaceResponse.data as Partial<ScriptWorkspace>).characters || [],
-      scenes:
-        assetResponse.data.scenes?.length
-          ? assetResponse.data.scenes
-          : (workspaceResponse.data as Partial<ScriptWorkspace>).scenes || [],
-      props:
-        assetResponse.data.props?.length
-          ? assetResponse.data.props
-          : (workspaceResponse.data as Partial<ScriptWorkspace>).props || [],
+      characters: assetResponse.data.characters || [],
+      scenes: assetResponse.data.scenes || [],
+      props: assetResponse.data.props || [],
       storyboards: [],
     });
   };
@@ -880,19 +747,43 @@ const ProductionWorkbenchScript = () => {
               <select
                 aria-label="选择历史版本"
                 value={selectedVersionId || ''}
-                onChange={(event) => setSelectedVersionId(Number(event.target.value) || undefined)}
+                onChange={(event) =>
+                  setSelectedVersionId(Number(event.target.value) || undefined)
+                }
               >
                 <option value="">请选择版本</option>
                 {workspace.versions.map((version) => (
-                  <option key={version.id} value={version.id}>版本 {version.versionNo}</option>
+                  <option key={version.id} value={version.id}>
+                    版本 {version.versionNo}
+                  </option>
                 ))}
               </select>
             </label>
             {selectedVersionId ? (
               <section aria-label="历史版本正文" aria-busy={versionLoading}>
-                {versionLoading ? '正在加载版本正文...' : versionError ? (
-                  <div role="alert">版本正文加载失败 <button type="button" onClick={() => setVersionRetry((value) => value + 1)}>重试版本</button></div>
-                ) : <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 400, overflow: 'auto' }}>{versionContent}</pre>}
+                {versionLoading ? (
+                  '正在加载版本正文...'
+                ) : versionError ? (
+                  <div role="alert">
+                    版本正文加载失败{' '}
+                    <button
+                      type="button"
+                      onClick={() => setVersionRetry((value) => value + 1)}
+                    >
+                      重试版本
+                    </button>
+                  </div>
+                ) : (
+                  <pre
+                    style={{
+                      whiteSpace: 'pre-wrap',
+                      maxHeight: 400,
+                      overflow: 'auto',
+                    }}
+                  >
+                    {versionContent}
+                  </pre>
+                )}
               </section>
             ) : null}
           </section>
@@ -1654,7 +1545,9 @@ const ProductionWorkbenchScript = () => {
             <Input.TextArea
               value={
                 activeEpisode?.copy ||
-                (currentEpisode?.episodeId ? '正在加载本集正文...' : '暂无本集正文')
+                (currentEpisode?.episodeId
+                  ? '正在加载本集正文...'
+                  : '暂无本集正文')
               }
               readOnly
               autoSize={{ minRows: 22, maxRows: 34 }}

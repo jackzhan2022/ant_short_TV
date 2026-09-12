@@ -25,7 +25,7 @@ class EpisodeSummaryAgentAdapterTest {
         EpisodePromptContextService contexts = mock(EpisodePromptContextService.class);
         when(contexts.prepare(any(), any(), any())).thenReturn(
             new EpisodePromptContextService.Prepared(501L, "COMMON_PREFIX", "CACHE_KEY", "HASH"));
-        EpisodeSummaryAgentAdapter adapter = new EpisodeSummaryAgentAdapter(runner, summaries, contexts, true);
+        EpisodeSummaryAgentAdapter adapter = new EpisodeSummaryAgentAdapter(runner, summaries, contexts);
         when(runner.runFormal(any(WorkflowAgentRunInput.class)))
             .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
         when(summaries.findCurrent(7L, 9L, 101L)).thenReturn(Optional.of(
@@ -33,17 +33,21 @@ class EpisodeSummaryAgentAdapterTest {
                 new ObjectMapper().readTree("{\"summary\":\"本集\",\"highlights\":[],\"endingHook\":null}"),
                 "AI", 77L, 10L, 10L, null, null)));
 
-        adapter.executeChild(task(), stage(), 101L, null, 11L);
+        adapter.executeClaimedChild(null, task(), stage(),
+            new EpisodeFanoutCoordinator.EpisodeUnit(101L, "e1", "fp", "RUNNING", 50L, 2), null, 11L);
 
         ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
         verify(runner).runFormal(input.capture());
         assertThat(input.getValue().stableContext()).isEqualTo("COMMON_PREFIX");
         assertThat(input.getValue().promptCacheKey()).isEqualTo("CACHE_KEY");
+        assertThat(input.getValue().trustedToolState()).containsEntry("fanoutSnapshotId", 50L)
+            .containsEntry("fanoutUnitAttemptNo", 2);
+        assertThat(input.getValue().promptCacheOptions()).isEmpty();
     }
 
     @Test
     void runsExactlyOneEpisodeWithoutGlobalUnderstandingAndRequiresCommittedSummary() throws Exception {
-        EpisodeSummaryAgentAdapter adapter = new EpisodeSummaryAgentAdapter(runner, summaries, true);
+        EpisodeSummaryAgentAdapter adapter = new EpisodeSummaryAgentAdapter(runner, summaries);
         when(runner.runFormal(any(WorkflowAgentRunInput.class)))
             .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
         when(summaries.findCurrent(7L, 9L, 101L)).thenReturn(Optional.of(
@@ -64,7 +68,7 @@ class EpisodeSummaryAgentAdapterTest {
 
     @Test
     void rejectsFinalTextWithoutCurrentFormalSave() {
-        EpisodeSummaryAgentAdapter adapter = new EpisodeSummaryAgentAdapter(runner, summaries, true);
+        EpisodeSummaryAgentAdapter adapter = new EpisodeSummaryAgentAdapter(runner, summaries);
         when(runner.runFormal(any(WorkflowAgentRunInput.class)))
             .thenReturn(new WorkflowAgentRunResult(77L, "概要文本"));
         when(summaries.findCurrent(7L, 9L, 101L)).thenReturn(Optional.empty());

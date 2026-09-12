@@ -11,7 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.flyway.target=112")
 @Transactional
 class RemainingAnalysisBackfillMigrationTest {
     @Autowired private JdbcTemplate jdbc;

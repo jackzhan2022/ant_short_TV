@@ -33,7 +33,6 @@ class ScriptEpisodeEntity extends TenantProjectRecord {
     private String stableKey;
     private Integer episodeNo;
     private String title;
-    private String summary;
     private String content;
     private String contentFingerprint;
     private String headingKey;
@@ -52,8 +51,6 @@ class ScriptEpisodeEntity extends TenantProjectRecord {
     public void setEpisodeNo(Integer episodeNo) { this.episodeNo = episodeNo; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
-    public String getSummary() { return summary; }
-    public void setSummary(String summary) { this.summary = summary; }
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
     public String getContentFingerprint() { return contentFingerprint; }
@@ -97,165 +94,6 @@ class ScriptEpisodeSummaryEntity extends TenantProjectRecord {
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public Long getUpdatedBy() { return updatedBy; }
     public void setUpdatedBy(Long updatedBy) { this.updatedBy = updatedBy; }
-}
-
-@TableName("script_asset_normalization_run")
-class ScriptAssetNormalizationRunEntity extends TenantProjectRecord {
-    private Long scriptId;
-    private Long scriptVersionId;
-    private Long analysisTaskId;
-    private Long analysisStageId;
-    private Long analysisResultId;
-    private Long executionId;
-    private Long attemptId;
-    private Long aiCallLogId;
-    private String idempotencyKey;
-    private String schemaVersion;
-    private String status;
-    private String rawResponse;
-    private String normalizedJson;
-    private String errorCode;
-    private String errorMessage;
-
-    public Long getScriptId() { return scriptId; }
-    public void setScriptId(Long scriptId) { this.scriptId = scriptId; }
-    public Long getScriptVersionId() { return scriptVersionId; }
-    public void setScriptVersionId(Long scriptVersionId) { this.scriptVersionId = scriptVersionId; }
-    public Long getAnalysisTaskId() { return analysisTaskId; }
-    public void setAnalysisTaskId(Long analysisTaskId) { this.analysisTaskId = analysisTaskId; }
-    public Long getAnalysisStageId() { return analysisStageId; }
-    public void setAnalysisStageId(Long analysisStageId) { this.analysisStageId = analysisStageId; }
-    public Long getAnalysisResultId() { return analysisResultId; }
-    public void setAnalysisResultId(Long analysisResultId) { this.analysisResultId = analysisResultId; }
-    public Long getExecutionId() { return executionId; }
-    public void setExecutionId(Long executionId) { this.executionId = executionId; }
-    public Long getAttemptId() { return attemptId; }
-    public void setAttemptId(Long attemptId) { this.attemptId = attemptId; }
-    public Long getAiCallLogId() { return aiCallLogId; }
-    public void setAiCallLogId(Long aiCallLogId) { this.aiCallLogId = aiCallLogId; }
-    public String getIdempotencyKey() { return idempotencyKey; }
-    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
-    public String getSchemaVersion() { return schemaVersion; }
-    public void setSchemaVersion(String schemaVersion) { this.schemaVersion = schemaVersion; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-    public String getRawResponse() { return rawResponse; }
-    public void setRawResponse(String rawResponse) { this.rawResponse = rawResponse; }
-    public String getNormalizedJson() { return normalizedJson; }
-    public void setNormalizedJson(String normalizedJson) { this.normalizedJson = normalizedJson; }
-    public String getErrorCode() { return errorCode; }
-    public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
-    public String getErrorMessage() { return errorMessage; }
-    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
-}
-
-@TableName("script_asset_candidate")
-class ScriptAssetCandidateEntity extends TenantProjectRecord {
-    private Long runId;
-    private String assetType;
-    private Integer sourceIndex;
-    private String sourceKey;
-    private String name;
-    private String normalizedName;
-    private String candidateJson;
-    private String validationStatus;
-    private String validationErrorsJson;
-    private String duplicateGroupKey;
-    private Long proposedTargetId;
-    private String matchType;
-    private BigDecimal matchConfidence;
-    private String matchEvidenceJson;
-    private String reviewStatus;
-
-    public Long getRunId() { return runId; }
-    public void setRunId(Long runId) { this.runId = runId; }
-    public String getAssetType() { return assetType; }
-    public void setAssetType(String assetType) { this.assetType = assetType; }
-    public Integer getSourceIndex() { return sourceIndex; }
-    public void setSourceIndex(Integer sourceIndex) { this.sourceIndex = sourceIndex; }
-    public String getSourceKey() { return sourceKey; }
-    public void setSourceKey(String sourceKey) { this.sourceKey = sourceKey; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getNormalizedName() { return normalizedName; }
-    public void setNormalizedName(String normalizedName) { this.normalizedName = normalizedName; }
-    public String getCandidateJson() { return candidateJson; }
-    public void setCandidateJson(String candidateJson) { this.candidateJson = candidateJson; }
-    public String getValidationStatus() { return validationStatus; }
-    public void setValidationStatus(String validationStatus) { this.validationStatus = validationStatus; }
-    public String getValidationErrorsJson() { return validationErrorsJson; }
-    public void setValidationErrorsJson(String validationErrorsJson) { this.validationErrorsJson = validationErrorsJson; }
-    public String getDuplicateGroupKey() { return duplicateGroupKey; }
-    public void setDuplicateGroupKey(String duplicateGroupKey) { this.duplicateGroupKey = duplicateGroupKey; }
-    public Long getProposedTargetId() { return proposedTargetId; }
-    public void setProposedTargetId(Long proposedTargetId) { this.proposedTargetId = proposedTargetId; }
-    public String getMatchType() { return matchType; }
-    public void setMatchType(String matchType) { this.matchType = matchType; }
-    public BigDecimal getMatchConfidence() { return matchConfidence; }
-    public void setMatchConfidence(BigDecimal matchConfidence) { this.matchConfidence = matchConfidence; }
-    public String getMatchEvidenceJson() { return matchEvidenceJson; }
-    public void setMatchEvidenceJson(String matchEvidenceJson) { this.matchEvidenceJson = matchEvidenceJson; }
-    public String getReviewStatus() { return reviewStatus; }
-    public void setReviewStatus(String reviewStatus) { this.reviewStatus = reviewStatus; }
-}
-
-@TableName("script_asset_candidate_alias")
-class ScriptAssetCandidateAliasEntity {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long candidateId;
-    private String aliasName;
-    private String normalizedAlias;
-    private String source;
-    private String evidenceJson;
-    private LocalDateTime createdAt;
-
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public Long getCandidateId() { return candidateId; }
-    public void setCandidateId(Long candidateId) { this.candidateId = candidateId; }
-    public String getAliasName() { return aliasName; }
-    public void setAliasName(String aliasName) { this.aliasName = aliasName; }
-    public String getNormalizedAlias() { return normalizedAlias; }
-    public void setNormalizedAlias(String normalizedAlias) { this.normalizedAlias = normalizedAlias; }
-    public String getSource() { return source; }
-    public void setSource(String source) { this.source = source; }
-    public String getEvidenceJson() { return evidenceJson; }
-    public void setEvidenceJson(String evidenceJson) { this.evidenceJson = evidenceJson; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-}
-
-@TableName("script_asset_promotion_decision")
-class ScriptAssetPromotionDecisionEntity extends TenantProjectRecord {
-    private Long candidateId;
-    private String decisionType;
-    private Long requestedTargetId;
-    private Long resultAssetId;
-    private String idempotencyKey;
-    private String status;
-    private String errorCode;
-    private String errorMessage;
-    private Long decidedBy;
-
-    public Long getCandidateId() { return candidateId; }
-    public void setCandidateId(Long candidateId) { this.candidateId = candidateId; }
-    public String getDecisionType() { return decisionType; }
-    public void setDecisionType(String decisionType) { this.decisionType = decisionType; }
-    public Long getRequestedTargetId() { return requestedTargetId; }
-    public void setRequestedTargetId(Long requestedTargetId) { this.requestedTargetId = requestedTargetId; }
-    public Long getResultAssetId() { return resultAssetId; }
-    public void setResultAssetId(Long resultAssetId) { this.resultAssetId = resultAssetId; }
-    public String getIdempotencyKey() { return idempotencyKey; }
-    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-    public String getErrorCode() { return errorCode; }
-    public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
-    public String getErrorMessage() { return errorMessage; }
-    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
-    public Long getDecidedBy() { return decidedBy; }
-    public void setDecidedBy(Long decidedBy) { this.decidedBy = decidedBy; }
 }
 
 @TableName("asset_visual_variant")

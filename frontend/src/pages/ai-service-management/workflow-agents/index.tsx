@@ -511,7 +511,7 @@ const WorkflowAgentsPage = () => {
         <Alert
           type="info"
           showIcon
-          title="Agent（新）是独立的纯文本工具工作流；保存后立即生效，当前不保留配置版本。"
+          title="Agent 是独立的纯文本工具工作流；保存后立即生效，当前不保留配置版本。"
         />
         <Space wrap>
           <Input.Search

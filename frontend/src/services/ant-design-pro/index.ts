@@ -16,7 +16,6 @@ import * as platformCommercialEntitlementController from "./platformCommercialEn
 import * as workflowSkillController from "./workflowSkillController";
 import * as workflowAgentController from "./workflowAgentController";
 import * as platformAiManagementController from "./platformAiManagementController";
-import * as editableAiDefinitionController from "./editableAiDefinitionController";
 import * as tenantMemberController from "./tenantMemberController";
 import * as tenantInvitationController from "./tenantInvitationController";
 import * as commercialOrderController from "./commercialOrderController";
@@ -28,7 +27,6 @@ import * as platformCommercialPackageController from "./platformCommercialPackag
 import * as platformCommercialOrderController from "./platformCommercialOrderController";
 import * as workflowAgentRunController from "./workflowAgentRunController";
 import * as platformAiAccountingController from "./platformAiAccountingController";
-import * as builtInAgentCatalogController from "./builtInAgentCatalogController";
 import * as wechatPaymentNotificationController from "./wechatPaymentNotificationController";
 import * as authController from "./authController";
 import * as materialFileController from "./materialFileController";
@@ -56,7 +54,6 @@ export default {
   workflowSkillController,
   workflowAgentController,
   platformAiManagementController,
-  editableAiDefinitionController,
   tenantMemberController,
   tenantInvitationController,
   commercialOrderController,
@@ -68,7 +65,6 @@ export default {
   platformCommercialOrderController,
   workflowAgentRunController,
   platformAiAccountingController,
-  builtInAgentCatalogController,
   wechatPaymentNotificationController,
   authController,
   materialFileController,

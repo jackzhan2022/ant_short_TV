@@ -12,7 +12,7 @@ record ScriptEpisodeNavigation(
 ) {
     static ScriptEpisodeNavigation from(ScriptEpisodeEntity entity, ScriptEpisodeSummaryDocument formalSummary) {
         return new ScriptEpisodeNavigation(entity.getId(), entity.getEpisodeNo(), entity.getTitle(),
-            entity.getSummary(), entity.getContentFingerprint(), entity.getGeneratedByRunId(), formalSummary);
+            ScriptEpisodeSummaryDocument.summaryText(formalSummary), entity.getContentFingerprint(), entity.getGeneratedByRunId(), formalSummary);
     }
 
     ScriptEpisodeResponse withoutContent() {

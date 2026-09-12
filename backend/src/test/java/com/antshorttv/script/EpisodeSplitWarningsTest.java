@@ -71,9 +71,8 @@ class EpisodeSplitWarningsTest {
         assertThat(json.path("episodeWarnings")).isEmpty();
     }
 
-    private ScriptWorkspaceResponse workspace(String source, List<ScriptEpisodeResponse> episodes) {
-        return new ScriptWorkspaceResponse(1L,
-            new ScriptResponse(1L, 1L, "测试", "UPLOAD", source, "DRAFT", 1L, null),
-            List.of(), List.of(), List.of(), List.of(), List.of(), episodes, null, null);
+    private java.util.Map<String, Object> workspace(String source, List<ScriptEpisodeResponse> episodes) {
+        return java.util.Map.of("episodes", episodes,
+            "episodeWarnings", new EpisodeSplitWarnings().inspect(source, episodes));
     }
 }

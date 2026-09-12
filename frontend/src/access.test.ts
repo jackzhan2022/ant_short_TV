@@ -138,7 +138,17 @@ describe('access', () => {
     expect(result.canEditWorkflowAgents).toBe(true);
     expect(result.canViewWorkflowSkills).toBe(true);
     expect(result.canEditWorkflowSkills).toBe(false);
-    expect(result.canViewBuiltInAiAgents).toBe(false);
+    expect(result).not.toHaveProperty('canViewBuiltInAiAgents');
+  });
+
+  it('does not grant current configuration access from retired Agent permissions', () => {
+    const result = access({
+      currentUser: { userid: '1', name: 'Legacy Viewer', access: 'user' },
+      platformPermissions: ['PLATFORM_AI_AGENT_VIEW'],
+    });
+    expect(result.canViewAiManagement).toBe(false);
+    expect(result.canViewWorkflowAgents).toBe(false);
+    expect(result.canViewWorkflowSkills).toBe(false);
   });
 
   it('should allow authenticated users to enter project center routes', () => {

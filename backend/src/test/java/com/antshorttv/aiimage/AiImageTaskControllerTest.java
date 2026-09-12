@@ -41,7 +41,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@SpringBootTest(properties = "ai.execution.dispatcher.enabled=false")
+@SpringBootTest
 @AutoConfigureMockMvc
 class AiImageTaskControllerTest {
     private static HttpServer responsesServer;
@@ -181,17 +181,17 @@ class AiImageTaskControllerTest {
         grantTeamPoints(tenantId, 5);
         jdbcTemplate.update("""
             insert into character_asset
-              (tenant_id, project_id, name, role_type, status, merge_target_id, created_by, created_at, updated_at)
-            values (?, ?, '林夏', 'LEAD', 'CONFIRMED', null, ?, now(), now())
+              (tenant_id, project_id, name, role_type, prompt, status, merge_target_id, created_by, created_at, updated_at)
+            values (?, ?, '林夏', 'LEAD', '林夏完整定妆', 'CONFIRMED', null, ?, now(), now())
             """, tenantId, projectId, ownerId);
         Long assetId = jdbcTemplate.queryForObject(
             "select id from character_asset where tenant_id = ? and project_id = ? order by id desc limit 1",
             Long.class, tenantId, projectId);
         jdbcTemplate.update("""
             insert into asset_visual_variant
-              (tenant_id, project_id, asset_type, asset_id, name, source_type, generation_status,
+              (tenant_id, project_id, asset_type, asset_id, name, prompt, source_type, generation_status,
                is_primary, created_by, created_at, updated_at)
-            values (?, ?, 'CHARACTER', ?, '礼服', 'GENERATED', 'NOT_STARTED', true, ?, now(), now())
+            values (?, ?, 'CHARACTER', ?, '礼服', '礼服造型', 'GENERATED', 'NOT_STARTED', true, ?, now(), now())
             """, tenantId, projectId, assetId, ownerId);
         Long variantId = jdbcTemplate.queryForObject(
             "select id from asset_visual_variant where tenant_id = ? and project_id = ? order by id desc limit 1",
@@ -232,17 +232,17 @@ class AiImageTaskControllerTest {
         grantTeamPoints(tenantId, 5);
         jdbcTemplate.update("""
             insert into character_asset
-              (tenant_id, project_id, name, role_type, status, merge_target_id, created_by, created_at, updated_at)
-            values (?, ?, '林夏', 'LEAD', 'CONFIRMED', null, ?, now(), now())
+              (tenant_id, project_id, name, role_type, prompt, status, merge_target_id, created_by, created_at, updated_at)
+            values (?, ?, '林夏', 'LEAD', '林夏完整定妆', 'CONFIRMED', null, ?, now(), now())
             """, tenantId, projectId, ownerId);
         Long assetId = jdbcTemplate.queryForObject(
             "select id from character_asset where tenant_id = ? and project_id = ? order by id desc limit 1",
             Long.class, tenantId, projectId);
         jdbcTemplate.update("""
             insert into asset_visual_variant
-              (tenant_id, project_id, asset_type, asset_id, name, source_type, generation_status,
+              (tenant_id, project_id, asset_type, asset_id, name, prompt, source_type, generation_status,
                is_primary, created_by, created_at, updated_at)
-            values (?, ?, 'CHARACTER', ?, '礼服', 'GENERATED', 'NOT_STARTED', true, ?, now(), now())
+            values (?, ?, 'CHARACTER', ?, '礼服', '礼服造型', 'GENERATED', 'NOT_STARTED', true, ?, now(), now())
             """, tenantId, projectId, assetId, ownerId);
         Long variantId = jdbcTemplate.queryForObject(
             "select id from asset_visual_variant where tenant_id = ? and project_id = ? order by id desc limit 1",

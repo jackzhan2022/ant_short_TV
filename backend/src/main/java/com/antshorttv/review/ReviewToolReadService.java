@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Map;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -20,7 +19,6 @@ public class ReviewToolReadService {
     private final ReviewScriptVersionMapper versions;
     private final ReviewContentService contentService;
     private final ReviewFanoutRepository fanout;
-    private final JdbcTemplate jdbc;
     private final ObjectMapper json;
 
     public ReviewToolReadService(
@@ -28,14 +26,12 @@ public class ReviewToolReadService {
         ReviewScriptVersionMapper versions,
         ReviewContentService contentService,
         ReviewFanoutRepository fanout,
-        JdbcTemplate jdbc,
         ObjectMapper json
     ) {
         this.tasks = tasks;
         this.versions = versions;
         this.contentService = contentService;
         this.fanout = fanout;
-        this.jdbc = jdbc;
         this.json = json;
     }
 
@@ -115,54 +111,6 @@ public class ReviewToolReadService {
         return result;
     }
 
-    public JsonNode readHistory(ToolExecutionContext context, JsonNode arguments) {
-        State state = state(context);
-        int page = Math.max(1, arguments.path("page").asInt(1));
-        int pageSize = Math.min(100, Math.max(1, arguments.path("pageSize").asInt(50)));
-        int offset = (page - 1) * pageSize;
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-            select issue.id, issue.issue_no, issue.dimension, issue.severity, issue.title,
-                   issue.status, issue.manually_resolved, issue.related_issue_no,
-                   issue.position_json, issue.excerpt, issue.problem, issue.suggestion
-              from review_issue issue
-             where issue.tenant_id = ? and issue.project_id = ? and issue.round_no < ?
-               and issue.dimension in (%s)
-             order by issue.round_no desc, issue.id asc limit ? offset ?
-            """.formatted(placeholders(activeDimensions(state).size())), historyArgs(
-                context.tenantId(), state.scope.reviewProjectId(), state.task.getRoundNo(),
-                activeDimensions(state), pageSize + 1, offset));
-        boolean hasMore = rows.size() > pageSize;
-        if (hasMore) rows = rows.subList(0, pageSize);
-        ArrayNode issues = json.createArrayNode();
-        for (Map<String, Object> row : rows) {
-            ObjectNode issue = issues.addObject();
-            row.forEach((key, value) -> issue.set(camel(key), json.valueToTree(value)));
-            Long issueId = issueId(row);
-            issue.set("hits", json.valueToTree(jdbc.queryForList("""
-                select episode_no, scene_no, line_no, anchor_label, excerpt
-                  from review_issue_hit where issue_id = ? order by hit_no limit 50
-                """, issueId)));
-            issue.set("events", json.valueToTree(jdbc.queryForList("""
-                select event_type, previous_status, new_status, created_at
-                  from review_issue_event where issue_id = ? order by created_at limit 50
-                """, issueId)));
-        }
-        ObjectNode result = json.createObjectNode();
-        result.set("issues", issues);
-        result.put("hasMore", hasMore);
-        return result;
-    }
-
-    Long issueId(Map<String, Object> row) {
-        Object value = row.entrySet().stream()
-            .filter(entry -> "id".equalsIgnoreCase(entry.getKey()))
-            .map(Map.Entry::getValue)
-            .findFirst()
-            .orElseThrow(() -> invalid("审核历史缺少问题标识。"));
-        if (!(value instanceof Number number)) throw invalid("审核历史问题标识无效。");
-        return number.longValue();
-    }
-
     State state(ToolExecutionContext context) {
         ReviewToolScope scope = context.reviewScope();
         if (scope == null || context.taskId() == null) throw invalid("缺少可信审核作用域。");
@@ -206,28 +154,6 @@ public class ReviewToolReadService {
         if (value == null || value.isBlank()) return Map.of();
         try { return json.readValue(value, new TypeReference<>() {}); }
         catch (Exception exception) { throw invalid("审核范围配置无效。"); }
-    }
-
-    private String placeholders(int count) {
-        if (count <= 0) throw invalid("审核维度不能为空。");
-        return String.join(",", java.util.Collections.nCopies(count, "?"));
-    }
-
-    private Object[] historyArgs(Long tenantId, Long projectId, Integer round, List<String> dimensions, int limit, int offset) {
-        java.util.ArrayList<Object> args = new java.util.ArrayList<>();
-        args.add(tenantId); args.add(projectId); args.add(round); args.addAll(dimensions); args.add(limit); args.add(offset);
-        return args.toArray();
-    }
-
-    private String camel(String value) {
-        String lower = value.toLowerCase();
-        StringBuilder result = new StringBuilder();
-        boolean upper = false;
-        for (char c : lower.toCharArray()) {
-            if (c == '_') upper = true;
-            else { result.append(upper ? Character.toUpperCase(c) : c); upper = false; }
-        }
-        return result.toString();
     }
 
     private BusinessException invalid(String message) {

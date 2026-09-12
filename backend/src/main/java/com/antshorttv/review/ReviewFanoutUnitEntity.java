@@ -20,7 +20,7 @@ public class ReviewFanoutUnitEntity {
     private String status;
     private Long childRunId;
     private Integer attemptNo;
-    private Boolean candidateSaved;
+    private Boolean reportSaved;
     private String errorCode;
     private String errorMessage;
     private LocalDateTime createdAt;
@@ -41,7 +41,7 @@ public class ReviewFanoutUnitEntity {
     public String getStatus() { return status; } public void setStatus(String v) { status = v; }
     public Long getChildRunId() { return childRunId; } public void setChildRunId(Long v) { childRunId = v; }
     public Integer getAttemptNo() { return attemptNo; } public void setAttemptNo(Integer v) { attemptNo = v; }
-    public Boolean getCandidateSaved() { return candidateSaved; } public void setCandidateSaved(Boolean v) { candidateSaved = v; }
+    public Boolean getReportSaved() { return reportSaved; } public void setReportSaved(Boolean v) { reportSaved = v; }
     public String getErrorCode() { return errorCode; } public void setErrorCode(String v) { errorCode = v; }
     public String getErrorMessage() { return errorMessage; } public void setErrorMessage(String v) { errorMessage = v; }
     public LocalDateTime getCreatedAt() { return createdAt; } public void setCreatedAt(LocalDateTime v) { createdAt = v; }

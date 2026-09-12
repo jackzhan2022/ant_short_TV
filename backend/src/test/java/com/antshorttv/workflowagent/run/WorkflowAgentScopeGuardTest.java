@@ -106,6 +106,8 @@ class WorkflowAgentScopeGuardTest {
 
     @Test
     void assetRecognitionAgentRequiresItsScopedReextractionOperationExecutionIdentity() {
+        when(jdbc.queryForObject(anyString(), eq(String.class), eq(501L)))
+            .thenReturn("SCRIPT_AI_OPERATION");
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             "short-drama-asset-recognition", "run", 7L, 25L, 31L, 77L, 41L, null, 9L,
@@ -120,6 +122,29 @@ class WorkflowAgentScopeGuardTest {
         assertThat(sql.getValue()).contains(
             "SCRIPT_AI_OPERATION", "operation.operation_type = ?", "operation.execution_id = execution.id");
         verify(permissions, never()).require(any(), any(), anyString());
+    }
+
+    @Test
+    void assetRecognitionStillAuthorizesTheScriptAnalysisEntryPoint() {
+        when(jdbc.queryForObject(anyString(), eq(String.class), eq(501L)))
+            .thenReturn("SCRIPT_ANALYSIS_TASK");
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class)))
+            .thenAnswer(invocation -> invocation.getArgument(0, String.class)
+                .contains("join script_ai_operation") ? 0 : 1);
+        guard.requireAuthorized(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "run", 7L, 25L, 31L, 77L, 41L, 42L, 9L,
+            501L, 502L, 3, 8L), List.of("read_current_episode", "save_episode_assets"));
+        verify(permissions, never()).require(any(), any(), anyString());
+    }
+
+    @Test
+    void assetRecognitionRejectsUnrelatedExecutionBusinessType() {
+        when(jdbc.queryForObject(anyString(), eq(String.class), eq(501L))).thenReturn("REVIEW_TASK");
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
+        assertThatThrownBy(() -> guard.requireAuthorized(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "run", 7L, 25L, 31L, 77L, 41L, null, 9L,
+            501L, 502L, 3, 8L), List.of("read_current_episode", "save_episode_assets")))
+            .isInstanceOf(BusinessException.class);
     }
 
     @Test
@@ -185,10 +210,10 @@ class WorkflowAgentScopeGuardTest {
         when(jdbc.queryForObject(anyString(), eq(Integer.class),
             any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1, 0);
         WorkflowAgentRunInput input = reviewInput(new ReviewToolScope(
-            301L, 302L, null, null, 1, "QUICK", List.of("台词合理性")));
+            301L, 302L, null, null, 1, "MARKDOWN_QUICK", List.of("台词合理性")));
 
         guard.requireAuthorized(input, List.of(
-            "read_review_context", "read_review_content", "save_review_result"));
+            "read_review_context", "read_review_content"));
         assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("read_review_issue_history")))
             .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
         assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("save_review_unit_result")))
@@ -199,7 +224,7 @@ class WorkflowAgentScopeGuardTest {
     void rejectsForeignReviewTaskVersionSnapshotAndUnitScopes() {
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(0);
         WorkflowAgentRunInput foreignTask = reviewInput(new ReviewToolScope(
-            301L, 999L, null, null, 1, "QUICK", List.of("台词合理性")));
+            301L, 999L, null, null, 1, "MARKDOWN_QUICK", List.of("台词合理性")));
         assertThatThrownBy(() -> guard.requireAuthorized(foreignTask, List.of("read_review_context")))
             .isInstanceOf(BusinessException.class).hasMessageContaining("不匹配");
     }
@@ -208,9 +233,9 @@ class WorkflowAgentScopeGuardTest {
     void deepChildRequiresItsOwnSnapshotUnitAndPhaseAllowlist() {
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
         WorkflowAgentRunInput input = reviewInput(new ReviewToolScope(
-            301L, 302L, 303L, 304L, 1, "DEEP_CHILD", List.of("道具连续性")));
+            301L, 302L, 303L, 304L, 1, "MARKDOWN_DEEP_CHILD", List.of("道具连续性")));
         guard.requireAuthorized(input, List.of(
-            "read_review_context", "read_review_content", "save_review_unit_result"));
+            "read_review_context", "read_review_content"));
         assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("read_review_issue_history")))
             .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
         assertThatThrownBy(() -> guard.requireAuthorized(input, List.of("read_review_unit_results")))
@@ -232,6 +257,18 @@ class WorkflowAgentScopeGuardTest {
             301L, 302L, 303L, null, 1, "MARKDOWN_DEEP_AGGREGATION", List.of("道具连续性")));
 
         guard.requireAuthorized(input, List.of());
+    }
+
+    @Test
+    void rejectsRetiredReviewPhasesEvenWithoutTools() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
+        for (String phase : List.of("QUICK", "DEEP_CHILD", "DEEP_SEMANTIC", "DEEP_AGGREGATION")) {
+            WorkflowAgentRunInput input = reviewInput(new ReviewToolScope(
+                301L,302L,phase.equals("QUICK")?null:303L,
+                phase.equals("DEEP_CHILD")?304L:null,1,phase,List.of("台词合理性")));
+            assertThatThrownBy(() -> guard.requireAuthorized(input,List.of()))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("阶段");
+        }
     }
 
     private WorkflowAgentRunInput reviewInput(ReviewToolScope scope) {

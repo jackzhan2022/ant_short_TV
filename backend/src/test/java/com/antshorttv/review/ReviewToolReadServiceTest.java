@@ -58,7 +58,7 @@ class ReviewToolReadServiceTest {
     }
 
     @Test
-    void deepUnitContentExposesTheOnlyAnchorAcceptedByCandidateSave() throws Exception {
+    void deepUnitContentExposesTrustedAnchorsForMarkdown() throws Exception {
         ReviewContentService.FrozenReview frozen = content.freeze(script, "SCENES",
             Map.of("sceneKeys", List.of("1-2")), List.of("台词合理性"));
         int start = script.indexOf("1-2");
@@ -73,7 +73,7 @@ class ReviewToolReadServiceTest {
         ToolExecutionContext unitContext = new ToolExecutionContext(
             98600L, 1L, null, null, null, 98603L, null, 778L, null, null, null,
             Set.of(), null, new WorkflowToolRunState(), new ReviewToolScope(
-                98601L, 98602L, snapshotId, unitId, 1, "DEEP_CHILD", List.of("台词合理性")));
+                98601L, 98602L, snapshotId, unitId, 1, "MARKDOWN_DEEP_CHILD", List.of("台词合理性")));
 
         var page = reads.readContent(unitContext, json.readTree("{\"offset\":0,\"limit\":50000}"));
 
@@ -112,26 +112,9 @@ class ReviewToolReadServiceTest {
             .extracting(node -> node.asText()).containsExactly(frozen.segments().get(0).anchor());
     }
 
-    @Test
-    void firstRoundHistoryIsEmptyAndLaterRoundIsDimensionFiltered() throws Exception {
-        assertThat(reads.readHistory(context(), json.readTree("{\"page\":1,\"pageSize\":50}"))
-            .path("issues")).isEmpty();
-        jdbc.update("insert into review_issue (id, tenant_id, project_id, task_id, script_version_id, round_no, issue_no, dimension, severity, title, excerpt, problem, suggestion, status, created_at, updated_at) values (98604, 98600, 98601, 98603, 98602, 1, 'R1-001', '台词合理性', 'LOW', '告别突兀', '顾言：再见', '缺少回应', '补反应', 'new', now(), now())");
-        jdbc.update("insert into review_issue_hit (id, tenant_id, project_id, task_id, issue_id, hit_no, scene_no, line_no, anchor_label, excerpt, selected, created_at, updated_at) values (98605, 98600, 98601, 98603, 98604, 1, '1-2', 5, 'episode:1/scene:1-2', '顾言：再见', true, now(), now())");
-        var history = reads.readHistory(context(), json.readTree("{\"page\":1,\"pageSize\":50}"));
-        assertThat(history.path("issues")).hasSize(1);
-        assertThat(history.path("issues").get(0).path("hits")).hasSize(1);
-    }
-
-    @Test
-    void resolvesHistoryIssueIdRegardlessOfJdbcColumnNameCase() {
-        assertThat(reads.issueId(Map.of("ID", 98604L))).isEqualTo(98604L);
-        assertThat(reads.issueId(Map.of("id", 98605L))).isEqualTo(98605L);
-    }
-
     private ToolExecutionContext context() {
         return new ToolExecutionContext(98600L, 1L, null, null, null, 98603L, null, 777L,
             null, null, null, Set.of(), null, new WorkflowToolRunState(),
-            new ReviewToolScope(98601L, 98602L, null, null, 1, "QUICK", List.of("台词合理性")));
+            new ReviewToolScope(98601L, 98602L, null, null, 1, "MARKDOWN_QUICK", List.of("台词合理性")));
     }
 }

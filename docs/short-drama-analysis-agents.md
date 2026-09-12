@@ -1,14 +1,11 @@
 # 短剧剧本四阶段 Agent
 
-剧本分析依次执行剧情全局理解、剧集智能拆分、逐集概要提炼、逐集角色场景道具识别。三个新适配器默认关闭，旧流程继续可用；开启后，Agent 的终态保存工具直接覆盖剧本页正式可编辑数据，不经过候选确认。
+剧本分析固定使用当前 Workflow Agent。全局理解和拆分完成后，概要与资产识别按持久化单元独立推进。Agent 的终态保存工具写入正式数据；资产完成事件自动推进分镜。
 
 ## 配置
 
 | 环境变量 | 默认值 | 说明 |
 | --- | ---: | --- |
-| `AI_WORKFLOW_EPISODE_SPLITTING_ENABLED` | `false` | 开启剧集智能拆分 Agent |
-| `AI_WORKFLOW_EPISODE_SUMMARY_ENABLED` | `false` | 开启逐集概要 Agent |
-| `AI_WORKFLOW_ASSET_RECOGNITION_ENABLED` | `false` | 开启逐集资产识别 Agent |
 | `AI_WORKFLOW_FANOUT_CONCURRENCY` | `3` | 单阶段逐集并发数，服务端限制为 1–16 |
 | `AI_WORKFLOW_SPLIT_SAFE_CONTEXT_TOKENS` | `800000` | 全文请求的安全预算；估算值含提示词和工具输出预留 |
 | `AI_WORKFLOW_SPLIT_PROMPT_RESERVE_TOKENS` | `12000` | 全文拆分提示词预留 |
@@ -36,17 +33,19 @@
 ## 正式数据归属
 
 - `script_episode`：当前正式剧集正文和稳定 ID。
-- `script_episode_summary`：正式概要、亮点和结尾钩子，并兼容镜像 `script_episode.summary`。
+- `script_episode_summary`：正式概要、亮点和结尾钩子的唯一存储。
 - `character_asset`、`scene_asset`、`prop_asset`：与剧本关联的正式身份。
 - `asset_visual_variant`：角色变装、场景默认视觉形态、道具不同状态。
 - `asset_visual_variant_episode`：形态与剧集的绑定；场景时间和氛围是绑定使用元数据。
 - `script_episode_asset_analysis`：每集资产识别的正式覆盖和来源指纹。
 - `script_analysis_fanout_snapshot`、`script_analysis_fanout_unit`：逐集进度、失败与子 Run 引用。
 
-旧资产提取、候选归一化、合并和确认接口保留给旧调用方，但不阻塞新 Agent 的正式结果。
+资产重新提取统一使用 scoped reextraction，可选择 ALL/CHARACTER/SCENE/PROP。旧提取、候选和确认接口已删除。
 
 ## 上线与回滚
 
-先部署数据库迁移和保持关闭的应用版本，再按“拆分 → 概要 → 资产识别”逐项开启并做非生产冒烟。拆分阶段先观察全文路径的上下文占用、输出截断率和保存成功率，再用较低的 `AI_WORKFLOW_SPLIT_SAFE_CONTEXT_TOKENS` 验证分块路径、失败块重试、恢复进度和唯一正式保存。监控 `SCRIPT_CONTENT_CHANGED`、`EPISODE_CONTENT_CHANGED`、`ANALYSIS_EPISODE_SNAPSHOT_CHANGED`、`ENTITY_MATCH_AMBIGUOUS`、`ANALYSIS_AGENT_INCOMPLETE`、分块失败数及模型超时。
+按唯一链路数据清理手册停止旧 worker、备份、迁移后统一启动，不提供启停或切流开关。缺少模型或 Agent 配置时修复配置并重试任务。
 
-回滚时依次关闭三个开关即可恢复旧执行路径；新增正式表和列保持不删除，避免破坏已经生成或用户编辑的数据。分块异常时可先降低 `AI_WORKFLOW_SPLIT_CHUNK_CONCURRENCY`，逐集并发过高时降低 `AI_WORKFLOW_FANOUT_CONCURRENCY`，均不需要回退迁移。需要临时阻止全文调用时，下调安全预算即可让预检直接进入分块路径。
+监控 SCRIPT_CONTENT_CHANGED、EPISODE_CONTENT_CHANGED、ANALYSIS_EPISODE_SNAPSHOT_CHANGED、ENTITY_MATCH_AMBIGUOUS、ANALYSIS_AGENT_INCOMPLETE、分块失败及模型超时。仍可调整并发、超时和安全预算；全文/分块属于同一个拆分 Agent 的容量策略，不是新旧执行器。
+
+数据库结构清理后不能单独回退旧应用；必要时停止写入并恢复同一时间点的数据库及 Skill 快照。
