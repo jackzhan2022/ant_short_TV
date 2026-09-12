@@ -32,6 +32,7 @@ import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import { statusText } from '@/utils/fieldDictionary';
 import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from './dimensions';
 import styles from './index.module.css';
+import { reportFindings } from './reportFindings';
 import ReportIssueList from './ReportIssueList';
 import type { ReviewIssue, ReviewProjectDetail, ReviewTask } from './service';
 import {
@@ -132,6 +133,10 @@ const ScriptReviewPage = () => {
   const selectedTask = selectedTaskId
     ? (taskDetails[selectedTaskId] ?? selectedTaskSummary)
     : undefined;
+  const reportFindingCount = useMemo(
+    () => reportFindings(selectedTask?.reportMarkdown ?? '').length,
+    [selectedTask?.reportMarkdown],
+  );
   const visibleIssues =
     selectedTask?.issues.filter((issue) => !issue.manuallyResolved) ?? [];
   const processedIssues =
@@ -566,10 +571,18 @@ const ScriptReviewPage = () => {
                 </>
               )}
               <span>当前剧本 V{currentVersion?.versionNo ?? '-'}</span>
-              <span>
-                {visibleIssues.length} 项未处理 · {processedIssues.length}{' '}
-                项已处理
-              </span>
+              {!taskDetailLoading && !taskDetailError && (
+                selectedTask?.resultFormat === 'MARKDOWN' ? (
+                  reportFindingCount > 0 ? (
+                    <output aria-label="报告问题总数">报告共 {reportFindingCount} 项问题</output>
+                  ) : null
+                ) : (
+                  <span>
+                    {visibleIssues.length} 项未处理 · {processedIssues.length}{' '}
+                    项已处理
+                  </span>
+                )
+              )}
               {versionMismatch && (
                 <Tag color="orange">
                   当前正文与审核版本不同，请切回审核版本查看证据
@@ -1149,10 +1162,12 @@ const ScriptReviewPage = () => {
                           <Typography.Text>
                             第 {item.roundNo} 轮 · {statusText(item.status)}
                           </Typography.Text>
+                          {detail.tasks.find((task) => task.id === item.taskId)?.resultFormat !== 'MARKDOWN' && (
                           <Typography.Text type="secondary">
                             问题 {item.issueCount} · 已处理{' '}
                             {item.processedIssueCount}
                           </Typography.Text>
+                          )}
                         </Space>
                       </List.Item>
                     )}

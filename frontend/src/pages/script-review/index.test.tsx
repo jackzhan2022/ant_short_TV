@@ -591,19 +591,56 @@ describe('ScriptReviewPage', () => {
 
   it('shows a completed task report as right-side findings when structured issues are empty', async () => {
     window.history.replaceState({}, '', '/script-review/tasks/30');
-    mocks.queryReviewTask.mockResolvedValue({ data: {
-      id: 30, projectId: 9, scriptVersionId: 9, roundNo: 1, reviewMode: 'DEEP', selectedDimensions: ['人物动机', '台词合理性'], reviewScopeType: 'ALL', reviewScope: {}, status: 'COMPLETED', overallProgress: 100, issues: [],
-      resultFormat: 'MARKDOWN',
-      reportMarkdown: '## 二、合并后的主要问题\n### 1. 角色转折缺少铺垫\n建议补充转折动机\n### 2. 字幕名称不一致\n建议统一译名\n## 三、各维度审核结论\n审核总结',
-      boundVersion: { id: 9, projectId: 9, versionNo: 1, sourceType: 'IMPORT', content: '剧本原文仍然可读' },
-    } });
+    mocks.queryReviewTask.mockResolvedValue({
+      data: {
+        id: 30,
+        projectId: 9,
+        scriptVersionId: 9,
+        roundNo: 1,
+        reviewMode: 'DEEP',
+        selectedDimensions: ['人物动机', '台词合理性'],
+        reviewScopeType: 'ALL',
+        reviewScope: {},
+        status: 'COMPLETED',
+        overallProgress: 100,
+        issues: [],
+        resultFormat: 'MARKDOWN',
+        issueCount: 0,
+        pendingIssueCount: 0,
+        reportMarkdown: `## 二、合并后的主要问题\n${Array.from(
+          { length: 20 },
+          (_, index) => `### ${index + 1}. 角色转折缺少铺垫\n建议补充转折动机`,
+        ).join('\n')}\n## 三、各维度审核结论\n### 1. 台词合理性\n审核总结`,
+        boundVersion: {
+          id: 9,
+          projectId: 9,
+          versionNo: 1,
+          sourceType: 'IMPORT',
+          content: '剧本原文仍然可读',
+        },
+      },
+    });
     render(<ScriptReviewPage />);
-    expect(await screen.findByRole('list', { name: '审核问题列表' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '1. 角色转折缺少铺垫' })).toBeVisible();
-    expect(screen.getByText('共 2 项问题')).toBeVisible();
+    expect(
+      await screen.findByRole('list', { name: '审核问题列表' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: '1. 角色转折缺少铺垫' }),
+    ).toBeVisible();
+    expect(screen.getByText('共 20 项问题')).toBeVisible();
+    expect(screen.getByLabelText('报告问题总数')).toHaveTextContent(
+      '20 项问题',
+    );
+    expect(
+      screen.queryByText(/0\s*项未处理|0\s*项已处理/),
+    ).not.toBeInTheDocument();
     expect(screen.getByText('剧本原文仍然可读')).toBeVisible();
-    expect(screen.getByRole('region', { name: '审核维度标签' })).toHaveTextContent('人物动机');
-    expect(screen.getByRole('region', { name: '审核维度标签' })).toHaveTextContent('台词合理性');
+    expect(
+      screen.getByRole('region', { name: '审核维度标签' }),
+    ).toHaveTextContent('人物动机');
+    expect(
+      screen.getByRole('region', { name: '审核维度标签' }),
+    ).toHaveTextContent('台词合理性');
     expect(screen.queryByText('审核记录与版本历史')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '审核记录' }));
     expect(screen.getByText('审核记录与版本历史')).toBeVisible();

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbench from './storyboard';
+import type { ScriptEpisode } from './service';
 
 const mocks = vi.hoisted(() => ({
   queryProject: vi.fn(),
@@ -185,6 +186,7 @@ vi.mock('antd', () => ({
 
 const setupWorkspaceResponse = (
   overrides?: Partial<{
+    episodes: ScriptEpisode[];
     characters: any[];
     scenes: any[];
     props: any[];
@@ -311,9 +313,9 @@ const setupWorkspaceResponse = (
       characters: overrides?.characters ?? characters,
       scenes: overrides?.scenes ?? scenes,
       props: overrides?.props ?? props,
-      episodes: [
-        { episodeId: 1001, episodeNo: 1, title: '致命捉迷藏', content: '第一集正文' },
-        { episodeId: 1002, episodeNo: 2, title: '夜色警报', content: '第二集正文' },
+      episodes: overrides?.episodes ?? [
+        { episodeId: 1001, episodeNo: 1, title: '致命捉迷藏', content: '第一集正文', summary: '第一集概要' },
+        { episodeId: 1002, episodeNo: 2, title: '夜色警报', content: '第二集正文', summary: '第二集概要' },
       ],
       storyboards: overrides?.storyboards ?? [
         {
@@ -554,7 +556,7 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByText('分镜表')).toBeInTheDocument();
     expect(screen.getByText('批量生成视频')).toBeInTheDocument();
     expect(screen.getByText('第1集 致命捉迷藏')).toBeInTheDocument();
-    expect(screen.getByText(/斌斌独自下楼玩耍/)).toBeInTheDocument();
+    expect(screen.getByText('第一集概要')).toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(screen.getByText('分镜2')).toBeInTheDocument();
     expect(screen.getAllByText('全能参考生视频').length).toBeGreaterThan(0);
@@ -586,9 +588,77 @@ describe('ProductionWorkbench script page', () => {
       });
     });
     expect(screen.getByText('第2集 夜色警报')).toBeInTheDocument();
+    expect(screen.getByText('第二集概要')).toBeInTheDocument();
+    expect(screen.queryByText('第一集概要')).not.toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(screen.getAllByDisplayValue(/别出声/).length).toBeGreaterThan(0);
     expect(screen.queryByText('分镜2')).not.toBeInTheDocument();
+  });
+
+  it('uses the selected episode formal summary instead of demo or legacy content', async () => {
+    setupWorkspaceResponse({
+      episodes: [
+        {
+          episodeId: 1001,
+          episodeNo: 1,
+          title: '门缝里的阴谋',
+          summary: '旧概要',
+          formalSummary: {
+            id: 1,
+            schemaVersion: 1,
+            source: 'MANUAL',
+            content: { summary: 'Serena在门外听见阴谋。', highlights: [] },
+          },
+        },
+        {
+          episodeId: 1002,
+          episodeNo: 2,
+          title: '暴雨追杀',
+          formalSummary: {
+            id: 2,
+            schemaVersion: 1,
+            source: 'AI',
+            content: { summary: 'Serena带着证据逃向露台。', highlights: [] },
+          },
+        },
+      ],
+      storyboards: [],
+    });
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText('Serena在门外听见阴谋。')).toBeInTheDocument();
+    expect(screen.getByText('第1集 门缝里的阴谋')).toBeInTheDocument();
+    expect(screen.queryByText('旧概要')).not.toBeInTheDocument();
+    expect(screen.queryByText(/斌斌独自下楼玩耍/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+
+    expect(await screen.findByText('Serena带着证据逃向露台。')).toBeInTheDocument();
+    expect(screen.getByText('第2集 暴雨追杀')).toBeInTheDocument();
+    expect(screen.queryByText('Serena在门外听见阴谋。')).not.toBeInTheDocument();
+    expect(screen.queryByText(/夜幕压低小区楼影/)).not.toBeInTheDocument();
+  });
+
+  it('shows an honest empty summary and episode number when episode metadata is missing', async () => {
+    setupWorkspaceResponse({
+      episodes: [
+        { episodeNo: 1, title: '  ', summary: '  ' },
+        { episodeNo: 2, title: '' },
+      ],
+      storyboards: [],
+    });
+    render(<ProductionWorkbench />);
+
+    await screen.findByRole('button', { name: '2' });
+    expect(screen.getByRole('heading', { name: '第1集' })).toBeInTheDocument();
+    expect(screen.getByText('暂无本集概要')).toBeInTheDocument();
+    expect(screen.queryByText(/致命捉迷藏|斌斌独自下楼玩耍/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+
+    expect(screen.getByRole('heading', { name: '第2集' })).toBeInTheDocument();
+    expect(screen.getByText('暂无本集概要')).toBeInTheDocument();
+    expect(screen.queryByText(/夜色警报|夜幕压低小区楼影/)).not.toBeInTheDocument();
   });
 
   it('loads the requested shot page independently from the selected episode', async () => {

@@ -2,6 +2,7 @@ package com.antshorttv.invitation;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -17,7 +18,8 @@ public interface TenantInvitationMapper extends BaseMapper<TenantInvitationEntit
         return selectOne(new LambdaQueryWrapper<TenantInvitationEntity>()
             .eq(TenantInvitationEntity::getTenantId, tenantId)
             .eq(TenantInvitationEntity::getInviteMobile, mobile)
-            .eq(TenantInvitationEntity::getStatus, InvitationStatus.PENDING.name()));
+            .eq(TenantInvitationEntity::getStatus, InvitationStatus.PENDING.name())
+            .gt(TenantInvitationEntity::getExpiredAt, LocalDateTime.now()));
     }
 
     default List<TenantInvitationEntity> selectByInviteMobile(String mobile) {

@@ -132,16 +132,6 @@ const getPlaceholderBackground = (key: string) => {
   ][Number(key.at(-1)) || 0];
 };
 
-const episodeTitles: Record<number, string> = {
-  1: '致命捉迷藏',
-  2: '夜色警报',
-};
-
-const episodeSummaries: Record<number, string> = {
-  1: '斌斌独自下楼玩耍，为躲猫猫爬进一辆未关后备箱的灰色轿车，后备箱意外锁死。奶奶刘凤英却只顾跳广场舞，对孙子的危险一无所知。',
-  2: '夜幕压低小区楼影，家人意识到斌斌失踪后开始寻找，停车场与楼道里的线索逐渐指向同一辆灰色轿车。',
-};
-
 const splitNames = (value?: string | null) =>
   String(value || '')
     .split(/[、,，]/)
@@ -1319,6 +1309,14 @@ const ProductionWorkbenchStoryboard = () => {
       ),
     ).sort((a, b) => a - b);
   }, [workspace.episodes, workspace.storyboards]);
+  const currentEpisode = workspace.episodes?.find(
+    (episode) => episode.episodeNo === activeEpisode,
+  );
+  const episodeTitle = currentEpisode?.title?.trim();
+  const episodeSummary =
+    currentEpisode?.formalSummary?.content.summary?.trim() ||
+    currentEpisode?.summary?.trim() ||
+    '暂无本集概要';
   const visibleStoryboards = workspace.storyboards.filter(
     (item) => item.episodeNo === activeEpisode,
   );
@@ -1968,10 +1966,7 @@ const ProductionWorkbenchStoryboard = () => {
         <section style={{ marginTop: 18, paddingLeft: 2 }}>
           <Flex justify="space-between" align="center" gap={16} wrap>
             <Typography.Title level={4} style={{ margin: 0, fontSize: 16 }}>
-              第{activeEpisode}集{' '}
-              {workspace.episodes?.find(
-                (episode) => episode.episodeNo === activeEpisode,
-              )?.title || episodeTitles[activeEpisode] || `第${activeEpisode}集`}
+              第{activeEpisode}集{episodeTitle ? ` ${episodeTitle}` : ''}
             </Typography.Title>
             <Button
               type="primary"
@@ -1992,8 +1987,7 @@ const ProductionWorkbenchStoryboard = () => {
               fontSize: 14,
             }}
           >
-            {episodeSummaries[activeEpisode] ||
-              '本集分镜内容已按镜头拆解，可继续编辑提示词并生成视频。'}
+            {episodeSummary}
             <Button type="link" size="small" style={{ paddingInline: 8 }}>
               详情
             </Button>

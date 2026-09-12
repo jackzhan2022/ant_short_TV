@@ -2,6 +2,7 @@ import { PageContainer } from '@ant-design/pro-components';
 import { App, Button, Card, Checkbox, Empty, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
 import { history } from '@umijs/max';
 import { useEffect, useState } from 'react';
+import { reportFindings } from '../script-review/reportFindings';
 import { cancelReviewTask, createReviewTask, queryReviewProjectHistory, retryReviewTask, type ReviewProjectHistory } from '../script-review/service';
 
 import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from '../script-review/dimensions';
@@ -81,6 +82,7 @@ const ScriptReviewHistoryPage = () => {
           dataSource={items}
           locale={{ emptyText: <Empty description="暂无审核记录" /> }}
           renderItem={(task) => {
+            const reportFindingCount = reportFindings(task.reportMarkdown ?? '').length;
             const version = data?.versions.find((item) => item.id === task.scriptVersionId);
             return <List.Item
               actions={[
@@ -93,7 +95,14 @@ const ScriptReviewHistoryPage = () => {
                 title={<Space><Typography.Text strong>第 {task.roundNo} 轮审核</Typography.Text><Tag color={statusColor(task.status)}>{task.status}</Tag></Space>}
                 description={<Space direction="vertical" size={2}>
                   <span>V{version?.versionNo ?? '-'} · {version?.fileName || '直接录入'} · {task.reviewMode} · {task.reviewScopeType}</span>
-                  <span>{task.selectedDimensions.join('、') || '未选择维度'} · 问题 {task.issueCount} · 待处理 {task.outstandingIssueCount}</span>
+                  <span>{task.selectedDimensions.join('、') || '未选择维度'}</span>
+                  {task.resultFormat === 'MARKDOWN' ? (
+                    reportFindingCount > 0 ? (
+                      <output aria-label="报告问题总数">报告共 {reportFindingCount} 项问题</output>
+                    ) : null
+                  ) : (
+                    <span>问题 {task.issueCount} · 待处理 {task.outstandingIssueCount}</span>
+                  )}
                   <span>创建人 #{task.createdBy ?? '-'} · {task.errorMessage || task.completedAt || task.canceledAt || task.createdAt || ''}</span>
                 </Space>}
               />
