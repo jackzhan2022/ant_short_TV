@@ -20,7 +20,7 @@ class EpisodeSplittingAgentAdapterTest {
 
     @Test
     void alwaysInvokesTheAgentAndReturnsOnlyItsCommittedFormalEpisodes() {
-        EpisodeSplittingAgentAdapter adapter = new EpisodeSplittingAgentAdapter(runner, episodes, true);
+        EpisodeSplittingAgentAdapter adapter = new EpisodeSplittingAgentAdapter(runner, episodes);
         ScriptAnalysisTaskEntity task = task();
         ScriptAnalysisStageEntity stage = stage();
         when(runner.runFormal(any())).thenReturn(new WorkflowAgentRunResult(99L, "{\"saved\":true}"));
@@ -41,7 +41,7 @@ class EpisodeSplittingAgentAdapterTest {
 
     @Test
     void doesNotSucceedWhenTerminalSaveDidNotCommitFormalCoverage() {
-        EpisodeSplittingAgentAdapter adapter = new EpisodeSplittingAgentAdapter(runner, episodes, true);
+        EpisodeSplittingAgentAdapter adapter = new EpisodeSplittingAgentAdapter(runner, episodes);
         when(runner.runFormal(any())).thenReturn(new WorkflowAgentRunResult(99L, "final text only"));
         when(episodes.currentEpisodes(7L, 8L, 9L)).thenReturn(List.of());
 

@@ -47,7 +47,6 @@ class ReviewProjectLatestTaskRow {
     private Long taskId;
     private Integer roundNo;
     private String status;
-    private String resultFormat;
     private Boolean hasReportMarkdown;
     public Long getProjectId() { return projectId; }
     public void setProjectId(Long projectId) { this.projectId = projectId; }
@@ -57,20 +56,6 @@ class ReviewProjectLatestTaskRow {
     public void setRoundNo(Integer roundNo) { this.roundNo = roundNo; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
-    public String getResultFormat() { return resultFormat; }
-    public void setResultFormat(String resultFormat) { this.resultFormat = resultFormat; }
     public Boolean getHasReportMarkdown() { return hasReportMarkdown; }
     public void setHasReportMarkdown(Boolean hasReportMarkdown) { this.hasReportMarkdown = hasReportMarkdown; }
-}
-
-class ReviewTaskIssueCountRow {
-    private Long taskId;
-    private Integer issueCount;
-    private Integer outstandingIssueCount;
-    public Long getTaskId() { return taskId; }
-    public void setTaskId(Long taskId) { this.taskId = taskId; }
-    public Integer getIssueCount() { return issueCount; }
-    public void setIssueCount(Integer issueCount) { this.issueCount = issueCount; }
-    public Integer getOutstandingIssueCount() { return outstandingIssueCount; }
-    public void setOutstandingIssueCount(Integer outstandingIssueCount) { this.outstandingIssueCount = outstandingIssueCount; }
 }

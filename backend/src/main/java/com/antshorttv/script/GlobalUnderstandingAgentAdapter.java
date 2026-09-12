@@ -9,34 +9,22 @@ import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
 import com.antshorttv.execution.AiExecutionContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Component
 public class GlobalUnderstandingAgentAdapter {
-    private static final Logger LOG = LoggerFactory.getLogger(GlobalUnderstandingAgentAdapter.class);
     private final WorkflowAgentRunner runner;
     private final ScriptGlobalUnderstandingRepository documents;
     private final WorkflowAgentRunRepository runs;
-    private final boolean enabled;
 
     public GlobalUnderstandingAgentAdapter(
         WorkflowAgentRunner runner,
         ScriptGlobalUnderstandingRepository documents,
-        WorkflowAgentRunRepository runs,
-        @Value("${ai.workflow-agent.global-understanding-enabled:false}") boolean enabled
+        WorkflowAgentRunRepository runs
     ) {
         this.runner = runner;
         this.documents = documents;
         this.runs = runs;
-        this.enabled = enabled;
-        LOG.info("Global-understanding workflow Agent adapter enabled={}", enabled);
-    }
-
-    public boolean enabled() {
-        return enabled;
     }
 
     public Execution execute(

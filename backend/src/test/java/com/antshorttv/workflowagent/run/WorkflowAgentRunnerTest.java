@@ -405,348 +405,150 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
-    void returnsRecoverableReviewContractOrderFailureToModelForCorrection() throws Exception {
-        AtomicInteger saves = new AtomicInteger();
-        WorkflowToolDefinition context = reviewTool("read_review_context",
-            executorReturning("{\"projectId\":25}"));
-        WorkflowToolDefinition content = reviewTool("read_review_content",
-            executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
-            @Override
-            public com.fasterxml.jackson.databind.JsonNode execute(
-                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
-                com.fasterxml.jackson.databind.JsonNode arguments
-            ) {
-                saves.incrementAndGet();
-                return json.createObjectNode().put("saved", true);
-            }
-        });
-        runner = runnerWith(List.of(context, content, save), 30);
-        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
-            6L, "script-review", "剧本审核", "", "执行审核", 8L,
-            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
-            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "save_review_unit_result")));
+    void returnsRecoverableReviewReadOrderFailureToModelForCorrection() throws Exception {
+        configureMarkdownReview("MARKDOWN_DEEP_CHILD");
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(new AiToolCall(
-                "premature-save", "save_review_unit_result", "{}")), 611L))
+                "premature-content", "read_review_content", "{}")), 611L))
             .thenReturn(result(null, List.of(
                 new AiToolCall("context", "read_review_context", "{}"),
                 new AiToolCall("content", "read_review_content", "{}")), 612L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "corrected-save", "save_review_unit_result", "{}")), 613L));
+            .thenReturn(result("## 审核发现", List.of(), 613L));
 
-        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
-            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
-            null, null, null, null,
-            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
+        WorkflowAgentRunResult result = runner.runFormal(reviewInput("MARKDOWN_DEEP_CHILD"));
 
-        assertThat(result.output()).contains("\"saved\":true");
-        assertThat(saves).hasValue(1);
-        verify(runs).recordFailedToolStep(101L, 2, "save_review_unit_result", "{}",
+        assertThat(result.output()).isEqualTo("## 审核发现");
+        verify(runs).recordFailedToolStep(101L, 2, "read_review_content", "{}",
             ErrorCode.REQUIRED_TOOL_NOT_CALLED.name(),
-            "必须先读取审核上下文，并完成全部可信读取后再保存：read_review_context -> "
-                + "read_review_content -> save_review_unit_result");
+            "必须先读取审核上下文，再读取可信正文：read_review_context -> read_review_content");
         verify(invocation, org.mockito.Mockito.times(3)).invokeText(any());
     }
 
     @Test
-    void deepChildUsesReviewSemanticTimeoutAndStepBudget() throws Exception {
-        WorkflowToolDefinition context = reviewTool("read_review_context",
-            executorReturning("{\"projectId\":25}"));
-        WorkflowToolDefinition content = reviewTool("read_review_content",
-            executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition save = reviewTool("save_review_unit_result",
-            executorReturning("{\"saved\":true}"));
-        runner = runnerWith(List.of(context, content, save), 30);
-        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
-            6L, "script-review", "剧本审核", "", "执行审核", 8L,
-            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
-            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "save_review_unit_result")));
+    void markdownDeepChildUsesDeepBudgetAndReadOnlyToolsWithoutThinking() throws Exception {
+        configureMarkdownReview("MARKDOWN_DEEP_CHILD");
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(new AiToolCall("context", "read_review_context", "{}")), 617L))
             .thenReturn(result(null, List.of(new AiToolCall("content", "read_review_content", "{}")), 618L))
-            .thenReturn(result(null, List.of(new AiToolCall("save", "save_review_unit_result", "{}")), 619L));
+            .thenReturn(result("## 当前维度报告", List.of(), 619L));
 
-        runner.runFormal(new WorkflowAgentRunInput(
-            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
-            null, null, null, null,
-            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
+        WorkflowAgentRunResult result = runner.runFormal(reviewInput("MARKDOWN_DEEP_CHILD"));
 
+        assertThat(result.output()).isEqualTo("## 当前维度报告");
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
         verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
+        assertThat(requests.getAllValues()).allSatisfy(request -> {
+            assertThat(request.textRequest().thinkingMode()).isEqualTo("disabled");
+            assertThat(request.textRequest().tools()).extracting(com.antshorttv.ai.AiToolDefinition::code)
+                .containsExactly("read_review_context", "read_review_content");
+        });
         assertThat(requests.getAllValues().get(0).textRequest().timeoutSeconds()).isGreaterThan(300);
         var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
         verify(runs).start(start.capture());
         assertThat(start.getValue().maxSteps()).isEqualTo(96);
     }
 
-    @Test
-    void scriptReviewDisablesThinkingAndRecoversTruncatedEmptyResponse() throws Exception {
-        AtomicInteger saves = new AtomicInteger();
-        WorkflowToolDefinition context = reviewTool("read_review_context",
-            executorReturning("{\"projectId\":25}"));
-        WorkflowToolDefinition content = reviewTool("read_review_content",
-            executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
-            @Override
-            public com.fasterxml.jackson.databind.JsonNode execute(
-                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
-                com.fasterxml.jackson.databind.JsonNode arguments
-            ) {
-                saves.incrementAndGet();
-                return json.createObjectNode().put("saved", true);
-            }
-        });
-        runner = runnerWith(List.of(context, content, save), 30);
-        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
-            6L, "script-review", "剧本审核", "", "执行审核", 8L,
-            new BigDecimal("0.2"), 16384, 10, "ENABLED", 0L, 9L, 9L,
-            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "save_review_unit_result")));
-        when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "context", "read_review_context", "{}")), 621L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "content", "read_review_content", "{}")), 622L))
-            .thenReturn(truncatedEmpty(623L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "save", "save_review_unit_result", "{}")), 625L));
+    @ParameterizedTest
+    @CsvSource({
+        "MARKDOWN_QUICK,false", "MARKDOWN_QUICK,true",
+        "MARKDOWN_DEEP_CHILD,false", "MARKDOWN_DEEP_CHILD,true",
+        "MARKDOWN_DEEP_AGGREGATION,false", "MARKDOWN_DEEP_AGGREGATION,true"
+    })
+    void markdownReviewRejectsTruncatedOutputWithoutAnotherProviderRound(String phase, boolean empty)
+        throws Exception {
+        configureMarkdownReview(phase);
+        when(invocation.invokeText(any())).thenReturn(empty ? truncatedEmpty(623L) : truncated(623L));
 
-        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
-            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
-            null, null, null, null,
-            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
+        assertThatThrownBy(() -> runner.runFormal(reviewInput(phase)))
+            .isInstanceOf(WorkflowAgentTruncatedOutputException.class)
+            .satisfies(error -> {
+                WorkflowAgentTruncatedOutputException truncated = (WorkflowAgentTruncatedOutputException) error;
+                assertThat(truncated.runId()).isEqualTo(101L);
+                assertThat(truncated.partialContent()).isEqualTo(empty ? "" : "partial");
+                assertThat(truncated.modelCalls()).extracting(WorkflowAgentModelCall::callLogId)
+                    .containsExactly(623L);
+            });
 
-        assertThat(result.output()).contains("\"saved\":true");
-        assertThat(saves).hasValue(1);
-        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(4)).invokeText(requests.capture());
-        assertThat(requests.getAllValues()).allSatisfy(request ->
-            assertThat(request.textRequest().thinkingMode()).isEqualTo("disabled"));
-        assertThat(requests.getAllValues().get(3).textRequest().messages())
-            .extracting(AiChatMessage::content)
-            .anySatisfy(message -> assertThat(message).contains("输出已截断", "不得输出普通文本"));
+        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
+        verify(runs, never()).complete(org.mockito.ArgumentMatchers.eq(101L), any());
     }
 
     @Test
-    void scriptReviewTruncationRecoveryExposesOnlyUnfinishedContractTools() throws Exception {
-        AtomicInteger saves = new AtomicInteger();
-        WorkflowToolDefinition context = reviewTool("read_review_context",
-            executorReturning("{\"projectId\":25}"));
-        WorkflowToolDefinition content = reviewTool("read_review_content",
-            executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
-            @Override
-            public com.fasterxml.jackson.databind.JsonNode execute(
-                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
-                com.fasterxml.jackson.databind.JsonNode arguments
-            ) {
-                saves.incrementAndGet();
-                return json.createObjectNode().put("saved", true);
-            }
-        });
-        runner = runnerWith(List.of(context, content, save), 30);
-        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
-            6L, "script-review", "剧本审核", "", "执行审核", 8L,
-            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
-            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "save_review_unit_result")));
-        when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(
-                new AiToolCall("context", "read_review_context", "{}"),
-                new AiToolCall("content", "read_review_content", "{}")), 631L))
-            .thenReturn(truncatedEmpty(632L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "save", "save_review_unit_result", "{}")), 633L));
+    void markdownReviewRejectsTruncationBeforeParsingPartialReadArguments() throws Exception {
+        configureMarkdownReview("MARKDOWN_DEEP_CHILD");
+        AiToolCall partial = new AiToolCall("partial", "read_review_content", "{\"offset\":");
+        when(invocation.invokeText(any())).thenReturn(truncatedWithCalls(641L, List.of(partial)));
 
-        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
-            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
-            null, null, null, null,
-            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
-
-        assertThat(result.output()).contains("\"saved\":true");
-        assertThat(saves).hasValue(1);
-        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
-        assertThat(requests.getAllValues().get(2).textRequest().tools())
-            .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("save_review_unit_result");
-        assertThat(requests.getAllValues().get(2).textRequest().messages())
-            .extracting(AiChatMessage::content)
-            .anySatisfy(message -> assertThat(message).contains("save_review_unit_result"));
+        assertThatThrownBy(() -> runner.runFormal(reviewInput("MARKDOWN_DEEP_CHILD")))
+            .isInstanceOf(WorkflowAgentTruncatedOutputException.class);
+        verify(runs, never()).recordFailedToolStep(
+            org.mockito.ArgumentMatchers.eq(101L), org.mockito.ArgumentMatchers.anyInt(),
+            any(), any(), any(), any());
+        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
     }
 
     @Test
-    void scriptReviewDiscardsTruncatedPartialToolCallsBeforeValidation() throws Exception {
-        AtomicInteger saves = new AtomicInteger();
-        WorkflowToolDefinition context = reviewTool("read_review_context",
-            executorReturning("{\"projectId\":25}"));
-        WorkflowToolDefinition content = reviewTool("read_review_content",
-            executorReturning("{\"content\":\"正文\"}"));
-        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
-            @Override
-            public com.fasterxml.jackson.databind.JsonNode execute(
-                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
-                com.fasterxml.jackson.databind.JsonNode arguments
-            ) {
-                saves.incrementAndGet();
-                return json.createObjectNode().put("saved", true);
-            }
-        });
-        runner = runnerWith(List.of(context, content, save), 30);
-        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
-            6L, "script-review", "剧本审核", "", "执行审核", 8L,
-            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
-            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "save_review_unit_result")));
-        when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(
-                new AiToolCall("context", "read_review_context", "{}"),
-                new AiToolCall("content", "read_review_content", "{}")), 641L))
-            .thenReturn(truncatedPartialSave(642L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "save", "save_review_unit_result", "{}")), 643L));
-
-        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
-            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
-            null, null, null, null,
-            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
-
-        assertThat(result.output()).contains("\"saved\":true");
-        assertThat(saves).hasValue(1);
-        verify(runs, never()).recordFailedToolStep(101L, 6, "save_review_unit_result",
-            "{\"candidates\":[", ErrorCode.WORKFLOW_AGENT_TOOL_INVALID.name(),
-            "工具调用失败：工具参数不是合法 JSON。");
-        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(3)).invokeText(requests.capture());
-        assertThat(requests.getAllValues().get(2).textRequest().tools())
-            .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("save_review_unit_result");
-    }
-
-    @Test
-    void scriptReviewRefreshesCurrentUnitOnceAfterTruncatedSaveEvidenceFailure() throws Exception {
-        AtomicInteger contentReads = new AtomicInteger();
-        AtomicInteger saves = new AtomicInteger();
-        WorkflowToolDefinition context = reviewTool("read_review_context",
-            executorReturning("{\"projectId\":25}"));
-        WorkflowToolDefinition content = reviewTool("read_review_content", new WorkflowToolExecutor() {
-            @Override
-            public com.fasterxml.jackson.databind.JsonNode execute(
-                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
-                com.fasterxml.jackson.databind.JsonNode arguments
-            ) {
-                contentReads.incrementAndGet();
-                return json.createObjectNode().put("content", "当前审核单元正文");
-            }
-        });
-        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
-            @Override
-            public com.fasterxml.jackson.databind.JsonNode execute(
-                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
-                com.fasterxml.jackson.databind.JsonNode arguments
-            ) {
-                if (saves.incrementAndGet() == 1) {
-                    throw new BusinessException(ErrorCode.VALIDATION_ERROR, "审核证据无法在当前范围正文中验证。");
-                }
-                return json.createObjectNode().put("saved", true);
-            }
-        });
-        runner = runnerWith(List.of(context, content, save), 30);
-        when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
-            6L, "script-review", "剧本审核", "", "执行审核", 8L,
-            new BigDecimal("0.2"), 16384, 12, "ENABLED", 0L, 9L, 9L,
-            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "save_review_unit_result")));
+    void markdownQuickCompletesAfterTrustedReadsWithoutTerminalSave() throws Exception {
+        configureMarkdownReview("MARKDOWN_QUICK");
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(
                 new AiToolCall("context", "read_review_context", "{}"),
                 new AiToolCall("content", "read_review_content", "{}")), 651L))
-            .thenReturn(truncatedPartialSave(652L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "invalid-save", "save_review_unit_result", "{}")), 653L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "refresh-content", "read_review_content", "{}")), 654L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "save", "save_review_unit_result", "{}")), 655L));
+            .thenReturn(result("# 审核报告\n\n原样保存。", List.of(), 652L));
 
-        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
-            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
-            null, null, null, null,
-            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
+        WorkflowAgentRunResult result = runner.runFormal(reviewInput("MARKDOWN_QUICK"));
 
-        assertThat(result.output()).contains("\"saved\":true");
-        assertThat(contentReads).hasValue(2);
-        assertThat(saves).hasValue(2);
-        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(5)).invokeText(requests.capture());
-        assertThat(requests.getAllValues().get(2).textRequest().tools())
-            .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("save_review_unit_result");
-        assertThat(requests.getAllValues().get(3).textRequest().tools())
-            .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("read_review_content");
-        assertThat(requests.getAllValues().get(4).textRequest().tools())
-            .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("save_review_unit_result");
-        List<AiChatMessage> finalMessages = requests.getAllValues().get(4).textRequest().messages();
-        assertThat(finalMessages.get(finalMessages.size() - 2).role()).isEqualTo(AiChatRole.TOOL);
-        assertThat(finalMessages.get(finalMessages.size() - 2).toolCallId()).isEqualTo("refresh-content");
-        assertThat(finalMessages.get(finalMessages.size() - 1).role()).isEqualTo(AiChatRole.USER);
+        assertThat(result.output()).isEqualTo("# 审核报告\n\n原样保存。");
+        assertThat(result.modelCalls()).extracting(WorkflowAgentModelCall::callLogId)
+            .containsExactly(651L, 652L);
+        verify(runs).complete(101L, result.output());
     }
 
     @Test
-    void scriptReviewRetriesSaveAfterCorrectableDimensionHashFailure() throws Exception {
-        AtomicInteger saves = new AtomicInteger();
-        WorkflowToolDefinition context = reviewTool("read_review_context",
-            executorReturning("{\"projectId\":25}"));
-        WorkflowToolDefinition content = reviewTool("read_review_content",
-            executorReturning("{\"content\":\"当前审核单元正文\"}"));
-        WorkflowToolDefinition save = reviewTool("save_review_unit_result", new WorkflowToolExecutor() {
-            @Override
-            public com.fasterxml.jackson.databind.JsonNode execute(
-                com.antshorttv.workflowagent.tool.ToolExecutionContext toolContext,
-                com.fasterxml.jackson.databind.JsonNode arguments
-            ) {
-                if (saves.incrementAndGet() == 1) {
-                    throw new BusinessException(ErrorCode.VALIDATION_ERROR, "维度内容已变化。");
-                }
-                return json.createObjectNode().put("saved", true);
-            }
-        });
-        runner = runnerWith(List.of(context, content, save), 30);
+    void markdownAggregationCompletesWithoutTools() throws Exception {
+        configureMarkdownReview("MARKDOWN_DEEP_AGGREGATION");
+        when(invocation.invokeText(any())).thenReturn(result("# 合并报告", List.of(), 661L));
+
+        WorkflowAgentRunResult result = runner.runFormal(reviewInput("MARKDOWN_DEEP_AGGREGATION"));
+
+        assertThat(result.output()).isEqualTo("# 合并报告");
+        var request = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation).invokeText(request.capture());
+        assertThat(request.getValue().textRequest().tools()).isEmpty();
+    }
+
+    @Test
+    void markdownReviewRejectsRetiredSaveToolFromModel() throws Exception {
+        configureMarkdownReview("MARKDOWN_QUICK");
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("save", "save_review_result", "{}")), 671L));
+
+        assertThatThrownBy(() -> runner.runFormal(reviewInput("MARKDOWN_QUICK")))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("未授权工具");
+        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
+        verify(runs, never()).complete(org.mockito.ArgumentMatchers.eq(101L), any());
+    }
+
+    private void configureMarkdownReview(String phase) throws Exception {
+        List<String> codes = "MARKDOWN_DEEP_AGGREGATION".equals(phase) ? List.of()
+            : List.of("read_review_context", "read_review_content");
+        List<WorkflowToolDefinition> definitions = codes.isEmpty() ? List.of() : List.of(
+            reviewTool("read_review_context", executorReturning("{\"mode\":\"DEEP\"}")),
+            reviewTool("read_review_content", executorReturning("{\"content\":\"可信正文\"}")));
+        runner = runnerWith(definitions, 30);
         when(agents.loadForRun("script-review")).thenReturn(new WorkflowAgentRecord(
             6L, "script-review", "剧本审核", "", "执行审核", 8L,
-            new BigDecimal("0.2"), 16384, 12, "ENABLED", 0L, 9L, 9L,
-            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
-                "read_review_context", "read_review_content", "save_review_unit_result")));
-        when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(
-                new AiToolCall("context", "read_review_context", "{}"),
-                new AiToolCall("content", "read_review_content", "{}")), 661L))
-            .thenReturn(truncatedPartialSave(662L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "invalid-save", "save_review_unit_result", "{}")), 663L))
-            .thenReturn(result(null, List.of(new AiToolCall(
-                "save", "save_review_unit_result", "{}")), 664L));
+            new BigDecimal("0.2"), 16384, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), codes));
+    }
 
-        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
-            "script-review", "执行", 7L, 25L, null, null, 91L, null, 9L,
-            null, null, null, null,
-            new ReviewToolScope(25L, 77L, 88L, 99L, 1, "DEEP_CHILD", List.of("台词合理性"))));
-
-        assertThat(result.output()).contains("\"saved\":true");
-        assertThat(saves).hasValue(2);
-        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
-        verify(invocation, org.mockito.Mockito.times(4)).invokeText(requests.capture());
-        assertThat(requests.getAllValues().get(3).textRequest().tools())
-            .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactly("save_review_unit_result");
-        assertThat(requests.getAllValues().get(3).textRequest().messages())
-            .extracting(AiChatMessage::content)
-            .anySatisfy(message -> assertThat(message).contains("哈希值"));
+    private WorkflowAgentRunInput reviewInput(String phase) {
+        boolean quick = "MARKDOWN_QUICK".equals(phase);
+        return new WorkflowAgentRunInput(
+            "script-review", "审核当前冻结范围", 7L, 25L, null, null, 91L, null, 9L,
+            700L, 701L, 1, 8L,
+            new ReviewToolScope(25L, 77L, quick ? null : 88L,
+                "MARKDOWN_DEEP_CHILD".equals(phase) ? 99L : null, 1, phase, List.of("台词合理性")));
     }
 
     @Test
@@ -1568,7 +1370,7 @@ class WorkflowAgentRunnerTest {
         return new WorkflowToolDefinition(
             code, code, code,
             json.readTree("{\"type\":\"object\"}"), json.readTree("{\"type\":\"object\"}"),
-            code.startsWith("save_") ? ToolRiskLevel.WRITE : ToolRiskLevel.READ_ONLY,
+            ToolRiskLevel.READ_ONLY,
             ToolFailurePolicy.RETURN_TO_MODEL, executor);
     }
 
@@ -1600,16 +1402,6 @@ class WorkflowAgentRunnerTest {
         AiTextResponse response = new AiTextResponse(
             "", "provider-1", 17131, 16384, 33515, 152789L,
             Map.of(), "length", true, List.of());
-        return new AiInvocationResult<>(AiCapability.TEXT, "workflow_agent", response, "", logId,
-            "provider-1", 8L, 2L, "DeepSeek", 17131, 16384, 33515, 152789L,
-            "SUCCESS", null, null);
-    }
-
-    private AiInvocationResult<AiTextResponse> truncatedPartialSave(Long logId) {
-        AiTextResponse response = new AiTextResponse(
-            "", "provider-1", 17131, 16384, 33515, 152789L,
-            Map.of(), "length", true, List.of(new AiToolCall(
-                "partial", "save_review_unit_result", "{\"candidates\":[")));
         return new AiInvocationResult<>(AiCapability.TEXT, "workflow_agent", response, "", logId,
             "provider-1", 8L, 2L, "DeepSeek", 17131, 16384, 33515, 152789L,
             "SUCCESS", null, null);

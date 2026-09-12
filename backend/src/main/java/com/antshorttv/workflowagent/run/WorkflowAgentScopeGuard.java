@@ -11,9 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkflowAgentScopeGuard {
     private static final Set<String> REVIEW_TOOLS = Set.of(
-        "read_review_context", "read_review_content", "read_review_issue_history",
-        "save_review_unit_result", "read_review_unit_results", "read_review_candidates",
-        "save_review_semantic_decisions", "save_review_result"
+        "read_review_context", "read_review_content"
     );
     private static final Set<String> PROJECT_TOOLS = Set.of(
         "read_project_context", "list_episode_scripts", "read_episode_script", "read_project_full_script",
@@ -136,20 +134,12 @@ public class WorkflowAgentScopeGuard {
         }
         var scope = input.reviewScope();
         Set<String> allowed = switch (scope.phase() == null ? "" : scope.phase()) {
-            case "QUICK" -> Set.of("read_review_context", "read_review_content",
-                "save_review_result");
-            case "DEEP_CHILD" -> Set.of("read_review_context", "read_review_content",
-                "save_review_unit_result");
-            case "DEEP_SEMANTIC" -> Set.of("read_review_context", "read_review_candidates",
-                "read_review_content", "save_review_semantic_decisions");
-            case "DEEP_AGGREGATION" -> Set.of("read_review_context", "read_review_unit_results",
-                "read_review_content", "save_review_result");
             case "MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD" -> Set.of(
                 "read_review_context", "read_review_content");
             case "MARKDOWN_DEEP_AGGREGATION" -> Set.of();
-            default -> Set.of();
+            default -> throw invalid("不支持的审核阶段。");
         };
-        if (!allowed.containsAll(toolCodes.stream().filter(REVIEW_TOOLS::contains).toList())) {
+        if (!allowed.containsAll(toolCodes)) {
             throw invalid("审核工具不属于当前冻结阶段。");
         }
         Integer count = jdbc.queryForObject("""
@@ -174,7 +164,7 @@ public class WorkflowAgentScopeGuard {
             input.tenantId(), input.userId());
         if (count == null || count != 1) throw invalid("审核任务、版本或执行身份不匹配。");
 
-        if ("QUICK".equals(scope.phase()) || "MARKDOWN_QUICK".equals(scope.phase())) {
+        if ("MARKDOWN_QUICK".equals(scope.phase())) {
             if (scope.snapshotId() != null || scope.unitId() != null) {
                 throw invalid("快速审核不得绑定深度审核快照或单元。");
             }
@@ -188,7 +178,7 @@ public class WorkflowAgentScopeGuard {
             """, Integer.class, scope.snapshotId(), input.tenantId(), scope.reviewProjectId(),
             input.taskId(), scope.versionId(), scope.attemptNo());
         if (snapshotCount == null || snapshotCount != 1) throw invalid("审核快照不属于当前任务。");
-        if ("DEEP_CHILD".equals(scope.phase()) || "MARKDOWN_DEEP_CHILD".equals(scope.phase())) {
+        if ("MARKDOWN_DEEP_CHILD".equals(scope.phase())) {
             if (scope.unitId() == null) throw invalid("子审核缺少冻结单元。");
             Integer unitCount = jdbc.queryForObject("""
                 select count(*) from review_fanout_unit where id = ? and snapshot_id = ?
@@ -215,7 +205,13 @@ public class WorkflowAgentScopeGuard {
         }
         String operationType = switch (input.agentCode() == null ? "" : input.agentCode()) {
             case "short-drama-storyboard" -> "STORYBOARD_BREAKDOWN";
-            case "short-drama-asset-recognition" -> "SCOPED_ASSET_REEXTRACTION";
+            case "short-drama-asset-recognition" -> {
+                String businessType = jdbc.queryForObject(
+                    "select business_type from ai_execution_task where id = ?", String.class, input.executionId());
+                if ("SCRIPT_AI_OPERATION".equals(businessType)) yield "SCOPED_ASSET_REEXTRACTION";
+                if ("SCRIPT_ANALYSIS_TASK".equals(businessType)) yield null;
+                throw invalid("资产 Agent 执行业务类型不匹配。");
+            }
             default -> null;
         };
         if (operationType != null) {

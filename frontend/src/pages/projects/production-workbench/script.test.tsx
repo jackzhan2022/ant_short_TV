@@ -119,38 +119,80 @@ vi.mock('@/services/account-team/auth', () => ({
 }));
 
 describe('ProductionWorkbenchScript', () => {
-  it.each(['COMPLETED', 'FAILED'])('polls only status then reconciles once and stops at %s', async (terminalStatus) => {
+  it.each([
+    'COMPLETED',
+    'FAILED',
+  ])('polls only status then reconciles once and stops at %s', async (terminalStatus) => {
     vi.useFakeTimers();
     try {
-      const running = { projectId: 1, script: null, versions: [], episodes: [], analysis: {
-        status: 'RUNNING', stages: [{ stageCode: 'GLOBAL_UNDERSTANDING', status: 'RUNNING', progress: 10 }],
-      } };
-      mocks.queryScriptWorkspace.mockResolvedValueOnce({ data: running }).mockResolvedValue({ data: {
-        ...running, analysis: { status: terminalStatus, stages: [] },
-      } });
-      mocks.queryCurrentScriptAnalysis.mockResolvedValueOnce({ data: running.analysis })
+      const running = {
+        projectId: 1,
+        script: null,
+        versions: [],
+        episodes: [],
+        analysis: {
+          status: 'RUNNING',
+          stages: [
+            {
+              stageCode: 'GLOBAL_UNDERSTANDING',
+              status: 'RUNNING',
+              progress: 10,
+            },
+          ],
+        },
+      };
+      mocks.queryScriptWorkspace
+        .mockResolvedValueOnce({ data: running })
+        .mockResolvedValue({
+          data: {
+            ...running,
+            analysis: { status: terminalStatus, stages: [] },
+          },
+        });
+      mocks.queryCurrentScriptAnalysis
+        .mockResolvedValueOnce({ data: running.analysis })
         .mockResolvedValue({ data: { status: terminalStatus, stages: [] } });
       render(<ProductionWorkbenchScript />);
-      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
       expect(mocks.queryCurrentScriptAnalysis).toHaveBeenCalledTimes(1);
       expect(mocks.queryScriptWorkspace).toHaveBeenCalledTimes(1);
-      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
       expect(mocks.queryScriptWorkspace).toHaveBeenCalledTimes(2);
-      await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15000);
+      });
       expect(mocks.queryCurrentScriptAnalysis).toHaveBeenCalledTimes(2);
       expect(mocks.queryScriptWorkspace).toHaveBeenCalledTimes(2);
-    } finally { vi.useRealTimers(); }
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('loads version bodies only after selection and recovers from a detail failure', async () => {
-    mocks.queryScriptWorkspace.mockResolvedValue({ data: {
-      projectId: 1, script: null, episodes: [],
-      versions: [{ id: 7, versionNo: 1 }, { id: 8, versionNo: 2 }],
-    } });
-    mocks.queryScriptVersion.mockRejectedValueOnce(new Error('offline'))
+    mocks.queryScriptWorkspace.mockResolvedValue({
+      data: {
+        projectId: 1,
+        script: null,
+        episodes: [],
+        versions: [
+          { id: 7, versionNo: 1 },
+          { id: 8, versionNo: 2 },
+        ],
+      },
+    });
+    mocks.queryScriptVersion
+      .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ data: { content: '历史版本正文内容' } });
     render(<ProductionWorkbenchScript />);
-    const selector = await screen.findByRole('combobox', { name: '选择历史版本' });
+    const selector = await screen.findByRole('combobox', {
+      name: '选择历史版本',
+    });
     expect(mocks.queryScriptVersion).not.toHaveBeenCalled();
     fireEvent.change(selector, { target: { value: '7' } });
     await screen.findByText('版本正文加载失败');
@@ -239,7 +281,9 @@ describe('ProductionWorkbenchScript', () => {
         analysis: null,
       },
     });
-    mocks.queryScriptEpisode.mockResolvedValue({ data: { episodeId: 1, episodeNo: 1, title: '第1集', content: '正文' } });
+    mocks.queryScriptEpisode.mockResolvedValue({
+      data: { episodeId: 1, episodeNo: 1, title: '第1集', content: '正文' },
+    });
     mocks.queryAssetSettingsSummary.mockResolvedValue({
       data: { projectId: 1, characters: [], scenes: [], props: [] },
     });
@@ -257,7 +301,9 @@ describe('ProductionWorkbenchScript', () => {
   it('loads the script page without requesting the heavyweight project detail', async () => {
     render(<ProductionWorkbenchScript />);
 
-    await waitFor(() => expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1));
+    await waitFor(() =>
+      expect(mocks.queryScriptWorkspace).toHaveBeenCalledWith(1),
+    );
 
     expect(mocks.queryProject).not.toHaveBeenCalled();
   });
@@ -297,7 +343,6 @@ describe('ProductionWorkbenchScript', () => {
           currentStage: 'EPISODE_SUMMARY',
           overallProgress: 50,
           currentAction: '正在提炼每集概要',
-          pipelineVersion: 'EPISODE_CONTEXT_V2',
           episodes: [
             {
               episodeId: 101,
@@ -430,6 +475,18 @@ describe('ProductionWorkbenchScript', () => {
   });
 
   it('shows six character profiles by default and expands the rest on demand', async () => {
+    mocks.queryAssetSettingsSummary.mockResolvedValue({
+      data: {
+        projectId: 1,
+        characters: Array.from({ length: 7 }, (_, index) => ({
+          id: index + 1,
+          name: `人物${index + 1}`,
+          visual: { variantCount: 0, variants: [], episodeBindings: [] },
+        })),
+        scenes: [],
+        props: [],
+      },
+    });
     mocks.queryScriptWorkspace.mockResolvedValue({
       data: {
         projectId: 1,
@@ -493,7 +550,6 @@ describe('ProductionWorkbenchScript', () => {
           currentStage: 'EPISODE_SUMMARY',
           overallProgress: 56,
           currentAction: '正在提炼每集概要',
-          pipelineVersion: 'EPISODE_CONTEXT_V2',
           episodes: [
             {
               episodeId: 101,
@@ -772,6 +828,15 @@ describe('ProductionWorkbenchScript', () => {
       },
     };
     mocks.queryScriptWorkspace.mockResolvedValue({ data: completedWorkspace });
+
+    mocks.queryAssetSettingsSummary.mockResolvedValue({
+      data: {
+        projectId: 1,
+        characters: completedWorkspace.characters,
+        scenes: [],
+        props: [],
+      },
+    });
 
     render(<ProductionWorkbenchScript />);
 

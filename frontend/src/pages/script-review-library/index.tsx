@@ -38,8 +38,6 @@ import {
 const stateColor: Record<LibraryStateKey, string> = {
   NOT_REVIEWED: 'default',
   RUNNING: 'processing',
-  ACTION_REQUIRED: 'error',
-  READY_FOR_REVIEW: 'warning',
   COMPLETED: 'success',
 };
 
@@ -74,7 +72,10 @@ const ScriptReviewLibraryPage = () => {
       const metricsResponse = await queryReviewProjectMetrics();
       if (generation !== loadGeneration.current) return;
       const metricsByProjectId = new Map(
-        (metricsResponse.data ?? []).map((metric) => [metric.projectId, metric]),
+        (metricsResponse.data ?? []).map((metric) => [
+          metric.projectId,
+          metric,
+        ]),
       );
       setItems((current) =>
         current.map((project) => ({
@@ -118,7 +119,13 @@ const ScriptReviewLibraryPage = () => {
     [items],
   );
   const projects = useMemo(
-    () => filterLibraryProjects(items, states, query, metricsReady ? filter : undefined),
+    () =>
+      filterLibraryProjects(
+        items,
+        states,
+        query,
+        metricsReady ? filter : undefined,
+      ),
     [filter, items, metricsReady, query, states],
   );
   const stateFilters = useMemo(
@@ -128,8 +135,6 @@ const ScriptReviewLibraryPage = () => {
         [
           ['NOT_REVIEWED', '未审核'],
           ['RUNNING', '审核中'],
-          ['ACTION_REQUIRED', '待处理'],
-          ['READY_FOR_REVIEW', '待复审'],
           ['COMPLETED', '审核完成'],
         ] as const
       ).map(([key, label]) => ({
@@ -261,7 +266,9 @@ const ScriptReviewLibraryPage = () => {
             <Typography.Text strong>剧本列表</Typography.Text>
             <Space size="small">
               {metricsLoading ? (
-                <Typography.Text type="secondary">审核指标加载中…</Typography.Text>
+                <Typography.Text type="secondary">
+                  审核指标加载中…
+                </Typography.Text>
               ) : null}
               {metricsFailed ? (
                 <Button
@@ -290,72 +297,70 @@ const ScriptReviewLibraryPage = () => {
               dataSource={projects}
               locale={{ emptyText: <Empty description="暂无独立剧本" /> }}
               renderItem={(project) => {
-              const state = states.get(project.id);
-              return (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="open"
-                      type="link"
-                      onClick={() =>
-                        history.push(
-                          `/script-review/projects/${project.id}/reviews`,
-                        )
-                      }
-                    >
-                      {metricsReady ? state?.actionLabel ?? '进入审核' : '进入审核'}
-                    </Button>,
-                  ]}
-                  style={{ padding: '16px' }}
-                >
-                  <div
-                    style={{
-                      alignItems: 'center',
-                      display: 'grid',
-                      flex: 1,
-                      gap: 16,
-                      gridTemplateColumns:
-                        'minmax(220px, 2fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(120px, 1fr)',
-                    }}
+                const state = states.get(project.id);
+                return (
+                  <List.Item
+                    actions={[
+                      <Button
+                        key="open"
+                        type="link"
+                        onClick={() =>
+                          history.push(
+                            `/script-review/projects/${project.id}/reviews`,
+                          )
+                        }
+                      >
+                        {metricsReady
+                          ? (state?.actionLabel ?? '进入审核')
+                          : '进入审核'}
+                      </Button>,
+                    ]}
+                    style={{ padding: '16px' }}
                   >
-                    <List.Item.Meta
-                      avatar={<FileTextOutlined style={{ color: '#1677ff' }} />}
-                      title={project.name}
-                      description={
-                        <Typography.Text type="secondary">
-                          {project.sourceFileName || '直接录入'} · V
-                          {project.versionCount ?? '—'}
-                        </Typography.Text>
-                      }
-                    />
-                    <Typography.Text type="secondary">
-                      第 {project.latestRoundNo ?? '—'} 轮审核
-                    </Typography.Text>
-                    <Tag color={state ? stateColor[state.key] : 'default'}>
-                      {!metricsReady
-                        ? metricsFailed
-                          ? '指标暂不可用'
-                          : '指标加载中'
-                        : state?.label ?? '未审核'}
-                    </Tag>
-                    {state?.outstandingIssueCount ? (
-                      <Typography.Text type="danger">
-                        待处理 {state.outstandingIssueCount} 项
+                    <div
+                      style={{
+                        alignItems: 'center',
+                        display: 'grid',
+                        flex: 1,
+                        gap: 16,
+                        gridTemplateColumns:
+                          'minmax(220px, 2fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(120px, 1fr)',
+                      }}
+                    >
+                      <List.Item.Meta
+                        avatar={
+                          <FileTextOutlined style={{ color: '#1677ff' }} />
+                        }
+                        title={project.name}
+                        description={
+                          <Typography.Text type="secondary">
+                            {project.sourceFileName || '直接录入'} · V
+                            {project.versionCount ?? '—'}
+                          </Typography.Text>
+                        }
+                      />
+                      <Typography.Text type="secondary">
+                        第 {project.latestRoundNo ?? '—'} 轮审核
                       </Typography.Text>
-                    ) : (
+                      <Tag color={state ? stateColor[state.key] : 'default'}>
+                        {!metricsReady
+                          ? metricsFailed
+                            ? '指标暂不可用'
+                            : '指标加载中'
+                          : (state?.label ?? '未审核')}
+                      </Tag>
                       <Typography.Text type="secondary">
                         {!metricsReady
                           ? metricsFailed
                             ? '请重试加载审核指标'
                             : '审核指标加载中'
                           : state?.key === 'COMPLETED'
-                          ? '审核结果已生成'
-                          : '暂无待处理问题'}
+                            ? '审核结果已生成'
+                            : '尚无已完成报告'}
                       </Typography.Text>
-                    )}
-                  </div>
-                </List.Item>
-              );
+                    </div>
+                  </List.Item>
+                );
               }}
             />
           )}

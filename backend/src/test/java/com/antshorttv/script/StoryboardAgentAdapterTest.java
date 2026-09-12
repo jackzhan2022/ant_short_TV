@@ -35,7 +35,7 @@ class StoryboardAgentAdapterTest {
         when(contexts.prepareStoryboard(any(), any(), any())).thenReturn(
             new EpisodePromptContextService.Prepared(501L, "COMMON_PREFIX", "CACHE_KEY", "HASH"));
         StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(
-            runner, storyboards, attempts, contexts, true);
+            runner, storyboards, attempts, contexts);
         when(runner.runFormal(any())).thenReturn(
             new WorkflowAgentRunResult(601L, "{\"saved\":true}", List.of()));
         when(storyboards.hasCompleteRunSet(11L, 22L, 44L, 601L)).thenReturn(true);
@@ -52,7 +52,7 @@ class StoryboardAgentAdapterTest {
 
     @Test
     void runsOneEpisodeWithTrustedExecutionScopeAndFrozenTextModel() {
-        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts, true);
+        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts);
         ScriptAiOperationEntity operation = operation();
         AiExecutionContext execution = execution();
         WorkflowAgentModelCall call = new WorkflowAgentModelCall(
@@ -87,7 +87,7 @@ class StoryboardAgentAdapterTest {
 
     @Test
     void rejectsACompletedRunWithoutItsCompleteCommittedStoryboardSet() {
-        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts, true);
+        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts);
         when(runner.runFormal(any())).thenReturn(
             new WorkflowAgentRunResult(601L, "model text only", List.of()));
         when(storyboards.hasCompleteRunSet(11L, 22L, 44L, 601L)).thenReturn(false);
@@ -99,7 +99,7 @@ class StoryboardAgentAdapterTest {
 
     @Test
     void marksDeterministicRunnerFailureAsNonRetryableButPreservesGatewayFailures() {
-        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts, true);
+        StoryboardAgentAdapter adapter = new StoryboardAgentAdapter(runner, storyboards, attempts);
         when(runner.runFormal(any())).thenThrow(
             new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID, "invalid segment"));
         assertThatThrownBy(() -> adapter.execute(operation(), 44L, execution()))

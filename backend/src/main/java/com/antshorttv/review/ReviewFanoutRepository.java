@@ -72,7 +72,7 @@ public class ReviewFanoutRepository {
             PreparedStatement statement = connection.prepareStatement("""
                 insert into review_fanout_unit
                   (snapshot_id, unit_no, unit_key, stage_type, dimension, scope_json, start_offset, end_offset,
-                   content_fingerprint, status, attempt_no, candidate_saved, created_at, updated_at)
+                   content_fingerprint, status, attempt_no, report_saved, created_at, updated_at)
                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, false, now(), now())
                 """, Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, draft.snapshotId());
@@ -90,40 +90,11 @@ public class ReviewFanoutRepository {
     }
 
     @Transactional
-    public void replaceCandidate(CandidateDraft draft) {
-        int updated = jdbc.update("""
-            update review_unit_result
-               set child_run_id = ?, attempt_no = ?, version_hash = ?, scope_hash = ?,
-                   dimensions_hash = ?, content_fingerprint = ?, coverage_json = ?,
-                   candidates_json = ?, payload_hash = ?, updated_at = now()
-             where snapshot_id = ? and unit_id = ?
-            """, draft.childRunId(), draft.attemptNo(), draft.versionHash(), draft.scopeHash(),
-            draft.dimensionsHash(), draft.fingerprint(), draft.coverageJson(), draft.candidatesJson(),
-            draft.payloadHash(), draft.snapshotId(), draft.unitId());
-        if (updated == 0) {
-            jdbc.update("""
-                insert into review_unit_result
-                  (snapshot_id, unit_id, child_run_id, attempt_no, version_hash, scope_hash,
-                   dimensions_hash, content_fingerprint, coverage_json, candidates_json,
-                   payload_hash, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now())
-                """, draft.snapshotId(), draft.unitId(), draft.childRunId(), draft.attemptNo(),
-                draft.versionHash(), draft.scopeHash(), draft.dimensionsHash(), draft.fingerprint(),
-                draft.coverageJson(), draft.candidatesJson(), draft.payloadHash());
-        }
-        jdbc.update("""
-            update review_fanout_unit
-               set candidate_saved = true, child_run_id = ?, updated_at = now()
-             where id = ? and snapshot_id = ?
-            """, draft.childRunId(), draft.unitId(), draft.snapshotId());
-    }
-
-    @Transactional
     public void replaceMarkdownFragment(MarkdownFragmentDraft draft) {
         upsertMarkdownFragment(draft);
         int completed = jdbc.update("""
             update review_fanout_unit
-               set status='SUCCEEDED', candidate_saved=true, child_run_id=?, error_code=null,
+               set status='SUCCEEDED', report_saved=true, child_run_id=?, error_code=null,
                    error_message=null, completed_at=now(), updated_at=now()
              where id=? and snapshot_id=? and status='RUNNING'
                and exists (
@@ -146,8 +117,7 @@ public class ReviewFanoutRepository {
         int updated = jdbc.update("""
             update review_unit_result
                set child_run_id = ?, attempt_no = ?, version_hash = ?, scope_hash = ?,
-                   dimensions_hash = ?, content_fingerprint = ?, coverage_json = '{}',
-                   candidates_json = '[]', report_markdown = ?, payload_hash = ?, updated_at = now()
+                   dimensions_hash = ?, content_fingerprint = ?, report_markdown = ?, payload_hash = ?, updated_at = now()
              where snapshot_id = ? and unit_id = ?
             """, draft.childRunId(), draft.attemptNo(), draft.versionHash(), draft.scopeHash(),
             draft.dimensionsHash(), draft.fingerprint(), draft.reportMarkdown(), draft.payloadHash(),
@@ -156,9 +126,9 @@ public class ReviewFanoutRepository {
             jdbc.update("""
                 insert into review_unit_result
                   (snapshot_id, unit_id, child_run_id, attempt_no, version_hash, scope_hash,
-                   dimensions_hash, content_fingerprint, coverage_json, candidates_json,
+                   dimensions_hash, content_fingerprint,
                    report_markdown, payload_hash, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, now(), now())
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now())
                 """, draft.snapshotId(), draft.unitId(), draft.childRunId(), draft.attemptNo(),
                 draft.versionHash(), draft.scopeHash(), draft.dimensionsHash(), draft.fingerprint(),
                 draft.reportMarkdown(), draft.payloadHash());
@@ -193,31 +163,9 @@ public class ReviewFanoutRepository {
                 unit.setEndOffset(row.getInt("end_offset"));
                 unit.setContentFingerprint(row.getString("content_fingerprint"));
                 unit.setStatus(row.getString("status"));
-                unit.setCandidateSaved(row.getBoolean("candidate_saved"));
+                unit.setReportSaved(row.getBoolean("report_saved"));
                 return unit;
             }, snapshotId);
-    }
-
-    public ReviewUnitResultEntity currentCandidate(long snapshotId, long unitId) {
-        return jdbc.queryForObject("""
-            select * from review_unit_result where snapshot_id = ? and unit_id = ?
-            """, (row, i) -> {
-                ReviewUnitResultEntity result = new ReviewUnitResultEntity();
-                result.setId(row.getLong("id"));
-                result.setSnapshotId(row.getLong("snapshot_id"));
-                result.setUnitId(row.getLong("unit_id"));
-                result.setChildRunId(row.getLong("child_run_id"));
-                result.setAttemptNo(row.getInt("attempt_no"));
-                result.setVersionHash(row.getString("version_hash"));
-                result.setScopeHash(row.getString("scope_hash"));
-                result.setDimensionsHash(row.getString("dimensions_hash"));
-                result.setContentFingerprint(row.getString("content_fingerprint"));
-                result.setCoverageJson(row.getString("coverage_json"));
-                result.setCandidatesJson(row.getString("candidates_json"));
-                result.setReportMarkdown(row.getString("report_markdown"));
-                result.setPayloadHash(row.getString("payload_hash"));
-                return result;
-            }, snapshotId, unitId);
     }
 
     public Long findMatchingSnapshot(long taskId, String versionHash, String scopeHash, String dimensionsHash,
@@ -230,13 +178,6 @@ public class ReviewFanoutRepository {
              order by attempt_no desc limit 1
             """, Long.class, taskId, versionHash, scopeHash, dimensionsHash, unitSetHash);
         return ids.isEmpty() ? null : ids.get(0);
-    }
-
-    public boolean transitionUnit(long unitId, ReviewUnitStatus expected, ReviewUnitStatus next) {
-        return jdbc.update("""
-            update review_fanout_unit set status = ?, updated_at = now()
-             where id = ? and status = ?
-            """, next.name(), unitId, expected.name()) == 1;
     }
 
     public record SnapshotDraft(
@@ -252,16 +193,10 @@ public class ReviewFanoutRepository {
     ) {
         public UnitDraft(long snapshotId, int unitNo, String unitKey, String scopeJson,
             int startOffset, int endOffset, String fingerprint) {
-            this(snapshotId, unitNo, unitKey, "CONTENT_DISCOVERY", null, scopeJson,
+            this(snapshotId, unitNo, unitKey, "DIMENSION_MARKDOWN", null, scopeJson,
                 startOffset, endOffset, fingerprint);
         }
     }
-
-    public record CandidateDraft(
-        long snapshotId, long unitId, long childRunId, int attemptNo,
-        String versionHash, String scopeHash, String dimensionsHash, String fingerprint,
-        String coverageJson, String candidatesJson, String payloadHash
-    ) {}
 
     public record MarkdownFragmentDraft(
         long snapshotId, long unitId, long childRunId, int attemptNo,

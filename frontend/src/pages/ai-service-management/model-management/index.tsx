@@ -2,7 +2,6 @@ import { PageContainer } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
 import { Tabs } from 'antd';
 import { useMemo, useState } from 'react';
-import { AgentTabContent, SkillTabContent } from '../agents';
 import AiCallLogsPage from '../logs';
 import PlatformModelsPage from '../platform-models';
 import PlatformProvidersPage from '../providers';
@@ -13,8 +12,6 @@ type ModelManagementTab =
   | 'providers'
   | 'models'
   | 'logs'
-  | 'agents'
-  | 'skills'
   | 'workflow-agents'
   | 'workflow-skills';
 
@@ -47,36 +44,23 @@ const ModelManagementPage = () => {
         children: <AiCallLogsPage />,
       });
     }
-    if (access.canViewBuiltInAiAgents) {
-      tabs.push({
-        key: 'agents',
-        label: 'Agent 管理',
-        children: <AgentTabContent />,
-      });
-      tabs.push({
-        key: 'skills',
-        label: 'Skill 管理',
-        children: <SkillTabContent />,
-      });
-    }
     if (access.canViewWorkflowAgents) {
       tabs.push({
         key: 'workflow-agents',
-        label: 'Agent（新）',
+        label: 'Agent 管理',
         children: <WorkflowAgentsPage />,
       });
     }
     if (access.canViewWorkflowSkills) {
       tabs.push({
         key: 'workflow-skills',
-        label: 'Skill（新）',
+        label: 'Skill 管理',
         children: <WorkflowSkillsPage />,
       });
     }
     return tabs;
   }, [
     access.canViewAiCallLogs,
-    access.canViewBuiltInAiAgents,
     access.canViewPlatformAiModels,
     access.canViewPlatformAiProviders,
     access.canViewWorkflowAgents,

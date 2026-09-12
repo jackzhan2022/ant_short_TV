@@ -8,7 +8,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antshorttv.ai.AiModelEntity;
-import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.ai.AiModelMapper;
 import com.antshorttv.ai.AiProviderEntity;
 import com.antshorttv.ai.AiProviderMapper;
@@ -17,7 +16,6 @@ import com.antshorttv.execution.AiExecutionResponseMapper;
 import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.points.AiPointReservationMapper;
 import com.antshorttv.points.AiPointSettlementService;
-import com.antshorttv.points.TeamPointService;
 import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
@@ -32,7 +30,7 @@ import org.junit.jupiter.api.Test;
 class ReviewWorkbenchServiceTest {
 
     @Test
-    void createTaskPersistsMarkdownFormatWhenMarkdownQuickReviewIsEnabled() {
+    void createTaskFreezesScopeAndLinksItsReservedExecution() {
         TenantContextResolver tenantContexts = mock(TenantContextResolver.class);
         ReviewAccessGuard accessGuard = mock(ReviewAccessGuard.class);
         ReviewProjectMapper projects = mock(ReviewProjectMapper.class);
@@ -74,7 +72,6 @@ class ReviewWorkbenchServiceTest {
             new ReviewContentService.FrozenReview("正文", "version", "scope", "dimensions", "snapshot", List.of(), 1));
         when(models.selectOne(any())).thenReturn(model);
         when(providers.selectById(12L)).thenReturn(provider);
-        when(quickAgent.enabled()).thenReturn(true);
         when(executions.createWithReservation(any(), any(), any())).thenReturn(execution);
         doAnswer(invocation -> {
             ((ReviewTaskEntity) invocation.getArgument(0)).setId(21L);
@@ -83,15 +80,13 @@ class ReviewWorkbenchServiceTest {
 
         ReviewWorkbenchService service = new ReviewWorkbenchService(
             tenantContexts, accessGuard, mock(RbacPermissionService.class), projects, versions, tasks,
-            mock(ReviewIssueMapper.class), mock(ReviewIssueHitMapper.class),
-            mock(ReviewIssueEventMapper.class), mock(ReviewBatchRepairMapper.class),
-            mock(ReviewExportRecordMapper.class), mock(AiInvocationService.class),
-            mock(TeamPointService.class), models, providers,
+            mock(ReviewExportRecordMapper.class),
+            models, providers,
             new ObjectMapper(), executions, executionResponses,
             mock(AiPointReservationMapper.class), mock(AiPointSettlementService.class),
             reviewContent, mock(ReviewFanoutSnapshotMapper.class),
             mock(ReviewFanoutUnitMapper.class), quickAgent, mock(ReviewDeepAgentCoordinator.class),
-            mock(ReviewObservabilityRepository.class), new ReviewWorkflowFeatureFlags(true, true, true, true, true),
+            mock(ReviewObservabilityRepository.class),
             new ScriptContentParser(),
             50000, "target/review-exports");
 
@@ -100,7 +95,11 @@ class ReviewWorkbenchServiceTest {
 
         ArgumentCaptor<ReviewTaskEntity> task = ArgumentCaptor.forClass(ReviewTaskEntity.class);
         verify(tasks).insert(task.capture());
-        assertThat(task.getValue().getResultFormat()).isEqualTo("MARKDOWN");
+        assertThat(task.getValue().getExecutionId()).isEqualTo(13L);
+        assertThat(task.getValue().getVersionHash()).isEqualTo("version");
+        assertThat(task.getValue().getScopeHash()).isEqualTo("scope");
+        assertThat(task.getValue().getDimensionsHash()).isEqualTo("dimensions");
+        assertThat(task.getValue().getReportMarkdown()).isNull();
     }
 
     @Test
@@ -118,22 +117,19 @@ class ReviewWorkbenchServiceTest {
             99L, 8L, 2L, "request", "SUCCESS", "SUCCESS", 14L,
             100, 20, 80, 10);
         when(tasks.selectById(7L)).thenReturn(task);
-        when(coordinator.enabled()).thenReturn(true);
         when(coordinator.canRecoverCommittedAggregation(task)).thenReturn(true);
         when(coordinator.recoverCommittedAggregation(task)).thenReturn(
             new ReviewDeepAgentCoordinator.Execution(50L, 200L, List.of(call)));
         ReviewWorkbenchService service = new ReviewWorkbenchService(
             mock(TenantContextResolver.class), mock(ReviewAccessGuard.class), mock(RbacPermissionService.class),
             mock(ReviewProjectMapper.class), mock(ReviewScriptVersionMapper.class), tasks,
-            mock(ReviewIssueMapper.class), mock(ReviewIssueHitMapper.class),
-            mock(ReviewIssueEventMapper.class), mock(ReviewBatchRepairMapper.class),
-            mock(ReviewExportRecordMapper.class), mock(AiInvocationService.class),
-            mock(TeamPointService.class), mock(AiModelMapper.class), mock(AiProviderMapper.class),
+            mock(ReviewExportRecordMapper.class),
+            mock(AiModelMapper.class), mock(AiProviderMapper.class),
             new ObjectMapper(), mock(AiExecutionService.class), mock(AiExecutionResponseMapper.class),
             mock(AiPointReservationMapper.class), mock(AiPointSettlementService.class),
             mock(ReviewContentService.class), mock(ReviewFanoutSnapshotMapper.class),
             mock(ReviewFanoutUnitMapper.class), mock(ReviewQuickAgentAdapter.class), coordinator,
-            mock(ReviewObservabilityRepository.class), new ReviewWorkflowFeatureFlags(true, true, true, true),
+            mock(ReviewObservabilityRepository.class),
             new ScriptContentParser(),
             50000, "target/review-exports");
 

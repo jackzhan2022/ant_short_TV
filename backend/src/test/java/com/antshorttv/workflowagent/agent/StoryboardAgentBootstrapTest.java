@@ -9,7 +9,7 @@ import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-@SpringBootTest(properties = "ai.workflow-agent.storyboard-enabled=true")
+@SpringBootTest
 class StoryboardAgentBootstrapTest {
     @Autowired private StoryboardAgentBootstrap bootstrap;
     @Autowired private WorkflowAgentRepository agents;

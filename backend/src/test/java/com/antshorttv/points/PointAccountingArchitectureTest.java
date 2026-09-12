@@ -19,6 +19,10 @@ class PointAccountingArchitectureTest {
             violations = files
                 .filter(path -> path.toString().endsWith(".java"))
                 .filter(path -> !path.getFileName().toString().equals("PointAccountingService.java"))
+                // Flyway runs before Spring services exist; this one-time release is
+                // covered by LegacyWorkflowRetirementMigrationTest's ledger invariants.
+                .filter(path -> !path.equals(PRODUCTION_ROOT.resolve(
+                    "db/migration/V114__retire_legacy_workflow_data.java")))
                 .filter(this::containsLegacyPointMutation)
                 .toList();
         }

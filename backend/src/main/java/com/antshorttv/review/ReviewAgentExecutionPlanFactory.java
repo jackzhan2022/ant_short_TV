@@ -24,21 +24,13 @@ public class ReviewAgentExecutionPlanFactory {
 
     public WorkflowAgentExecutionPlan freeze(List<String> selectedDimensions, String phase) {
         WorkflowAgentRecord maximum = agents.loadForRun(ScriptReviewAgentBootstrap.AGENT_CODE);
-        boolean aggregation = "DEEP_AGGREGATION".equals(phase)
-            || "MARKDOWN_DEEP_AGGREGATION".equals(phase);
-        boolean semantic = "DEEP_SEMANTIC".equals(phase);
-        if (!List.of("QUICK", "DEEP_CHILD", "DEEP_SEMANTIC", "DEEP_AGGREGATION",
-            "MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD", "MARKDOWN_DEEP_AGGREGATION").contains(phase)) {
+        boolean aggregation = "MARKDOWN_DEEP_AGGREGATION".equals(phase);
+        if (!List.of("MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD", "MARKDOWN_DEEP_AGGREGATION").contains(phase)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未知剧本审核阶段。");
         }
         List<String> skillCodes;
         try {
             skillCodes = ReviewDimension.skillCodes(ReviewDimension.parseAll(selectedDimensions), aggregation);
-            if (semantic) {
-                skillCodes = new java.util.ArrayList<>(skillCodes);
-                skillCodes.add("script-review-semantic-quality");
-                skillCodes = List.copyOf(skillCodes);
-            }
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, exception.getMessage());
         }
@@ -47,12 +39,6 @@ public class ReviewAgentExecutionPlanFactory {
                 "剧本审核 Agent 未授权所需 Skill。");
         }
         List<String> toolCodes = switch (phase) {
-            case "QUICK" -> List.of("read_review_context", "read_review_content", "save_review_result");
-            case "DEEP_CHILD" -> List.of("read_review_context", "read_review_content", "save_review_unit_result");
-            case "DEEP_SEMANTIC" -> List.of("read_review_context", "read_review_candidates",
-                "read_review_content", "save_review_semantic_decisions");
-            case "DEEP_AGGREGATION" -> List.of("read_review_context", "read_review_unit_results",
-                "read_review_content", "save_review_result");
             case "MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD" -> List.of(
                 "read_review_context", "read_review_content");
             case "MARKDOWN_DEEP_AGGREGATION" -> List.of();

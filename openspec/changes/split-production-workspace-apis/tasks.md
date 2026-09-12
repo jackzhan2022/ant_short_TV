@@ -1,3 +1,5 @@
+> 2026-09-12 替代声明：`remove-legacy-ai-workflow-paths` 是最终目标。旧聚合接口契约兼容及在线新旧接口对照条款已被替代；旧 GET 已删除，写操作返回最小结果，页面只读轻量/按需接口。旧性能验证记录保留，不冒充本次验证。 原勾选和验证记录为历史证据，不据此恢复旧链路。归档时先合并仍有效的基础能力，最后合并 remove-legacy-ai-workflow-paths；之后不得再导入这些已退役条款。
+
 ## 1. Backend Contract Tests
 
 - [x] 1.1 Add failing controller tests for script-page workspace, authorized version detail, asset-settings summary, single-asset visual workspace, and episode-paged storyboard endpoints.

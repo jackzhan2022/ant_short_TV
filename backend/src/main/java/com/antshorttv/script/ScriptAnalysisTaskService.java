@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.antshorttv.ai.ProjectAiConfigService;
-import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class ScriptAnalysisTaskService {
@@ -25,8 +24,6 @@ public class ScriptAnalysisTaskService {
     private final ScriptAnalysisStageMapper stageMapper;
     @Autowired private ScriptAnalysisConfigSnapshotService configSnapshotService;
     @Autowired private ProjectAiConfigService projectAiConfigService;
-    @Value("${ai.workflow-agent.episode-context-pipeline-enabled:false}")
-    private boolean episodeContextPipelineEnabled;
 
     public ScriptAnalysisTaskService(
         ScriptAnalysisTaskMapper taskMapper,
@@ -90,7 +87,6 @@ public class ScriptAnalysisTaskService {
         task.setScriptId(script.getId());
         task.setScriptVersionId(version.getId());
         task.setWorkflowCode(workflowCode);
-        task.setPipelineVersion(episodeContextPipelineEnabled ? "EPISODE_CONTEXT_V2" : "LEGACY_V1");
         task.setStatus("PENDING");
         task.setCurrentStage(STAGES.get(0).code());
         task.setOverallProgress(0);
@@ -120,7 +116,9 @@ public class ScriptAnalysisTaskService {
             stageMapper.insert(stage);
         }
         if (configSnapshotService != null) {
-            configSnapshotService.snapshot(task, projectAiConfigService == null ? null : projectAiConfigService.resolveModelId(tenantId, projectId, "TEXT"));
+            Long modelId = projectAiConfigService == null ? null
+                : projectAiConfigService.resolveModelId(tenantId, projectId, "TEXT");
+            if (modelId != null) configSnapshotService.snapshot(task, modelId);
         }
         return task;
     }

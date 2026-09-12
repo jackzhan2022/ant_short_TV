@@ -2,7 +2,7 @@ package com.antshorttv.workflowagent.agent;
 
 import java.math.BigDecimal;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
+
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -25,10 +25,9 @@ public class StoryboardAgentBootstrap extends AbstractAnalysisAgentBootstrap {
     public StoryboardAgentBootstrap(
         WorkflowAgentRepository repository,
         WorkflowAgentService service,
-        JdbcTemplate jdbc,
-        @Value("${ai.workflow-agent.storyboard-enabled:false}") boolean enabled
+        JdbcTemplate jdbc
     ) {
-        super(repository, service, jdbc, enabled);
+        super(repository, service, jdbc);
     }
 
     @Override protected String agentCode() { return AGENT_CODE; }

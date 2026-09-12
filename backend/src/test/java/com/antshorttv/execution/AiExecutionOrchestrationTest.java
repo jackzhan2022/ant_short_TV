@@ -16,7 +16,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-@SpringBootTest(properties = "ai.execution.dispatcher.enabled=false")
+@SpringBootTest
 @Import(AiExecutionOrchestrationTest.HandlerConfiguration.class)
 class AiExecutionOrchestrationTest {
 

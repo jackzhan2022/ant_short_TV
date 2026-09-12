@@ -346,7 +346,8 @@ class VideoDecompositionExecutionServiceTest {
                  where task_id = ? and business_scene = 'video_understanding'
                 order by id desc limit 1
                 """, String.class, episodeId);
-            assertThat(understandingSummary).startsWith("[Agent:video-understanding]");
+            assertThat(understandingSummary).startsWith("VideoUnderstandingRequest[")
+                .contains("专业短剧剧本").doesNotContain("[Agent:");
         } finally {
             server.stop(0);
         }

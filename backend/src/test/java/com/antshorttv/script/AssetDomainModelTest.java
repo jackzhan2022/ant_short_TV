@@ -11,17 +11,9 @@ class AssetDomainModelTest {
     void exposesTypedEntitiesAndMappersForStableAssetWorkflow() {
         List<String> requiredTypes = List.of(
             "ScriptEpisodeEntity",
-            "ScriptAssetNormalizationRunEntity",
-            "ScriptAssetCandidateEntity",
-            "ScriptAssetCandidateAliasEntity",
-            "ScriptAssetPromotionDecisionEntity",
             "AssetVisualVariantEntity",
             "AssetVisualVariantEpisodeEntity",
             "ScriptEpisodeMapper",
-            "ScriptAssetNormalizationRunMapper",
-            "ScriptAssetCandidateMapper",
-            "ScriptAssetCandidateAliasMapper",
-            "ScriptAssetPromotionDecisionMapper",
             "AssetVisualVariantMapper",
             "AssetVisualVariantEpisodeMapper"
         );

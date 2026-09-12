@@ -18,7 +18,6 @@ record ReviewProjectSummaryResponse(
     Integer versionCount,
     Integer latestRoundNo,
     String reviewState,
-    Integer outstandingIssueCount,
     String actionLabel,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
@@ -43,7 +42,6 @@ record ReviewProjectMetricsResponse(
     Integer versionCount,
     Integer latestRoundNo,
     String reviewState,
-    Integer outstandingIssueCount,
     String actionLabel
 ) {}
 
@@ -81,12 +79,9 @@ record ReviewHistoryTaskResponse(
     String reviewMode,
     List<String> selectedDimensions,
     String reviewScopeType,
-    String resultFormat,
     String reportMarkdown,
     String status,
     Integer overallProgress,
-    Integer issueCount,
-    Integer outstandingIssueCount,
     Long createdBy,
     LocalDateTime createdAt,
     LocalDateTime completedAt,
@@ -115,7 +110,6 @@ record ReviewTaskResponse(
     List<String> selectedDimensions,
     String reviewScopeType,
     Map<String, Object> reviewScope,
-    String resultFormat,
     String reportMarkdown,
     String status,
     String currentStage,
@@ -136,8 +130,6 @@ record ReviewTaskResponse(
     ReviewObservabilityResponse observability,
     LocalDateTime completedAt,
     LocalDateTime canceledAt,
-    ReviewReviewSummaryResponse summary,
-    List<ReviewIssueResponse> issues,
     ReviewVersionResponse boundVersion
 ) {
 }
@@ -161,46 +153,18 @@ record ReviewUnitProgressResponse(
     String status,
     Long childRunId,
     Integer attemptNo,
-    Boolean candidateSaved,
+    Boolean reportSaved,
     String errorCode,
     String errorMessage,
     ReviewCacheUsageResponse cacheUsage
 ) {}
 
 record ReviewObservabilityResponse(
-    ReviewQualityProgressResponse quality,
-    ReviewDecisionCountsResponse decisions,
-    List<ReviewHumanReviewFindingResponse> humanReviewFindings,
     ReviewCacheUsageResponse cacheUsage
 ) {}
 
-record ReviewQualityProgressResponse(
-    String status,
-    Long runId,
-    Integer attemptNo,
-    Integer candidateCount,
-    Integer decisionCount,
-    Boolean anomalyRequired,
-    Boolean anomalyPassed
-) {}
 
-record ReviewDecisionCountsResponse(
-    Integer confirmed,
-    Integer needsHumanReview,
-    Integer rejected,
-    Integer insufficientEvidence
-) {}
 
-record ReviewHumanReviewFindingResponse(
-    Long candidateId,
-    Long unitId,
-    String dimension,
-    BigDecimal confidence,
-    String rationale,
-    String severityDecision,
-    List<String> evidenceRefs,
-    Map<String, Object> candidate
-) {}
 
 record ReviewCacheUsageResponse(
     Long promptTokens,
@@ -213,66 +177,9 @@ record ReviewCacheUsageResponse(
     Boolean cacheObservable
 ) {}
 
-record ReviewReviewSummaryResponse(
-    String overallConclusion,
-    Integer overallScore,
-    String summary
-) {
-}
 
-record ReviewIssueResponse(
-    Long id,
-    Long taskId,
-    Long scriptVersionId,
-    Integer roundNo,
-    String issueNo,
-    String dimension,
-    String severity,
-    String title,
-    Map<String, Object> position,
-    String excerpt,
-    String problem,
-    List<String> evidence,
-    String suggestion,
-    String status,
-    String relatedIssueNo,
-    Boolean manuallyResolved,
-    LocalDateTime manuallyResolvedAt,
-    Long manuallyResolvedBy,
-    List<ReviewIssueHitResponse> hits
-) {
-}
 
-record ReviewIssueHitResponse(
-    Long id,
-    Long issueId,
-    Integer hitNo,
-    Integer episodeNo,
-    String sceneNo,
-    Integer shotNo,
-    Integer lineNo,
-    String anchorLabel,
-    String excerpt,
-    String entityName,
-    Boolean selected,
-    String replacementText
-) {
-}
 
-record ReviewBatchRepairResponse(
-    Long id,
-    Long taskId,
-    Long issueId,
-    String actionType,
-    String status,
-    List<Long> selectedHitIds,
-    String replacementFrom,
-    String replacementTo,
-    String insertionText,
-    String deletionText,
-    LocalDateTime appliedAt
-) {
-}
 
 record ReviewExportRecordResponse(
     Long id,
@@ -294,8 +201,7 @@ record ReviewVersionHistoryResponse(
     ReviewVersionResponse selectedVersion,
     List<ReviewVersionResponse> versions,
     List<ReviewVersionDiffResponse> diffLines,
-    List<ReviewRoundHistoryResponse> roundHistory,
-    List<ReviewIssueMappingResponse> issueMappings
+    List<ReviewRoundHistoryResponse> roundHistory
 ) {
 }
 
@@ -321,22 +227,6 @@ record ReviewRoundHistoryResponse(
     Integer roundNo,
     String status,
     String reviewMode,
-    Integer issueCount,
-    Integer processedIssueCount,
-    ReviewReviewSummaryResponse summary,
     LocalDateTime completedAt
-) {
-}
-
-record ReviewIssueMappingResponse(
-    Long issueId,
-    String issueNo,
-    Integer roundNo,
-    String status,
-    String relatedIssueNo,
-    String dimension,
-    String title,
-    Integer hitCount,
-    List<Long> hitIds
 ) {
 }

@@ -97,61 +97,6 @@ export type AiServiceTestResult = {
   message: string;
 };
 
-export type BuiltInAgentVariable = {
-  name: string;
-  label: string;
-  type: string;
-  required: boolean;
-  description?: string;
-};
-
-export type BuiltInSkillSummary = {
-  code: string;
-  name: string;
-  category: string;
-};
-
-export type BuiltInAgent = {
-  code: string;
-  name: string;
-  description: string;
-  businessScene: string;
-  businessSceneName: string;
-  capability: string;
-  modelRouting: string;
-  variables: BuiltInAgentVariable[];
-  outputSchema: string;
-  skills: BuiltInSkillSummary[];
-};
-
-export type BuiltInAgentSummary = {
-  code: string;
-  name: string;
-  businessScene: string;
-};
-
-export type BuiltInSkill = {
-  code: string;
-  name: string;
-  description: string;
-  category: string;
-  content: string;
-  agents: BuiltInAgentSummary[];
-};
-
-export type EditableAgent = {
-  code: string; versionNo: number; name: string; description?: string; promptTemplate: string; outputSchema?: string; status: string; published: boolean;
-};
-export type EditableSkill = {
-  code: string; versionNo: number; name: string; category?: string; content: string; status: string; published: boolean;
-};
-
-export type BuiltInAgentPreview = {
-  agentCode: string;
-  prompt: string;
-  outputSchema: string;
-};
-
 export const serviceTypeText: Record<PlatformModelServiceType, string> = {
   TEXT: '文本',
   IMAGE: '图片',
@@ -237,43 +182,3 @@ export const updateModelParameters = async (id: number, values: AiModelParameter
     headers: { 'Content-Type': 'application/json' },
     data: values,
   });
-
-export const queryBuiltInAgents = async () =>
-  request<ApiResponse<BuiltInAgent[]>>('/api/platform/ai/agents');
-
-export const queryBuiltInSkills = async () =>
-  request<ApiResponse<BuiltInSkill[]>>('/api/platform/ai/skills');
-
-export const previewBuiltInAgent = async (
-  code: string,
-  variables: Record<string, unknown>,
-) =>
-  request<ApiResponse<BuiltInAgentPreview>>(
-    `/api/platform/ai/agents/${code}/preview`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      data: { variables },
-    },
-  );
-
-export const queryEditableAgents = async () =>
-  request<ApiResponse<EditableAgent[]>>('/api/platform/ai/definitions/agents');
-export const updateEditableAgent = async (code: string, data: Pick<EditableAgent, 'name' | 'description' | 'promptTemplate' | 'outputSchema'>) =>
-  request<ApiResponse<EditableAgent>>(`/api/platform/ai/definitions/agents/${code}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, data });
-export const publishEditableAgent = async (code: string) =>
-  request<ApiResponse<EditableAgent>>(`/api/platform/ai/definitions/agents/${code}/publish`, { method: 'POST' });
-export const setEditableAgentStatus = async (code: string, enabled: boolean) =>
-  request<ApiResponse<EditableAgent>>(`/api/platform/ai/definitions/agents/${code}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
-export const rollbackEditableAgent = async (code: string, version: number) =>
-  request<ApiResponse<EditableAgent>>(`/api/platform/ai/definitions/agents/${code}/rollback/${version}`, { method: 'POST' });
-export const queryEditableSkills = async () =>
-  request<ApiResponse<EditableSkill[]>>('/api/platform/ai/definitions/skills');
-export const updateEditableSkill = async (code: string, data: Pick<EditableSkill, 'name' | 'category' | 'content'>) =>
-  request<ApiResponse<EditableSkill>>(`/api/platform/ai/definitions/skills/${code}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, data });
-export const publishEditableSkill = async (code: string) =>
-  request<ApiResponse<EditableSkill>>(`/api/platform/ai/definitions/skills/${code}/publish`, { method: 'POST' });
-export const setEditableSkillStatus = async (code: string, enabled: boolean) =>
-  request<ApiResponse<EditableSkill>>(`/api/platform/ai/definitions/skills/${code}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
-export const rollbackEditableSkill = async (code: string, version: number) =>
-  request<ApiResponse<EditableSkill>>(`/api/platform/ai/definitions/skills/${code}/rollback/${version}`, { method: 'POST' });

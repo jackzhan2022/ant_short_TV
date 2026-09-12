@@ -36,7 +36,6 @@ class ScriptReviewWorkflowEndToEndTest {
     @Autowired private ReviewUnitPlanner planner;
     @Autowired private ReviewFanoutRepository fanout;
     @Autowired private ReviewToolReadService reads;
-    @Autowired private ReviewToolWriteService writes;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ObjectMapper json;
 
@@ -61,9 +60,7 @@ class ScriptReviewWorkflowEndToEndTest {
         agents.create(new WorkflowAgentCommand(
             "script-review", "剧本审核", "端到端测试审核 Agent", "只使用可信审核工具。", modelId,
             new BigDecimal("0.100"), 16384, 12, "ENABLED", allSkillCodes(),
-            List.of("read_review_context", "read_review_content",
-                "save_review_unit_result", "read_review_candidates", "save_review_semantic_decisions",
-                "read_review_unit_results", "save_review_result")), userId);
+            List.of("read_review_context", "read_review_content")), userId);
         jdbc.update("insert into review_project (id, tenant_id, name, source_type, original_content, status, created_by, created_at, updated_at) values (?, ?, '审核端到端', 'TXT', ?, 'ACTIVE', ?, now(), now())",
             projectId, tenantId, source, userId);
         jdbc.update("insert into review_script_version (id, tenant_id, project_id, version_no, source_type, content, created_by, created_at, updated_at) values (?, ?, ?, 1, 'TXT', ?, ?, now(), now())",
@@ -72,207 +69,49 @@ class ScriptReviewWorkflowEndToEndTest {
     }
 
     @Test
-    void quickReviewIgnoresHistoricalIssueAndSavesIndependentFormalResult() {
+    void markdownQuickPlanReadsOnlyItsFrozenSceneWithoutWriteTools() {
         List<String> dimensions = List.of("台词合理性");
         Map<String, Object> scope = Map.of("sceneKeys", List.of("1-2"));
         ReviewContentService.FrozenReview frozen = content.freeze(source, "SCENES", scope, dimensions);
-        long previousTaskId = taskId - 1;
-        insertTask(previousTaskId, 1, "QUICK", "ALL", "{}", dimensions,
-            content.freeze(source, "ALL", Map.of(), dimensions), "COMPLETED");
-        insertPriorIssue(previousTaskId, frozen.segments().get(0).anchor());
-        insertTask(taskId, 2, "QUICK", "SCENES", stringify(scope), dimensions, frozen, "RUNNING");
-
-        WorkflowAgentExecutionPlan plan = plans.freeze(dimensions, "QUICK");
-        assertThat(plan.agent().skillCodes()).containsExactly(
-            "script-review-foundation", "script-review-execution-framework",
-            "script-review-dimension-dialogue");
-        assertThat(plan.agent().toolCodes()).containsExactly(
-            "read_review_context", "read_review_content", "save_review_result");
-
+        insertTask(taskId, 1, "QUICK", "SCENES", stringify(scope), dimensions, frozen, "RUNNING");
+        WorkflowAgentExecutionPlan plan = plans.freeze(dimensions, "MARKDOWN_QUICK");
+        assertThat(plan.agent().toolCodes()).containsExactly("read_review_context", "read_review_content");
         long runId = insertRun(taskId, "REVIEW_QUICK");
         ToolExecutionContext context = context(taskId, runId,
-            new ReviewToolScope(projectId, versionId, null, null, 1, "QUICK", dimensions));
-        JsonNode trusted = reads.readContext(context);
-        assertThat(trusted.path("scope").path("sceneKeys").get(0).asText()).isEqualTo("1-2");
-        JsonNode visible = reads.readContent(context, json.createObjectNode().put("offset", 0).put("limit", 50000));
+            new ReviewToolScope(projectId, versionId, null, null, 1, "MARKDOWN_QUICK", dimensions));
+        assertThat(reads.readContext(context).path("scope").path("sceneKeys").get(0).asText()).isEqualTo("1-2");
+        JsonNode visible = reads.readContent(context, json.createObjectNode());
         assertThat(visible.path("segments").get(0).path("content").asText())
             .contains("顾言：再见").doesNotContain("林夏：你好");
-        assertThat(reads.readHistory(context, json.createObjectNode().put("page", 1).put("pageSize", 50))
-            .path("issues")).hasSize(1);
-
-        ObjectNode quickResult = formalPayload(frozen, "台词合理性", "顾言：再见",
-            frozen.segments().get(0).anchor(), "LOW");
-        ObjectNode quickHit = (ObjectNode) quickResult.path("issues").get(0).path("hits").get(0);
-        quickHit.put("episode", 1);
-        quickHit.put("scene", "1-2");
-        writes.saveResult(context, quickResult);
-
-        assertThat(jdbc.queryForObject("select status from review_task where id = ?", String.class, taskId))
-            .isEqualTo("COMPLETED");
-        assertThat(jdbc.queryForMap("select issue_no, status, related_issue_no from review_issue where task_id = ?", taskId))
-            .containsEntry("ISSUE_NO", "R2-01")
-            .containsEntry("STATUS", "new")
-            .containsEntry("RELATED_ISSUE_NO", null);
-        assertThat(jdbc.queryForMap("select status, related_issue_no from review_issue where task_id = ?", previousTaskId))
-            .containsEntry("STATUS", "new")
-            .containsEntry("RELATED_ISSUE_NO", null);
-        assertThat(jdbc.queryForObject("select count(*) from review_issue_hit where task_id = ?", Integer.class, taskId))
-            .isOne();
-        assertThat(jdbc.queryForObject("select count(*) from review_issue_event where task_id = ?", Integer.class, taskId))
-            .isOne();
     }
 
     @Test
-    void deepReviewPlansHeadingFreeUnitsPersistsCandidatesAndAggregatesMultiHitFormalResult() {
-        source = "甲说：开始。\n\n冲突逐步升级，人物进入仓库寻找证据。\n\n乙说：结束，但线索仍未回收。";
-        jdbc.update("update review_script_version set content = ? where id = ?", source, versionId);
-        List<String> dimensions = List.of("剧情逻辑与因果");
-        ReviewContentService.FrozenReview frozen = content.freeze(source, "ALL", Map.of(), dimensions);
-        insertTask(taskId, 1, "DEEP", "ALL", "{}", dimensions, frozen, "RUNNING");
-        List<ReviewUnitPlanner.Unit> units = planner.plan(source, "ALL", Map.of(), frozen, 28, 4);
-        assertThat(units).hasSizeGreaterThan(1);
-
-        WorkflowAgentExecutionPlan childPlan = plans.freeze(dimensions, "DEEP_CHILD");
-        WorkflowAgentExecutionPlan aggregationPlan = plans.freeze(dimensions, "DEEP_AGGREGATION");
-        assertThat(childPlan.agent().skillCodes()).doesNotContain("script-review-cross-episode-synthesis");
-        assertThat(aggregationPlan.agent().skillCodes()).endsWith("script-review-cross-episode-synthesis");
-        String unitSetHash = ReviewContentService.hash(units.stream()
-            .map(unit -> unit.unitKey() + ":" + unit.fingerprint()).collect(java.util.stream.Collectors.joining("|")));
-        long snapshotId = fanout.openSnapshot(new ReviewFanoutRepository.SnapshotDraft(
-            tenantId, projectId, taskId, versionId, 1, "script-review", childPlan.agent().revision(),
-            "[]", modelId, stringify(dimensions), "{}", frozen.versionHash(), frozen.scopeHash(),
-            frozen.dimensionsHash(), unitSetHash, units.size(), 2));
-
-        String candidateExcerpt = null;
-        String candidateAnchor = null;
-        for (ReviewUnitPlanner.Unit unit : units) {
-            long unitId = fanout.addUnit(new ReviewFanoutRepository.UnitDraft(snapshotId, unit.unitNo(),
-                unit.unitKey(), "{}", unit.startOffset(), unit.endOffset(), unit.fingerprint()));
-            fanout.transitionUnit(unitId, ReviewUnitStatus.PENDING, ReviewUnitStatus.RUNNING);
-            long runId = insertRun(taskId, "REVIEW_CHILD");
-            ToolExecutionContext child = context(taskId, runId,
-                new ReviewToolScope(projectId, versionId, snapshotId, unitId, 1, "DEEP_CHILD", dimensions));
-            JsonNode visible = reads.readContent(child,
-                json.createObjectNode().put("offset", 0).put("limit", 50000));
-            ObjectNode payload = hashes(frozen);
-            payload.put("contentFingerprint", unit.fingerprint());
-            String visibleAnchor = visible.path("segments").get(0).path("anchors").get(0).asText();
-            payload.set("coverage", coverage(visibleAnchor));
-            ArrayNode candidates = json.createArrayNode();
-            if (unit.unitNo() == 1) {
-                candidateExcerpt = visible.path("segments").get(0).path("content").asText().trim();
-                candidateAnchor = visibleAnchor;
-                ObjectNode candidate = candidates.addObject();
-                candidate.put("dimension", "剧情逻辑与因果");
-                candidate.put("severity", "HIGH");
-                candidate.put("title", "线索未回收");
-                candidate.put("problem", "线索缺少完整因果闭环");
-                candidate.putArray("evidence").add(candidateExcerpt);
-                candidate.put("suggestion", "补充线索回收动作");
-                ObjectNode hit = candidate.putArray("hits").addObject();
-                hit.put("anchor", candidateAnchor);
-                hit.put("excerpt", candidateExcerpt);
-            }
-            payload.set("candidates", candidates);
-            writes.saveUnitResult(child, payload);
-        }
-
-        assertThat(fanout.orderedUnits(snapshotId)).allSatisfy(unit -> {
-            assertThat(unit.getStatus()).isEqualTo("SUCCEEDED");
-            assertThat(unit.getCandidateSaved()).isTrue();
-        });
-        long candidateId = jdbc.queryForObject(
-            "select id from review_candidate_audit where snapshot_id = ?", Long.class, snapshotId);
-        ToolExecutionContext quality = context(taskId, insertRun(taskId, "REVIEW_SEMANTIC_QUALITY"),
-            new ReviewToolScope(projectId, versionId, snapshotId, null, 1, "DEEP_SEMANTIC", dimensions));
-        writes.readCandidates(quality, json.createObjectNode().put("page", 1).put("pageSize", 100));
-        reads.readContent(quality, json.createObjectNode().put("offset", 0).put("limit", 50000));
-        ObjectNode semantic = hashes(frozen);
-        ObjectNode decision = semantic.putArray("decisions").addObject();
-        decision.put("candidateId", candidateId);
-        decision.put("decision", "CONFIRMED");
-        decision.put("confidence", 0.91);
-        decision.put("rationale", "当前剧本证据直接支持");
-        decision.put("severityDecision", "HIGH");
-        decision.putArray("evidenceRefs").add(candidateAnchor);
-        writes.saveSemanticDecisions(quality, semantic);
-
-        long aggregationRunId = insertRun(taskId, "REVIEW_AGGREGATION");
-        ToolExecutionContext aggregation = context(taskId, aggregationRunId,
-            new ReviewToolScope(projectId, versionId, snapshotId, null, 1, "DEEP_AGGREGATION", dimensions));
-        assertThat(writes.readUnitResults(aggregation,
-            json.createObjectNode().put("page", 1).put("pageSize", 100)).path("units")).hasSize(units.size());
-
-        ObjectNode formal = formalPayload(frozen, "剧情逻辑与因果", candidateExcerpt,
-            candidateAnchor, "HIGH");
-        ((ObjectNode) formal.path("issues").get(0)).putArray("sourceCandidateIds").add(candidateId);
-        ArrayNode hits = (ArrayNode) formal.path("issues").get(0).path("hits");
-        ObjectNode secondHit = hits.addObject();
-        secondHit.put("anchor", frozen.segments().get(0).anchor());
-        secondHit.put("excerpt", "乙说：结束");
-        ((ArrayNode) formal.path("issues").get(0).path("evidence")).add("乙说：结束");
-        writes.saveResult(aggregation, formal);
-
-        assertThat(jdbc.queryForObject("select status from review_task where id = ?", String.class, taskId))
-            .isEqualTo("COMPLETED");
-        assertThat(jdbc.queryForObject("select count(*) from review_issue where task_id = ?", Integer.class, taskId))
-            .isOne();
-        assertThat(jdbc.queryForObject("select count(*) from review_issue_hit where task_id = ?", Integer.class, taskId))
-            .isEqualTo(2);
-    }
-
-    @Test
-    void invalidOrForeignOrCanceledSavesNeverCompleteAndIncompleteAggregationCannotFinalize() {
+    void markdownFragmentIsPersistedAndCanceledTaskCannotCommitAnotherFragment() {
         List<String> dimensions = List.of("台词合理性");
         ReviewContentService.FrozenReview frozen = content.freeze(source, "ALL", Map.of(), dimensions);
-        insertTask(taskId, 1, "QUICK", "ALL", "{}", dimensions, frozen, "RUNNING");
-        long runId = insertRun(taskId, "REVIEW_QUICK");
-        ToolExecutionContext quick = context(taskId, runId,
-            new ReviewToolScope(projectId, versionId, null, null, 1, "QUICK", dimensions));
-        reads.readContent(quick, json.createObjectNode().put("offset", 0).put("limit", 50000));
-
-        ObjectNode stale = formalPayload(frozen, "台词合理性", "顾言：再见",
-            frozen.segments().get(0).anchor(), "LOW");
-        stale.put("versionHash", "0".repeat(64));
-        assertThatThrownBy(() -> writes.saveResult(quick, stale)).isInstanceOf(BusinessException.class);
-
-        ObjectNode unselected = formalPayload(frozen, "人物动机", "顾言：再见",
-            frozen.segments().get(0).anchor(), "LOW");
-        assertThatThrownBy(() -> writes.saveResult(quick, unselected)).isInstanceOf(BusinessException.class);
-
-        ObjectNode badSeverity = formalPayload(frozen, "台词合理性", "顾言：再见",
-            frozen.segments().get(0).anchor(), "UNKNOWN");
-        assertThatThrownBy(() -> writes.saveResult(quick, badSeverity)).isInstanceOf(BusinessException.class);
-
-        ObjectNode absentEvidence = formalPayload(frozen, "台词合理性", "正文不存在的证据",
-            frozen.segments().get(0).anchor(), "LOW");
-        assertThatThrownBy(() -> writes.saveResult(quick, absentEvidence)).isInstanceOf(BusinessException.class);
-
-        ToolExecutionContext foreign = context(taskId, runId,
-            new ReviewToolScope(projectId + 999, versionId, null, null, 1, "QUICK", dimensions));
-        assertThatThrownBy(() -> reads.readContext(foreign)).isInstanceOf(BusinessException.class);
-        assertUnfinished();
-
-        jdbc.update("update review_task set status = 'CANCELED' where id = ?", taskId);
-        assertThatThrownBy(() -> writes.saveResult(quick,
-            formalPayload(frozen, "台词合理性", "顾言：再见", frozen.segments().get(0).anchor(), "LOW")))
+        insertTask(taskId, 1, "DEEP", "ALL", "{}", dimensions, frozen, "RUNNING");
+        long snapshot = fanout.openSnapshot(new ReviewFanoutRepository.SnapshotDraft(
+            tenantId, projectId, taskId, versionId, 1, "script-review", 1L, "[]", modelId,
+            stringify(dimensions), "{}", frozen.versionHash(), frozen.scopeHash(),
+            frozen.dimensionsHash(), "markdown-units", 2, 1));
+        long first = fanout.addUnit(new ReviewFanoutRepository.UnitDraft(snapshot, 1, "first",
+            "DIMENSION_MARKDOWN", dimensions.get(0), "{}", 0, source.length(), frozen.versionHash()));
+        long second = fanout.addUnit(new ReviewFanoutRepository.UnitDraft(snapshot, 2, "second",
+            "DIMENSION_MARKDOWN", dimensions.get(0), "{}", 0, source.length(), frozen.versionHash()));
+        long run = insertRun(taskId, "REVIEW_DEEP_CHILD");
+        jdbc.update("update review_fanout_unit set status='RUNNING' where snapshot_id=?", snapshot);
+        fanout.replaceMarkdownFragment(new ReviewFanoutRepository.MarkdownFragmentDraft(
+            snapshot, first, run, 1, frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash(),
+            frozen.versionHash(), "# 已保存片段", ReviewContentService.hash("# 已保存片段")));
+        assertThat(fanout.orderedMarkdownFragments(snapshot)).hasSize(1);
+        assertThat(fanout.orderedMarkdownFragments(snapshot).get(0).reportMarkdown()).isEqualTo("# 已保存片段");
+        jdbc.update("update review_task set status='CANCELED' where id=?", taskId);
+        assertThatThrownBy(() -> fanout.replaceMarkdownFragment(new ReviewFanoutRepository.MarkdownFragmentDraft(
+            snapshot, second, run, 1, frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash(),
+            frozen.versionHash(), "# 不应完成", ReviewContentService.hash("# 不应完成"))))
             .isInstanceOf(BusinessException.class);
-        assertThat(jdbc.queryForObject("select count(*) from review_issue where task_id = ?", Integer.class, taskId))
-            .isZero();
-
-        jdbc.update("update review_task set status = 'RUNNING', review_mode = 'DEEP' where id = ?", taskId);
-        long snapshotId = fanout.openSnapshot(new ReviewFanoutRepository.SnapshotDraft(
-            tenantId, projectId, taskId, versionId, 1, "script-review", 1, "[]", modelId,
-            stringify(dimensions), "{}", frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash(),
-            "incomplete-units", 1, 1));
-        fanout.addUnit(new ReviewFanoutRepository.UnitDraft(snapshotId, 1, "offset-0", "{}", 0,
-            source.length(), ReviewContentService.hash(source)));
-        ToolExecutionContext aggregation = context(taskId, insertRun(taskId, "REVIEW_AGGREGATION"),
-            new ReviewToolScope(projectId, versionId, snapshotId, null, 1, "DEEP_AGGREGATION", dimensions));
-        assertThatThrownBy(() -> writes.saveResult(aggregation,
-            formalPayload(frozen, "台词合理性", "顾言：再见", frozen.segments().get(0).anchor(), "LOW")))
-            .isInstanceOf(BusinessException.class).hasMessageContaining("INCOMPLETE");
-        assertUnfinished();
+        assertThat(jdbc.queryForObject("select status from review_fanout_unit where id=?", String.class, second))
+            .isEqualTo("RUNNING");
     }
 
     private long insertModel(long seed) {
@@ -290,7 +129,6 @@ class ScriptReviewWorkflowEndToEndTest {
         codes.add("script-review-foundation");
         codes.add("script-review-execution-framework");
         Arrays.stream(ReviewDimension.values()).map(ReviewDimension::skillCode).forEach(codes::add);
-        codes.add("script-review-semantic-quality");
         codes.add("script-review-cross-episode-synthesis");
         return List.copyOf(codes);
     }
@@ -302,14 +140,6 @@ class ScriptReviewWorkflowEndToEndTest {
             frozen.versionHash(), frozen.scopeHash(), frozen.dimensionsHash(), status, "review-e2e-" + id, userId);
     }
 
-    private void insertPriorIssue(long previousTaskId, String anchor) {
-        jdbc.update("insert into review_issue (tenant_id, project_id, task_id, script_version_id, round_no, issue_no, dimension, severity, title, position_json, excerpt, problem, evidence_json, suggestion, status, manually_resolved, created_at, updated_at) values (?, ?, ?, ?, 1, 'R1-01', '台词合理性', 'LOW', '告别突兀', '{\"episode\":1,\"scene\":\"1-2\"}', '顾言：再见', '缺少回应', '[\"顾言：再见\"]', '补反应', 'new', false, now(), now())",
-            tenantId, projectId, previousTaskId, versionId);
-        long issueId = jdbc.queryForObject("select id from review_issue where task_id = ?", Long.class, previousTaskId);
-        jdbc.update("insert into review_issue_hit (tenant_id, project_id, task_id, issue_id, hit_no, episode_no, scene_no, anchor_label, excerpt, selected, created_at, updated_at) values (?, ?, ?, ?, 1, 1, '1-2', ?, '顾言：再见', true, now(), now())",
-            tenantId, projectId, previousTaskId, issueId, anchor);
-    }
-
     private long insertRun(long targetTaskId, String runType) {
         jdbc.update("insert into ai_workflow_agent_run (agent_code, run_type, tenant_id, user_id, project_id, task_id, status, model_id, temperature, max_tokens, max_steps, prompt_snapshot, started_at, created_at) values ('script-review', ?, ?, ?, ?, ?, 'RUNNING', ?, 0.1, 16384, 12, '', now(), now())",
             runType, tenantId, userId, projectId, targetTaskId, modelId);
@@ -319,47 +149,6 @@ class ScriptReviewWorkflowEndToEndTest {
     private ToolExecutionContext context(long targetTaskId, long runId, ReviewToolScope scope) {
         return new ToolExecutionContext(tenantId, userId, projectId, null, null, targetTaskId, null,
             runId, null, null, null, Set.of(), null, new WorkflowToolRunState(), scope);
-    }
-
-    private ObjectNode formalPayload(ReviewContentService.FrozenReview frozen, String dimension,
-        String excerpt, String anchor, String severity) {
-        ObjectNode payload = hashes(frozen);
-        payload.put("score", 82);
-        payload.put("conclusion", "整体可用");
-        payload.set("coverage", coverage(anchor));
-        ObjectNode issue = payload.putArray("issues").addObject();
-        issue.put("dimension", dimension);
-        issue.put("severity", severity);
-        issue.put("title", "告别突兀");
-        issue.put("problem", "缺少回应");
-        issue.putArray("evidence").add(excerpt);
-        issue.put("suggestion", "补反应");
-        ObjectNode hit = issue.putArray("hits").addObject();
-        hit.put("anchor", anchor);
-        hit.put("excerpt", excerpt);
-        return payload;
-    }
-
-    private ObjectNode hashes(ReviewContentService.FrozenReview frozen) {
-        ObjectNode payload = json.createObjectNode();
-        payload.put("versionHash", frozen.versionHash());
-        payload.put("scopeHash", frozen.scopeHash());
-        payload.put("dimensionsHash", frozen.dimensionsHash());
-        return payload;
-    }
-
-    private ObjectNode coverage(String anchor) {
-        ObjectNode coverage = json.createObjectNode();
-        coverage.put("complete", true);
-        coverage.putArray("anchors").add(anchor);
-        return coverage;
-    }
-
-    private void assertUnfinished() {
-        assertThat(jdbc.queryForObject("select status from review_task where id = ?", String.class, taskId))
-            .isEqualTo("RUNNING");
-        assertThat(jdbc.queryForObject("select count(*) from review_issue where task_id = ?", Integer.class, taskId))
-            .isZero();
     }
 
     private String stringify(Object value) {

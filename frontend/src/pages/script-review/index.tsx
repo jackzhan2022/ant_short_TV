@@ -1,6 +1,5 @@
 import {
   AuditOutlined,
-  CheckCircleOutlined,
   CopyOutlined,
   DownloadOutlined,
   LockOutlined,
@@ -26,7 +25,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import { statusText } from '@/utils/fieldDictionary';
@@ -34,9 +33,8 @@ import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from './dimensions';
 import styles from './index.module.css';
 import { reportFindings } from './reportFindings';
 import ReportIssueList from './ReportIssueList';
-import type { ReviewIssue, ReviewProjectDetail, ReviewTask } from './service';
+import type { ReviewProjectDetail, ReviewTask } from './service';
 import {
-  batchRepairReview,
   cancelReviewTask,
   createReviewTask,
   exportReviewReport,
@@ -44,7 +42,6 @@ import {
   queryReviewProjects,
   queryReviewTask,
   queryReviewVersionHistory,
-  resolveReviewIssue,
   retryReviewTask,
   rollbackReviewVersion,
   saveReviewVersion,
@@ -58,10 +55,10 @@ const taskIdFromPath = () => {
 };
 
 const statusColor = (status: string) => {
-  if (['COMPLETED', 'fixed'].includes(status)) return 'green';
-  if (['FAILED', 'P2', 'P1'].includes(status)) return 'red';
-  if (['RUNNING', 'persists'].includes(status)) return 'blue';
-  if (['CANCELED', 'processed'].includes(status)) return 'default';
+  if (status === 'COMPLETED') return 'green';
+  if (status === 'FAILED') return 'red';
+  if (status === 'RUNNING') return 'blue';
+  if (status === 'CANCELED') return 'default';
   return 'gold';
 };
 
@@ -100,12 +97,9 @@ const ScriptReviewPage = () => {
   );
   const [taskDetailLoading, setTaskDetailLoading] = useState(false);
   const [taskDetailError, setTaskDetailError] = useState(false);
-  const [selectedIssueId, setSelectedIssueId] = useState<number>();
   const [content, setContent] = useState('');
   const [editing, setEditing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [highlight, setHighlight] = useState('');
-  const hitRef = useRef<HTMLElement>(null);
   const [dimensions, setDimensions] = useState<string[]>(
     DEFAULT_REVIEW_DIMENSIONS,
   );
@@ -113,18 +107,11 @@ const ScriptReviewPage = () => {
   const [scopeType, setScopeType] = useState('ALL');
   const [scopeValues, setScopeValues] = useState('');
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [issueFilter, setIssueFilter] = useState<'PENDING' | 'PROCESSED'>(
-    'PENDING',
-  );
-  const [hitSelections, setHitSelections] = useState<Record<number, number[]>>(
-    {},
-  );
   const [versionHistory, setVersionHistory] = useState<any>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeExecution, setActiveExecution] =
     useState<API.AiExecutionResponse>();
-  const editorRef = useRef<any>(null);
 
   const selectedTaskSummary = useMemo(
     () => detail?.tasks.find((task) => task.id === selectedTaskId),
@@ -137,15 +124,6 @@ const ScriptReviewPage = () => {
     () => reportFindings(selectedTask?.reportMarkdown ?? '').length,
     [selectedTask?.reportMarkdown],
   );
-  const visibleIssues =
-    selectedTask?.issues.filter((issue) => !issue.manuallyResolved) ?? [];
-  const processedIssues =
-    selectedTask?.issues.filter((issue) => issue.manuallyResolved) ?? [];
-  const queueIssues =
-    issueFilter === 'PENDING' ? visibleIssues : processedIssues;
-  const selectedIssue = selectedTask?.issues.find(
-    (issue) => issue.id === selectedIssueId,
-  );
   const currentVersion = detail?.versions.find(
     (version) => version.id === selectedVersionId,
   );
@@ -153,71 +131,6 @@ const ScriptReviewPage = () => {
   const versionMismatch = Boolean(
     selectedTask && selectedVersionId !== selectedTask.scriptVersionId,
   );
-  const highlightStart = highlight ? content.indexOf(highlight) : -1;
-
-  useEffect(() => {
-    if (!queueIssues.some((issue) => issue.id === selectedIssueId)) {
-      setSelectedIssueId(queueIssues[0]?.id);
-    }
-  }, [selectedTask, issueFilter, selectedIssueId]);
-
-  useEffect(() => {
-    setHighlight(
-      selectedIssue?.hits[0]?.excerpt?.trim() ||
-        selectedIssue?.excerpt?.trim() ||
-        '',
-    );
-  }, [selectedIssue?.id, selectedIssue?.hits[0]?.excerpt, selectedIssue?.excerpt]);
-
-  useEffect(() => {
-    if (!editing && highlightStart >= 0)
-      hitRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-  }, [highlight, highlightStart, editing]);
-
-  const selectIssue = (issue: ReviewIssue) => {
-    setSelectedIssueId(issue.id);
-    setHighlight(issue.hits[0]?.excerpt?.trim() || issue.excerpt?.trim() || '');
-  };
-
-  const resolveTextarea = () => {
-    const current = editorRef.current;
-    return (
-      current?.resizableTextArea?.textArea ?? current?.input ?? current ?? null
-    );
-  };
-
-  const openIssueHit = (
-    issue: ReviewIssue,
-    hit: ReviewIssue['hits'][number],
-  ) => {
-    const target = hit.excerpt?.trim() || issue.excerpt?.trim();
-    if (!target) {
-      message.warning('当前问题没有可定位的原文片段');
-      return;
-    }
-    setHighlight(target);
-    if (!editing) {
-      if (!content.includes(target))
-        message.warning('当前版本未找到可高亮的命中片段');
-      else
-        hitRef.current?.scrollIntoView?.({
-          block: 'center',
-          behavior: 'smooth',
-        });
-      return;
-    }
-    const textarea = resolveTextarea();
-    const start = content.indexOf(target);
-    if (textarea?.focus) {
-      textarea.focus();
-    }
-    if (textarea?.setSelectionRange && start >= 0) {
-      textarea.setSelectionRange(start, start + target.length);
-      return;
-    }
-    message.warning('当前版本未找到可高亮的命中片段');
-  };
-
   const loadProjects = async () => {
     const response = await queryReviewProjects();
     const nextProjects = response.data ?? [];
@@ -239,12 +152,6 @@ const ScriptReviewPage = () => {
       setSelectedVersionId(versionId);
       const taskId = nextDetail.project.lastTaskId ?? nextDetail.tasks[0]?.id;
       setSelectedTaskId(taskId);
-      const task = nextDetail.tasks.find((item) => item.id === taskId);
-      setSelectedIssueId(
-        task?.issues.find((issue) => !issue.manuallyResolved)?.id ??
-          task?.issues[0]?.id,
-      );
-      setIssueFilter('PENDING');
       setContent(
         nextDetail.versions.find((version) => version.id === versionId)
           ?.content ?? '',
@@ -287,11 +194,6 @@ const ScriptReviewPage = () => {
         tasks: [task],
       });
       setContent(version.content);
-      setSelectedIssueId(
-        task.issues.find((issue) => !issue.manuallyResolved)?.id ??
-          task.issues[0]?.id,
-      );
-      setIssueFilter('PENDING');
     } finally {
       setLoading(false);
     }
@@ -319,7 +221,7 @@ const ScriptReviewPage = () => {
       setTaskDetailError(false);
       return;
     }
-    if (selectedTaskSummary.issues.length > 0 || taskDetails[selectedTaskId]) {
+    if (taskDetails[selectedTaskId]) {
       setTaskDetailLoading(false);
       setTaskDetailError(false);
       return;
@@ -434,60 +336,13 @@ const ScriptReviewPage = () => {
     await loadProject(selectedProjectId);
   };
 
-  const confirmResolve = (issue: ReviewIssue) => {
-    modal.confirm({
-      title: `将 ${issue.issueNo} 标记为已处理？`,
-      content: '人工标记会保留在问题历史中，后续复审仍可重新判定为仍存在。',
-      okText: '标记已处理',
-      cancelText: '取消',
-      onOk: async () => {
-        await resolveReviewIssue(issue.id);
-        message.success('问题已移入已处理区');
-        if (selectedProjectId) await loadProject(selectedProjectId);
-      },
-    });
-  };
-
-  const applyRepair = (issue: ReviewIssue) => {
-    if (!selectedTask) return;
-    const selectedHitIds =
-      hitSelections[issue.id] ?? issue.hits.map((hit) => hit.id);
-    if (selectedHitIds.length === 0) {
-      message.warning('请先勾选至少一个命中片段');
-      return;
-    }
-    modal.confirm({
-      title: `修订预览 ${issue.issueNo}`,
-      content: (
-        <Space vertical style={{ width: '100%' }}>
-          <Typography.Text>
-            将命中片段中的「{issue.hits[0]?.excerpt ?? issue.excerpt}
-            」全部替换为建议文本。
-          </Typography.Text>
-          <Typography.Text type="secondary">
-            当前仅支持基础批量修复，并会自动保存为新版本。
-          </Typography.Text>
-        </Space>
-      ),
-      okText: '确认应用修订',
-      cancelText: '取消',
-      onOk: async () => {
-        await batchRepairReview(selectedTask.id, {
-          actionType: 'GLOBAL_REPLACE',
-          replacementFrom: issue.hits[0]?.excerpt ?? issue.excerpt,
-          replacementTo: issue.hits[0]?.replacementText ?? '',
-          selectedHitIds,
-        });
-        message.success('批量修复已应用并生成新版本');
-        if (selectedProjectId) {
-          await loadProject(selectedProjectId);
-        }
-      },
-    });
-  };
-
   const exportReport = async () => {
-    if (!selectedProjectId || !selectedVersionId || !selectedTask?.reportMarkdown) return;
+    if (
+      !selectedProjectId ||
+      !selectedVersionId ||
+      !selectedTask?.reportMarkdown
+    )
+      return;
     const response = await exportReviewReport(
       selectedProjectId,
       selectedVersionId,
@@ -496,7 +351,9 @@ const ScriptReviewPage = () => {
     );
     message.success(`导出记录已创建：${response.data?.fileName ?? '审核报告'}`);
     const downloadUrl = URL.createObjectURL(
-      new Blob([selectedTask.reportMarkdown], { type: 'text/markdown;charset=utf-8' }),
+      new Blob([selectedTask.reportMarkdown], {
+        type: 'text/markdown;charset=utf-8',
+      }),
     );
     const link = document.createElement('a');
     link.href = downloadUrl;
@@ -511,12 +368,6 @@ const ScriptReviewPage = () => {
     if (!selectedTask?.reportMarkdown) return;
     await navigator.clipboard.writeText(selectedTask.reportMarkdown);
     message.success('审核报告已复制');
-  };
-
-  const selectIssueFilter = (filter: 'PENDING' | 'PROCESSED') => {
-    setIssueFilter(filter);
-    const issues = filter === 'PENDING' ? visibleIssues : processedIssues;
-    setSelectedIssueId(issues[0]?.id);
   };
 
   return (
@@ -570,19 +421,14 @@ const ScriptReviewPage = () => {
                   </span>
                 </>
               )}
+              {!taskDetailLoading &&
+                !taskDetailError &&
+                reportFindingCount > 0 && (
+                  <output aria-label="报告问题总数">
+                    报告共 {reportFindingCount} 项问题
+                  </output>
+                )}
               <span>当前剧本 V{currentVersion?.versionNo ?? '-'}</span>
-              {!taskDetailLoading && !taskDetailError && (
-                selectedTask?.resultFormat === 'MARKDOWN' ? (
-                  reportFindingCount > 0 ? (
-                    <output aria-label="报告问题总数">报告共 {reportFindingCount} 项问题</output>
-                  ) : null
-                ) : (
-                  <span>
-                    {visibleIssues.length} 项未处理 · {processedIssues.length}{' '}
-                    项已处理
-                  </span>
-                )
-              )}
               {versionMismatch && (
                 <Tag color="orange">
                   当前正文与审核版本不同，请切回审核版本查看证据
@@ -656,16 +502,17 @@ const ScriptReviewPage = () => {
                 </Space>
               </div>
               <section aria-label="审核维度标签" style={{ marginBottom: 16 }}>
-                    <Space wrap size={[4, 8]}>
-                      {selectedTask?.selectedDimensions.map((dimension) => (
-                        <Tag key={dimension} color="blue">{dimension}</Tag>
-                      ))}
-                    </Space>
-                  </section>
+                <Space wrap size={[4, 8]}>
+                  {selectedTask?.selectedDimensions.map((dimension) => (
+                    <Tag key={dimension} color="blue">
+                      {dimension}
+                    </Tag>
+                  ))}
+                </Space>
+              </section>
               <div className={styles.document}>
                 {editing ? (
                   <Input.TextArea
-                    ref={editorRef}
                     value={content}
                     onChange={(event) => setContent(event.target.value)}
                     autoSize={{ minRows: 24 }}
@@ -674,24 +521,7 @@ const ScriptReviewPage = () => {
                   />
                 ) : (
                   <div className={styles.paper}>
-                    {content ? (
-                      highlightStart >= 0 ? (
-                        <>
-                          {content.slice(0, highlightStart)}
-                          <mark ref={hitRef} className={styles.highlight}>
-                            {content.slice(
-                              highlightStart,
-                              highlightStart + highlight.length,
-                            )}
-                          </mark>
-                          {content.slice(highlightStart + highlight.length)}
-                        </>
-                      ) : (
-                        content
-                      )
-                    ) : (
-                      <Empty description="当前版本没有正文" />
-                    )}
+                    {content || <Empty description="当前版本没有正文" />}
                   </div>
                 )}
               </div>
@@ -710,7 +540,7 @@ const ScriptReviewPage = () => {
                   </Space>
                 ) : (
                   <Typography.Text type="secondary">
-                    选择右侧问题，定位原文证据
+                    核对右侧报告引用，按需编辑剧本
                   </Typography.Text>
                 )}
                 <Typography.Text type="secondary">
@@ -721,50 +551,24 @@ const ScriptReviewPage = () => {
             </section>
             <aside className={styles.review} aria-label="审核问题">
               <div className={styles.reviewHeader}>
-                <div className={styles.reviewTitle}>
-                  审核问题{' '}
-                  {selectedTask?.summary?.overallConclusion && (
-                    <Tag>{selectedTask.summary.overallConclusion}</Tag>
-                  )}
-                </div>
-                <p className={styles.summary}>
-                  {selectedTask?.summary?.summary ??
-                    '逐条核对证据，确认修改建议。'}
-                </p>
-                {selectedTask?.summary?.summary && (
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => setHistoryOpen(true)}
-                  >
-                    完整摘要
-                  </Button>
-                )}
-                {selectedTask?.resultFormat !== 'MARKDOWN' ? (
-                <Space wrap>
-                  <Button
-                    type={issueFilter === 'PENDING' ? 'primary' : 'default'}
-                    onClick={() => selectIssueFilter('PENDING')}
-                  >
-                    未处理 ({visibleIssues.length})
-                  </Button>
-                  <Button
-                    type={issueFilter === 'PROCESSED' ? 'primary' : 'default'}
-                    onClick={() => selectIssueFilter('PROCESSED')}
-                  >
-                    已处理 ({processedIssues.length})
-                  </Button>
-                </Space>
-                ) : null}
+                <div className={styles.reviewTitle}>审核报告</div>
+                <p className={styles.summary}>核对报告引用，按需编辑剧本。</p>
               </div>
               <div className={styles.issueList}>
                 {!selectedTask ? (
-                  <Empty description="创建审核任务后，这里会显示问题卡" />
-                ) : selectedTask.resultFormat === 'MARKDOWN' ? (
+                  <Empty description="创建审核任务后，这里会显示报告" />
+                ) : taskDetailLoading ? (
+                  <Typography.Text type="secondary">
+                    正在加载审核报告…
+                  </Typography.Text>
+                ) : taskDetailError ? (
+                  <Empty description="审核报告加载失败，请刷新重试" />
+                ) : (
                   <div className={styles.report}>
                     {selectedTask.status === 'FAILED' ? (
                       <Typography.Paragraph type="danger">
-                        {selectedTask.errorMessage ?? '报告生成失败，可从任务卡片重试。'}
+                        {selectedTask.errorMessage ??
+                          '报告生成失败，可从任务卡片重试。'}
                       </Typography.Paragraph>
                     ) : null}
                     <Space>
@@ -795,162 +599,6 @@ const ScriptReviewPage = () => {
                       />
                     )}
                   </div>
-                ) : (
-                  <>
-                    {selectedTask.observability?.humanReviewFindings.length ? (
-                      <Card
-                        size="small"
-                        title={`待人工复核 (${selectedTask.observability.humanReviewFindings.length})`}
-                      >
-                        <List
-                          size="small"
-                          dataSource={
-                            selectedTask.observability.humanReviewFindings
-                          }
-                          rowKey="candidateId"
-                          renderItem={(finding) => (
-                            <List.Item>
-                              <List.Item.Meta
-                                title={
-                                  <Space wrap>
-                                    <Tag color="gold">{finding.dimension}</Tag>
-                                    <Typography.Text strong>
-                                      {typeof finding.candidate.title ===
-                                      'string'
-                                        ? finding.candidate.title
-                                        : `候选 ${finding.candidateId}`}
-                                    </Typography.Text>
-                                  </Space>
-                                }
-                                description={finding.rationale}
-                              />
-                            </List.Item>
-                          )}
-                        />
-                      </Card>
-                    ) : null}
-
-                    {taskDetailLoading ? (
-                      <Typography.Text type="secondary">
-                        正在加载审核问题…
-                      </Typography.Text>
-                    ) : taskDetailError ? (
-                      <Empty description="审核问题加载失败，请刷新重试" />
-                    ) : queueIssues.length === 0 ? (
-                      <Empty
-                        description={
-                          issueFilter === 'PENDING'
-                            ? '当前没有未处理问题'
-                            : '暂无人工处理记录'
-                        }
-                      />
-                    ) : (
-                      queueIssues.map((issue) => (
-                        <section
-                          key={issue.id}
-                          className={
-                            issue.id === selectedIssueId
-                              ? styles.activeIssue
-                              : styles.issue
-                          }
-                        >
-                          <button
-                            type="button"
-                            className={styles.issueToggle}
-                            aria-expanded={issue.id === selectedIssueId}
-                            onClick={() => selectIssue(issue)}
-                          >
-                            <span className={styles.issueMeta}>
-                              <Tag color={statusColor(issue.severity)}>
-                                {issue.severity}
-                              </Tag>
-                              <span>
-                                {issue.issueNo} · {issue.dimension}
-                              </span>
-                            </span>
-                            <strong>{issue.title}</strong>
-                            <span className={styles.issueMeta}>
-                              {issue.hits[0]?.anchorLabel ?? '查看原文证据'} ·
-                              命中 {issue.hits.length} 处
-                            </span>
-                          </button>
-                          {issue.id === selectedIssueId && (
-                            <div className={styles.issueBody}>
-                              <div className={styles.label}>问题详情</div>
-                              <Typography.Paragraph>
-                                {issue.problem}
-                              </Typography.Paragraph>
-                              <div className={styles.quote}>
-                                原文：{issue.excerpt || '未提供片段'}
-                              </div>
-                              {issue.suggestion && (
-                                <div className={styles.suggestion}>
-                                  建议：{issue.suggestion}
-                                </div>
-                              )}
-                              {issue.hits.length > 0 && (
-                                <div className={styles.hits}>
-                                  <div className={styles.label}>
-                                    选择修订片段
-                                  </div>
-                                  <Checkbox.Group
-                                    className={styles.hitOptions}
-                                    value={
-                                      hitSelections[issue.id] ??
-                                      issue.hits.map((hit) => hit.id)
-                                    }
-                                    onChange={(values) =>
-                                      setHitSelections((current) => ({
-                                        ...current,
-                                        [issue.id]: values as number[],
-                                      }))
-                                    }
-                                    options={issue.hits.map((hit) => ({
-                                      label: `${hit.hitNo}. ${hit.anchorLabel ?? '未标注位置'}：${hit.excerpt}`,
-                                      value: hit.id,
-                                    }))}
-                                  />
-                                  <Space wrap>
-                                    {issue.hits.map((hit) => (
-                                      <Button
-                                        key={hit.id}
-                                        size="small"
-                                        type="link"
-                                        onClick={() => openIssueHit(issue, hit)}
-                                      >
-                                        定位命中 {hit.hitNo}
-                                      </Button>
-                                    ))}
-                                  </Space>
-                                </div>
-                              )}
-                              {issue.manuallyResolved ? (
-                                <Typography.Text type="success">
-                                  已于 {issue.manuallyResolvedAt ?? '当前轮次'}{' '}
-                                  人工处理
-                                </Typography.Text>
-                              ) : (
-                                <div className={styles.issueActions}>
-                                  <Button
-                                    icon={<CheckCircleOutlined />}
-                                    onClick={() => confirmResolve(issue)}
-                                  >
-                                    已处理
-                                  </Button>
-                                  <Button
-                                    type="primary"
-                                    onClick={() => applyRepair(issue)}
-                                  >
-                                    预览修订
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </section>
-                      ))
-                    )}
-                  </>
                 )}
               </div>
               <div className={styles.reviewFooter}>
@@ -965,13 +613,6 @@ const ScriptReviewPage = () => {
             size={560}
             destroyOnHidden
           >
-            {selectedTask?.summary?.summary && (
-              <Card size="small" title="审核摘要">
-                <Typography.Paragraph>
-                  {selectedTask.summary.summary}
-                </Typography.Paragraph>
-              </Card>
-            )}
             {detail.tasks.map((task) => (
               <Card
                 key={task.id}
@@ -979,11 +620,6 @@ const ScriptReviewPage = () => {
                 style={{ marginTop: 12, cursor: 'pointer' }}
                 onClick={() => {
                   setSelectedTaskId(task.id);
-                  setIssueFilter('PENDING');
-                  setSelectedIssueId(
-                    task.issues.find((issue) => !issue.manuallyResolved)?.id ??
-                      task.issues[0]?.id,
-                  );
                 }}
                 title={`第 ${task.roundNo} 轮 · ${task.reviewMode}`}
                 extra={
@@ -1060,44 +696,6 @@ const ScriptReviewPage = () => {
                 ) : null}
                 {task.observability ? (
                   <div style={{ marginTop: 8 }}>
-                    {task.observability.quality ? (
-                      <Typography.Text type="secondary">
-                        语义质检：
-                        {statusText(task.observability.quality.status)} · 候选{' '}
-                        {task.observability.quality.candidateCount ?? 0} / 裁决{' '}
-                        {task.observability.quality.decisionCount ?? 0}
-                      </Typography.Text>
-                    ) : null}
-                    <div style={{ marginTop: 6 }}>
-                      <Space wrap size={[4, 4]}>
-                        <Tag color="green">
-                          已确认 {task.observability.decisions.confirmed}
-                        </Tag>
-                        <Tag color="gold">
-                          待人工 {task.observability.decisions.needsHumanReview}
-                        </Tag>
-                        <Tag>
-                          已驳回 {task.observability.decisions.rejected}
-                        </Tag>
-                        <Tag>
-                          证据不足{' '}
-                          {task.observability.decisions.insufficientEvidence}
-                        </Tag>
-                        {task.observability.quality?.anomalyRequired ? (
-                          <Tag
-                            color={
-                              task.observability.quality.anomalyPassed
-                                ? 'green'
-                                : 'red'
-                            }
-                          >
-                            {task.observability.quality.anomalyPassed
-                              ? '异常复核通过'
-                              : '异常复核未通过'}
-                          </Tag>
-                        ) : null}
-                      </Space>
-                    </div>
                     <div style={{ marginTop: 6 }}>
                       <Typography.Text type="secondary">
                         {formatReviewCacheUsage(task.observability.cacheUsage)}
@@ -1162,12 +760,6 @@ const ScriptReviewPage = () => {
                           <Typography.Text>
                             第 {item.roundNo} 轮 · {statusText(item.status)}
                           </Typography.Text>
-                          {detail.tasks.find((task) => task.id === item.taskId)?.resultFormat !== 'MARKDOWN' && (
-                          <Typography.Text type="secondary">
-                            问题 {item.issueCount} · 已处理{' '}
-                            {item.processedIssueCount}
-                          </Typography.Text>
-                          )}
                         </Space>
                       </List.Item>
                     )}

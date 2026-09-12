@@ -56,7 +56,7 @@ class AssetSummaryQueryBoundaryTest {
         verifyNoMoreInteractions(jdbc);
         verify((ProjectAccessResolver) dependencies.get(ProjectAccessResolver.class)).requireView(10L, 33L);
         for (Class<?> type : List.of(AssetVisualVariantService.class, AssetVisualBindingService.class,
-            EpisodeAwareVisualResolver.class, ScriptAssetCandidateReviewService.class)) {
+            EpisodeAwareVisualResolver.class)) {
             verifyNoInteractions(dependencies.get(type));
         }
     }

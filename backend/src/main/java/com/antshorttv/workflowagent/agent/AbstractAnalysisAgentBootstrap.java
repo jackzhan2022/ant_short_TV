@@ -15,18 +15,15 @@ abstract class AbstractAnalysisAgentBootstrap implements ApplicationRunner {
     private final WorkflowAgentRepository repository;
     private final WorkflowAgentService service;
     private final JdbcTemplate jdbc;
-    private final boolean enabled;
 
     AbstractAnalysisAgentBootstrap(
         WorkflowAgentRepository repository,
         WorkflowAgentService service,
-        JdbcTemplate jdbc,
-        boolean enabled
+        JdbcTemplate jdbc
     ) {
         this.repository = repository;
         this.service = service;
         this.jdbc = jdbc;
-        this.enabled = enabled;
     }
 
     protected abstract String agentCode();
@@ -35,7 +32,7 @@ abstract class AbstractAnalysisAgentBootstrap implements ApplicationRunner {
 
     @Override
     public final void run(ApplicationArguments arguments) {
-        if (!enabled || alreadyExists()) {
+        if (alreadyExists()) {
             return;
         }
         Long modelId = findCompatibleModel();

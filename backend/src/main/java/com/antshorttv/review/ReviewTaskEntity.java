@@ -17,9 +17,6 @@ public class ReviewTaskEntity {
     private String selectedDimensionsJson;
     private String reviewScopeType;
     private String reviewScopeJson;
-    private String globalIndexJson;
-    private String resultJson;
-    private String resultFormat;
     private String reportMarkdown;
     private String status;
     private String currentStage;
@@ -65,12 +62,6 @@ public class ReviewTaskEntity {
     public void setReviewScopeType(String reviewScopeType) { this.reviewScopeType = reviewScopeType; }
     public String getReviewScopeJson() { return reviewScopeJson; }
     public void setReviewScopeJson(String reviewScopeJson) { this.reviewScopeJson = reviewScopeJson; }
-    public String getGlobalIndexJson() { return globalIndexJson; }
-    public void setGlobalIndexJson(String globalIndexJson) { this.globalIndexJson = globalIndexJson; }
-    public String getResultJson() { return resultJson; }
-    public void setResultJson(String resultJson) { this.resultJson = resultJson; }
-    public String getResultFormat() { return resultFormat; }
-    public void setResultFormat(String resultFormat) { this.resultFormat = resultFormat; }
     public String getReportMarkdown() { return reportMarkdown; }
     public void setReportMarkdown(String reportMarkdown) { this.reportMarkdown = reportMarkdown; }
     public String getStatus() { return status; }

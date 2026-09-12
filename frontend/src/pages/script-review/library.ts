@@ -1,24 +1,18 @@
-import type { ReviewIssue, ReviewProject, ReviewProjectSummary } from './service';
+import type { ReviewProject, ReviewProjectSummary } from './service';
 
-export type LibraryStateKey =
-  | 'NOT_REVIEWED'
-  | 'RUNNING'
-  | 'ACTION_REQUIRED'
-  | 'READY_FOR_REVIEW'
-  | 'COMPLETED';
+export type LibraryStateKey = 'NOT_REVIEWED' | 'RUNNING' | 'COMPLETED';
 
 export type LibraryState = {
   key: LibraryStateKey;
   label: string;
   actionLabel: string;
-  outstandingIssueCount: number;
 };
 
 type ProjectReviewSnapshot = {
   project: LibraryProject;
   task?: {
     status: string;
-    issues: Array<Pick<ReviewIssue, 'manuallyResolved'>>;
+    reportMarkdown?: string | null;
   };
 };
 
@@ -26,21 +20,18 @@ export type LibraryProject = ReviewProjectSummary &
   Partial<
     Pick<
       ReviewProject,
-      | 'versionCount'
-      | 'latestRoundNo'
-      | 'reviewState'
-      | 'outstandingIssueCount'
-      | 'actionLabel'
+      'versionCount' | 'latestRoundNo' | 'reviewState' | 'actionLabel'
     >
   >;
 
-export const deriveLibraryState = ({ task }: ProjectReviewSnapshot): LibraryState => {
+export const deriveLibraryState = ({
+  task,
+}: ProjectReviewSnapshot): LibraryState => {
   if (!task) {
     return {
       key: 'NOT_REVIEWED',
       label: '未审核',
       actionLabel: '发起审核',
-      outstandingIssueCount: 0,
     };
   }
   if (['PENDING', 'RUNNING'].includes(task.status)) {
@@ -48,58 +39,37 @@ export const deriveLibraryState = ({ task }: ProjectReviewSnapshot): LibraryStat
       key: 'RUNNING',
       label: '审核中',
       actionLabel: '查看进度',
-      outstandingIssueCount: 0,
     };
   }
 
-  const outstandingIssueCount = task.issues.filter(
-    (issue) => !issue.manuallyResolved,
-  ).length;
-  if (outstandingIssueCount > 0) {
-    return {
-      key: 'ACTION_REQUIRED',
-      label: '待处理',
-      actionLabel: '处理问题',
-      outstandingIssueCount,
-    };
-  }
-  if (task.issues.length > 0) {
-    return {
-      key: 'READY_FOR_REVIEW',
-      label: '待复审',
-      actionLabel: '发起复审',
-      outstandingIssueCount: 0,
-    };
+  if (task.status !== 'COMPLETED' || !task.reportMarkdown?.trim()) {
+    return { key: 'NOT_REVIEWED', label: '未审核', actionLabel: '重试审核' };
   }
   return {
     key: 'COMPLETED',
     label: '审核完成',
     actionLabel: '查看报告',
-    outstandingIssueCount: 0,
   };
 };
 
-export const libraryStateFromProject = (project: LibraryProject): LibraryState => {
+export const libraryStateFromProject = (
+  project: LibraryProject,
+): LibraryState => {
   if (project.reviewState) {
     const labels: Record<LibraryStateKey, string> = {
       NOT_REVIEWED: '未审核',
       RUNNING: '审核中',
-      ACTION_REQUIRED: '待处理',
-      READY_FOR_REVIEW: '待复审',
       COMPLETED: '审核完成',
     };
     const actions: Record<LibraryStateKey, string> = {
       NOT_REVIEWED: '发起审核',
       RUNNING: '查看进度',
-      ACTION_REQUIRED: '处理问题',
-      READY_FOR_REVIEW: '发起复审',
       COMPLETED: '查看报告',
     };
     return {
       key: project.reviewState,
       label: labels[project.reviewState],
       actionLabel: project.actionLabel ?? actions[project.reviewState],
-      outstandingIssueCount: project.outstandingIssueCount ?? 0,
     };
   }
   return deriveLibraryState({ project });

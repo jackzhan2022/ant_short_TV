@@ -11,7 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-@SpringBootTest(properties = "ai.video.scheduler.enabled=false")
+@SpringBootTest
 class VideoDecompositionScriptResultRepositoryTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private VideoDecompositionScriptResultRepository repository;

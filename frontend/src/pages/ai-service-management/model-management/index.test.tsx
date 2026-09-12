@@ -42,10 +42,6 @@ vi.mock('../platform-models', () => ({
   default: () => <div>ai-model-page</div>,
 }));
 vi.mock('../logs', () => ({ default: () => <div>call-log-page</div> }));
-vi.mock('../agents', () => ({
-  AgentTabContent: () => <div>agent-page</div>,
-  SkillTabContent: () => <div>skill-page</div>,
-}));
 vi.mock('../workflow-agents', () => ({
   default: () => <div>workflow-agent-page</div>,
 }));
@@ -86,11 +82,11 @@ describe('ModelManagementPage', () => {
       screen.getByRole('button', { name: 'Skill 管理' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Agent（新）' }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Agent（新）' }),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Skill（新）' }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Skill（新）' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText('service-provider-page')).toBeInTheDocument();
   });
 
@@ -104,15 +100,9 @@ describe('ModelManagementPage', () => {
     expect(screen.getByText('call-log-page')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Agent 管理' }));
-    expect(screen.getByText('agent-page')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Skill 管理' }));
-    expect(screen.getByText('skill-page')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Agent（新）' }));
     expect(screen.getByText('workflow-agent-page')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Skill（新）' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Skill 管理' }));
     expect(screen.getByText('workflow-skill-page')).toBeInTheDocument();
   });
 
@@ -134,21 +124,21 @@ describe('ModelManagementPage', () => {
     expect(screen.getByText('ai-model-page')).toBeInTheDocument();
   });
 
-  it('uses the first authorized new module when legacy tabs are unavailable', () => {
+  it('does not let old permissions grant access to workflow modules', () => {
     mocks.access.canViewPlatformAiProviders = false;
     mocks.access.canViewPlatformAiModels = false;
     mocks.access.canViewAiCallLogs = false;
-    mocks.access.canViewBuiltInAiAgents = false;
+    mocks.access.canViewBuiltInAiAgents = true;
     mocks.access.canViewWorkflowAgents = false;
     mocks.access.canViewWorkflowSkills = true;
 
     render(<ModelManagementPage />);
 
     expect(
-      screen.getByRole('button', { name: 'Skill（新）' }),
+      screen.getByRole('button', { name: 'Skill 管理' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Agent（新）' }),
+      screen.queryByRole('button', { name: 'Agent 管理' }),
     ).not.toBeInTheDocument();
     expect(screen.getByText('workflow-skill-page')).toBeInTheDocument();
   });

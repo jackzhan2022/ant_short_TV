@@ -60,7 +60,11 @@ class WorkflowAgentControllerTest {
         mockMvc.perform(get("/api/platform/ai/agent-tools")
                 .with(SessionTestSupport.authenticated(credential)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.length()", is(26)));
+            .andExpect(jsonPath("$.data.length()", is(20)))
+            .andExpect(jsonPath("$.data[*].code", org.hamcrest.Matchers.hasItems(
+                "read_review_context", "read_review_content", "save_episode_assets")))
+            .andExpect(jsonPath("$.data[*].code", org.hamcrest.Matchers.not(
+                org.hamcrest.Matchers.hasItem("save_review_result"))));
         MvcResult created = mockMvc.perform(post("/api/platform/ai/workflow-agents")
                 .with(SessionTestSupport.authenticated(credential))
                 .contentType(MediaType.APPLICATION_JSON)

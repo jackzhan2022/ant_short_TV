@@ -157,24 +157,6 @@ public class ReviewWorkbenchController {
                 tenantId(request), taskId, fullRegeneration)));
     }
 
-    @PostMapping("/tasks/{taskId}/batch-repair")
-    public ApiResponse<ReviewTaskResponse> batchRepair(
-        @PathVariable Long taskId,
-        @Valid @RequestBody BatchRepairReviewRequest body,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(reviewWorkbenchService.batchRepair(tenantId(request), taskId, body));
-    }
-
-    @PostMapping("/issues/{issueId}/resolve")
-    public ApiResponse<ReviewIssueResponse> resolveIssue(
-        @PathVariable Long issueId,
-        @Valid @RequestBody(required = false) MarkReviewIssueResolvedRequest body,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(reviewWorkbenchService.markIssueResolved(tenantId(request), issueId, body));
-    }
-
     @PostMapping("/projects/{projectId}/rollback")
     public ApiResponse<ReviewVersionResponse> rollback(
         @PathVariable Long projectId,

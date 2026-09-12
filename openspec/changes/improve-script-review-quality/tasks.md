@@ -1,3 +1,5 @@
+> 2026-09-12 替代声明：`remove-legacy-ai-workflow-paths` 是最终目标。结构化候选、语义裁决、异常门禁、旧工具和 feature flags 条款已被唯一 Markdown 审核替代；保留维度/范围冻结、成功单元复用、取消、日志与缓存观测。 原勾选和验证记录为历史证据，不据此恢复旧链路。归档时先合并仍有效的基础能力，最后合并 remove-legacy-ai-workflow-paths；之后不得再导入这些已退役条款。
+
 ## 1. Baseline and regression tests
 
 > Current external constraint (confirmed 2026-09-05): the human-reviewed list of 30+ issues

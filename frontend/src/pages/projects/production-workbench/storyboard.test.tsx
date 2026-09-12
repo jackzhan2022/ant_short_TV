@@ -1137,6 +1137,17 @@ describe('ProductionWorkbench script page', () => {
     });
   });
 
+  it('retries only the page read after a successful creation cannot refresh', async () => {
+    render(<ProductionWorkbench />);
+    await screen.findByText('分镜1');
+    mocks.createStoryboard.mockResolvedValueOnce({ data: null });
+    mocks.queryStoryboardWorkspace.mockRejectedValueOnce(new Error('offline'));
+    fireEvent.click(screen.getAllByRole('button', { name: '新增分镜' })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: '重试加载分镜' }));
+    await waitFor(() => expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(3));
+    expect(mocks.createStoryboard).toHaveBeenCalledTimes(1);
+  });
+
   it('adds and copies storyboards using the existing storyboard backend', async () => {
     render(<ProductionWorkbench />);
 

@@ -85,7 +85,6 @@ export type AssetVisualWorkspace = {
   variants: VisualVariant[];
   generationSummary: Record<string, number>;
   episodeBindings: VisualEpisodeBinding[];
-  normalizationReviewStatus?: string | null;
   resolvedImageUrl?: string | null;
   resolvedImageSource?: string | null;
 };
@@ -131,37 +130,6 @@ export type PropAsset = {
   mergeTargetId?: number | null;
   mainImageThumbnailUrl?: string | null;
   visual?: AssetVisualWorkspace;
-};
-
-export type AssetCandidate = {
-  id: number;
-  runId: number;
-  assetType: Exclude<ScriptElementType, 'ALL'>;
-  sourceIndex: number;
-  sourceKey?: string | null;
-  name?: string | null;
-  normalizedName?: string | null;
-  candidateJson: string;
-  validationStatus: string;
-  validationErrorsJson?: string | null;
-  duplicateGroupKey?: string | null;
-  proposedTargetId?: number | null;
-  matchType?: string | null;
-  matchConfidence?: number | null;
-  matchEvidenceJson?: string | null;
-  reviewStatus: string;
-  aliases: Array<{
-    name: string;
-    normalizedName: string;
-    source: string;
-    evidenceJson?: string | null;
-  }>;
-};
-
-export type AssetCandidateDecision = {
-  decisionType: 'ACCEPT_NEW' | 'ACCEPT_MERGE' | 'RETARGET' | 'REJECT';
-  targetAssetId?: number;
-  idempotencyKey: string;
 };
 
 export type StoryboardShot = {
@@ -287,7 +255,7 @@ export type StoryboardPromptDocument = {
   nodes: StoryboardPromptNode[];
 };
 
-export type ScriptWorkspace = {
+export type ProductionWorkspaceState = {
   projectId: number;
   script: ScriptInfo | null;
   versions: ScriptVersion[];
@@ -301,13 +269,13 @@ export type ScriptWorkspace = {
   globalUnderstanding?: ScriptGlobalUnderstanding | null;
 };
 
-export type AssetSettingsWorkspace = Pick<
-  ScriptWorkspace,
+export type AssetSettingsSummary = Pick<
+  ProductionWorkspaceState,
   'projectId' | 'characters' | 'scenes' | 'props'
 >;
 
 export type ScriptPageWorkspace = Pick<
-  ScriptWorkspace,
+  ProductionWorkspaceState,
   | 'projectId'
   | 'script'
   | 'versions'
@@ -427,7 +395,6 @@ export type EpisodePipelineStatus = {
 export type ScriptAnalysisTask = {
   id: number;
   scriptVersionId: number;
-  pipelineVersion?: string | null;
   status: string;
   currentStage?: string | null;
   overallProgress: number;
@@ -568,11 +535,6 @@ export type CreateAiImageTaskValues = {
   seed?: string;
 };
 
-export const queryScriptWorkspace = async (projectId: number) =>
-  request<ApiResponse<ScriptWorkspace>>(
-    `/api/projects/${projectId}/script-workspace`,
-  );
-
 export const queryScriptPageWorkspace = async (projectId: number) =>
   request<ApiResponse<ScriptPageWorkspace>>(
     `/api/projects/${projectId}/script-page-workspace`,
@@ -598,13 +560,8 @@ export const queryCurrentScriptAnalysis = async (projectId: number) =>
     `/api/projects/${projectId}/script-analysis/current`,
   );
 
-export const queryAssetSettingsWorkspace = async (projectId: number) =>
-  request<ApiResponse<AssetSettingsWorkspace>>(
-    `/api/projects/${projectId}/asset-settings-workspace`,
-  );
-
 export const queryAssetSettingsSummary = async (projectId: number) =>
-  request<ApiResponse<AssetSettingsWorkspace>>(
+  request<ApiResponse<AssetSettingsSummary>>(
     `/api/projects/${projectId}/asset-settings-summary`,
   );
 
@@ -721,7 +678,7 @@ export const saveCurrentScript = async (
   projectId: number,
   values: SaveScriptValues,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/scripts/current`,
     {
       method: 'PUT',
@@ -734,22 +691,9 @@ export const applyScriptVersion = async (
   projectId: number,
   versionId: number,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/scripts/versions/${versionId}/apply`,
     { method: 'PUT' },
-  );
-
-export const extractScriptElements = async (
-  projectId: number,
-  values: { elementType: ScriptElementType },
-) =>
-  request<ApiResponse<API.AiExecutionResponse>>(
-    `/api/projects/${projectId}/scripts/ai-extract-elements`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      data: values,
-    },
   );
 
 export type AssetReextractionScope = ScriptElementType;
@@ -778,38 +722,6 @@ export const submitAssetReextraction = async (
 ) =>
   request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/asset-reextraction`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      data: values,
-    },
-  );
-
-export const queryAssetCandidates = async (
-  projectId: number,
-  params?: {
-    reviewStatus?: string;
-    assetType?: Exclude<ScriptElementType, 'ALL'>;
-    page?: number;
-    pageSize?: number;
-  },
-) =>
-  request<
-    ApiResponse<{
-      items: AssetCandidate[];
-      total: number;
-      page: number;
-      pageSize: number;
-    }>
-  >(`/api/projects/${projectId}/asset-candidates`, { params });
-
-export const decideAssetCandidate = async (
-  projectId: number,
-  candidateId: number,
-  values: AssetCandidateDecision,
-) =>
-  request<ApiResponse<unknown>>(
-    `/api/projects/${projectId}/asset-candidates/${candidateId}/decisions`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -884,7 +796,7 @@ export const updateScriptElement = async (
   elementId: number,
   values: UpdateScriptElementValues,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/script-elements/${elementType}/${elementId}`,
     {
       method: 'PUT',
@@ -893,22 +805,12 @@ export const updateScriptElement = async (
     },
   );
 
-export const confirmScriptElement = async (
-  projectId: number,
-  elementType: Exclude<ScriptElementType, 'ALL'>,
-  elementId: number,
-) =>
-  request<ApiResponse<ScriptWorkspace>>(
-    `/api/projects/${projectId}/script-elements/${elementType}/${elementId}/confirm`,
-    { method: 'PUT' },
-  );
-
 export const deleteScriptElement = async (
   projectId: number,
   elementType: Exclude<ScriptElementType, 'ALL'>,
   elementId: number,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/script-elements/${elementType}/${elementId}`,
     { method: 'DELETE' },
   );
@@ -956,7 +858,7 @@ export const createStoryboard = async (
   projectId: number,
   values: SaveStoryboardValues,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/storyboards`,
     {
       method: 'POST',
@@ -973,7 +875,7 @@ export const updateStoryboard = async (
   storyboardId: number,
   values: SaveStoryboardValues,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/storyboards/${storyboardId}`,
     {
       method: 'PUT',
@@ -987,7 +889,7 @@ export const moveStoryboard = async (
   storyboardId: number,
   values: { shotNo: number },
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/storyboards/${storyboardId}/move`,
     {
       method: 'PUT',
@@ -997,7 +899,7 @@ export const moveStoryboard = async (
   );
 
 export const confirmStoryboards = async (projectId: number) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/storyboards/confirm`,
     { method: 'PUT' },
   );
@@ -1006,7 +908,7 @@ export const deleteStoryboard = async (
   projectId: number,
   storyboardId: number,
 ) =>
-  request<ApiResponse<ScriptWorkspace>>(
+  request<ApiResponse<void>>(
     `/api/projects/${projectId}/storyboards/${storyboardId}`,
     { method: 'DELETE' },
   );

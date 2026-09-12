@@ -1,56 +1,37 @@
 package com.antshorttv.ai;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import static org.assertj.core.api.Assertions.*;
 import com.antshorttv.common.BusinessException;
-import com.antshorttv.common.ErrorCode;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class PromptTemplateRendererTest {
-
     private final PromptTemplateRenderer renderer = new BuiltInPromptTemplateRenderer();
 
     @Test
-    void rendersElementExtractionTemplateWithStrictJsonInstructions() {
-        String prompt = renderer.render(
-            "script.element.character.extract",
-            Map.of("scriptTitle", "真假千金", "scriptContent", "林晚在天台拿出录音笔。")
-        );
-
-        assertThat(prompt).contains("提取角色信息");
-        assertThat(prompt).contains("只返回合法 JSON");
-        assertThat(prompt).contains("\"characters\"");
-        assertThat(prompt).contains("真假千金");
-        assertThat(prompt).contains("林晚在天台拿出录音笔。");
+    void retiredAndUnknownTemplatesAreRejected() {
+        for (String id : java.util.List.of("script.element.character.extract", "script.element.scene.extract",
+            "script.element.prop.extract", "script-review", "script-episode-split", "unknown")) {
+            assertThatThrownBy(() -> renderer.render(id, Map.of())).isInstanceOf(BusinessException.class);
+        }
     }
 
     @Test
-    void rejectsMissingRequiredVariablesBeforeRendering() {
-        assertThatThrownBy(() -> renderer.render(
-                "script.element.scene.extract",
-                Map.of("scriptTitle", "真假千金")
-            ))
-            .isInstanceOf(BusinessException.class)
-            .extracting(exception -> ((BusinessException) exception).getErrorCode())
-            .isEqualTo(ErrorCode.VALIDATION_ERROR);
+    void requiresAllVariablesAndPreservesLiteralUserContent() {
+        assertThatThrownBy(() -> renderer.render("script-rewrite", Map.of("scriptContent", "正文")))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("rewriteRequirement");
+        assertThat(renderer.render("script-rewrite",
+            Map.of("scriptContent", "${rewriteRequirement} $1 \\ ending", "rewriteRequirement", "保持人物")))
+            .contains("${rewriteRequirement} $1 \\ ending", "保持人物", "直接输出改写后的中文短剧剧本");
     }
 
     @Test
-    void rendersVideoPromptsWithCurrentIntent() {
-        String analysisPrompt = renderer.render(
-            "video.understanding.analysis",
-            Map.of("episodeNo", 3)
-        );
-        String draftPrompt = renderer.render(
-            "video.script.draft",
-            Map.of("episodeNo", 3, "normalizedJson", "{\"characters\":[]}")
-        );
-
-        assertThat(analysisPrompt)
-            .contains("# 第3集：", "## 3-1", "出场人物：", "——本集完", "\"script\"", "只返回合法 JSON")
-            .doesNotContain("\"characters\"", "\"timeline\"");
-        assertThat(draftPrompt).contains("第 3 集视频拆解 JSON", "按场次输出", "{\"characters\":[]}");
+    void videoTemplatesKeepTheirDifferentOutputContracts() {
+        String analysis = renderer.render("video.understanding.analysis", Map.of("episodeNo", 3));
+        assertThat(analysis).contains("# 第3集：标题", "## 3-1", "出场人物：", "——本集完",
+            "只返回合法 JSON", "Markdown 标题和正文必须保留", "（OS）", "（VO）");
+        String draft = renderer.render("video.script.draft", Map.of("episodeNo", 3, "normalizedJson", "{\"script\":\"正文\"}"));
+        assertThat(draft).contains("第 3 集视频拆解 JSON", "按场次输出", "直接输出剧本正文")
+            .doesNotContain("只返回合法 JSON");
     }
 }

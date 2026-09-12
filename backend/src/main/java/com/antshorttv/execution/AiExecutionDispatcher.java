@@ -15,7 +15,6 @@ public class AiExecutionDispatcher {
     private final AiExecutionClaimService claimService;
     private final AiExecutionWorker worker;
     private final TaskExecutor taskExecutor;
-    private final boolean enabled;
     private final int batchSize;
 
     public AiExecutionDispatcher(
@@ -23,22 +22,18 @@ public class AiExecutionDispatcher {
         AiExecutionClaimService claimService,
         AiExecutionWorker worker,
         @Qualifier("aiExecutionTaskExecutor") TaskExecutor taskExecutor,
-        @Value("${ai.execution.dispatcher.enabled:true}") boolean enabled,
         @Value("${ai.execution.dispatcher.batch-size:20}") int batchSize
     ) {
         this.taskMapper = taskMapper;
         this.claimService = claimService;
         this.worker = worker;
         this.taskExecutor = taskExecutor;
-        this.enabled = enabled;
         this.batchSize = batchSize;
     }
 
     @Scheduled(fixedDelayString = "${ai.execution.dispatcher.fixed-delay-ms:5000}")
     public void dispatchScheduled() {
-        if (enabled) {
-            dispatchOnce();
-        }
+        dispatchOnce();
     }
 
     public int dispatchOnce() {

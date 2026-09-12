@@ -1,7 +1,5 @@
 package com.antshorttv.review;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -15,24 +13,13 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class ReviewObservabilityRepository {
     private final JdbcTemplate jdbc;
-    private final ObjectMapper json;
 
-    public ReviewObservabilityRepository(JdbcTemplate jdbc, ObjectMapper json) {
+    public ReviewObservabilityRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        this.json = json;
     }
 
-    public ReviewObservabilityResponse load(
-        long snapshotId,
-        Collection<Long> runIds
-    ) {
-        ReviewQualityProgressResponse quality = quality(snapshotId);
-        ReviewDecisionCountsResponse decisions = decisionCounts(snapshotId);
-        List<Long> effectiveRunIds = new ArrayList<>(runIds == null ? List.of() : runIds);
-        if (quality != null && quality.runId() != null) effectiveRunIds.add(quality.runId());
-        return new ReviewObservabilityResponse(
-            quality, decisions, humanReviewFindings(snapshotId), cacheUsage(effectiveRunIds)
-        );
+    public ReviewObservabilityResponse load(Collection<Long> runIds) {
+        return new ReviewObservabilityResponse(cacheUsage(runIds));
     }
 
     public ReviewCacheUsageResponse cacheUsage(Collection<Long> requestedRunIds) {
@@ -116,78 +103,8 @@ public class ReviewObservabilityRepository {
         }, runIds.toArray());
     }
 
-    private ReviewQualityProgressResponse quality(long snapshotId) {
-        List<ReviewQualityProgressResponse> rows = jdbc.query("""
-            select status, run_id, attempt_no, candidate_count, decision_count, coverage_json
-              from review_pipeline_stage
-             where snapshot_id=? and stage_key='semantic-quality'
-            """, (row, index) -> {
-            Map<String, Object> coverage = object(row.getString("coverage_json"));
-            Object anomalyReview = coverage.get("anomalyReview");
-            Boolean anomalyPassed = anomalyReview instanceof Map<?, ?> review
-                && review.get("passed") instanceof Boolean value ? value : null;
-            return new ReviewQualityProgressResponse(
-                row.getString("status"), nullableLong(row, "run_id"), row.getInt("attempt_no"),
-                nullableInt(row, "candidate_count"), nullableInt(row, "decision_count"),
-                Boolean.TRUE.equals(coverage.get("anomalyRequired")), anomalyPassed
-            );
-        }, snapshotId);
-        return rows.isEmpty() ? null : rows.get(0);
-    }
-
-    private ReviewDecisionCountsResponse decisionCounts(long snapshotId) {
-        Map<String, Integer> counts = jdbc.query("""
-            select decision, count(*) total from review_semantic_decision
-             where snapshot_id=? group by decision
-            """, result -> {
-            java.util.LinkedHashMap<String, Integer> values = new java.util.LinkedHashMap<>();
-            while (result.next()) values.put(result.getString("decision"), result.getInt("total"));
-            return values;
-        }, snapshotId);
-        return new ReviewDecisionCountsResponse(
-            counts.getOrDefault("CONFIRMED", 0), counts.getOrDefault("NEEDS_HUMAN_REVIEW", 0),
-            counts.getOrDefault("REJECTED", 0), counts.getOrDefault("INSUFFICIENT_EVIDENCE", 0)
-        );
-    }
-
-    private List<ReviewHumanReviewFindingResponse> humanReviewFindings(long snapshotId) {
-        return jdbc.query("""
-            select c.id candidate_id, c.unit_id, c.dimension, c.raw_payload_json,
-                   d.confidence, d.rationale, d.severity_decision, d.evidence_refs_json
-              from review_semantic_decision d
-              join review_candidate_audit c on c.id=d.candidate_id
-             where d.snapshot_id=? and d.decision='NEEDS_HUMAN_REVIEW'
-             order by c.unit_id, c.candidate_no, c.id
-            """, (row, index) -> new ReviewHumanReviewFindingResponse(
-            row.getLong("candidate_id"), row.getLong("unit_id"), row.getString("dimension"),
-            row.getBigDecimal("confidence"), row.getString("rationale"), row.getString("severity_decision"),
-            strings(row.getString("evidence_refs_json")), object(row.getString("raw_payload_json"))
-        ), snapshotId);
-    }
-
     private ReviewCacheUsageResponse emptyCacheUsage() {
         return new ReviewCacheUsageResponse(0L, null, null, null, 0L, 0L, null, false);
     }
 
-    private Map<String, Object> object(String value) {
-        if (value == null || value.isBlank()) return Map.of();
-        try { return json.readValue(value, new TypeReference<>() {}); }
-        catch (Exception ignored) { return Map.of(); }
-    }
-
-    private List<String> strings(String value) {
-        if (value == null || value.isBlank()) return List.of();
-        try { return json.readValue(value, new TypeReference<>() {}); }
-        catch (Exception ignored) { return List.of(); }
-    }
-
-    private Long nullableLong(java.sql.ResultSet row, String column) throws java.sql.SQLException {
-        long value = row.getLong(column);
-        return row.wasNull() ? null : value;
-    }
-
-    private Integer nullableInt(java.sql.ResultSet row, String column) throws java.sql.SQLException {
-        int value = row.getInt(column);
-        return row.wasNull() ? null : value;
-    }
 }

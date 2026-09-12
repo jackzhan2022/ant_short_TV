@@ -12,36 +12,21 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class SchemaMigrationTest {
 
     @Test
-    void flywayAddsMarkdownReviewResultsWithoutChangingStructuredData() {
+    void flywayKeepsMarkdownReportsWithoutTheRetiredResultDiscriminator() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-
         assertThat(jdbc.queryForObject("""
             select count(*) from information_schema.columns
-             where (lower(table_name) = 'review_task'
-                    and lower(column_name) in ('result_format', 'report_markdown'))
-                or (lower(table_name) = 'review_unit_result'
-                    and lower(column_name) = 'report_markdown')
-            """, Integer.class)).isEqualTo(3);
-
-        jdbc.update("""
-            insert into review_task
-              (tenant_id, project_id, script_version_id, round_no, review_mode,
-               selected_dimensions_json, review_scope_type, result_json, status,
-               overall_progress, idempotency_key, created_by, created_at, updated_at)
-            values (99001, 99002, 99003, 1, 'QUICK', '[]', 'ALL',
-                    '{"summary":"历史结果"}', 'COMPLETED', 100, 'markdown-migration-history',
-                    1, now(), now())
-            """);
+             where lower(table_name) in ('review_task','review_unit_result')
+               and lower(column_name)='report_markdown'
+            """, Integer.class)).isEqualTo(2);
         assertThat(jdbc.queryForObject("""
-            select result_json from review_task where idempotency_key='markdown-migration-history'
-            """, String.class)).contains("历史结果");
-        assertThat(jdbc.queryForObject("""
-            select result_format from review_task where idempotency_key='markdown-migration-history'
-            """, String.class)).isNull();
+            select count(*) from information_schema.columns where lower(table_name)='review_task'
+              and lower(column_name) in ('result_format','result_json','global_index_json')
+            """, Integer.class)).isZero();
     }
 
     @Test
-    void flywayAddsReviewQualityAndCacheObservabilityWithoutBreakingHistoricalRows() {
+    void flywayRetainsCacheObservabilityAndRemovesRetiredQualityTables() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
         assertThat(jdbc.queryForObject("""
@@ -49,7 +34,7 @@ class SchemaMigrationTest {
              where lower(table_name) in (
                'review_pipeline_stage', 'review_candidate_audit', 'review_semantic_decision'
              )
-            """, Integer.class)).isEqualTo(3);
+            """, Integer.class)).isZero();
         assertThat(jdbc.queryForObject("""
             select count(*) from information_schema.columns
              where lower(table_name) = 'ai_call_log'
@@ -74,7 +59,7 @@ class SchemaMigrationTest {
                     and lower(index_name) = 'idx_review_candidate_status')
                 or (lower(table_name) = 'review_semantic_decision'
                     and lower(index_name) = 'idx_review_semantic_status')
-            """, Integer.class)).isEqualTo(4);
+            """, Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("""
             select count(*) from information_schema.table_constraints
              where constraint_type = 'UNIQUE'
@@ -82,7 +67,7 @@ class SchemaMigrationTest {
                  'uk_review_pipeline_stage', 'uk_review_candidate_audit',
                  'uk_review_semantic_candidate'
                )
-            """, Integer.class)).isEqualTo(3);
+            """, Integer.class)).isZero();
     }
 
     @Test
@@ -996,36 +981,27 @@ class SchemaMigrationTest {
     }
 
     @Test
-    void flywayCreatesEditableAiOverlayAndSeedsBuiltIns() {
+    void flywayPreservesModelProfilesAndOnlyTheFrozenModelSnapshot() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        Integer tableCount = jdbc.queryForObject("""
-            select count(*) from information_schema.tables
-             where lower(table_name) in ('ai_agent_definition', 'ai_skill_definition',
-                                         'ai_agent_skill', 'ai_model_parameter_profile',
-                                         'script_analysis_config_snapshot')
-            """, Integer.class);
-        Integer agentCount = jdbc.queryForObject(
-            "select count(distinct code) from ai_agent_definition where published = true", Integer.class);
-        Integer skillCount = jdbc.queryForObject(
-            "select count(*) from ai_skill_definition where version_no = 1 and published = true", Integer.class);
-        Integer associationCount = jdbc.queryForObject("select count(*) from ai_agent_skill", Integer.class);
-
-        assertThat(tableCount).isEqualTo(5);
-        assertThat(agentCount).isEqualTo(11);
         assertThat(jdbc.queryForObject("""
-            select count(*) from ai_agent_definition
-             where code = 'video-understanding' and version_no = 1 and published = false
-            """, Integer.class)).isEqualTo(1);
+            select count(*) from information_schema.tables where lower(table_name) in
+              ('ai_model_parameter_profile','script_analysis_config_snapshot')
+            """, Integer.class)).isEqualTo(2);
         assertThat(jdbc.queryForObject("""
-            select count(*) from ai_agent_definition
-             where code = 'video-understanding' and version_no = 2 and published = true
-            """, Integer.class)).isEqualTo(1);
-        assertThat(skillCount).isEqualTo(6);
-        assertThat(associationCount).isGreaterThan(0);
+            select count(*) from information_schema.columns
+             where lower(table_name)='script_analysis_config_snapshot'
+               and lower(column_name) in ('id','task_id','snapshot_json','created_at')
+            """, Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from information_schema.columns
+             where lower(table_name)='script_analysis_config_snapshot'
+               and lower(column_name) in ('agent_code','agent_version_no','skill_versions_json',
+                   'model_parameter_profile_id','model_parameter_version_no')
+            """, Integer.class)).isZero();
     }
 
     @Test
-    void flywayCreatesStableEpisodesNormalizationAndVisualVariantSchemaAdditively() {
+    void flywayPreservesStableEpisodesAndFormalVisualVariantsWithoutCandidates() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         Integer tableCount = jdbc.queryForObject("""
             select count(distinct lower(table_name))
@@ -1071,15 +1047,15 @@ class SchemaMigrationTest {
                and lower(column_name) in ('main_image_result_id', 'main_image_url')
             """, Integer.class);
 
-        assertThat(tableCount).isEqualTo(7);
-        assertThat(tenantProjectColumns).isEqualTo(10);
+        assertThat(tableCount).isEqualTo(3);
+        assertThat(tenantProjectColumns).isEqualTo(6);
         assertThat(lifecycleColumns).isEqualTo(10);
-        assertThat(uniquenessConstraints).isEqualTo(4);
+        assertThat(uniquenessConstraints).isEqualTo(3);
         assertThat(legacyImageColumns).isEqualTo(6);
     }
 
     @Test
-    void flywayCreatesIndependentWorkflowAgentSchemaAndPermissionsWithoutChangingLegacyDefinitions() {
+    void flywayPreservesWorkflowAgentSchemaAndPermissionsAfterRetiringLegacyDefinitions() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         Integer workflowTableCount = jdbc.queryForObject("""
             select count(distinct lower(table_name))
@@ -1131,7 +1107,7 @@ class SchemaMigrationTest {
         assertThat(associationOrderColumn).isEqualTo(1);
         assertThat(permissionCount).isEqualTo(4);
         assertThat(adminGrantCount).isEqualTo(4);
-        assertThat(legacyDefinitionTableCount).isEqualTo(3);
+        assertThat(legacyDefinitionTableCount).isZero();
     }
 
     @Test

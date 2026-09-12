@@ -113,10 +113,28 @@ export default [
     name: 'commercial-management',
     icon: 'shop',
     routes: [
-      { path: '/commercial-management', redirect: '/commercial-management/packages' },
-      { path: '/commercial-management/packages', name: 'packages', access: 'canViewCommercialPackages', component: './commercial-management/packages' },
-      { path: '/commercial-management/orders', name: 'orders', access: 'canViewCommercialOrders', component: './commercial-management/orders' },
-      { path: '/commercial-management/tenants', name: 'tenants', access: 'canViewPlatformTenants', component: './commercial-management/tenants' },
+      {
+        path: '/commercial-management',
+        redirect: '/commercial-management/packages',
+      },
+      {
+        path: '/commercial-management/packages',
+        name: 'packages',
+        access: 'canViewCommercialPackages',
+        component: './commercial-management/packages',
+      },
+      {
+        path: '/commercial-management/orders',
+        name: 'orders',
+        access: 'canViewCommercialOrders',
+        component: './commercial-management/orders',
+      },
+      {
+        path: '/commercial-management/tenants',
+        name: 'tenants',
+        access: 'canViewPlatformTenants',
+        component: './commercial-management/tenants',
+      },
     ],
   },
   {
@@ -200,11 +218,6 @@ export default [
         access: 'canViewModelBilling',
         component: './ai-service-management/operations',
       },
-      {
-        path: '/ai-service-management/agents',
-        hideInMenu: true,
-        redirect: '/ai-service-management/model-management',
-      },
     ],
   },
   {
@@ -246,14 +259,6 @@ export default [
     hideInMenu: true,
     access: 'canViewScriptReview',
     component: './script-review',
-  },
-  {
-    path: '/script-review',
-    name: 'script-review',
-    icon: 'audit',
-    hideInMenu: true,
-    access: 'canViewScriptReview',
-    component: './script-review-legacy',
   },
   {
     path: '/projects/:id/production-workbench',

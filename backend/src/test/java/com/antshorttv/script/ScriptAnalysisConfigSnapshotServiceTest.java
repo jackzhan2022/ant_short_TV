@@ -1,74 +1,119 @@
 package com.antshorttv.script;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-
-import com.antshorttv.ai.AiAgentDefinitionEntity;
-import com.antshorttv.ai.AiAgentDefinitionMapper;
-import com.antshorttv.ai.AiModelParameterProfileEntity;
-import com.antshorttv.ai.AiModelParameterProfileMapper;
-import com.antshorttv.ai.BuiltInAgentRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mockito.ArgumentCaptor;
 
 class ScriptAnalysisConfigSnapshotServiceTest {
-    private final ScriptAnalysisConfigSnapshotMapper snapshotMapper = mock(ScriptAnalysisConfigSnapshotMapper.class);
-    private final AiAgentDefinitionMapper agentMapper = mock(AiAgentDefinitionMapper.class);
-    private final AiModelParameterProfileMapper parameterMapper = mock(AiModelParameterProfileMapper.class);
-    private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
-    private final ScriptAnalysisConfigSnapshotService service = new ScriptAnalysisConfigSnapshotService(
-        snapshotMapper, agentMapper, parameterMapper, new BuiltInAgentRegistry(), jdbc, new ObjectMapper());
+    private final ScriptAnalysisConfigSnapshotMapper mapper = mock(ScriptAnalysisConfigSnapshotMapper.class);
+    private final ScriptAnalysisConfigSnapshotService service = new ScriptAnalysisConfigSnapshotService(mapper, new ObjectMapper());
 
     @Test
-    void snapshotIsIdempotentAcrossRetries() {
+    void firstSubmissionPersistsTheFirstAvailableModelBeforeDispatch() throws Exception {
         ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
         task.setId(41L);
-        AiAgentDefinitionEntity agent = new AiAgentDefinitionEntity();
-        agent.setCode("script-global-understanding");
-        agent.setVersionNo(3);
-        agent.setPublished(true);
-        agent.setStatus("ENABLED");
-        agent.setPromptTemplate("frozen ${scriptContent}");
-        agent.setOutputSchema("{}");
-        AiModelParameterProfileEntity params = new AiModelParameterProfileEntity();
-        params.setId(91L);
-        params.setModelId(12L);
-        params.setVersionNo(4);
-        params.setPublished(true);
-        when(snapshotMapper.selectOne(any())).thenReturn(null, newSnapshot(41L, 91L, 4));
-        when(agentMapper.selectOne(any())).thenReturn(agent);
-        when(parameterMapper.selectOne(any())).thenReturn(params);
+        AtomicReference<ScriptAnalysisConfigSnapshotEntity> persisted = new AtomicReference<>();
+        when(mapper.selectOne(any())).thenAnswer(invocation -> persisted.get());
+        doAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return 1;
+        }).when(mapper).insert(any(ScriptAnalysisConfigSnapshotEntity.class));
+        @SuppressWarnings("unchecked")
+        Supplier<Long> initialModel = mock(Supplier.class);
+        when(initialModel.get()).thenReturn(12L);
 
-        service.snapshot(task, 12L);
-        service.snapshot(task, 12L);
+        assertThat(service.modelIdForFirstSubmission(task, initialModel)).isEqualTo(12L);
 
-        verify(snapshotMapper, times(1)).insert(any(ScriptAnalysisConfigSnapshotEntity.class));
+        verify(initialModel).get();
+        verify(mapper).insert(any(ScriptAnalysisConfigSnapshotEntity.class));
+        assertThat(persisted.get().getTaskId()).isEqualTo(41L);
+        assertThat(new ObjectMapper().readTree(persisted.get().getSnapshotJson()).path("modelId").longValue())
+            .isEqualTo(12L);
+        assertThat(task.getExecutionId()).isNull();
     }
 
     @Test
-    void parametersForUsesTheVersionStoredInTaskSnapshot() {
-        ScriptAnalysisConfigSnapshotEntity snapshot = newSnapshot(41L, 91L, 4);
-        AiModelParameterProfileEntity params = new AiModelParameterProfileEntity();
-        params.setId(91L);
-        params.setVersionNo(4);
-        params.setMaxTokens(8192);
-        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
-        when(parameterMapper.selectOne(any())).thenReturn(params);
+    void firstSubmissionUsesAnExistingSnapshotWithoutConsultingTheCurrentModel() {
+        ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
+        task.setId(41L);
+        ScriptAnalysisConfigSnapshotEntity stored = new ScriptAnalysisConfigSnapshotEntity();
+        stored.setSnapshotJson("{\"modelId\":12}");
+        when(mapper.selectOne(any())).thenReturn(stored);
+        @SuppressWarnings("unchecked")
+        Supplier<Long> initialModel = mock(Supplier.class);
 
-        AiModelParameterProfileEntity resolved = service.parametersFor(41L);
+        assertThat(service.modelIdForFirstSubmission(task, initialModel)).isEqualTo(12L);
 
-        assertThat(resolved).isSameAs(params);
-        verify(parameterMapper).selectOne(any());
+        verifyNoInteractions(initialModel);
+        verify(mapper, never()).insert(any(ScriptAnalysisConfigSnapshotEntity.class));
     }
 
-    private ScriptAnalysisConfigSnapshotEntity newSnapshot(Long taskId, Long profileId, Integer version) {
-        ScriptAnalysisConfigSnapshotEntity snapshot = new ScriptAnalysisConfigSnapshotEntity();
-        snapshot.setTaskId(taskId);
-        snapshot.setModelParameterProfileId(profileId);
-        snapshot.setModelParameterVersionNo(version);
-        return snapshot;
+    @Test
+    void dispatchedTaskWithAMissingSnapshotFailsWithoutSelectingAnotherModel() {
+        ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
+        task.setId(41L);
+        task.setExecutionId(71L);
+        @SuppressWarnings("unchecked")
+        Supplier<Long> initialModel = mock(Supplier.class);
+
+        assertThatThrownBy(() -> service.modelIdForFirstSubmission(task, initialModel))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("已派发").hasMessageContaining("快照缺失");
+
+        verifyNoInteractions(initialModel);
+        verify(mapper, never()).insert(any(ScriptAnalysisConfigSnapshotEntity.class));
+    }
+
+    @Test
+    void damagedFirstSubmissionSnapshotsFailWithoutConsultingTheModelSupplier() {
+        ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
+        task.setId(41L);
+        ScriptAnalysisConfigSnapshotEntity stored = new ScriptAnalysisConfigSnapshotEntity();
+        when(mapper.selectOne(any())).thenReturn(stored);
+        @SuppressWarnings("unchecked")
+        Supplier<Long> initialModel = mock(Supplier.class);
+        for (String payload : java.util.List.of("{}", "{\"modelId\":0}", "{\"modelId\":1.5}", "invalid")) {
+            stored.setSnapshotJson(payload);
+            assertThatThrownBy(() -> service.modelIdForFirstSubmission(task, initialModel))
+                .isInstanceOf(IllegalStateException.class);
+        }
+        verifyNoInteractions(initialModel);
+        verify(mapper, never()).insert(any(ScriptAnalysisConfigSnapshotEntity.class));
+    }
+
+    @Test
+    void retriesKeepTheOriginallySelectedModelWithoutQueryingLegacyDefinitions() throws Exception {
+        ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
+        task.setId(41L);
+        ScriptAnalysisConfigSnapshotEntity stored = new ScriptAnalysisConfigSnapshotEntity();
+        stored.setSnapshotJson("{\"modelId\":12}");
+        when(mapper.selectOne(any())).thenReturn(null, stored, stored);
+        service.snapshot(task, 12L);
+        service.snapshot(task, 99L);
+        assertThat(service.modelIdFor(41L)).isEqualTo(12L);
+        var captured = ArgumentCaptor.forClass(ScriptAnalysisConfigSnapshotEntity.class);
+        verify(mapper).insert(captured.capture());
+        assertThat(new ObjectMapper().readTree(captured.getValue().getSnapshotJson()).size()).isEqualTo(1);
+        assertThat(captured.getValue().getTaskId()).isEqualTo(41L);
+    }
+
+    @Test
+    void missingSnapshotsFailInsteadOfSelectingTheCurrentProjectModel() {
+        assertThatThrownBy(() -> service.modelIdFor(41L))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("快照缺失");
+    }
+
+    @Test
+    void damagedSnapshotsFailInsteadOfSilentlyChangingModels() {
+        ScriptAnalysisConfigSnapshotEntity stored = new ScriptAnalysisConfigSnapshotEntity();
+        when(mapper.selectOne(any())).thenReturn(stored);
+        for (String payload : java.util.List.of("{}", "{\"modelId\":0}", "invalid")) {
+            stored.setSnapshotJson(payload);
+            assertThatThrownBy(() -> service.modelIdFor(41L)).isInstanceOf(IllegalStateException.class);
+        }
     }
 }

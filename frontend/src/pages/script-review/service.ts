@@ -17,8 +17,7 @@ export type ReviewProject = {
   status: string;
   versionCount: number;
   latestRoundNo: number;
-  reviewState?: 'NOT_REVIEWED' | 'RUNNING' | 'ACTION_REQUIRED' | 'READY_FOR_REVIEW' | 'COMPLETED';
-  outstandingIssueCount?: number;
+  reviewState?: 'NOT_REVIEWED' | 'RUNNING' | 'COMPLETED';
   actionLabel?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -41,11 +40,7 @@ export type ReviewProjectSummary = Pick<
 
 export type ReviewProjectMetrics = Pick<
   ReviewProject,
-  | 'reviewState'
-  | 'outstandingIssueCount'
-  | 'actionLabel'
-  | 'versionCount'
-  | 'latestRoundNo'
+  'reviewState' | 'actionLabel' | 'versionCount' | 'latestRoundNo'
 > & {
   projectId: number;
 };
@@ -60,41 +55,6 @@ export type ReviewVersion = {
   createdAt?: string;
 };
 
-export type ReviewHit = {
-  id: number;
-  hitNo: number;
-  episodeNo?: number | null;
-  sceneNo?: string | null;
-  shotNo?: number | null;
-  lineNo?: number | null;
-  anchorLabel?: string | null;
-  excerpt: string;
-  entityName?: string | null;
-  selected: boolean;
-  replacementText?: string | null;
-};
-
-export type ReviewIssue = {
-  id: number;
-  taskId: number;
-  scriptVersionId: number;
-  roundNo: number;
-  issueNo: string;
-  dimension: string;
-  severity: string;
-  title: string;
-  position: Record<string, unknown>;
-  excerpt: string;
-  problem: string;
-  evidence: string[];
-  suggestion: string;
-  status: string;
-  relatedIssueNo?: string | null;
-  manuallyResolved: boolean;
-  manuallyResolvedAt?: string | null;
-  hits: ReviewHit[];
-};
-
 export type ReviewTask = {
   id: number;
   projectId: number;
@@ -104,7 +64,6 @@ export type ReviewTask = {
   selectedDimensions: string[];
   reviewScopeType: string;
   reviewScope: Record<string, unknown>;
-  resultFormat?: 'MARKDOWN' | 'STRUCTURED_JSON';
   reportMarkdown?: string | null;
   status: string;
   currentStage?: string | null;
@@ -116,12 +75,8 @@ export type ReviewTask = {
   workflowAgentRevision?: number | null;
   workflowAgentRunId?: number | null;
   workflowPhase?:
-    | 'QUICK'
     | 'MARKDOWN_QUICK'
-    | 'DEEP_CHILD'
     | 'MARKDOWN_DEEP_CHILD'
-    | 'DEEP_SEMANTIC'
-    | 'DEEP_AGGREGATION'
     | 'MARKDOWN_DEEP_AGGREGATION'
     | null;
   workflowAttemptNo?: number | null;
@@ -145,48 +100,17 @@ export type ReviewTask = {
       status: string;
       childRunId?: number | null;
       attemptNo?: number | null;
-      candidateSaved: boolean;
+      reportSaved: boolean;
       errorCode?: string | null;
       errorMessage?: string | null;
       cacheUsage?: ReviewCacheUsage | null;
     }>;
   } | null;
   observability?: {
-    quality?: {
-      status: string;
-      runId?: number | null;
-      attemptNo?: number | null;
-      candidateCount?: number | null;
-      decisionCount?: number | null;
-      anomalyRequired: boolean;
-      anomalyPassed?: boolean | null;
-    } | null;
-    decisions: {
-      confirmed: number;
-      needsHumanReview: number;
-      rejected: number;
-      insufficientEvidence: number;
-    };
-    humanReviewFindings: Array<{
-      candidateId: number;
-      unitId: number;
-      dimension: string;
-      confidence: number;
-      rationale: string;
-      severityDecision?: string | null;
-      evidenceRefs: string[];
-      candidate: Record<string, unknown>;
-    }>;
     cacheUsage: ReviewCacheUsage;
   } | null;
   completedAt?: string | null;
   canceledAt?: string | null;
-  summary?: {
-    overallConclusion: string;
-    overallScore: number;
-    summary: string;
-  } | null;
-  issues: ReviewIssue[];
   boundVersion?: ReviewVersion | null;
 };
 
@@ -216,12 +140,9 @@ export type ReviewHistoryTask = {
   reviewMode: string;
   selectedDimensions: string[];
   reviewScopeType: string;
-  resultFormat?: 'MARKDOWN' | 'STRUCTURED_JSON';
   reportMarkdown?: string | null;
   status: string;
   overallProgress: number;
-  issueCount: number;
-  outstandingIssueCount: number;
   createdBy?: number | null;
   createdAt?: string | null;
   completedAt?: string | null;
@@ -258,26 +179,7 @@ export type ReviewRoundHistory = {
   roundNo: number;
   status: string;
   reviewMode: string;
-  issueCount: number;
-  processedIssueCount: number;
-  summary?: {
-    overallConclusion: string;
-    overallScore: number;
-    summary: string;
-  } | null;
   completedAt?: string | null;
-};
-
-export type ReviewIssueMapping = {
-  issueId: number;
-  issueNo: string;
-  roundNo: number;
-  status: string;
-  relatedIssueNo?: string | null;
-  dimension: string;
-  title: string;
-  hitCount: number;
-  hitIds: number[];
 };
 
 export type ReviewVersionHistory = {
@@ -286,7 +188,6 @@ export type ReviewVersionHistory = {
   versions: ReviewVersion[];
   diffLines: ReviewVersionDiff[];
   roundHistory: ReviewRoundHistory[];
-  issueMappings: ReviewIssueMapping[];
 };
 
 export const queryReviewProjects = () =>
@@ -381,36 +282,6 @@ export const retryReviewTask = (taskId: number, fullRegeneration = false) =>
     {
       method: 'POST',
       params: { fullRegeneration },
-    },
-  );
-
-export const resolveReviewIssue = (issueId: number, note?: string) =>
-  request<ApiResponse<ReviewIssue>>(
-    `/api/script-review/issues/${issueId}/resolve`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      data: note ? { note } : {},
-    },
-  );
-
-export const batchRepairReview = (
-  taskId: number,
-  values: {
-    actionType: string;
-    replacementFrom?: string;
-    replacementTo?: string;
-    insertionText?: string;
-    deletionText?: string;
-    selectedHitIds?: number[];
-  },
-) =>
-  request<ApiResponse<ReviewTask>>(
-    `/api/script-review/tasks/${taskId}/batch-repair`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      data: values,
     },
   );
 

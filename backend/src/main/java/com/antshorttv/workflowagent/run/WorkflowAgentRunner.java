@@ -175,7 +175,7 @@ public class WorkflowAgentRunner {
         boolean deepReview = input.reviewScope() != null
             && isDeepReviewPhase(input.reviewScope().phase());
         int effectiveMaxSteps = deepReview
-            ? Math.max(agent.maxSteps(), properties.getReviewSemanticMaxSteps()) : agent.maxSteps();
+            ? Math.max(agent.maxSteps(), properties.getReviewDeepMaxSteps()) : agent.maxSteps();
         if (input.modelIdOverride() != null) {
             agents.requireToolCallingModel(effectiveModelId);
         }
@@ -186,7 +186,7 @@ public class WorkflowAgentRunner {
             agent.toolCodes()
         ));
         long timeoutSeconds = deepReview
-            ? Math.max(properties.getRunTimeoutSeconds(), properties.getReviewSemanticRunTimeoutSeconds())
+            ? Math.max(properties.getRunTimeoutSeconds(), properties.getReviewDeepRunTimeoutSeconds())
             : stageRunTimeoutSeconds(agent.code());
         Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
         try {
@@ -204,10 +204,7 @@ public class WorkflowAgentRunner {
     }
 
     private boolean isDeepReviewPhase(String phase) {
-        return "DEEP_CHILD".equals(phase)
-            || "DEEP_AGGREGATION".equals(phase)
-            || "DEEP_SEMANTIC".equals(phase)
-            || "MARKDOWN_DEEP_CHILD".equals(phase)
+        return "MARKDOWN_DEEP_CHILD".equals(phase)
             || "MARKDOWN_DEEP_AGGREGATION".equals(phase);
     }
 
@@ -251,6 +248,7 @@ public class WorkflowAgentRunner {
                 runState.beginSplitFallback(reason.name()));
         }
         input.promptCacheOptions().forEach(runState::put);
+        input.trustedToolState().forEach(runState::put);
         List<AiChatMessage> messages = new ArrayList<>();
         if (input.stableContext() != null && !input.stableContext().isBlank()) {
             messages.add(AiChatMessage.system(input.stableContext()));
@@ -275,10 +273,6 @@ public class WorkflowAgentRunner {
             stepNo = prepareStoryboardContext(runId, agent, input, contract, context, messages,
                 allowlist, deadline, stepNo);
         }
-        boolean reviewTruncationRecovery = false;
-        boolean reviewEvidenceRefreshPending = false;
-        boolean reviewEvidenceRefreshUsed = false;
-        boolean reviewHashCorrectionUsed = false;
         int assetSaveCorrections = 0;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < maxSteps; modelRound++) {
@@ -309,7 +303,7 @@ public class WorkflowAgentRunner {
                         null, Math.min(remainingSeconds(deadline), stageRequestTimeoutSeconds(agent.code())),
                         0,
                         messages, activeProviderTools(allowedTools, splitting, runState,
-                            agent.code(), contract, reviewTruncationRecovery, reviewEvidenceRefreshPending),
+                            agent.code(), contract),
                         disableThinking(agent.code(), splitting) ? "disabled" : null,
                         input.promptCacheKey(), input.promptCacheOptions()
                     ))
@@ -337,20 +331,7 @@ public class WorkflowAgentRunner {
                 throw new WorkflowAgentTruncatedOutputException(runId, finalContent, modelCalls);
             }
             if ("script-review".equals(agent.code()) && isTruncated(response)) {
-                String phase = input.reviewScope() == null ? null : input.reviewScope().phase();
-                if (phase != null && phase.startsWith("MARKDOWN_")) {
-                    throw new WorkflowAgentTruncatedOutputException(runId, finalContent, modelCalls);
-                }
-                reviewTruncationRecovery = true;
-                List<String> remainingTools = remainingContractTools(contract, runState);
-                messages.add(AiChatMessage.user(
-                    "模型输出已截断，审核契约尚未完成。已经成功的读取工具不得重复调用；"
-                        + "现在只允许按顺序调用这些尚未完成的工具："
-                        + String.join(" -> ", remainingTools) + "。不得输出普通文本。"
-                        + (remainingTools.size() == 1 && contract.isTerminal(remainingTools.get(0))
-                            ? "直接调用保存工具；候选最多 20 个，每条只保留必要证据与命中，字段务必简洁。"
-                            : "完成剩余可信读取后立即调用保存工具。")));
-                continue;
+                throw new WorkflowAgentTruncatedOutputException(runId, finalContent, modelCalls);
             }
             if (calls.isEmpty()) {
                 if (splitting && splitPolicy != null) {
@@ -423,12 +404,6 @@ public class WorkflowAgentRunner {
                     runs.recordToolStep(runId, toolStep, call.code(), call.argumentsJson(), serialized);
                     runState.recordSuccess(call.code());
                     messages.add(AiChatMessage.toolResult(call.id(), serialized));
-                    if (reviewEvidenceRefreshPending && "read_review_content".equals(call.code())) {
-                        reviewEvidenceRefreshPending = false;
-                        messages.add(AiChatMessage.user(
-                            "已重新读取当前审核单元正文。现在只允许调用 save_review_unit_result；"
-                                + "候选最多 20 个，删除不能逐字验证的候选，字段务必精简。"));
-                    }
                     if (contract.isTerminal(call.code())) {
                         runs.complete(runId, serialized);
                         return new WorkflowAgentRunResult(runId, serialized, modelCalls);
@@ -451,33 +426,6 @@ public class WorkflowAgentRunner {
                                 + "不得再次读取正文或其他上下文；优先使用当前预加载 sourceSegments 中的"
                                 + " evidenceRef: {segmentId: \"S0001\"} 和 usageEvidenceRef，"
                                 + "segmentId 必须实际存在且支持对应证据；证据不得编造。"));
-                        break;
-                    }
-                    if (reviewTruncationRecovery && isReviewSaveHashValidationFailure(call.code(), normalized)) {
-                        if (reviewHashCorrectionUsed) throw normalized;
-                        reviewHashCorrectionUsed = true;
-                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
-                        messages.add(AiChatMessage.user(
-                            "固定哈希值校验失败。现在只允许调用 save_review_unit_result；"
-                                + "不得修改候选、覆盖范围或 contentFingerprint，"
-                                + "必须逐字复用 read_review_context 返回的 versionHash、scopeHash、dimensionsHash。"));
-                        break;
-                    }
-                    if (reviewTruncationRecovery && isReviewEvidenceValidationFailure(call.code(), normalized)) {
-                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
-                        if (!reviewEvidenceRefreshUsed) {
-                            reviewEvidenceRefreshUsed = true;
-                            reviewEvidenceRefreshPending = true;
-                            messages.add(AiChatMessage.user(
-                                "保存候选因证据无法验证被拒绝。现在只允许调用一次 read_review_content，"
-                                    + "重新读取当前审核单元的可信正文与位置锚点；不得读取整本剧本，"
-                                    + "不得调用其他工具。随后只允许调用 save_review_unit_result，"
-                                    + "候选最多 20 个，并删除不能逐字验证的候选。"));
-                        } else {
-                            messages.add(AiChatMessage.user(
-                                "证据仍无法验证。不得再次读取正文；删除所有不能逐字验证的候选，"
-                                    + "可保存空 candidates。现在只允许调用 save_review_unit_result。"));
-                        }
                         break;
                     }
                     if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL
@@ -671,23 +619,8 @@ public class WorkflowAgentRunner {
         boolean splitting,
         WorkflowToolRunState state,
         String agentCode,
-        WorkflowAgentRunContract contract,
-        boolean reviewTruncationRecovery,
-        boolean reviewEvidenceRefreshPending
+        WorkflowAgentRunContract contract
     ) {
-        if ("script-review".equals(agentCode) && reviewEvidenceRefreshPending) {
-            return allowedTools.stream()
-                .filter(tool -> "read_review_content".equals(tool.code()))
-                .map(this::providerTool)
-                .toList();
-        }
-        if ("script-review".equals(agentCode) && reviewTruncationRecovery) {
-            Set<String> activeCodes = new HashSet<>(remainingContractTools(contract, state));
-            return allowedTools.stream()
-                .filter(tool -> activeCodes.contains(tool.code()))
-                .map(this::providerTool)
-                .toList();
-        }
         if ("short-drama-asset-recognition".equals(agentCode)
             || "short-drama-episode-summary".equals(agentCode)) {
             // The host has already read the episode; only the stage's authorized save remains.
@@ -719,33 +652,9 @@ public class WorkflowAgentRunner {
             .toList();
     }
 
-    private List<String> remainingContractTools(
-        WorkflowAgentRunContract contract,
-        WorkflowToolRunState state
-    ) {
-        Set<String> completed = new HashSet<>(state.successfulToolCodes());
-        return contract.requiredToolSequence().stream()
-            .filter(toolCode -> !completed.contains(toolCode))
-            .toList();
-    }
-
     private boolean isTruncated(AiTextResponse response) {
         return response != null
             && (response.truncated() || "length".equalsIgnoreCase(response.finishReason()));
-    }
-
-    private boolean isReviewEvidenceValidationFailure(String toolCode, BusinessException error) {
-        return "save_review_unit_result".equals(toolCode)
-            && error.getErrorCode() == ErrorCode.VALIDATION_ERROR
-            && "审核证据无法在当前范围正文中验证。".equals(error.getMessage());
-    }
-
-    private boolean isReviewSaveHashValidationFailure(String toolCode, BusinessException error) {
-        return "save_review_unit_result".equals(toolCode)
-            && error.getErrorCode() == ErrorCode.VALIDATION_ERROR
-            && ("版本内容已变化。".equals(error.getMessage())
-                || "范围内容已变化。".equals(error.getMessage())
-                || "维度内容已变化。".equals(error.getMessage()));
     }
 
     private boolean disableThinking(String agentCode, boolean splitting) {

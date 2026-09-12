@@ -68,6 +68,25 @@ public class StoryboardToolDataService {
         if (!trustedFingerprint.equals(episode.fingerprint())) {
             throw invalid("当前剧集内容已变化，请重新生成分镜。");
         }
+        if (context.executionId() != null) {
+            Integer automatic = jdbc.queryForObject("""
+                select count(*) from storyboard_generation_admission
+                 where tenant_id=? and project_id=? and episode_id=?
+                   and source_fingerprint=? and execution_id=? and origin='AUTO'
+                """, Integer.class, context.tenantId(), context.projectId(), context.episodeId(),
+                trustedFingerprint, context.executionId());
+            if (automatic != null && automatic > 0) {
+                Integer existing = jdbc.queryForObject("""
+                    select count(*) from storyboard
+                     where tenant_id=? and project_id=? and deleted_at is null
+                       and (episode_id=? or (episode_id is null and script_id=? and episode_no=?))
+                    """, Integer.class, context.tenantId(), context.projectId(), context.episodeId(),
+                    context.scriptId(), episode.episodeNo());
+                if (existing != null && existing > 0) {
+                    throw invalid("当前剧集已有分镜，自动任务不能覆盖人工或既有成果。");
+                }
+            }
+        }
         String visualStyle = projectVisualStyle(context);
         List<EpisodeSourceSegment> segments = trustedSegments(context);
         StoryboardNormalizer.Result normalization = schemaVersion == 3

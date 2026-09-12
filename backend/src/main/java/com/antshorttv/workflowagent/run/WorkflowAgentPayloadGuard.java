@@ -11,10 +11,7 @@ final class WorkflowAgentPayloadGuard {
         "save_episode_splitting",
         "save_episode_summary",
         "save_episode_assets",
-        "save_episode_storyboards",
-        "save_review_unit_result",
-        "save_review_semantic_decisions",
-        "save_review_result"
+        "save_episode_storyboards"
     );
 
     private WorkflowAgentPayloadGuard() {

@@ -1,3 +1,5 @@
+> 2026-09-12 替代声明：`remove-legacy-ai-workflow-paths` 是最终目标。七页签、Agent（新）/Skill（新）、旧管理服务/权限/路由兼容及仅回退应用条款已被替代；当前仅保留 Agent 管理、Skill 管理及独立权限，跨 V114/V115 必须匹配快照恢复。 原勾选和验证记录为历史证据，不据此恢复旧链路。归档时先合并仍有效的基础能力，最后合并 remove-legacy-ai-workflow-paths；之后不得再导入这些已退役条款。
+
 ## 1. Persistence, permissions, and configuration
 
 - [x] 1.1 Add a Flyway migration for independent workflow Agent configuration, ordered Skill associations, tool allowlists, Agent runs, and run steps with required unique keys, foreign keys, optimistic-lock fields, and query indexes.

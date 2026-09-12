@@ -238,7 +238,7 @@ const WorkflowSkillsPage = () => {
         <Alert
           type="info"
           showIcon
-          title="Skill（新）以完整 SKILL.md 文件保存；修改成功后无需发布或重启，后续 Agent 运行立即读取新内容。"
+          title="Skill 以完整 SKILL.md 文件保存；修改成功后无需发布或重启，后续 Agent 运行立即读取新内容。"
         />
         <Space wrap>
           <Input.Search

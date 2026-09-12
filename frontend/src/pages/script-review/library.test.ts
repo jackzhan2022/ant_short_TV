@@ -21,30 +21,29 @@ describe('script review library helpers', () => {
     },
   ];
 
-  it('derives outstanding issue handling from the latest completed task', () => {
+  it('offers the Markdown report from the latest completed task', () => {
     expect(
       deriveLibraryState({
         project: projects[0],
         task: {
           status: 'COMPLETED',
-          issues: [{ manuallyResolved: false }, { manuallyResolved: true }],
+          reportMarkdown: '# 审核报告',
         },
       }),
     ).toMatchObject({
-      key: 'ACTION_REQUIRED',
-      outstandingIssueCount: 1,
-      actionLabel: '处理问题',
+      key: 'COMPLETED',
+      actionLabel: '查看报告',
     });
   });
 
   it('filters projects by client-side query and derived work state', () => {
     const states = new Map([
-      [1, { key: 'ACTION_REQUIRED' as const }],
+      [1, { key: 'COMPLETED' as const }],
       [2, { key: 'RUNNING' as const }],
     ]);
 
     expect(
-      filterLibraryProjects(projects, states, '剧本', 'ACTION_REQUIRED'),
+      filterLibraryProjects(projects, states, '剧本', 'COMPLETED'),
     ).toEqual([projects[0]]);
   });
 });

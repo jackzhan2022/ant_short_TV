@@ -1,6 +1,7 @@
 package com.antshorttv.script;
 
 import com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.List;
@@ -15,9 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Primary
 public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
     private final JdbcTemplate jdbc;
+    private final WorkflowAgentRunRepository runs;
 
-    public JdbcEpisodeFanoutStore(JdbcTemplate jdbc) {
+    public JdbcEpisodeFanoutStore(JdbcTemplate jdbc, WorkflowAgentRunRepository runs) {
         this.jdbc = jdbc;
+        this.runs = runs;
     }
 
     @Override
@@ -66,7 +69,7 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
                 select id from script_analysis_fanout_snapshot
                  where stage_id = ? and agent_code = ? and episode_set_hash = ?
                    and agent_revision = ? and model_id = ?
-                   and status in ('RUNNING', 'FINALIZING', 'SUCCEEDED', 'PARTIAL_FAILED', 'FAILED')
+                   and status in ('PENDING', 'RUNNING', 'FINALIZING', 'SUCCEEDED', 'PARTIAL_FAILED', 'FAILED')
                  order by id desc limit 1
                 """, Long.class, stage.getId(), agentCode, episodeSetHash,
                 plan.agent().revision(), effectiveModelId);
@@ -223,6 +226,44 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
             update script_analysis_fanout_snapshot
                set completed_units = ?, failed_units = ?, status = ?, updated_at = now() where id = ?
             """, progress.completed(), progress.failed(), snapshotStatus, snapshotId);
+    }
+
+    @Override
+    @Transactional
+    public java.util.Optional<EpisodeFanoutCoordinator.ChildResult> recoverCommitted(long snapshotId, Long episodeId) {
+        List<Long> committed = jdbc.queryForList("""
+            select run.id from script_analysis_fanout_unit unit
+              join script_analysis_fanout_snapshot snapshot on snapshot.id = unit.snapshot_id
+              join ai_workflow_agent_run run on run.id = unit.child_run_id
+              join script_episode episode on episode.id = unit.episode_id
+             where unit.snapshot_id = ? and unit.episode_id = ? and unit.status = 'RUNNING'
+               and episode.tenant_id = snapshot.tenant_id and episode.project_id = snapshot.project_id
+               and episode.script_id = snapshot.script_id and episode.stable_key = unit.episode_key
+               and episode.content_fingerprint = unit.content_fingerprint
+               and episode.status = 'ACTIVE' and episode.retired_at is null
+               and run.run_type = 'FORMAL' and run.tenant_id = snapshot.tenant_id
+               and run.project_id = snapshot.project_id and run.script_id = snapshot.script_id
+               and run.task_id = snapshot.task_id and run.analysis_stage_id = snapshot.stage_id
+               and run.episode_id = unit.episode_id and run.agent_code = snapshot.agent_code
+               and run.model_id = snapshot.model_id
+               and ((snapshot.stage_code = 'EPISODE_SUMMARY' and exists (
+                   select 1 from script_episode_summary summary
+                    where summary.tenant_id = snapshot.tenant_id and summary.project_id = snapshot.project_id
+                      and summary.script_id = snapshot.script_id and summary.episode_id = unit.episode_id
+                      and summary.source = 'AI' and summary.generated_by_run_id = run.id))
+                 or (snapshot.stage_code = 'CHARACTER_SCENE_RECOGNITION' and exists (
+                   select 1 from script_episode_asset_analysis assets
+                    where assets.tenant_id = snapshot.tenant_id and assets.project_id = snapshot.project_id
+                      and assets.script_id = snapshot.script_id and assets.episode_id = unit.episode_id
+                      and assets.content_fingerprint = unit.content_fingerprint
+                      and assets.generated_by_run_id = run.id)))
+            """, Long.class, snapshotId, episodeId);
+        if (committed.isEmpty()) return java.util.Optional.empty();
+        Long runId = committed.get(0);
+        Long tenantId = jdbc.queryForObject(
+            "select tenant_id from script_analysis_fanout_snapshot where id = ?", Long.class, snapshotId);
+        runs.reconcileCommitted(runId, "{\"saved\":true,\"reconciled\":true}");
+        return java.util.Optional.of(new EpisodeFanoutCoordinator.ChildResult(runId, runs.modelCalls(runId, tenantId)));
     }
 
     @Override public void complete(long snapshotId) {

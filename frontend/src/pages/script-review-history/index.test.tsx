@@ -38,7 +38,7 @@ it.each([
           selectedDimensions: [],
           reviewScopeType: 'ALL',
           status: 'COMPLETED',
-          overallProgress: 100, resultFormat: 'MARKDOWN',
+          overallProgress: 100,
           issueCount: 0,
           pendingIssueCount: 0,
           reportMarkdown: body

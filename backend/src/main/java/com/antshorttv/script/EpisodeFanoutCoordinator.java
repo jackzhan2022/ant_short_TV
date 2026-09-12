@@ -44,6 +44,15 @@ public class EpisodeFanoutCoordinator {
         ChildExecutor childExecutor,
         Finalizer finalizer
     ) {
+        return executePrepared(prepare(task, stage, executionContext, effectiveModelId,
+            agentCode, fullRegeneration), childExecutor, finalizer);
+    }
+
+    public Prepared prepare(
+        ScriptAnalysisTaskEntity task, ScriptAnalysisStageEntity stage,
+        AiExecutionContext executionContext, Long effectiveModelId,
+        String agentCode, boolean fullRegeneration
+    ) {
         List<EpisodeUnit> episodes = store.currentEpisodes(
             task.getTenantId(), task.getProjectId(), task.getScriptId());
         if (episodes.isEmpty()) {
@@ -54,6 +63,16 @@ public class EpisodeFanoutCoordinator {
         long snapshotId = store.openSnapshot(
             task, stage, agentCode, plan, effectiveModelId, episodes, snapshotHash, fullRegeneration);
         store.updateParentProgress(snapshotId, store.progress(snapshotId));
+        return new Prepared(snapshotId, snapshotHash, plan, task, stage, executionContext, effectiveModelId);
+    }
+
+    public Result executePrepared(Prepared prepared, ChildExecutor childExecutor, Finalizer finalizer) {
+        long snapshotId = prepared.snapshotId();
+        String snapshotHash = prepared.snapshotHash();
+        WorkflowAgentExecutionPlan plan = prepared.plan();
+        ScriptAnalysisTaskEntity task = prepared.task();
+        ScriptAnalysisStageEntity stage = prepared.stage();
+        AiExecutionContext executionContext = prepared.executionContext();
         Long executionId = executionContext == null ? null : executionContext.task().id;
         if (store.cancellationRequested(snapshotId, executionId)) {
             store.cancel(snapshotId);
@@ -68,7 +87,14 @@ public class EpisodeFanoutCoordinator {
                     snapshotId, plan, task, stage, executionContext, executionId,
                     unit, childExecutor, calls), executor)
             ).toList();
-            futures.forEach(CompletableFuture::join);
+            try {
+                CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+            } catch (java.util.concurrent.CompletionException exception) {
+                if (exception.getCause() instanceof com.antshorttv.execution.AiExecutionClaimLostException lost) {
+                    throw lost;
+                }
+                throw exception;
+            }
         } finally {
             executor.shutdownNow();
         }
@@ -113,13 +139,18 @@ public class EpisodeFanoutCoordinator {
             return;
         }
         try {
-            ChildResult result = childExecutor.run(plan, task, stage, executionContext, unit);
+            ChildResult result = store.recoverCommitted(snapshotId, unit.episodeId())
+                .orElseGet(() -> childExecutor.run(plan, task, stage, executionContext,
+                    new EpisodeUnit(unit.episodeId(), unit.episodeKey(), unit.contentFingerprint(),
+                        unit.status(), snapshotId, unitAttemptNo)));
             calls.addAll(result.modelCalls());
             if (store.cancellationRequested(snapshotId, executionId)) {
                 store.cancel(snapshotId);
                 return;
             }
             store.markSucceeded(snapshotId, unit.episodeId(), unitAttemptNo, result.runId());
+        } catch (com.antshorttv.execution.AiExecutionClaimLostException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
             String code = exception instanceof BusinessException business
                 ? business.getErrorCode().name() : "ANALYSIS_CHILD_FAILED";
@@ -146,7 +177,19 @@ public class EpisodeFanoutCoordinator {
         return message == null ? exception.getClass().getSimpleName() : message.substring(0, Math.min(1000, message.length()));
     }
 
-    public record EpisodeUnit(Long episodeId, String episodeKey, String contentFingerprint, String status) {}
+    public record Prepared(long snapshotId, String snapshotHash, WorkflowAgentExecutionPlan plan,
+                           ScriptAnalysisTaskEntity task, ScriptAnalysisStageEntity stage,
+                           AiExecutionContext executionContext, Long effectiveModelId) {}
+    public record EpisodeUnit(Long episodeId, String episodeKey, String contentFingerprint, String status,
+                              Long snapshotId, Integer unitAttemptNo) {
+        public EpisodeUnit(Long episodeId, String episodeKey, String contentFingerprint, String status) {
+            this(episodeId, episodeKey, contentFingerprint, status, null, null);
+        }
+        public java.util.Map<String, Object> trustedToolState() {
+            return snapshotId == null ? java.util.Map.of()
+                : java.util.Map.of("fanoutSnapshotId", snapshotId, "fanoutUnitAttemptNo", unitAttemptNo);
+        }
+    }
     public record Progress(int total, int completed, int failed, int running, int pending, String status) {}
     public record ChildResult(Long runId, List<WorkflowAgentModelCall> modelCalls) {
         public ChildResult { modelCalls = modelCalls == null ? List.of() : List.copyOf(modelCalls); }

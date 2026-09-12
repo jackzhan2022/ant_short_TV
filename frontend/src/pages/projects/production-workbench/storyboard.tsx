@@ -34,7 +34,7 @@ import type {
   SaveStoryboardValues,
   SceneAsset,
   ScriptEpisode,
-  ScriptWorkspace,
+  ProductionWorkspaceState,
   StoryboardShot,
   StoryboardBatch,
   StoryboardPromptDocument,
@@ -355,26 +355,6 @@ const normalizeVideoDuration = (durationSeconds?: number) => {
     supportedVideoDurations[0]
   );
 };
-
-const toLocalStoryboard = (
-  values: SaveStoryboardValues,
-  fallbackId: number,
-): StoryboardWithProps => ({
-  id: fallbackId,
-  shotNo: values.shotNo || 1,
-  episodeNo: values.episodeNo || 1,
-  shotType: values.shotType || '中景',
-  visualDescription: values.visualDescription,
-  characters: values.characters || '',
-  scene: values.scene || '',
-  props: values.props || '',
-  dialogue: values.dialogue || '',
-  durationSeconds: values.durationSeconds || 5,
-  imagePrompt: values.imagePrompt || '',
-  videoPrompt: values.videoPrompt || '',
-  firstFrameUrl: null,
-  currentVideoUrl: null,
-});
 
 const getStoryboardVideo = (
   storyboard: StoryboardShot,
@@ -1155,6 +1135,7 @@ const ProductionWorkbenchStoryboard = () => {
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [storyboardPage, setStoryboardPage] = useState(1);
   const [storyboardTotal, setStoryboardTotal] = useState(0);
+  const [mutationRefreshFailed, setMutationRefreshFailed] = useState(false);
   const [selectedModel, setSelectedModel] = useState('Doubao-Seedance-2.5');
   const [drafts, setDrafts] = useState<StoryboardDraft>({});
   const [storyboardExecution, setStoryboardExecution] =
@@ -1164,7 +1145,7 @@ const ProductionWorkbenchStoryboard = () => {
   const [storyboardBatchBusy, setStoryboardBatchBusy] = useState(false);
   const reservedShotNos = useRef<Record<number, number>>({});
   const storyboardRequestId = useRef(0);
-  const [workspace, setWorkspace] = useState<ScriptWorkspace>({
+  const [workspace, setWorkspace] = useState<ProductionWorkspaceState>({
     projectId: projectId || 0,
     script: null,
     versions: [],
@@ -1199,19 +1180,15 @@ const ProductionWorkbenchStoryboard = () => {
           versions: workspaceResponse.data?.versions || [],
           characters:
             assetResponse.data?.characters ||
-            (workspaceResponse.data as Partial<ScriptWorkspace>)?.characters ||
             [],
           scenes:
             assetResponse.data?.scenes ||
-            (workspaceResponse.data as Partial<ScriptWorkspace>)?.scenes ||
             [],
           props:
             assetResponse.data?.props ||
-            (workspaceResponse.data as Partial<ScriptWorkspace>)?.props ||
             [],
           storyboards:
             storyboardResponse.data?.storyboards ||
-            (workspaceResponse.data as Partial<ScriptWorkspace>)?.storyboards ||
             [],
           episodes: workspaceResponse.data?.episodes || [],
           analysis: workspaceResponse.data?.analysis || null,
@@ -1373,25 +1350,25 @@ const ProductionWorkbenchStoryboard = () => {
       }),
     ]);
     if (storyboardRequestId.current === requestId && scriptResponse.data) {
-      const nextWorkspace: ScriptWorkspace = {
+      const nextWorkspace: ProductionWorkspaceState = {
         projectId,
         script: scriptResponse.data.script,
         versions: scriptResponse.data.versions,
         characters:
           assetResponse.data?.characters ||
-          (scriptResponse.data as Partial<ScriptWorkspace>).characters ||
+          (scriptResponse.data as Partial<ProductionWorkspaceState>).characters ||
           [],
         scenes:
           assetResponse.data?.scenes ||
-          (scriptResponse.data as Partial<ScriptWorkspace>).scenes ||
+          (scriptResponse.data as Partial<ProductionWorkspaceState>).scenes ||
           [],
         props:
           assetResponse.data?.props ||
-          (scriptResponse.data as Partial<ScriptWorkspace>).props ||
+          (scriptResponse.data as Partial<ProductionWorkspaceState>).props ||
           [],
         storyboards:
           storyboardResponse.data?.storyboards ||
-          (scriptResponse.data as Partial<ScriptWorkspace>).storyboards ||
+          (scriptResponse.data as Partial<ProductionWorkspaceState>).storyboards ||
           [],
         episodes: scriptResponse.data.episodes,
         analysis: scriptResponse.data.analysis,
@@ -1428,6 +1405,18 @@ const ProductionWorkbenchStoryboard = () => {
     setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
       scriptText: getStoryboardScriptText(item), videoPrompt: getStoryboardPrompt(item), promptDocument: item.promptDocument,
     }])));
+  };
+
+  const refreshAfterMutation = async () => {
+    try {
+      await reloadStoryboardPage();
+      setMutationRefreshFailed(false);
+      return true;
+    } catch {
+      setMutationRefreshFailed(true);
+      message.error('操作已完成，但分镜刷新失败，请重试加载');
+      return false;
+    }
   };
 
   const selectEpisode = async (episodeNo: number) => {
@@ -1726,8 +1715,7 @@ const ProductionWorkbenchStoryboard = () => {
           item.id === storyboard.id ? nextStoryboard : item,
         ),
       }));
-      await reloadStoryboardPage();
-      message.success('分镜已保存');
+      if (await refreshAfterMutation()) message.success('分镜已保存');
     } catch {
       message.error('分镜保存失败');
     }
@@ -1766,8 +1754,7 @@ const ProductionWorkbenchStoryboard = () => {
           videoPrompt: nextVideoPrompt,
         }),
       );
-      await reloadStoryboardPage();
-      message.success('分镜已保存');
+      if (await refreshAfterMutation()) message.success('分镜已保存');
     } catch {
       message.error('分镜保存失败');
     }
@@ -1778,24 +1765,8 @@ const ProductionWorkbenchStoryboard = () => {
     successText: string,
   ) => {
     try {
-      const response = await createStoryboard(projectId, values);
-      setWorkspace((previous) => {
-        const responseStoryboards = response.data?.storyboards;
-        if (
-          responseStoryboards?.length &&
-          responseStoryboards.length >= previous.storyboards.length
-        ) {
-          return response.data;
-        }
-        return {
-          ...previous,
-          storyboards: [
-            ...previous.storyboards,
-            toLocalStoryboard(values, Date.now()),
-          ],
-        };
-      });
-      message.success(successText);
+      await createStoryboard(projectId, values);
+      if (await refreshAfterMutation()) message.success(successText);
     } catch {
       message.error('分镜创建失败');
     }
@@ -1920,6 +1891,12 @@ const ProductionWorkbenchStoryboard = () => {
       </aside>
 
       <div style={{ minWidth: 0, padding: '16px 24px 34px' }}>
+        {mutationRefreshFailed ? (
+          <div role="alert">
+            操作已完成，但分镜刷新失败。
+            <button type="button" onClick={() => void refreshAfterMutation()}>重试加载分镜</button>
+          </div>
+        ) : null}
         <Flex justify="space-between" align="center">
           <Button style={{ height: 32, fontWeight: 700 }}>分镜表</Button>
           <Flex gap={10}>

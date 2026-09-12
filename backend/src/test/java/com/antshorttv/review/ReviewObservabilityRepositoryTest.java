@@ -2,7 +2,6 @@ package com.antshorttv.review;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -20,8 +19,8 @@ class ReviewObservabilityRepositoryTest {
         jdbc.update("insert into ai_call_log values (1, 100, 20, 250, 80, null)");
         jdbc.update("insert into ai_workflow_agent_run_step values (1, 9, 1)");
 
-        ReviewCacheUsageResponse usage = new ReviewObservabilityRepository(jdbc, new ObjectMapper())
-            .cacheUsage(List.of(9L));
+        ReviewCacheUsageResponse usage = new ReviewObservabilityRepository(jdbc)
+            .load(List.of(9L)).cacheUsage();
 
         assertThat(usage.cachedInputTokens()).isEqualTo(80L);
         assertThat(usage.cacheWriteTokens()).isNull();

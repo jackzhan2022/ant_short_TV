@@ -29,7 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@SpringBootTest(properties = "ai.video.scheduler.enabled=false")
+@SpringBootTest
 @AutoConfigureMockMvc
 class VideoDecompositionControllerTest {
     @Autowired

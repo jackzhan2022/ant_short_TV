@@ -24,7 +24,7 @@ class GlobalUnderstandingAgentAdapterTest {
 
     @Test
     void invokesSavedAgentWithTrustedPipelineScopeAndReturnsCommittedDocument() throws Exception {
-        GlobalUnderstandingAgentAdapter adapter = new GlobalUnderstandingAgentAdapter(runner, documents, runs, true);
+        GlobalUnderstandingAgentAdapter adapter = new GlobalUnderstandingAgentAdapter(runner, documents, runs);
         ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
         task.setId(41L);
         task.setTenantId(7L);
@@ -53,7 +53,7 @@ class GlobalUnderstandingAgentAdapterTest {
 
     @Test
     void reconcilesCommittedDocumentWhenPostSaveRunAuditFails() throws Exception {
-        GlobalUnderstandingAgentAdapter adapter = new GlobalUnderstandingAgentAdapter(runner, documents, runs, true);
+        GlobalUnderstandingAgentAdapter adapter = new GlobalUnderstandingAgentAdapter(runner, documents, runs);
         ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
         task.setId(41L);
         task.setTenantId(7L);

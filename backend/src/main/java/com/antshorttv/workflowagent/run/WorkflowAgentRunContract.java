@@ -53,20 +53,6 @@ public record WorkflowAgentRunContract(
 
     public static WorkflowAgentRunContract forReviewPhase(String phase) {
         return switch (phase == null ? "" : phase) {
-            case "QUICK" -> new WorkflowAgentRunContract(List.of(
-                "read_review_context", "read_review_content", "save_review_result"),
-                "save_review_result");
-            case "DEEP_CHILD" -> new WorkflowAgentRunContract(List.of(
-                "read_review_context", "read_review_content", "save_review_unit_result"),
-                "save_review_unit_result");
-            case "DEEP_SEMANTIC" -> new WorkflowAgentRunContract(List.of(
-                "read_review_context", "read_review_candidates", "read_review_content",
-                "save_review_semantic_decisions"),
-                "save_review_semantic_decisions");
-            case "DEEP_AGGREGATION" -> new WorkflowAgentRunContract(List.of(
-                "read_review_context", "read_review_unit_results", "read_review_content",
-                "save_review_result"),
-                "save_review_result");
             case "MARKDOWN_QUICK", "MARKDOWN_DEEP_CHILD" -> new WorkflowAgentRunContract(List.of(
                 "read_review_context", "read_review_content"), null);
             case "MARKDOWN_DEEP_AGGREGATION" -> NONE;
@@ -112,24 +98,15 @@ public record WorkflowAgentRunContract(
             || (!contextTool.equals(toolCode) && !completed.contains(contextTool))) {
             throw reviewOrderError(sequence);
         }
-        if (isTerminal(toolCode)) {
-            List<String> requiredReads = sequence.subList(0, sequence.size() - 1);
-            if (completed.contains(toolCode) || !completed.containsAll(requiredReads)) {
-                throw reviewOrderError(sequence);
-            }
-        }
     }
 
     private BusinessException reviewOrderError(List<String> sequence) {
         return new BusinessException(ErrorCode.REQUIRED_TOOL_NOT_CALLED,
-            "必须先读取审核上下文，并完成全部可信读取后再保存：" + String.join(" -> ", sequence));
+            "必须先读取审核上下文，再读取可信正文：" + String.join(" -> ", sequence));
     }
 
     private boolean isReviewContract() {
-        return requiredToolSequence.contains("read_review_context")
-            || "save_review_result".equals(terminalToolCode)
-            || "save_review_unit_result".equals(terminalToolCode)
-            || "save_review_semantic_decisions".equals(terminalToolCode);
+        return requiredToolSequence.contains("read_review_context");
     }
 
     private List<String> activeSequence(WorkflowToolRunState state) {

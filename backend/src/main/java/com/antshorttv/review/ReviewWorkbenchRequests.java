@@ -49,21 +49,6 @@ record UpdateReviewTaskRequest(
 ) {
 }
 
-record MarkReviewIssueResolvedRequest(
-    @Size(max = 1000) String note
-) {
-}
-
-record BatchRepairReviewRequest(
-    @NotBlank @Size(max = 32) String actionType,
-    @Size(max = 5000) String replacementFrom,
-    @Size(max = 5000) String replacementTo,
-    @Size(max = 5000) String insertionText,
-    @Size(max = 5000) String deletionText,
-    List<Long> selectedHitIds
-) {
-}
-
 record RollbackReviewVersionRequest(
     @NotNull Long versionId
 ) {

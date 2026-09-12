@@ -27,7 +27,6 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class EpisodeAssetPersistenceService {
@@ -39,23 +38,20 @@ public class EpisodeAssetPersistenceService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final AutoStoryboardEventRepository autoStoryboardEvents;
-    private final boolean autoStoryboardEnabled;
 
     @Autowired
     public EpisodeAssetPersistenceService(
         JdbcTemplate jdbc,
         ObjectMapper json,
-        AutoStoryboardEventRepository autoStoryboardEvents,
-        @Value("${ai.workflow-agent.auto-storyboard-enabled:false}") boolean autoStoryboardEnabled
+        AutoStoryboardEventRepository autoStoryboardEvents
     ) {
         this.jdbc = jdbc;
         this.json = json;
         this.autoStoryboardEvents = autoStoryboardEvents;
-        this.autoStoryboardEnabled = autoStoryboardEnabled;
     }
 
     public EpisodeAssetPersistenceService(JdbcTemplate jdbc, ObjectMapper json) {
-        this(jdbc, json, null, false);
+        this(jdbc, json, new AutoStoryboardEventRepository(jdbc));
     }
 
     @Transactional
@@ -104,6 +100,7 @@ public class EpisodeAssetPersistenceService {
         long analysisId = upsertCoverage(context, payload.path("schemaVersion").asInt(),
             read.fingerprint(), diagnostic);
         recordAutoStoryboard(context, read, analysisId);
+        EpisodeFanoutCommitEvidence.record(jdbc, context, read.fingerprint());
 
         ObjectNode result = json.createObjectNode();
         result.put("saved", true);
@@ -119,12 +116,15 @@ public class EpisodeAssetPersistenceService {
         ReadEpisode read,
         long analysisId
     ) {
-        if (!autoStoryboardEnabled || autoStoryboardEvents == null || context.taskId() == null) return;
+        if (context.taskId() == null) return;
         Integer eligible = jdbc.queryForObject("""
-            select count(*) from script_analysis_task
-             where id=? and tenant_id=? and project_id=? and script_id=?
-               and pipeline_version='EPISODE_CONTEXT_V2'
-            """, Integer.class, context.taskId(), context.tenantId(), context.projectId(), context.scriptId());
+            select count(*) from script_analysis_task task
+              join ai_execution_task execution on execution.id = task.execution_id
+             where task.id=? and task.tenant_id=? and task.project_id=? and task.script_id=?
+               and execution.id=? and execution.business_type='SCRIPT_ANALYSIS_TASK'
+               and execution.business_id=task.id
+            """, Integer.class, context.taskId(), context.tenantId(), context.projectId(), context.scriptId(),
+            context.executionId());
         if (eligible == null || eligible != 1) return;
         List<Long> snapshots = jdbc.queryForList("""
             select id from episode_prompt_context_snapshot

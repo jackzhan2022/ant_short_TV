@@ -20,7 +20,8 @@ class AiInvocationContractTest {
         assertThat(AiBusinessScene.CHARACTER_EXTRACT.code()).isEqualTo("character_extract");
         assertThat(AiBusinessScene.CHARACTER_EXTRACT.capability()).isEqualTo(AiCapability.TEXT);
         assertThat(AiBusinessScene.CHARACTER_EXTRACT.pointScene()).isEqualTo("character_extract");
-        assertThat(AiBusinessScene.CHARACTER_EXTRACT.promptTemplateId()).isEqualTo("script.element.character.extract");
+        assertThat(AiBusinessScene.CHARACTER_EXTRACT.promptTemplateId()).isNull();
+        assertThat(AiBusinessScene.SCRIPT_REWRITE.promptTemplateId()).isEqualTo("script-rewrite");
 
         assertThat(AiBusinessScene.VIDEO_UNDERSTANDING.code()).isEqualTo("video_understanding");
         assertThat(AiBusinessScene.VIDEO_UNDERSTANDING.capability()).isEqualTo(AiCapability.VIDEO_UNDERSTANDING);

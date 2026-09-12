@@ -16,28 +16,6 @@ export async function downloadExport(
   });
 }
 
-/** 此处后端没有提供注释 POST /api/script-review/issues/${param0}/resolve */
-export async function resolveIssue(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.resolveIssueParams,
-  body: API.MarkReviewIssueResolvedRequest,
-  options?: { [key: string]: any }
-) {
-  const { issueId: param0, ...queryParams } = params;
-  return request<API.ApiResponseReviewIssueResponse>(
-    `/api/script-review/issues/${param0}/resolve`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      params: { ...queryParams },
-      data: body,
-      ...(options || {}),
-    }
-  );
-}
-
 /** 此处后端没有提供注释 GET /api/script-review/projects */
 export async function projects(options?: { [key: string]: any }) {
   return request<API.ApiResponseListReviewProjectSummaryResponse>(
@@ -317,28 +295,6 @@ export async function task(
     {
       method: "GET",
       params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
-}
-
-/** 此处后端没有提供注释 POST /api/script-review/tasks/${param0}/batch-repair */
-export async function batchRepair(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.batchRepairParams,
-  body: API.BatchRepairReviewRequest,
-  options?: { [key: string]: any }
-) {
-  const { taskId: param0, ...queryParams } = params;
-  return request<API.ApiResponseReviewTaskResponse>(
-    `/api/script-review/tasks/${param0}/batch-repair`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      params: { ...queryParams },
-      data: body,
       ...(options || {}),
     }
   );
