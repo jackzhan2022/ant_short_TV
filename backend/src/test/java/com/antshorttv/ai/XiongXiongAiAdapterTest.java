@@ -71,6 +71,23 @@ class XiongXiongAiAdapterTest {
     }
 
     @Test
+    void waitsMoreThanOneMinuteForImageGenerationResponse() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = responsesServer(requestBody,
+            "{\"id\":\"resp-slow\",\"output\":[{\"type\":\"image_generation_call\",\"result\":\"YWJj\"}]}",
+            61_000
+        );
+        try {
+            AiImageResponse response = adapter().image(provider(), config(server), model("{}"),
+                new AiImageRequest("慢速图片", null, null, "1:1", 1, List.of()));
+
+            assertThat(response.providerRequestId()).isEqualTo("resp-slow");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void rejectsResponsesWithoutImageGenerationOutput() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = responsesServer(requestBody, "{\"id\":\"resp-empty\",\"output\":[]}");
@@ -86,9 +103,22 @@ class XiongXiongAiAdapterTest {
     }
 
     private HttpServer responsesServer(AtomicReference<String> requestBody, String response) throws Exception {
+        return responsesServer(requestBody, response, 0);
+    }
+
+    private HttpServer responsesServer(AtomicReference<String> requestBody, String response, long delayMillis) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/responses", exchange -> {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            if (delayMillis > 0) {
+                try {
+                    Thread.sleep(delayMillis);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    exchange.close();
+                    return;
+                }
+            }
             byte[] body = response.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);

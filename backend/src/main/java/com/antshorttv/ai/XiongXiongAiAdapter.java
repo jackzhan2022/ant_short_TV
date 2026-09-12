@@ -72,7 +72,7 @@ public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
 
             String baseUrl = config.getBaseUrl() == null ? "" : config.getBaseUrl().replaceAll("/+$", "");
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(baseUrl + "/responses"))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(Duration.ofMinutes(10))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + aiSecretCodec.requireDecrypted(config.getApiKeyCipher()))
                 .header("Idempotency-Key", idempotencyKey == null || idempotencyKey.isBlank() ? UUID.randomUUID().toString() : idempotencyKey)
