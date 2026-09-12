@@ -1,4 +1,5 @@
 package com.antshorttv.aiimage;
+import static com.antshorttv.support.SessionTestSupport.authenticated;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
@@ -389,6 +390,17 @@ class AiImageTaskControllerTest {
             Integer.class,
             sourceTaskId
         )).isEqualTo(1);
+        String center="/api/tenants/"+tenantId+"/production-tasks/IMAGE:"+sourceTaskId+"/regenerate";
+        MvcResult centerCreated=mockMvc.perform(post(center).with(authenticated(token))
+                .header("Idempotency-Key","center-regenerate"))
+            .andExpect(status().isOk()).andReturn();
+        String centerKey=com.jayway.jsonpath.JsonPath.read(centerCreated.getResponse().getContentAsString(),"$.data.taskKey");
+        mockMvc.perform(post(center).with(authenticated(token)).header("Idempotency-Key","center-regenerate"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.taskKey").value(centerKey));
+        org.assertj.core.api.Assertions.assertThat(centerKey).isNotEqualTo("IMAGE:"+sourceTaskId);
+        jdbcTemplate.update("update ai_image_task set target_type='VISUAL_VARIANT' where id=?",sourceTaskId);
+        mockMvc.perform(post(center).with(authenticated(token)).header("Idempotency-Key","variant-must-not-supersede"))
+            .andExpect(status().isForbidden());
     }
 
     @Test

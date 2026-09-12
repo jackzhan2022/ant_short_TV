@@ -1,4 +1,5 @@
 export default {
+  'menu.tasks': '任务中心',
   'menu.welcome': '欢迎',
   'menu.more-blocks': '更多区块',
   'menu.home': '首页',

@@ -271,8 +271,9 @@ class VideoDecompositionControllerTest {
         org.assertj.core.api.Assertions.assertThat(episode.get("status")).isEqualTo("CONFIRMED");
     }
 
-    @Test
-    void technicalRetryKeepsTheFrozenExecutionAndPricingSnapshot() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void technicalRetryKeepsTheFrozenExecutionAndPricingSnapshot(boolean fromCenter) throws Exception {
         String mobile = uniqueMobile();
         String token = registerUser(mobile, "Technical Retry Owner");
         Long tenantId = createTenant(token, "技术重试团队");
@@ -337,13 +338,19 @@ class VideoDecompositionControllerTest {
              where id = ?
             """, executionId);
 
-        mockMvc.perform(post("/api/video-script-decomposition/episodes/%d/retry".formatted(episodeId))
+        Long batchId=readLong(created,"$.data.id");
+        jdbc.update("""
+            insert into video_decomposition_episode(batch_id,tenant_id,episode_no,source_file_name,storage_path,file_size,status,analysis_version,draft_version,created_by,created_at,updated_at)
+            values (?,?,2,'success.mp4','test',1,'SUCCEEDED',1,1,?,now(),now())
+            """,batchId,tenantId,ownerId);
+        mockMvc.perform(post(fromCenter ? "/api/tenants/"+tenantId+"/production-tasks/VIDEO_EPISODE:"+episodeId+"/retry" : "/api/video-script-decomposition/episodes/%d/retry".formatted(episodeId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.status", is("PENDING_ANALYSIS")));
+            .andExpect(jsonPath(fromCenter ? "$.data.statusGroup" : "$.data.status", is(fromCenter ? "QUEUED" : "PENDING_ANALYSIS")));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select status from video_decomposition_episode where batch_id=? and episode_no=2",String.class,batchId)).isEqualTo("SUCCEEDED");
 
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForMap("""
             select requested_model_id, cost_price_version_id, point_price_version_id, execution_version
