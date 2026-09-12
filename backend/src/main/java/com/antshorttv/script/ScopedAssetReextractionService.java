@@ -66,7 +66,7 @@ class ScopedAssetReextractionService {
     ) {
         AssetRecognitionScope scope = parseScope(request.targetType());
         AssetPromptPolicy policy = parsePolicy(request.promptPolicy());
-        Snapshot snapshot = loadOrCreate(operation, scope, policy);
+        Snapshot snapshot = loadOrCreate(operation, scope, policy, modelId(executionContext));
         WorkflowAgentExecutionPlan plan = runner.freezeFormal(AssetRecognitionAgentBootstrap.AGENT_CODE);
         List<WorkflowAgentModelCall> calls = new ArrayList<>();
         for (Unit unit : runnableUnits(snapshot.id())) {
@@ -75,7 +75,7 @@ class ScopedAssetReextractionService {
                 ScriptAnalysisTaskEntity task = transientTask(operation);
                 ScriptAnalysisStageEntity stage = transientStage();
                 AssetRecognitionAgentAdapter.Execution child = recognition.executeChild(plan, task, stage,
-                    unit.episodeId(), executionContext, executionContext.task().resolvedModelId, scope, policy);
+                    unit.episodeId(), executionContext, snapshot.modelId(), scope, policy);
                 jdbc.update("update scoped_asset_reextraction_unit set status='SUCCEEDED', child_run_id=?, error_message=null, finished_at=now(), updated_at=now() where id=?",
                     child.agentRunId(), unit.id());
                 calls.addAll(child.modelCalls());
@@ -95,19 +95,33 @@ class ScopedAssetReextractionService {
         return new ScriptAiOperationExecutionResult("SCOPED_ASSET_REEXTRACTION", snapshot.id(), List.of(), calls);
     }
 
-    private Snapshot loadOrCreate(ScriptAiOperationEntity operation, AssetRecognitionScope scope, AssetPromptPolicy policy) {
-        List<Snapshot> existing = jdbc.query("select id, tenant_id, project_id, script_id from scoped_asset_reextraction_snapshot where operation_id=? for update",
-            (rs, row) -> new Snapshot(rs.getLong("id"), rs.getLong("tenant_id"), rs.getLong("project_id"), rs.getLong("script_id")), operation.id);
-        if (!existing.isEmpty()) return existing.get(0);
+    private Snapshot loadOrCreate(
+        ScriptAiOperationEntity operation,
+        AssetRecognitionScope scope,
+        AssetPromptPolicy policy,
+        Long modelId
+    ) {
+        List<Snapshot> existing = jdbc.query("select id, tenant_id, project_id, script_id, model_id from scoped_asset_reextraction_snapshot where operation_id=? for update",
+            (rs, row) -> new Snapshot(rs.getLong("id"), rs.getLong("tenant_id"), rs.getLong("project_id"),
+                rs.getLong("script_id"), rs.getObject("model_id", Long.class)), operation.id);
+        if (!existing.isEmpty()) {
+            Snapshot snapshot = existing.get(0);
+            if (snapshot.modelId() != null) return snapshot;
+            requireModel(modelId);
+            jdbc.update("update scoped_asset_reextraction_snapshot set model_id=?, updated_at=now() where id=?",
+                modelId, snapshot.id());
+            return new Snapshot(snapshot.id(), snapshot.tenantId(), snapshot.projectId(), snapshot.scriptId(), modelId);
+        }
+        requireModel(modelId);
         List<Episode> episodes = jdbc.query("select id, stable_key, content_fingerprint from script_episode where tenant_id=? and project_id=? and script_id=? and status='ACTIVE' and retired_at is null order by episode_no, id",
             (rs, row) -> new Episode(rs.getLong("id"), rs.getString("stable_key"), rs.getString("content_fingerprint")),
             operation.tenantId, operation.projectId, operation.scriptId);
         if (episodes.isEmpty()) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前项目没有可识别的正式剧集。");
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
-            var statement = connection.prepareStatement("insert into scoped_asset_reextraction_snapshot (operation_id, tenant_id, project_id, script_id, asset_scope, prompt_policy, status, total_units, created_at, updated_at) values (?, ?, ?, ?, ?, ?, 'RUNNING', ?, now(), now())", java.sql.Statement.RETURN_GENERATED_KEYS);
+            var statement = connection.prepareStatement("insert into scoped_asset_reextraction_snapshot (operation_id, tenant_id, project_id, script_id, asset_scope, prompt_policy, model_id, status, total_units, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?, now(), now())", java.sql.Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, operation.id); statement.setLong(2, operation.tenantId); statement.setLong(3, operation.projectId);
-            statement.setLong(4, operation.scriptId); statement.setString(5, scope.name()); statement.setString(6, policy.name()); statement.setInt(7, episodes.size());
+            statement.setLong(4, operation.scriptId); statement.setString(5, scope.name()); statement.setString(6, policy.name()); statement.setLong(7, modelId); statement.setInt(8, episodes.size());
             return statement;
         }, keys);
         Number id = keys.getKey();
@@ -116,7 +130,7 @@ class ScopedAssetReextractionService {
             jdbc.update("insert into scoped_asset_reextraction_unit (snapshot_id, episode_id, episode_key, content_fingerprint, status, created_at, updated_at) values (?, ?, ?, ?, 'PENDING', now(), now())",
                 id.longValue(), episode.id(), episode.key(), episode.fingerprint());
         }
-        return new Snapshot(id.longValue(), operation.tenantId, operation.projectId, operation.scriptId);
+        return new Snapshot(id.longValue(), operation.tenantId, operation.projectId, operation.scriptId, modelId);
     }
 
     private List<Unit> runnableUnits(long snapshotId) {
@@ -154,6 +168,18 @@ class ScopedAssetReextractionService {
         catch (IllegalArgumentException exception) { throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产提取范围必须为 ALL、CHARACTER、SCENE 或 PROP。"); }
     }
 
+    private Long modelId(AiExecutionContext context) {
+        return context.task().resolvedModelId == null
+            ? context.task().requestedModelId
+            : context.task().resolvedModelId;
+    }
+
+    private void requireModel(Long modelId) {
+        if (modelId == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产重提取任务缺少冻结文本模型。");
+        }
+    }
+
     private AssetPromptPolicy parsePolicy(String value) {
         try { return AssetPromptPolicy.valueOf(value == null ? "" : value.trim().toUpperCase()); }
         catch (IllegalArgumentException exception) { throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产提示词策略必须为 FILL_EMPTY 或 REGENERATE_ALL。"); }
@@ -174,7 +200,7 @@ class ScopedAssetReextractionService {
         int existingPrompts,
         boolean requiresConfirmation
     ) {}
-    private record Snapshot(long id, long tenantId, long projectId, long scriptId) {}
+    private record Snapshot(long id, long tenantId, long projectId, long scriptId, Long modelId) {}
     private record Episode(long id, String key, String fingerprint) {}
     private record Unit(long id, long episodeId) {}
 }
