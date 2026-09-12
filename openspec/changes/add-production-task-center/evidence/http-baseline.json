@@ -1,0 +1,50 @@
+[
+  {
+    "path": "/api/auth/login",
+    "method": "POST",
+    "status": 200,
+    "ms": 208.49
+  },
+  {
+    "path": "/api/auth/bootstrap",
+    "method": "GET",
+    "status": 200,
+    "ms": 2759.82
+  },
+  {
+    "path": "/api/projects",
+    "method": "GET",
+    "status": 200,
+    "ms": 77.26
+  },
+  {
+    "path": "/api/projects/34",
+    "method": "GET",
+    "status": 200,
+    "ms": 98.85
+  },
+  {
+    "path": "/api/video-script-decomposition/batches",
+    "method": "GET",
+    "status": 200,
+    "ms": 85.48
+  },
+  {
+    "path": "/api/video-script-decomposition/batches/21",
+    "method": "GET",
+    "status": 200,
+    "ms": 78.24
+  },
+  {
+    "path": "/api/video-script-decomposition/batches/21/screenplays",
+    "method": "GET",
+    "status": 200,
+    "ms": 82.79
+  },
+  {
+    "path": "/api/video-script-decomposition/episodes/32",
+    "method": "GET",
+    "status": 200,
+    "ms": 131.14
+  }
+]

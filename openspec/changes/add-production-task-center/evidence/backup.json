@@ -1,0 +1,16 @@
+{
+  "directory": "/opt/antv/backups/20260912-task-center-6652857-064758",
+  "database_gzip_integrity": true,
+  "dump_complete_marker": true,
+  "skills_archive_readable": true,
+  "artifacts": {
+    "workflow-skills.tar.gz": {
+      "bytes": 20345,
+      "sha256": "df72d8a2d8dc2f00c8cbec931372af231c6674bb2c0058ab8a390f099d003705"
+    },
+    "database.sql.gz": {
+      "bytes": 34289518,
+      "sha256": "bd5e9857cdf22921f9bfaea61252ccea4ab007da15b1eedaaa309adf93494733"
+    }
+  }
+}

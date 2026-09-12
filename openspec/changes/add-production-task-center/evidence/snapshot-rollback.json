@@ -1,0 +1,72 @@
+{
+  "ai_execution_task": {
+    "rows": 150,
+    "sha256": "a8762d2feb708be8690f2fe7712a826cd0499be442d3fbae12c378682be47e16"
+  },
+  "ai_image_task": {
+    "rows": 9,
+    "sha256": "710c650261020b21b5e6b84aaf4e0cc0f88eb629011249aae8e75e5d9a2a2e74"
+  },
+  "ai_video_task": {
+    "rows": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "review_task": {
+    "rows": 22,
+    "sha256": "9043c4512705f284907295ffb17e3092e11a7864f05964363e21df73ec9069b8"
+  },
+  "script_ai_operation": {
+    "rows": 73,
+    "sha256": "545f1584aef98f2d15ef9153b8efbcfe3a40a1611df84ce71035c13d8f1e2e1e"
+  },
+  "video_decomposition_batch": {
+    "rows": 12,
+    "sha256": "d60c67fd662d0abd59600bb4ae60ab13571330ece0b028b12180c48317c3744e"
+  },
+  "video_decomposition_episode": {
+    "rows": 23,
+    "sha256": "e9e7120c11c24d2433d7ba3117c9ae8cf7a436862c70aff7c8729f48789f1fa7"
+  },
+  "video_decomposition_analysis": {
+    "rows": 19,
+    "sha256": "655235c87cd5df02f002c619bdc0a9ee42c89bfe90e382472be3bbaea4a2a8a2"
+  },
+  "video_decomposition_script_result": {
+    "rows": 12,
+    "sha256": "4df901b817cb4d46c807da4bb2d9d02af69180841ac8ce2ab34bbd6d198b903d"
+  },
+  "ai_point_reservation": {
+    "rows": 150,
+    "sha256": "37c10f15fe21f74f564f71c40b9a78a5e674c2b1b819a8f0d61b3e3a1f08b718"
+  },
+  "point_ledger": {
+    "rows": 357,
+    "sha256": "5c55149235ad06954ba294cac070c0db2a2d4a683198ba41cbb2fd8a4fc66951"
+  },
+  "storyboard_batch": {
+    "rows": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "storyboard_batch_item": {
+    "rows": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "ai_image_result": {
+    "rows": 4,
+    "sha256": "c04d79ce66f0cb9cbab0330bfb507ae25deff1fd28c6704a4504ef35a31f9051"
+  },
+  "ai_video_result": {
+    "rows": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "script_analysis_result": {
+    "rows": 157,
+    "sha256": "4455690b297ee9a59a37593f2b3f4017b6f175d9b5b627b52607038f2e41f41c"
+  },
+  "script_analysis_task_states": {
+    "sha256": "506e14fe542a5af57524367e54d4975bf4f168647d23cc72bc3d9c97b8844241"
+  },
+  "migrations": {
+    "sha256": "ebb9a1540bc9bdcf928f0b9aa35e7caa1ec3a0ddd50c617d928491bd862d0410"
+  }
+}
