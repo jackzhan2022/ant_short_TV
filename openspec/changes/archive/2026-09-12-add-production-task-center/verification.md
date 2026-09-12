@@ -2,7 +2,7 @@
 
 实施分支：codex/add-production-task-center。
 实施目录：D:/信计软件项目/ant_short_TV/.worktrees/production-task-center。
-原工作区存在 remove-legacy-ai-workflow-paths 相关未提交改动，本次未覆盖或修复这些改动。任务中心提交 6652857 已合入并推送 master，部署到内测主机；主目录继续保留原开发分支及未提交改动。归档未执行。
+原工作区存在 remove-legacy-ai-workflow-paths 相关未提交改动，本次未覆盖或修复这些改动。任务中心提交 6652857 已合入并推送 master，部署到内测主机；主目录继续保留原开发分支及未提交改动。变更于 2026-09-12 归档，增量规格已同步到主规格。
 
 ## 本地验证（2026-09-12）
 

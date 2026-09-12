@@ -1,6 +1,6 @@
 # 任务中心部署验收工具
 
-这些脚本记录 2026-09-12 的一次验收，目标为 antv-prod、提交 6652857。应用结果和完整数据不下载，证据仅包含计划、耗时、行数、哈希和专用样本 ID。实际报告见 openspec/changes/add-production-task-center/verification.md。
+这些脚本记录 2026-09-12 的一次验收，目标为 antv-prod、提交 6652857。应用结果和完整数据不下载，证据仅包含计划、耗时、行数、哈希和专用样本 ID。实际报告见 openspec/changes/archive/2026-09-12-add-production-task-center/verification.md。
 
 这不是通用的一键发布工具。release_check.py 固定了新旧版本与上传文件哈希，并要求起始版本匹配；重复执行会拒绝已有发布目录。新的发布应使用部署手册并重新确认目标、哈希、备份、活动工作和验收范围。
 
