@@ -332,6 +332,9 @@ public class WorkflowAgentRunner {
             List<AiToolCall> calls = response == null ? List.of() : response.toolCalls();
             String finalContent = response == null ? null : response.content();
             runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
+            if ("short-drama-asset-recognition".equals(agent.code()) && isTruncated(response)) {
+                throw new WorkflowAgentTruncatedOutputException(runId, finalContent, modelCalls);
+            }
             if ("script-review".equals(agent.code()) && isTruncated(response)) {
                 String phase = input.reviewScope() == null ? null : input.reviewScope().phase();
                 if (phase != null && phase.startsWith("MARKDOWN_")) {

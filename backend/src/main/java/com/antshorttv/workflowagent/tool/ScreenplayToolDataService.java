@@ -458,7 +458,7 @@ public class ScreenplayToolDataService {
         String keyPrefix
     ) {
         List<Map<String, Object>> rows = jdbc.queryForList(
-            "select id, name, normalized_name, content_json from " + table
+            "select id, name, normalized_name, content_json, prompt from " + table
                 + " where tenant_id = ? and project_id = ? and script_id = ? and deleted_at is null"
                 + " order by id limit 201",
             context.tenantId(), context.projectId(), context.scriptId());
@@ -472,6 +472,7 @@ public class ScreenplayToolDataService {
             item.put("assetKey", keyPrefix + assetId);
             put(item, "name", row.get("name"));
             put(item, "normalizedName", row.get("normalized_name"));
+            item.put("hasPrompt", hasText(row.get("prompt")));
             ArrayNode aliasValues = item.putArray("aliases");
             Object rawAssetContent = row.get("content_json");
             if (rawAssetContent != null) {
@@ -487,7 +488,7 @@ public class ScreenplayToolDataService {
             }
             ArrayNode variants = item.putArray("variants");
             List<Map<String, Object>> variantRows = jdbc.queryForList("""
-                select id, name, content_json, is_primary
+                select id, name, content_json, prompt, is_primary
                   from asset_visual_variant
                  where tenant_id = ? and project_id = ? and asset_type = ? and asset_id = ?
                    and deleted_at is null
@@ -501,6 +502,7 @@ public class ScreenplayToolDataService {
                 variantItem.put("variantKey", "v_" + number(variant.get("id")));
                 put(variantItem, "name", variant.get("name"));
                 variantItem.put("primary", Boolean.TRUE.equals(variant.get("is_primary")));
+                variantItem.put("hasPrompt", hasText(variant.get("prompt")));
                 Integer episodeBound = jdbc.queryForObject("""
                     select count(*) from asset_visual_variant_episode
                      where tenant_id = ? and project_id = ? and script_id = ? and episode_id = ?
@@ -995,5 +997,9 @@ public class ScreenplayToolDataService {
 
     private long number(Object value) {
         return ((Number) value).longValue();
+    }
+
+    private boolean hasText(Object value) {
+        return value != null && !String.valueOf(value).isBlank();
     }
 }

@@ -152,15 +152,26 @@ public class ScreenplayToolConfiguration {
             ObjectNode array = catalogFields.putObject(name).put("type", "array").put("maxItems", 200);
             ObjectNode item = objectSchema(json);
             item.putArray("required").add("assetKey").add("name").add("normalizedName")
-                .add("aliases").add("variants");
+                .add("aliases").add("hasPrompt").add("variants");
             ObjectNode itemFields = (ObjectNode) item.path("properties");
             itemFields.putObject("assetKey").put("type", "string").put("maxLength", 64);
             itemFields.putObject("name").put("type", "string").put("maxLength", 100);
             itemFields.putObject("normalizedName").put("type", "string").put("maxLength", 100);
             itemFields.putObject("aliases").put("type", "array").put("maxItems", 50)
                 .putObject("items").put("type", "string").put("maxLength", 100);
-            itemFields.putObject("variants").put("type", "array").put("maxItems", 50)
-                .putObject("items").put("type", "object");
+            itemFields.putObject("hasPrompt").put("type", "boolean");
+            ObjectNode variants = itemFields.putObject("variants").put("type", "array").put("maxItems", 50);
+            ObjectNode variant = objectSchema(json);
+            variant.putArray("required").add("variantKey").add("name").add("primary")
+                .add("episodeBound").add("hasPrompt");
+            ObjectNode variantFields = (ObjectNode) variant.path("properties");
+            variantFields.putObject("variantKey").put("type", "string").put("maxLength", 64);
+            variantFields.putObject("name").put("type", "string").put("maxLength", 100);
+            variantFields.putObject("primary").put("type", "boolean");
+            variantFields.putObject("episodeBound").put("type", "boolean");
+            variantFields.putObject("hasPrompt").put("type", "boolean");
+            variantFields.putObject("content").put("type", "object");
+            variants.set("items", variant);
             array.set("items", item);
         }
         fields.set("assetCatalog", catalog);
@@ -385,6 +396,7 @@ public class ScreenplayToolConfiguration {
         fields.set("aliases", aliasArray(json));
         fields.putObject("evidence").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         fields.set("evidenceRef", evidenceReference(json));
+        fields.set("prompt", nullableType(json, "string").put("maxLength", 10_000));
         array.set("items", item);
         return array;
     }
@@ -434,6 +446,7 @@ public class ScreenplayToolConfiguration {
         fields.putObject("evidence").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         fields.set("evidenceRef", evidenceReference(json));
         fields.putObject("preferred").put("type", "boolean");
+        fields.set("prompt", nullableType(json, "string").put("maxLength", 10_000));
         array.set("items", item);
         return array;
     }

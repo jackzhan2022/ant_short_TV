@@ -110,4 +110,36 @@ class AssetVisualVariantServiceTest {
         assertThat(legacyAfterCompletion.get("main_image_url")).isEqualTo("https://cdn.example.com/new.png");
         assertThat(usable.id()).isNotEqualTo(pending.id());
     }
+
+    @Test
+    void requiresPersistedPromptInsteadOfDerivingOneFromAssetNameOrAppearance() {
+        var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "临时造型", "白裙", null, "MANUAL", "NOT_STARTED", null, null, true));
+
+        assertThatThrownBy(() -> service.prepareGeneration(9901L, 9902L, variant.id()))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("资产提示词");
+        assertThat(service.list(9901L, 9902L, "CHARACTER", 9910L)).singleElement()
+            .extracting(AssetVisualVariantService.VariantResponse::prompt).isNull();
+    }
+
+    @Test
+    void usesCanonicalAndDeltaPromptsVerbatimWithOnlyTheCanonicalCharacterImage() {
+        jdbc.update("update character_asset set prompt = 'canonical character markdown' where id = 9910");
+        var primary = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "日常造型", null, "must not be used", "GENERATED", "COMPLETED", 9930L,
+                "https://cdn.example.com/canonical.png", true));
+        var delta = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "雨天白裙", "湿裙", "性别:女；衣着描述:白色连衣裙，裙摆湿透，赤脚", "MANUAL", "NOT_STARTED", null, null, false));
+
+        assertThat(service.prepareGeneration(9901L, 9902L, primary.id()))
+            .isEqualTo(new AssetVisualVariantService.GenerationInput("canonical character markdown", java.util.List.of()));
+        assertThat(service.prepareGeneration(9901L, 9902L, delta.id()))
+            .isEqualTo(new AssetVisualVariantService.GenerationInput(
+                "性别:女；衣着描述:白色连衣裙，裙摆湿透，赤脚",
+                java.util.List.of("https://cdn.example.com/canonical.png")));
+    }
 }

@@ -265,6 +265,39 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void assetRecognitionRejectsTruncatedOutputBeforeExecutingAnySave() throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_episode_assets", "保存资产", "保存", json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                @Override
+                public JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    JsonNode arguments
+                ) {
+                    saves.incrementAndGet();
+                    return json.createObjectNode().put("saved", true);
+                }
+            });
+        runner = runnerWith(List.of(tool("read_current_episode"), save), 30);
+        when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
+            new BigDecimal("0.2"), 16384, 6, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), List.of(
+                "read_current_episode", "save_episode_assets")));
+        when(invocation.invokeText(any())).thenReturn(truncatedWithCalls(507L, List.of(
+            new AiToolCall("save", "save_episode_assets", "{}"))));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L)))
+            .isInstanceOf(WorkflowAgentTruncatedOutputException.class);
+
+        assertThat(saves).hasValue(0);
+    }
+
+    @Test
     void rejectsAnUnassociatedToolBeforeExecution() {
         when(invocation.invokeText(any())).thenReturn(result(null,
             List.of(new AiToolCall("call-x", "save_episode_script", "{\"content\":\"x\"}")), 503L));
@@ -1579,6 +1612,15 @@ class WorkflowAgentRunnerTest {
                 "partial", "save_review_unit_result", "{\"candidates\":[")));
         return new AiInvocationResult<>(AiCapability.TEXT, "workflow_agent", response, "", logId,
             "provider-1", 8L, 2L, "DeepSeek", 17131, 16384, 33515, 152789L,
+            "SUCCESS", null, null);
+    }
+
+    private AiInvocationResult<AiTextResponse> truncatedWithCalls(Long logId, List<AiToolCall> calls) {
+        AiTextResponse response = new AiTextResponse(
+            "partial", "provider-1", 1, 16384, 2, 10L,
+            Map.of(), "length", true, calls);
+        return new AiInvocationResult<>(AiCapability.TEXT, "workflow_agent", response, "partial", logId,
+            "provider-1", 8L, 2L, "DeepSeek", 1, 16384, 2, 10L,
             "SUCCESS", null, null);
     }
 

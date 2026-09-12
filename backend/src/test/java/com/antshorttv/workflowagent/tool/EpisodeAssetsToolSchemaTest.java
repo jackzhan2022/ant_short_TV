@@ -38,6 +38,31 @@ class EpisodeAssetsToolSchemaTest {
     }
 
     @Test
+    void acceptsOptionalBoundedPromptsForCanonicalAssetsAndVariants() {
+        JsonNode schema = new ScreenplayToolConfiguration().saveEpisodeAssetsTool(null, json).inputSchema();
+
+        for (String category : List.of("characters", "scenes", "props", "characterLooks", "propVariants")) {
+            JsonNode prompt = schema.path("properties").path(category).path("items")
+                .path("properties").path("prompt");
+            assertThat(prompt.path("type").toString()).contains("string", "null");
+            assertThat(prompt.path("maxLength").asInt()).isEqualTo(10_000);
+        }
+    }
+
+    @Test
+    void rejectsPromptsLongerThanTheDeclaredLimit() throws Exception {
+        WorkflowToolDefinition tool = new ScreenplayToolConfiguration().saveEpisodeAssetsTool(null, json);
+        JsonNode payload = json.readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"c1","name":"小满","aliases":[],"evidence":"小满","prompt":"%s"}],
+             "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+            """.formatted("x".repeat(10_001)));
+
+        assertThatThrownBy(() -> EpisodeAssetsPayloadNormalizer.prepare(payload, tool.inputSchema(), "小满"))
+            .hasMessageContaining("maxLength");
+    }
+
+    @Test
     void normalizesOnlyMechanicalOmissionsAndNeverInventsEvidence() throws Exception {
         JsonNode input = json.readTree("""
             {"schemaVersion":1,

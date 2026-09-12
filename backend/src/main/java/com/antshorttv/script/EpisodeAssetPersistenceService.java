@@ -206,7 +206,9 @@ public class EpisodeAssetPersistenceService {
             long id = parseOpaqueKey(trustedKey, PREFIXES.get(type));
             List<Map<String, Object>> rows = findById(context, type, id);
             if (rows.size() != 1) invalid("资产 key 不属于当前剧本或类型不匹配。");
+            requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")));
             updateMetadata(context, type, id, item, normalized, false);
+            fillAssetPromptIfEmpty(type, id, item);
             return new ResolvedAsset(id, item.path("localKey").asText(), type);
         }
 
@@ -220,18 +222,21 @@ public class EpisodeAssetPersistenceService {
         long id;
         boolean created;
         if (matches.isEmpty()) {
+            requirePromptIfMissing(item, true);
             id = insertIdentity(context, type, item, normalized);
             created = true;
         } else {
             id = ((Number) matches.get(0).get("id")).longValue();
+            requirePromptIfMissing(item, promptIsEmpty(matches.get(0).get("prompt")));
             created = false;
         }
         updateMetadata(context, type, id, item, normalized, created);
+        fillAssetPromptIfEmpty(type, id, item);
         return new ResolvedAsset(id, item.path("localKey").asText(), type);
     }
 
     private List<Map<String, Object>> findById(ToolExecutionContext context, String type, long id) {
-        return jdbc.queryForList("select id, name, normalized_name, content_json from " + TABLES.get(type)
+        return jdbc.queryForList("select id, name, normalized_name, content_json, prompt from " + TABLES.get(type)
                 + " where id = ? and tenant_id = ? and project_id = ? and script_id = ? and deleted_at is null for update",
             id, context.tenantId(), context.projectId(), context.scriptId());
     }
@@ -240,7 +245,7 @@ public class EpisodeAssetPersistenceService {
         ToolExecutionContext context, String type, String normalized
     ) {
         List<Map<String, Object>> rows = jdbc.queryForList(
-            "select id, name, normalized_name, content_json from " + TABLES.get(type)
+            "select id, name, normalized_name, content_json, prompt from " + TABLES.get(type)
                 + " where tenant_id = ? and project_id = ? and script_id = ? and deleted_at is null for update",
             context.tenantId(), context.projectId(), context.scriptId());
         return rows.stream().filter(row -> normalized.equals(String.valueOf(row.get("normalized_name")))
@@ -402,17 +407,20 @@ public class EpisodeAssetPersistenceService {
         String trusted = item.path("variantKey").isTextual() ? item.path("variantKey").asText() : null;
         if (trusted != null && !trusted.isBlank()) {
             long id = parseOpaqueKey(trusted, "v_");
-            Integer count = jdbc.queryForObject("""
-                select count(*) from asset_visual_variant
+            List<Map<String, Object>> rows = jdbc.queryForList("""
+                select prompt from asset_visual_variant
                  where id = ? and tenant_id = ? and project_id = ? and asset_type = ?
-                   and asset_id = ? and deleted_at is null
-                """, Integer.class, id, context.tenantId(), context.projectId(), type, assetId);
-            if (count == null || count != 1) invalid("形态 key 不属于对应资产。");
+                  and asset_id = ? and deleted_at is null
+                 for update
+                """, id, context.tenantId(), context.projectId(), type, assetId);
+            if (rows.size() != 1) invalid("形态 key 不属于对应资产。");
+            requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")));
+            fillVariantPromptIfEmpty(id, item);
             return id;
         }
         String normalized = AssetIdentityNormalizer.normalize(item.path("name").asText());
         List<Map<String, Object>> rows = jdbc.queryForList("""
-            select id, name from asset_visual_variant
+            select id, name, prompt from asset_visual_variant
              where tenant_id = ? and project_id = ? and asset_type = ? and asset_id = ?
                and deleted_at is null for update
             """, context.tenantId(), context.projectId(), type, assetId);
@@ -424,9 +432,51 @@ public class EpisodeAssetPersistenceService {
                 "资产形态匹配不唯一，可选安全 key："
                     + matches.stream().map(row -> "v_" + row.get("id")).toList());
         }
-        if (!matches.isEmpty()) return ((Number) matches.get(0).get("id")).longValue();
-        return insertVariant(context, type, assetId, item.path("name").asText(),
+        if (!matches.isEmpty()) {
+            long id = ((Number) matches.get(0).get("id")).longValue();
+            requirePromptIfMissing(item, promptIsEmpty(matches.get(0).get("prompt")));
+            fillVariantPromptIfEmpty(id, item);
+            return id;
+        }
+        requirePromptIfMissing(item, true);
+        long id = insertVariant(context, type, assetId, item.path("name").asText(),
             item.path("description").isNull() ? null : item.path("description").asText(), item);
+        fillVariantPromptIfEmpty(id, item);
+        return id;
+    }
+
+    private void fillAssetPromptIfEmpty(String type, long id, JsonNode item) {
+        String prompt = prompt(item);
+        if (prompt == null) return;
+        jdbc.update("update " + TABLES.get(type)
+            + " set prompt = ?, updated_at = now() where id = ? and (prompt is null or trim(prompt) = '')",
+            prompt, id);
+    }
+
+    private void fillVariantPromptIfEmpty(long id, JsonNode item) {
+        String prompt = prompt(item);
+        if (prompt == null) return;
+        jdbc.update("""
+            update asset_visual_variant
+               set prompt = ?, updated_at = now()
+             where id = ? and (prompt is null or trim(prompt) = '')
+            """, prompt, id);
+    }
+
+    private String prompt(JsonNode item) {
+        if (!item.path("prompt").isTextual()) return null;
+        String value = item.path("prompt").asText();
+        return value.isBlank() ? null : value;
+    }
+
+    private void requirePromptIfMissing(JsonNode item, boolean required) {
+        if (required && prompt(item) == null) {
+            invalid("新建或缺少提示词的资产必须提供非空提示词。");
+        }
+    }
+
+    private boolean promptIsEmpty(Object value) {
+        return value == null || String.valueOf(value).isBlank();
     }
 
     private long insertVariant(

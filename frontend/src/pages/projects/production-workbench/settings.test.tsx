@@ -167,6 +167,7 @@ const workspace = {
           {
             id: 11,
             name: '日常形象',
+            prompt: '性别:男；衣着描述:黄色上衣，蓝色背带裤',
             primary: true,
             usable: true,
             generationStatus: 'COMPLETED',
@@ -176,6 +177,7 @@ const workspace = {
           {
             id: 12,
             name: '婚礼礼服',
+            prompt: '性别:男；衣着描述:白色礼服，领结',
             primary: false,
             usable: false,
             generationStatus: 'FAILED',
@@ -239,6 +241,8 @@ const workspace = {
 describe('ProductionWorkbenchSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    workspace.characters[0].visual.variants[1].prompt =
+      '性别:男；衣着描述:白色礼服，领结';
     mocks.queryScriptWorkspace.mockResolvedValue({ data: workspace });
     mocks.queryAssetSettingsSummary.mockResolvedValue({
       data: {
@@ -542,11 +546,28 @@ describe('ProductionWorkbenchSettings', () => {
         1,
         expect.objectContaining({
           targetId: 11,
-          prompt: expect.stringContaining('日常形象'),
+          prompt: '性别:男；衣着描述:黄色上衣，蓝色背带裤',
         }),
       );
     });
     expect(mocks.updateVisualVariant).not.toHaveBeenCalled();
+  });
+
+  it('blocks visual generation when the persisted prompt is empty', async () => {
+    workspace.characters[0].visual.variants[1].prompt = '';
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findByRole('button', { name: '审核资产 2' });
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
+    fireEvent.click(screen.getByRole('button', { name: '重新生成婚礼礼服' }));
+    fireEvent.click(screen.getByRole('button', { name: '提交婚礼礼服生成' }));
+
+    await waitFor(() => {
+      expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+    });
   });
   it('renders the reference-style asset workbench instead of the old image task table', async () => {
     render(<ProductionWorkbenchSettings />);

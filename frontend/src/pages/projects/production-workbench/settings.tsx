@@ -107,21 +107,6 @@ const getDescription = (type: ElementType, item: AssetRecord) => {
   return prop.appearance || prop.plotFunction || prop.prompt;
 };
 
-const deriveVariantPrompt = (
-  type: ElementType,
-  item: AssetRecord,
-  variant: VisualVariant,
-) => {
-  if (variant.prompt) return variant.prompt;
-  const base =
-    item.prompt || `${item.name}，${getDescription(type, item) || ''}`;
-  const appearance = variant.appearance ? `，${variant.appearance}` : '';
-  if (type === 'CHARACTER') {
-    return `${base}。当前视觉形象：${variant.name}${appearance}。保持与主体形象同一人物、五官、年龄、体型和画风一致，半身角色设定图，3:4竖图。`;
-  }
-  return `${base}。当前视觉形象：${variant.name}${appearance}。${type === 'SCENE' ? '电影感场景设定图，16:9。' : '道具设定特写，16:9。'}`;
-};
-
 const assetSections = [
   { type: 'CHARACTER' as const, title: '角色设定' },
   { type: 'SCENE' as const, title: '场景设定' },
@@ -664,9 +649,7 @@ const ProductionWorkbenchSettings = () => {
       return;
     }
     setGenerationVariantId(variant.id);
-    setGenerationPrompt(
-      deriveVariantPrompt(visualAsset.type, visualAsset.item, variant),
-    );
+    setGenerationPrompt(variant.prompt || '');
     setGenerationAspectRatio(visualAsset.type === 'CHARACTER' ? '3:4' : '16:9');
     setGenerationImageCount(1);
     try {
@@ -725,16 +708,15 @@ const ProductionWorkbenchSettings = () => {
       (item) => item.id === generationVariantId,
     );
     if (!variant) return;
-    const defaultPrompt = deriveVariantPrompt(
-      visualAsset.type,
-      visualAsset.item,
-      variant,
-    );
-    const prompt = generationPrompt.trim() || defaultPrompt;
+    const prompt = generationPrompt;
+    if (!prompt.trim()) {
+      message.error('请先完成资产提示词后再生成图片。');
+      return;
+    }
     const primaryImage = visualAsset.item.visual?.resolvedImageUrl;
     setGenerationSubmitting(true);
     try {
-      if (prompt !== defaultPrompt) {
+      if (prompt !== (variant.prompt || '')) {
         await updateVisualVariant(projectId, variant.id, {
           ...variant,
           prompt,

@@ -29,6 +29,9 @@ import com.antshorttv.workflowagent.agent.EpisodeSplittingAgentBootstrap;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.servlet.http.HttpServletRequest;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -364,15 +367,23 @@ public class ScriptWorkflowService {
             return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
         }
         String targetType = normalizePromptTarget(request.targetType());
+        PromptBackfillTarget target = promptBackfillTarget(operation.tenantId, operation.projectId, targetType);
+        if (target.empty()) {
+            transactionTemplate.executeWithoutResult(status -> {
+                requireActiveExecutionClaim(executionContext);
+                markOperationResult(operation, "SCRIPT_PROMPTS", operation.projectId);
+            });
+            return new ScriptAiOperationExecutionResult("SCRIPT_PROMPTS", operation.projectId, List.of());
+        }
         AiInvocationResult<AiTextResponse> invocation = invokeTextForExecution(
             executionContext,
             AiBusinessScene.PROMPT_GENERATE,
             targetType,
-            "生成提示词成功"
+            target.request()
         );
         transactionTemplate.executeWithoutResult(status -> {
             requireActiveExecutionClaim(executionContext);
-            applyGeneratedPrompts(operation.tenantId, operation.projectId, targetType);
+            applyGeneratedPrompts(operation.tenantId, operation.projectId, targetType, invocation.content());
             markOperationResult(operation, "SCRIPT_PROMPTS", operation.projectId);
         });
         return new ScriptAiOperationExecutionResult("SCRIPT_PROMPTS", operation.projectId, List.of(invocation));
@@ -1509,43 +1520,138 @@ public class ScriptWorkflowService {
         requireProjectAccess(context, projectId);
         requirePermission(context, "PROMPT:AI_GENERATE", projectId);
         String targetType = normalizePromptTarget(request.targetType());
-        applyGeneratedPrompts(tenantId, projectId, targetType);
-        callTextInvocation(context, projectId, AiBusinessScene.PROMPT_GENERATE, targetType, "生成提示词成功");
+        PromptBackfillTarget target = promptBackfillTarget(tenantId, projectId, targetType);
+        if (target.empty()) return workspace(tenantId, projectId);
+        AiInvocationResult<AiTextResponse> invocation = callTextInvocation(
+            context, projectId, AiBusinessScene.PROMPT_GENERATE, targetType, target.request());
+        applyGeneratedPrompts(tenantId, projectId, targetType, invocation.content());
         return workspace(tenantId, projectId);
     }
 
-    private void applyGeneratedPrompts(Long tenantId, Long projectId, String targetType) {
-        if ("ALL".equals(targetType) || "CHARACTER".equals(targetType)) {
-            jdbcTemplate.update("""
-                update character_asset
-                   set prompt = concat('角色定妆提示词：', name, '，', coalesce(identity, ''), '，', coalesce(appearance, ''), '，竖屏短剧写实风格'), updated_at = now()
-                 where tenant_id = ? and project_id = ? and deleted_at is null
+    private PromptBackfillTarget promptBackfillTarget(Long tenantId, Long projectId, String targetType) {
+        ObjectNode request = objectMapper.createObjectNode();
+        request.put("instruction", "只返回 JSON。为以下缺少提示词的记录生成 prompt；角色使用角色设定图 Markdown 模板，场景使用静态四宫格模板，道具只描述本体，视觉形态只描述相对主体的增量。不得返回未列出的 id。每项格式为 {id,prompt}，分镜格式为 {id,imagePrompt,videoPrompt}。");
+        request.put("targetType", targetType);
+        int count = 0;
+        if (includes(targetType, "CHARACTER")) {
+            count += addMissingPromptRows(request, "characters", """
+                select id, name, identity, appearance from character_asset
+                 where tenant_id = ? and project_id = ? and deleted_at is null and (prompt is null or trim(prompt) = '')
                 """, tenantId, projectId);
+            count += addMissingVariantRows(request, "characterLooks", "CHARACTER", tenantId, projectId);
         }
-        if ("ALL".equals(targetType) || "SCENE".equals(targetType)) {
-            jdbcTemplate.update("""
-                update scene_asset
-                   set prompt = concat('场景图提示词：', name, '，', coalesce(description, ''), '，', coalesce(visual_style, ''), '，电影感光影'), updated_at = now()
-                 where tenant_id = ? and project_id = ? and deleted_at is null
+        if (includes(targetType, "SCENE")) {
+            count += addMissingPromptRows(request, "scenes", """
+                select id, name, description, visual_style from scene_asset
+                 where tenant_id = ? and project_id = ? and deleted_at is null and (prompt is null or trim(prompt) = '')
                 """, tenantId, projectId);
+            count += addMissingVariantRows(request, "sceneVariants", "SCENE", tenantId, projectId);
         }
-        if ("ALL".equals(targetType) || "PROP".equals(targetType)) {
-            jdbcTemplate.update("""
-                update prop_asset
-                   set prompt = concat('道具图提示词：', name, '，', coalesce(appearance, ''), '，关键线索特写'), updated_at = now()
-                 where tenant_id = ? and project_id = ? and deleted_at is null
+        if (includes(targetType, "PROP")) {
+            count += addMissingPromptRows(request, "props", """
+                select id, name, appearance, plot_function from prop_asset
+                 where tenant_id = ? and project_id = ? and deleted_at is null and (prompt is null or trim(prompt) = '')
                 """, tenantId, projectId);
+            count += addMissingVariantRows(request, "propVariants", "PROP", tenantId, projectId);
         }
-        if ("ALL".equals(targetType) || "STORYBOARD".equals(targetType)) {
-            jdbcTemplate.update("""
-                update storyboard
-                   set image_prompt = concat('首帧图片提示词：', visual_description, '，竖屏短剧，电影感'),
-                       video_prompt = concat('竖屏短剧视频提示词：', coalesce(actions, visual_description), '，镜头自然运动，情绪连续'),
-                       updated_at = now()
-                 where tenant_id = ? and project_id = ? and deleted_at is null
-                """, tenantId, projectId);
+        if (includes(targetType, "STORYBOARD")) {
+            count += addMissingStoryboardRows(request, tenantId, projectId);
+        }
+        return new PromptBackfillTarget(count == 0, request.toString());
+    }
+
+    private int addMissingPromptRows(ObjectNode request, String field, String sql, Long tenantId, Long projectId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, tenantId, projectId);
+        request.set(field, objectMapper.valueToTree(rows));
+        return rows.size();
+    }
+
+    private int addMissingVariantRows(ObjectNode request, String field, String assetType, Long tenantId, Long projectId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+            select id, asset_id as assetId, name, appearance from asset_visual_variant
+             where tenant_id = ? and project_id = ? and asset_type = ? and deleted_at is null
+               and is_primary = false
+               and (prompt is null or trim(prompt) = '')
+            """, tenantId, projectId, assetType);
+        request.set(field, objectMapper.valueToTree(rows));
+        return rows.size();
+    }
+
+    private int addMissingStoryboardRows(ObjectNode request, Long tenantId, Long projectId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+            select id, visual_description as visualDescription, actions
+              from storyboard where tenant_id = ? and project_id = ? and deleted_at is null
+               and ((image_prompt is null or trim(image_prompt) = '') or (video_prompt is null or trim(video_prompt) = ''))
+            """, tenantId, projectId);
+        request.set("storyboards", objectMapper.valueToTree(rows));
+        return rows.size();
+    }
+
+    private void applyGeneratedPrompts(Long tenantId, Long projectId, String targetType, String content) {
+        JsonNode response = parsePromptBackfillResponse(content);
+        if (includes(targetType, "CHARACTER")) {
+            applyPromptRows(response.path("characters"), "character_asset", tenantId, projectId);
+            applyVariantPromptRows(response.path("characterLooks"), "CHARACTER", tenantId, projectId);
+        }
+        if (includes(targetType, "SCENE")) {
+            applyPromptRows(response.path("scenes"), "scene_asset", tenantId, projectId);
+            applyVariantPromptRows(response.path("sceneVariants"), "SCENE", tenantId, projectId);
+        }
+        if (includes(targetType, "PROP")) {
+            applyPromptRows(response.path("props"), "prop_asset", tenantId, projectId);
+            applyVariantPromptRows(response.path("propVariants"), "PROP", tenantId, projectId);
+        }
+        if (includes(targetType, "STORYBOARD")) applyStoryboardPromptRows(response.path("storyboards"), tenantId, projectId);
+    }
+
+    static JsonNode parsePromptBackfillResponse(String content) {
+        if (content == null || content.isBlank()) throw new BusinessException(ErrorCode.AI_RESPONSE_INVALID, "提示词生成未返回内容。");
+        String json = content.trim().replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
+        try {
+            JsonNode parsed = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+            if (!parsed.isObject()) throw new BusinessException(ErrorCode.AI_RESPONSE_INVALID, "提示词生成结果必须是 JSON 对象。");
+            return parsed;
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.AI_RESPONSE_INVALID, "提示词生成结果不是有效 JSON。");
         }
     }
+
+    private void applyPromptRows(JsonNode rows, String table, Long tenantId, Long projectId) {
+        for (JsonNode row : rows) updatePromptIfEmpty(table, row.path("id").asLong(), row.path("prompt").asText(), tenantId, projectId);
+    }
+
+    private void applyVariantPromptRows(JsonNode rows, String assetType, Long tenantId, Long projectId) {
+        for (JsonNode row : rows) {
+            String prompt = row.path("prompt").asText();
+            if (!prompt.isBlank() && row.path("id").canConvertToLong()) jdbcTemplate.update("""
+                update asset_visual_variant set prompt = ?, updated_at = now()
+                 where id = ? and tenant_id = ? and project_id = ? and asset_type = ? and deleted_at is null
+                   and (prompt is null or trim(prompt) = '')
+                """, prompt, row.path("id").asLong(), tenantId, projectId, assetType);
+        }
+    }
+
+    private void updatePromptIfEmpty(String table, long id, String prompt, Long tenantId, Long projectId) {
+        if (!prompt.isBlank() && id > 0) jdbcTemplate.update("update " + table + " set prompt = ?, updated_at = now() where id = ? and tenant_id = ? and project_id = ? and deleted_at is null and (prompt is null or trim(prompt) = '')", prompt, id, tenantId, projectId);
+    }
+
+    private void applyStoryboardPromptRows(JsonNode rows, Long tenantId, Long projectId) {
+        for (JsonNode row : rows) {
+            long id = row.path("id").asLong();
+            updateStoryboardPromptIfEmpty("image_prompt", id, row.path("imagePrompt").asText(), tenantId, projectId);
+            updateStoryboardPromptIfEmpty("video_prompt", id, row.path("videoPrompt").asText(), tenantId, projectId);
+        }
+    }
+
+    private void updateStoryboardPromptIfEmpty(String column, long id, String prompt, Long tenantId, Long projectId) {
+        if (!prompt.isBlank() && id > 0) jdbcTemplate.update("update storyboard set " + column + " = ?, updated_at = now() where id = ? and tenant_id = ? and project_id = ? and deleted_at is null and (" + column + " is null or trim(" + column + ") = '')", prompt, id, tenantId, projectId);
+    }
+
+    private boolean includes(String targetType, String type) {
+        return "ALL".equals(targetType) || type.equals(targetType);
+    }
+
+    private record PromptBackfillTarget(boolean empty, String request) {}
 
     private ProjectEntity requireProjectAccess(TenantContext context, Long projectId) {
         return requireProjectAccessContext(context, projectId).project();

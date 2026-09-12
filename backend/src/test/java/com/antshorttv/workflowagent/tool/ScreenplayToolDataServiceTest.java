@@ -303,11 +303,11 @@ class ScreenplayToolDataServiceTest {
             .readTree("""
                 {
                   "schemaVersion":1,
-                  "characters":[{"localKey":"char_1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满"}],
-                  "characterLooks":[{"localKey":"look_1","characterLocalKey":"char_1","variantKey":null,"name":"红裙造型","description":"穿着红裙","evidence":"穿着红裙","preferred":true}],
-                  "scenes":[{"localKey":"scene_1","assetKey":null,"name":"咖啡厅","aliases":[],"evidence":"咖啡厅","description":null,"timeAtmosphere":"白天","usageEvidence":"走进咖啡厅"}],
-                  "props":[{"localKey":"prop_1","assetKey":null,"name":"林小满的手机","aliases":[{"name":"手机","evidence":"手机"}],"evidence":"她的手机","ownerCharacterLocalKey":"char_1","description":null}],
-                  "propVariants":[{"localKey":"state_1","propLocalKey":"prop_1","variantKey":null,"name":"屏幕碎裂","description":"屏幕碎裂","evidence":"手机屏幕碎裂","preferred":true}]
+                  "characters":[{"localKey":"char_1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满","prompt":"canonical character prompt"}],
+                  "characterLooks":[{"localKey":"look_1","characterLocalKey":"char_1","variantKey":null,"name":"红裙造型","description":"穿着红裙","evidence":"穿着红裙","preferred":true,"prompt":"red dress delta"}],
+                  "scenes":[{"localKey":"scene_1","assetKey":null,"name":"咖啡厅","aliases":[],"evidence":"咖啡厅","description":null,"timeAtmosphere":"白天","usageEvidence":"走进咖啡厅","prompt":"canonical scene prompt"}],
+                  "props":[{"localKey":"prop_1","assetKey":null,"name":"林小满的手机","aliases":[{"name":"手机","evidence":"手机"}],"evidence":"她的手机","ownerCharacterLocalKey":"char_1","description":null,"prompt":"canonical prop prompt"}],
+                  "propVariants":[{"localKey":"state_1","propLocalKey":"prop_1","variantKey":null,"name":"屏幕碎裂","description":"屏幕碎裂","evidence":"手机屏幕碎裂","preferred":true,"prompt":"cracked screen delta"}]
                 }
                 """));
 
@@ -321,6 +321,26 @@ class ScreenplayToolDataServiceTest {
             String.class, episodeId)).contains("白天");
         assertThat(jdbc.queryForObject("select count(*) from script_episode_asset_analysis where episode_id = ?",
             Integer.class, episodeId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select prompt from character_asset where script_id = ?",
+            String.class, scriptId)).isEqualTo("canonical character prompt");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where name = '红裙造型'",
+            String.class)).isEqualTo("red dress delta");
+
+        long characterId = jdbc.queryForObject("select id from character_asset where script_id = ?", Long.class, scriptId);
+        long lookId = jdbc.queryForObject("select id from asset_visual_variant where name = '红裙造型'", Long.class);
+        ToolExecutionContext retryContext = summaryContext();
+        service.readCurrentEpisode(retryContext);
+        service.saveEpisodeAssets(retryContext, new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"char_1","assetKey":"c_%d","name":"林小满","aliases":[],"evidence":"林小满","prompt":"replacement character prompt"}],
+             "characterLooks":[{"localKey":"look_1","characterLocalKey":"char_1","variantKey":"v_%d","name":"红裙造型","description":"穿着红裙","evidence":"穿着红裙","preferred":true,"prompt":"replacement look delta"}],
+             "scenes":[],"props":[],"propVariants":[]}
+            """.formatted(characterId, lookId)));
+
+        assertThat(jdbc.queryForObject("select prompt from character_asset where id = ?", String.class, characterId))
+            .isEqualTo("canonical character prompt");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, lookId))
+            .isEqualTo("red dress delta");
     }
 
     @Test
@@ -355,7 +375,7 @@ class ScreenplayToolDataServiceTest {
         service.readCurrentEpisode(firstContext);
         service.saveEpisodeAssets(firstContext, new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,
-             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[{"name":"小满","evidence":"小满"}],"evidence":"林小满"}],
+             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[{"name":"小满","evidence":"小满"}],"evidence":"林小满","prompt":"林小满角色提示词"}],
              "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
             """));
 
@@ -363,7 +383,7 @@ class ScreenplayToolDataServiceTest {
         service.readCurrentEpisode(aliasContext);
         service.saveEpisodeAssets(aliasContext, new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,
-             "characters":[{"localKey":"c2","assetKey":null,"name":"小满","aliases":[],"evidence":"小满"}],
+             "characters":[{"localKey":"c2","assetKey":null,"name":"小满","aliases":[],"evidence":"小满","prompt":"林小满角色提示词"}],
              "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
             """));
 
@@ -392,7 +412,7 @@ class ScreenplayToolDataServiceTest {
         JsonNode result = service.saveEpisodeAssets(trustedContext,
             new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
                 {"schemaVersion":1,
-                 "characters":[{"localKey":"c1","assetKey":"c_%d","name":"林小满","aliases":[],"evidence":"林小满"}],
+                 "characters":[{"localKey":"c1","assetKey":"c_%d","name":"林小满","aliases":[],"evidence":"林小满","prompt":"林小满角色提示词"}],
                  "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
                 """.formatted(characterId)));
 
@@ -416,7 +436,7 @@ class ScreenplayToolDataServiceTest {
         service.readCurrentEpisode(scopedContext);
         service.saveEpisodeAssets(scopedContext, new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,
-             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满"}],
+             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满","prompt":"林小满角色提示词"}],
              "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
             """));
 
@@ -466,7 +486,7 @@ class ScreenplayToolDataServiceTest {
         service.readCurrentEpisode(second);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,
-             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满"}],
+             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满","prompt":"林小满角色提示词"}],
              "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
             """);
 
@@ -523,6 +543,52 @@ class ScreenplayToolDataServiceTest {
         assertThat(episodeContext.runState().require("currentEpisodeSourceSegments", List.class))
             .hasSize(4);
         schemaValidator.validate(registry.require("read_current_episode").outputSchema(), episode);
+    }
+
+    @Test
+    void rejectsNewAssetWithoutPromptAndRollsBackWholePayload() throws Exception {
+        jdbc.update("update script_episode set content = '林小满出现。', content_fingerprint = 'prompt-required-fp' where id = ?",
+            episodeId);
+        ToolExecutionContext assetContext = summaryContext();
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满"}],
+             "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+            """);
+
+        assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("提示词");
+        assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id = ?",
+            Integer.class, scriptId)).isZero();
+    }
+
+    @Test
+    void assetCatalogExposesPromptPresenceWithoutExposingPromptText() {
+        jdbc.update("""
+            insert into character_asset
+              (tenant_id, project_id, script_id, name, normalized_name, role_type, status, source,
+               prompt, created_by, created_at, updated_at)
+            values (?, ?, ?, 'Serena', 'serena', 'LEAD', 'CONFIRMED', 'USER',
+                    'private canonical prompt', ?, now(), now())
+            """, tenantId, projectId, scriptId, context.userId());
+        long assetId = jdbc.queryForObject("select id from character_asset where script_id = ?",
+            Long.class, scriptId);
+        jdbc.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, prompt, source_type,
+               generation_status, is_primary, created_by, created_at, updated_at)
+            values (?, ?, 'CHARACTER', ?, '默认形象', 'private variant prompt', 'USER',
+                    'NOT_GENERATED', true, ?, now(), now())
+            """, tenantId, projectId, assetId, context.userId());
+
+        JsonNode catalog = service.readCurrentEpisode(episodeContext()).path("assetCatalog");
+
+        JsonNode character = catalog.path("characters").get(0);
+        assertThat(character.path("hasPrompt").asBoolean()).isTrue();
+        assertThat(character.path("variants").get(0).path("hasPrompt").asBoolean()).isTrue();
+        assertThat(catalog.toString()).doesNotContain("private canonical prompt", "private variant prompt");
     }
 
     @Test
@@ -719,9 +785,9 @@ class ScreenplayToolDataServiceTest {
         service.readCurrentEpisode(assetContext);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,"maxItems":200,
-             "characters":[{"localKey":"c1","name":"林小满","aliases":["小满"],"evidenceRef":{"segmentId":"S0002"}}],
-             "characterLooks":[{"localKey":"l1","characterLocalKey":"c1","name":"红裙","preferred":true,"evidenceRef":{"segmentId":"S0002"}}],
-             "scenes":[{"localKey":"s1","name":"咖啡厅","evidenceRef":{"segmentId":"S0003"},"usageEvidenceRef":{"segmentId":"S0003"}}]}
+             "characters":[{"localKey":"c1","name":"林小满","aliases":["小满"],"evidenceRef":{"segmentId":"S0002"},"prompt":"林小满角色提示词"}],
+             "characterLooks":[{"localKey":"l1","characterLocalKey":"c1","name":"红裙","preferred":true,"evidenceRef":{"segmentId":"S0002"},"prompt":"性别:女；衣着描述:红裙"}],
+             "scenes":[{"localKey":"s1","name":"咖啡厅","evidenceRef":{"segmentId":"S0003"},"usageEvidenceRef":{"segmentId":"S0003"},"prompt":"咖啡厅场景提示词"}]}
             """);
         assertThat(service.saveEpisodeAssets(assetContext, payload).path("saved").asBoolean()).isTrue();
         assertThat(jdbc.queryForObject("select content_json from character_asset where script_id = ?",
@@ -740,11 +806,11 @@ class ScreenplayToolDataServiceTest {
         service.readCurrentEpisode(assetContext);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,"characters":[
-              {"localKey":"c1","name":"林小满","aliases":[{"name":"小满","evidence":"又名小满"}],"evidence":"林小满"},
-              {"localKey":"c2","name":"小满","aliases":[],"evidence":"小满"}],
+              {"localKey":"c1","name":"林小满","aliases":[{"name":"小满","evidence":"又名小满"}],"evidence":"林小满","prompt":"林小满角色提示词"},
+              {"localKey":"c2","name":"小满","aliases":[],"evidence":"小满","prompt":"林小满角色提示词"}],
              "characterLooks":[
-              {"localKey":"l1","characterLocalKey":"c1","name":"红裙","evidence":"红裙","preferred":true},
-              {"localKey":"l2","characterLocalKey":"c2","name":"白裙","evidence":"白裙","preferred":true}],
+              {"localKey":"l1","characterLocalKey":"c1","name":"红裙","evidence":"红裙","preferred":true,"prompt":"性别:女；衣着描述:红裙"},
+              {"localKey":"l2","characterLocalKey":"c2","name":"白裙","evidence":"白裙","preferred":true,"prompt":"性别:女；衣着描述:白裙"}],
              "scenes":[],"props":[],"propVariants":[]}
             """);
         assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
