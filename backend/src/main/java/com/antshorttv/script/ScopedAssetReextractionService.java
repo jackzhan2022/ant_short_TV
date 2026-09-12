@@ -153,6 +153,7 @@ class ScopedAssetReextractionService {
 
     private ScriptAnalysisTaskEntity transientTask(ScriptAiOperationEntity operation) {
         ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
+        task.setId(operation.id);
         task.setTenantId(operation.tenantId); task.setProjectId(operation.projectId); task.setScriptId(operation.scriptId); task.setCreatedBy(operation.createdBy);
         return task;
     }

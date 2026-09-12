@@ -213,7 +213,12 @@ public class WorkflowAgentScopeGuard {
         if (input.attemptId() == null || input.executionVersion() == null || input.taskId() == null) {
             throw invalid("后台 Agent 缺少可信执行身份。");
         }
-        if ("short-drama-storyboard".equals(input.agentCode())) {
+        String operationType = switch (input.agentCode() == null ? "" : input.agentCode()) {
+            case "short-drama-storyboard" -> "STORYBOARD_BREAKDOWN";
+            case "short-drama-asset-recognition" -> "SCOPED_ASSET_REEXTRACTION";
+            default -> null;
+        };
+        if (operationType != null) {
             Integer count = jdbc.queryForObject("""
                 select count(*)
                   from ai_execution_task execution
@@ -225,12 +230,12 @@ public class WorkflowAgentScopeGuard {
                  where execution.id = ? and execution.execution_version = ?
                    and execution.tenant_id = ? and execution.project_id = ? and execution.user_id = ?
                    and execution.business_type = 'SCRIPT_AI_OPERATION'
-                   and operation.id = ? and operation.operation_type = 'STORYBOARD_BREAKDOWN'
+                   and operation.id = ? and operation.operation_type = ?
                    and operation.tenant_id = ? and operation.project_id = ? and operation.script_id = ?
                 """, Integer.class, input.attemptId(), input.executionId(), input.executionVersion(),
-                input.tenantId(), input.projectId(), input.userId(), input.taskId(), input.tenantId(),
-                input.projectId(), input.scriptId());
-            if (count == null || count != 1) throw invalid("分镜 Agent 执行身份与请求不匹配。");
+                input.tenantId(), input.projectId(), input.userId(), input.taskId(), operationType,
+                input.tenantId(), input.projectId(), input.scriptId());
+            if (count == null || count != 1) throw invalid("后台 Agent 执行身份与请求不匹配。");
             return;
         }
         Integer count = jdbc.queryForObject("""
