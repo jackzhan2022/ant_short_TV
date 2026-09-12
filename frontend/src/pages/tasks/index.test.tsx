@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   summary: vi.fn(),
   detail: vi.fn(),
+  content: vi.fn(),
+  contentSection: vi.fn(),
   children: vi.fn(),
   control: vi.fn(),
   tenantId: 1,
@@ -26,6 +28,8 @@ vi.mock('./service', () => ({
   listTasks: mocks.list,
   taskSummary: mocks.summary,
   taskDetail: mocks.detail,
+  taskContent: mocks.content,
+  taskContentSection: mocks.contentSection,
   taskChildren: mocks.children,
   controlTask: mocks.control,
 }));
@@ -51,6 +55,8 @@ beforeEach(() => {
     canViewTeamTasks: false,
   });
   mocks.summary.mockResolvedValue({ total: 1, counts: { SUCCEEDED: 1 } });
+  mocks.content.mockResolvedValue({ schemaVersion: 1, taskKey: 'REVIEW:1', contentRevision: '1', sections: [] });
+  mocks.contentSection.mockResolvedValue({ text: '完整保存的提示词', hasMore: false });
 });
 afterEach(() => {
   cleanup();
@@ -81,6 +87,63 @@ it('loads just the selected detail and persists selection', async () => {
   );
   expect(mocks.children).not.toHaveBeenCalled();
   expect(window.location.search).toContain('task=REVIEW');
+});
+it('submits filters only after the query command', async () => {
+  render(<Tasks />);
+  await screen.findByText('审核任务一');
+  expect(mocks.list).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText('项目编号'), { target: { value: '7' } });
+  expect(mocks.list).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(1, expect.objectContaining({ projectId: '7', page: 1 }), expect.anything()));
+});
+it('loads content only for the open task and renders its saved sections', async () => {
+  mocks.detail.mockResolvedValue({
+    taskKey: 'REVIEW:1', title: '任务详情内容', childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED',
+  });
+  mocks.content.mockResolvedValue({
+    schemaVersion: 1,
+    taskKey: 'REVIEW:1',
+    contentRevision: '1',
+    sections: [
+      { key: 'submission', title: '本次提交', kind: 'TEXT', availability: 'AVAILABLE', preview: '保存的提示词', fields: [], items: [], hasMore: false },
+      { key: 'results', title: '生成结果', kind: 'IMAGE', availability: 'AVAILABLE', fields: [], items: [{ id: 1, url: '/result.png' }], hasMore: false },
+    ],
+  });
+  render(<Tasks />);
+  expect(mocks.content).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByText('审核任务一'));
+  await waitFor(() => expect(mocks.content).toHaveBeenCalledWith(1, 'REVIEW:1', expect.anything()));
+  expect(await screen.findByText('保存的提示词')).toBeInTheDocument();
+  expect(screen.getByText('生成结果')).toBeInTheDocument();
+});
+it('loads the full text only after the user asks to copy a truncated preview', async () => {
+  mocks.detail.mockResolvedValue({
+    taskKey: 'REVIEW:1', title: '任务详情内容', childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED',
+  });
+  mocks.content.mockResolvedValue({
+    schemaVersion: 1,
+    taskKey: 'REVIEW:1',
+    contentRevision: '1',
+    sections: [{ key: 'submission', title: '本次提交', kind: 'TEXT', availability: 'AVAILABLE', preview: '截断提示词', fields: [], items: [], hasMore: true }],
+  });
+  render(<Tasks />);
+  fireEvent.click(await screen.findByText('审核任务一'));
+  fireEvent.click(await screen.findByRole('button', { name: '复制全文' }));
+  await waitFor(() => expect(mocks.contentSection).toHaveBeenCalledWith(1, 'REVIEW:1', 'submission', 0));
+});
+it('removes loaded content when the refreshed task becomes restricted', async () => {
+  mocks.detail.mockResolvedValue({
+    taskKey: 'REVIEW:1', title: '任务详情内容', childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED', restricted: true,
+  });
+  mocks.content.mockResolvedValue({
+    schemaVersion: 1, taskKey: 'REVIEW:1', contentRevision: '1',
+    sections: [{ key: 'submission', title: '本次提交', kind: 'TEXT', availability: 'AVAILABLE', preview: '已撤销内容', fields: [], items: [], hasMore: false }],
+  });
+  render(<Tasks />);
+  fireEvent.click(await screen.findByText('审核任务一'));
+  expect(await screen.findByText('无权查看此任务内容')).toBeInTheDocument();
+  expect(screen.queryByText('已撤销内容')).not.toBeInTheDocument();
 });
 it('rejects team URL errors without falling back to a wider or different query', async () => {
   window.history.replaceState({}, '', '/tasks?scope=team');

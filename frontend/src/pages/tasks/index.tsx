@@ -2,12 +2,17 @@ import { history, useModel } from '@umijs/max';
 import {
   Alert,
   Button,
+  Descriptions,
   Drawer,
+  Image,
   Input,
+  List,
   Progress,
   Select,
   Table,
+  Tag,
   Tabs,
+  Typography,
 } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -18,8 +23,12 @@ import {
   type Task,
   type TaskPage,
   taskChildren,
+  taskContent,
+  taskContentSection,
   taskDetail,
   taskSummary,
+  type ContentSection,
+  type TaskContent,
 } from './service';
 
 const statuses: Record<string, string> = {
@@ -48,6 +57,48 @@ const actions: Record<string, string> = {
 const active = (task: Task) => ['QUEUED', 'RUNNING'].includes(task.statusGroup);
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : '任务加载失败，请重试';
+const availability: Record<ContentSection['availability'], string> = {
+  AVAILABLE: '可查看',
+  PENDING: '尚未生成',
+  NOT_RECORDED: '此任务未保存此内容',
+  DELETED: '内容已删除',
+  RESTRICTED: '无权查看此内容',
+  UNSUPPORTED: '历史任务暂不支持此内容',
+};
+function ContentSectionView({ section, tenant, taskKey }: { section: ContentSection; tenant: number; taskKey: string }) {
+  const media = section.kind === 'IMAGE' || section.kind === 'VIDEO';
+  const [copying, setCopying] = useState(false);
+  const copyFullText = async () => {
+    setCopying(true);
+    try {
+      let offset = 0;
+      let hasMore = true;
+      const chunks: string[] = [];
+      do {
+        const page = await taskContentSection(tenant, taskKey, section.key, offset);
+        chunks.push(page.text);
+        if (page.hasMore && page.nextOffset === undefined) throw new Error('全文读取不完整');
+        offset = page.nextOffset ?? 0;
+        hasMore = page.hasMore;
+      } while (hasMore);
+      await navigator.clipboard?.writeText(chunks.join(''));
+    } finally {
+      setCopying(false);
+    }
+  };
+  return <section style={{ marginTop: 20 }}>
+    <Typography.Title level={5} style={{ marginBottom: 8 }}>
+      {section.title} <Tag>{availability[section.availability]}</Tag>
+    </Typography.Title>
+    {section.preview && <Typography.Paragraph copyable={section.hasMore ? false : { text: section.preview }} style={{ whiteSpace: 'pre-wrap' }}>{section.preview}</Typography.Paragraph>}
+    {section.hasMore && <div><Typography.Text type="secondary">内容较长，当前仅展示前 4,000 个字符。</Typography.Text><Button type="link" size="small" loading={copying} onClick={copyFullText}>复制全文</Button></div>}
+    {section.fields.length > 0 && <Descriptions size="small" column={1} items={section.fields.map((field) => ({ key: field.label, label: field.label, children: field.value }))} />}
+    {media && section.items.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
+      {section.items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><Image width={160} src={String(item.thumbnailUrl ?? item.url)} alt={`${section.title} ${index + 1}`} />{item.selected && <Tag color="success">当前采用</Tag>}</div> : <video key={String(item.id ?? index)} controls preload="none" poster={String(item.thumbnailUrl ?? '')} style={{ width: 320, maxWidth: '100%' }}><source src={String(item.url ?? '')} /><track kind="captions" srcLang="zh-CN" label="暂无字幕" /></video>)}
+    </div>}
+    {!media && section.items.length > 0 && <List size="small" bordered dataSource={section.items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl'].includes(key)).map(([key, value]) => `${key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
+  </section>;
+}
 function queryFromUrl(): Query {
   const p = new URLSearchParams(window.location.search);
   return {
@@ -68,21 +119,25 @@ function queryFromUrl(): Query {
 }
 function TasksForTeam({ tenant }: { tenant: number }) {
   const [query, setQuery] = useState<Query>(queryFromUrl);
+  const [draftQuery, setDraftQuery] = useState<Query>(queryFromUrl);
   const [selected, setSelected] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get('task'),
   );
   const [page, setPage] = useState<TaskPage>();
   const [summary, setSummary] = useState<Summary>();
   const [detail, setDetail] = useState<Task>();
+  const [content, setContent] = useState<TaskContent>();
   const [children, setChildren] = useState<TaskPage>();
   const [childPage, setChildPage] = useState(1);
   const [error, setError] = useState('');
   const [detailError, setDetailError] = useState('');
+  const [contentError, setContentError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const mounted = useRef(true);
   const actionKeys = useRef(new Map<string, string>());
+  const contentAbort = useRef<AbortController>();
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -99,7 +154,9 @@ function TasksForTeam({ tenant }: { tenant: number }) {
   }, [query, selected]);
   useEffect(() => {
     const onPop = () => {
-      setQuery(queryFromUrl());
+      const next = queryFromUrl();
+      setQuery(next);
+      setDraftQuery(next);
       setSelected(new URLSearchParams(window.location.search).get('task'));
     };
     window.addEventListener('popstate', onPop);
@@ -170,6 +227,11 @@ function TasksForTeam({ tenant }: { tenant: number }) {
         if (abort.signal.aborted) return;
         setDetail(next);
         setChildren(childRows);
+        if (next.restricted) {
+          contentAbort.current?.abort();
+          setContent(undefined);
+          setContentError('无权查看此任务内容');
+        }
         setDetailError('');
         if (active(next)) timer = setTimeout(load, 5000);
       } catch (e) {
@@ -186,8 +248,25 @@ function TasksForTeam({ tenant }: { tenant: number }) {
       clearTimeout(timer);
     };
   }, [tenant, selected, query.scope, childPage, revision]);
-  const updateQuery = (patch: Partial<Query>) => {
-    setQuery((q) => ({ ...q, ...patch, page: patch.page ?? 1 }));
+  useEffect(() => {
+    const abort = new AbortController();
+    contentAbort.current = abort;
+    setContent(undefined);
+    setContentError('');
+    if (!selected) return () => abort.abort();
+    void taskContent(tenant, selected, abort.signal)
+      .then((next) => { if (!abort.signal.aborted) setContent(next); })
+      .catch((error) => { if (!abort.signal.aborted) setContentError(errorText(error)); });
+    return () => {
+      abort.abort();
+      if (contentAbort.current === abort) contentAbort.current = undefined;
+    };
+  }, [tenant, selected, revision]);
+  const updateDraft = (patch: Partial<Query>) => {
+    setDraftQuery((q) => ({ ...q, ...patch }));
+  };
+  const submitQuery = () => {
+    setQuery((q) => ({ ...q, ...draftQuery, page: 1 }));
     setSelected(null);
   };
   const select = (task: Task) => {
@@ -253,12 +332,17 @@ function TasksForTeam({ tenant }: { tenant: number }) {
     { title: '创建时间', dataIndex: 'createdAt' },
   ];
   return (
-    <div style={{ padding: 24 }}>
-      <h1>任务中心</h1>
-      <p>查看后台生产进度，找回已完成的创作结果。</p>
+    <main style={{ padding: 24 }}>
+      <Typography.Title level={2} style={{ marginTop: 0, marginBottom: 4 }}>任务中心</Typography.Title>
+      <Typography.Paragraph type="secondary">查看后台生产进度、提交内容与实际产出。</Typography.Paragraph>
       <Tabs
         activeKey={query.scope}
-        onChange={(scope) => updateQuery({ scope, creatorId: undefined })}
+        onChange={(scope) => {
+          const next = { ...draftQuery, scope, creatorId: undefined, page: 1 };
+          setDraftQuery(next);
+          setQuery(next);
+          setSelected(null);
+        }}
         items={[
           { key: 'mine', label: '我的任务' },
           ...(page?.canViewTeamTasks
@@ -273,35 +357,35 @@ function TasksForTeam({ tenant }: { tenant: number }) {
           aria-label="任务类型"
           placeholder="全部类型"
           allowClear
-          value={query.type}
+          value={draftQuery.type}
           style={{ width: 170 }}
           options={Object.entries(types).map(([value, label]) => ({
             value,
             label,
           }))}
-          onChange={(type) => updateQuery({ type })}
+          onChange={(type) => updateDraft({ type })}
         />
         <Select
           aria-label="任务状态"
           placeholder="全部状态"
           allowClear
-          value={query.statusGroup}
+          value={draftQuery.statusGroup}
           style={{ width: 140 }}
           options={Object.entries(statuses).map(([value, label]) => ({
             value,
             label,
           }))}
-          onChange={(statusGroup) => updateQuery({ statusGroup })}
+          onChange={(statusGroup) => updateDraft({ statusGroup })}
         />
         <Input
           aria-label="项目编号"
           placeholder="项目编号"
           type="number"
           min={1}
-          value={query.projectId || ''}
+          value={draftQuery.projectId || ''}
           style={{ width: 130 }}
           onChange={(e) =>
-            updateQuery({ projectId: e.target.value || undefined })
+            updateDraft({ projectId: e.target.value || undefined })
           }
         />
         {page?.canViewTeamTasks && query.scope === 'team' && (
@@ -310,10 +394,10 @@ function TasksForTeam({ tenant }: { tenant: number }) {
             placeholder="创建人编号"
             type="number"
             min={1}
-            value={query.creatorId || ''}
+            value={draftQuery.creatorId || ''}
             style={{ width: 130 }}
             onChange={(e) =>
-              updateQuery({ creatorId: e.target.value || undefined })
+              updateDraft({ creatorId: e.target.value || undefined })
             }
           />
         )}
@@ -322,9 +406,9 @@ function TasksForTeam({ tenant }: { tenant: number }) {
           <input
             aria-label="开始时间"
             type="datetime-local"
-            value={query.createdFrom || ''}
+            value={draftQuery.createdFrom || ''}
             onChange={(e) =>
-              updateQuery({ createdFrom: e.target.value || undefined })
+              updateDraft({ createdFrom: e.target.value || undefined })
             }
           />
         </label>
@@ -333,17 +417,20 @@ function TasksForTeam({ tenant }: { tenant: number }) {
           <input
             aria-label="结束时间"
             type="datetime-local"
-            value={query.createdTo || ''}
+            value={draftQuery.createdTo || ''}
             onChange={(e) =>
-              updateQuery({ createdTo: e.target.value || undefined })
+              updateDraft({ createdTo: e.target.value || undefined })
             }
           />
         </label>
-        <Button
-          onClick={() => {
-            setQuery((q) => ({ ...q, page: 1 }));
-          }}
-        >
+        <Button type="primary" onClick={submitQuery}>查询</Button>
+        <Button onClick={() => {
+          const reset: Query = { scope: query.scope, page: 1, pageSize: 20 };
+          setDraftQuery(reset); setQuery(reset); setSelected(null);
+        }}>重置</Button>
+        <Button onClick={() => {
+          setRevision((n) => n + 1);
+        }}>
           刷新
         </Button>
       </div>
@@ -377,13 +464,13 @@ function TasksForTeam({ tenant }: { tenant: number }) {
           total: page?.total || 0,
           showSizeChanger: true,
           onChange: (pageNumber, pageSize) =>
-            updateQuery({ page: pageNumber, pageSize }),
+            setQuery((current) => ({ ...current, page: pageNumber, pageSize })),
         }}
       />
       <Drawer
         title={detail?.title || '任务详情'}
         open={Boolean(selected)}
-        size={760}
+        size={720}
         onClose={() => setSelected(null)}
       >
         {detailError && (
@@ -437,6 +524,8 @@ function TasksForTeam({ tenant }: { tenant: number }) {
                   </Button>
                 ))}
             </div>
+            {contentError && <Alert type="warning" title={contentError} />}
+            {content?.sections.map((section) => <ContentSectionView key={section.key} section={section} tenant={tenant} taskKey={selected ?? detail.taskKey} />)}
             {detail.childCounts.total > 0 && (
               <>
                 <p>
@@ -468,7 +557,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
           </>
         )}
       </Drawer>
-    </div>
+    </main>
   );
 }
 export default function Tasks() {

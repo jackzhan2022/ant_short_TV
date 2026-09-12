@@ -41,6 +41,13 @@ public class ProductionTaskController {
     @GetMapping("/{taskKey}") public ApiResponse<Map<String,Object>> detail(@PathVariable long tenantId,@PathVariable String taskKey) {
         return ApiResponse.success(service.detail(tenantId,taskKey));
     }
+    @GetMapping("/{taskKey}/content") public ApiResponse<Map<String,Object>> content(@PathVariable long tenantId,@PathVariable String taskKey) {
+        return ApiResponse.success(service.content(tenantId,taskKey));
+    }
+    @GetMapping("/{taskKey}/content/{sectionKey}") public ApiResponse<Map<String,Object>> contentSection(@PathVariable long tenantId,@PathVariable String taskKey,
+        @PathVariable String sectionKey,@RequestParam(defaultValue="0") int offset) {
+        return ApiResponse.success(service.contentSection(tenantId,taskKey,sectionKey,offset));
+    }
     @GetMapping("/{taskKey}/children") public ApiResponse<ProductionTaskService.Page> children(@PathVariable long tenantId,@PathVariable String taskKey,@ModelAttribute ProductionTaskQuery query) {
         return ApiResponse.success(service.children(tenantId,taskKey,query));
     }

@@ -7,6 +7,7 @@ import static com.antshorttv.support.SessionTestSupport.authenticated;
 import com.antshorttv.support.SessionTestSupport;
 import com.jayway.jsonpath.JsonPath;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +29,48 @@ class ProductionTaskControllerTest {
         org.assertj.core.api.Assertions.assertThat(ProductionTaskService.truth(1L)).isTrue();
         org.assertj.core.api.Assertions.assertThat(ProductionTaskService.truth(0)).isFalse();
         org.assertj.core.api.Assertions.assertThat(ProductionTaskService.truth(null)).isFalse();
+    }
+
+    @Test void requiresScriptReadPermissionForEveryScriptOperationContent() {
+        for(String operation:List.of("SCRIPT_GENERATE","SCRIPT_REWRITE","ELEMENT_EXTRACT","SCOPED_ASSET_REEXTRACTION","STORYBOARD_BREAKDOWN","PROMPT_GENERATE")) {
+            org.assertj.core.api.Assertions.assertThat(ProductionTaskService.scriptOperationContentPermission(operation)).isEqualTo("SCRIPT:VIEW");
+        }
+    }
+
+    @Test void readsBoundedImageContentWithoutChangingProductionRecords() throws Exception {
+        String token=register("13800019813");long tenant=tenant(token),user=user("13800019813");
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'detail','detail',?,'ACTIVE',?,now(),now())",tenant,user,user);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into ai_image_task(tenant_id,project_id,task_type,target_type,target_id,provider_code,model,prompt,negative_prompt,reference_images,aspect_ratio,image_count,style,quality,seed,status,created_by,created_at,updated_at) values (?,?, 'CHARACTER','CHARACTER',999999,'test','image-model',?,'no blur','[\"/reference.png\"]','16:9',1,'cinematic','high','42','SUCCEEDED',?,now(),now())",tenant,project,"a".repeat(40000),user);
+        long task=jdbc.queryForObject("select id from ai_image_task where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into ai_image_result(tenant_id,project_id,task_id,target_type,target_id,image_url,thumbnail_url,width,height,is_selected,status,created_at,updated_at) values (?,?,?,'CHARACTER',999999,'/result.png','/thumb.png',1920,1080,true,'SUCCEEDED',now(),now())",tenant,project,task);
+        long tasksBefore=jdbc.queryForObject("select count(*) from ai_image_task where tenant_id=?",Long.class,tenant);
+        long resultsBefore=jdbc.queryForObject("select count(*) from ai_image_result where tenant_id=?",Long.class,tenant);
+        String base="/api/tenants/"+tenant+"/production-tasks/IMAGE:"+task;
+
+        mvc.perform(get(base+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.schemaVersion").value(1))
+            .andExpect(jsonPath("$.data.taskKey").value("IMAGE:"+task))
+            .andExpect(jsonPath("$.data.sections[0].key").value("submission"))
+            .andExpect(jsonPath("$.data.sections[0].availability").value("AVAILABLE"))
+            .andExpect(jsonPath("$.data.sections[0].preview").value(org.hamcrest.Matchers.hasLength(4000)))
+            .andExpect(jsonPath("$.data.sections[0].hasMore").value(true))
+            .andExpect(jsonPath("$.data.sections[2].items[0].url").value("/result.png"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].thumbnailUrl").value("/thumb.png"));
+        mvc.perform(get(base+"/content/submission").param("offset","0").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sectionKey").value("submission"))
+            .andExpect(jsonPath("$.data.text").value(org.hamcrest.Matchers.hasLength(32000)))
+            .andExpect(jsonPath("$.data.nextOffset").value(32000))
+            .andExpect(jsonPath("$.data.hasMore").value(true));
+        mvc.perform(get(base+"/content/submission").param("offset","32000").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.text").value(org.hamcrest.Matchers.hasLength(8000)))
+            .andExpect(jsonPath("$.data.nextOffset").doesNotExist())
+            .andExpect(jsonPath("$.data.hasMore").value(false));
+        mvc.perform(get(base+"/content/provider-log").with(authenticated(token))).andExpect(status().is4xxClientError());
+        mvc.perform(get(base.substring(0,base.lastIndexOf('/'))).with(authenticated(token)))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("no blur"))));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from ai_image_task where tenant_id=?",Long.class,tenant)).isEqualTo(tasksBefore);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from ai_image_result where tenant_id=?",Long.class,tenant)).isEqualTo(resultsBefore);
     }
 
     @Test void preservesIndependentCreatorWhenAnotherMembersBatchReusesExecution() throws Exception {
@@ -71,7 +114,7 @@ class ProductionTaskControllerTest {
         long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
         jdbc.update("insert into ai_image_task(tenant_id,project_id,task_type,target_type,target_id,provider_code,model,prompt,aspect_ratio,image_count,status,created_by,created_at,updated_at) values (?,?,'CHARACTER','CHARACTER',999999,'test','test','private prompt','1:1',1,'SUCCEEDED',?,now(),now())",tenant,project,user);
         jdbc.update("insert into ai_video_task(tenant_id,project_id,storyboard_id,provider_code,model,prompt,first_frame_url,duration_seconds,aspect_ratio,status,created_by,created_at,updated_at) values (?,?,999999,'test','test','private video','private url',5,'1:1','RUNNING',?,now(),now())",tenant,project,user);
-        jdbc.update("insert into script_analysis_task(tenant_id,project_id,script_id,script_version_id,workflow_code,status,overall_progress,idempotency_key,created_by,created_at,updated_at) values (?,?,1,1,'test','FAILED',45,'mixed',?,now(),now())",tenant,project,user);
+        jdbc.update("insert into script_analysis_task(tenant_id,project_id,script_id,script_version_id,workflow_code,status,overall_progress,error_message,idempotency_key,created_by,created_at,updated_at) values (?,?,1,1,'test','FAILED',45,'internalFailure','mixed',?,now(),now())",tenant,project,user);
         jdbc.update("insert into review_project(tenant_id,name,source_type,original_content,status,created_by,created_at,updated_at) values (?,'review','TEXT','private review','ACTIVE',?,now(),now())",tenant,user);
         long reviewProject=jdbc.queryForObject("select id from review_project where tenant_id=?",Long.class,tenant);
         jdbc.update("insert into review_task(tenant_id,project_id,script_version_id,round_no,review_mode,selected_dimensions_json,review_scope_type,status,overall_progress,idempotency_key,created_by,created_at,updated_at) values (?,?,1,1,'QUICK','[]','ALL','COMPLETED',100,'mixed',?,now(),now())",tenant,reviewProject,user);
@@ -79,6 +122,20 @@ class ProductionTaskControllerTest {
         mvc.perform(get(base).param("pageSize","2").param("createdFrom","2000-01-01T00:00").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(4)).andExpect(jsonPath("$.data.items.length()").value(2)).andExpect(jsonPath("$.data.items[0].type").value("VIDEO"));
         mvc.perform(get(base+"/summary").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.counts.SUCCEEDED").value(2)).andExpect(jsonPath("$.data.counts.FAILED").value(1));
         mvc.perform(get(base).param("type","IMAGE").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].destination").isEmpty()).andExpect(jsonPath("$.data.items[0].progress").isEmpty()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("private prompt"))));
+        long analysis=jdbc.queryForObject("select min(id) from script_analysis_task where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into script_analysis_stage(task_id,stage_code,stage_order,status,progress_percent,created_at,updated_at) values (?,'GLOBAL',1,'SUCCEEDED',100,now(),now())",analysis);
+        long stage=jdbc.queryForObject("select min(id) from script_analysis_stage where task_id=?",Long.class,analysis);
+        jdbc.update("insert into script_analysis_result(task_id,stage_id,result_type,schema_version,status,normalized_json,created_at,updated_at) values (?,?,'GLOBAL','1','SUCCEEDED','{\"providerSecret\":\"do not expose\"}',now(),now())",analysis,stage);
+        mvc.perform(get(base+"/SCRIPT_ANALYSIS:"+analysis+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[2].items[0].result_type").value("GLOBAL"))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("providerSecret"))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("internalFailure"))));
+        for(String type:List.of("IMAGE","VIDEO","SCRIPT_ANALYSIS","REVIEW")) {
+            String table=Map.of("IMAGE","ai_image_task","VIDEO","ai_video_task","SCRIPT_ANALYSIS","script_analysis_task","REVIEW","review_task").get(type);
+            long id=jdbc.queryForObject("select min(id) from "+table+" where tenant_id=?",Long.class,tenant);
+            mvc.perform(get(base+"/"+type+":"+id+"/content").with(authenticated(token))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.taskKey").value(type+":"+id)).andExpect(jsonPath("$.data.sections").isArray());
+        }
         var sql=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc);
         String plan=sql.queryForObject("explain select * from ("+ProductionTaskSources.ALL+") t where t.parent_id is null and t.root_visible=true order by t.created_at desc limit 20",java.util.Map.of("tenant",tenant),String.class);
         org.assertj.core.api.Assertions.assertThat(plan.toLowerCase()).contains("tenant_id", "index", "fetch first 20");
