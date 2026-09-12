@@ -9,6 +9,7 @@ _roadhog-api-doc
 # production
 /dist
 **/dist
+/frontend-dist-*.tar.gz
 
 # misc
 .DS_Store
@@ -57,6 +58,7 @@ screenshot
 /reference-asset-workbench.png
 /reference-workbench.png
 /review-workbench-prototype/
+/script-review-preview.html
 /script-workbench-layout-preview.html
 
 build
@@ -74,4 +76,5 @@ requestRecord.mock.js
 
 # runtime storage
 backend/storage/
+/frontend/.legacy-rollback/
 frontend/run-frontend-dev.ps1
