@@ -66,6 +66,8 @@ public class ScriptWorkflowService {
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     @Autowired(required = false)
     private StoryboardAgentAdapter storyboardAgentAdapter;
+    @Autowired(required = false)
+    private ScopedAssetReextractionService scopedAssetReextractionService;
 
     private final ProjectAccessResolver projectAccessResolver;
     private final ProjectPermissionGuard projectPermissionGuard;
@@ -358,6 +360,17 @@ public class ScriptWorkflowService {
         );
     }
 
+    public ScriptAiOperationExecutionResult executeScopedAssetReextractionOperation(
+        ScriptAiOperationEntity operation,
+        ScopedAssetReextractionRequest request,
+        AiExecutionContext executionContext
+    ) {
+        if (scopedAssetReextractionService == null) {
+            throw new IllegalStateException("资产重提取服务不可用。");
+        }
+        return scopedAssetReextractionService.execute(operation, request, executionContext);
+    }
+
     public ScriptAiOperationExecutionResult executePromptOperation(
         ScriptAiOperationEntity operation,
         GeneratePromptRequest request,
@@ -522,6 +535,35 @@ public class ScriptWorkflowService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择当前项目的一集有效剧集。");
         }
         return submitOperation(context, projectId, AiBusinessScene.STORYBOARD_BREAKDOWN, "STORYBOARD_BREAKDOWN", script.getId(), script.getCurrentVersionId(), request, servletRequest);
+    }
+
+    public ScopedAssetReextractionService.AssetReextractionPreflight assetReextractionPreflight(
+        Long tenantId,
+        Long projectId,
+        String targetType
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:AI_EXTRACT", projectId);
+        if (scopedAssetReextractionService == null) throw new IllegalStateException("资产重提取服务不可用。");
+        return scopedAssetReextractionService.preflight(tenantId, projectId,
+            requireScript(tenantId, projectId).getId(), parseAssetScope(targetType));
+    }
+
+    public AiExecutionResponse submitScopedAssetReextraction(
+        Long tenantId,
+        Long projectId,
+        ScopedAssetReextractionRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:AI_EXTRACT", projectId);
+        ScriptEntity script = requireScript(tenantId, projectId);
+        parseAssetScope(request.targetType());
+        parseAssetPromptPolicy(request.promptPolicy());
+        return submitOperation(context, projectId, AiBusinessScene.SCOPED_ASSET_REEXTRACTION,
+            "SCOPED_ASSET_REEXTRACTION", script.getId(), script.getCurrentVersionId(), request, servletRequest);
     }
 
     public AiExecutionResponse submitPromptGeneration(
@@ -2049,6 +2091,22 @@ public class ScriptWorkflowService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择提示词生成对象。");
         }
         return value;
+    }
+
+    private AssetRecognitionScope parseAssetScope(String targetType) {
+        try {
+            return AssetRecognitionScope.valueOf(targetType == null ? "" : targetType.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择 ALL、CHARACTER、SCENE 或 PROP 资产范围。");
+        }
+    }
+
+    private AssetPromptPolicy parseAssetPromptPolicy(String promptPolicy) {
+        try {
+            return AssetPromptPolicy.valueOf(promptPolicy == null ? "" : promptPolicy.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "提示词策略必须为 FILL_EMPTY 或 REGENERATE_ALL。");
+        }
     }
 
     private String elementTable(String elementType) {

@@ -194,6 +194,28 @@ public class ScriptWorkflowController {
         return accepted(scriptWorkflowService.submitExtractElements(tenantId(request), projectId, body, request));
     }
 
+    @GetMapping("/asset-reextraction/preflight")
+    @RequireProjectPermission("AI_SERVICE:USE")
+    public ApiResponse<ScopedAssetReextractionService.AssetReextractionPreflight> assetReextractionPreflight(
+        @PathVariable Long projectId,
+        @RequestParam String targetType,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.assetReextractionPreflight(
+            tenantId(request), projectId, targetType));
+    }
+
+    @PostMapping("/asset-reextraction")
+    @RequireProjectPermission("AI_SERVICE:USE")
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> scopedAssetReextraction(
+        @PathVariable Long projectId,
+        @Valid @RequestBody ScopedAssetReextractionRequest body,
+        HttpServletRequest request
+    ) {
+        return accepted(scriptWorkflowService.submitScopedAssetReextraction(
+            tenantId(request), projectId, body, request));
+    }
+
     @PostMapping("/script-analysis/current/regenerate-episodes")
     @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<WorkflowAgentRunResult> regenerateEpisodes(

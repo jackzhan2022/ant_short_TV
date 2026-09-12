@@ -1,5 +1,6 @@
 package com.antshorttv.script;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -45,5 +46,19 @@ class AssetRecognitionFinalizerTest {
         org.assertj.core.api.Assertions.assertThat(statements)
             .contains("generated_by_run_id is not null", "source = 'AI'", "not exists")
             .doesNotContain("source = 'USER'");
+    }
+
+    @Test
+    void sceneScopeDoesNotRetireCharacterOrPropRows() {
+        when(jdbc.queryForList(anyString(), any(Object[].class)))
+            .thenReturn(List.of(Map.of("tenant_id", 1L, "project_id", 2L, "script_id", 3L)));
+        when(jdbc.queryForObject(anyString(), any(Class.class), any(Object[].class))).thenReturn(0);
+
+        finalizer.finish(9L, AssetRecognitionScope.SCENE);
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc, atLeast(3)).update(sql.capture(), any(Object[].class));
+        String statements = String.join("\n", sql.getAllValues());
+        assertThat(statements).contains("scene_asset").doesNotContain("character_asset", "prop_asset");
     }
 }

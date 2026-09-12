@@ -408,6 +408,8 @@ public class ScreenplayToolDataService {
         }
         context.runState().put("currentEpisodeSourceSegments", sourceSegments);
         ObjectNode result = json.createObjectNode();
+        String assetScope = context.runState().get("assetScope", String.class);
+        result.put("assetScope", assetScope == null ? "ALL" : assetScope);
         put(result, "episodeKey", row.get("stable_key"));
         result.put("episodeNo", ((Number) row.get("episode_no")).intValue());
         put(result, "title", row.get("title"));
@@ -429,10 +431,16 @@ public class ScreenplayToolDataService {
             }
         }
         ObjectNode catalog = result.putObject("assetCatalog");
-        catalog.set("characters", characters);
-        catalog.set("scenes", currentScriptAssets(context, "scene_asset", "SCENE", "s_"));
-        catalog.set("props", currentScriptAssets(context, "prop_asset", "PROP", "p_"));
+        catalog.set("characters", includes(assetScope, "CHARACTER") ? characters : json.createArrayNode());
+        catalog.set("scenes", includes(assetScope, "SCENE")
+            ? currentScriptAssets(context, "scene_asset", "SCENE", "s_") : json.createArrayNode());
+        catalog.set("props", includes(assetScope, "PROP")
+            ? currentScriptAssets(context, "prop_asset", "PROP", "p_") : json.createArrayNode());
         return result;
+    }
+
+    private boolean includes(String scope, String type) {
+        return scope == null || "ALL".equals(scope) || type.equals(scope);
     }
 
     private EpisodeSourceSegmenter.SegmentationContext speakerContext(ArrayNode characters) {

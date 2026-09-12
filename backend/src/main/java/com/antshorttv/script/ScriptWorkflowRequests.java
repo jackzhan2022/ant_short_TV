@@ -73,6 +73,12 @@ record StoryboardBreakdownRequest(
 ) {
 }
 
+record ScopedAssetReextractionRequest(
+    @NotBlank @Size(max = 16) String targetType,
+    @NotBlank @Size(max = 24) String promptPolicy
+) {
+}
+
 record CreateStoryboardBatchRequest(
     @NotNull @Size(min = 1, max = 200) java.util.List<@NotNull Long> episodeIds
 ) {

@@ -116,7 +116,7 @@ public class ScreenplayToolConfiguration {
     @Bean
     WorkflowToolDefinition readCurrentEpisodeTool(ScreenplayToolDataService data, ObjectMapper json) {
         ObjectNode output = objectSchema(json);
-        output.putArray("required").add("episodeKey").add("episodeNo").add("content")
+        output.putArray("required").add("episodeKey").add("episodeNo").add("content").add("assetScope")
             .add("contentFingerprint").add("sourceSegments").add("assetCatalog");
         ObjectNode fields = (ObjectNode) output.path("properties");
         fields.putObject("episodeKey").put("type", "string").put("maxLength", 100);
@@ -124,6 +124,8 @@ public class ScreenplayToolConfiguration {
         fields.set("title", nullableType(json, "string"));
         fields.putObject("content").put("type", "string").put("maxLength", 200000);
         fields.putObject("contentFingerprint").put("type", "string").put("maxLength", 128);
+        fields.putObject("assetScope").put("type", "string").putArray("enum")
+            .add("ALL").add("CHARACTER").add("SCENE").add("PROP");
         ObjectNode segments = fields.putObject("sourceSegments").put("type", "array")
             .put("maxItems", 10_000);
         ObjectNode segment = objectSchema(json);

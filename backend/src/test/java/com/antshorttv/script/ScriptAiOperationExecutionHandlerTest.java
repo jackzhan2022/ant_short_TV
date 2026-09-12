@@ -36,6 +36,18 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class ScriptAiOperationExecutionHandlerTest {
+    @Test
+    void registersScopedAssetReextractionExecutionScene() {
+        ScriptAiOperationExecutionHandler handler = new ScriptAiOperationExecutionHandler(
+            mock(ScriptAiOperationMapper.class), mock(ScriptWorkflowService.class),
+            mock(AiExecutionAttemptMapper.class), mock(AiPointReservationMapper.class),
+            mock(AiPointSettlementService.class), mock(AiExecutionService.class),
+            mock(AiUsageAccountingService.class), mock(AiExecutionTaskMapper.class),
+            new ObjectMapper(), mock(WorkflowAgentRunRepository.class));
+
+        assertThat(handler.scenes()).contains("scoped_asset_reextraction");
+    }
+
 
     @Test
     void disablesRetryForDeterministicStoryboardFailureButKeepsTransportRetry() {

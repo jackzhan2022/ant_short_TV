@@ -63,12 +63,15 @@ public class EpisodeAssetPersistenceService {
         ReadEpisode read = requireReadEpisode(context);
         payload = EpisodeAssetsPayloadNormalizer.prepare(payload,
             new ScreenplayToolConfiguration().episodeAssetsInput(json), read.content());
+        AssetRecognitionScope scope = scope(context);
+        AssetPromptPolicy promptPolicy = promptPolicy(context);
+        validateScopePayload(payload, scope);
         Map<String, ResolvedAsset> characters = resolveIdentities(
-            context, read.content(), "CHARACTER", payload.path("characters"));
+            context, read.content(), "CHARACTER", payload.path("characters"), promptPolicy);
         Map<String, ResolvedAsset> scenes = resolveIdentities(
-            context, read.content(), "SCENE", payload.path("scenes"));
+            context, read.content(), "SCENE", payload.path("scenes"), promptPolicy);
         Map<String, ResolvedAsset> props = resolveIdentities(
-            context, read.content(), "PROP", payload.path("props"));
+            context, read.content(), "PROP", payload.path("props"), promptPolicy);
         validatePropOwners(payload.path("props"), characters);
         List<String> preferredErrors = new ArrayList<>();
         collectResolvedPreferredErrors(payload.path("characterLooks"), "characterLooks",
@@ -79,15 +82,15 @@ public class EpisodeAssetPersistenceService {
 
         List<Binding> bindings = new ArrayList<>();
         bindExplicitVariants(context, read.content(), "CHARACTER", "characterLocalKey",
-            payload.path("characterLooks"), characters, bindings);
+            payload.path("characterLooks"), characters, bindings, promptPolicy);
         bindExplicitVariants(context, read.content(), "PROP", "propLocalKey",
-            payload.path("propVariants"), props, bindings);
+            payload.path("propVariants"), props, bindings, promptPolicy);
         addDefaultBindings(context, "CHARACTER", characters, bindings);
         addDefaultBindings(context, "SCENE", scenes, bindings);
         addDefaultBindings(context, "PROP", props, bindings);
         applySceneUsage(payload.path("scenes"), scenes, bindings, read.content());
         enforcePreferred(bindings);
-        replaceBindings(context, bindings);
+        replaceBindings(context, bindings, scope);
 
         ObjectNode counts = json.createObjectNode();
         counts.put("characters", characters.size());
@@ -177,7 +180,7 @@ public class EpisodeAssetPersistenceService {
     }
 
     private Map<String, ResolvedAsset> resolveIdentities(
-        ToolExecutionContext context, String content, String type, JsonNode items
+        ToolExecutionContext context, String content, String type, JsonNode items, AssetPromptPolicy promptPolicy
     ) {
         Map<String, ResolvedAsset> resolved = new LinkedHashMap<>();
         Set<String> localKeys = new HashSet<>();
@@ -191,13 +194,15 @@ public class EpisodeAssetPersistenceService {
             for (JsonNode alias : aliases) {
                 requireEvidence(content, alias.path("evidence").asText(), "别名 " + alias.path("name").asText());
             }
-            ResolvedAsset asset = resolveIdentity(context, type, item);
+            ResolvedAsset asset = resolveIdentity(context, type, item, promptPolicy);
             resolved.put(localKey, asset);
         }
         return resolved;
     }
 
-    private ResolvedAsset resolveIdentity(ToolExecutionContext context, String type, JsonNode item) {
+    private ResolvedAsset resolveIdentity(
+        ToolExecutionContext context, String type, JsonNode item, AssetPromptPolicy promptPolicy
+    ) {
         String name = item.path("name").asText().trim();
         String normalized = AssetIdentityNormalizer.normalize(name);
         if (normalized.isBlank()) invalid("资产规范名不能为空。");
@@ -206,9 +211,9 @@ public class EpisodeAssetPersistenceService {
             long id = parseOpaqueKey(trustedKey, PREFIXES.get(type));
             List<Map<String, Object>> rows = findById(context, type, id);
             if (rows.size() != 1) invalid("资产 key 不属于当前剧本或类型不匹配。");
-            requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")));
+            requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
             updateMetadata(context, type, id, item, normalized, false);
-            fillAssetPromptIfEmpty(type, id, item);
+            writeAssetPrompt(type, id, item, promptPolicy);
             return new ResolvedAsset(id, item.path("localKey").asText(), type);
         }
 
@@ -227,11 +232,11 @@ public class EpisodeAssetPersistenceService {
             created = true;
         } else {
             id = ((Number) matches.get(0).get("id")).longValue();
-            requirePromptIfMissing(item, promptIsEmpty(matches.get(0).get("prompt")));
+            requirePromptIfMissing(item, promptIsEmpty(matches.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
             created = false;
         }
         updateMetadata(context, type, id, item, normalized, created);
-        fillAssetPromptIfEmpty(type, id, item);
+        writeAssetPrompt(type, id, item, promptPolicy);
         return new ResolvedAsset(id, item.path("localKey").asText(), type);
     }
 
@@ -390,7 +395,8 @@ public class EpisodeAssetPersistenceService {
 
     private void bindExplicitVariants(
         ToolExecutionContext context, String content, String type, String ownerField,
-        JsonNode variants, Map<String, ResolvedAsset> owners, List<Binding> bindings
+        JsonNode variants, Map<String, ResolvedAsset> owners, List<Binding> bindings,
+        AssetPromptPolicy promptPolicy
     ) {
         Set<String> localKeys = new HashSet<>();
         for (JsonNode item : variants) {
@@ -398,12 +404,14 @@ public class EpisodeAssetPersistenceService {
             requireEvidence(content, item.path("evidence").asText(), "形态 " + item.path("name").asText());
             ResolvedAsset owner = owners.get(item.path(ownerField).asText());
             if (owner == null) invalid("形态持有人必须引用本次资产 localKey。");
-            long variantId = resolveVariant(context, type, owner.id(), item);
+            long variantId = resolveVariant(context, type, owner.id(), item, promptPolicy);
             bindings.add(new Binding(type, owner.id(), variantId, item.path("preferred").asBoolean(), null));
         }
     }
 
-    private long resolveVariant(ToolExecutionContext context, String type, long assetId, JsonNode item) {
+    private long resolveVariant(
+        ToolExecutionContext context, String type, long assetId, JsonNode item, AssetPromptPolicy promptPolicy
+    ) {
         String trusted = item.path("variantKey").isTextual() ? item.path("variantKey").asText() : null;
         if (trusted != null && !trusted.isBlank()) {
             long id = parseOpaqueKey(trusted, "v_");
@@ -414,8 +422,8 @@ public class EpisodeAssetPersistenceService {
                  for update
                 """, id, context.tenantId(), context.projectId(), type, assetId);
             if (rows.size() != 1) invalid("形态 key 不属于对应资产。");
-            requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")));
-            fillVariantPromptIfEmpty(id, item);
+            requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
+            writeVariantPrompt(id, item, promptPolicy);
             return id;
         }
         String normalized = AssetIdentityNormalizer.normalize(item.path("name").asText());
@@ -434,28 +442,36 @@ public class EpisodeAssetPersistenceService {
         }
         if (!matches.isEmpty()) {
             long id = ((Number) matches.get(0).get("id")).longValue();
-            requirePromptIfMissing(item, promptIsEmpty(matches.get(0).get("prompt")));
-            fillVariantPromptIfEmpty(id, item);
+            requirePromptIfMissing(item, promptIsEmpty(matches.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
+            writeVariantPrompt(id, item, promptPolicy);
             return id;
         }
         requirePromptIfMissing(item, true);
         long id = insertVariant(context, type, assetId, item.path("name").asText(),
             item.path("description").isNull() ? null : item.path("description").asText(), item);
-        fillVariantPromptIfEmpty(id, item);
+        writeVariantPrompt(id, item, promptPolicy);
         return id;
     }
 
-    private void fillAssetPromptIfEmpty(String type, long id, JsonNode item) {
+    private void writeAssetPrompt(String type, long id, JsonNode item, AssetPromptPolicy policy) {
         String prompt = prompt(item);
         if (prompt == null) return;
+        if (policy == AssetPromptPolicy.REGENERATE_ALL) {
+            jdbc.update("update " + TABLES.get(type) + " set prompt = ?, updated_at = now() where id = ?", prompt, id);
+            return;
+        }
         jdbc.update("update " + TABLES.get(type)
             + " set prompt = ?, updated_at = now() where id = ? and (prompt is null or trim(prompt) = '')",
             prompt, id);
     }
 
-    private void fillVariantPromptIfEmpty(long id, JsonNode item) {
+    private void writeVariantPrompt(long id, JsonNode item, AssetPromptPolicy policy) {
         String prompt = prompt(item);
         if (prompt == null) return;
+        if (policy == AssetPromptPolicy.REGENERATE_ALL) {
+            jdbc.update("update asset_visual_variant set prompt = ?, updated_at = now() where id = ?", prompt, id);
+            return;
+        }
         jdbc.update("""
             update asset_visual_variant
                set prompt = ?, updated_at = now()
@@ -584,13 +600,17 @@ public class EpisodeAssetPersistenceService {
         }
     }
 
-    private void replaceBindings(ToolExecutionContext context, List<Binding> bindings) {
+    private void replaceBindings(ToolExecutionContext context, List<Binding> bindings, AssetRecognitionScope scope) {
+        String typeFilter = scope == AssetRecognitionScope.ALL ? "" : " and asset_type = ?";
+        List<Object> retireArgs = new ArrayList<>(List.of(
+            context.tenantId(), context.projectId(), context.scriptId(), context.episodeId()));
+        if (scope != AssetRecognitionScope.ALL) retireArgs.add(scope.name());
         jdbc.update("""
             update asset_visual_variant_episode
                set binding_status = 'RETIRED', retired_at = now(), updated_at = now()
              where tenant_id = ? and project_id = ? and script_id = ? and episode_id = ?
                and generated_by_run_id is not null and retired_at is null
-            """, context.tenantId(), context.projectId(), context.scriptId(), context.episodeId());
+            """.replace("retired_at is null", "retired_at is null" + typeFilter), retireArgs.toArray());
         for (Binding binding : bindings) {
             Integer active = jdbc.queryForObject("""
                 select count(*) from asset_visual_variant_episode
@@ -607,6 +627,36 @@ public class EpisodeAssetPersistenceService {
                 binding.type(), binding.assetId(), binding.variantId(), binding.preferred(),
                 context.userId(), binding.contentJson(), context.agentRunId());
         }
+    }
+
+    private AssetRecognitionScope scope(ToolExecutionContext context) {
+        String value = context.runState().get("assetScope", String.class);
+        try {
+            return value == null ? AssetRecognitionScope.ALL : AssetRecognitionScope.valueOf(value);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产识别范围无效。");
+        }
+    }
+
+    private AssetPromptPolicy promptPolicy(ToolExecutionContext context) {
+        String value = context.runState().get("assetPromptPolicy", String.class);
+        try {
+            return value == null ? AssetPromptPolicy.FILL_EMPTY : AssetPromptPolicy.valueOf(value);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产提示词策略无效。");
+        }
+    }
+
+    private void validateScopePayload(JsonNode payload, AssetRecognitionScope scope) {
+        if (scope == AssetRecognitionScope.ALL) return;
+        Map<String, String> collections = Map.of(
+            "characters", "CHARACTER", "characterLooks", "CHARACTER",
+            "scenes", "SCENE", "props", "PROP", "propVariants", "PROP");
+        collections.forEach((field, type) -> {
+            if (!scope.name().equals(type) && !payload.path(field).isEmpty()) {
+                invalid("当前资产识别范围不允许提交 " + field + "。" );
+            }
+        });
     }
 
     private long upsertCoverage(

@@ -7,6 +7,7 @@ public enum AiBusinessScene {
     SCRIPT_EPISODE_SPLIT("script_episode_split", "剧集智能拆分", AiCapability.TEXT, null, "script-episode-split"),
     SCRIPT_EPISODE_SUMMARY("script_episode_summary", "剧集概要提炼", AiCapability.TEXT, null, "script-episode-summary"),
     SCRIPT_CHARACTER_SCENE_RECOGNITION("script_character_scene_recognition", "角色场景识别", AiCapability.TEXT, null, "script-character-scene-recognition"),
+    SCOPED_ASSET_REEXTRACTION("scoped_asset_reextraction", "资产设定重提取", AiCapability.TEXT, null),
     CHARACTER_EXTRACT("character_extract", "AI提取角色", AiCapability.TEXT, "script.element.character.extract", "script-character-extract"),
     SCENE_EXTRACT("scene_extract", "AI提取场景", AiCapability.TEXT, "script.element.scene.extract", "script-scene-extract"),
     PROP_EXTRACT("prop_extract", "AI提取道具", AiCapability.TEXT, "script.element.prop.extract", "script-prop-extract"),

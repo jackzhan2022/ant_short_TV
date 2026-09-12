@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchSettings from './settings';
 
 const mocks = vi.hoisted(() => ({
+  messageError: vi.fn(),
   confirmScriptElement: vi.fn(),
   deleteScriptElement: vi.fn(),
-  extractScriptElements: vi.fn(),
+  queryAssetReextractionPreflight: vi.fn(),
+  submitAssetReextraction: vi.fn(),
   queryScriptWorkspace: vi.fn(),
   queryAssetSettingsWorkspace: vi.fn(),
   queryAssetSettingsSummary: vi.fn(),
@@ -33,7 +35,8 @@ vi.mock('@umijs/max', () => ({
 vi.mock('./service', () => ({
   confirmScriptElement: mocks.confirmScriptElement,
   deleteScriptElement: mocks.deleteScriptElement,
-  extractScriptElements: mocks.extractScriptElements,
+  queryAssetReextractionPreflight: mocks.queryAssetReextractionPreflight,
+  submitAssetReextraction: mocks.submitAssetReextraction,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
   queryAssetVisualWorkspace: mocks.queryAssetVisualWorkspace,
@@ -85,7 +88,7 @@ vi.mock('@ant-design/icons', () => ({
 
 vi.mock('antd', () => ({
   App: {
-    useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
+    useApp: () => ({ message: { error: mocks.messageError, success: vi.fn() } }),
   },
   Button: ({ children, icon, onClick, ...props }: any) => (
     <button type="button" onClick={onClick} {...props}>
@@ -95,8 +98,30 @@ vi.mock('antd', () => ({
   ),
   Drawer: ({ children, open, title }: any) =>
     open ? <section aria-label={title}>{children}</section> : null,
-  Modal: ({ children, open, title }: any) =>
-    open ? <section aria-label={title}>{children}</section> : null,
+  Modal: ({ children, open, title, onOk, onCancel }: any) =>
+    open ? (
+      <section aria-label={title}>
+        {children}
+        <button type="button" onClick={onCancel}>取消</button>
+        <button type="button" onClick={onOk}>确认提交</button>
+      </section>
+    ) : null,
+  Radio: {
+    Group: ({ options, value, onChange }: any) => (
+      <div>
+        {options.map((option: any) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={value === option.value}
+            onClick={() => onChange({ target: { value: option.value } })}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    ),
+  },
   Popconfirm: ({ children, onConfirm, title }: any) => (
     <span>
       {children}
@@ -256,7 +281,16 @@ describe('ProductionWorkbenchSettings', () => {
       data: workspace.characters[0].visual,
     });
     localStorage.setItem('currentTenantId', '10');
-    mocks.extractScriptElements.mockResolvedValue({
+    mocks.queryAssetReextractionPreflight.mockResolvedValue({
+      data: {
+        targetType: 'CHARACTER',
+        existingAssets: 0,
+        existingVariants: 0,
+        existingPrompts: 0,
+        requiresConfirmation: false,
+      },
+    });
+    mocks.submitAssetReextraction.mockResolvedValue({
       data: { id: 601, businessId: 41, status: 'PENDING', progress: 0 },
     });
     mocks.pollExecution.mockResolvedValue({
@@ -607,8 +641,10 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认斌斌' }));
 
     await waitFor(() => {
-      expect(mocks.extractScriptElements).toHaveBeenCalledWith(1, {
-        elementType: 'CHARACTER',
+      expect(mocks.queryAssetReextractionPreflight).toHaveBeenCalledWith(1, 'CHARACTER');
+      expect(mocks.submitAssetReextraction).toHaveBeenCalledWith(1, {
+        targetType: 'CHARACTER',
+        promptPolicy: 'FILL_EMPTY',
       });
       expect(mocks.confirmScriptElement).toHaveBeenCalledWith(
         1,
@@ -625,5 +661,52 @@ describe('ProductionWorkbenchSettings', () => {
       ).toBeGreaterThanOrEqual(2);
     });
     expect(screen.getByText('execution-601-SUCCEEDED')).toBeInTheDocument();
+  });
+
+  it('requires confirmation before replacing existing scoped prompts', async () => {
+    mocks.queryAssetReextractionPreflight.mockResolvedValueOnce({
+      data: {
+        targetType: 'CHARACTER',
+        existingAssets: 1,
+        existingVariants: 2,
+        existingPrompts: 3,
+        requiresConfirmation: true,
+      },
+    });
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findAllByText('斌斌');
+    fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
+    expect(await screen.findByText(/当前范围已有 1 个资产/)).toBeInTheDocument();
+    expect(mocks.submitAssetReextraction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '重新生成当前范围提示词' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认提交' }));
+
+    await waitFor(() => {
+      expect(mocks.submitAssetReextraction).toHaveBeenCalledWith(1, {
+        targetType: 'CHARACTER',
+        promptPolicy: 'REGENERATE_ALL',
+      });
+    });
+  });
+
+  it('shows the terminal backend failure reason', async () => {
+    mocks.pollExecution.mockResolvedValueOnce({
+      id: 601,
+      businessId: 41,
+      status: 'FAILED',
+      progress: 100,
+      errorMessage: '当前资产识别范围不允许提交 scenes。',
+    });
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findAllByText('斌斌');
+    fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
+
+    await waitFor(() => {
+      expect(mocks.messageError).toHaveBeenCalledWith(
+        '当前资产识别范围不允许提交 scenes。',
+      );
+    });
   });
 });

@@ -18,6 +18,12 @@ public class AssetRecognitionFinalizer {
 
     @Transactional
     public void finish(long snapshotId) {
+        finish(snapshotId, AssetRecognitionScope.ALL);
+    }
+
+    @Transactional
+    public void finish(long snapshotId, AssetRecognitionScope scope) {
+        AssetRecognitionScope effectiveScope = scope == null ? AssetRecognitionScope.ALL : scope;
         List<Map<String, Object>> snapshots = jdbc.queryForList("""
             select tenant_id, project_id, script_id from script_analysis_fanout_snapshot
              where id = ? and status in ('RUNNING', 'FINALIZING') for update
@@ -37,12 +43,16 @@ public class AssetRecognitionFinalizer {
             throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE,
                 "尚有剧集未提交当前资产识别结果，不能退役旧资产。");
         }
-        Map<String, Object> scope = snapshots.get(0);
-        long tenantId = ((Number) scope.get("tenant_id")).longValue();
-        long projectId = ((Number) scope.get("project_id")).longValue();
-        long scriptId = ((Number) scope.get("script_id")).longValue();
+        Map<String, Object> snapshotScope = snapshots.get(0);
+        long tenantId = ((Number) snapshotScope.get("tenant_id")).longValue();
+        long projectId = ((Number) snapshotScope.get("project_id")).longValue();
+        long scriptId = ((Number) snapshotScope.get("script_id")).longValue();
 
-        jdbc.update("""
+        String bindingScope = effectiveScope == AssetRecognitionScope.ALL ? "" : " and binding.asset_type = ?";
+        Object[] bindingArgs = effectiveScope == AssetRecognitionScope.ALL
+            ? new Object[] {tenantId, projectId, scriptId, snapshotId}
+            : new Object[] {tenantId, projectId, scriptId, snapshotId, effectiveScope.name()};
+        jdbc.update(("""
             update asset_visual_variant_episode binding
                set binding_status = 'RETIRED', retired_at = now(), updated_at = now()
              where binding.tenant_id = ? and binding.project_id = ? and binding.script_id = ?
@@ -50,12 +60,13 @@ public class AssetRecognitionFinalizer {
                and not exists (
                  select 1 from script_analysis_fanout_unit unit
                   where unit.snapshot_id = ? and unit.episode_id = binding.episode_id)
-            """, tenantId, projectId, scriptId, snapshotId);
+            """ + bindingScope), bindingArgs);
         Map<String, String> types = Map.of(
             "character_asset", "CHARACTER", "scene_asset", "SCENE", "prop_asset", "PROP");
         for (Map.Entry<String, String> entry : types.entrySet()) {
             String table = entry.getKey();
             String type = entry.getValue();
+            if (!effectiveScope.includes(type)) continue;
             jdbc.update("update asset_visual_variant variant set deleted_at = now(), updated_at = now()"
                 + " where variant.tenant_id = ? and variant.project_id = ?"
                 + " and variant.asset_type = ? and variant.generated_by_run_id is not null"

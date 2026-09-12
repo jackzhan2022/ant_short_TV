@@ -16,6 +16,16 @@ enum VisualVariantSourceType { MANUAL, AI_GENERATED, LEGACY_BACKFILL }
 
 enum EpisodeBindingStatus { ACTIVE, RETIRED, AMBIGUOUS }
 
+enum AssetRecognitionScope {
+    ALL, CHARACTER, SCENE, PROP;
+
+    boolean includes(String assetType) {
+        return this == ALL || name().equals(assetType);
+    }
+}
+
+enum AssetPromptPolicy { FILL_EMPTY, REGENERATE_ALL }
+
 record AssetOwner(long tenantId, long projectId, AssetType assetType, long assetId) {
     AssetOwner {
         if (tenantId <= 0 || projectId <= 0 || assetId <= 0 || assetType == null) {

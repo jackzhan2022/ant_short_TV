@@ -51,11 +51,28 @@ public class AssetRecognitionAgentAdapter {
         AiExecutionContext executionContext,
         Long modelId
     ) {
+        return executeChild(plan, task, stage, episodeId, executionContext, modelId,
+            AssetRecognitionScope.ALL, AssetPromptPolicy.FILL_EMPTY);
+    }
+
+    public Execution executeChild(
+        WorkflowAgentExecutionPlan plan,
+        ScriptAnalysisTaskEntity task,
+        ScriptAnalysisStageEntity stage,
+        Long episodeId,
+        AiExecutionContext executionContext,
+        Long modelId,
+        AssetRecognitionScope scope,
+        AssetPromptPolicy promptPolicy
+    ) {
         EpisodePromptContextService.Prepared prepared = contexts == null
             ? null : contexts.prepare(task, episodeId, modelId);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             AssetRecognitionAgentBootstrap.AGENT_CODE,
-            "基于服务端已准备的当前剧集正文和资产目录，识别、匹配并保存本集正式角色、变装、场景、道具及形态。",
+            "基于服务端已准备的当前剧集正文和资产目录，识别、匹配并保存本集正式资产。"
+                + " 本次仅处理范围：" + (scope == null ? AssetRecognitionScope.ALL : scope).name()
+                + "；提示词策略：" + (promptPolicy == null ? AssetPromptPolicy.FILL_EMPTY : promptPolicy).name()
+                + "。范围外数组必须为空。",
             task.getTenantId(), task.getProjectId(), episodeId, task.getScriptId(), task.getId(),
             stage.getId(), task.getCreatedBy(),
             executionContext == null ? null : executionContext.task().id,
@@ -63,7 +80,9 @@ public class AssetRecognitionAgentAdapter {
             executionContext == null ? null : executionContext.task().executionVersion,
             modelId, null,
             prepared == null ? null : prepared.commonPrefix(),
-            prepared == null ? null : prepared.cacheKey(), Map.of());
+            prepared == null ? null : prepared.cacheKey(), Map.of(
+                "assetScope", (scope == null ? AssetRecognitionScope.ALL : scope).name(),
+                "assetPromptPolicy", (promptPolicy == null ? AssetPromptPolicy.FILL_EMPTY : promptPolicy).name()));
         WorkflowAgentRunResult run = runner.runFormal(plan, input);
         if (!assets.hasCoverage(task.getTenantId(), task.getScriptId(), episodeId, run.runId())) {
             throw new IllegalStateException("Agent 未提交本次剧集正式资产识别结果。");

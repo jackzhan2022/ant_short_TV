@@ -85,6 +85,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             "character_extract",
             "scene_extract",
             "prop_extract",
+            "scoped_asset_reextraction",
             "storyboard_breakdown",
             "prompt_generate"
         );
@@ -202,6 +203,11 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
                     ExtractScriptElementsRequest.class
                 );
                 return workflowService.executeElementExtractionOperation(operation, request, context);
+            }
+            if ("SCOPED_ASSET_REEXTRACTION".equals(operation.operationType)) {
+                ScopedAssetReextractionRequest request = objectMapper.readValue(
+                    operation.redactedInputJson, ScopedAssetReextractionRequest.class);
+                return workflowService.executeScopedAssetReextractionOperation(operation, request, context);
             }
             if ("STORYBOARD_BREAKDOWN".equals(operation.operationType)) {
                 StoryboardBreakdownRequest request = objectMapper.readValue(

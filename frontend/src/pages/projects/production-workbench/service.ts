@@ -752,6 +752,39 @@ export const extractScriptElements = async (
     },
   );
 
+export type AssetReextractionScope = ScriptElementType;
+export type AssetPromptPolicy = 'FILL_EMPTY' | 'REGENERATE_ALL';
+
+export type AssetReextractionPreflight = {
+  targetType: AssetReextractionScope;
+  existingAssets: number;
+  existingVariants: number;
+  existingPrompts: number;
+  requiresConfirmation: boolean;
+};
+
+export const queryAssetReextractionPreflight = async (
+  projectId: number,
+  targetType: AssetReextractionScope,
+) =>
+  request<ApiResponse<AssetReextractionPreflight>>(
+    `/api/projects/${projectId}/asset-reextraction/preflight`,
+    { params: { targetType } },
+  );
+
+export const submitAssetReextraction = async (
+  projectId: number,
+  values: { targetType: AssetReextractionScope; promptPolicy: AssetPromptPolicy },
+) =>
+  request<ApiResponse<API.AiExecutionResponse>>(
+    `/api/projects/${projectId}/asset-reextraction`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
 export const queryAssetCandidates = async (
   projectId: number,
   params?: {

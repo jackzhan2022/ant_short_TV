@@ -250,6 +250,7 @@ public class WorkflowAgentRunner {
             splitPolicy.preflight(input).ifPresent(reason ->
                 runState.beginSplitFallback(reason.name()));
         }
+        input.promptCacheOptions().forEach(runState::put);
         List<AiChatMessage> messages = new ArrayList<>();
         if (input.stableContext() != null && !input.stableContext().isBlank()) {
             messages.add(AiChatMessage.system(input.stableContext()));

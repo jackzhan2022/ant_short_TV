@@ -15,6 +15,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Radio,
   Skeleton,
   Tag,
   Typography,
@@ -43,14 +44,17 @@ import {
   decideAssetCandidate,
   deleteScriptElement,
   deleteVisualVariant,
-  extractScriptElements,
+  type AssetPromptPolicy,
+  type AssetReextractionPreflight,
   type PropAsset,
   queryAssetCandidates,
+  queryAssetReextractionPreflight,
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
   type SceneAsset,
   type ScriptElementType,
   selectPrimaryVisualVariant,
+  submitAssetReextraction,
   updateScriptElement,
   updateVisualVariant,
   type VisualVariant,
@@ -70,6 +74,11 @@ const elementLabels: Record<ElementType, string> = {
   CHARACTER: '角色',
   SCENE: '场景',
   PROP: '道具',
+};
+
+const scopeLabels: Record<ScriptElementType, string> = {
+  ALL: '全部资产',
+  ...elementLabels,
 };
 
 const getSummary = (type: ElementType, item: AssetRecord) => {
@@ -412,6 +421,10 @@ const ProductionWorkbenchSettings = () => {
   const [processingAction, setProcessingAction] = useState<string>();
   const [activeExecution, setActiveExecution] =
     useState<API.AiExecutionResponse>();
+  const [reextractionPreflight, setReextractionPreflight] =
+    useState<AssetReextractionPreflight>();
+  const [reextractionPolicy, setReextractionPolicy] =
+    useState<AssetPromptPolicy>('FILL_EMPTY');
   const [candidates, setCandidates] = useState<AssetCandidate[]>([]);
   const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false);
   const [candidateFilter, setCandidateFilter] =
@@ -516,11 +529,15 @@ const ProductionWorkbenchSettings = () => {
     message.success(successText);
   };
 
-  const extractAssets = async (type: ElementType) => {
-    setProcessingAction(`extract-${type}`);
+  const submitReextraction = async (
+    targetType: ScriptElementType,
+    promptPolicy: AssetPromptPolicy,
+  ) => {
+    setProcessingAction(`extract-${targetType}`);
     try {
-      const response = await extractScriptElements(projectId, {
-        elementType: type,
+      const response = await submitAssetReextraction(projectId, {
+        targetType,
+        promptPolicy,
       });
       if (!response.data?.id) {
         throw new Error('AI execution identity is missing');
@@ -536,12 +553,35 @@ const ProductionWorkbenchSettings = () => {
         const nextWorkspace = await reload();
         applyWorkspace(
           nextWorkspace,
-          `${elementLabels[type]}已提取，结果等待审核`,
+          `${scopeLabels[targetType]}已重新提取`,
         );
+      } else if (terminal.errorMessage) {
+        message.error(terminal.errorMessage);
       }
-    } catch {
-      message.error('AI提取失败');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '资产重提取失败');
     } finally {
+      setProcessingAction(undefined);
+    }
+  };
+
+  const extractAssets = async (targetType: ScriptElementType) => {
+    setProcessingAction(`extract-${targetType}`);
+    try {
+      const response = await queryAssetReextractionPreflight(projectId, targetType);
+      const preflight = response.data;
+      if (!preflight) {
+        throw new Error('资产影响预检失败');
+      }
+      if (!preflight.requiresConfirmation) {
+        await submitReextraction(targetType, 'FILL_EMPTY');
+        return;
+      }
+      setReextractionPolicy('FILL_EMPTY');
+      setReextractionPreflight(preflight);
+      setProcessingAction(undefined);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '资产影响预检失败');
       setProcessingAction(undefined);
     }
   };
@@ -895,6 +935,43 @@ const ProductionWorkbenchSettings = () => {
             <AiExecutionStatus task={activeExecution} />
           </div>
         ) : null}
+
+        <Modal
+          title={`确认重新提取${reextractionPreflight ? scopeLabels[reextractionPreflight.targetType] : ''}`}
+          open={Boolean(reextractionPreflight)}
+          okText="确认提交"
+          cancelText="取消"
+          confirmLoading={Boolean(reextractionPreflight && processingAction === `extract-${reextractionPreflight.targetType}`)}
+          onCancel={() => setReextractionPreflight(undefined)}
+          onOk={() => {
+            if (!reextractionPreflight) return;
+            const targetType = reextractionPreflight.targetType;
+            setReextractionPreflight(undefined);
+            void submitReextraction(targetType, reextractionPolicy);
+          }}
+        >
+          {reextractionPreflight ? (
+            <Flex vertical gap={16}>
+              <Typography.Text>
+                当前范围已有 {reextractionPreflight.existingAssets} 个资产、{reextractionPreflight.existingVariants} 个视觉形态，
+                {reextractionPreflight.existingPrompts} 条非空提示词。
+              </Typography.Text>
+              <Radio.Group
+                value={reextractionPolicy}
+                onChange={(event) => setReextractionPolicy(event.target.value)}
+                options={[
+                  { value: 'FILL_EMPTY', label: '仅补全空提示词' },
+                  { value: 'REGENERATE_ALL', label: '重新生成当前范围提示词' },
+                ]}
+              />
+              {reextractionPolicy === 'REGENERATE_ALL' ? (
+                <Typography.Text type="warning">
+                  将替换当前范围内 {reextractionPreflight.existingPrompts} 条已有提示词。
+                </Typography.Text>
+              ) : null}
+            </Flex>
+          ) : null}
+        </Modal>
 
         <Drawer
           title={formatMessage({
@@ -2048,6 +2125,16 @@ const ProductionWorkbenchSettings = () => {
               onClick={() => extractAssets(activeType)}
             >
               批量生成
+            </Button>
+            <Button
+              type="text"
+              size="small"
+              icon={<RobotOutlined />}
+              aria-label="AI提取全部资产"
+              loading={processingAction === 'extract-ALL'}
+              onClick={() => extractAssets('ALL')}
+            >
+              全部生成
             </Button>
           </div>
         </div>

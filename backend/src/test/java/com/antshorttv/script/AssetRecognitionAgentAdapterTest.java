@@ -61,6 +61,23 @@ class AssetRecognitionAgentAdapterTest {
     }
 
     @Test
+    void forwardsCharacterScopeToTheFormalAgentRun() {
+        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, true);
+        when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
+            .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
+        when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(true);
+
+        adapter.executeChild(plan(), task(), stage(), 101L, null, 99L, AssetRecognitionScope.CHARACTER,
+            AssetPromptPolicy.FILL_EMPTY);
+
+        ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
+        verify(runner).runFormal(any(WorkflowAgentExecutionPlan.class), input.capture());
+        assertThat(input.getValue().promptCacheOptions())
+            .containsEntry("assetScope", "CHARACTER")
+            .containsEntry("assetPromptPolicy", "FILL_EMPTY");
+    }
+
+    @Test
     void rejectsModelTextWithoutTerminalFormalSave() {
         AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets, true);
         when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
