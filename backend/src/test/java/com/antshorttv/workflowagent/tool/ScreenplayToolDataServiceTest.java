@@ -369,6 +369,7 @@ class ScreenplayToolDataServiceTest {
     @Test
     void formalAssetCoverageAndAutomaticEventCommitOrRollbackTogether() throws Exception {
         long versionId = jdbc.queryForObject("select id from script_version where script_id=?", Long.class, scriptId);
+        jdbc.update("update script set current_version_id=? where id=?", versionId, scriptId);
         jdbc.update("""
             insert into script_analysis_task
               (tenant_id,project_id,script_id,script_version_id,workflow_code,status,overall_progress,
@@ -384,8 +385,20 @@ class ScreenplayToolDataServiceTest {
             """,tenantId,context.userId(),projectId,taskId,"event-atomic-"+episodeId,"event-atomic-"+episodeId);
         long executionId=jdbc.queryForObject("select id from ai_execution_task where project_id=?",Long.class,projectId);
         jdbc.update("update script_analysis_task set execution_id=? where id=?",executionId,taskId);
+        jdbc.update("update ai_execution_task set execution_version=1,claim_expires_at=dateadd('minute',5,now()) where id=?", executionId);
+        jdbc.update("""
+            insert into ai_execution_attempt
+              (execution_id,execution_version,phase,attempt_no,status,idempotency_key,started_at)
+            values (?,1,'ANALYSIS',1,'STARTED',?,now())
+            """, executionId, "event-attempt-" + episodeId);
+        long attemptId=jdbc.queryForObject("select id from ai_execution_attempt where execution_id=?",Long.class,executionId);
+        jdbc.update("""
+            insert into script_asset_extraction_owner
+              (tenant_id,project_id,script_id,execution_id,execution_version,attempt_id,updated_at)
+            values (?,?,?,?,?,?,now())
+            """,tenantId,projectId,scriptId,executionId,1,attemptId);
         ToolExecutionContext assetContext = new ToolExecutionContext(tenantId,context.userId(),projectId,
-            episodeId,scriptId,taskId,null,null,executionId,null,1,Set.of("SCRIPT:VIEW","SCRIPT:EDIT"),null,new WorkflowToolRunState());
+            episodeId,scriptId,taskId,null,null,executionId,attemptId,1,Set.of("SCRIPT:VIEW","SCRIPT:EDIT"),null,new WorkflowToolRunState());
         service.readCurrentEpisode(assetContext);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,"characters":[],"scenes":[],"props":[],"characterLooks":[],"propVariants":[]}

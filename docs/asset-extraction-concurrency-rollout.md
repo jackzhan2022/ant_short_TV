@@ -7,7 +7,7 @@
 1. 从隔离分支提取本变更，核对审计文件中列出的在途依赖。不要把工作区里其他未完成的审核或任务中心改动整体发布。
 2. 暂停两个资产提取入口接单，排空旧版本的 `SCRIPT_ANALYSIS_TASK` 及 `SCOPED_ASSET_REEXTRACTION` 执行。若需取消，通过正式任务取消接口操作，等待旧 worker 停止；不能只修改业务表的状态。
 3. 备份数据库和配置的 `workflow-agent.skill-root`。执行 `scripts/sql/asset-extraction-duplicate-preflight.sql`；发现非空 active identity 重名时停止迁移，人工确认，不自动合并或删除。此前零冲突的审计结果不能代替发布时检查。
-4. 迁移 V113 创建协调表与三类 active identity 唯一索引；V114 增加既有 Agent 的两个只读工具、提升 revision 和步数；V115 为重提取快照增加冻结计划。MySQL DDL 可能部分成功，失败时逐项核对列、索引及 Flyway history，不盲目重放整份 DDL。
+4. 迁移 V113 创建协调表与三类 active identity 唯一索引；在既有 V114/V115 旧链路下线迁移之后，V116 增加既有 Agent 的两个只读工具、提升 revision 和步数，V117 为重提取快照增加冻结计划。MySQL DDL 可能部分成功，失败时逐项核对列、索引及 Flyway history，不盲目重放整份 DDL。
 5. 同步后端、前端和 bundled Skills。启动时 `AssetCatalogSkillUpgrade` 给已持久化 Skill 追加带 `asset-catalog-protocol:v1` 标记的协议，保留用户内容，以 revision 校验并原子替换；重复启动不重复追加。若 Skill 不存在，先按原有安装流程安装 bundled Skill。确认 Skill 文件可写，所有节点共用同版本协议。
 6. 确认 Agent allowlist 包含 `read_current_episode`、`search_script_assets`、`read_asset_details`、`save_episode_assets`，max_steps 至少 12；共享上下文协议为 `episode-shared-tools-v2`。恢复接单前确认没有旧 worker。
 
@@ -70,7 +70,7 @@ where s.operation_id=? and s.tenant_id=? order by u.id;
 
 ## 回滚
 
-先停接单，排空或正式取消新执行并等待 worker 停止，再回滚兼容的后端、前端、Agent allowlist 与备份 Skill。保留 V113–V115 的新增表、列、索引和审计记录，不撤销已产生的业务数据或积分账目。回滚旧代码也必须保证只有一个版本执行提取；旧链路没有本次的并发保障，不可混跑。
+先停接单，排空或正式取消新执行并等待 worker 停止，再回滚兼容的后端、前端、Agent allowlist 与备份 Skill。保留 V113、V116–V117 的新增表、列、索引和审计记录，不撤销已产生的业务数据或积分账目。回滚旧代码也必须保证只有一个版本执行提取；旧链路没有本次的并发保障，不可混跑。
 
 ## 已知边界
 

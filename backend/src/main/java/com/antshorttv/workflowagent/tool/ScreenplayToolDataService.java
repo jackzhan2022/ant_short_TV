@@ -125,7 +125,9 @@ public class ScreenplayToolDataService {
         ObjectNode result = json.createObjectNode();
         ArrayNode episodes = result.putArray("episodes");
         jdbc.queryForList("""
-            select episode.id, episode.episode_no, episode.title, episode.summary, episode.status
+            select episode.id, episode.episode_no, episode.title, episode.status,
+                   (select content_json from script_episode_summary s where s.episode_id = episode.id
+                     and s.tenant_id = episode.tenant_id) formal_summary_json
               from script_episode episode
               join script on script.id = episode.script_id
              where episode.tenant_id = ? and episode.project_id = ?
@@ -138,8 +140,10 @@ public class ScreenplayToolDataService {
     public JsonNode readEpisodeScript(ToolExecutionContext context) {
         requireEpisode(context);
         List<Map<String, Object>> rows = jdbc.queryForList("""
-            select id, episode_no, title, summary, content, status
-              from script_episode
+            select id, episode_no, title, content, status,
+                   (select content_json from script_episode_summary s where s.episode_id = episode.id
+                     and s.tenant_id = episode.tenant_id) formal_summary_json
+              from script_episode episode
              where tenant_id = ? and project_id = ? and id = ? and retired_at is null
             """, context.tenantId(), context.projectId(), context.episodeId());
         if (rows.isEmpty()) {
@@ -153,8 +157,10 @@ public class ScreenplayToolDataService {
         ObjectNode result = json.createObjectNode();
         ArrayNode episodes = result.putArray("episodes");
         jdbc.queryForList("""
-            select id, episode_no, title, summary, content, status
-              from script_episode
+            select id, episode_no, title, content, status,
+                   (select content_json from script_episode_summary s where s.episode_id = episode.id
+                     and s.tenant_id = episode.tenant_id) formal_summary_json
+              from script_episode episode
              where tenant_id = ? and project_id = ? and retired_at is null
              order by episode_no, id
             """, context.tenantId(), context.projectId())
@@ -760,8 +766,6 @@ public class ScreenplayToolDataService {
             null, context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(),
             schemaVersion, content, "AI", context.agentRunId(), context.userId(), context.userId(),
             null, null));
-        jdbc.update("update script_episode set summary = ?, updated_at = now() where id = ?",
-            summary, context.episodeId());
         com.antshorttv.script.EpisodeFanoutCommitEvidence.record(jdbc, context, actualFingerprint);
         ObjectNode result = json.createObjectNode();
         result.put("saved", true);
@@ -888,8 +892,10 @@ public class ScreenplayToolDataService {
         String direction
     ) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-            select id, episode_no, title, summary, content, status
-              from script_episode
+            select id, episode_no, title, content, status,
+                   (select content_json from script_episode_summary s where s.episode_id = episode.id
+                     and s.tenant_id = episode.tenant_id) formal_summary_json
+              from script_episode episode
              where tenant_id = ? and project_id = ? and retired_at is null
                and episode_no %s ?
              order by episode_no %s limit 1
@@ -903,7 +909,7 @@ public class ScreenplayToolDataService {
 
     private ObjectNode adjacentSummary(Map<String, Object> row, boolean previous) {
         ObjectNode item = episodeSummary(row);
-        Object value = row.get("summary");
+        Object value = item.path("summary").asText(null);
         if (previous) {
             put(item, "endingSummary", value);
         } else {
@@ -940,7 +946,16 @@ public class ScreenplayToolDataService {
         item.put("episodeId", number(row.get("id")));
         item.put("episodeNo", number(row.get("episode_no")));
         put(item, "title", row.get("title"));
-        put(item, "summary", row.get("summary"));
+        Object formal = row.get("formal_summary_json");
+        if (formal == null) {
+            item.putNull("summary");
+        } else {
+            try {
+                put(item, "summary", json.readTree(String.valueOf(formal)).path("summary").asText(null));
+            } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+                throw new IllegalStateException("剧集概要数据损坏。", exception);
+            }
+        }
         put(item, "status", row.get("status"));
         return item;
     }

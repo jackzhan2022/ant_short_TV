@@ -14,26 +14,35 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 class ScopedAssetReextractionService {
-    @org.springframework.beans.factory.annotation.Autowired private AssetExtractionCoordination coordination;
-    @org.springframework.beans.factory.annotation.Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
-    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.workflowagent.run.WorkflowAgentRunRepository runs;
-    @org.springframework.beans.factory.annotation.Autowired private com.fasterxml.jackson.databind.ObjectMapper json;
     private final JdbcTemplate jdbc;
     private final WorkflowAgentRunner runner;
     private final AssetRecognitionAgentAdapter recognition;
+    private final TransactionTemplate transactions;
+    private final AssetExtractionCoordination coordination;
+    private final com.antshorttv.workflowagent.run.WorkflowAgentRunRepository runs;
+    private final com.fasterxml.jackson.databind.ObjectMapper json;
 
     ScopedAssetReextractionService(
         JdbcTemplate jdbc,
         WorkflowAgentRunner runner,
-        AssetRecognitionAgentAdapter recognition
+        AssetRecognitionAgentAdapter recognition,
+        PlatformTransactionManager transactionManager,
+        AssetExtractionCoordination coordination,
+        com.antshorttv.workflowagent.run.WorkflowAgentRunRepository runs,
+        com.fasterxml.jackson.databind.ObjectMapper json
     ) {
         this.jdbc = jdbc;
         this.runner = runner;
         this.recognition = recognition;
+        this.transactions = new TransactionTemplate(transactionManager);
+        this.coordination = coordination;
+        this.runs = runs;
+        this.json = json;
     }
 
     AssetReextractionPreflight preflight(long tenantId, long projectId, long scriptId,
@@ -143,21 +152,30 @@ class ScopedAssetReextractionService {
         if (count("select count(*) from scoped_asset_reextraction_unit where snapshot_id=? and status <> 'SUCCEEDED'", snapshot.id()) != 0) {
             throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE, "仍有剧集未完成资产重提取，不能收口旧资产。");
         }
-        transaction(() -> {
-            requireOwner(operation,executionContext);
-            requireSources(operation,snapshot);
-            Integer missing=jdbc.queryForObject("""
-                select count(*) from scoped_asset_reextraction_unit u
-                left join script_episode_asset_analysis a on a.episode_id=u.episode_id
-                  and a.generated_by_run_id=u.child_run_id and a.content_fingerprint=u.content_fingerprint
-                  and a.tenant_id=? and a.script_id=?
-                where u.snapshot_id=? and (u.status<>'SUCCEEDED' or a.id is null)
-                """,Integer.class,operation.tenantId,operation.scriptId,snapshot.id());
-            if(missing==null || missing!=0)throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE,"缺少正式提交证据，不能收口。");
-            finalizeScope(snapshot, scope);
-            refresh(snapshot.id(), "SUCCEEDED");
-            return null;
-        });
+        try {
+            transaction(() -> {
+                requireOwner(operation,executionContext);
+                requireSources(operation,snapshot);
+                Integer missing=jdbc.queryForObject("""
+                    select count(*) from scoped_asset_reextraction_unit u
+                    left join script_episode_asset_analysis a on a.episode_id=u.episode_id
+                      and a.generated_by_run_id=u.child_run_id and a.content_fingerprint=u.content_fingerprint
+                      and a.tenant_id=? and a.script_id=?
+                    where u.snapshot_id=? and (u.status<>'SUCCEEDED' or a.id is null)
+                    """,Integer.class,operation.tenantId,operation.scriptId,snapshot.id());
+                if(missing==null || missing!=0)throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE,"缺少正式提交证据，不能收口。");
+                finalizeScope(snapshot, scope);
+                refresh(snapshot.id(), "SUCCEEDED");
+                return null;
+            });
+        } catch (RuntimeException failure) {
+            transaction(() -> {
+                requireOwner(operation,executionContext);
+                refresh(snapshot.id(), "FAILED");
+                return null;
+            });
+            throw failure;
+        }
         return new ScriptAiOperationExecutionResult("SCOPED_ASSET_REEXTRACTION", snapshot.id(), List.of(), calls);
     }
 
@@ -224,7 +242,7 @@ class ScopedAssetReextractionService {
     }
 
     private <T> T transaction(java.util.function.Supplier<T> work) {
-        return new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status -> work.get());
+        return transactions.execute(status -> work.get());
     }
     private void requireOwner(ScriptAiOperationEntity o,AiExecutionContext c) {
         coordination.requireOwned(o.tenantId,o.projectId,o.scriptId,c.task().id,c.task().executionVersion,c.claim().attemptId());
@@ -259,7 +277,7 @@ class ScopedAssetReextractionService {
                   and not exists (select 1 from scoped_asset_reextraction_unit u where u.snapshot_id=? and u.episode_id=b.episode_id)
                 """,snapshot.tenantId(),snapshot.projectId(),snapshot.scriptId(),type,snapshot.id());
             jdbc.update("update asset_visual_variant variant set deleted_at=now(),updated_at=now()"
-                + " where tenant_id=? and project_id=? and asset_type=? and generated_by_run_id is not null"
+                + " where tenant_id=? and project_id=? and asset_type=? and source_type='AI' and generated_by_run_id is not null"
                 + " and deleted_at is null and exists (select 1 from "+table+" asset where asset.id=variant.asset_id"
                 + " and asset.tenant_id=variant.tenant_id and asset.project_id=variant.project_id and asset.script_id=?)"
                 + " and not exists (select 1 from asset_visual_variant_episode b where b.variant_id=variant.id"
