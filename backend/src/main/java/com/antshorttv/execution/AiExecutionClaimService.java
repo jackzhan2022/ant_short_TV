@@ -177,7 +177,10 @@ public class AiExecutionClaimService {
         LocalDateTime now
     ) {
         AiExecutionAttemptEntity attempt = attemptMapper.selectById(attemptId);
-        boolean retry = attempt != null && attempt.attemptNo < retryPolicy.maxAttempts();
+        Long failedAttempts = attemptMapper.selectCount(new QueryWrapper<AiExecutionAttemptEntity>()
+            .eq("execution_id",executionId).eq("execution_version",attempt == null ? null : attempt.executionVersion)
+            .in("status","FAILED","TIMED_OUT"));
+        boolean retry = attempt != null && failedAttempts + 1 < retryPolicy.maxAttempts();
         String status = retry ? AiExecutionStatus.PENDING.name() : AiExecutionStatus.FAILED.name();
         UpdateWrapper<AiExecutionTaskEntity> update = new UpdateWrapper<AiExecutionTaskEntity>()
             .set("status", status)
@@ -248,5 +251,19 @@ public class AiExecutionClaimService {
             }
         }
         return recovered;
+    }
+
+    @Transactional
+    public void defer(AiExecutionClaim claim,String reason,LocalDateTime now) {
+        int updated=taskMapper.update(null,new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("status","PENDING").set("next_run_at",now.plusSeconds(10))
+            .set("claim_token",null).set("claim_expires_at",null).set("error_code","RESOURCE_WAIT")
+            .set("error_message",reason).set("updated_at",now)
+            .eq("id",claim.executionId()).eq("execution_version",claim.executionVersion())
+            .eq("status","RUNNING").eq("claim_token",claim.claimToken()));
+        if(updated!=1)throw new AiExecutionClaimLostException(claim.executionId());
+        attemptMapper.update(null,new UpdateWrapper<AiExecutionAttemptEntity>()
+            .set("status","CANCELED").set("error_code","RESOURCE_WAIT").set("error_message",reason)
+            .set("finished_at",now).eq("id",claim.attemptId()).eq("status","STARTED"));
     }
 }

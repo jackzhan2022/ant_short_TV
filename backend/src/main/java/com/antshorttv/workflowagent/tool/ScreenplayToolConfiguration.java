@@ -9,6 +9,32 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ScreenplayToolConfiguration {
     @Bean
+    WorkflowToolDefinition searchScriptAssetsTool(AssetCatalogService data, ObjectMapper json) {
+        ObjectNode input=objectSchema(json);
+        input.putArray("required").add("assetType");
+        ObjectNode fields=(ObjectNode)input.path("properties");
+        fields.putObject("assetType").put("type","string").putArray("enum").add("CHARACTER").add("SCENE").add("PROP");
+        fields.putObject("query").put("type","string").put("maxLength",200);
+        fields.putObject("cursor").put("type","string").put("maxLength",100);
+        fields.putObject("pageSize").put("type","integer").put("minimum",1).put("maximum",50);
+        return definition("search_script_assets","检索剧本资产","按规范名或明确别名查找当前剧本资产；空查询分页浏览。",
+            input,json.createObjectNode().put("type","object"),ToolRiskLevel.READ_ONLY,
+            executor(data::search));
+    }
+
+    @Bean
+    WorkflowToolDefinition readAssetDetailsTool(AssetCatalogService data, ObjectMapper json) {
+        ObjectNode input=objectSchema(json);
+        input.putArray("required").add("assetKeys");
+        ObjectNode fields=(ObjectNode)input.path("properties");
+        fields.putObject("assetKeys").put("type","array").put("minItems",1).put("maxItems",10)
+            .putObject("items").put("type","string").put("pattern","^[csp]_[1-9][0-9]*$");
+        fields.putObject("cursor").put("type","string").put("maxLength",100);
+        return definition("read_asset_details","读取资产形态","按可信资产 key 分页读取形态详情；续页指定单个 key。",
+            input,json.createObjectNode().put("type","object"),ToolRiskLevel.READ_ONLY,
+            executor(data::details));
+    }
+    @Bean
     WorkflowToolDefinition readProjectContextTool(ScreenplayToolDataService data, ObjectMapper json) {
         return definition("read_project_context", "读取项目上下文", "读取当前授权项目的基础配置。",
             emptyInput(json), projectOutput(json), ToolRiskLevel.READ_ONLY,
@@ -150,6 +176,7 @@ public class ScreenplayToolConfiguration {
         ObjectNode catalog = objectSchema(json);
         catalog.putArray("required").add("characters").add("scenes").add("props");
         ObjectNode catalogFields = (ObjectNode) catalog.path("properties");
+        catalogFields.putObject("pages").put("type","object");
         for (String name : new String[]{"characters", "scenes", "props"}) {
             ObjectNode array = catalogFields.putObject(name).put("type", "array").put("maxItems", 200);
             ObjectNode item = objectSchema(json);

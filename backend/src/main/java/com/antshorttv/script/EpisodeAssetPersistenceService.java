@@ -30,6 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class EpisodeAssetPersistenceService {
+    @Autowired private AssetExtractionCoordination coordination;
     private static final Map<String, String> TABLES = Map.of(
         "CHARACTER", "character_asset", "SCENE", "scene_asset", "PROP", "prop_asset");
     private static final Map<String, String> PREFIXES = Map.of(
@@ -56,6 +57,8 @@ public class EpisodeAssetPersistenceService {
 
     @Transactional
     public JsonNode save(ToolExecutionContext context, JsonNode payload) {
+        if(coordination!=null && context.executionId()!=null) coordination.requireOwned(context);
+        if(context.executionId()!=null) requireCurrentScriptVersion(context);
         ReadEpisode read = requireReadEpisode(context);
         payload = EpisodeAssetsPayloadNormalizer.prepare(payload,
             new ScreenplayToolConfiguration().episodeAssetsInput(json), read.content());
@@ -101,6 +104,7 @@ public class EpisodeAssetPersistenceService {
             read.fingerprint(), diagnostic);
         recordAutoStoryboard(context, read, analysisId);
         EpisodeFanoutCommitEvidence.record(jdbc, context, read.fingerprint());
+        recordScopedCommit(context,read.fingerprint());
 
         ObjectNode result = json.createObjectNode();
         result.put("saved", true);
@@ -109,6 +113,40 @@ public class EpisodeAssetPersistenceService {
         result.put("contentFingerprint", read.fingerprint());
         result.set("counts", counts);
         return result;
+    }
+
+    private void requireCurrentScriptVersion(ToolExecutionContext c) {
+        List<Long> versions=jdbc.queryForList("select current_version_id from script where id=? and tenant_id=? and project_id=? and deleted_at is null for update",
+            Long.class,c.scriptId(),c.tenantId(),c.projectId());
+        List<Long> expected=jdbc.queryForList("""
+            select case when e.business_type='SCRIPT_AI_OPERATION' then o.script_version_id else t.script_version_id end
+            from ai_execution_task e
+            left join script_ai_operation o on e.business_type='SCRIPT_AI_OPERATION' and o.id=e.business_id and o.execution_id=e.id
+            left join script_analysis_task t on e.business_type='SCRIPT_ANALYSIS_TASK' and t.id=e.business_id and t.execution_id=e.id
+            where e.id=?
+            """,Long.class,c.executionId());
+        if(versions.size()!=1 || expected.size()!=1 || expected.get(0)==null
+            || !java.util.Objects.equals(versions.get(0),expected.get(0)))
+            throw new BusinessException(ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED,"剧本版本已变化，不能保存旧版本资产。");
+    }
+
+    private void recordScopedCommit(ToolExecutionContext c,String fingerprint) {
+        if(c.executionId()==null) return;
+        List<Long> snapshots=jdbc.queryForList("""
+            select s.id from scoped_asset_reextraction_snapshot s
+            join script_ai_operation o on o.id=s.operation_id
+            join ai_execution_task e on e.id=o.execution_id and e.business_id=o.id
+            where e.id=? and e.business_type='SCRIPT_AI_OPERATION'
+              and o.operation_type='SCOPED_ASSET_REEXTRACTION' and o.id=?
+              and s.tenant_id=? and s.project_id=? and s.script_id=?
+            """,Long.class,c.executionId(),c.taskId(),c.tenantId(),c.projectId(),c.scriptId());
+        if(snapshots.isEmpty())return;
+        int changed=jdbc.update("""
+            update scoped_asset_reextraction_unit set child_run_id=?,updated_at=now()
+            where snapshot_id=? and episode_id=? and content_fingerprint=? and status='RUNNING'
+            """,c.agentRunId(),snapshots.get(0),c.episodeId(),fingerprint);
+        if(changed!=1)throw new BusinessException(ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED,
+            "资产重提取单元或源内容已变化，正式保存已回滚。");
     }
 
     private void recordAutoStoryboard(

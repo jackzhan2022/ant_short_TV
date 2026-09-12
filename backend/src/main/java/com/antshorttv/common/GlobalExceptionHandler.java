@@ -9,6 +9,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(com.antshorttv.script.AssetExtractionConflictException.class)
+    public ResponseEntity<ApiResponse<java.util.Map<String,Long>>> handleAssetConflict(
+        com.antshorttv.script.AssetExtractionConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiResponse<>(false,
+            java.util.Map.of("executionId",exception.executionId()),"ASSET_EXTRACTION_CONFLICT",exception.getMessage()));
+    }
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException exception) {

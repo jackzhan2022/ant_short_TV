@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class ScriptAnalysisExecutionService {
+    @Autowired private AssetExtractionCoordination assetCoordination;
     @Autowired private ScriptAnalysisConfigSnapshotService configSnapshotService;
     @Autowired(required = false) private GlobalUnderstandingAgentAdapter globalUnderstandingAgentAdapter;
     @Autowired(required = false) private EpisodeSplittingAgentAdapter episodeSplittingAgentAdapter;
@@ -50,6 +51,15 @@ public class ScriptAnalysisExecutionService {
     }
 
     public ScriptAnalysisExecutionOutcome executeTask(Long taskId, AiExecutionContext executionContext) {
+        ScriptAnalysisTaskEntity scope = taskMapper.selectById(taskId);
+        if(assetCoordination==null || executionContext==null || scope==null || "COMPLETED".equals(scope.getStatus()))
+            return executeOwnedTask(taskId,executionContext);
+        assetCoordination.acquire(scope.getScriptId(),executionContext);
+        // Keep ownership through settlement and retry. Admission reclaims terminal owners.
+        return executeOwnedTask(taskId,executionContext);
+    }
+
+    private ScriptAnalysisExecutionOutcome executeOwnedTask(Long taskId, AiExecutionContext executionContext) {
         InvocationTracker tracker = new InvocationTracker();
         ScriptAnalysisTaskEntity task = taskMapper.selectById(taskId);
         if (task == null || "COMPLETED".equals(task.getStatus())) {
@@ -267,7 +277,7 @@ public class ScriptAnalysisExecutionService {
                                 var child = assetRecognitionAgentAdapter.executeClaimedChild(plan, currentTask,
                                     currentStage, episode, currentExecution, branch.effectiveModelId());
                                 return new EpisodeFanoutCoordinator.ChildResult(child.agentRunId(), child.modelCalls());
-                            }, summary ? snapshotId -> { } : assetRecognitionFinalizer::finish);
+                            }, summary ? snapshotId -> { } : snapshotId -> assetRecognitionFinalizer.finishOwned(snapshotId,executionContext));
                         return new BranchCompletion(branch.stage(), result, null);
                     } catch (RuntimeException exception) {
                         return new BranchCompletion(branch.stage(), null, exception);
@@ -343,10 +353,10 @@ public class ScriptAnalysisExecutionService {
     }
 
     private Long frozenModelId(ScriptAnalysisTaskEntity task) {
-        if (configSnapshotService == null) {
-            throw new IllegalStateException("剧本分析配置快照服务不可用。");
-        }
-        return configSnapshotService.modelIdFor(task.getId());
+        Long modelId = configSnapshotService == null ? null : configSnapshotService.modelIdFor(task.getId());
+        return modelId == null
+            ? projectAiConfigService.resolveModelId(task.getTenantId(), task.getProjectId(), "TEXT")
+            : modelId;
     }
 
     private boolean isCurrentVersion(ScriptAnalysisTaskEntity task) {

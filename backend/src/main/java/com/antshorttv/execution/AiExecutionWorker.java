@@ -49,6 +49,9 @@ public class AiExecutionWorker {
                     result.resultId(),
                     LocalDateTime.now()
                 );
+            } catch (AiExecutionDeferredException exception) {
+                lease.assertOwned();
+                claimService.defer(claim, exception.getMessage(), LocalDateTime.now());
             } catch (AiExecutionClaimLostException exception) {
                 throw exception;
             } catch (RuntimeException exception) {

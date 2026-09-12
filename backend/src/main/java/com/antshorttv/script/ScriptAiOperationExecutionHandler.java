@@ -36,6 +36,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactions;
     private final ScriptAiOperationMapper operationMapper;
     private final ScriptWorkflowService workflowService;
     private final AiExecutionAttemptMapper attemptMapper;
@@ -94,6 +96,9 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
 
     @Override
     public AiExecutionRetryPolicy retryPolicy(Throwable failure) {
+        if(failure instanceof com.antshorttv.common.BusinessException business
+            && business.getErrorCode()==com.antshorttv.common.ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED)
+            return AiExecutionRetryPolicy.none();
         return failure instanceof NonRetryableStoryboardException
             ? AiExecutionRetryPolicy.none()
             : retryPolicy();
@@ -110,18 +115,20 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
     @Override
     public AiExecutionHandlerResult execute(AiExecutionContext context) {
         ScriptAiOperationEntity operation = operationMapper.selectById(context.task().businessId);
-        markRunning(operation);
+        withCurrentAttempt(operation, context, () -> { markRunning(operation); return null; });
         ScriptAiOperationExecutionResult result;
         try {
             result = executeOperation(operation, context);
+        } catch (com.antshorttv.execution.AiExecutionDeferredException exception) {
+            throw exception;
         } catch (AiExecutionClaimLostException exception) {
-            markCanceled(operation);
             throw exception;
         } catch (RuntimeException exception) {
+            withCurrentAttempt(operation, context, () -> {
             Long callLogId = exception instanceof AiGatewayException gateway ? gateway.getAiCallLogId() : null;
             List<WorkflowAgentModelCall> attemptAgentCalls = workflowAgentRuns.modelCallsForExecutionAttempt(
                 context.task().id, context.claim().attemptId(), context.task().tenantId);
-            List<WorkflowAgentModelCall> executionAgentCalls = "STORYBOARD_BREAKDOWN".equals(operation.operationType)
+            List<WorkflowAgentModelCall> executionAgentCalls = usesDurableAgentCalls(operation)
                 ? workflowAgentRuns.modelCallsForExecution(context.task().id, context.task().tenantId)
                 : attemptAgentCalls;
             WorkflowAgentModelCall lastAttemptAgentCall = attemptAgentCalls.isEmpty()
@@ -142,11 +149,14 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             markExecutionDiagnostics(context, executionCallCount);
             settleTerminalFailure(context, settlementAgentCall, callLogId,
                 executionCallCount, retryPolicy(exception).maxAttempts());
+            return null;
+            });
             throw exception;
         }
+        return withCurrentAttempt(operation, context, () -> {
         markAttempt(context, result);
         markSucceeded(operation, result);
-        List<WorkflowAgentModelCall> executionAgentCalls = "STORYBOARD_BREAKDOWN".equals(operation.operationType)
+        List<WorkflowAgentModelCall> executionAgentCalls = usesDurableAgentCalls(operation)
             ? workflowAgentRuns.modelCallsForExecution(context.task().id, context.task().tenantId)
             : result.agentModelCalls();
         recordUsageAndCost(context, result.invocations(), executionAgentCalls);
@@ -160,6 +170,26 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         settle(context, result.lastInvocation(), settlementAgentCall, AiSettlementOutcome.SUCCESS,
             executionCallCount);
         return new AiExecutionHandlerResult(result.resultType(), result.resultId());
+        });
+    }
+
+    private <T> T withCurrentAttempt(ScriptAiOperationEntity operation, AiExecutionContext context,
+                                    java.util.function.Supplier<T> work) {
+        if(transactions==null || !"SCOPED_ASSET_REEXTRACTION".equals(operation.operationType)) return work.get();
+        return new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status -> {
+            AiExecutionTaskEntity current=executionService.requireTaskForUpdate(context.task().id);
+            if(!"RUNNING".equals(current.status)
+                || !java.util.Objects.equals(current.executionVersion,context.claim().executionVersion())
+                || !java.util.Objects.equals(current.claimToken,context.claim().claimToken())
+                || current.claimExpiresAt==null || !current.claimExpiresAt.isAfter(LocalDateTime.now()))
+                throw new AiExecutionClaimLostException(context.task().id);
+            return work.get();
+        });
+    }
+
+    private boolean usesDurableAgentCalls(ScriptAiOperationEntity operation) {
+        return "STORYBOARD_BREAKDOWN".equals(operation.operationType)
+            || "SCOPED_ASSET_REEXTRACTION".equals(operation.operationType);
     }
 
     private void markExecutionDiagnostics(AiExecutionContext context, int businessCallCount) {
@@ -343,7 +373,10 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         int maxAttempts
     ) {
         AiExecutionAttemptEntity attempt = attemptMapper.selectById(context.claim().attemptId());
-        if (attempt == null || attempt.attemptNo < maxAttempts) {
+        Long failures = attemptMapper.selectCount(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<AiExecutionAttemptEntity>()
+            .eq("execution_id", context.task().id).eq("execution_version", context.task().executionVersion)
+            .in("status", "FAILED", "TIMED_OUT"));
+        if (attempt == null || failures + 1 < maxAttempts) {
             return;
         }
         settle(context, null, agentCall,

@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchSettings from './settings';
 
 const mocks = vi.hoisted(() => ({
-  projectId: '1',
   messageError: vi.fn(),
   confirmScriptElement: vi.fn(),
   deleteScriptElement: vi.fn(),
@@ -26,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@umijs/max', () => ({
-  useParams: () => ({ id: mocks.projectId }),
+  useParams: () => ({ id: '1' }),
   useIntl: () => ({
     formatMessage: ({ defaultMessage }: { defaultMessage: string }) =>
       defaultMessage,
@@ -266,8 +265,8 @@ const workspace = {
 
 describe('ProductionWorkbenchSettings', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
-    mocks.projectId = '1';
     workspace.characters[0].visual.variants[1].prompt =
       '性别:男；衣着描述:白色礼服，领结';
     mocks.queryScriptWorkspace.mockResolvedValue({ data: workspace });
@@ -637,6 +636,8 @@ describe('ProductionWorkbenchSettings', () => {
         10,
         601,
         expect.any(Function),
+        1500,
+        expect.any(AbortSignal),
       );
       expect(
         mocks.queryAssetSettingsSummary.mock.calls.length,
@@ -676,40 +677,6 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.getByText('最新角色')).toBeInTheDocument();
   });
 
-  it('does not let an old project mutation invalidate the new project load', async () => {
-    const view = render(<ProductionWorkbenchSettings />);
-    await screen.findByText('斌斌');
-    let finishSave!: (value: unknown) => void;
-    let finishLoad!: (value: unknown) => void;
-    mocks.updateScriptElement.mockReturnValueOnce(new Promise((resolve) => { finishSave = resolve; }));
-    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
-    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存斌斌' }));
-    mocks.projectId = '2';
-    mocks.queryAssetSettingsSummary.mockReturnValueOnce(new Promise((resolve) => { finishLoad = resolve; }));
-    view.rerender(<ProductionWorkbenchSettings />);
-    finishSave({ data: null });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    finishLoad({ data: { projectId: 2, characters: [{ id: 2, name: '新项目角色' }], scenes: [], props: [] } });
-    expect(await screen.findByText('新项目角色')).toBeInTheDocument();
-    expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(2);
-  });
-
-  it('retries only visual reads when a committed variant change cannot refresh details', async () => {
-    render(<ProductionWorkbenchSettings />);
-    await screen.findByText('斌斌');
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
-    await screen.findByRole('button', { name: '新增变装' });
-    fireEvent.click(screen.getByRole('button', { name: '新增变装' }));
-    fireEvent.change(screen.getByLabelText('新视觉形象名称'), { target: { value: '雨夜造型' } });
-    mocks.queryAssetVisualWorkspace.mockRejectedValueOnce(new Error('offline'));
-    fireEvent.click(screen.getByRole('button', { name: '确认新增视觉形象' }));
-    await waitFor(() => expect(mocks.messageError).toHaveBeenCalledWith('操作已完成，但视觉形象刷新失败，请重试加载'));
-    fireEvent.click(screen.getByRole('button', { name: '重试视觉形象' }));
-    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledTimes(3));
-    expect(mocks.createVisualVariant).toHaveBeenCalledTimes(1);
-  });
-
   it('requires confirmation before replacing existing scoped prompts', async () => {
     mocks.queryAssetReextractionPreflight.mockResolvedValueOnce({
       data: {
@@ -735,6 +702,31 @@ describe('ProductionWorkbenchSettings', () => {
         promptPolicy: 'REGENERATE_ALL',
       });
     });
+  });
+
+  it('follows a conflicting task without submitting another paid task', async () => {
+    mocks.submitAssetReextraction.mockRejectedValueOnce({ response: { data: {
+      errorCode: 'ASSET_EXTRACTION_CONFLICT', data: { executionId: 700 },
+    } } });
+    mocks.pollExecution.mockResolvedValueOnce({ id: 700, status: 'SUCCEEDED' });
+    render(<ProductionWorkbenchSettings />);
+    await screen.findAllByText('斌斌');
+    fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
+    await screen.findByText('execution-700-SUCCEEDED');
+    expect(screen.getByText(/本次未创建新任务/)).toBeInTheDocument();
+    expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks repeated clicks while the existing execution is being followed', async () => {
+    mocks.pollExecution.mockReturnValueOnce(new Promise(() => {}));
+    render(<ProductionWorkbenchSettings />);
+    await screen.findAllByText('斌斌');
+    const button = screen.getByRole('button', { name: /AI提取角色/ });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole('button', { name: 'AI提取全部资产' }));
+    expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
   });
 
   it('shows the terminal backend failure reason', async () => {

@@ -14,26 +14,26 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class ScopedAssetReextractionService {
+    @org.springframework.beans.factory.annotation.Autowired private AssetExtractionCoordination coordination;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.workflowagent.run.WorkflowAgentRunRepository runs;
+    @org.springframework.beans.factory.annotation.Autowired private com.fasterxml.jackson.databind.ObjectMapper json;
     private final JdbcTemplate jdbc;
     private final WorkflowAgentRunner runner;
     private final AssetRecognitionAgentAdapter recognition;
-    private final TransactionTemplate transactions;
 
     ScopedAssetReextractionService(
         JdbcTemplate jdbc,
         WorkflowAgentRunner runner,
-        AssetRecognitionAgentAdapter recognition,
-        PlatformTransactionManager transactionManager
+        AssetRecognitionAgentAdapter recognition
     ) {
         this.jdbc = jdbc;
         this.runner = runner;
         this.recognition = recognition;
-        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     AssetReextractionPreflight preflight(long tenantId, long projectId, long scriptId,
@@ -68,89 +68,111 @@ class ScopedAssetReextractionService {
         ScopedAssetReextractionRequest request,
         AiExecutionContext executionContext
     ) {
+        coordination.acquire(operation.scriptId,executionContext);
+        // Keep ownership through settlement and retry. Admission reclaims terminal owners.
+        return executeOwned(operation,request,executionContext);
+    }
+
+    private ScriptAiOperationExecutionResult executeOwned(
+        ScriptAiOperationEntity operation,ScopedAssetReextractionRequest request,AiExecutionContext executionContext
+    ) {
         AssetRecognitionScope scope = parseScope(request.targetType());
         AssetPromptPolicy policy = parsePolicy(request.promptPolicy());
-        Snapshot snapshot = loadOrCreate(operation, scope, policy, modelId(executionContext));
-        requireCurrentSource(operation, snapshot);
-        WorkflowAgentExecutionPlan plan = runner.freezeFormal(AssetRecognitionAgentBootstrap.AGENT_CODE);
+        Snapshot snapshot = transaction(() -> {
+            requireOwner(operation,executionContext);
+            requireCurrentVersion(operation);
+            Snapshot loaded=loadOrCreate(operation, scope, policy, modelId(executionContext));
+            Integer superseded=jdbc.queryForObject("""
+                select count(*) from scoped_asset_reextraction_unit u
+                left join script_episode_asset_analysis a on a.episode_id=u.episode_id
+                  and a.tenant_id=? and a.script_id=? and a.generated_by_run_id=u.child_run_id
+                  and a.content_fingerprint=u.content_fingerprint
+                where u.snapshot_id=? and (u.child_run_id is not null or u.status='SUCCEEDED') and a.id is null
+                """,Integer.class,operation.tenantId,operation.scriptId,loaded.id());
+            if(superseded==null || superseded!=0) throw new BusinessException(ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED,
+                "资产提交证据已被其他任务更新，请重新确认后发起新的资产提取。");
+            return loaded;
+        });
+        WorkflowAgentExecutionPlan plan = transaction(() -> {
+            requireOwner(operation,executionContext);
+            return frozenPlan(snapshot.id());
+        });
         List<WorkflowAgentModelCall> calls = new ArrayList<>();
         for (Unit unit : runnableUnits(snapshot.id())) {
-            requireCurrentSource(operation, snapshot);
-            jdbc.update("update scoped_asset_reextraction_unit set status='RUNNING', started_at=now(), updated_at=now() where id=?", unit.id());
+            transaction(() -> {
+                requireOwner(operation,executionContext);
+                requireSources(operation,snapshot);
+                jdbc.update("update scoped_asset_reextraction_unit set status='RUNNING', started_at=now(), updated_at=now() where id=?", unit.id());
+                return null;
+            });
             try {
                 ScriptAnalysisTaskEntity task = transientTask(operation);
                 ScriptAnalysisStageEntity stage = transientStage();
-                AssetRecognitionAgentAdapter.Execution child = recognition.executeChild(plan, task, stage,
-                    unit.episodeId(), executionContext, snapshot.modelId(), scope, policy);
-                requireCurrentSource(operation, snapshot);
-                jdbc.update("update scoped_asset_reextraction_unit set status='SUCCEEDED', child_run_id=?, error_message=null, finished_at=now(), updated_at=now() where id=?",
-                    child.agentRunId(), unit.id());
+                List<Long> committed=jdbc.queryForList("""
+                    select u.child_run_id from scoped_asset_reextraction_unit u
+                    join script_episode_asset_analysis a on a.episode_id=u.episode_id
+                      and a.generated_by_run_id=u.child_run_id and a.content_fingerprint=u.content_fingerprint
+                    where u.id=? and a.tenant_id=? and a.script_id=?
+                    """,Long.class,unit.id(),operation.tenantId,operation.scriptId);
+                AssetRecognitionAgentAdapter.Execution child = committed.isEmpty()
+                    ? recognition.executeChild(plan, task, stage,unit.episodeId(), executionContext, snapshot.modelId(), scope, policy)
+                    : new AssetRecognitionAgentAdapter.Execution(committed.get(0),runs.modelCalls(committed.get(0),operation.tenantId));
+                transaction(() -> {
+                    requireOwner(operation,executionContext);
+                    jdbc.update("update scoped_asset_reextraction_unit set status='SUCCEEDED', child_run_id=?, error_message=null, finished_at=now(), updated_at=now() where id=?",
+                        child.agentRunId(), unit.id());
+                    return null;
+                });
                 calls.addAll(child.modelCalls());
             } catch (RuntimeException failure) {
-                jdbc.update("update scoped_asset_reextraction_unit set status='FAILED', error_message=?, finished_at=now(), updated_at=now() where id=?",
-                    message(failure), unit.id());
-                refresh(snapshot.id(), "FAILED");
+                transaction(() -> {
+                    requireOwner(operation,executionContext);
+                    jdbc.update("update scoped_asset_reextraction_unit set status='FAILED', error_message=?, finished_at=now(), updated_at=now() where id=?",
+                        message(failure), unit.id());
+                    refresh(snapshot.id(), "FAILED");
+                    return null;
+                });
                 throw failure;
             }
-            refresh(snapshot.id(), "RUNNING");
+            transaction(() -> {
+                requireOwner(operation,executionContext);
+                refresh(snapshot.id(), "RUNNING");
+                return null;
+            });
         }
         if (count("select count(*) from scoped_asset_reextraction_unit where snapshot_id=? and status <> 'SUCCEEDED'", snapshot.id()) != 0) {
             throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE, "仍有剧集未完成资产重提取，不能收口旧资产。");
         }
-        try {
-            transactions.executeWithoutResult(status -> {
-                // Match the script/episode write lock order without holding locks during model calls.
-                jdbc.queryForList("select id from script where id=? and tenant_id=? and project_id=? for update",
-                    snapshot.scriptId(), snapshot.tenantId(), snapshot.projectId());
-                jdbc.queryForList("""
-                    select id from script_episode where tenant_id=? and project_id=? and script_id=?
-                     order by id for update
-                    """, snapshot.tenantId(), snapshot.projectId(), snapshot.scriptId());
-                requireCurrentSource(operation, snapshot);
-                finalizeScope(snapshot, scope);
-                refresh(snapshot.id(), "SUCCEEDED");
-            });
-        } catch (RuntimeException failure) {
-            refresh(snapshot.id(), "FAILED");
-            throw failure;
-        }
+        transaction(() -> {
+            requireOwner(operation,executionContext);
+            requireSources(operation,snapshot);
+            Integer missing=jdbc.queryForObject("""
+                select count(*) from scoped_asset_reextraction_unit u
+                left join script_episode_asset_analysis a on a.episode_id=u.episode_id
+                  and a.generated_by_run_id=u.child_run_id and a.content_fingerprint=u.content_fingerprint
+                  and a.tenant_id=? and a.script_id=?
+                where u.snapshot_id=? and (u.status<>'SUCCEEDED' or a.id is null)
+                """,Integer.class,operation.tenantId,operation.scriptId,snapshot.id());
+            if(missing==null || missing!=0)throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE,"缺少正式提交证据，不能收口。");
+            finalizeScope(snapshot, scope);
+            refresh(snapshot.id(), "SUCCEEDED");
+            return null;
+        });
         return new ScriptAiOperationExecutionResult("SCOPED_ASSET_REEXTRACTION", snapshot.id(), List.of(), calls);
     }
 
-    private void requireCurrentScriptVersion(ScriptAiOperationEntity operation) {
-        List<Long> versions = jdbc.query("""
-            select current_version_id from script where id=? and tenant_id=? and project_id=?
-            """, (rs, row) -> rs.getObject("current_version_id", Long.class),
-            operation.scriptId, operation.tenantId, operation.projectId);
-        if (versions.size() != 1 || !java.util.Objects.equals(versions.get(0), operation.scriptVersionId)) {
-            throw sourceChanged();
-        }
-    }
-
-    private void requireCurrentSource(ScriptAiOperationEntity operation, Snapshot snapshot) {
+    private WorkflowAgentExecutionPlan frozenPlan(long snapshotId) {
+        String saved=jdbc.queryForObject("select frozen_plan_json from scoped_asset_reextraction_snapshot where id=? for update",
+            String.class,snapshotId);
         try {
-            requireCurrentScriptVersion(operation);
-            List<Episode> frozen = jdbc.query("""
-                select episode_id,episode_key,content_fingerprint from scoped_asset_reextraction_unit
-                 where snapshot_id=? order by episode_id
-                """, (rs, row) -> new Episode(rs.getLong("episode_id"), rs.getString("episode_key"),
-                    rs.getString("content_fingerprint")), snapshot.id());
-            List<Episode> current = jdbc.query("""
-                select id,stable_key,content_fingerprint from script_episode
-                 where tenant_id=? and project_id=? and script_id=? and status='ACTIVE'
-                   and retired_at is null order by id
-                """, (rs, row) -> new Episode(rs.getLong("id"), rs.getString("stable_key"),
-                    rs.getString("content_fingerprint")), snapshot.tenantId(), snapshot.projectId(), snapshot.scriptId());
-            if (frozen.isEmpty() || !frozen.equals(current)) throw sourceChanged();
-        } catch (BusinessException changed) {
-            refresh(snapshot.id(), "FAILED");
-            throw changed;
+            if(saved!=null) return json.readValue(saved,WorkflowAgentExecutionPlan.class);
+            WorkflowAgentExecutionPlan plan=runner.freezeFormal(AssetRecognitionAgentBootstrap.AGENT_CODE);
+            jdbc.update("update scoped_asset_reextraction_snapshot set frozen_plan_json=?,updated_at=now() where id=?",
+                json.writeValueAsString(plan),snapshotId);
+            return plan;
+        } catch(com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new IllegalStateException("无法恢复已冻结的资产 Agent 配置。",exception);
         }
-    }
-
-    private BusinessException sourceChanged() {
-        return new BusinessException(ErrorCode.SCRIPT_CONTENT_CHANGED,
-            "资产重提取来源已变化，请基于当前剧本重新提交任务。");
     }
 
     private Snapshot loadOrCreate(
@@ -170,7 +192,6 @@ class ScopedAssetReextractionService {
                 modelId, snapshot.id());
             return new Snapshot(snapshot.id(), snapshot.tenantId(), snapshot.projectId(), snapshot.scriptId(), modelId);
         }
-        requireCurrentScriptVersion(operation);
         requireModel(modelId);
         List<Episode> episodes = jdbc.query("select id, stable_key, content_fingerprint from script_episode where tenant_id=? and project_id=? and script_id=? and status='ACTIVE' and retired_at is null order by episode_no, id",
             (rs, row) -> new Episode(rs.getLong("id"), rs.getString("stable_key"), rs.getString("content_fingerprint")),
@@ -193,7 +214,7 @@ class ScopedAssetReextractionService {
     }
 
     private List<Unit> runnableUnits(long snapshotId) {
-        return jdbc.query("select id, episode_id from scoped_asset_reextraction_unit where snapshot_id=? and status in ('PENDING','FAILED') order by id",
+        return jdbc.query("select id, episode_id from scoped_asset_reextraction_unit where snapshot_id=? and status in ('PENDING','FAILED','RUNNING') order by id",
             (rs, row) -> new Unit(rs.getLong("id"), rs.getLong("episode_id")), snapshotId);
     }
 
@@ -202,26 +223,55 @@ class ScopedAssetReextractionService {
             status, snapshotId, snapshotId, status, snapshotId);
     }
 
+    private <T> T transaction(java.util.function.Supplier<T> work) {
+        return new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status -> work.get());
+    }
+    private void requireOwner(ScriptAiOperationEntity o,AiExecutionContext c) {
+        coordination.requireOwned(o.tenantId,o.projectId,o.scriptId,c.task().id,c.task().executionVersion,c.claim().attemptId());
+    }
+    private void requireCurrentVersion(ScriptAiOperationEntity o) {
+        List<Long> current=jdbc.queryForList("select current_version_id from script where id=? and tenant_id=? and project_id=? and deleted_at is null for update",
+            Long.class,o.scriptId,o.tenantId,o.projectId);
+        if(current.size()!=1 || !java.util.Objects.equals(current.get(0),o.scriptVersionId))
+            throw new BusinessException(ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED,"剧本版本已变化，请重新提交资产重提取。");
+    }
+    private void requireSources(ScriptAiOperationEntity o,Snapshot s) {
+        requireCurrentVersion(o);
+        jdbc.queryForList("select id from script_episode where tenant_id=? and project_id=? and script_id=? and status='ACTIVE' and retired_at is null for update",
+            Long.class,o.tenantId,o.projectId,o.scriptId);
+        Integer changed=jdbc.queryForObject("""
+            select count(*) from scoped_asset_reextraction_unit u left join script_episode e on e.id=u.episode_id
+              and e.tenant_id=? and e.project_id=? and e.script_id=? and e.status='ACTIVE' and e.retired_at is null
+            where u.snapshot_id=? and (e.id is null or e.content_fingerprint<>u.content_fingerprint)
+            """,Integer.class,o.tenantId,o.projectId,o.scriptId,s.id());
+        int active=count("select count(*) from script_episode where tenant_id=? and project_id=? and script_id=? and status='ACTIVE' and retired_at is null",o.tenantId,o.projectId,o.scriptId);
+        int frozen=count("select count(*) from scoped_asset_reextraction_unit where snapshot_id=?",s.id());
+        if(changed==null || changed!=0 || active!=frozen)throw new BusinessException(ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED,"剧集集合或正文已变化，不能继续重提取。");
+    }
+
     private void finalizeScope(Snapshot snapshot, AssetRecognitionScope scope) {
         for (String type : types(scope)) {
             String table = table(type);
-            jdbc.update("update asset_visual_variant variant set deleted_at=now(), updated_at=now()"
-                + " where variant.tenant_id=? and variant.project_id=? and variant.asset_type=?"
-                + " and variant.source_type='AI' and variant.generated_by_run_id is not null and variant.deleted_at is null"
-                + " and exists (select 1 from " + table + " asset where asset.id=variant.asset_id"
+            jdbc.update("""
+                update asset_visual_variant_episode b set binding_status='RETIRED',retired_at=now(),updated_at=now()
+                where tenant_id=? and project_id=? and script_id=? and asset_type=?
+                  and generated_by_run_id is not null and retired_at is null
+                  and not exists (select 1 from scoped_asset_reextraction_unit u where u.snapshot_id=? and u.episode_id=b.episode_id)
+                """,snapshot.tenantId(),snapshot.projectId(),snapshot.scriptId(),type,snapshot.id());
+            jdbc.update("update asset_visual_variant variant set deleted_at=now(),updated_at=now()"
+                + " where tenant_id=? and project_id=? and asset_type=? and generated_by_run_id is not null"
+                + " and deleted_at is null and exists (select 1 from "+table+" asset where asset.id=variant.asset_id"
                 + " and asset.tenant_id=variant.tenant_id and asset.project_id=variant.project_id and asset.script_id=?)"
-                + " and not exists (select 1 from asset_visual_variant_episode binding where binding.variant_id=variant.id"
-                + " and binding.retired_at is null and binding.binding_status='ACTIVE')",
-                snapshot.tenantId(), snapshot.projectId(), type, snapshot.scriptId());
-            jdbc.update("update " + table + " asset set deleted_at=now(), updated_at=now()"
-                + " where asset.tenant_id=? and asset.project_id=? and asset.script_id=? and asset.source='AI' and asset.deleted_at is null"
-                + " and not exists (select 1 from asset_visual_variant_episode binding where binding.asset_type=?"
-                + " and binding.tenant_id=asset.tenant_id and binding.project_id=asset.project_id and binding.asset_id=asset.id"
-                + " and binding.retired_at is null and binding.binding_status='ACTIVE')"
-                + " and not exists (select 1 from asset_visual_variant variant where variant.tenant_id=asset.tenant_id"
-                + " and variant.project_id=asset.project_id and variant.asset_type=? and variant.asset_id=asset.id"
-                + " and variant.source_type<>'AI' and variant.deleted_at is null)",
-                snapshot.tenantId(), snapshot.projectId(), snapshot.scriptId(), type, type);
+                + " and not exists (select 1 from asset_visual_variant_episode b where b.variant_id=variant.id"
+                + " and b.retired_at is null and b.binding_status='ACTIVE')",
+                snapshot.tenantId(),snapshot.projectId(),type,snapshot.scriptId());
+            jdbc.update("update " + table + " asset set deleted_at=now(),updated_at=now()"
+                + " where tenant_id=? and project_id=? and script_id=? and source='AI'"
+                + " and generated_by_run_id is not null and deleted_at is null"
+                + " and not exists (select 1 from asset_visual_variant_episode b where b.tenant_id=asset.tenant_id"
+                + " and b.project_id=asset.project_id and b.asset_type=? and b.asset_id=asset.id"
+                + " and b.retired_at is null and b.binding_status='ACTIVE')",
+                snapshot.tenantId(),snapshot.projectId(),snapshot.scriptId(),type);
         }
     }
 

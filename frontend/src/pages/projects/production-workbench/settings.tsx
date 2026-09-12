@@ -26,14 +26,14 @@ import {
   useState,
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
-import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import { conflictingExecutionId, useAssetExtractionTracking } from './useAssetExtractionTracking';
 import {
   type ProjectModelOption,
   queryProjectAiConfig,
   queryProjectAiModels,
 } from './ai-config/service';
 import {
-  type AssetSettingsSummary,
+  type AssetSettingsWorkspace,
   type CharacterAsset,
   createAiImageTask,
   createVisualVariant,
@@ -57,7 +57,7 @@ import {
 type ElementType = Exclude<ScriptElementType, 'ALL'>;
 type AssetRecord = CharacterAsset | SceneAsset | PropAsset;
 
-const emptyWorkspace = (projectId: number): AssetSettingsSummary => ({
+const emptyWorkspace = (projectId: number): AssetSettingsWorkspace => ({
   projectId,
   characters: [],
   scenes: [],
@@ -362,7 +362,7 @@ const ProductionWorkbenchSettings = () => {
   const { message } = App.useApp();
   const messageRef = useRef(message);
   messageRef.current = message;
-  const [workspace, setWorkspace] = useState<AssetSettingsSummary>(() =>
+  const [workspace, setWorkspace] = useState<AssetSettingsWorkspace>(() =>
     emptyWorkspace(projectId || 0),
   );
   const [loading, setLoading] = useState(true);
@@ -370,8 +370,20 @@ const ProductionWorkbenchSettings = () => {
   const [loadVersion, setLoadVersion] = useState(0);
   const [activeType, setActiveType] = useState<ElementType>('CHARACTER');
   const [processingAction, setProcessingAction] = useState<string>();
-  const [activeExecution, setActiveExecution] =
-    useState<API.AiExecutionResponse>();
+  const submittingExtraction = useRef(false);
+  const [extractionNotice, setExtractionNotice] = useState('');
+  const { task: activeExecution, busy: extractionBusy, follow } = useAssetExtractionTracking(
+    projectId,
+    async (terminal) => {
+      if (terminal.status === 'SUCCEEDED') {
+        await reload();
+        messageRef.current.success('资产提取任务已完成');
+      } else {
+        messageRef.current.error(terminal.errorMessage || '资产提取任务已结束，未完成生成');
+      }
+    },
+    (error) => messageRef.current.error(error instanceof Error ? error.message : '任务状态读取失败，刷新页面可恢复跟踪'),
+  );
   const [reextractionPreflight, setReextractionPreflight] =
     useState<AssetReextractionPreflight>();
   const [reextractionPolicy, setReextractionPolicy] =
@@ -396,27 +408,15 @@ const ProductionWorkbenchSettings = () => {
   const [generationModelId, setGenerationModelId] = useState<number>();
   const [generationAspectRatio, setGenerationAspectRatio] = useState('3:4');
   const [generationImageCount, setGenerationImageCount] = useState(1);
-
   const workspaceRequestId = useRef(0);
-  const currentProjectId = useRef(projectId);
-  currentProjectId.current = projectId;
 
   const reload = async () => {
-    if (projectId !== currentProjectId.current) return undefined;
     const requestId = ++workspaceRequestId.current;
-    try {
-      const response = await queryAssetSettingsSummary(projectId);
-      if (requestId !== workspaceRequestId.current || projectId !== currentProjectId.current) return;
-      setWorkspace({ ...emptyWorkspace(projectId), ...response.data });
-      setLoadFailed(false);
-      return response.data;
-    } catch {
-      if (requestId === workspaceRequestId.current && projectId === currentProjectId.current) {
-        setLoadFailed(true);
-        message.error('操作已完成，但设定刷新失败，请重试加载');
-      }
-      return undefined;
+    const workspaceResponse = await queryAssetSettingsSummary(projectId);
+    if (requestId === workspaceRequestId.current) {
+      setWorkspace({ ...emptyWorkspace(projectId), ...workspaceResponse.data });
     }
+    return workspaceResponse.data;
   };
 
   useEffect(() => {
@@ -434,19 +434,18 @@ const ProductionWorkbenchSettings = () => {
         }
       })
       .catch(() => {
-        if (active && requestId === workspaceRequestId.current) {
+        if (active) {
           setLoadFailed(true);
           messageRef.current.error('设定页加载失败');
         }
       })
       .finally(() => {
-        if (active && requestId === workspaceRequestId.current) {
+        if (active) {
           setLoading(false);
         }
       });
     return () => {
       active = false;
-      workspaceRequestId.current += 1;
     };
   }, [loadVersion, projectId]);
 
@@ -478,6 +477,8 @@ const ProductionWorkbenchSettings = () => {
     targetType: ScriptElementType,
     promptPolicy: AssetPromptPolicy,
   ) => {
+    if (submittingExtraction.current || extractionBusy) return;
+    submittingExtraction.current = true;
     setProcessingAction(`extract-${targetType}`);
     try {
       const response = await submitAssetReextraction(projectId, {
@@ -487,26 +488,23 @@ const ProductionWorkbenchSettings = () => {
       if (!response.data?.id) {
         throw new Error('AI execution identity is missing');
       }
-      setActiveExecution(response.data);
-      const terminal = await aiExecutionTaskService.poll(
-        Number(localStorage.getItem('currentTenantId')),
-        response.data.id,
-        setActiveExecution,
-      );
-      setActiveExecution(terminal);
-      if (terminal.status === 'SUCCEEDED') {
-        if (await reload()) message.success(`${scopeLabels[targetType]}已重新提取`);
-      } else if (terminal.errorMessage) {
-        message.error(terminal.errorMessage);
-      }
+      follow(response.data.id);
+      setExtractionNotice('已提交或复用同条件资产提取任务');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '资产重提取失败');
+      const conflictId = conflictingExecutionId(error);
+      if (conflictId) {
+        setExtractionNotice('当前剧本已有其他资产提取任务，已转为跟踪该任务；本次未创建新任务');
+        follow(conflictId);
+      }
+      else message.error(error instanceof Error ? error.message : '资产重提取失败');
     } finally {
+      submittingExtraction.current = false;
       setProcessingAction(undefined);
     }
   };
 
   const extractAssets = async (targetType: ScriptElementType) => {
+    if (submittingExtraction.current || extractionBusy || processingAction) return;
     setProcessingAction(`extract-${targetType}`);
     try {
       const response = await queryAssetReextractionPreflight(projectId, targetType);
@@ -565,16 +563,15 @@ const ProductionWorkbenchSettings = () => {
     action: () => Promise<unknown>,
     successText: string,
   ) => {
-    let applied = false;
     try {
       await action();
-      applied = true;
       const requestId = visualRequestIdRef.current;
-      const [next, detailResponse] = await Promise.all([
-        reload(),
+      const [summaryResponse, detailResponse] = await Promise.all([
+        queryAssetSettingsSummary(projectId),
         visualAsset ? queryAssetVisualWorkspace(projectId, visualAsset.type, visualAsset.item.id) : Promise.resolve(undefined),
       ]);
-      if (!next) return;
+      const next = summaryResponse.data;
+      setWorkspace({ ...emptyWorkspace(projectId), ...next });
       if (visualAsset) {
         const list =
           visualAsset.type === 'CHARACTER'
@@ -589,12 +586,7 @@ const ProductionWorkbenchSettings = () => {
       }
       message.success(successText);
     } catch {
-      if (applied) {
-        setVisualError(true);
-        message.error('操作已完成，但视觉形象刷新失败，请重试加载');
-      } else {
-        message.error('视觉形象操作失败');
-      }
+      message.error('视觉形象操作失败');
     }
   };
 
@@ -709,7 +701,8 @@ const ProductionWorkbenchSettings = () => {
     setProcessingAction(`delete-${type}-${id}`);
     try {
       await deleteScriptElement(projectId, type, id);
-      if (await reload()) message.success('设定已删除');
+      await reload();
+      message.success('设定已删除');
     } catch {
       message.error('删除设定失败');
     } finally {
@@ -724,7 +717,14 @@ const ProductionWorkbenchSettings = () => {
         ...item,
         status: 'DRAFT',
       });
-      if (await reload()) message.success('设定已保存');
+      try {
+        await reload();
+      } catch {
+        setLoadFailed(true);
+        message.error('操作已完成，但设定刷新失败，请重试加载');
+        return;
+      }
+      message.success('设定已保存');
     } catch {
       message.error('保存设定失败');
     } finally {
@@ -822,6 +822,10 @@ const ProductionWorkbenchSettings = () => {
             }}
           >
             <AiExecutionStatus task={activeExecution} />
+            <div>{extractionNotice}</div>
+            <button type="button" disabled={extractionBusy} onClick={() => activeExecution.id && follow(activeExecution.id)}>
+              查看任务 #{activeExecution.id}
+            </button>
           </div>
         ) : null}
 
@@ -1559,6 +1563,7 @@ const ProductionWorkbenchSettings = () => {
               size="small"
               icon={<RobotOutlined />}
               aria-label={`AI提取${elementLabels[activeType]}`}
+              disabled={extractionBusy}
               loading={processingAction === `extract-${activeType}`}
               onClick={() => extractAssets(activeType)}
             >
@@ -1569,6 +1574,7 @@ const ProductionWorkbenchSettings = () => {
               size="small"
               icon={<RobotOutlined />}
               aria-label="AI提取全部资产"
+              disabled={extractionBusy}
               loading={processingAction === 'extract-ALL'}
               onClick={() => extractAssets('ALL')}
             >

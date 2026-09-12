@@ -332,11 +332,11 @@ class ScreenplayToolDataServiceTest {
             Integer.class, episodeId)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select prompt from character_asset where script_id = ?",
             String.class, scriptId)).isEqualTo("canonical character prompt");
-        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where name = '红裙造型'",
-            String.class)).isEqualTo("red dress delta");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where tenant_id=? and project_id=? and name = '红裙造型'",
+            String.class,tenantId,projectId)).isEqualTo("red dress delta");
 
         long characterId = jdbc.queryForObject("select id from character_asset where script_id = ?", Long.class, scriptId);
-        long lookId = jdbc.queryForObject("select id from asset_visual_variant where name = '红裙造型'", Long.class);
+        long lookId = jdbc.queryForObject("select id from asset_visual_variant where tenant_id=? and project_id=? and name = '红裙造型'", Long.class,tenantId,projectId);
         ToolExecutionContext retryContext = summaryContext();
         service.readCurrentEpisode(retryContext);
         service.saveEpisodeAssets(retryContext, new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
@@ -350,6 +350,18 @@ class ScreenplayToolDataServiceTest {
             .isEqualTo("canonical character prompt");
         assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, lookId))
             .isEqualTo("red dress delta");
+        retryContext.runState().put("assetPromptPolicy","REGENERATE_ALL");
+        service.saveEpisodeAssets(retryContext,new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[{"localKey":"c1","assetKey":"c_%d","name":"林小满",
+             "aliases":[],"evidence":"林小满","prompt":"regenerated character"}],
+             "characterLooks":[{"localKey":"look1","characterLocalKey":"c1","variantKey":"v_%d",
+             "name":"红裙造型","description":"穿着红裙","evidence":"穿着红裙","preferred":true,"prompt":"regenerated look"}],
+             "scenes":[],"props":[],"propVariants":[]}
+            """.formatted(characterId,lookId)));
+        assertThat(jdbc.queryForObject("select prompt from character_asset where id=?",String.class,characterId))
+            .isEqualTo("regenerated character");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id=?",String.class,lookId))
+            .isEqualTo("regenerated look");
     }
 
     @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
@@ -696,11 +708,19 @@ class ScreenplayToolDataServiceTest {
                     'NOT_GENERATED', true, ?, now(), now())
             """, tenantId, projectId, assetId, context.userId());
 
-        JsonNode catalog = service.readCurrentEpisode(episodeContext()).path("assetCatalog");
-
-        JsonNode character = catalog.path("characters").get(0);
+        ToolExecutionContext scoped = episodeContext();
+        service.readCurrentEpisode(scoped);
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        AssetCatalogService catalogs = new AssetCatalogService(jdbc, json);
+        JsonNode catalog = catalogs.search(scoped, json.createObjectNode()
+            .put("assetType","CHARACTER").put("query","Serena"));
+        JsonNode character = catalog.path("items").get(0);
         assertThat(character.path("hasPrompt").asBoolean()).isTrue();
-        assertThat(character.path("variants").get(0).path("hasPrompt").asBoolean()).isTrue();
+        var keys = json.createObjectNode();
+        keys.putArray("assetKeys").add(character.path("assetKey").asText());
+        JsonNode details = catalogs.details(scoped,keys);
+        assertThat(details.path("items").get(0).path("variants").get(0).path("hasPrompt").asBoolean()).isTrue();
+        assertThat(details.toString()).doesNotContain("private canonical prompt", "private variant prompt");
         assertThat(catalog.toString()).doesNotContain("private canonical prompt", "private variant prompt");
     }
 

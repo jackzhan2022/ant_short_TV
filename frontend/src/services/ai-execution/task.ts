@@ -38,10 +38,13 @@ export class AiExecutionTaskService {
     executionId: number,
     onUpdate?: (task: API.AiExecutionResponse) => void,
     intervalMs = 1500,
+    signal?: AbortSignal,
   ): Promise<API.AiExecutionResponse> {
     this.remember(tenantId, executionId);
     while (true) {
+      signal?.throwIfAborted();
       const task = await this.client.detail(tenantId, executionId);
+      signal?.throwIfAborted();
       this.track(tenantId, task);
       onUpdate?.(task);
       if (isTerminalExecution(task)) {

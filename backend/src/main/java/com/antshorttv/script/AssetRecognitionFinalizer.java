@@ -10,10 +10,38 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AssetRecognitionFinalizer {
+    @org.springframework.beans.factory.annotation.Autowired private AssetExtractionCoordination coordination;
     private final JdbcTemplate jdbc;
 
     public AssetRecognitionFinalizer(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @Transactional
+    public void finishOwned(long snapshotId,com.antshorttv.execution.AiExecutionContext context) {
+        var scopes=jdbc.queryForList("select tenant_id,project_id,script_id,task_id from script_analysis_fanout_snapshot where id=?",snapshotId);
+        if(scopes.size()!=1)throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE,"资产识别快照不存在。");
+        var scope=scopes.get(0);
+        long script=((Number)scope.get("script_id")).longValue();
+        coordination.requireOwned(context.task().tenantId,context.task().projectId,script,
+            context.task().id,context.task().executionVersion,context.claim().attemptId());
+        jdbc.queryForList("select id from script where id=? and tenant_id=? and project_id=? for update",
+            Long.class,script,context.task().tenantId,context.task().projectId);
+        Integer current=jdbc.queryForObject("""
+            select count(*) from script_analysis_task t join script s on s.id=t.script_id
+            where t.id=? and t.execution_id=? and t.script_version_id=s.current_version_id
+            """,Integer.class,scope.get("task_id"),context.task().id);
+        jdbc.queryForList("select id from script_episode where script_id=? and status='ACTIVE' and retired_at is null for update",Long.class,script);
+        Integer changed=jdbc.queryForObject("""
+            select count(*) from script_analysis_fanout_unit u left join script_episode e on e.id=u.episode_id
+            where u.snapshot_id=? and (e.id is null or e.status<>'ACTIVE' or e.retired_at is not null
+              or e.content_fingerprint<>u.content_fingerprint)
+            """,Integer.class,snapshotId);
+        Integer active=jdbc.queryForObject("select count(*) from script_episode where script_id=? and status='ACTIVE' and retired_at is null",Integer.class,script);
+        Integer frozen=jdbc.queryForObject("select count(*) from script_analysis_fanout_unit where snapshot_id=?",Integer.class,snapshotId);
+        if(current==null || current!=1 || changed==null || changed!=0 || !java.util.Objects.equals(active,frozen))
+            throw new BusinessException(ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED,"资产识别源版本或剧集已变化，不能收口。");
+        finish(snapshotId);
     }
 
     @Transactional

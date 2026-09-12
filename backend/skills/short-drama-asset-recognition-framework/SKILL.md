@@ -9,6 +9,13 @@ description: Use when recognizing formal characters, looks, physical scenes, pro
 
 ## 确定性身份匹配
 
+资产目录仅为本集候选摘要，未列出不代表不存在。新建前必须调用
+`search_script_assets` 按规范名和明确别名检索；命中后复用可信 key。
+形态详情通过 `read_asset_details` 读取，`hasMore` 为 true 时使用
+`nextCursor` 续页。摘要和详情的 `hasPrompt` 指示已保存提示词，
+无需重新生成已有非空提示词（除非明确指定 REGENERATE_ALL）。
+读取当前剧集后可多次检索与读取详情，最后只通过正式保存工具写入。
+
 按以下顺序判断，不能跳级：
 
 1. 当前目录中已有 `assetKey` 且本集证据明确指向该身份时，原样复用这个不透明 key。
@@ -157,3 +164,17 @@ description: Use when recognizing formal characters, looks, physical scenes, pro
 保存前确认：key 类型和目录一致；匹配只经过已验证 key、精确规范名或精确别名；模型没有擅自解决同名歧义，也没有模糊自动合并；人物称谓、场景时间气氛、通用道具归属、角色变装和道具不同形态边界正确；没有道具衍生关系、业务标识或当前集外证据。若正文无法消除同名歧义，仍提交最小可验证事实以让 `save_episode_assets` 返回类型化歧义错误和安全候选，整次保存不得部分成功，Agent 不得声称完成。其他检查通过后正常保存，成功后立即结束。
 
 调用 `save_episode_assets` 时，顶层必须始终提供 `characters`、`characterLooks`、`scenes`、`props`、`propVariants` 五个数组；本集没有某类资产时传空数组。每个角色、场景和道具必须显式提供 `aliases`，没有别名时传 `[]`。每个角色形态和道具形态必须显式提供布尔值 `preferred`。字段修复不能补写或改写证据；任何 `evidence` 都必须是当前集正文中逐字存在的连续文本。
+
+
+<!-- asset-catalog-protocol:v1 -->
+## 资产目录检索协议（v1）
+
+read_current_episode 的资产目录仅为有界候选，不完整不表示资产不存在。
+新建身份前调用 search_script_assets，按当前剧本中的规范名与明确别名检索；
+有精确匹配时复用 assetKey，有歧义时不得猜测合并。
+需要形态或可视设定时调用 read_asset_details，最多 10 个 key；形态每页最多 20 条。
+hasMore 为 true 时按 nextCursor 续页；形态续页只传一个资产 key。
+search_script_assets 每页最多 50 条；游标仅适用于当前运行、作用域和原查询。
+响应预算为 32 KiB，超大详情错误应减少 key 数量或明确报告，不能伪装读取完整。
+遵循 assetScope 和 assetPromptPolicy；按 read_current_episode → 可选检索/详情 →
+save_episode_assets 的顺序执行，正式保存成功后立即结束。

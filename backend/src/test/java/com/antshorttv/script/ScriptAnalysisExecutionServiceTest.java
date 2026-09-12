@@ -54,9 +54,6 @@ class ScriptAnalysisExecutionServiceTest {
     @Mock
     private ProjectAiConfigService projectAiConfigService;
 
-    @Mock
-    private ScriptAnalysisConfigSnapshotService configSnapshotService;
-
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private ScriptAnalysisExecutionService service;
@@ -71,7 +68,6 @@ class ScriptAnalysisExecutionServiceTest {
             versionMapper,
             projectAiConfigService
         );
-        ReflectionTestUtils.setField(service, "configSnapshotService", configSnapshotService);
     }
 
     @ParameterizedTest
@@ -128,7 +124,7 @@ class ScriptAnalysisExecutionServiceTest {
         when(versionMapper.selectById(6L)).thenReturn(version(6L, "剧本"));
         when(scriptMapper.selectById(5L)).thenReturn(script);
         when(stageMapper.selectByTask(91L)).thenReturn(List.of(summaryStage, recognitionStage));
-        when(configSnapshotService.modelIdFor(91L)).thenReturn(99L);
+        when(projectAiConfigService.resolveModelId(2L, 3L, "TEXT")).thenReturn(99L);
         var store = mock(EpisodeFanoutStore.class);
         var runner = mock(com.antshorttv.workflowagent.run.WorkflowAgentRunner.class);
         var plan = mock(com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan.class);

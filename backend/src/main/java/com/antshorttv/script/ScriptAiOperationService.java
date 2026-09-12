@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class ScriptAiOperationService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private AssetExtractionCoordination assetCoordination;
     private final ScriptAiOperationMapper operationMapper;
     private final AiExecutionService executionService;
     private final AiExecutionResponseMapper responseMapper;
@@ -54,11 +56,34 @@ class ScriptAiOperationService {
         String idempotencyKey,
         String traceId
     ) {
+        if (resumableInput instanceof ScopedAssetReextractionRequest request) {
+            resumableInput = new ScopedAssetReextractionRequest(
+                request.targetType().trim().toUpperCase(java.util.Locale.ROOT),
+                request.promptPolicy().trim().toUpperCase(java.util.Locale.ROOT));
+        }
         ScriptAiOperationEntity existing = operationMapper.selectByIdempotency(
             context.tenantId(), operationType, idempotencyKey
         );
         if (existing != null && existing.executionId != null) {
+            if ("SCOPED_ASSET_REEXTRACTION".equals(operationType)
+                && (!java.util.Objects.equals(existing.createdBy,context.userId())
+                    || !java.util.Objects.equals(existing.projectId,projectId)
+                    || !java.util.Objects.equals(existing.scriptId,scriptId)
+                    || !java.util.Objects.equals(existing.redactedInputJson,writeJson(resumableInput)))) {
+                throw new com.antshorttv.common.BusinessException(com.antshorttv.common.ErrorCode.VALIDATION_ERROR,
+                    "该幂等标识已用于其他资产提取请求，请使用新的请求标识。");
+            }
             return responseMapper.toResponse(executionService.requireTask(existing.executionId));
+        }
+
+        Long frozenModel = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
+        String assetFingerprint = null;
+        if ("SCOPED_ASSET_REEXTRACTION".equals(operationType)) {
+            if (frozenModel == null) throw new IllegalStateException("资产重提取缺少冻结文本模型。");
+            assetFingerprint = assetCoordination.fingerprint(context.tenantId(),projectId,scriptId,
+                context.userId(),scriptVersionId,frozenModel,writeJson(resumableInput));
+            Long admitted = assetCoordination.admit(context.tenantId(),projectId,scriptId,assetFingerprint);
+            if(admitted!=null) return responseMapper.toResponse(executionService.requireTaskForUpdate(admitted));
         }
 
         StoryboardGenerationAdmissionRepository.Admission admission = null;
@@ -94,7 +119,7 @@ class ScriptAiOperationService {
         operation.updatedAt = now;
         operationMapper.insert(operation);
 
-        Long modelId = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
+        Long modelId = frozenModel;
         AiExecutionTaskEntity execution = executionService.createWithReservation(
             new AiExecutionCreateCommand(
                 context.tenantId(),
@@ -117,6 +142,7 @@ class ScriptAiOperationService {
         operation.executionId = execution.id;
         operation.updatedAt = LocalDateTime.now();
         operationMapper.updateById(operation);
+        if(assetFingerprint!=null) assetCoordination.attach(context.tenantId(),projectId,scriptId,execution.id,assetFingerprint);
         if (admission != null && resumableInput instanceof StoryboardBreakdownRequest storyboardRequest) {
             storyboardAdmission.attach(context.tenantId(), projectId, storyboardRequest.episodeId(),
                 admission.sourceFingerprint(), execution.id);

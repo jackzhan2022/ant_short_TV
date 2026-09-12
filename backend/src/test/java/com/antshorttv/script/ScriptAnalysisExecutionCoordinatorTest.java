@@ -48,9 +48,7 @@ class ScriptAnalysisExecutionCoordinatorTest {
 
         when(executionService.requireTask(79014L)).thenReturn(canceled);
         when(versionMapper.selectById(18L)).thenReturn(version);
-        var snapshots = mock(ScriptAnalysisConfigSnapshotService.class);
-        ReflectionTestUtils.setField(coordinator, "configSnapshotService", snapshots);
-        when(snapshots.modelIdFor(22L)).thenReturn(7L);
+        when(projectAiConfig.resolveModelId(4L, 27L, "TEXT")).thenReturn(7L);
         when(executionService.restartCanceledWithReservation(
             eq(79014L), eq(22L), eq(7L), contains("79014"), contains("79014"), anyMap(), anyMap()
         )).thenReturn(restarted);
@@ -58,7 +56,6 @@ class ScriptAnalysisExecutionCoordinatorTest {
 
         assertThat(coordinator.retry(task)).isSameAs(response);
         verify(modelLookup).requireEnabledTextModel(7L);
-        org.mockito.Mockito.verifyNoInteractions(projectAiConfig);
         ArgumentCaptor<ScriptAnalysisTaskEntity> saved = ArgumentCaptor.forClass(ScriptAnalysisTaskEntity.class);
         verify(taskMapper).updateById(saved.capture());
         assertThat(saved.getValue().getExecutionId()).isEqualTo(79015L);

@@ -26,8 +26,6 @@ public class ScriptAnalysisExecutionCoordinator {
     private final AiExecutionResponseMapper responseMapper;
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.workflowagent.agent.WorkflowAgentModelLookup workflowAgentModelLookup;
-    @org.springframework.beans.factory.annotation.Autowired
-    private ScriptAnalysisConfigSnapshotService configSnapshotService;
 
     public ScriptAnalysisExecutionCoordinator(
         ScriptAnalysisTaskMapper taskMapper,
@@ -49,8 +47,7 @@ public class ScriptAnalysisExecutionCoordinator {
             try {
                 createExecution(task);
             } catch (BusinessException exception) {
-                task.setCurrentAction(exception.getErrorCode() == com.antshorttv.common.ErrorCode.TEAM_POINTS_INSUFFICIENT
-                    ? "积分不足，充值后将自动继续分析" : "等待分析配置修复");
+                task.setCurrentAction("积分不足，充值后将自动继续分析");
                 task.setErrorCode(exception.getErrorCode().name());
                 task.setErrorMessage(exception.getMessage());
                 task.setUpdatedAt(LocalDateTime.now());
@@ -81,7 +78,8 @@ public class ScriptAnalysisExecutionCoordinator {
             if (version == null || version.getContent() == null || version.getContent().isBlank()) {
                 throw new IllegalStateException("Script analysis version is unavailable.");
             }
-            Long modelId = configSnapshotService.modelIdFor(task.getId());
+            Long modelId = projectAiConfigService.resolveModelId(
+                task.getTenantId(), task.getProjectId(), "TEXT");
             workflowAgentModelLookup.requireEnabledTextModel(modelId);
             String restartKey = "script-analysis-resume-" + task.getId() + "-" + execution.id;
             execution = executionService.restartCanceledWithReservation(
@@ -110,8 +108,7 @@ public class ScriptAnalysisExecutionCoordinator {
         if (version == null || version.getContent() == null || version.getContent().isBlank()) {
             throw new IllegalStateException("Script analysis version is unavailable.");
         }
-        Long modelId = configSnapshotService.modelIdForFirstSubmission(current,
-            () -> projectAiConfigService.resolveModelId(current.getTenantId(), current.getProjectId(), "TEXT"));
+        Long modelId = projectAiConfigService.resolveModelId(current.getTenantId(), current.getProjectId(), "TEXT");
         workflowAgentModelLookup.requireEnabledTextModel(modelId);
         int maximumCalls = maximumCallCount(version.getContent());
         AiExecutionTaskEntity execution = executionService.createWithReservation(
