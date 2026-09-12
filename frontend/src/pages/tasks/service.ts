@@ -35,6 +35,7 @@ export type ContentSection = {
   title: string;
   kind: 'TEXT' | 'FIELDS' | 'IMAGE' | 'VIDEO' | 'STRUCTURED' | 'BUSINESS_STAGE';
   availability: 'AVAILABLE' | 'PENDING' | 'NOT_RECORDED' | 'DELETED' | 'RESTRICTED' | 'UNSUPPORTED';
+  sourceVersion?: string;
   preview?: string | null;
   fields: { label: string; value: string }[];
   items: ContentItem[];
@@ -42,6 +43,7 @@ export type ContentSection = {
 };
 export type TaskContent = { schemaVersion: number; taskKey: string; contentRevision: string; sections: ContentSection[] };
 export type TaskContentSection = { taskKey: string; sectionKey: string; availability: ContentSection['availability']; text: string; hasMore: boolean; nextOffset?: number };
+export type TaskContentItems = { taskKey: string; sectionKey: string; availability: ContentSection['availability']; items: ContentItem[]; page: number; pageSize: number; hasMore: boolean; nextPage?: number };
 export type Query = {
   scope: string;
   page: number;
@@ -80,6 +82,8 @@ export const taskContent = (tenant: number, key: string, signal?: AbortSignal) =
   read<TaskContent>(`${base(tenant)}/${encodeURIComponent(key)}/content`, { signal });
 export const taskContentSection = (tenant: number, key: string, sectionKey: string, offset: number, signal?: AbortSignal) =>
   read<TaskContentSection>(`${base(tenant)}/${encodeURIComponent(key)}/content/${encodeURIComponent(sectionKey)}`, { params: { offset }, signal });
+export const taskContentItems = (tenant: number, key: string, sectionKey: string, page: number, pageSize = 20, signal?: AbortSignal) =>
+  read<TaskContentItems>(`${base(tenant)}/${encodeURIComponent(key)}/content/${encodeURIComponent(sectionKey)}`, { params: { page, pageSize }, signal });
 export const taskChildren = (
   tenant: number,
   key: string,

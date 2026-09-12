@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   detail: vi.fn(),
   content: vi.fn(),
   contentSection: vi.fn(),
+  contentItems: vi.fn(),
   children: vi.fn(),
   control: vi.fn(),
   tenantId: 1,
@@ -30,6 +31,7 @@ vi.mock('./service', () => ({
   taskDetail: mocks.detail,
   taskContent: mocks.content,
   taskContentSection: mocks.contentSection,
+  taskContentItems: mocks.contentItems,
   taskChildren: mocks.children,
   controlTask: mocks.control,
 }));
@@ -57,6 +59,7 @@ beforeEach(() => {
   mocks.summary.mockResolvedValue({ total: 1, counts: { SUCCEEDED: 1 } });
   mocks.content.mockResolvedValue({ schemaVersion: 1, taskKey: 'REVIEW:1', contentRevision: '1', sections: [] });
   mocks.contentSection.mockResolvedValue({ text: '完整保存的提示词', hasMore: false });
+  mocks.contentItems.mockResolvedValue({ items: [{ id: 2, url: '/result-2.png' }], page: 2, pageSize: 20, hasMore: false });
 });
 afterEach(() => {
   cleanup();
@@ -106,8 +109,8 @@ it('loads content only for the open task and renders its saved sections', async 
     taskKey: 'REVIEW:1',
     contentRevision: '1',
     sections: [
-      { key: 'submission', title: '本次提交', kind: 'TEXT', availability: 'AVAILABLE', preview: '保存的提示词', fields: [], items: [], hasMore: false },
-      { key: 'results', title: '生成结果', kind: 'IMAGE', availability: 'AVAILABLE', fields: [], items: [{ id: 1, url: '/result.png' }], hasMore: false },
+      { key: 'submission', title: '本次提交', kind: 'TEXT', availability: 'AVAILABLE', sourceVersion: 'REVIEW:1@2026-09-12', preview: '保存的提示词', fields: [], items: [], hasMore: false },
+      { key: 'results', title: '生成结果', kind: 'IMAGE', availability: 'AVAILABLE', fields: [], items: [{ id: 1, url: '/result.png' }], hasMore: true },
     ],
   });
   render(<Tasks />);
@@ -115,9 +118,15 @@ it('loads content only for the open task and renders its saved sections', async 
   fireEvent.click(await screen.findByText('审核任务一'));
   await waitFor(() => expect(mocks.content).toHaveBeenCalledWith(1, 'REVIEW:1', expect.anything()));
   expect(await screen.findByText('保存的提示词')).toBeInTheDocument();
+  expect(screen.getByText('来源版本：REVIEW:1@2026-09-12')).toBeInTheDocument();
   expect(screen.getByText('生成结果')).toBeInTheDocument();
+  expect(screen.getByText('仅展示前 20 项结果。')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '复制全文' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '加载更多结果' }));
+  await waitFor(() => expect(mocks.contentItems).toHaveBeenCalledWith(1, 'REVIEW:1', 'results', 2, 20));
 });
 it('loads the full text only after the user asks to copy a truncated preview', async () => {
+  mocks.contentSection.mockImplementation((_tenant, _task, _section, offset) => Promise.resolve(offset === 5 ? { text: '后续正文', hasMore: false } : { text: '完整保存的提示词', hasMore: false }));
   mocks.detail.mockResolvedValue({
     taskKey: 'REVIEW:1', title: '任务详情内容', childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED',
   });
@@ -129,8 +138,14 @@ it('loads the full text only after the user asks to copy a truncated preview', a
   });
   render(<Tasks />);
   fireEvent.click(await screen.findByText('审核任务一'));
+  fireEvent.click(await screen.findByRole('button', { name: '继续展开' }));
+  expect(await screen.findByText(/截断提示词后续正文/)).toBeInTheDocument();
+  expect(mocks.contentSection).toHaveBeenCalledWith(1, 'REVIEW:1', 'submission', 5, expect.anything());
   fireEvent.click(await screen.findByRole('button', { name: '复制全文' }));
-  await waitFor(() => expect(mocks.contentSection).toHaveBeenCalledWith(1, 'REVIEW:1', 'submission', 0));
+  await waitFor(() => expect(mocks.contentSection).toHaveBeenCalledWith(1, 'REVIEW:1', 'submission', 0, expect.anything()));
+  const signal = mocks.contentSection.mock.calls.at(-1)?.[4] as AbortSignal;
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(signal.aborted).toBe(true);
 });
 it('removes loaded content when the refreshed task becomes restricted', async () => {
   mocks.detail.mockResolvedValue({
@@ -246,6 +261,19 @@ it('polls active results, stops after terminal state, and clears requests on exi
   expect(mocks.list).toHaveBeenCalledTimes(2);
   view.unmount();
   expect(mocks.list.mock.calls[1][2].aborted).toBe(true);
+});
+
+it('reloads open content when an active task becomes terminal', async () => {
+  vi.useFakeTimers();
+  window.history.replaceState({}, '', '/tasks?task=REVIEW:1');
+  const detail = (statusGroup: string) => ({ taskKey: 'REVIEW:1', title: '轮询详情', statusGroup, childCounts: { total: 0 }, allowedActions: [] });
+  mocks.detail.mockResolvedValueOnce(detail('RUNNING')).mockResolvedValue(detail('SUCCEEDED'));
+  render(<Tasks />);
+  await act(async () => {});
+  expect(mocks.content).toHaveBeenCalledTimes(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  await act(async () => {});
+  expect(mocks.content).toHaveBeenCalledTimes(2);
 });
 
 it('reuses regeneration idempotency after a lost response', async () => {

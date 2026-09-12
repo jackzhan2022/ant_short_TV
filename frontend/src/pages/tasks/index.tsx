@@ -24,6 +24,7 @@ import {
   type TaskPage,
   taskChildren,
   taskContent,
+  taskContentItems,
   taskContentSection,
   taskDetail,
   taskSummary,
@@ -68,35 +69,80 @@ const availability: Record<ContentSection['availability'], string> = {
 function ContentSectionView({ section, tenant, taskKey }: { section: ContentSection; tenant: number; taskKey: string }) {
   const media = section.kind === 'IMAGE' || section.kind === 'VIDEO';
   const [copying, setCopying] = useState(false);
+  const [items, setItems] = useState(section.items);
+  const [itemsPage, setItemsPage] = useState(1);
+  const [itemsMore, setItemsMore] = useState(section.hasMore);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [displayText, setDisplayText] = useState(section.preview ?? '');
+  const [textMore, setTextMore] = useState(section.kind === 'TEXT' && section.hasMore);
+  const [expanding, setExpanding] = useState(false);
+  const [sectionError, setSectionError] = useState('');
+  const copyAbort = useRef<AbortController>();
+  useEffect(() => () => copyAbort.current?.abort(), []);
+  useEffect(() => {
+    setItems(section.items); setItemsPage(1); setItemsMore(section.hasMore);
+    setDisplayText(section.preview ?? ''); setTextMore(section.kind === 'TEXT' && section.hasMore);
+  }, [section]);
   const copyFullText = async () => {
+    copyAbort.current?.abort();
+    const abort = new AbortController(); copyAbort.current = abort;
     setCopying(true);
+    setSectionError('');
     try {
       let offset = 0;
       let hasMore = true;
       const chunks: string[] = [];
       do {
-        const page = await taskContentSection(tenant, taskKey, section.key, offset);
+        const page = await taskContentSection(tenant, taskKey, section.key, offset, abort.signal);
         chunks.push(page.text);
         if (page.hasMore && page.nextOffset === undefined) throw new Error('全文读取不完整');
         offset = page.nextOffset ?? 0;
         hasMore = page.hasMore;
       } while (hasMore);
       await navigator.clipboard?.writeText(chunks.join(''));
+    } catch (error) {
+      if (!abort.signal.aborted) setSectionError(errorText(error));
     } finally {
-      setCopying(false);
+      if (!abort.signal.aborted) setCopying(false);
+    }
+  };
+  const loadMoreItems = async () => {
+    setLoadingItems(true);
+    try {
+      const next = await taskContentItems(tenant, taskKey, section.key, itemsPage + 1, 20);
+      setItems((current) => [...current, ...next.items]);
+      setItemsPage(next.page); setItemsMore(next.hasMore);
+    } finally {
+      setLoadingItems(false);
+    }
+  };
+  const expandText = async () => {
+    copyAbort.current?.abort(); const abort = new AbortController(); copyAbort.current = abort;
+    setExpanding(true); setSectionError('');
+    try {
+      const next = await taskContentSection(tenant, taskKey, section.key, displayText.length, abort.signal);
+      if (!abort.signal.aborted) { setDisplayText((current) => current + next.text); setTextMore(next.hasMore); }
+    } catch (error) {
+      if (!abort.signal.aborted) setSectionError(errorText(error));
+    } finally {
+      if (!abort.signal.aborted) setExpanding(false);
     }
   };
   return <section style={{ marginTop: 20 }}>
     <Typography.Title level={5} style={{ marginBottom: 8 }}>
       {section.title} <Tag>{availability[section.availability]}</Tag>
     </Typography.Title>
-    {section.preview && <Typography.Paragraph copyable={section.hasMore ? false : { text: section.preview }} style={{ whiteSpace: 'pre-wrap' }}>{section.preview}</Typography.Paragraph>}
-    {section.hasMore && <div><Typography.Text type="secondary">内容较长，当前仅展示前 4,000 个字符。</Typography.Text><Button type="link" size="small" loading={copying} onClick={copyFullText}>复制全文</Button></div>}
+    {section.sourceVersion && <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>来源版本：{section.sourceVersion}</Typography.Paragraph>}
+    {sectionError && <Alert type="warning" title={sectionError} />}
+    {displayText && <Typography.Paragraph copyable={textMore ? false : { text: displayText }} style={{ whiteSpace: 'pre-wrap' }}>{displayText}</Typography.Paragraph>}
+    {section.kind === 'TEXT' && (textMore || section.hasMore) && <div><Typography.Text type="secondary">内容较长，按需读取后续内容。</Typography.Text>{textMore && <Button type="link" size="small" loading={expanding} onClick={expandText}>继续展开</Button>}<Button type="link" size="small" loading={copying} onClick={copyFullText}>复制全文</Button></div>}
+    {section.hasMore && media && <Typography.Text type="secondary">仅展示前 20 项结果。</Typography.Text>}
     {section.fields.length > 0 && <Descriptions size="small" column={1} items={section.fields.map((field) => ({ key: field.label, label: field.label, children: field.value }))} />}
-    {media && section.items.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-      {section.items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><Image width={160} src={String(item.thumbnailUrl ?? item.url)} alt={`${section.title} ${index + 1}`} />{item.selected && <Tag color="success">当前采用</Tag>}</div> : <video key={String(item.id ?? index)} controls preload="none" poster={String(item.thumbnailUrl ?? '')} style={{ width: 320, maxWidth: '100%' }}><source src={String(item.url ?? '')} /><track kind="captions" srcLang="zh-CN" label="暂无字幕" /></video>)}
+    {media && items.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
+      {items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><Image width={160} src={String(item.thumbnailUrl ?? item.url)} alt={`${section.title} ${index + 1}`} />{item.role && <Tag>{String(item.role)}</Tag>}{item.selected && <Tag color="success">当前采用</Tag>}</div> : <video key={String(item.id ?? index)} controls preload="none" poster={String(item.thumbnailUrl ?? '')} style={{ width: 320, maxWidth: '100%' }}><source src={String(item.url ?? '')} /><track kind="captions" srcLang="zh-CN" label="暂无字幕" /></video>)}
     </div>}
-    {!media && section.items.length > 0 && <List size="small" bordered dataSource={section.items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl'].includes(key)).map(([key, value]) => `${key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
+    {media && itemsMore && <Button type="link" loading={loadingItems} onClick={loadMoreItems}>加载更多结果</Button>}
+    {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl'].includes(key)).map(([key, value]) => `${key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
   </section>;
 }
 function queryFromUrl(): Query {
@@ -138,12 +184,14 @@ function TasksForTeam({ tenant }: { tenant: number }) {
   const mounted = useRef(true);
   const actionKeys = useRef(new Map<string, string>());
   const contentAbort = useRef<AbortController>();
+  const detailStatus = useRef<string>();
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
+  useEffect(() => { detailStatus.current = undefined; }, [tenant, selected]);
   useEffect(() => {
     const p = new URLSearchParams();
     Object.entries(query).forEach(([k, v]) => {
@@ -225,6 +273,8 @@ function TasksForTeam({ tenant }: { tenant: number }) {
               )
             : undefined;
         if (abort.signal.aborted) return;
+        const previousStatus = detailStatus.current;
+        detailStatus.current = next.statusGroup;
         setDetail(next);
         setChildren(childRows);
         if (next.restricted) {
@@ -233,6 +283,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
           setContentError('无权查看此任务内容');
         }
         setDetailError('');
+        if (previousStatus && ['QUEUED', 'RUNNING'].includes(previousStatus) && !active(next)) setRevision((value) => value + 1);
         if (active(next)) timer = setTimeout(load, 5000);
       } catch (e) {
         if (!abort.signal.aborted) {

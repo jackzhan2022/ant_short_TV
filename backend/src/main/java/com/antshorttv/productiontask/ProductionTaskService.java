@@ -5,6 +5,7 @@ import com.antshorttv.common.ErrorCode;
 import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -23,14 +24,16 @@ public class ProductionTaskService {
     private final NamedParameterJdbcTemplate sql;
     private final TenantContextResolver tenants;
     private final RbacPermissionService permissions;
-    public ProductionTaskService(JdbcTemplate jdbc, TenantContextResolver tenants, RbacPermissionService permissions) {
-        this.jdbc=jdbc; this.sql=new NamedParameterJdbcTemplate(jdbc); this.tenants=tenants; this.permissions=permissions;
+    private final ObjectMapper mapper;
+    public ProductionTaskService(JdbcTemplate jdbc, TenantContextResolver tenants, RbacPermissionService permissions,ObjectMapper mapper) {
+        this.jdbc=jdbc; this.sql=new NamedParameterJdbcTemplate(jdbc); this.tenants=tenants; this.permissions=permissions;this.mapper=mapper;
     }
 
     public record Page(List<Map<String,Object>> items, long total, int page, int pageSize, boolean canViewTeamTasks) {}
     public record Summary(long total, Map<String,Long> counts) {}
     record Access(TenantContext context, boolean team, Set<String> permissions) {}
     record Predicate(String text, Map<String,Object> params) {}
+    record TextChunk(String text, boolean hasMore) {}
 
     Access access(long tenantId) {
         TenantContext c=tenants.requireActiveMember(tenantId);
@@ -114,43 +117,77 @@ public class ProductionTaskService {
         } else {
             sections=sections(a,row);
         }
-        return Map.of("schemaVersion",1,"taskKey",key,"contentRevision",contentRevision(a.context.tenantId(), row),"sections",sections);
+        String revision=contentRevision(a.context.tenantId(),row);
+        sections.forEach(section->section.put("sourceVersion",key+"@"+revision));
+        return Map.of("schemaVersion",1,"taskKey",key,"contentRevision",revision,"sections",sections);
     }
 
     /** Reads an allowlisted text section in bounded chunks; it never accepts storage or SQL identifiers. */
-    public Map<String,Object> contentSection(long tenantId,String key,String sectionKey,int offset) {
+    public Map<String,Object> contentSection(long tenantId,String key,String sectionKey,int offset,int page,int pageSize) {
         Access a=access(tenantId); Map<String,Object> row=requireRow(a,key);
         Map<String,Object> summary=present(a,List.of(row)).get(0);
         if(Boolean.TRUE.equals(summary.get("restricted")) || !canReadContent(a,row)) throw denied();
-        String body=sectionText(a.context.tenantId(),row,sectionKey);
-        if(body==null || offset<0 || offset>body.length()) throw invalid();
-        int end=Math.min(body.length(),offset+32000);
+        Map<String,Object> collection=collectionSection(a.context.tenantId(),key,row,sectionKey,page,pageSize);
+        if(collection!=null) return collection;
+        if(offset<0 || offset==Integer.MAX_VALUE) throw invalid();
+        TextChunk chunk=sectionText(a.context.tenantId(),row,sectionKey,offset);
+        if(chunk==null) throw invalid();
         Map<String,Object> result=new LinkedHashMap<>();
-        result.put("taskKey",key); result.put("sectionKey",sectionKey); result.put("availability",available(body));
-        result.put("text",body.substring(offset,end)); result.put("hasMore",end<body.length());
-        if(end<body.length()) result.put("nextOffset",end);
+        result.put("taskKey",key); result.put("sectionKey",sectionKey); result.put("availability",available(chunk.text()));
+        result.put("text",chunk.text()); result.put("hasMore",chunk.hasMore());
+        if(chunk.hasMore()) result.put("nextOffset",offset+chunk.text().length());
         return result;
     }
 
-    private String sectionText(long tenant,Map<String,Object> row,String sectionKey) {
+    private Map<String,Object> collectionSection(long tenant,String key,Map<String,Object> row,String sectionKey,int page,int pageSize) {
+        if(!"results".equals(sectionKey)) return null;
+        String type=String.valueOf(row.get("type"));
+        if(!List.of("IMAGE","VIDEO").contains(type)) return null;
+        if(page<1 || pageSize<1) throw invalid();
+        int size=Math.min(pageSize,100); long offset=(long)(page-1)*size;
+        String table=type.equals("IMAGE")?"ai_image_result":"ai_video_result";
+        String url=type.equals("IMAGE")?"image_url":"video_url";
+        String thumbnail=type.equals("IMAGE")?"thumbnail_url":"cover_url";
+        List<Map<String,Object>> rows=sql.queryForList("select id,"+url+" content_url,"+thumbnail+" thumbnail_url,width,height,is_selected,status from "+table+" where tenant_id=:tenant and task_id=:task order by id limit :limit offset :offset",
+            Map.of("tenant",tenant,"task",number(row,"id"),"limit",size+1,"offset",offset));
+        boolean hasMore=rows.size()>size;
+        List<Map<String,Object>> items=media(rows.size()>size?rows.subList(0,size):rows,"content_url");
+        Map<String,Object> result=new LinkedHashMap<>(); result.put("taskKey",key);result.put("sectionKey",sectionKey);
+        result.put("availability",items.isEmpty()&&page==1?"PENDING":"AVAILABLE");result.put("items",items);result.put("page",page);result.put("pageSize",size);result.put("hasMore",hasMore);
+        if(hasMore) result.put("nextPage",page+1);
+        return result;
+    }
+
+    private TextChunk sectionText(long tenant,Map<String,Object> row,String sectionKey,int offset) {
         long id=Objects.requireNonNull(number(row,"id"));
+        int start=offset+1;
         return switch(String.valueOf(row.get("type"))) {
-            case "IMAGE" -> sectionKey.equals("submission") ? text(one("select prompt from ai_image_task where tenant_id=? and id=?",tenant,id).get("prompt")) : null;
-            case "VIDEO" -> sectionKey.equals("submission") ? text(one("select prompt from ai_video_task where tenant_id=? and id=?",tenant,id).get("prompt")) : null;
-            case "SCRIPT_ANALYSIS" -> sectionKey.equals("submission") ? scriptVersionContent(tenant,"script_analysis_task",id) : null;
+            case "IMAGE" -> sectionKey.equals("submission") ? textChunk("select substring(prompt,?,32001) body,char_length(prompt) total_length from ai_image_task where tenant_id=? and id=?",offset,start,tenant,id) : null;
+            case "VIDEO" -> sectionKey.equals("submission") ? textChunk("select substring(prompt,?,32001) body,char_length(prompt) total_length from ai_video_task where tenant_id=? and id=?",offset,start,tenant,id) : null;
+            case "SCRIPT_ANALYSIS" -> sectionKey.equals("submission") ? textChunk("select substring(v.content,?,32001) body,char_length(v.content) total_length from script_analysis_task t join script_version v on v.id=t.script_version_id and v.tenant_id=t.tenant_id where t.tenant_id=? and t.id=?",offset,start,tenant,id) : null;
             case "REVIEW" -> switch(sectionKey) {
-                case "submission" -> reviewVersionContent(tenant,id);
-                case "results" -> text(one("select report_markdown from review_task where tenant_id=? and id=?",tenant,id).get("report_markdown"));
+                case "submission" -> textChunk("select substring(v.content,?,32001) body,char_length(v.content) total_length from review_task t join review_script_version v on v.id=t.script_version_id and v.tenant_id=t.tenant_id where t.tenant_id=? and t.id=?",offset,start,tenant,id);
+                case "results" -> textChunk("select substring(report_markdown,?,32001) body,char_length(report_markdown) total_length from review_task where tenant_id=? and id=?",offset,start,tenant,id);
                 default -> null;
             };
-            case "VIDEO_EPISODE" -> sectionKey.equals("results") ? episodeResultContent(tenant,id) : null;
+            case "VIDEO_EPISODE" -> sectionKey.equals("results") ? textChunk("select substring(coalesce(r.content,e.draft_content),?,32001) body,char_length(coalesce(r.content,e.draft_content)) total_length from video_decomposition_episode e left join video_decomposition_script_result r on r.episode_id=e.id and r.tenant_id=e.tenant_id where e.tenant_id=? and e.id=?",offset,start,tenant,id) : null;
             case "SCRIPT_OPERATION" -> switch(sectionKey) {
-                case "submission" -> scriptVersionContent(tenant,"script_ai_operation",id);
-                case "results" -> operationResultContent(tenant,id);
+                case "submission" -> textChunk("select substring(v.content,?,32001) body,char_length(v.content) total_length from script_ai_operation t join script_version v on v.id=t.script_version_id and v.tenant_id=t.tenant_id where t.tenant_id=? and t.id=?",offset,start,tenant,id);
+                case "results" -> textChunk("select substring(v.content,?,32001) body,char_length(v.content) total_length from script_ai_operation t join script_version v on t.result_type='SCRIPT_VERSION' and v.id=t.result_id and v.tenant_id=t.tenant_id where t.tenant_id=? and t.id=?",offset,start,tenant,id);
                 default -> null;
             };
             default -> null;
         };
+    }
+
+    private TextChunk textChunk(String query,int offset,Object... args) {
+        Map<String,Object> row=one(query,args);
+        if(row.isEmpty()) return new TextChunk("",false);
+        long total=number(row,"total_length")==null?0:number(row,"total_length");
+        if(offset>total) throw invalid();
+        String candidate=text(row.get("body"));
+        boolean hasMore=candidate.length()>32000;
+        return new TextChunk(hasMore?candidate.substring(0,32000):candidate,hasMore);
     }
 
     private String scriptVersionContent(long tenant,String table,long id) {
@@ -179,7 +216,13 @@ public class ProductionTaskService {
         if(type.equals("VIDEO")) return codes.contains("AI_VIDEO_TASK:VIEW");
         if(type.equals("SCRIPT_ANALYSIS")) return codes.contains("SCRIPT:VIEW");
         if(type.equals("STORYBOARD_BATCH") || type.equals("STORYBOARD_ITEM")) return codes.contains("STORYBOARD:VIEW");
-        if(type.equals("SCRIPT_OPERATION")) return codes.contains(scriptOperationContentPermission(String.valueOf(row.get("subtype"))));
+        if(type.equals("SCRIPT_OPERATION")) {
+            String subtype=String.valueOf(row.get("subtype"));
+            if(!codes.contains(scriptOperationContentPermission(subtype))) return false;
+            if(List.of("ELEMENT_EXTRACT","SCOPED_ASSET_REEXTRACTION").contains(subtype)) return codes.contains("ELEMENT:VIEW");
+            if("STORYBOARD_BREAKDOWN".equals(subtype)) return codes.contains("STORYBOARD:VIEW");
+            return true;
+        }
         return codes.contains("PROJECT:VIEW") || codes.contains("PROJECT:VIEW_ALL");
     }
 
@@ -237,19 +280,27 @@ public class ProductionTaskService {
     private List<Map<String,Object>> imageSections(long tenant,long id) {
         Map<String,Object> task=one("select prompt,negative_prompt,reference_images,model,provider_code,aspect_ratio,image_count,style,quality,seed,status,error_message from ai_image_task where tenant_id=? and id=?",tenant,id);
         String prompt=text(task.get("prompt"));
-        List<Map<String,Object>> results=sql.queryForList("select id,image_url,thumbnail_url,width,height,file_size,is_selected,status from ai_image_result where tenant_id=:tenant and task_id=:task order by id",Map.of("tenant",tenant,"task",id));
-        return List.of(section("submission","本次提交","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt"),"参考图",task.get("reference_images")),List.of(),more(prompt)),
+        List<Map<String,Object>> results=sql.queryForList("select id,image_url,thumbnail_url,width,height,file_size,is_selected,status from ai_image_result where tenant_id=:tenant and task_id=:task order by id limit 21",Map.of("tenant",tenant,"task",id));
+        boolean resultsMore=results.size()>20;
+        List<Map<String,Object>> references=referenceItems(task.get("reference_images"));
+        return List.of(section("submission","保存的生成提示词","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt")),List.of(),more(prompt)),
             section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model"),"服务商",task.get("provider_code"),"比例",task.get("aspect_ratio"),"数量",task.get("image_count"),"风格",task.get("style"),"质量",task.get("quality"),"种子",task.get("seed")),List.of(),false),
-            section("results","生成结果","IMAGE",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),media(results,"image_url"),false));
+            section("results","生成结果","IMAGE",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),media(firstPage(results),"image_url"),resultsMore),
+            section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
     }
 
     private List<Map<String,Object>> videoSections(long tenant,long id) {
         Map<String,Object> task=one("select prompt,negative_prompt,first_frame_url,last_frame_url,reference_images,model,provider_code,duration_seconds,aspect_ratio,resolution,motion_strength,camera_movement,random_seed from ai_video_task where tenant_id=? and id=?",tenant,id);
         String prompt=text(task.get("prompt"));
-        List<Map<String,Object>> results=sql.queryForList("select id,video_url,cover_url thumbnail_url,duration_seconds,width,height,file_size,format,is_selected,status from ai_video_result where tenant_id=:tenant and task_id=:task order by id",Map.of("tenant",tenant,"task",id));
-        return List.of(section("submission","本次提交","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt"),"首帧",task.get("first_frame_url"),"尾帧",task.get("last_frame_url"),"参考素材",task.get("reference_images")),List.of(),more(prompt)),
+        List<Map<String,Object>> results=sql.queryForList("select id,video_url,cover_url thumbnail_url,duration_seconds,width,height,file_size,format,is_selected,status from ai_video_result where tenant_id=:tenant and task_id=:task order by id limit 21",Map.of("tenant",tenant,"task",id));
+        boolean resultsMore=results.size()>20;
+        List<Map<String,Object>> references=new ArrayList<>();
+        addReference(references,task.get("first_frame_url"),"首帧");addReference(references,task.get("last_frame_url"),"尾帧");
+        for(Map<String,Object> reference:referenceItems(task.get("reference_images"))) if(references.size()<20) references.add(reference);
+        return List.of(section("submission","本次提交","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt")),List.of(),more(prompt)),
             section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model"),"服务商",task.get("provider_code"),"时长（秒）",task.get("duration_seconds"),"比例",task.get("aspect_ratio"),"分辨率",task.get("resolution"),"运动强度",task.get("motion_strength"),"镜头运动",task.get("camera_movement"),"随机种子",task.get("random_seed")),List.of(),false),
-            section("results","生成结果","VIDEO",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),media(results,"video_url"),false));
+            section("results","生成结果","VIDEO",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),media(firstPage(results),"video_url"),resultsMore),
+            section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
     }
 
     private List<Map<String,Object>> analysisSections(long tenant,long id) {
@@ -298,14 +349,54 @@ public class ProductionTaskService {
     }
 
     private List<Map<String,Object>> operationSections(long tenant,long id) {
-        Map<String,Object> task=one("select operation_type,script_version_id,result_type,result_id,status,error_message from script_ai_operation where tenant_id=? and id=?",tenant,id);
+        Map<String,Object> task=one("select operation_type,script_version_id,redacted_input_json,result_type,result_id,status,error_message,execution_id from script_ai_operation where tenant_id=? and id=?",tenant,id);
         Map<String,Object> input=one("select content,version_no from script_version where tenant_id=? and id=?",tenant,number(task,"script_version_id"));
         String source=text(input.get("content"));
         String result="";
         if("SCRIPT_VERSION".equals(task.get("result_type"))) result=text(one("select content from script_version where tenant_id=? and id=?",tenant,number(task,"result_id")).get("content"));
+        List<Map<String,Object>> storyboard="STORYBOARD_SET".equals(task.get("result_type")) ? storyboardResults(tenant,number(task,"execution_id")) : List.of();
+        Map<String,Object> snapshot="SCOPED_ASSET_REEXTRACTION".equals(task.get("result_type")) ? one("select asset_scope,prompt_policy,model_id,status,total_units,completed_units,failed_units from scoped_asset_reextraction_snapshot where tenant_id=? and operation_id=? and id=?",tenant,id,number(task,"result_id")) : Map.of();
+        List<Map<String,Object>> units=snapshot.isEmpty()?List.of():sql.queryForList("select episode_key,status from scoped_asset_reextraction_unit where snapshot_id=:snapshot order by id limit 21",Map.of("snapshot",number(task,"result_id")));
+        boolean unitsMore=units.size()>20;
+        List<Map<String,Object>> structured=!storyboard.isEmpty()?storyboard:firstPage(units);
+        String resultKind=structured.isEmpty()&&snapshot.isEmpty()?"TEXT":"STRUCTURED";
+        String resultAvailability=structured.isEmpty()&&snapshot.isEmpty()?available(result):"AVAILABLE";
+        List<Map<String,Object>> resultFields=snapshot.isEmpty()?fields("结果类型",task.get("result_type"),"错误",failure(task.get("error_message"))):fields("资产范围",snapshot.get("asset_scope"),"提示词策略",snapshot.get("prompt_policy"),"模型",snapshot.get("model_id"),"状态",snapshot.get("status"),"总分集",snapshot.get("total_units"),"已完成",snapshot.get("completed_units"),"失败",snapshot.get("failed_units"));
+        List<Map<String,Object>> settings=fields("操作类型",task.get("operation_type"),"状态",task.get("status"));
+        settings.addAll(operationRequestFields(text(task.get("operation_type")),task.get("redacted_input_json")));
         return List.of(section("submission","固定输入","TEXT",available(source),source,fields("输入版本",input.get("version_no")),List.of(),more(source)),
-            section("settings","处理设置","FIELDS","AVAILABLE",null,fields("操作类型",task.get("operation_type"),"状态",task.get("status")),List.of(),false),
-            section("results","本次结果","TEXT",available(result),result,fields("结果类型",task.get("result_type"),"错误",failure(task.get("error_message"))),List.of(),more(result)));
+            section("settings","处理设置","FIELDS","AVAILABLE",null,settings,List.of(),false),
+            section("results","本次结果",resultKind,resultAvailability,result,resultFields,structured,more(result)||unitsMore));
+    }
+
+    private List<Map<String,Object>> operationRequestFields(String operation,Object stored) {
+        if(stored==null || String.valueOf(stored).isBlank()) return List.of();
+        try {
+            var root=mapper.readTree(String.valueOf(stored));
+            LinkedHashMap<String,String> allowed=new LinkedHashMap<>();
+            if("SCRIPT_GENERATE".equals(operation)) {
+                allowed.put("storyIdea","故事创意");allowed.put("genre","类型");allowed.put("episodeCount","集数");allowed.put("duration","单集时长");allowed.put("mainCharacter","主角");allowed.put("styleRequirement","风格要求");allowed.put("referenceContent","参考内容");
+            } else if("SCRIPT_REWRITE".equals(operation)) {
+                allowed.put("rewriteType","改写类型");allowed.put("requirement","改写要求");allowed.put("outputLength","输出长度");
+            }
+            List<Map<String,Object>> result=new ArrayList<>();
+            allowed.forEach((key,label)->{var value=root.get(key);if(value!=null&&!value.isNull()&&!value.asText().isBlank()) result.add(Map.of("label",label,"value",preview(value.asText())));});
+            return result;
+        } catch(Exception ignored) { return List.of(); }
+    }
+
+    private List<Map<String,Object>> storyboardResults(long tenant,Long executionId) {
+        if(executionId==null) return List.of();
+        return sql.queryForList("""
+            select s.id,s.storyboard_no,substring(s.visual_description,1,2000) visual_description,
+              substring(s.dialogue,1,2000) dialogue,substring(s.video_prompt,1,2000) video_prompt
+            from storyboard s
+            where s.tenant_id=:tenant and s.deleted_at is null and exists (
+              select 1 from ai_workflow_agent_run_step step
+              join ai_call_log call_log on call_log.id=step.ai_call_log_id and call_log.tenant_id=s.tenant_id
+              where step.run_id=s.generated_by_run_id and call_log.execution_id=:execution)
+            order by s.storyboard_no,s.id limit 20
+            """,Map.of("tenant",tenant,"execution",executionId));
     }
 
     private Map<String,Object> one(String query,Object... args) { List<Map<String,Object>> rows=jdbc.queryForList(query,args); return rows.isEmpty()?Map.of():rows.get(0); }
@@ -317,12 +408,30 @@ public class ProductionTaskService {
     private static String preview(String value) { return value==null?null:value.length()>4000?value.substring(0,4000):value; }
     private static List<Map<String,Object>> fields(Object... values) {
         List<Map<String,Object>> result=new ArrayList<>();
-        for(int i=0;i<values.length;i+=2) if(values[i+1]!=null && !String.valueOf(values[i+1]).isBlank()) result.add(Map.of("label",String.valueOf(values[i]),"value",String.valueOf(values[i+1])));
+        for(int i=0;i<values.length;i+=2) if(values[i+1]!=null && !String.valueOf(values[i+1]).isBlank()) result.add(Map.of("label",String.valueOf(values[i]),"value",preview(String.valueOf(values[i+1]))));
         return result;
     }
     private static List<Map<String,Object>> media(List<Map<String,Object>> rows,String urlKey) {
-        return rows.stream().map(row->{Map<String,Object> item=new LinkedHashMap<>(); item.put("id",row.get("id")); item.put("url",row.get(urlKey)); item.put("thumbnailUrl",row.get("thumbnail_url")); item.put("width",row.get("width")); item.put("height",row.get("height")); item.put("selected",truth(row.get("is_selected"))); return item;}).toList();
+        return rows.stream().map(row->{Map<String,Object> item=new LinkedHashMap<>(); item.put("id",row.get("id")); item.put("url",preview(text(row.get(urlKey)))); item.put("thumbnailUrl",preview(text(row.get("thumbnail_url")))); item.put("width",row.get("width")); item.put("height",row.get("height")); item.put("selected",truth(row.get("is_selected"))); return item;}).toList();
     }
+    private List<Map<String,Object>> referenceItems(Object stored) {
+        if(stored==null || String.valueOf(stored).isBlank()) return List.of();
+        try {
+            List<Map<String,Object>> items=new ArrayList<>();
+            for(var node:mapper.readTree(String.valueOf(stored))) {
+                String url=node.isTextual()?node.asText():node.path("url").asText("");
+                if(url.startsWith("/") && !url.startsWith("//")) {
+                    items.add(Map.of("url",url,"thumbnailUrl",url));
+                    if(items.size()==20) break;
+                }
+            }
+            return items;
+        } catch(Exception ignored) { return List.of(); }
+    }
+    private static void addReference(List<Map<String,Object>> items,Object value,String role) {
+        String url=text(value); if(url.startsWith("/")&&!url.startsWith("//")&&items.size()<20) items.add(Map.of("url",url,"thumbnailUrl",url,"role",role));
+    }
+    private static List<Map<String,Object>> firstPage(List<Map<String,Object>> rows) { return rows.size()>20?rows.subList(0,20):rows; }
     private static List<Map<String,Object>> bounded(List<Map<String,Object>>... groups) {
         List<Map<String,Object>> result=new ArrayList<>(); for(List<Map<String,Object>> group:groups) for(Map<String,Object> item:group) if(result.size()<20) result.add(item); return result;
     }
