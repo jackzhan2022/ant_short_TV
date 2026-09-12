@@ -190,6 +190,8 @@ class ScriptWorkflowControllerTest {
             """, tenantId, projectId, characterId);
         Long imageResultId = jdbcTemplate.queryForObject(
             "select id from ai_image_result where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("update character_asset set main_image_result_id = ? where id = ?",
+            imageResultId, characterId);
         jdbcTemplate.update("""
             insert into asset_visual_variant
               (tenant_id, project_id, asset_type, asset_id, name, source_type, generation_status,
@@ -217,6 +219,8 @@ class ScriptWorkflowControllerTest {
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.characters[0].name", is("林晚")))
+            .andExpect(jsonPath("$.data.characters[0].mainImageThumbnailUrl",
+                is("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId, imageResultId))))
             .andExpect(jsonPath("$.data.characters[0].visual").doesNotExist());
         mockMvc.perform(get("/api/projects/%d/script-elements/CHARACTER/%d/visual-workspace".formatted(projectId, characterId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))

@@ -37,6 +37,7 @@ class AssetSummaryQueryBoundaryTest {
                 ResultSet row = mock(ResultSet.class);
                 when(row.getLong("id")).thenReturn(1L);
                 when(row.getString("name")).thenReturn("Asset");
+                when(row.getObject("main_image_result_id", Long.class)).thenReturn(7L);
                 var results = new java.util.ArrayList<>();
                 for (int index = 0; index < 50; index++) results.add(mapper.mapRow(row, index));
                 return results;
@@ -45,11 +46,13 @@ class AssetSummaryQueryBoundaryTest {
         assertThat(result.characters()).hasSize(50);
         assertThat(result.scenes()).hasSize(50);
         assertThat(result.props()).hasSize(50);
+        assertThat(result.characters().get(0).mainImageThumbnailUrl())
+            .isEqualTo("/api/projects/33/ai-image-results/7/thumbnail");
         verify(jdbc, times(3)).query(anyString(), any(RowMapper.class), eq(10L), eq(33L), isNull());
         ArgumentCaptor<String> queries = ArgumentCaptor.forClass(String.class);
         verify(jdbc, times(3)).query(queries.capture(), any(RowMapper.class), eq(10L), eq(33L), isNull());
         assertThat(queries.getAllValues()).allSatisfy(query ->
-            assertThat(query).contains("thumbnail_url"));
+            assertThat(query).contains("main_image_result_id"));
         verifyNoMoreInteractions(jdbc);
         verify((ProjectAccessResolver) dependencies.get(ProjectAccessResolver.class)).requireView(10L, 33L);
         for (Class<?> type : List.of(AssetVisualVariantService.class, AssetVisualBindingService.class,

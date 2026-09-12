@@ -179,7 +179,7 @@ const AssetCard = ({
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const thumbnailUrl = thumbnailFailed
     ? undefined
-    : item.mainImageThumbnailUrl || item.visual?.resolvedImageUrl;
+    : item.mainImageThumbnailUrl;
   const bindings = item.visual?.episodeBindings ?? [];
   const variantEpisodes = (item.visual?.variants ?? []).flatMap((variant) => {
     const episodeNos = [
