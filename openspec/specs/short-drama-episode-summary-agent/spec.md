@@ -51,10 +51,13 @@ The save tool SHALL derive business identity from Run scope and reject inactive,
 - **THEN** the save fails with a stale-source error
 - **AND** the previous formal summary remains unchanged
 
-### Requirement: Keep legacy summary reads compatible during migration
-The system SHALL mirror the formal summary text to the legacy `script_episode.summary` field while treating `script_episode_summary.content_json` as authoritative for new reads and edits.
+### Requirement: Read and write summaries through the formal repository only
+Summary saves, edits, episode navigation and Agent tools SHALL use script_episode_summary as the sole persisted summary source. The system SHALL remove the script_episode.summary mirror column, dual writes and fallback reads.
 
-#### Scenario: Legacy consumer reads an updated summary
-- **WHEN** the new save tool commits a summary
-- **THEN** the compatibility summary text is updated in the same transaction
-- **AND** highlights and ending hook remain available from the formal summary document
+#### Scenario: Edit a formal summary
+- **WHEN** an authorized user updates summary, highlights or endingHook
+- **THEN** all current consumers obtain the updated formal document without a mirrored legacy value
+
+#### Scenario: Episode has no formal summary
+- **WHEN** an episode has no current formal summary
+- **THEN** consumers expose a missing summary state instead of reading legacy analysis JSON or a removed column

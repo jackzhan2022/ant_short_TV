@@ -36,18 +36,26 @@ The system SHALL NOT create a new analysis task when a user later edits and save
 - **AND** does not create or schedule another analysis task
 
 ### Requirement: Execute the four analysis stages in order
-The system SHALL execute the stages in this order: global story understanding, intelligent episode splitting, episode summary extraction, and character/scene/prop recognition. Each stage SHALL invoke its enabled workflow Agent, and the latter three Agents SHALL read their own current trusted source rather than consume a prior stage's normalized JSON as model input.
+The system SHALL run global understanding followed by episode splitting through Workflow Agents. After formal splitting succeeds, summary and asset-recognition work SHALL be persisted and independently progressed per episode using trusted current input. The system SHALL have no legacy executor, LEGACY_V1 mode or routing switch. Per-episode asset completion and coverage validation SHALL durably trigger automatic storyboard generation with idempotency and manual-result protection.
 
 #### Scenario: Advance after committed formal output
-- **WHEN** a stage completes its required terminal save contract and formal coverage validation
-- **THEN** the system marks that stage succeeded
-- **AND** starts the next configured stage
+- **WHEN** splitting completes its terminal save and formal coverage validation
+- **THEN** the system persists summary and recognition work for the frozen episode set
+- **AND** neither branch depends on the generated output of the other
 
 #### Scenario: Preserve failed stage
-- **WHEN** a stage fails before its formal completion condition
-- **THEN** the system marks that stage failed or partially failed with an actionable error
-- **AND** does not mark later stages successful
-- **AND** preserves all earlier committed formal data
+- **WHEN** an episode summary fails
+- **THEN** it remains failed with an actionable error while recognition continues
+- **AND** earlier committed data remains available and the analysis is not falsely completed
+
+#### Scenario: Restart during downstream work
+- **WHEN** the service restarts with summary, recognition or automatic storyboard work pending
+- **THEN** it resumes from persisted claims and outcomes without duplicate generation or point reservation
+
+#### Scenario: Recognition commits one episode
+- **WHEN** asset persistence and coverage succeed for an episode
+- **THEN** a durable event schedules that episode's storyboard without waiting for whole-script summaries
+- **AND** existing manual storyboards are protected and storyboard failure does not undo recognition success
 
 ### Requirement: Support retry from a failed stage
 The system SHALL allow an authorized user to retry a failed stage without resetting successful earlier stages, and SHALL allow each workflow Agent to be explicitly rerun independently against its current required source.
