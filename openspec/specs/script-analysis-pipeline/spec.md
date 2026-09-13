@@ -36,26 +36,30 @@ The system SHALL NOT create a new analysis task when a user later edits and save
 - **AND** does not create or schedule another analysis task
 
 ### Requirement: Execute the four analysis stages in order
-The system SHALL run global understanding followed by episode splitting through Workflow Agents. After formal splitting succeeds, summary and asset-recognition work SHALL be persisted and independently progressed per episode using trusted current input. The system SHALL have no legacy executor, LEGACY_V1 mode or routing switch. Per-episode asset completion and coverage validation SHALL durably trigger automatic storyboard generation with idempotency and manual-result protection.
+The system SHALL execute the stages in this order: global story understanding, intelligent episode splitting, episode summary extraction, and character/scene recognition. The global story understanding stage SHALL invoke the enabled `short-drama-global-understanding` workflow Agent, while the remaining stages retain their existing executors until separately migrated.
 
-#### Scenario: Advance after committed formal output
-- **WHEN** splitting completes its terminal save and formal coverage validation
-- **THEN** the system persists summary and recognition work for the frozen episode set
-- **AND** neither branch depends on the generated output of the other
+#### Scenario: Complete global understanding through the Agent
+- **WHEN** the global story understanding stage is ready to run
+- **THEN** the system invokes the saved workflow Agent with trusted tenant, project, script, task, stage, and user scope
+- **AND** the Agent reads the current script through `read_current_script`
+- **AND** the stage succeeds only after `save_global_understanding` commits the formal script-level document
+- **AND** the persisted normalized content becomes the global-understanding input for intelligent episode splitting
+
+#### Scenario: Advance after successful stage
+- **WHEN** a stage produces and persists a valid result according to its stage-specific completion contract
+- **THEN** the system marks that stage succeeded
+- **AND** starts the next stage with the previous result as input
 
 #### Scenario: Preserve failed stage
-- **WHEN** an episode summary fails
-- **THEN** it remains failed with an actionable error while recognition continues
-- **AND** earlier committed data remains available and the analysis is not falsely completed
+- **WHEN** a stage fails
+- **THEN** the system marks the stage failed with an actionable error
+- **AND** does not mark later stages successful
+- **AND** preserves all earlier successful results
 
-#### Scenario: Restart during downstream work
-- **WHEN** the service restarts with summary, recognition or automatic storyboard work pending
-- **THEN** it resumes from persisted claims and outcomes without duplicate generation or point reservation
-
-#### Scenario: Recognition commits one episode
-- **WHEN** asset persistence and coverage succeed for an episode
-- **THEN** a durable event schedules that episode's storyboard without waiting for whole-script summaries
-- **AND** existing manual storyboards are protected and storyboard failure does not undo recognition success
+#### Scenario: Run a non-migrated later stage
+- **WHEN** episode splitting, episode summary extraction, or character/scene recognition becomes ready
+- **THEN** the system executes that stage through its existing implementation
+- **AND** preserves the established ordering, retry, billing, and result contracts
 
 ### Requirement: Support retry from a failed stage
 The system SHALL allow an authorized user to retry a failed stage without resetting successful earlier stages, and SHALL allow each workflow Agent to be explicitly rerun independently against its current required source.
@@ -96,4 +100,17 @@ The new splitting, summary, and recognition Agents SHALL use trusted `script_id`
 - **WHEN** a user edits the current script and explicitly reruns an Agent
 - **THEN** the Agent reads the newly saved current source
 - **AND** can replace the corresponding current formal output without requiring version rollback
+
+### Requirement: Keep formal global understanding separate from version-bound analysis evidence
+The system SHALL maintain the current formal global-understanding document by `script_id` while retaining existing task, script-version, call, and stage-result evidence for analysis audit and downstream compatibility.
+
+#### Scenario: Persist from a version-bound pipeline task
+- **WHEN** a version-bound analysis task completes its global-understanding Agent stage
+- **THEN** the formal document is upserted by current `script_id` without `script_version_id`
+- **AND** the task and diagnostic result retain their existing version-bound metadata
+
+#### Scenario: Retrieve downstream global context
+- **WHEN** intelligent episode splitting starts after the Agent stage succeeds
+- **THEN** it receives the normalized content committed by the global-understanding save tool
+- **AND** does not depend on parsing the Agent's final natural-language response
 
