@@ -16,4 +16,4 @@
 
 - [x] 3.1 Run backend tests covering the workflow tool registry, screenplay data service, and workflow Agent runner.
 - [x] 3.2 Run frontend lint, focused tests, and production build.
-- [ ] 3.3 Inspect the Agent editor manually to confirm the new tool can be selected and all tool descriptions appear on hover.
+- [x] 3.3 Inspect the Agent editor manually to confirm the new tool can be selected and all tool descriptions appear on hover.
