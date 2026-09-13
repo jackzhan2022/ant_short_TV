@@ -137,6 +137,7 @@ class ProductionTaskControllerTest {
         List<Long> versions=jdbc.queryForList("select id from script_version where script_id=? order by version_no",Long.class,script);
         jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,script_id,script_version_id,redacted_input_json,idempotency_key,status,result_type,result_id,created_by,created_at,updated_at) values (?,?, 'SCRIPT_GENERATE',?,?,?, 'generate-detail','SUCCEEDED','SCRIPT_VERSION',?,?,now(),now())",tenant,project,script,versions.get(0),"{\"storyIdea\":\"lost heir\",\"genre\":\"drama\",\"episodeCount\":12}",versions.get(1),user);
         jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,script_id,script_version_id,redacted_input_json,idempotency_key,status,result_type,result_id,created_by,created_at,updated_at) values (?,?, 'SCRIPT_REWRITE',?,?,?, 'rewrite-detail','SUCCEEDED','SCRIPT_VERSION',?,?,now(),now())",tenant,project,script,versions.get(0),"{\"rewriteType\":\"TONE\",\"requirement\":\"more restrained\",\"outputLength\":\"SAME\"}",versions.get(2),user);
+        jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,script_id,script_version_id,redacted_input_json,idempotency_key,status,result_type,result_id,created_by,created_at,updated_at) values (?,?, 'PROMPT_GENERATE',?,?,?, 'prompt-detail','SUCCEEDED','SCRIPT_PROMPTS',?,?,now(),now())",tenant,project,script,versions.get(0),"{\"targetType\":\"STORYBOARD\",\"targetId\":42}",project,user);
         List<Long> operations=jdbc.queryForList("select id from script_ai_operation where tenant_id=? order by id",Long.class,tenant);
         String base="/api/tenants/"+tenant+"/production-tasks/SCRIPT_OPERATION:";
         mvc.perform(get(base+operations.get(0)+"/content").with(authenticated(token))).andExpect(status().isOk())
@@ -147,6 +148,24 @@ class ProductionTaskControllerTest {
             .andExpect(jsonPath("$.data.sections[1].fields[2].value").value("TONE"))
             .andExpect(jsonPath("$.data.sections[1].fields[3].value").value("more restrained"))
             .andExpect(jsonPath("$.data.sections[2].preview").value("rewritten output"));
+        mvc.perform(get(base+operations.get(2)+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[1].fields[2].value").value("STORYBOARD"))
+            .andExpect(jsonPath("$.data.sections[1].fields[3].value").value("42"))
+            .andExpect(jsonPath("$.data.sections[2].availability").value("NOT_RECORDED"));
+    }
+
+    @Test void readsOnlyTheSelectedReviewRoundAndFrozenDraft() throws Exception {
+        String token=register("13800019817");long tenant=tenant(token),user=user("13800019817");
+        jdbc.update("insert into review_project(tenant_id,name,source_type,original_content,status,created_by,created_at,updated_at) values (?,'review rounds','TXT','current changed draft','ACTIVE',?,now(),now())",tenant,user);
+        long project=jdbc.queryForObject("select id from review_project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into review_script_version(tenant_id,project_id,version_no,source_type,content,created_by,created_at,updated_at) values (?,?,1,'TXT','round one frozen draft',?,now(),now()),(?,?,2,'TXT','round two frozen draft',?,now(),now())",tenant,project,user,tenant,project,user);
+        List<Long> versions=jdbc.queryForList("select id from review_script_version where project_id=? order by version_no",Long.class,project);
+        jdbc.update("insert into review_task(tenant_id,project_id,script_version_id,round_no,review_mode,selected_dimensions_json,review_scope_type,report_markdown,status,overall_progress,idempotency_key,created_by,created_at,updated_at) values (?,?,?,1,'QUICK','[\"PLOT\"]','ALL','# Round one\nIssue A\nSuggestion A','COMPLETED',100,'round-one',?,now(),now()),(?,?,?,2,'DEEP','[\"DIALOGUE\"]','ALL','# Round two secret','COMPLETED',100,'round-two',?,now(),now())",tenant,project,versions.get(0),user,tenant,project,versions.get(1),user);
+        long first=jdbc.queryForObject("select min(id) from review_task where project_id=?",Long.class,project);
+        mvc.perform(get("/api/tenants/"+tenant+"/production-tasks/REVIEW:"+first+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].preview").value("round one frozen draft"))
+            .andExpect(jsonPath("$.data.sections[2].preview").value(org.hamcrest.Matchers.containsString("Suggestion A")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Round two secret"))));
     }
 
     @Test void preservesIndependentCreatorWhenAnotherMembersBatchReusesExecution() throws Exception {
@@ -184,6 +203,13 @@ class ProductionTaskControllerTest {
         mvc.perform(get(base+"/SCRIPT_OPERATION:"+operation+"/content").with(authenticated(first))).andExpect(status().isOk())
             .andExpect(jsonPath("$.data.sections[2].items.length()").value(1))
             .andExpect(jsonPath("$.data.sections[2].items[0].visual_description").value("secret body"));
+        long item=jdbc.queryForObject("select id from storyboard_batch_item where batch_id=?",Long.class,batch);
+        mvc.perform(get(base+"/STORYBOARD_BATCH:"+batch+"/content").with(authenticated(first))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].items[0].episode_no").value(1));
+        mvc.perform(get(base+"/STORYBOARD_ITEM:"+item+"/content").with(authenticated(first))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].availability").value("NOT_RECORDED"))
+            .andExpect(jsonPath("$.data.sections[1].items[0].visual_description").value("secret body"))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("prompt_snapshot"))));
         mvc.perform(get(base+"/STORYBOARD_BATCH:"+batch).with(authenticated(first))).andExpect(status().isOk()).andExpect(jsonPath("$.data.statusGroup").value("SUCCEEDED")).andExpect(jsonPath("$.data.warningSummary").isNotEmpty());
         jdbc.update("update storyboard set shot_plan_json=? where tenant_id=?","{\"warnings\": [ ]}",tenant);
         mvc.perform(get(base+"/STORYBOARD_BATCH:"+batch).with(authenticated(first))).andExpect(status().isOk()).andExpect(jsonPath("$.data.warningSummary").isEmpty());
@@ -232,6 +258,19 @@ class ProductionTaskControllerTest {
         mvc.perform(get(base).param("statusGroup","FAILED").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items[0].domainStatus").value("LEGACY_UNKNOWN"));
     }
 
+    @Test void pagesRecordedBatchSubmissionItemsWithoutLoadingSiblingBodies() throws Exception {
+        String token=register("13800019818");long tenant=tenant(token),user=user("13800019818");
+        long batch=batch(tenant,user,"paged batch");
+        for(int i=1;i<=21;i++) jdbc.update("insert into video_decomposition_episode(batch_id,tenant_id,episode_no,source_file_name,storage_path,file_size,status,analysis_version,draft_version,created_by,created_at,updated_at) values (?,?,?,?,'test',1,'PENDING',1,1,?,now(),now())",batch,tenant,i,"clip-"+i+".mp4",user);
+        String base="/api/tenants/"+tenant+"/production-tasks/VIDEO_DECOMPOSITION:"+batch;
+        mvc.perform(get(base+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].items.length()").value(20))
+            .andExpect(jsonPath("$.data.sections[0].hasMore").value(true));
+        mvc.perform(get(base+"/content/submission").param("page","2").param("pageSize","20").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items.length()").value(1))
+            .andExpect(jsonPath("$.data.items[0].source_file_name").value("clip-21.mp4"));
+    }
+
     @Test void aggregatesBatchOutcomesAndPagesChildrenWithoutExecutionRecords() throws Exception {
         String owner=register("13800019803");long user=user("13800019803"), tenant=tenant(owner);
         long batch=batch(tenant,user,"mixed batch");
@@ -247,6 +286,12 @@ class ProductionTaskControllerTest {
             .andExpect(jsonPath("$.data.items[0].childCounts.failed").value(1)).andExpect(jsonPath("$.data.items[0].childCounts.canceled").value(1));
         mvc.perform(get(base+"/VIDEO_DECOMPOSITION:"+batch+"/children").param("pageSize","2").with(authenticated(owner)))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3)).andExpect(jsonPath("$.data.items.length()").value(2));
+        long episode=jdbc.queryForObject("select min(id) from video_decomposition_episode where batch_id=?",Long.class,batch);
+        jdbc.update("update video_decomposition_episode set draft_content='episode screenplay' where id=?",episode);
+        mvc.perform(get(base+"/VIDEO_DECOMPOSITION:"+batch+"/content").with(authenticated(owner))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].items[0].source_file_name").value("clip.mp4"));
+        mvc.perform(get(base+"/VIDEO_EPISODE:"+episode+"/content").with(authenticated(owner))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[2].preview").value("episode screenplay"));
         mvc.perform(get(base).param("statusGroup","FAILED").with(authenticated(owner))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
         mvc.perform(get(base+"/summary").param("statusGroup","PARTIAL").with(authenticated(owner))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1));
         jdbc.update("update video_decomposition_batch set deleted_at=now() where id=?",batch);

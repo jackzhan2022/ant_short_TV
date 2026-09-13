@@ -460,7 +460,7 @@ const ProductionWorkbenchSettings = () => {
 
   const activeAssets = assetsByType[activeType];
   const activeGeneration = activeAssets.reduce(
-    (summary, item) => {
+    (summary: { completed: number; failed: number; generating: number }, item: AssetRecord) => {
       Object.entries(item.visual?.generationSummary ?? {}).forEach(
         ([status, count]) => {
           if (status === 'COMPLETED') summary.completed += count;
@@ -1493,7 +1493,7 @@ const ProductionWorkbenchSettings = () => {
             {assetSections.map((section) => {
               const count = assetsByType[section.type].length;
               const completed = assetsByType[section.type].filter(
-                (item) => item.status === 'CONFIRMED',
+                (item: AssetRecord) => item.status === 'CONFIRMED',
               ).length;
               const active = activeType === section.type;
               return (
@@ -1599,7 +1599,7 @@ const ProductionWorkbenchSettings = () => {
                     gap: 20,
                   }}
                 >
-                  {items.map((item) => (
+                  {items.map((item: AssetRecord) => (
                     <AssetCard
                       key={`${section.type}-${item.id}`}
                       item={item}

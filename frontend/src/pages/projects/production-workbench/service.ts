@@ -273,6 +273,7 @@ export type AssetSettingsSummary = Pick<
   ProductionWorkspaceState,
   'projectId' | 'characters' | 'scenes' | 'props'
 >;
+export type AssetSettingsWorkspace = AssetSettingsSummary;
 
 export type ScriptPageWorkspace = Pick<
   ProductionWorkspaceState,

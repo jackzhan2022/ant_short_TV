@@ -226,4 +226,4 @@ export default defineConfig({
     __UMI_VERSION__: require('@umijs/max/package.json').version,
     __UTOO_VERSION__: require('@utoo/pack/package.json').version,
   },
-});
+}) as Record<string, unknown>;

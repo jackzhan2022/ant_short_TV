@@ -25,6 +25,17 @@ vi.mock('@umijs/max', () => ({
   useModel: () => ({ initialState: { currentTenantId: mocks.tenantId } }),
   history: { push: vi.fn() },
 }));
+vi.mock('@ant-design/pro-components', async () => {
+  const React = await import('react');
+  return {
+    PageContainer: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+    ProTable: ({ columns = [], dataSource = [] }: { columns?: any[]; dataSource?: any[] }) => React.createElement(
+      'div',
+      null,
+      dataSource.map((row) => React.createElement('div', { key: row.taskKey }, columns[0]?.render?.(undefined, row))),
+    ),
+  };
+});
 vi.mock('./service', () => ({
   listTasks: mocks.list,
   taskSummary: mocks.summary,
@@ -90,6 +101,21 @@ it('loads just the selected detail and persists selection', async () => {
   );
   expect(mocks.children).not.toHaveBeenCalled();
   expect(window.location.search).toContain('task=REVIEW');
+});
+it('keeps the batch parent and child page when opening a child task', async () => {
+  window.history.replaceState({}, '', '/tasks?task=VIDEO_DECOMPOSITION:1&childPage=2');
+  mocks.detail.mockImplementation((_tenant, key) => Promise.resolve(
+    key === 'VIDEO_DECOMPOSITION:1'
+      ? { taskKey: key, title: '视频批次', childCounts: { total: 21 }, allowedActions: [], statusGroup: 'SUCCEEDED' }
+      : { taskKey: key, title: '第 21 集', childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED' },
+  ));
+  mocks.children.mockResolvedValue({ items: [{ taskKey: 'VIDEO_EPISODE:21', title: '第 21 集', childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED' }], total: 21 });
+  render(<Tasks />);
+  fireEvent.click(await screen.findByText('第 21 集'));
+  await waitFor(() => expect(mocks.detail).toHaveBeenCalledWith(1, 'VIDEO_EPISODE:21', expect.anything()));
+  expect(window.location.search).toContain('parent=VIDEO_DECOMPOSITION%3A1');
+  expect(window.location.search).toContain('childPage=2');
+  expect(await screen.findByRole('button', { name: '返回批次' })).toBeInTheDocument();
 });
 it('submits filters only after the query command', async () => {
   render(<Tasks />);

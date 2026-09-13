@@ -1,4 +1,5 @@
 import { history, useModel } from '@umijs/max';
+import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import {
   Alert,
   Button,
@@ -66,6 +67,12 @@ const availability: Record<ContentSection['availability'], string> = {
   RESTRICTED: '无权查看此内容',
   UNSUPPORTED: '历史任务暂不支持此内容',
 };
+const resultLabels: Record<string, string> = {
+  asset_type: '资产类型', episode_key: '分集标识', episode_no: '集数', execution_id: '执行来源',
+  result_type: '结果类型', status: '状态', storyboard_no: '分镜编号', visual_description: '画面描述',
+  dialogue: '对白', video_prompt: '视频提示词', source_file_name: '源文件', mime_type: '文件类型',
+  duration_seconds: '时长（秒）', file_size: '文件大小', name: '名称', id: '编号',
+};
 function ContentSectionView({ section, tenant, taskKey }: { section: ContentSection; tenant: number; taskKey: string }) {
   const media = section.kind === 'IMAGE' || section.kind === 'VIDEO';
   const [copying, setCopying] = useState(false);
@@ -77,7 +84,7 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
   const [textMore, setTextMore] = useState(section.kind === 'TEXT' && section.hasMore);
   const [expanding, setExpanding] = useState(false);
   const [sectionError, setSectionError] = useState('');
-  const copyAbort = useRef<AbortController>();
+  const copyAbort = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => copyAbort.current?.abort(), []);
   useEffect(() => {
     setItems(section.items); setItemsPage(1); setItemsMore(section.hasMore);
@@ -136,13 +143,13 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
     {sectionError && <Alert type="warning" title={sectionError} />}
     {displayText && <Typography.Paragraph copyable={textMore ? false : { text: displayText }} style={{ whiteSpace: 'pre-wrap' }}>{displayText}</Typography.Paragraph>}
     {section.kind === 'TEXT' && (textMore || section.hasMore) && <div><Typography.Text type="secondary">内容较长，按需读取后续内容。</Typography.Text>{textMore && <Button type="link" size="small" loading={expanding} onClick={expandText}>继续展开</Button>}<Button type="link" size="small" loading={copying} onClick={copyFullText}>复制全文</Button></div>}
-    {section.hasMore && media && <Typography.Text type="secondary">仅展示前 20 项结果。</Typography.Text>}
+    {section.hasMore && !textMore && <Typography.Text type="secondary">仅展示前 20 项结果。</Typography.Text>}
     {section.fields.length > 0 && <Descriptions size="small" column={1} items={section.fields.map((field) => ({ key: field.label, label: field.label, children: field.value }))} />}
     {media && items.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-      {items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><Image width={160} src={String(item.thumbnailUrl ?? item.url)} alt={`${section.title} ${index + 1}`} />{item.role && <Tag>{String(item.role)}</Tag>}{item.selected && <Tag color="success">当前采用</Tag>}</div> : <video key={String(item.id ?? index)} controls preload="none" poster={String(item.thumbnailUrl ?? '')} style={{ width: 320, maxWidth: '100%' }}><source src={String(item.url ?? '')} /><track kind="captions" srcLang="zh-CN" label="暂无字幕" /></video>)}
+      {items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><Image width={160} src={String(item.thumbnailUrl ?? item.url)} alt={`${section.title} ${index + 1}`} />{typeof item.role === 'string' && <Tag>{item.role}</Tag>}{item.selected && <Tag color="success">当前采用</Tag>}<a href={String(item.url ?? '')} download>下载</a></div> : <div key={String(item.id ?? index)}><video controls preload="none" poster={String(item.thumbnailUrl ?? '')} style={{ width: 320, maxWidth: '100%' }}><source src={String(item.url ?? '')} /><track kind="captions" srcLang="zh-CN" label="暂无字幕" /></video><a href={String(item.url ?? '')} download>下载</a></div>)}
     </div>}
-    {media && itemsMore && <Button type="link" loading={loadingItems} onClick={loadMoreItems}>加载更多结果</Button>}
-    {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl'].includes(key)).map(([key, value]) => `${key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
+    {itemsMore && !textMore && <Button type="link" loading={loadingItems} onClick={loadMoreItems}>加载更多结果</Button>}
+    {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl'].includes(key)).map(([key, value]) => `${resultLabels[key] ?? key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
   </section>;
 }
 function queryFromUrl(): Query {
@@ -169,12 +176,17 @@ function TasksForTeam({ tenant }: { tenant: number }) {
   const [selected, setSelected] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get('task'),
   );
+  const [parentTask, setParentTask] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('parent'),
+  );
   const [page, setPage] = useState<TaskPage>();
   const [summary, setSummary] = useState<Summary>();
   const [detail, setDetail] = useState<Task>();
   const [content, setContent] = useState<TaskContent>();
   const [children, setChildren] = useState<TaskPage>();
-  const [childPage, setChildPage] = useState(1);
+  const [childPage, setChildPage] = useState(() =>
+    Math.max(1, Number(new URLSearchParams(window.location.search).get('childPage')) || 1),
+  );
   const [error, setError] = useState('');
   const [detailError, setDetailError] = useState('');
   const [contentError, setContentError] = useState('');
@@ -183,8 +195,8 @@ function TasksForTeam({ tenant }: { tenant: number }) {
   const [revision, setRevision] = useState(0);
   const mounted = useRef(true);
   const actionKeys = useRef(new Map<string, string>());
-  const contentAbort = useRef<AbortController>();
-  const detailStatus = useRef<string>();
+  const contentAbort = useRef<AbortController | undefined>(undefined);
+  const detailStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -198,14 +210,18 @@ function TasksForTeam({ tenant }: { tenant: number }) {
       if (v !== undefined && v !== '') p.set(k, String(v));
     });
     if (selected) p.set('task', selected);
+    if (parentTask) p.set('parent', parentTask);
+    if (parentTask) p.set('childPage', String(childPage));
     window.history.replaceState({}, '', `${window.location.pathname}?${p}`);
-  }, [query, selected]);
+  }, [query, selected, parentTask, childPage]);
   useEffect(() => {
     const onPop = () => {
       const next = queryFromUrl();
       setQuery(next);
       setDraftQuery(next);
       setSelected(new URLSearchParams(window.location.search).get('task'));
+      setParentTask(new URLSearchParams(window.location.search).get('parent'));
+      setChildPage(Math.max(1, Number(new URLSearchParams(window.location.search).get('childPage')) || 1));
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -320,9 +336,10 @@ function TasksForTeam({ tenant }: { tenant: number }) {
     setQuery((q) => ({ ...q, ...draftQuery, page: 1 }));
     setSelected(null);
   };
-  const select = (task: Task) => {
+  const select = (task: Task, fromChild = false) => {
+    setParentTask(fromChild ? detail?.taskKey ?? null : null);
     setSelected(task.taskKey);
-    setChildPage(1);
+    if (!fromChild) setChildPage(1);
   };
   const run = async (task: Task, action: string) => {
     if (busy) return;
@@ -344,7 +361,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
       if (mounted.current) setBusy(false);
     }
   };
-  const columns = [
+  const columns: ProColumns<Task>[] = [
     {
       title: '任务',
       key: 'title',
@@ -357,18 +374,18 @@ function TasksForTeam({ tenant }: { tenant: number }) {
     {
       title: '类型',
       dataIndex: 'type',
-      render: (v: string) => types[v] || '分集任务',
+      render: (_: unknown, record) => types[record.type] || '分集任务',
     },
     {
       title: '项目',
       dataIndex: 'projectName',
-      render: (v?: string) => v || '—',
+      render: (_: unknown, record) => record.projectName || '—',
     },
     { title: '创建人', dataIndex: 'creatorName' },
     {
       title: '状态',
       dataIndex: 'statusGroup',
-      render: (v: string) => statuses[v] || v,
+      render: (_: unknown, record) => statuses[record.statusGroup] || record.statusGroup,
     },
     {
       title: '进度',
@@ -382,10 +399,15 @@ function TasksForTeam({ tenant }: { tenant: number }) {
     },
     { title: '创建时间', dataIndex: 'createdAt' },
   ];
+  const childColumns = [
+    { title: '任务', key: 'title', render: (_: unknown, task: Task) => <Button type="link" onClick={() => select(task, true)}>{task.title}</Button> },
+    { title: '类型', render: (_: unknown, task: Task) => types[task.type] || '分集任务' },
+    { title: '状态', render: (_: unknown, task: Task) => statuses[task.statusGroup] || task.statusGroup },
+    { title: '进度', render: (_: unknown, task: Task) => task.progress != null ? <Progress percent={Number(task.progress)} size="small" /> : task.phase || '—' },
+    { title: '创建时间', dataIndex: 'createdAt' },
+  ];
   return (
-    <main style={{ padding: 24 }}>
-      <Typography.Title level={2} style={{ marginTop: 0, marginBottom: 4 }}>任务中心</Typography.Title>
-      <Typography.Paragraph type="secondary">查看后台生产进度、提交内容与实际产出。</Typography.Paragraph>
+    <PageContainer title="任务中心" content="查看后台生产进度、提交内容与实际产出。">
       <Tabs
         activeKey={query.scope}
         onChange={(scope) => {
@@ -503,11 +525,14 @@ function TasksForTeam({ tenant }: { tenant: number }) {
             .join(' · ')}
         </p>
       )}
-      <Table<Task>
+      <ProTable<Task>
         rowKey="taskKey"
         columns={columns}
         dataSource={page?.items || []}
         loading={loading}
+        search={false}
+        options={false}
+        toolBarRender={() => [<Button key="refresh" onClick={() => setRevision((n) => n + 1)}>刷新</Button>]}
         scroll={{ x: 900 }}
         pagination={{
           current: query.page,
@@ -522,7 +547,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
         title={detail?.title || '任务详情'}
         open={Boolean(selected)}
         size={720}
-        onClose={() => setSelected(null)}
+        onClose={() => { setSelected(null); setParentTask(null); }}
       >
         {detailError && (
           <Alert
@@ -554,6 +579,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
               {detail.completedAt || '—'}
             </p>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              {parentTask && <Button onClick={() => { setSelected(parentTask); setParentTask(null); }}>返回批次</Button>}
               {detail.destination && (
                 <Button
                   onClick={() => {
@@ -588,12 +614,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
                 <Table<Task>
                   rowKey="taskKey"
                   size="small"
-                  columns={columns.filter(
-                    (c) =>
-                      !['creatorName', 'projectName'].includes(
-                        ('dataIndex' in c ? c.dataIndex : '') || '',
-                      ),
-                  )}
+                  columns={childColumns}
                   dataSource={children?.items || []}
                   scroll={{ x: 650 }}
                   pagination={{
@@ -608,7 +629,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
           </>
         )}
       </Drawer>
-    </main>
+    </PageContainer>
   );
 }
 export default function Tasks() {

@@ -140,20 +140,34 @@ public class ProductionTaskService {
     }
 
     private Map<String,Object> collectionSection(long tenant,String key,Map<String,Object> row,String sectionKey,int page,int pageSize) {
-        if(!"results".equals(sectionKey)) return null;
         String type=String.valueOf(row.get("type"));
-        if(!List.of("IMAGE","VIDEO").contains(type)) return null;
         if(page<1 || pageSize<1) throw invalid();
         int size=Math.min(pageSize,100); long offset=(long)(page-1)*size;
+        if(type.equals("VIDEO_DECOMPOSITION") && sectionKey.equals("submission")) {
+            return collection(key,sectionKey,sql.queryForList("select episode_no,source_file_name,mime_type,file_size,duration_seconds,status from video_decomposition_episode where tenant_id=:tenant and batch_id=:batch order by episode_no,id limit :limit offset :offset",
+                Map.of("tenant",tenant,"batch",number(row,"id"),"limit",size+1,"offset",offset)),page,size,"AVAILABLE");
+        }
+        if(type.equals("STORYBOARD_BATCH") && sectionKey.equals("submission")) {
+            return collection(key,sectionKey,sql.queryForList("select episode_no,episode_id,execution_id from storyboard_batch_item where tenant_id=:tenant and batch_id=:batch order by episode_no,id limit :limit offset :offset",
+                Map.of("tenant",tenant,"batch",number(row,"id"),"limit",size+1,"offset",offset)),page,size,"AVAILABLE");
+        }
+        if(!sectionKey.equals("results") || !List.of("IMAGE","VIDEO").contains(type)) return null;
         String table=type.equals("IMAGE")?"ai_image_result":"ai_video_result";
         String url=type.equals("IMAGE")?"image_url":"video_url";
         String thumbnail=type.equals("IMAGE")?"thumbnail_url":"cover_url";
         List<Map<String,Object>> rows=sql.queryForList("select id,"+url+" content_url,"+thumbnail+" thumbnail_url,width,height,is_selected,status from "+table+" where tenant_id=:tenant and task_id=:task order by id limit :limit offset :offset",
             Map.of("tenant",tenant,"task",number(row,"id"),"limit",size+1,"offset",offset));
-        boolean hasMore=rows.size()>size;
-        List<Map<String,Object>> items=media(rows.size()>size?rows.subList(0,size):rows,"content_url");
+        return collection(key,sectionKey,media(rows.size()>size?rows.subList(0,size):rows,"content_url"),page,size,
+            rows.isEmpty()&&page==1?"PENDING":"AVAILABLE",rows.size()>size);
+    }
+
+    private Map<String,Object> collection(String key,String sectionKey,List<Map<String,Object>> rows,int page,int pageSize,String availability) {
+        return collection(key,sectionKey,rows.size()>pageSize?rows.subList(0,pageSize):rows,page,pageSize,availability,rows.size()>pageSize);
+    }
+
+    private Map<String,Object> collection(String key,String sectionKey,List<Map<String,Object>> items,int page,int pageSize,String availability,boolean hasMore) {
         Map<String,Object> result=new LinkedHashMap<>(); result.put("taskKey",key);result.put("sectionKey",sectionKey);
-        result.put("availability",items.isEmpty()&&page==1?"PENDING":"AVAILABLE");result.put("items",items);result.put("page",page);result.put("pageSize",size);result.put("hasMore",hasMore);
+        result.put("availability",availability);result.put("items",items);result.put("page",page);result.put("pageSize",pageSize);result.put("hasMore",hasMore);
         if(hasMore) result.put("nextPage",page+1);
         return result;
     }
@@ -299,7 +313,7 @@ public class ProductionTaskService {
         for(Map<String,Object> reference:referenceItems(task.get("reference_images"))) if(references.size()<20) references.add(reference);
         return List.of(section("submission","本次提交","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt")),List.of(),more(prompt)),
             section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model"),"服务商",task.get("provider_code"),"时长（秒）",task.get("duration_seconds"),"比例",task.get("aspect_ratio"),"分辨率",task.get("resolution"),"运动强度",task.get("motion_strength"),"镜头运动",task.get("camera_movement"),"随机种子",task.get("random_seed")),List.of(),false),
-            section("results","生成结果","VIDEO",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),media(firstPage(results),"video_url"),resultsMore),
+            section("results","生成结果","VIDEO",mediaAvailability(results,"video_url"),null,List.of(),media(firstPage(results),"video_url"),resultsMore),
             section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
     }
 
@@ -326,7 +340,9 @@ public class ProductionTaskService {
     private List<Map<String,Object>> decompositionSections(long tenant,long id,String type) {
         if(type.equals("VIDEO_DECOMPOSITION")) {
             Map<String,Object> batch=one("select name,model_id,total_episodes,completed_episodes,failed_episodes from video_decomposition_batch where tenant_id=? and id=?",tenant,id);
-            return List.of(section("submission","批次提交","FIELDS","AVAILABLE",null,fields("名称",batch.get("name"),"模型",batch.get("model_id"),"总集数",batch.get("total_episodes")),List.of(),false),
+            List<Map<String,Object>> episodes=sql.queryForList("select episode_no,source_file_name,mime_type,file_size,duration_seconds,status from video_decomposition_episode where tenant_id=:tenant and batch_id=:batch order by episode_no,id limit 21",Map.of("tenant",tenant,"batch",id));
+            boolean episodesMore=episodes.size()>20;
+            return List.of(section("submission","批次提交","STRUCTURED","AVAILABLE",null,fields("名称",batch.get("name"),"模型",batch.get("model_id"),"总集数",batch.get("total_episodes")),firstPage(episodes),episodesMore),
                 section("results","批次进度","BUSINESS_STAGE","AVAILABLE",null,fields("完成",batch.get("completed_episodes"),"失败",batch.get("failed_episodes")),List.of(),false));
         }
         Map<String,Object> episode=one("select batch_id,episode_no,source_file_name,mime_type,file_size,duration_seconds,analysis_version,draft_content,draft_version,confirmed_script_version_id,error_message from video_decomposition_episode where tenant_id=? and id=?",tenant,id);
@@ -340,16 +356,19 @@ public class ProductionTaskService {
     private List<Map<String,Object>> storyboardSections(long tenant,long id,String type) {
         if(type.equals("STORYBOARD_BATCH")) {
             Map<String,Object> batch=one("select name,script_id from storyboard_batch where tenant_id=? and id=?",tenant,id);
-            return List.of(section("submission","批次提交","FIELDS","AVAILABLE",null,fields("名称",batch.get("name"),"剧本",batch.get("script_id")),List.of(),false),
+            List<Map<String,Object>> items=sql.queryForList("select episode_no,episode_id,execution_id from storyboard_batch_item where tenant_id=:tenant and batch_id=:batch order by episode_no,id limit 21",Map.of("tenant",tenant,"batch",id));
+            boolean hasMore=items.size()>20;
+            return List.of(section("submission","批次提交","STRUCTURED","AVAILABLE",null,fields("名称",batch.get("name"),"剧本",batch.get("script_id")),firstPage(items),hasMore),
                 section("results","批次结果","BUSINESS_STAGE","PENDING",null,List.of(),List.of(),false));
         }
         Map<String,Object> item=one("select batch_id,episode_id,episode_no,execution_id from storyboard_batch_item where tenant_id=? and id=?",tenant,id);
-        return List.of(section("submission","分集输入","FIELDS","AVAILABLE",null,fields("第几集",item.get("episode_no"),"分集",item.get("episode_id")),List.of(),false),
-            section("results","分镜结果","STRUCTURED","NOT_RECORDED",null,fields("执行来源",item.get("execution_id")),List.of(),false));
+        List<Map<String,Object>> results=storyboardResults(tenant,number(item,"execution_id"));
+        return List.of(section("submission","分集原文","TEXT","NOT_RECORDED",null,fields("第几集",item.get("episode_no")),List.of(),false),
+            section("results","分镜结果","STRUCTURED",results.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,fields("执行来源",item.get("execution_id")),firstPage(results),results.size()>20));
     }
 
     private List<Map<String,Object>> operationSections(long tenant,long id) {
-        Map<String,Object> task=one("select operation_type,script_version_id,redacted_input_json,result_type,result_id,status,error_message,execution_id from script_ai_operation where tenant_id=? and id=?",tenant,id);
+        Map<String,Object> task=one("select project_id,script_id,operation_type,script_version_id,redacted_input_json,result_type,result_id,status,error_message,execution_id from script_ai_operation where tenant_id=? and id=?",tenant,id);
         Map<String,Object> input=one("select content,version_no from script_version where tenant_id=? and id=?",tenant,number(task,"script_version_id"));
         String source=text(input.get("content"));
         String result="";
@@ -357,8 +376,20 @@ public class ProductionTaskService {
         List<Map<String,Object>> storyboard="STORYBOARD_SET".equals(task.get("result_type")) ? storyboardResults(tenant,number(task,"execution_id")) : List.of();
         Map<String,Object> snapshot="SCOPED_ASSET_REEXTRACTION".equals(task.get("result_type")) ? one("select asset_scope,prompt_policy,model_id,status,total_units,completed_units,failed_units from scoped_asset_reextraction_snapshot where tenant_id=? and operation_id=? and id=?",tenant,id,number(task,"result_id")) : Map.of();
         List<Map<String,Object>> units=snapshot.isEmpty()?List.of():sql.queryForList("select episode_key,status from scoped_asset_reextraction_unit where snapshot_id=:snapshot order by id limit 21",Map.of("snapshot",number(task,"result_id")));
+        List<Map<String,Object>> scopedAssets=snapshot.isEmpty()?List.of():sql.queryForList("""
+            select 'CHARACTER' asset_type,a.id,a.name,a.status from character_asset a
+            where a.tenant_id=:tenant and a.project_id=:project and a.script_id=:script and a.deleted_at is null
+              and exists (select 1 from scoped_asset_reextraction_unit u where u.snapshot_id=:snapshot and u.child_run_id=a.generated_by_run_id)
+            union all select 'SCENE',a.id,a.name,a.status from scene_asset a
+            where a.tenant_id=:tenant and a.project_id=:project and a.script_id=:script and a.deleted_at is null
+              and exists (select 1 from scoped_asset_reextraction_unit u where u.snapshot_id=:snapshot and u.child_run_id=a.generated_by_run_id)
+            union all select 'PROP',a.id,a.name,a.status from prop_asset a
+            where a.tenant_id=:tenant and a.project_id=:project and a.script_id=:script and a.deleted_at is null
+              and exists (select 1 from scoped_asset_reextraction_unit u where u.snapshot_id=:snapshot and u.child_run_id=a.generated_by_run_id)
+            limit 20
+            """,Map.of("tenant",tenant,"project",number(task,"project_id"),"script",number(task,"script_id"),"snapshot",number(task,"result_id")));
         boolean unitsMore=units.size()>20;
-        List<Map<String,Object>> structured=!storyboard.isEmpty()?storyboard:firstPage(units);
+        List<Map<String,Object>> structured=!storyboard.isEmpty()?storyboard:bounded(firstPage(units),scopedAssets);
         String resultKind=structured.isEmpty()&&snapshot.isEmpty()?"TEXT":"STRUCTURED";
         String resultAvailability=structured.isEmpty()&&snapshot.isEmpty()?available(result):"AVAILABLE";
         List<Map<String,Object>> resultFields=snapshot.isEmpty()?fields("结果类型",task.get("result_type"),"错误",failure(task.get("error_message"))):fields("资产范围",snapshot.get("asset_scope"),"提示词策略",snapshot.get("prompt_policy"),"模型",snapshot.get("model_id"),"状态",snapshot.get("status"),"总分集",snapshot.get("total_units"),"已完成",snapshot.get("completed_units"),"失败",snapshot.get("failed_units"));
@@ -378,6 +409,10 @@ public class ProductionTaskService {
                 allowed.put("storyIdea","故事创意");allowed.put("genre","类型");allowed.put("episodeCount","集数");allowed.put("duration","单集时长");allowed.put("mainCharacter","主角");allowed.put("styleRequirement","风格要求");allowed.put("referenceContent","参考内容");
             } else if("SCRIPT_REWRITE".equals(operation)) {
                 allowed.put("rewriteType","改写类型");allowed.put("requirement","改写要求");allowed.put("outputLength","输出长度");
+            } else if("PROMPT_GENERATE".equals(operation)) {
+                allowed.put("targetType","目标类型");allowed.put("targetId","目标编号");
+            } else if("STORYBOARD_BREAKDOWN".equals(operation)) {
+                allowed.put("episodeId","分集编号");
             }
             List<Map<String,Object>> result=new ArrayList<>();
             allowed.forEach((key,label)->{var value=root.get(key);if(value!=null&&!value.isNull()&&!value.asText().isBlank()) result.add(Map.of("label",label,"value",preview(value.asText())));});
@@ -404,6 +439,10 @@ public class ProductionTaskService {
     private static String first(String a,String b) { return !a.isBlank()?a:b; }
     private static String failure(Object value) { return value==null||String.valueOf(value).isBlank()?null:"任务处理失败，请在原业务页面查看详情"; }
     private static String available(String value) { return value==null||value.isBlank()?"NOT_RECORDED":"AVAILABLE"; }
+    private static String mediaAvailability(List<Map<String,Object>> rows,String urlKey) {
+        if(rows.isEmpty()) return "PENDING";
+        return rows.stream().allMatch(row->text(row.get(urlKey)).isBlank()) ? "DELETED" : "AVAILABLE";
+    }
     private static boolean more(String value) { return value!=null&&value.length()>4000; }
     private static String preview(String value) { return value==null?null:value.length()>4000?value.substring(0,4000):value; }
     private static List<Map<String,Object>> fields(Object... values) {

@@ -27,3 +27,15 @@ All rows are read-only. A task being visible is not sufficient to read content: 
 - Historical tasks without a fixed version, task id, episode id, snapshot id or execution/run chain return `NOT_RECORDED`; current project state is never used to reconstruct history.
 - Missing media references are `NOT_RECORDED`, unfinished output is `PENDING`, known deleted resources are `DELETED`, failed authorization is `RESTRICTED`, and unknown historical subtypes are `UNSUPPORTED`.
 - Detail reads do not add migrations, snapshots, write hooks, background backfills, media ingestion, AI calls, billing calls or production transactions.
+
+## User Acceptance Record
+
+| User-visible scenario | Evidence | Expected historical boundary |
+|---|---|---|
+| Saved image and video task | Task-owned media rows, bounded previews and result pages | A missing or deleted media reference does not hide saved settings or other results. |
+| Script generation and rewrite | Fixed `script_version_id` and result version ID | Input and output stay tied to their recorded versions after later edits. |
+| Asset extraction and scoped re-extraction | Operation/run anchor or scoped snapshot | Current project assets are never used as an historical substitute. |
+| Storyboard operation and batch item | Execution-to-run-to-storyboard chain | Shared execution shows only output proved by the execution; unrecorded episode source text is `NOT_RECORDED`. |
+| Prompt generation | Saved target type and target ID | Mutable current prompts are not presented as the task result. |
+| Review and video decomposition | Task-specific draft/report or episode result rows | Another review round or episode cannot satisfy a selected task detail. |
+| Access revocation | Current membership plus domain permission checks on every detail read | The next request removes or restricts prior content; list summaries remain lightweight. |
