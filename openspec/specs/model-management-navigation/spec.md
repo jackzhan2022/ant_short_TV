@@ -39,4 +39,3 @@ The system SHALL retain existing redirects for unrelated provider, model, billin
 #### Scenario: User visits the legacy Agent link
 - **WHEN** a user requests /ai-service-management/agents
 - **THEN** no legacy Agent page or API is available
-

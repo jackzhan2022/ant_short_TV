@@ -73,15 +73,23 @@ The system SHALL expose enough persisted information to distinguish provider tra
 - **THEN** the system marks the execution as timed out or retryable according to the workflow rules and does not leave the task permanently running
 
 ### Requirement: AI tasks require complete effective model billing
-Before an AI task can reserve points or contact a provider, the system SHALL resolve effective supplier cost prices and user point prices for the selected model, required usage metrics, dimensions, and task creation time. Both rule sets SHALL cover every required metric.
+Before a claimed asynchronous AI episode can reserve points or contact a provider, the system SHALL resolve effective supplier cost prices and user point prices for the selected model, required usage metrics, dimensions, and execution initialization time. Both rule sets SHALL cover every required metric. Persisting a video decomposition batch and its pending episodes SHALL NOT require this billing resolution to complete synchronously.
 
-#### Scenario: Both model price rule sets cover the task
-- **WHEN** a task is created for a model with effective cost and point components covering all required metrics
-- **THEN** the system SHALL create the execution using the resolved price versions and may proceed with point reservation and provider dispatch
+#### Scenario: Persist a batch before execution initialization
+- **WHEN** a user creates a valid video decomposition batch
+- **THEN** the system durably stores its ordered pending episodes and returns the batch before resolving billing or reserving points for those episodes
+- **AND** no provider call is made by the batch creation request
 
-#### Scenario: Cost or point price is missing
-- **WHEN** a task is created for a model without an effective cost price or point price for any required metric
-- **THEN** the system SHALL reject the task before provider contact and SHALL not create a point reservation, usage line, cost line, or provider call log
+#### Scenario: Both model price rule sets cover the claimed episode
+- **WHEN** a worker claims an episode whose model has effective cost and point components covering all required metrics
+- **THEN** the system SHALL idempotently create the execution using the resolved price versions
+- **AND** it may proceed with point reservation and provider dispatch
+
+#### Scenario: Cost or point price is missing after claim
+- **WHEN** a worker claims an episode whose model lacks an effective cost price or point price for any required metric
+- **THEN** the system SHALL fail or recover the affected episode before provider contact
+- **AND** SHALL not create a point reservation, usage line, cost line, or provider call log for that failed initialization
+- **AND** SHALL retain the already-created batch and its sibling episodes
 
 ### Requirement: AI execution billing snapshots remain stable
 The system SHALL persist the resolved model cost-price version and point-price version with an execution version and SHALL use those frozen versions for all retries, usage costing, and point settlement belonging to that execution version.
@@ -139,4 +147,33 @@ The system SHALL calculate video decomposition batch counts and percentage from 
 #### Scenario: Complete a new batch
 - **WHEN** all new-batch episodes have succeeded
 - **THEN** the batch becomes `SUCCEEDED` with 100 percent progress without waiting for review or confirmation
+
+### Requirement: Active execution claims are renewed and fenced
+The system SHALL periodically renew the claim for a healthy running AI execution before its configured expiry, and MUST prevent an attempt that loses claim ownership from publishing execution-terminal or domain-terminal state.
+
+#### Scenario: Long-running handler remains healthy beyond the original claim expiry
+- **WHEN** a claimed execution handler remains active longer than the initial claim timeout
+- **THEN** the worker renews the same token-qualified claim before expiry
+- **AND** the dispatcher does not recover or duplicate the healthy execution
+
+#### Scenario: Heartbeat discovers that ownership was lost
+- **WHEN** a heartbeat cannot renew the execution because its claim token or running state no longer matches
+- **THEN** the prior attempt is treated as having lost execution ownership
+- **AND** it does not mark the execution, domain task, or domain stage succeeded or failed
+
+#### Scenario: Replacement attempt starts before the old handler returns
+- **WHEN** an expired attempt returns after a replacement attempt has started
+- **THEN** attempt fencing rejects all stale terminal state writes
+- **AND** the replacement attempt remains the authoritative owner
+
+### Requirement: Execution heartbeat configuration is bounded
+The system SHALL require a positive heartbeat interval shorter than the configured execution claim timeout.
+
+#### Scenario: Heartbeat timing is valid
+- **WHEN** the application starts with a heartbeat interval greater than zero and lower than the claim timeout
+- **THEN** workers use that interval for active claim renewal
+
+#### Scenario: Heartbeat timing cannot renew before expiry
+- **WHEN** the configured heartbeat interval is zero, negative, or not lower than the claim timeout
+- **THEN** application configuration fails before workers dispatch AI executions
 
