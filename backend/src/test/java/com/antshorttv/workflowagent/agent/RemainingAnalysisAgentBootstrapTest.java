@@ -36,7 +36,8 @@ class RemainingAnalysisAgentBootstrapTest {
             List.of("read_current_episode", "save_episode_summary"), 16384, 4);
         assertDefinition(AssetRecognitionAgentBootstrap.AGENT_CODE, modelId,
             List.of("short-drama-analysis-foundation", "short-drama-asset-recognition-framework"),
-            List.of("read_current_episode", "save_episode_assets"), 16384, 6);
+            List.of("read_current_episode", "read_asset_details", "search_script_assets",
+                "save_episode_assets"), 16384, 12);
 
         assertThat(agents.get(EpisodeSplittingAgentBootstrap.AGENT_CODE).systemPrompt())
             .contains("不要输出分析过程", "只提交标题和原文边界", "立即调用保存工具");
