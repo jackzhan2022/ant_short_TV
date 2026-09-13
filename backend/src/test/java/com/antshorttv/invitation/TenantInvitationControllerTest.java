@@ -156,11 +156,56 @@ class TenantInvitationControllerTest {
         invitation.setExpiredAt(LocalDateTime.now().minusDays(1));
         tenantInvitationMapper.updateById(invitation);
 
+        mockMvc.perform(get("/api/invitations")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].status", is("EXPIRED")));
+
+        mockMvc.perform(get("/api/tenants/%d/invitations".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].status", is("EXPIRED")));
+
+        mockMvc.perform(get("/api/invitations/%s".formatted(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("EXPIRED")));
+
         mockMvc.perform(post("/api/invitations/%s/accept".formatted(token))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.errorCode", is("INVITATION_EXPIRED")))
             .andExpect(jsonPath("$.errorMessage", is("该邀请已过期，请联系团队管理员重新发送邀请。")));
+
+        assertThat(tenantMemberMapper.selectByTenantIdAndUserId(tenantId, invitation.getInviteUserId())).isNull();
+
+        mockMvc.perform(get("/api/invitations/%s".formatted(token))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("EXPIRED")));
+    }
+
+    @Test
+    void ownerCanInviteAgainAfterPendingInvitationExpires() throws Exception {
+        String ownerToken = registerUser("13800000316", "Owner");
+        Long tenantId = createTenant(ownerToken, "过期重新邀请测试团队");
+        String inviteeToken = registerUser("13800000317", "Invitee");
+        String expiredToken = readToken(invite(ownerToken, tenantId, "13800000317"));
+        TenantInvitationEntity expired = tenantInvitationMapper.selectByToken(expiredToken);
+        expired.setExpiredAt(LocalDateTime.now().minusDays(1));
+        tenantInvitationMapper.updateById(expired);
+
+        String replacementToken = readToken(invite(ownerToken, tenantId, "13800000317"));
+
+        assertThat(replacementToken).isNotEqualTo(expiredToken);
+        mockMvc.perform(get("/api/invitations/%s".formatted(expiredToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("EXPIRED")));
+        mockMvc.perform(post("/api/invitations/%s/accept".formatted(replacementToken))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(inviteeToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("ACCEPTED")));
     }
 
     private MvcResult invite(String ownerToken, Long tenantId, String mobile) throws Exception {

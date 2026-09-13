@@ -18,6 +18,12 @@ public record TenantInvitationResponse(
 ) {
 
     public static TenantInvitationResponse from(TenantInvitationEntity invitation, TenantEntity tenant) {
+        String status = invitation.getStatus();
+        if (InvitationStatus.PENDING.name().equals(status)
+            && invitation.getExpiredAt() != null
+            && !invitation.getExpiredAt().isAfter(LocalDateTime.now())) {
+            status = InvitationStatus.EXPIRED.name();
+        }
         return new TenantInvitationResponse(
             invitation.getId(),
             invitation.getTenantId(),
@@ -26,7 +32,7 @@ public record TenantInvitationResponse(
             invitation.getInviteUserId(),
             invitation.getInvitedBy(),
             invitation.getToken(),
-            invitation.getStatus(),
+            status,
             invitation.getExpiredAt(),
             invitation.getAcceptedAt(),
             invitation.getCreatedAt()
