@@ -24,6 +24,11 @@ class AssetVisualVariantServiceTest {
               (id, tenant_id, project_id, name, role_type, status, merge_target_id, created_by, created_at, updated_at)
             values (9910, 9901, 9902, '林夏', 'LEAD', 'CONFIRMED', null, 9999, now(), now())
             """);
+        jdbc.update("""
+            insert into scene_asset
+              (id, tenant_id, project_id, name, scene_type, prompt, status, created_by, created_at, updated_at)
+            values (9911, 9901, 9902, '地下停车场', 'INDOOR', '昏暗地下停车场，冷色电影光影', 'CONFIRMED', 9999, now(), now())
+            """);
     }
 
     @Test
@@ -112,16 +117,28 @@ class AssetVisualVariantServiceTest {
     }
 
     @Test
-    void requiresPersistedPromptInsteadOfDerivingOneFromAssetNameOrAppearance() {
+    void derivesAndPersistsEmptyVariantPromptWithoutReplacingEditedPrompt() {
+        jdbc.update("update character_asset set prompt = '林夏，都市悬疑剧女主角，黑色风衣' where id = 9910");
         var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
             new AssetVisualVariantService.VariantCommand(
                 "临时造型", "白裙", null, "MANUAL", "NOT_STARTED", null, null, true));
+        var edited = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "晚宴造型", "黑礼服", "用户编辑的晚宴提示词", "MANUAL", "NOT_STARTED", null, null, false));
 
-        assertThatThrownBy(() -> service.prepareGeneration(9901L, 9902L, variant.id()))
-            .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("资产提示词");
-        assertThat(service.list(9901L, 9902L, "CHARACTER", 9910L)).singleElement()
-            .extracting(AssetVisualVariantService.VariantResponse::prompt).isNull();
+        var variants = service.list(9901L, 9902L, "CHARACTER", 9910L);
+        String derivedPrompt = variants.stream()
+            .filter(item -> item.id().equals(variant.id()))
+            .findFirst().orElseThrow().prompt();
+        String editedPrompt = variants.stream()
+            .filter(item -> item.id().equals(edited.id()))
+            .findFirst().orElseThrow().prompt();
+
+        assertThat(derivedPrompt).contains("林夏，都市悬疑剧女主角，黑色风衣")
+            .contains("临时造型").contains("白裙").contains("保持该角色身份一致");
+        assertThat(editedPrompt).isEqualTo("用户编辑的晚宴提示词");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, variant.id()))
+            .isEqualTo(derivedPrompt);
     }
 
     @Test
@@ -141,5 +158,36 @@ class AssetVisualVariantServiceTest {
             .isEqualTo(new AssetVisualVariantService.GenerationInput(
                 "性别:女；衣着描述:白色连衣裙，裙摆湿透，赤脚",
                 java.util.List.of("https://cdn.example.com/canonical.png")));
+    }
+
+    @Test
+    void derivesAnEmptyCharacterVariantPromptWhenGenerationSkipsWorkspaceRead() {
+        jdbc.update("update character_asset set prompt = '林夏角色定妆照' where id = 9910");
+        service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "主体", null, null, "GENERATED", "COMPLETED", 9930L,
+                "https://cdn.example.com/canonical.png", true));
+        var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "雨天造型", "湿发白裙", null, "MANUAL", "NOT_STARTED", null, null, false));
+
+        var input = service.prepareGeneration(9901L, 9902L, variant.id());
+
+        assertThat(input.prompt()).contains("林夏角色定妆照").contains("雨天造型").contains("湿发白裙");
+        assertThat(input.referenceImages()).containsExactly("https://cdn.example.com/canonical.png");
+    }
+
+    @Test
+    void keepsSceneVariantGenerationTextOnlyWithoutAPrimaryImage() {
+        service.create(9901L, 9902L, "SCENE", 9911L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "默认版本", null, null, "MANUAL", "NOT_STARTED", null, null, true));
+        var variant = service.create(9901L, 9902L, "SCENE", 9911L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "雨夜版本", "地面积水反光", "雨夜地下停车场，地面积水反光", "MANUAL", "NOT_STARTED", null, null, false));
+
+        assertThat(service.prepareGeneration(9901L, 9902L, variant.id()))
+            .isEqualTo(new AssetVisualVariantService.GenerationInput(
+                "雨夜地下停车场，地面积水反光", java.util.List.of()));
     }
 }

@@ -372,6 +372,8 @@ const ProductionWorkbenchSettings = () => {
   const [processingAction, setProcessingAction] = useState<string>();
   const [activeExecution, setActiveExecution] =
     useState<API.AiExecutionResponse>();
+  const [executionAdmissionNotice, setExecutionAdmissionNotice] =
+    useState<string>();
   const [reextractionPreflight, setReextractionPreflight] =
     useState<AssetReextractionPreflight>();
   const [reextractionPolicy, setReextractionPolicy] =
@@ -450,6 +452,51 @@ const ProductionWorkbenchSettings = () => {
     };
   }, [loadVersion, projectId]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    const tenantId = Number(localStorage.getItem('currentTenantId'));
+    if (!Number.isSafeInteger(tenantId) || tenantId <= 0) return;
+    let active = true;
+    aiExecutionTaskService
+      .recover(tenantId)
+      .then((tasks) =>
+        tasks.find(
+          (task) =>
+            task.id &&
+            task.projectId === projectId &&
+            task.scene === 'scoped_asset_reextraction' &&
+            (task.status === 'PENDING' || task.status === 'RUNNING'),
+        ),
+      )
+      .then(async (task) => {
+        if (!active || !task?.id) return;
+        setProcessingAction('extract-ALL');
+        setExecutionAdmissionNotice(`已恢复资产提取任务 #${task.id}。`);
+        setActiveExecution(task);
+        const terminal = await aiExecutionTaskService.poll(
+          tenantId,
+          task.id,
+          (update) => {
+            if (active) setActiveExecution(update);
+          },
+        );
+        if (active) setActiveExecution(terminal);
+      })
+      .catch((error) => {
+        if (active) {
+          messageRef.current.error(
+            error instanceof Error ? error.message : '资产提取任务恢复失败',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setProcessingAction(undefined);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
   const assetsByType = useMemo(
     () => ({
       CHARACTER: workspace.characters,
@@ -479,18 +526,31 @@ const ProductionWorkbenchSettings = () => {
     promptPolicy: AssetPromptPolicy,
   ) => {
     setProcessingAction(`extract-${targetType}`);
+    setExecutionAdmissionNotice(undefined);
     try {
       const response = await submitAssetReextraction(projectId, {
         targetType,
         promptPolicy,
       });
-      if (!response.data?.id) {
+      const submitted = response.data as
+        | (API.AiExecutionResponse & {
+            admission?: 'REUSED' | 'CONFLICT';
+            conflictExecutionId?: number;
+          })
+        | undefined;
+      const executionId = submitted?.conflictExecutionId ?? submitted?.id;
+      if (!submitted?.id || !executionId) {
         throw new Error('AI execution identity is missing');
       }
-      setActiveExecution(response.data);
+      if (submitted.admission === 'REUSED') {
+        setExecutionAdmissionNotice(`已复用进行中的资产提取任务 #${executionId}。`);
+      } else if (submitted.admission === 'CONFLICT') {
+        setExecutionAdmissionNotice(`请求与任务 #${executionId} 冲突，正在显示其进度。`);
+      }
+      setActiveExecution(submitted);
       const terminal = await aiExecutionTaskService.poll(
         Number(localStorage.getItem('currentTenantId')),
-        response.data.id,
+        executionId,
         setActiveExecution,
       );
       setActiveExecution(terminal);
@@ -698,8 +758,8 @@ const ProductionWorkbenchSettings = () => {
       });
       await mutateVariant(async () => undefined, '已提交生成');
       setGenerationVariantId(undefined);
-    } catch {
-      message.error('提交生成失败');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '提交生成失败');
     } finally {
       setGenerationSubmitting(false);
     }
@@ -821,6 +881,9 @@ const ProductionWorkbenchSettings = () => {
               marginBottom: 16,
             }}
           >
+            {executionAdmissionNotice ? (
+              <Typography.Text>{executionAdmissionNotice}</Typography.Text>
+            ) : null}
             <AiExecutionStatus task={activeExecution} />
           </div>
         ) : null}

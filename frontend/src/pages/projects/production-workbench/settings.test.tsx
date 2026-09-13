@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   queryAssetVisualWorkspace: vi.fn(),
   updateScriptElement: vi.fn(),
   pollExecution: vi.fn(),
+  recoverExecutions: vi.fn(),
   queryAssetCandidates: vi.fn(),
   decideAssetCandidate: vi.fn(),
   createVisualVariant: vi.fn(),
@@ -53,7 +54,10 @@ vi.mock('./service', () => ({
 }));
 
 vi.mock('@/services/ai-execution/task', () => ({
-  aiExecutionTaskService: { poll: mocks.pollExecution },
+  aiExecutionTaskService: {
+    poll: mocks.pollExecution,
+    recover: mocks.recoverExecutions,
+  },
 }));
 
 vi.mock('./ai-config/service', () => ({
@@ -91,8 +95,8 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({ message: { error: mocks.messageError, success: vi.fn() } }),
   },
-  Button: ({ children, icon, onClick, ...props }: any) => (
-    <button type="button" onClick={onClick} {...props}>
+  Button: ({ children, icon, onClick, loading, disabled, ...props }: any) => (
+    <button type="button" onClick={onClick} disabled={disabled || loading} {...props}>
       {icon}
       {children}
     </button>
@@ -301,6 +305,7 @@ describe('ProductionWorkbenchSettings', () => {
       status: 'SUCCEEDED',
       progress: 100,
     });
+    mocks.recoverExecutions.mockResolvedValue([]);
     mocks.confirmScriptElement.mockResolvedValue({ data: workspace });
     mocks.deleteScriptElement.mockResolvedValue({ data: null });
     mocks.updateScriptElement.mockResolvedValue({ data: null });
@@ -568,6 +573,25 @@ describe('ProductionWorkbenchSettings', () => {
     expect(mocks.updateVisualVariant).not.toHaveBeenCalled();
   });
 
+  it('shows the server validation message when visual variant submission is rejected', async () => {
+    mocks.createAiImageTask.mockRejectedValueOnce(
+      new Error('请先生成主体主图。'),
+    );
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findByText('斌斌');
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
+    fireEvent.click(screen.getByRole('button', { name: '重新生成婚礼礼服' }));
+    fireEvent.click(screen.getByRole('button', { name: '提交婚礼礼服生成' }));
+
+    await waitFor(() => {
+      expect(mocks.messageError).toHaveBeenCalledWith('请先生成主体主图。');
+    });
+  });
+
   it('blocks visual generation when the persisted prompt is empty', async () => {
     workspace.characters[0].visual.variants[1].prompt = '';
     render(<ProductionWorkbenchSettings />);
@@ -735,6 +759,108 @@ describe('ProductionWorkbenchSettings', () => {
         promptPolicy: 'REGENERATE_ALL',
       });
     });
+  });
+
+  it('attaches to and explains an equivalent reused extraction task', async () => {
+    mocks.submitAssetReextraction.mockResolvedValueOnce({
+      data: {
+        id: 602,
+        businessId: 42,
+        status: 'RUNNING',
+        progress: 35,
+        admission: 'REUSED',
+        conflictExecutionId: 602,
+      },
+    });
+    mocks.pollExecution.mockResolvedValueOnce({
+      id: 602,
+      businessId: 42,
+      status: 'SUCCEEDED',
+      progress: 100,
+    });
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findByText('斌斌');
+    fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
+
+    expect(await screen.findByText('已复用进行中的资产提取任务 #602。')).toBeInTheDocument();
+    expect(mocks.pollExecution).toHaveBeenCalledWith(10, 602, expect.any(Function));
+  });
+
+  it('shows the incompatible conflict task and follows its progress', async () => {
+    mocks.submitAssetReextraction.mockResolvedValueOnce({
+      data: {
+        id: 603,
+        businessId: 43,
+        status: 'RUNNING',
+        progress: 20,
+        admission: 'CONFLICT',
+        conflictExecutionId: 603,
+      },
+    });
+    mocks.pollExecution.mockResolvedValueOnce({
+      id: 603,
+      businessId: 43,
+      status: 'CANCELED',
+      progress: 20,
+    });
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findByText('斌斌');
+    fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
+
+    expect(await screen.findByText('请求与任务 #603 冲突，正在显示其进度。')).toBeInTheDocument();
+    expect(mocks.pollExecution).toHaveBeenCalledWith(10, 603, expect.any(Function));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /AI提取角色/ })).toBeEnabled();
+    });
+    expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses duplicate clicks while an extraction submission is active', async () => {
+    let finishPolling: ((task: object) => void) | undefined;
+    mocks.pollExecution.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishPolling = resolve;
+      }),
+    );
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findByText('斌斌');
+    const button = screen.getByRole('button', { name: /AI提取角色/ });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
+    finishPolling?.({ id: 601, status: 'CANCELED', progress: 0 });
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers polling for a persisted scoped extraction after refresh', async () => {
+    mocks.recoverExecutions.mockResolvedValueOnce([
+      {
+        id: 604,
+        projectId: 1,
+        scene: 'scoped_asset_reextraction',
+        status: 'RUNNING',
+        progress: 45,
+      },
+    ]);
+    mocks.pollExecution.mockResolvedValueOnce({
+      id: 604,
+      projectId: 1,
+      scene: 'scoped_asset_reextraction',
+      status: 'SUCCEEDED',
+      progress: 100,
+    });
+
+    render(<ProductionWorkbenchSettings />);
+
+    expect(await screen.findByText('已恢复资产提取任务 #604。')).toBeInTheDocument();
+    expect(mocks.recoverExecutions).toHaveBeenCalledWith(10);
+    expect(mocks.pollExecution).toHaveBeenCalledWith(10, 604, expect.any(Function));
   });
 
   it('shows the terminal backend failure reason', async () => {

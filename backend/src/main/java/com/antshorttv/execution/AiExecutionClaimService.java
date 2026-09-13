@@ -167,6 +167,42 @@ public class AiExecutionClaimService {
     }
 
     @Transactional
+    public void defer(
+        Long executionId,
+        Long attemptId,
+        String claimToken,
+        String errorCode,
+        String errorMessage,
+        LocalDateTime nextRunAt,
+        LocalDateTime now
+    ) {
+        int updated = taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("status", AiExecutionStatus.PENDING.name())
+            .set("claim_token", null)
+            .set("claim_expires_at", null)
+            .set("error_code", errorCode)
+            .set("error_message", errorMessage)
+            .set("next_run_at", nextRunAt)
+            .set("updated_at", now)
+            .eq("id", executionId)
+            .eq("status", AiExecutionStatus.RUNNING.name())
+            .eq("claim_token", claimToken));
+        if (updated == 0) {
+            throw new AiExecutionClaimLostException(executionId);
+        }
+        attemptMapper.update(null, new UpdateWrapper<AiExecutionAttemptEntity>()
+            .set("status", AiExecutionAttemptStatus.DEFERRED.name())
+            .set("retryable", true)
+            .set("error_code", errorCode)
+            .set("error_message", errorMessage)
+            .set("next_retry_at", nextRunAt)
+            .set("finished_at", now)
+            .eq("id", attemptId)
+            .eq("execution_id", executionId)
+            .eq("status", AiExecutionAttemptStatus.STARTED.name()));
+    }
+
+    @Transactional
     public void markFailed(
         Long executionId,
         Long attemptId,

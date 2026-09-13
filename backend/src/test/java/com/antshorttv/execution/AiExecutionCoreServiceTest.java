@@ -260,6 +260,24 @@ class AiExecutionCoreServiceTest {
     }
 
     @Test
+    void deferredClaimReturnsToPendingWithoutConsumingFailureRetries() {
+        AiExecutionTaskEntity task = executionService.create(command(8351L, "deferred-claim", true));
+        LocalDateTime now = LocalDateTime.now();
+        AiExecutionClaim claim = claimService.claim(task.id, "waiting-worker", now, Duration.ofMinutes(5));
+
+        claimService.defer(task.id, claim.attemptId(), "waiting-worker", "ASSET_EXTRACTION_BUSY",
+            "Another extraction owns this script.", now.plusSeconds(30), now);
+
+        AiExecutionTaskEntity deferred = taskMapper.selectById(task.id);
+        assertThat(deferred.status).isEqualTo(AiExecutionStatus.PENDING.name());
+        assertThat(deferred.nextRunAt)
+            .isAfter(now.plusSeconds(29))
+            .isBefore(now.plusSeconds(31));
+        assertThat(deferred.claimToken).isNull();
+        assertThat(attemptMapper.selectById(claim.attemptId()).status).isEqualTo("DEFERRED");
+    }
+
+    @Test
     void expiredClaimsBecomeRetryableOrTimedOutWithoutStayingRunning() {
         AiExecutionTaskEntity retryable = executionService.create(command(8401L, "retryable-timeout", true));
         AiExecutionTaskEntity terminal = executionService.create(command(8402L, "terminal-timeout", false));

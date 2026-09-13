@@ -3,6 +3,7 @@ package com.antshorttv.script;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionDeferredException;
 import com.antshorttv.execution.AiExecutionClaimLostException;
 import com.antshorttv.execution.AiExecutionClaimService;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
@@ -22,6 +23,7 @@ public class ScriptAnalysisExecutionService {
     @Autowired(required = false) private AssetRecognitionAgentAdapter assetRecognitionAgentAdapter;
     @Autowired(required = false) private AssetRecognitionFinalizer assetRecognitionFinalizer;
     @Autowired(required = false) private AiExecutionClaimService executionClaimService;
+    @Autowired(required = false) private ScriptAssetExtractionCoordinationRepository assetExtractionCoordination;
     private final ScriptAnalysisTaskMapper taskMapper;
     private final ScriptAnalysisStageMapper stageMapper;
     private final ScriptAnalysisResultMapper resultMapper;
@@ -89,6 +91,7 @@ public class ScriptAnalysisExecutionService {
         task.setCompletedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);
+        releaseAssetExtraction(task, executionContext);
         return new ScriptAnalysisExecutionOutcome(List.copyOf(tracker.calls));
     }
 
@@ -232,6 +235,7 @@ public class ScriptAnalysisExecutionService {
             startStage(task, stage);
             try {
                 boolean summary = "EPISODE_SUMMARY".equals(stage.getStageCode());
+                if (!summary) acquireAssetExtraction(task, executionContext);
                 requireAgent(summary ? episodeSummaryAgentAdapter : assetRecognitionAgentAdapter,
                     summary ? "剧集概要" : "资产识别");
                 requireAgent(episodeFanoutCoordinator, "剧集并行执行");
@@ -240,6 +244,8 @@ public class ScriptAnalysisExecutionService {
                     summary ? com.antshorttv.workflowagent.agent.EpisodeSummaryAgentBootstrap.AGENT_CODE
                         : com.antshorttv.workflowagent.agent.AssetRecognitionAgentBootstrap.AGENT_CODE, false));
             } catch (AiExecutionClaimLostException exception) {
+                throw exception;
+            } catch (AiExecutionDeferredException exception) {
                 throw exception;
             } catch (RuntimeException exception) {
                 requireExecutionActive(executionContext);
@@ -340,6 +346,29 @@ public class ScriptAnalysisExecutionService {
             }
             executionClaimService.requireActive(context.claim());
         }
+    }
+
+    private void acquireAssetExtraction(ScriptAnalysisTaskEntity task, AiExecutionContext context) {
+        if (context == null || assetExtractionCoordination == null) return;
+        String fingerprint = "analysis:" + task.getScriptVersionId();
+        long attempt = context.claim().attemptId();
+        ScriptAssetExtractionCoordinationRepository.Admission admission = assetExtractionCoordination.admit(
+            task.getTenantId(), task.getProjectId(), task.getScriptId(), fingerprint,
+            context.task().id, context.task().executionVersion, attempt);
+        if (!"ACQUIRED".equals(admission.kind())) {
+            throw new AiExecutionDeferredException(
+                "ASSET_EXTRACTION_BUSY",
+                "当前剧本正在执行另一项资产提取，等待其完成后继续。",
+                java.time.Duration.ofSeconds(30)
+            );
+        }
+    }
+
+    private void releaseAssetExtraction(ScriptAnalysisTaskEntity task, AiExecutionContext context) {
+        if (context == null || assetExtractionCoordination == null) return;
+        assetExtractionCoordination.release(
+            task.getTenantId(), task.getProjectId(), task.getScriptId(), context.task().id,
+            context.task().executionVersion, context.claim().attemptId());
     }
 
     private Long frozenModelId(ScriptAnalysisTaskEntity task) {

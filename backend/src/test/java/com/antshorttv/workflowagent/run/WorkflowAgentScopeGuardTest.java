@@ -41,6 +41,17 @@ class WorkflowAgentScopeGuardTest {
     }
 
     @Test
+    void assetCatalogToolsRequireTrustedScriptScope() {
+        WorkflowAgentRunInput input = new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "run", 7L, 25L, null, null, null, null, 9L);
+
+        assertThatThrownBy(() -> guard.requireAuthorized(
+            input, List.of("search_script_assets", "read_asset_details")))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("剧本");
+    }
+
+    @Test
     void rejectsScriptOutsideTrustedProjectAndDeletedScript() {
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any())).thenReturn(0);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(

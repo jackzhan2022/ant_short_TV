@@ -372,8 +372,14 @@ class ScreenplayToolDataServiceTest {
             """,tenantId,context.userId(),projectId,taskId,"event-atomic-"+episodeId,"event-atomic-"+episodeId);
         long executionId=jdbc.queryForObject("select id from ai_execution_task where project_id=?",Long.class,projectId);
         jdbc.update("update script_analysis_task set execution_id=? where id=?",executionId,taskId);
+        jdbc.update("""
+            insert into script_asset_extraction_coordination
+              (tenant_id, project_id, script_id, owner_execution_id, owner_execution_version,
+               owner_attempt, source_fingerprint, state, created_at, updated_at)
+            values (?, ?, ?, ?, 1, 6001, 'analysis-version', 'OWNED', now(), now())
+            """, tenantId, projectId, scriptId, executionId);
         ToolExecutionContext assetContext = new ToolExecutionContext(tenantId,context.userId(),projectId,
-            episodeId,scriptId,taskId,null,null,executionId,null,1,Set.of("SCRIPT:VIEW","SCRIPT:EDIT"),null,new WorkflowToolRunState());
+            episodeId,scriptId,taskId,null,null,executionId,6001L,1,Set.of("SCRIPT:VIEW","SCRIPT:EDIT"),null,new WorkflowToolRunState());
         service.readCurrentEpisode(assetContext);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,"characters":[],"scenes":[],"props":[],"characterLooks":[],"propVariants":[]}
@@ -388,6 +394,31 @@ class ScreenplayToolDataServiceTest {
         service.saveEpisodeAssets(assetContext,payload);
         assertThat(jdbc.queryForObject("select count(*) from script_episode_asset_analysis where episode_id=?",Integer.class,episodeId)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select count(*) from episode_auto_storyboard_event where episode_id=?",Integer.class,episodeId)).isEqualTo(1);
+    }
+
+    @Test
+    void staleExtractionAttemptCannotSaveAfterOwnershipTakeover() throws Exception {
+        jdbc.update("""
+            insert into script_asset_extraction_coordination
+              (tenant_id, project_id, script_id, owner_execution_id, owner_execution_version,
+               owner_attempt, source_fingerprint, state, created_at, updated_at)
+            values (?, ?, ?, 7001, 2, 6002, 'current-owner', 'OWNED', now(), now())
+            """, tenantId, projectId, scriptId);
+        ToolExecutionContext stale = new ToolExecutionContext(
+            tenantId, context.userId(), projectId, episodeId, scriptId, 9001L, 9002L, 777L,
+            7001L, 6001L, 1, Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null,
+            new WorkflowToolRunState());
+        service.readCurrentEpisode(stale);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[],"scenes":[],"props":[],
+             "characterLooks":[],"propVariants":[]}
+            """);
+
+        assertThatThrownBy(() -> service.saveEpisodeAssets(stale, payload))
+            .isInstanceOf(com.antshorttv.execution.AiExecutionClaimLostException.class);
+        assertThat(jdbc.queryForObject(
+            "select count(*) from script_episode_asset_analysis where episode_id=?",
+            Integer.class, episodeId)).isZero();
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -614,6 +645,44 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void concurrentTrustedAssetSavesCreateOneSemanticVariantAndBinding() throws Exception {
+        jdbc.update("update script_episode set content='林小满穿着红裙。', content_fingerprint='variant-race' where id=?",
+            episodeId);
+        jdbc.update("""
+            insert into character_asset
+              (tenant_id, project_id, script_id, name, normalized_name, role_type, status,
+               source, prompt, created_by, created_at, updated_at)
+            values (?, ?, ?, '林小满', '林小满', 'LEAD', 'CONFIRMED', 'USER', '角色提示词', ?, now(), now())
+            """, tenantId, projectId, scriptId, context.userId());
+        long assetId = jdbc.queryForObject(
+            "select id from character_asset where script_id=? and name='林小满'", Long.class, scriptId);
+        ToolExecutionContext first = summaryContext();
+        ToolExecutionContext second = summaryContext();
+        service.readCurrentEpisode(first);
+        service.readCurrentEpisode(second);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"c1","assetKey":"c_%d","name":"林小满","aliases":[],"evidence":"林小满"}],
+             "characterLooks":[{"localKey":"l1","characterLocalKey":"c1","name":"红裙","description":"红裙","evidence":"红裙","preferred":true,"prompt":"性别:女；衣着描述:红裙"}],
+             "scenes":[],"props":[],"propVariants":[]}
+            """.formatted(assetId));
+
+        CompletableFuture.allOf(
+            CompletableFuture.runAsync(() -> service.saveEpisodeAssets(first, payload)),
+            CompletableFuture.runAsync(() -> service.saveEpisodeAssets(second, payload))
+        ).join();
+
+        assertThat(jdbc.queryForObject("""
+            select count(*) from asset_visual_variant
+             where asset_type='CHARACTER' and asset_id=? and name='红裙' and deleted_at is null
+            """, Integer.class, assetId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from asset_visual_variant_episode
+             where asset_type='CHARACTER' and asset_id=? and episode_id=? and retired_at is null
+            """, Integer.class, assetId, episodeId)).isEqualTo(1);
+    }
+
+    @Test
     void readsCurrentScriptAgainAfterOrdinaryEditAndRecordsTrustedHash() {
         ToolExecutionContext scriptContext = scriptContext();
 
@@ -700,8 +769,138 @@ class ScreenplayToolDataServiceTest {
 
         JsonNode character = catalog.path("characters").get(0);
         assertThat(character.path("hasPrompt").asBoolean()).isTrue();
-        assertThat(character.path("variants").get(0).path("hasPrompt").asBoolean()).isTrue();
+        assertThat(character.path("variants")).isEmpty();
+        assertThat(service.readCurrentEpisode(episodeContext()).path("assetCatalogPaging")
+            .path("characters").path("pageSize").asInt()).isEqualTo(50);
         assertThat(catalog.toString()).doesNotContain("private canonical prompt", "private variant prompt");
+    }
+
+    @Test
+    void candidateByteBudgetDoesNotTruncateEpisodeSourceCoverage() throws Exception {
+        String source = "场景：夜 内 仓库\n林小满：钥匙在哪里？";
+        jdbc.update("update script_episode set content=? where id=?", source, episodeId);
+        String alias = "长别名" + "x".repeat(90);
+        String aliases = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
+            java.util.Collections.nCopies(50, alias));
+        for (int index = 0; index < 215; index++) {
+            if (index < 50) {
+                jdbc.update("""
+                    insert into character_asset
+                      (tenant_id, project_id, script_id, name, normalized_name, role_type, status,
+                       source, content_json, created_by, created_at, updated_at)
+                    values (?, ?, ?, ?, ?, 'SUPPORTING', 'CONFIRMED', 'USER', ?, ?, now(), now())
+                    """, tenantId, projectId, scriptId, "角色" + index, "角色" + index,
+                    "{\"aliases\":" + aliases + "}", context.userId());
+            }
+            jdbc.update("""
+                insert into prop_asset
+                  (tenant_id, project_id, script_id, name, normalized_name, prop_type, status,
+                   source, content_json, created_by, created_at, updated_at)
+                values (?, ?, ?, ?, ?, 'KEY_PROP', 'CONFIRMED', 'USER', ?, ?, now(), now())
+                """, tenantId, projectId, scriptId, "道具" + index, "道具" + index,
+                "{\"aliases\":" + aliases + "}", context.userId());
+        }
+
+        ToolExecutionContext propContext = episodeContext();
+        propContext.runState().put("assetScope", "PROP");
+        JsonNode episode = service.readCurrentEpisode(propContext);
+
+        assertThat(episode.path("content").asText()).isEqualTo(source);
+        assertThat(episode.path("sourceSegments")).hasSize(2);
+        assertThat(episode.path("assetCatalog").path("characters")).isEmpty();
+        assertThat(episode.path("assetCatalog").path("props")).isNotEmpty();
+        assertThat(episode.path("assetCatalogPaging").path("props").path("total").asInt()).isEqualTo(215);
+        assertThat(episode.path("assetCatalog").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+            .isLessThanOrEqualTo(32 * 1024);
+        assertThat(episode.path("assetCatalogPaging").path("props").path("hasMore").asBoolean()).isTrue();
+    }
+
+    @Test
+    void assetSearchMatchesExplicitAliasAndBindsCursorToQuery() {
+        for (int index = 0; index < 2; index++) {
+            jdbc.update("""
+                insert into prop_asset
+                  (tenant_id, project_id, script_id, name, normalized_name, prop_type, status,
+                   source, content_json, created_by, created_at, updated_at)
+                values (?, ?, ?, ?, ?, 'KEY_PROP', 'CONFIRMED', 'USER', ?, ?, now(), now())
+                """, tenantId, projectId, scriptId, "旧物" + index, "旧物" + index,
+                "{\"aliases\":[\"祖传钥匙\"]}", context.userId());
+        }
+        jdbc.update("""
+            insert into prop_asset
+              (tenant_id, project_id, script_id, name, normalized_name, prop_type, status,
+               source, content_json, created_by, created_at, updated_at)
+            values (?, ?, ?, '说明文本', '说明文本', 'KEY_PROP', 'CONFIRMED', 'USER',
+                    '{"description":"祖传钥匙","aliases":["其他名字"]}', ?, now(), now())
+            """, tenantId, projectId, scriptId, context.userId());
+        ToolExecutionContext searchContext = episodeContext();
+
+        JsonNode first = service.searchScriptAssets(searchContext, "PROP", "祖传钥匙", null, 1);
+        assertThat(first.path("items")).hasSize(1);
+        assertThat(first.path("hasMore").asBoolean()).isTrue();
+        String cursor = first.path("nextCursor").asText();
+        JsonNode second = service.searchScriptAssets(searchContext, "PROP", "祖传钥匙", cursor, 1);
+        assertThat(second.path("items")).hasSize(1);
+        assertThat(second.path("hasMore").asBoolean()).isFalse();
+        assertThatThrownBy(() -> service.searchScriptAssets(searchContext, "PROP", "另一查询", cursor, 1))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("游标");
+    }
+
+    @Test
+    void assetDetailsPageAllFiftyOneVariantsAndBindCursorToKeys() {
+        jdbc.update("""
+            insert into character_asset
+              (tenant_id, project_id, script_id, name, normalized_name, role_type, status,
+               source, created_by, created_at, updated_at)
+            values (?, ?, ?, '林小满', '林小满', 'LEAD', 'CONFIRMED', 'USER', ?, now(), now())
+            """, tenantId, projectId, scriptId, context.userId());
+        long assetId = jdbc.queryForObject(
+            "select id from character_asset where script_id=? and name='林小满'", Long.class, scriptId);
+        for (int index = 1; index <= 51; index++) {
+            jdbc.update("""
+                insert into asset_visual_variant
+                  (tenant_id, project_id, asset_type, asset_id, name, appearance, source_type,
+                   generation_status, is_primary, created_by, created_at, updated_at)
+                values (?, ?, 'CHARACTER', ?, ?, ?, 'USER', 'NOT_GENERATED', ?, ?, now(), now())
+                """, tenantId, projectId, assetId, "形态" + index, "外观" + index,
+                index == 1, context.userId());
+        }
+        ToolExecutionContext detailsContext = episodeContext();
+        List<String> keys = List.of("c_" + assetId);
+
+        JsonNode first = service.readAssetDetails(detailsContext, "CHARACTER", keys, null);
+        JsonNode second = service.readAssetDetails(
+            detailsContext, "CHARACTER", keys, first.path("nextCursor").asText());
+        JsonNode third = service.readAssetDetails(
+            detailsContext, "CHARACTER", keys, second.path("nextCursor").asText());
+
+        assertThat(first.path("items").get(0).path("variants")).hasSize(20);
+        assertThat(second.path("items").get(0).path("variants")).hasSize(20);
+        assertThat(third.path("items").get(0).path("variants")).hasSize(11);
+        assertThat(third.path("hasMore").asBoolean()).isFalse();
+        assertThatThrownBy(() -> service.readAssetDetails(
+            detailsContext, "CHARACTER", List.of("c_" + (assetId + 1)), first.path("nextCursor").asText()))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("游标");
+    }
+
+    @Test
+    void assetDetailsRejectAnOversizedSingleAsset() {
+        jdbc.update("""
+            insert into prop_asset
+              (tenant_id, project_id, script_id, name, normalized_name, prop_type, status,
+               source, content_json, created_by, created_at, updated_at)
+            values (?, ?, ?, '超长道具', '超长道具', 'KEY_PROP', 'CONFIRMED', 'USER', ?, ?, now(), now())
+            """, tenantId, projectId, scriptId, "{\"description\":\"" + "x".repeat(40_000) + "\"}",
+            context.userId());
+        long assetId = jdbc.queryForObject(
+            "select id from prop_asset where script_id=? and name='超长道具'", Long.class, scriptId);
+
+        assertThatThrownBy(() -> service.readAssetDetails(
+            episodeContext(), "PROP", List.of("p_" + assetId), null))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("详情过大");
     }
 
     @Test

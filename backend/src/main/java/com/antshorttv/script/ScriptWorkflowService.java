@@ -701,14 +701,15 @@ public class ScriptWorkflowService {
         if (results == null) results = Map.of();
         Map<Long, Long> agentRuns = latestAgentRuns(stages);
         Map<Long, Map<String, Object>> fanoutSnapshots = latestFanoutSnapshots(stages);
+        Map<Long, List<EpisodeFanoutUnitResponse>> fanoutUnits = fanoutUnitsBySnapshot(fanoutSnapshots);
+        Map<Long, CacheUsageResponse> fanoutCache = fanoutCacheBySnapshot(fanoutSnapshots);
+        Map<Long, TimingUsageResponse> fanoutTiming = fanoutTimingBySnapshot(fanoutSnapshots);
+        Map<Long, EpisodeSplitProgressResponse> splitProgress = splitProgressByRun(stages, agentRuns);
         Map<Long, EpisodeFanoutProgressResponse> fanouts = new LinkedHashMap<>();
-        Map<Long, EpisodeSplitProgressResponse> splitProgress = new LinkedHashMap<>();
         for (ScriptAnalysisStageEntity stage : stages) {
-            EpisodeFanoutProgressResponse fanout = fanoutProgress(fanoutSnapshots.get(stage.getId()));
+            EpisodeFanoutProgressResponse fanout = fanoutProgress(
+                fanoutSnapshots.get(stage.getId()), fanoutUnits, fanoutCache, fanoutTiming);
             if (fanout != null) fanouts.put(stage.getId(), fanout);
-            if ("EPISODE_SPLITTING".equals(stage.getStageCode())) {
-                splitProgress.put(stage.getId(), splitProgress(agentRuns.get(stage.getId())));
-            }
         }
         return ScriptAnalysisTaskResponse.from(
             task, stages, results, agentRuns, fanouts, splitProgress,
@@ -744,46 +745,21 @@ public class ScriptWorkflowService {
         return latest;
     }
 
-    private EpisodeSplitProgressResponse splitProgress(Long runId) {
-        if (runId == null) {
-            return new EpisodeSplitProgressResponse("FULL", null, 0, 0, 0, false);
-        }
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-            select mode, fallback_reason, status, total_chunks, completed_chunks, failed_chunks
-              from script_split_snapshot where parent_run_id = ?
-             order by created_at desc, id desc limit 1
-            """, runId);
-        if (rows.isEmpty()) {
-            return new EpisodeSplitProgressResponse("FULL", null, 0, 0, 0, false);
-        }
-        Map<String, Object> row = rows.get(0);
-        return new EpisodeSplitProgressResponse(
-            String.valueOf(row.get("mode")),
-            row.get("fallback_reason") == null ? null : String.valueOf(row.get("fallback_reason")),
-            ((Number) row.get("total_chunks")).intValue(),
-            ((Number) row.get("completed_chunks")).intValue(),
-            ((Number) row.get("failed_chunks")).intValue(),
-            "STALE".equals(String.valueOf(row.get("status"))));
-    }
-
-    private EpisodeFanoutProgressResponse fanoutProgress(Map<String, Object> snapshot) {
+    private EpisodeFanoutProgressResponse fanoutProgress(
+        Map<String, Object> snapshot,
+        Map<Long, List<EpisodeFanoutUnitResponse>> unitsBySnapshot,
+        Map<Long, CacheUsageResponse> cacheBySnapshot,
+        Map<Long, TimingUsageResponse> timingBySnapshot
+    ) {
         if (snapshot == null) return null;
         long snapshotId = ((Number) snapshot.get("id")).longValue();
-        List<EpisodeFanoutUnitResponse> units = jdbcTemplate.queryForList("""
-            select episode_id, episode_key, status, child_run_id, error_code, error_message
-              from script_analysis_fanout_unit where snapshot_id = ? order by id
-            """, snapshotId).stream().map(row -> new EpisodeFanoutUnitResponse(
-                ((Number) row.get("episode_id")).longValue(), String.valueOf(row.get("episode_key")),
-                String.valueOf(row.get("status")),
-                row.get("child_run_id") instanceof Number number ? number.longValue() : null,
-                row.get("error_code") == null ? null : String.valueOf(row.get("error_code")),
-                row.get("error_message") == null ? null : String.valueOf(row.get("error_message"))
-            )).toList();
+        List<EpisodeFanoutUnitResponse> units = unitsBySnapshot.getOrDefault(snapshotId, List.of());
         EpisodeFanoutUnitResponse current = units.stream()
             .filter(unit -> "RUNNING".equals(unit.status())).findFirst().orElse(null);
         String status = String.valueOf(snapshot.get("status"));
-        CacheUsageResponse cache = fanoutCacheUsage(snapshotId);
-        TimingUsageResponse timing = fanoutTimingUsage(snapshotId);
+        CacheUsageResponse cache = cacheBySnapshot.getOrDefault(snapshotId, CacheUsageAggregator.aggregate(List.of()));
+        TimingUsageResponse timing = timingBySnapshot.getOrDefault(snapshotId,
+            new TimingUsageResponse(null, null, null, null, null, null));
         return new EpisodeFanoutProgressResponse(
             snapshotId, status,
             ((Number) snapshot.get("total_units")).intValue(),
@@ -796,27 +772,75 @@ public class ScriptWorkflowService {
             "STALE".equals(status), units, cache, timing);
     }
 
-    private TimingUsageResponse fanoutTimingUsage(long snapshotId) {
-        List<Map<String, Object>> executionRows = jdbcTemplate.queryForList("""
-            select execution.created_at, execution.started_at
+    private Map<Long, List<EpisodeFanoutUnitResponse>> fanoutUnitsBySnapshot(
+        Map<Long, Map<String, Object>> snapshots
+    ) {
+        List<Long> snapshotIds = snapshots.values().stream().map(row -> longNumber(row.get("id"))).toList();
+        if (snapshotIds.isEmpty()) return Map.of();
+        Map<Long, List<EpisodeFanoutUnitResponse>> result = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select snapshot_id, episode_id, episode_key, status, child_run_id, error_code, error_message
+              from script_analysis_fanout_unit where snapshot_id in (%s) order by snapshot_id, id
+            """.formatted(placeholders(snapshotIds)), snapshotIds.toArray()).forEach(row ->
+            result.computeIfAbsent(longNumber(row.get("snapshot_id")), ignored -> new java.util.ArrayList<>()).add(
+                new EpisodeFanoutUnitResponse(
+                    longNumber(row.get("episode_id")), String.valueOf(row.get("episode_key")),
+                    String.valueOf(row.get("status")), nullableLong(row.get("child_run_id")),
+                    string(row.get("error_code")), string(row.get("error_message"))
+                )));
+        return result;
+    }
+
+    private Map<Long, CacheUsageResponse> fanoutCacheBySnapshot(Map<Long, Map<String, Object>> snapshots) {
+        List<Long> snapshotIds = snapshots.values().stream().map(row -> longNumber(row.get("id"))).toList();
+        if (snapshotIds.isEmpty()) return Map.of();
+        Map<Long, List<CacheUsageAggregator.Call>> calls = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select unit.snapshot_id, log.prompt_tokens, log.cached_input_tokens
+              from script_analysis_fanout_unit unit
+              join ai_workflow_agent_run_step step on step.run_id = unit.child_run_id and step.step_type = 'MODEL'
+              join ai_call_log log on log.id = step.ai_call_log_id
+             where unit.snapshot_id in (%s)
+            """.formatted(placeholders(snapshotIds)), snapshotIds.toArray()).forEach(row ->
+            calls.computeIfAbsent(longNumber(row.get("snapshot_id")), ignored -> new java.util.ArrayList<>()).add(
+                new CacheUsageAggregator.Call((Integer) row.get("prompt_tokens"),
+                    (Integer) row.get("cached_input_tokens"))));
+        Map<Long, CacheUsageResponse> result = new LinkedHashMap<>();
+        snapshotIds.forEach(id -> result.put(id, CacheUsageAggregator.aggregate(calls.getOrDefault(id, List.of()))));
+        return result;
+    }
+
+    private Map<Long, TimingUsageResponse> fanoutTimingBySnapshot(Map<Long, Map<String, Object>> snapshots) {
+        List<Long> snapshotIds = snapshots.values().stream().map(row -> longNumber(row.get("id"))).toList();
+        if (snapshotIds.isEmpty()) return Map.of();
+        Map<Long, Long> queueMs = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select snapshot.id snapshot_id, execution.created_at, execution.started_at
               from script_analysis_fanout_snapshot snapshot
               join script_analysis_task task on task.id = snapshot.task_id
               left join ai_execution_task execution on execution.id = task.execution_id
-             where snapshot.id = ?
-            """, snapshotId);
-        Long queueMs = executionRows.isEmpty() ? null : millis(
-            executionRows.get(0).get("created_at"), executionRows.get(0).get("started_at"));
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-            select unit.id, unit.started_at unit_started, unit.finished_at unit_finished,
+             where snapshot.id in (%s)
+            """.formatted(placeholders(snapshotIds)), snapshotIds.toArray()).forEach(row ->
+            queueMs.put(longNumber(row.get("snapshot_id")), millis(row.get("created_at"), row.get("started_at"))));
+        Map<Long, List<Map<String, Object>>> rowsBySnapshot = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select unit.snapshot_id, unit.id, unit.started_at unit_started, unit.finished_at unit_finished,
                    min(case when step.step_type='MODEL' then step.started_at end) first_model_started,
                    max(case when step.step_type='MODEL' then step.finished_at end) last_model_finished,
                    sum(case when step.step_type='MODEL' then coalesce(log.duration_ms, 0) else 0 end) model_ms
               from script_analysis_fanout_unit unit
               left join ai_workflow_agent_run_step step on step.run_id = unit.child_run_id
               left join ai_call_log log on log.id = step.ai_call_log_id
-             where unit.snapshot_id = ?
-             group by unit.id, unit.started_at, unit.finished_at
-            """, snapshotId);
+             where unit.snapshot_id in (%s)
+             group by unit.snapshot_id, unit.id, unit.started_at, unit.finished_at
+            """.formatted(placeholders(snapshotIds)), snapshotIds.toArray()).forEach(row ->
+            rowsBySnapshot.computeIfAbsent(longNumber(row.get("snapshot_id")), ignored -> new java.util.ArrayList<>()).add(row));
+        Map<Long, TimingUsageResponse> result = new LinkedHashMap<>();
+        snapshotIds.forEach(id -> result.put(id, timingUsage(queueMs.get(id), rowsBySnapshot.getOrDefault(id, List.of()))));
+        return result;
+    }
+
+    private TimingUsageResponse timingUsage(Long queueMs, List<Map<String, Object>> rows) {
         long preparation = 0L;
         long model = 0L;
         long validation = 0L;
@@ -839,6 +863,35 @@ public class ScriptWorkflowService {
             hasCompleted ? total : null, null);
     }
 
+    private Map<Long, EpisodeSplitProgressResponse> splitProgressByRun(
+        List<ScriptAnalysisStageEntity> stages,
+        Map<Long, Long> agentRuns
+    ) {
+        Map<Long, Long> runByStage = stages.stream()
+            .filter(stage -> "EPISODE_SPLITTING".equals(stage.getStageCode()))
+            .filter(stage -> agentRuns.get(stage.getId()) != null)
+            .collect(java.util.stream.Collectors.toMap(ScriptAnalysisStageEntity::getId,
+                stage -> agentRuns.get(stage.getId()), (left, right) -> left, LinkedHashMap::new));
+        if (runByStage.isEmpty()) return Map.of();
+        List<Long> runIds = runByStage.values().stream().distinct().toList();
+        Map<Long, Map<String, Object>> latestByRun = new LinkedHashMap<>();
+        jdbcTemplate.queryForList("""
+            select parent_run_id, mode, fallback_reason, status, total_chunks, completed_chunks, failed_chunks
+              from script_split_snapshot where parent_run_id in (%s)
+             order by parent_run_id, created_at desc, id desc
+            """.formatted(placeholders(runIds)), runIds.toArray()).forEach(row ->
+            latestByRun.putIfAbsent(longNumber(row.get("parent_run_id")), row));
+        Map<Long, EpisodeSplitProgressResponse> result = new LinkedHashMap<>();
+        runByStage.forEach((stageId, runId) -> {
+            Map<String, Object> row = latestByRun.get(runId);
+            result.put(stageId, row == null ? new EpisodeSplitProgressResponse("FULL", null, 0, 0, 0, false)
+                : new EpisodeSplitProgressResponse(String.valueOf(row.get("mode")), string(row.get("fallback_reason")),
+                    number(row.get("total_chunks")), number(row.get("completed_chunks")), number(row.get("failed_chunks")),
+                    "STALE".equals(String.valueOf(row.get("status")))));
+        });
+        return result;
+    }
+
     private Long millis(Object from, Object to) {
         java.time.LocalDateTime left = dateTime(from);
         java.time.LocalDateTime right = dateTime(to);
@@ -851,18 +904,8 @@ public class ScriptWorkflowService {
         return value instanceof java.time.LocalDateTime dateTime ? dateTime : null;
     }
 
-    private CacheUsageResponse fanoutCacheUsage(long snapshotId) {
-        List<CacheUsageAggregator.Call> calls = jdbcTemplate.query("""
-            select log.prompt_tokens, log.cached_input_tokens
-              from script_analysis_fanout_unit unit
-              join ai_workflow_agent_run_step step on step.run_id = unit.child_run_id
-                   and step.step_type = 'MODEL'
-              join ai_call_log log on log.id = step.ai_call_log_id
-             where unit.snapshot_id = ?
-            """, (row, index) -> new CacheUsageAggregator.Call(
-                (Integer) row.getObject("prompt_tokens"),
-                (Integer) row.getObject("cached_input_tokens")), snapshotId);
-        return CacheUsageAggregator.aggregate(calls);
+    private String placeholders(List<Long> values) {
+        return values.stream().map(value -> "?").collect(java.util.stream.Collectors.joining(", "));
     }
 
     private List<EpisodePipelineStatusResponse> episodePipelineStatuses(

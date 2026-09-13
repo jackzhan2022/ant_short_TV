@@ -38,24 +38,29 @@ public class EpisodeAssetPersistenceService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final AutoStoryboardEventRepository autoStoryboardEvents;
+    private final ScriptAssetExtractionCoordinationRepository assetExtractionCoordination;
 
     @Autowired
     public EpisodeAssetPersistenceService(
         JdbcTemplate jdbc,
         ObjectMapper json,
-        AutoStoryboardEventRepository autoStoryboardEvents
+        AutoStoryboardEventRepository autoStoryboardEvents,
+        ScriptAssetExtractionCoordinationRepository assetExtractionCoordination
     ) {
         this.jdbc = jdbc;
         this.json = json;
         this.autoStoryboardEvents = autoStoryboardEvents;
+        this.assetExtractionCoordination = assetExtractionCoordination;
     }
 
     public EpisodeAssetPersistenceService(JdbcTemplate jdbc, ObjectMapper json) {
-        this(jdbc, json, new AutoStoryboardEventRepository(jdbc));
+        this(jdbc, json, new AutoStoryboardEventRepository(jdbc),
+            new ScriptAssetExtractionCoordinationRepository(jdbc));
     }
 
     @Transactional
     public JsonNode save(ToolExecutionContext context, JsonNode payload) {
+        requireCurrentExtractionOwner(context);
         ReadEpisode read = requireReadEpisode(context);
         payload = EpisodeAssetsPayloadNormalizer.prepare(payload,
             new ScreenplayToolConfiguration().episodeAssetsInput(json), read.content());
@@ -109,6 +114,16 @@ public class EpisodeAssetPersistenceService {
         result.put("contentFingerprint", read.fingerprint());
         result.set("counts", counts);
         return result;
+    }
+
+    private void requireCurrentExtractionOwner(ToolExecutionContext context) {
+        if (context.executionId() == null) return;
+        if (context.executionVersion() == null || context.attemptId() == null) {
+            throw new com.antshorttv.execution.AiExecutionClaimLostException(context.executionId());
+        }
+        assetExtractionCoordination.requireCurrentOwner(
+            context.tenantId(), context.projectId(), context.scriptId(), context.executionId(),
+            context.executionVersion(), context.attemptId());
     }
 
     private void recordAutoStoryboard(

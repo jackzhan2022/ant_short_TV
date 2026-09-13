@@ -11,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionClaim;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.project.ProjectAccessContext;
 import com.antshorttv.project.ProjectAccessResolver;
@@ -135,6 +136,27 @@ class ScopedAssetReextractionServiceTest {
         assertThat(database.queryForMap("select status,completed_units,failed_units from scoped_asset_reextraction_snapshot where operation_id=9504")).containsEntry("status","SUCCEEDED").containsEntry("completed_units",2).containsEntry("failed_units",0);
     }
 
+    @Test
+    void finalizationRechecksOwnerAndLeavesReleaseToTerminalRecovery() {
+        ScriptAssetExtractionCoordinationRepository coordination =
+            mock(ScriptAssetExtractionCoordinationRepository.class);
+        when(coordination.renew(9501L, 9502L, 9503L, 9701L, 2, 9702L)).thenReturn(true);
+        ScopedAssetReextractionService coordinated = new ScopedAssetReextractionService(
+            database, mock(WorkflowAgentRunner.class), recognition, coordination, transactionManager);
+        AiExecutionTaskEntity task = new AiExecutionTaskEntity();
+        task.id = 9701L;
+        task.executionVersion = 2;
+        task.resolvedModelId = 11L;
+        AiExecutionContext claimed = new AiExecutionContext(
+            task, new AiExecutionClaim(9701L, 9702L, "claim", 2, "SUBMIT"));
+
+        coordinated.execute(operation(), new ScopedAssetReextractionRequest("ALL", "FILL_EMPTY"), claimed);
+
+        verify(coordination).requireCurrentOwner(9501L, 9502L, 9503L, 9701L, 2, 9702L);
+        verify(coordination, org.mockito.Mockito.never())
+            .release(9501L, 9502L, 9503L, 9701L, 2, 9702L);
+    }
+
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(longs = {9511L, 9512L})
     void rejectsChangedSuccessfulOrFailedEpisodeBeforeRetry(long changedEpisode) {
@@ -172,6 +194,18 @@ class ScopedAssetReextractionServiceTest {
         assertThatThrownBy(() -> lifecycle.execute(submitted,new ScopedAssetReextractionRequest("ALL","FILL_EMPTY"),context(11)))
             .hasMessageContaining("来源已变化");
         assertThat(database.queryForObject("select count(*) from scoped_asset_reextraction_snapshot",Integer.class)).isZero();
+        org.mockito.Mockito.verifyNoInteractions(recognition);
+    }
+
+    @Test
+    void rejectsReextractionWithoutAFrozenModelBeforeCallingTheAgent() {
+        AiExecutionTaskEntity execution = new AiExecutionTaskEntity();
+
+        assertThatThrownBy(() -> lifecycle.execute(operation(),
+            new ScopedAssetReextractionRequest("ALL", "FILL_EMPTY"), new AiExecutionContext(execution, null)))
+            .hasMessageContaining("缺少冻结文本模型");
+        assertThat(database.queryForObject("select count(*) from scoped_asset_reextraction_snapshot", Integer.class))
+            .isZero();
         org.mockito.Mockito.verifyNoInteractions(recognition);
     }
 

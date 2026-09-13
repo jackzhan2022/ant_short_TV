@@ -33,6 +33,16 @@ public record AiExecutionResponse(
     LocalDateTime createdAt,
     LocalDateTime updatedAt,
     LocalDateTime completedAt,
-    LocalDateTime canceledAt
+    LocalDateTime canceledAt,
+    String admission,
+    Long conflictExecutionId
 ) {
+
+    public AiExecutionResponse withAdmission(String admission, Long conflictExecutionId) {
+        return new AiExecutionResponse(id, tenantId, projectId, scene, businessType, businessId, status, phase,
+            progress, executionVersion, sourceExecutionId, rootExecutionId, retryable, resultType, resultId,
+            errorCode, errorMessage, usageCostStatus, providerCostSummaryJson, businessCallCount,
+            technicalRetryCount, pointSettlementStatus, reservedPoints, settledPoints, releasedPoints, startedAt,
+            createdAt, updatedAt, completedAt, canceledAt, admission, conflictExecutionId);
+    }
 }

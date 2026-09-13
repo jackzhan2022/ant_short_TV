@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 
 class AiExecutionWorkerTest {
@@ -65,6 +66,26 @@ class AiExecutionWorkerTest {
             org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq(2L),
             org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq("HANDLER_FAILURE"),
             org.mockito.ArgumentMatchers.eq("deterministic"), org.mockito.ArgumentMatchers.eq(none),
+            org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void defersAnExplicitlyBlockedHandlerWithoutMarkingItFailed() {
+        Fixture fixture = new Fixture();
+        when(fixture.handler.execute(org.mockito.ArgumentMatchers.any()))
+            .thenThrow(new AiExecutionDeferredException("ASSET_EXTRACTION_BUSY", "wait", Duration.ofSeconds(30)));
+
+        fixture.worker.run(1L);
+
+        verify(fixture.claims).defer(
+            org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq(2L),
+            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq("ASSET_EXTRACTION_BUSY"),
+            org.mockito.ArgumentMatchers.eq("wait"), org.mockito.ArgumentMatchers.any(LocalDateTime.class),
+            org.mockito.ArgumentMatchers.any(LocalDateTime.class));
+        verify(fixture.claims, never()).markFailed(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
             org.mockito.ArgumentMatchers.any());
     }
 

@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -22,7 +23,23 @@ class ScopedAssetReextractionService {
     private final JdbcTemplate jdbc;
     private final WorkflowAgentRunner runner;
     private final AssetRecognitionAgentAdapter recognition;
+    private final ScriptAssetExtractionCoordinationRepository assetExtractionCoordination;
     private final TransactionTemplate transactions;
+
+    @Autowired
+    ScopedAssetReextractionService(
+        JdbcTemplate jdbc,
+        WorkflowAgentRunner runner,
+        AssetRecognitionAgentAdapter recognition,
+        ScriptAssetExtractionCoordinationRepository assetExtractionCoordination,
+        PlatformTransactionManager transactionManager
+    ) {
+        this.jdbc = jdbc;
+        this.runner = runner;
+        this.recognition = recognition;
+        this.assetExtractionCoordination = assetExtractionCoordination;
+        this.transactions = new TransactionTemplate(transactionManager);
+    }
 
     ScopedAssetReextractionService(
         JdbcTemplate jdbc,
@@ -30,10 +47,7 @@ class ScopedAssetReextractionService {
         AssetRecognitionAgentAdapter recognition,
         PlatformTransactionManager transactionManager
     ) {
-        this.jdbc = jdbc;
-        this.runner = runner;
-        this.recognition = recognition;
-        this.transactions = new TransactionTemplate(transactionManager);
+        this(jdbc, runner, recognition, new ScriptAssetExtractionCoordinationRepository(jdbc), transactionManager);
     }
 
     AssetReextractionPreflight preflight(long tenantId, long projectId, long scriptId,
@@ -70,6 +84,12 @@ class ScopedAssetReextractionService {
     ) {
         AssetRecognitionScope scope = parseScope(request.targetType());
         AssetPromptPolicy policy = parsePolicy(request.promptPolicy());
+        if (executionContext.claim() != null && !assetExtractionCoordination.renew(
+            operation.tenantId, operation.projectId, operation.scriptId,
+            executionContext.task().id, executionContext.task().executionVersion,
+            executionContext.claim().attemptId())) {
+            throw new com.antshorttv.execution.AiExecutionClaimLostException(executionContext.task().id);
+        }
         Snapshot snapshot = loadOrCreate(operation, scope, policy, modelId(executionContext));
         requireCurrentSource(operation, snapshot);
         WorkflowAgentExecutionPlan plan = runner.freezeFormal(AssetRecognitionAgentBootstrap.AGENT_CODE);
@@ -99,6 +119,12 @@ class ScopedAssetReextractionService {
         }
         try {
             transactions.executeWithoutResult(status -> {
+                if (executionContext.claim() != null) {
+                    assetExtractionCoordination.requireCurrentOwner(
+                        operation.tenantId, operation.projectId, operation.scriptId,
+                        executionContext.task().id, executionContext.task().executionVersion,
+                        executionContext.claim().attemptId());
+                }
                 // Match the script/episode write lock order without holding locks during model calls.
                 jdbc.queryForList("select id from script where id=? and tenant_id=? and project_id=? for update",
                     snapshot.scriptId(), snapshot.tenantId(), snapshot.projectId());

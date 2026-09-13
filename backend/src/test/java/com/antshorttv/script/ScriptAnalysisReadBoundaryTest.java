@@ -2,6 +2,7 @@ package com.antshorttv.script;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -67,6 +68,63 @@ class ScriptAnalysisReadBoundaryTest {
             never()).queryForList(anyString(), eq(11L));
         verify((org.springframework.jdbc.core.JdbcTemplate) dependencies.get(org.springframework.jdbc.core.JdbcTemplate.class),
             never()).queryForList(anyString(), eq(12L));
+    }
+
+    @Test
+    void currentAnalysisBatchesFanoutDetailReadsAcrossStages() throws Exception {
+        Map<Class<?>, Object> dependencies = new HashMap<>();
+        var constructor = ScriptWorkflowService.class.getConstructors()[0];
+        Object[] arguments = Arrays.stream(constructor.getParameterTypes())
+            .map(type -> dependencies.computeIfAbsent(type, key -> mock(key)))
+            .toArray();
+        ScriptWorkflowService service = (ScriptWorkflowService) constructor.newInstance(arguments);
+        var tenant = (TenantContextResolver) dependencies.get(TenantContextResolver.class);
+        when(tenant.requireActiveMember(10L)).thenReturn(new TenantContext(1L, 10L, 1L, "OWNER"));
+        var access = mock(ProjectAccessContext.class);
+        var project = new ProjectEntity();
+        project.id = 33L;
+        when(access.project()).thenReturn(project);
+        when(((ProjectAccessResolver) dependencies.get(ProjectAccessResolver.class)).requireView(10L, 33L))
+            .thenReturn(access);
+        var script = new ScriptEntity();
+        script.setId(7L);
+        script.setCurrentVersionId(8L);
+        when(((ScriptMapper) dependencies.get(ScriptMapper.class)).selectCurrentByProject(10L, 33L))
+            .thenReturn(script);
+        var task = new ScriptAnalysisTaskEntity();
+        task.setId(9L);
+        task.setTenantId(10L);
+        task.setProjectId(33L);
+        task.setScriptId(7L);
+        task.setScriptVersionId(8L);
+        when(((ScriptAnalysisTaskMapper) dependencies.get(ScriptAnalysisTaskMapper.class))
+            .selectLatestByVersion(10L, 33L, 8L)).thenReturn(task);
+        when(((ScriptAnalysisStageMapper) dependencies.get(ScriptAnalysisStageMapper.class)).selectByTask(9L))
+            .thenReturn(List.of(
+                stage(11L, 9L, "EPISODE_SUMMARY", 1),
+                stage(12L, 9L, "CHARACTER_SCENE_RECOGNITION", 2)
+            ));
+
+        var jdbc = (org.springframework.jdbc.core.JdbcTemplate) dependencies.get(
+            org.springframework.jdbc.core.JdbcTemplate.class);
+        when(jdbc.queryForList(org.mockito.ArgumentMatchers.contains("from script_analysis_fanout_snapshot"),
+            eq(11L), eq(12L))).thenReturn(List.of(snapshot(101L, 11L), snapshot(102L, 12L)));
+
+        service.currentAnalysis(10L, 33L);
+
+        verify(jdbc, times(1)).queryForList(org.mockito.ArgumentMatchers.contains(
+            "select snapshot_id, episode_id"), eq(101L), eq(102L));
+    }
+
+    private static Map<String, Object> snapshot(Long id, Long stageId) {
+        return Map.of(
+            "id", id,
+            "stage_id", stageId,
+            "status", "RUNNING",
+            "total_units", 1,
+            "completed_units", 0,
+            "failed_units", 0
+        );
     }
 
     private static ScriptAnalysisStageEntity stage(Long id, Long taskId, String code, int order) {
