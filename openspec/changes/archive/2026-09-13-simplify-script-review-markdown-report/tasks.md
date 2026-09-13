@@ -40,4 +40,4 @@
 - [x] 6.1 Document feature enablement, in-flight structured-task behavior, rollback, and the retained legacy tool/table compatibility boundary.
 - [x] 6.2 Rehearse the migration against a database containing structured reports and verify no historical task, issue, hit, event, candidate, or semantic-decision data changes.
 - [x] 6.3 Run backend review and workflow tests, frontend tests, TypeScript, Biome, Ant Design lint, and production builds.
-- [ ] 6.4 Verify QUICK, long-script DEEP, failed-unit retry, aggregation retry, cancellation, AI usage and point settlement, Markdown viewing/export, and historical structured viewing in a non-production environment before enabling the feature for new tasks.
+- [x] 6.4 Verify QUICK, long-script DEEP, failed-unit retry, aggregation retry, cancellation, AI usage and point settlement, Markdown viewing/export, and historical structured viewing in a non-production environment before enabling the feature for new tasks.

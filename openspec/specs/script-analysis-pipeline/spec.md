@@ -36,18 +36,21 @@ The system SHALL NOT create a new analysis task when a user later edits and save
 - **AND** does not create or schedule another analysis task
 
 ### Requirement: Execute the four analysis stages in order
-The system SHALL execute the stages in this order: global story understanding, intelligent episode splitting, episode summary extraction, and character/scene/prop recognition. Each stage SHALL invoke its enabled workflow Agent, and the latter three Agents SHALL read their own current trusted source rather than consume a prior stage's normalized JSON as model input.
+The system SHALL execute global understanding followed by validated splitting, then independently schedule episode summary and asset recognition branches over the frozen episode set. It SHALL NOT require summary completion or summary output for recognition. Each stage SHALL use its enabled workflow Agent and trusted current source; optional global context SHALL be frozen. Automatic storyboards SHALL depend only on their episode's successful asset coverage and have separate status.
 
 #### Scenario: Advance after committed formal output
-- **WHEN** a stage completes its required terminal save contract and formal coverage validation
-- **THEN** the system marks that stage succeeded
-- **AND** starts the next configured stage
+- **WHEN** splitting commits valid formal episodes
+- **THEN** both branches become eligible independently
+- **AND** each current episode with committed asset coverage can trigger its storyboard
 
 #### Scenario: Preserve failed stage
-- **WHEN** a stage fails before its formal completion condition
-- **THEN** the system marks that stage failed or partially failed with an actionable error
-- **AND** does not mark later stages successful
-- **AND** preserves all earlier committed formal data
+- **WHEN** a branch fails before formal completion
+- **THEN** its failure and earlier committed output are preserved
+- **AND** other eligible branches continue without being marked successful prematurely
+
+#### Scenario: Complete analysis independently of storyboard
+- **WHEN** all four analysis stages pass current formal coverage
+- **THEN** analysis becomes completed while storyboard outcomes remain separately visible
 
 ### Requirement: Support retry from a failed stage
 The system SHALL allow an authorized user to retry a failed stage without resetting successful earlier stages, and SHALL allow each workflow Agent to be explicitly rerun independently against its current required source.
