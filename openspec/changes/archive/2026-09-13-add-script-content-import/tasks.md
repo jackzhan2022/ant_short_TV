@@ -32,8 +32,8 @@
 
 ## 5. 完整验证
 
-- [ ] 5.1 运行 `npm run backend:test`，确认全部后端测试通过
+- [x] 5.1 运行 `npm run backend:test`，确认全部后端测试通过
 - [x] 5.2 运行 `npm run frontend:lint`、`npm run frontend:test` 和 `npx antd lint ./frontend/src`，修复本变更引入的类型、Biome、测试或 Ant Design 问题
 - [x] 5.3 运行 `npm run frontend:build`，确认生产构建成功
-- [ ] 5.4 使用本地前后端冒烟验证 TXT、Markdown、Docx 导入、指定审核版本引用、覆盖取消、导入后编辑和项目初始剧本内容
+- [x] 5.4 使用本地前后端冒烟验证 TXT、Markdown、Docx 导入、指定审核版本引用、覆盖取消、导入后编辑和项目初始剧本内容
 - [x] 5.5 检查最终差异，确认没有 PDF 入口、数据库迁移、文件持久化、审核数据创建、来源绑定或无关文件变更

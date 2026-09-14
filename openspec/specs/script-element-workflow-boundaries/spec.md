@@ -4,22 +4,19 @@
 TBD - created by archiving change refactor-script-workflow-boundaries. Update Purpose after archive.
 ## Requirements
 ### Requirement: Element extraction delegates to focused workflow boundaries
-The system SHALL keep the existing script element extraction API behavior while separating AI extraction, draft persistence, and confirmation responsibilities into focused backend components.
-
-#### Scenario: Existing extraction endpoint remains compatible
-- **WHEN** a user requests script element extraction through the existing project script API
-- **THEN** the system returns the existing script workspace response shape without requiring frontend API changes
+The system SHALL delegate scoped formal extraction to focused preflight, Agent execution, normalization, persistence and finalization components. It SHALL remove the old raw JSON extraction and candidate-confirmation implementation.
 
 #### Scenario: Facade validates before delegation
 - **WHEN** extraction is requested for a project script
-- **THEN** the system validates tenant membership, project access, permissions, element type, and script content before invoking the element extraction component
+- **THEN** the system validates tenant membership, project access, permissions, selected asset scope, prompt policy and current source before invoking formal recognition
 
 ### Requirement: Element workflow behavior is covered by focused tests
-The system SHALL include backend tests that verify extraction persistence, draft replacement, merge target preparation, confirmation merge updates, and isolation by tenant, project, and element type.
+The system SHALL test formal Agent persistence, deterministic matching, scope isolation, prompt policies, finalization, source changes and manual-data protection.
 
-#### Scenario: Regression tests protect extraction and confirmation rules
-- **WHEN** backend tests are run for the script element workflow
-- **THEN** they cover both AI extraction success with visible workspace data and user confirmation paths for all supported element types
+#### Scenario: Regression tests protect formal extraction
+- **WHEN** backend element workflow tests run
+- **THEN** they cover ALL, CHARACTER, SCENE and PROP scoped writes without candidate confirmation
+- **AND** unauthorized, stale or out-of-scope saves are rejected atomically
 
 ### Requirement: Agent recognition writes formal script-scoped assets
 The new asset-recognition Agent path SHALL write valid normalized characters, scenes, props, character looks, prop states, and episode bindings directly as formal editable data scoped to the current script.
@@ -37,19 +34,11 @@ The direct Agent path SHALL retain schema validation, normalized names, explicit
 - **THEN** the complete save call fails before canonical insertion
 - **AND** diagnostic evidence remains associated with the Agent Run
 
-### Requirement: Legacy extraction remains compatible during migration
-Existing non-Agent extraction and candidate-review APIs SHALL remain readable and operable until their consumers migrate, while new analysis-stage completion SHALL not depend on their review decisions.
-
-#### Scenario: Existing client opens a legacy candidate review
-- **WHEN** legacy candidate data exists
-- **THEN** the existing review endpoint continues to expose it
-- **AND** it does not replace or block current formal Agent data
-
 ### Requirement: Asset settings migrates away from legacy element extraction
-The asset-settings batch-generation control SHALL use scoped formal recognition and SHALL NOT invoke the legacy raw JSON element-extraction operation. The legacy API remains available only for remaining compatible consumers during migration.
+Asset settings SHALL perform scoped formal recognition through preflight and confirmed submission. The old raw JSON element-extraction API SHALL be removed.
 
 #### Scenario: Asset-settings user requests batch generation
 - **WHEN** a user clicks batch generation on an asset-settings scope
-- **THEN** the client performs scoped re-extraction preflight and submits the formal recognition operation when appropriate
+- **THEN** the client performs preflight and submits formal recognition using the selected prompt policy
 - **AND** it does not create a legacy candidate-normalization run
 

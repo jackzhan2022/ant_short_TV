@@ -4,12 +4,16 @@
 TBD - created by archiving change upgrade-script-review-workflow-agent. Update Purpose after archive.
 ## Requirements
 ### Requirement: Provide an enabled independent script-review workflow Agent
-The system SHALL provide a workflow Agent identified by `script-review` that reviews one trusted immutable `review_script_version` through a `review_task` and SHALL keep its data scope independent from short-drama creation scripts and episodes.
+The system SHALL use script-review for all QUICK and DEEP review tasks against their immutable review_script_version, independently of creation-project scripts. It SHALL use the current Markdown flow without direct-call fallback or enable switches.
 
 #### Scenario: Start review for an imported draft
-- **WHEN** an authorized user starts review for an imported review version
-- **THEN** the system invokes the `script-review` workflow Agent against that review task and version
-- **AND** does not read a main-project `script` row as the review source
+- **WHEN** an authorized user starts review for an imported version
+- **THEN** the current Markdown workflow runs against the frozen review task and version
+- **AND** it does not read a main-project script row as the source
+
+#### Scenario: Review Agent is unavailable
+- **WHEN** required current configuration is unavailable
+- **THEN** the system reports the configuration failure without invoking the old review implementation
 
 ### Requirement: Compose review Skills from trusted selected dimensions
 The system SHALL load `script-review-foundation` and `script-review-execution-framework` followed only by the dimension Skills mapped by the server from the task's selected dimensions. A deep aggregation Run SHALL additionally load `script-review-cross-episode-synthesis`.
@@ -37,37 +41,37 @@ Each review attempt SHALL freeze the Agent revision, ordered Skill revisions, mo
 - **AND** a later explicit regeneration can use the new revision
 
 ### Requirement: Quick review uses one bounded terminal-save Run
-A QUICK review SHALL execute one workflow Agent Run over the selected scope, SHALL prioritize evident local issues in the selected dimensions, and SHALL require one successful `save_review_result` call before completion.
+A QUICK review SHALL execute one bounded workflow Run over its selected scope and SHALL complete when the backend persists a non-empty untruncated final Markdown report. It SHALL NOT require a terminal-save tool or structured issues.
 
 #### Scenario: Quick review completes
-- **WHEN** the Agent reads the trusted context, content, and any relevant history and successfully calls `save_review_result`
-- **THEN** the task completes with the formal saved report
-- **AND** the Run audit contains the ordered read and save tool steps
+- **WHEN** the Run produces valid final Markdown from its trusted scope
+- **THEN** the backend saves it and completes the task with correlated model and Run audit
 
 #### Scenario: Quick scope exceeds the safe context budget
-- **WHEN** the complete selected QUICK scope cannot fit the configured safe model budget
-- **THEN** the Run fails with `REVIEW_SCOPE_TOO_LARGE_FOR_QUICK`
-- **AND** the system does not claim partial review coverage
+- **WHEN** the selected QUICK scope exceeds the safe model budget
+- **THEN** the operation fails with REVIEW_SCOPE_TOO_LARGE_FOR_QUICK and does not claim partial coverage
 
 ### Requirement: Deep review uses child and aggregation Run contracts
-A DEEP review SHALL use one child Run per frozen review unit and one final aggregation Run after all units succeed. Child Runs SHALL save only unit candidates, and only the aggregation Run SHALL save the formal report.
+A DEEP review SHALL retain current frozen dimensions, scoped unit planning and bounded concurrency. Child Runs SHALL persist Markdown unit reports and the final aggregation SHALL persist the full Markdown report only after all required units succeed. Structured candidate and semantic-decision stages SHALL be removed.
 
 #### Scenario: Deep review starts for fifty-eight units
-- **WHEN** the planner freezes fifty-eight in-scope review units
-- **THEN** the coordinator schedules fifty-eight child Runs under the configured concurrency limit
-- **AND** schedules no aggregation Run until all child terminal saves succeed
+- **WHEN** the planner freezes fifty-eight required units
+- **THEN** it schedules the units within the concurrency limit and aggregates their ordered Markdown only after all succeed
 
 ### Requirement: Enforce required tools and terminal-save behavior
-The workflow runtime SHALL expose only the tools allowed for the Run phase, SHALL fail final text that lacks the required terminal save, and SHALL permit at most one successful terminal save per Run.
+Review Runs SHALL enforce trusted source scope and allowed read tools. Completion SHALL depend on persisted non-empty untruncated Markdown rather than a model-called terminal save. Structured result/candidate/decision write tools SHALL NOT be exposed by the current review workflow.
 
-#### Scenario: Child Run attempts final formal save
-- **WHEN** a DEEP child Run calls `save_review_result`
-- **THEN** the scope guard rejects the tool as unavailable for that phase
+#### Scenario: Child Run attempts structured formal save
+- **WHEN** a child Run attempts save_review_result
+- **THEN** the call is rejected as unavailable
 
-#### Scenario: Model returns prose without saving
-- **WHEN** a review Run returns final text without its required save tool succeeding
-- **THEN** the Run fails with a required-tool error
-- **AND** the task or unit is not marked successful
+#### Scenario: Model returns Markdown without saving
+- **WHEN** a Run returns non-empty untruncated final Markdown without a save-tool call
+- **THEN** the backend persists it and marks the corresponding unit or task successful
+
+#### Scenario: Model returns empty or truncated content
+- **WHEN** final output is empty or provider truncation is reported
+- **THEN** the corresponding unit or task fails and retains an actionable error
 
 ### Requirement: Preserve workflow Agent audit and AI execution correlation
 Every review Agent Run SHALL persist model, prompt, Skill, tool, step, call-log, task, execution, attempt, phase, scope, and terminal outcome references without storing unbounded source text in diagnostic summaries.

@@ -87,22 +87,33 @@ Character looks SHALL match only within one character, and prop states SHALL mat
 - **AND** records time or atmosphere in episode usage metadata
 
 ### Requirement: Save formal assets and episode bindings transactionally
-`save_episode_assets` SHALL validate evidence against the episode snapshot, validate conditional prompt requirements, upsert identities and variants, fill only empty prompt fields, and replace Agent-managed bindings for that episode in one transaction. Existing non-empty canonical and variant prompts MUST remain unchanged.
+`save_episode_assets` SHALL validate evidence against the episode snapshot, upsert identities and variants, and replace Agent-managed bindings for that episode in one transaction. When a tool payload fails a correctable argument or schema validation, the Run SHALL allow at most one model correction using the returned validation details and MUST NOT synthesize evidence server-side.
 
 #### Scenario: Valid episode assets are saved
-- **WHEN** the complete payload passes schema, ownership, evidence, prompt, and matching validation
-- **THEN** formal assets, prompts, and variants are immediately queryable and editable
+- **WHEN** the complete payload passes schema, ownership, evidence, and matching validation
+- **THEN** formal assets and variants are immediately queryable and editable
 - **AND** their active episode bindings refer to the trusted `episode_id`
 
 #### Scenario: Any item is invalid
-- **WHEN** one item lacks a required owner, name, evidence, prompt, or valid key
+- **WHEN** one item lacks a required owner, name, evidence, or valid key
 - **THEN** the complete tool call rolls back
 - **AND** the Run can retry with corrected output
 
-#### Scenario: Concurrent runs target the same empty prompt
-- **WHEN** concurrent episode Runs resolve the same canonical asset or variant and both propose a prompt
-- **THEN** row locking permits only the first empty-value fill
-- **AND** the later Run preserves the now non-empty prompt
+#### Scenario: First save payload has a correctable schema error
+- **WHEN** the first `save_episode_assets` call omits a required field such as scene `evidence`
+- **THEN** the tool commits no partial payload
+- **AND** the Run returns the precise validation error to the model
+- **AND** allows one corrected call grounded in the trusted episode text
+
+#### Scenario: Corrected save payload is still invalid
+- **WHEN** the correction opportunity has been used and the next `save_episode_assets` payload remains invalid
+- **THEN** the Run terminates with the final validation error
+- **AND** performs no third save attempt or unbounded model retry
+
+#### Scenario: Episode text contains no supporting evidence
+- **WHEN** the model cannot locate source text supporting a proposed asset
+- **THEN** the Run omits that unsupported asset or fails validation
+- **AND** the server does not invent or substitute evidence
 
 ### Requirement: Finalize replacement only after complete script coverage
 The recognition stage SHALL retire obsolete AI-managed bindings, variants, and unreferenced assets only after every episode in the frozen stage snapshot has a successful current recognition result.

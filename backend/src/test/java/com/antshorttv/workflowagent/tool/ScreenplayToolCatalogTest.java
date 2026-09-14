@@ -19,6 +19,7 @@ class ScreenplayToolCatalogTest {
             "analyze_script_chunks",
             "list_episode_scripts",
             "read_adjacent_episodes",
+            "read_asset_details",
             "read_current_episode",
             "read_current_script",
             "read_episode_script",
@@ -35,6 +36,7 @@ class ScreenplayToolCatalogTest {
             "save_episode_storyboards",
             "save_episode_summary",
             "save_global_understanding",
+            "search_script_assets",
             "validate_screenplay_format"
         ));
         assertThat(registry.catalog()).allSatisfy(tool -> {
