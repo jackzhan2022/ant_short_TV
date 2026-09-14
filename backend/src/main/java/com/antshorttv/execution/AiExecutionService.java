@@ -411,6 +411,15 @@ public class AiExecutionService {
     }
 
     @Transactional
+    public AiExecutionTaskEntity requireTaskForUpdate(Long id) {
+        AiExecutionTaskEntity task = taskMapper.selectOne(new QueryWrapper<AiExecutionTaskEntity>()
+            .eq("id", id).last("for update"));
+        if (task == null) throw new BusinessException(ErrorCode.AI_EXECUTION_NOT_FOUND,
+            "AI execution not found: " + id);
+        return task;
+    }
+
+    @Transactional
     public AiExecutionTaskEntity updateSettlementSummary(AiPointReservationEntity reservation) {
         taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
             .set("point_settlement_status", reservation.status)

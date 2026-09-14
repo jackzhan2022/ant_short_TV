@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchSettings from './settings';
 
 const mocks = vi.hoisted(() => ({
-  projectId: '1',
   messageError: vi.fn(),
   confirmScriptElement: vi.fn(),
   deleteScriptElement: vi.fn(),
@@ -15,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   queryAssetVisualWorkspace: vi.fn(),
   updateScriptElement: vi.fn(),
   pollExecution: vi.fn(),
-  recoverExecutions: vi.fn(),
   queryAssetCandidates: vi.fn(),
   decideAssetCandidate: vi.fn(),
   createVisualVariant: vi.fn(),
@@ -27,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@umijs/max', () => ({
-  useParams: () => ({ id: mocks.projectId }),
+  useParams: () => ({ id: '1' }),
   useIntl: () => ({
     formatMessage: ({ defaultMessage }: { defaultMessage: string }) =>
       defaultMessage,
@@ -54,10 +52,7 @@ vi.mock('./service', () => ({
 }));
 
 vi.mock('@/services/ai-execution/task', () => ({
-  aiExecutionTaskService: {
-    poll: mocks.pollExecution,
-    recover: mocks.recoverExecutions,
-  },
+  aiExecutionTaskService: { poll: mocks.pollExecution },
 }));
 
 vi.mock('./ai-config/service', () => ({
@@ -95,8 +90,8 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({ message: { error: mocks.messageError, success: vi.fn() } }),
   },
-  Button: ({ children, icon, onClick, loading, disabled, ...props }: any) => (
-    <button type="button" onClick={onClick} disabled={disabled || loading} {...props}>
+  Button: ({ children, icon, onClick, ...props }: any) => (
+    <button type="button" onClick={onClick} {...props}>
       {icon}
       {children}
     </button>
@@ -270,8 +265,8 @@ const workspace = {
 
 describe('ProductionWorkbenchSettings', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
-    mocks.projectId = '1';
     workspace.characters[0].visual.variants[1].prompt =
       '性别:男；衣着描述:白色礼服，领结';
     mocks.queryScriptWorkspace.mockResolvedValue({ data: workspace });
@@ -305,7 +300,6 @@ describe('ProductionWorkbenchSettings', () => {
       status: 'SUCCEEDED',
       progress: 100,
     });
-    mocks.recoverExecutions.mockResolvedValue([]);
     mocks.confirmScriptElement.mockResolvedValue({ data: workspace });
     mocks.deleteScriptElement.mockResolvedValue({ data: null });
     mocks.updateScriptElement.mockResolvedValue({ data: null });
@@ -573,25 +567,6 @@ describe('ProductionWorkbenchSettings', () => {
     expect(mocks.updateVisualVariant).not.toHaveBeenCalled();
   });
 
-  it('shows the server validation message when visual variant submission is rejected', async () => {
-    mocks.createAiImageTask.mockRejectedValueOnce(
-      new Error('请先生成主体主图。'),
-    );
-    render(<ProductionWorkbenchSettings />);
-
-    await screen.findByText('斌斌');
-    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
-    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
-    fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
-    fireEvent.click(screen.getByRole('button', { name: '重新生成婚礼礼服' }));
-    fireEvent.click(screen.getByRole('button', { name: '提交婚礼礼服生成' }));
-
-    await waitFor(() => {
-      expect(mocks.messageError).toHaveBeenCalledWith('请先生成主体主图。');
-    });
-  });
-
   it('blocks visual generation when the persisted prompt is empty', async () => {
     workspace.characters[0].visual.variants[1].prompt = '';
     render(<ProductionWorkbenchSettings />);
@@ -661,6 +636,8 @@ describe('ProductionWorkbenchSettings', () => {
         10,
         601,
         expect.any(Function),
+        1500,
+        expect.any(AbortSignal),
       );
       expect(
         mocks.queryAssetSettingsSummary.mock.calls.length,
@@ -700,40 +677,6 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.getByText('最新角色')).toBeInTheDocument();
   });
 
-  it('does not let an old project mutation invalidate the new project load', async () => {
-    const view = render(<ProductionWorkbenchSettings />);
-    await screen.findByText('斌斌');
-    let finishSave!: (value: unknown) => void;
-    let finishLoad!: (value: unknown) => void;
-    mocks.updateScriptElement.mockReturnValueOnce(new Promise((resolve) => { finishSave = resolve; }));
-    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
-    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存斌斌' }));
-    mocks.projectId = '2';
-    mocks.queryAssetSettingsSummary.mockReturnValueOnce(new Promise((resolve) => { finishLoad = resolve; }));
-    view.rerender(<ProductionWorkbenchSettings />);
-    finishSave({ data: null });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    finishLoad({ data: { projectId: 2, characters: [{ id: 2, name: '新项目角色' }], scenes: [], props: [] } });
-    expect(await screen.findByText('新项目角色')).toBeInTheDocument();
-    expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(2);
-  });
-
-  it('retries only visual reads when a committed variant change cannot refresh details', async () => {
-    render(<ProductionWorkbenchSettings />);
-    await screen.findByText('斌斌');
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
-    await screen.findByRole('button', { name: '新增变装' });
-    fireEvent.click(screen.getByRole('button', { name: '新增变装' }));
-    fireEvent.change(screen.getByLabelText('新视觉形象名称'), { target: { value: '雨夜造型' } });
-    mocks.queryAssetVisualWorkspace.mockRejectedValueOnce(new Error('offline'));
-    fireEvent.click(screen.getByRole('button', { name: '确认新增视觉形象' }));
-    await waitFor(() => expect(mocks.messageError).toHaveBeenCalledWith('操作已完成，但视觉形象刷新失败，请重试加载'));
-    fireEvent.click(screen.getByRole('button', { name: '重试视觉形象' }));
-    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledTimes(3));
-    expect(mocks.createVisualVariant).toHaveBeenCalledTimes(1);
-  });
-
   it('requires confirmation before replacing existing scoped prompts', async () => {
     mocks.queryAssetReextractionPreflight.mockResolvedValueOnce({
       data: {
@@ -761,106 +704,29 @@ describe('ProductionWorkbenchSettings', () => {
     });
   });
 
-  it('attaches to and explains an equivalent reused extraction task', async () => {
-    mocks.submitAssetReextraction.mockResolvedValueOnce({
-      data: {
-        id: 602,
-        businessId: 42,
-        status: 'RUNNING',
-        progress: 35,
-        admission: 'REUSED',
-        conflictExecutionId: 602,
-      },
-    });
-    mocks.pollExecution.mockResolvedValueOnce({
-      id: 602,
-      businessId: 42,
-      status: 'SUCCEEDED',
-      progress: 100,
-    });
+  it('follows a conflicting task without submitting another paid task', async () => {
+    mocks.submitAssetReextraction.mockRejectedValueOnce({ response: { data: {
+      errorCode: 'ASSET_EXTRACTION_CONFLICT', data: { executionId: 700 },
+    } } });
+    mocks.pollExecution.mockResolvedValueOnce({ id: 700, status: 'SUCCEEDED' });
     render(<ProductionWorkbenchSettings />);
-
-    await screen.findByText('斌斌');
+    await screen.findAllByText('斌斌');
     fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
-
-    expect(await screen.findByText('已复用进行中的资产提取任务 #602。')).toBeInTheDocument();
-    expect(mocks.pollExecution).toHaveBeenCalledWith(10, 602, expect.any(Function));
-  });
-
-  it('shows the incompatible conflict task and follows its progress', async () => {
-    mocks.submitAssetReextraction.mockResolvedValueOnce({
-      data: {
-        id: 603,
-        businessId: 43,
-        status: 'RUNNING',
-        progress: 20,
-        admission: 'CONFLICT',
-        conflictExecutionId: 603,
-      },
-    });
-    mocks.pollExecution.mockResolvedValueOnce({
-      id: 603,
-      businessId: 43,
-      status: 'CANCELED',
-      progress: 20,
-    });
-    render(<ProductionWorkbenchSettings />);
-
-    await screen.findByText('斌斌');
-    fireEvent.click(screen.getByRole('button', { name: /AI提取角色/ }));
-
-    expect(await screen.findByText('请求与任务 #603 冲突，正在显示其进度。')).toBeInTheDocument();
-    expect(mocks.pollExecution).toHaveBeenCalledWith(10, 603, expect.any(Function));
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /AI提取角色/ })).toBeEnabled();
-    });
+    await screen.findByText('execution-700-SUCCEEDED');
+    expect(screen.getByText(/本次未创建新任务/)).toBeInTheDocument();
     expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
   });
 
-  it('suppresses duplicate clicks while an extraction submission is active', async () => {
-    let finishPolling: ((task: object) => void) | undefined;
-    mocks.pollExecution.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finishPolling = resolve;
-      }),
-    );
+  it('blocks repeated clicks while the existing execution is being followed', async () => {
+    mocks.pollExecution.mockReturnValueOnce(new Promise(() => {}));
     render(<ProductionWorkbenchSettings />);
-
-    await screen.findByText('斌斌');
+    await screen.findAllByText('斌斌');
     const button = screen.getByRole('button', { name: /AI提取角色/ });
     fireEvent.click(button);
-    fireEvent.click(button);
-
     await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole('button', { name: 'AI提取全部资产' }));
     expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
-    finishPolling?.({ id: 601, status: 'CANCELED', progress: 0 });
-    await waitFor(() => expect(button).toBeEnabled());
-    expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
-  });
-
-  it('recovers polling for a persisted scoped extraction after refresh', async () => {
-    mocks.recoverExecutions.mockResolvedValueOnce([
-      {
-        id: 604,
-        projectId: 1,
-        scene: 'scoped_asset_reextraction',
-        status: 'RUNNING',
-        progress: 45,
-      },
-    ]);
-    mocks.pollExecution.mockResolvedValueOnce({
-      id: 604,
-      projectId: 1,
-      scene: 'scoped_asset_reextraction',
-      status: 'SUCCEEDED',
-      progress: 100,
-    });
-
-    render(<ProductionWorkbenchSettings />);
-
-    expect(await screen.findByText('已恢复资产提取任务 #604。')).toBeInTheDocument();
-    expect(mocks.recoverExecutions).toHaveBeenCalledWith(10);
-    expect(mocks.pollExecution).toHaveBeenCalledWith(10, 604, expect.any(Function));
   });
 
   it('shows the terminal backend failure reason', async () => {

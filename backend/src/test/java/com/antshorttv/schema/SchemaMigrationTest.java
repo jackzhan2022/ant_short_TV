@@ -13,60 +13,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class SchemaMigrationTest {
 
     @Test
-    void flywayCreatesScriptAssetExtractionCoordinationWithOneActiveRowPerScript() {
-        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-
-        assertThat(jdbc.queryForObject("""
-            select count(*) from information_schema.tables
-             where lower(table_name) = 'script_asset_extraction_coordination'
-            """, Integer.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("""
-            select count(distinct lower(column_name)) from information_schema.columns
-             where lower(table_name) = 'script_asset_extraction_coordination'
-               and lower(column_name) in (
-                 'tenant_id', 'project_id', 'script_id', 'owner_execution_id',
-                 'owner_execution_version', 'owner_attempt', 'source_fingerprint',
-                 'state', 'created_at', 'updated_at', 'released_at'
-               )
-            """, Integer.class)).isEqualTo(11);
-        assertThat(jdbc.queryForObject("""
-            select count(*) from information_schema.table_constraints
-             where lower(table_name) = 'script_asset_extraction_coordination'
-               and constraint_type = 'UNIQUE'
-            """, Integer.class)).isGreaterThanOrEqualTo(1);
-    }
-
-    @Test
-    void coordinationRowRejectsDuplicatesAndCanBeReleasedForReuse() {
-        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        jdbc.update("""
-            insert into script_asset_extraction_coordination
-              (tenant_id, project_id, script_id, owner_execution_id, owner_execution_version,
-               owner_attempt, source_fingerprint, state, created_at, updated_at)
-            values (801, 802, 803, 804, 1, 1, 'fingerprint-a', 'OWNED', now(), now())
-            """);
-
-        assertThatThrownBy(() -> jdbc.update("""
-            insert into script_asset_extraction_coordination
-              (tenant_id, project_id, script_id, state, created_at, updated_at)
-            values (801, 802, 803, 'IDLE', now(), now())
-            """))
-            .isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
-
-        jdbc.update("""
-            update script_asset_extraction_coordination
-               set owner_execution_id = null, owner_execution_version = null, owner_attempt = null,
-                   state = 'IDLE', released_at = now(), updated_at = now()
-             where tenant_id = 801 and project_id = 802 and script_id = 803
-            """);
-        assertThat(jdbc.queryForObject("""
-            select count(*) from script_asset_extraction_coordination
-             where tenant_id = 801 and project_id = 802 and script_id = 803
-               and owner_execution_id is null and state = 'IDLE' and released_at is not null
-            """, Integer.class)).isEqualTo(1);
-    }
-
-    @Test
     void flywayKeepsMarkdownReportsWithoutTheRetiredResultDiscriminator() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         assertThat(jdbc.queryForObject("""

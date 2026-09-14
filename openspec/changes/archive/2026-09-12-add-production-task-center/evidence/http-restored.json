@@ -1,0 +1,92 @@
+[
+  {
+    "path": "/api/auth/login",
+    "method": "POST",
+    "status": 200,
+    "ms": 315.8
+  },
+  {
+    "path": "/api/auth/bootstrap",
+    "method": "GET",
+    "status": 200,
+    "ms": 1440.67
+  },
+  {
+    "path": "/api/projects",
+    "method": "GET",
+    "status": 200,
+    "ms": 95.53
+  },
+  {
+    "path": "/api/projects/34",
+    "method": "GET",
+    "status": 200,
+    "ms": 112.64
+  },
+  {
+    "path": "/api/video-script-decomposition/batches",
+    "method": "GET",
+    "status": 200,
+    "ms": 99.42
+  },
+  {
+    "path": "/api/video-script-decomposition/batches/21",
+    "method": "GET",
+    "status": 200,
+    "ms": 84.49
+  },
+  {
+    "path": "/api/video-script-decomposition/batches/21/screenplays",
+    "method": "GET",
+    "status": 200,
+    "ms": 98.58
+  },
+  {
+    "path": "/api/video-script-decomposition/episodes/32",
+    "method": "GET",
+    "status": 200,
+    "ms": 106.47
+  },
+  {
+    "path": "/api/tenants/25/production-tasks?scope=mine",
+    "method": "GET",
+    "status": 200,
+    "ms": 149.08
+  },
+  {
+    "path": "/api/tenants/25/production-tasks?scope=team",
+    "method": "GET",
+    "status": 200,
+    "ms": 94.0
+  },
+  {
+    "path": "/api/tenants/25/production-tasks/summary?scope=team",
+    "method": "GET",
+    "status": 200,
+    "ms": 76.75
+  },
+  {
+    "path": "/api/tenants/25/production-tasks/VIDEO_DECOMPOSITION:21",
+    "method": "GET",
+    "status": 200,
+    "ms": 79.99
+  },
+  {
+    "path": "/api/tenants/25/production-tasks/VIDEO_DECOMPOSITION:21/children",
+    "method": "GET",
+    "status": 200,
+    "ms": 95.36
+  },
+  {
+    "path": "/api/tenants/1/production-tasks?scope=team",
+    "method": "GET",
+    "status": 403,
+    "ms": 62.21
+  },
+  {
+    "path": "/tasks",
+    "method": "GET",
+    "status": 200,
+    "ms": 53.8
+  }
+]

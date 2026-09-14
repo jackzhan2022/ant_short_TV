@@ -1,0 +1,415 @@
+package com.antshorttv.productiontask;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static com.antshorttv.support.SessionTestSupport.authenticated;
+import com.antshorttv.support.SessionTestSupport;
+import com.jayway.jsonpath.JsonPath;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class ProductionTaskControllerTest {
+    @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
+    @Autowired com.antshorttv.rbac.RbacService rbac;
+    @Autowired com.antshorttv.execution.AiExecutionService executions;
+    @Test void supportsJdbcBooleanAndNumericUnionRepresentations() {
+        org.assertj.core.api.Assertions.assertThat(ProductionTaskService.truth(true)).isTrue();
+        org.assertj.core.api.Assertions.assertThat(ProductionTaskService.truth(1)).isTrue();
+        org.assertj.core.api.Assertions.assertThat(ProductionTaskService.truth(1L)).isTrue();
+        org.assertj.core.api.Assertions.assertThat(ProductionTaskService.truth(0)).isFalse();
+        org.assertj.core.api.Assertions.assertThat(ProductionTaskService.truth(null)).isFalse();
+    }
+
+    @Test void requiresScriptReadPermissionForEveryScriptOperationContent() {
+        for(String operation:List.of("SCRIPT_GENERATE","SCRIPT_REWRITE","ELEMENT_EXTRACT","SCOPED_ASSET_REEXTRACTION","STORYBOARD_BREAKDOWN","PROMPT_GENERATE")) {
+            org.assertj.core.api.Assertions.assertThat(ProductionTaskService.scriptOperationContentPermission(operation)).isEqualTo("SCRIPT:VIEW");
+        }
+    }
+
+    @Test void readsBoundedImageContentWithoutChangingProductionRecords() throws Exception {
+        String token=register("13800019813");long tenant=tenant(token),user=user("13800019813");
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'detail','detail',?,'ACTIVE',?,now(),now())",tenant,user,user);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into ai_image_task(tenant_id,project_id,task_type,target_type,target_id,provider_code,model,prompt,negative_prompt,reference_images,aspect_ratio,image_count,style,quality,seed,status,created_by,created_at,updated_at) values (?,?, 'CHARACTER','CHARACTER',999999,'test','image-model',?,'no blur','[\"/reference.png\"]','16:9',1,'cinematic','high','42','SUCCEEDED',?,now(),now())",tenant,project,"a".repeat(40000),user);
+        long task=jdbc.queryForObject("select id from ai_image_task where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into ai_image_result(tenant_id,project_id,task_id,target_type,target_id,image_url,thumbnail_url,width,height,is_selected,status,created_at,updated_at) values (?,?,?,'CHARACTER',999999,'/result.png','/thumb.png',1920,1080,true,'SUCCEEDED',now(),now())",tenant,project,task);
+        for(int i=2;i<=21;i++) jdbc.update("insert into ai_image_result(tenant_id,project_id,task_id,target_type,target_id,image_url,thumbnail_url,width,height,is_selected,status,created_at,updated_at) values (?,?,?,'CHARACTER',999999,?,?,1920,1080,false,'SUCCEEDED',now(),now())",tenant,project,task,"/result-"+i+".png","/thumb-"+i+".png");
+        long tasksBefore=jdbc.queryForObject("select count(*) from ai_image_task where tenant_id=?",Long.class,tenant);
+        long resultsBefore=jdbc.queryForObject("select count(*) from ai_image_result where tenant_id=?",Long.class,tenant);
+        String base="/api/tenants/"+tenant+"/production-tasks/IMAGE:"+task;
+
+        mvc.perform(get(base+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.schemaVersion").value(1))
+            .andExpect(jsonPath("$.data.taskKey").value("IMAGE:"+task))
+            .andExpect(jsonPath("$.data.sections[0].key").value("submission"))
+            .andExpect(jsonPath("$.data.sections[0].title").value("保存的生成提示词"))
+            .andExpect(jsonPath("$.data.sections[0].sourceVersion").value(org.hamcrest.Matchers.startsWith("IMAGE:"+task+"@")))
+            .andExpect(jsonPath("$.data.sections[0].availability").value("AVAILABLE"))
+            .andExpect(jsonPath("$.data.sections[0].preview").value(org.hamcrest.Matchers.hasLength(4000)))
+            .andExpect(jsonPath("$.data.sections[0].hasMore").value(true))
+            .andExpect(jsonPath("$.data.sections[2].items.length()").value(20))
+            .andExpect(jsonPath("$.data.sections[2].hasMore").value(true))
+            .andExpect(jsonPath("$.data.sections[2].items[0].url").value("/result.png"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].thumbnailUrl").value("/thumb.png"))
+            .andExpect(jsonPath("$.data.sections[3].key").value("references"))
+            .andExpect(jsonPath("$.data.sections[3].items[0].url").value("/reference.png"));
+        mvc.perform(get(base+"/content/submission").param("offset","0").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sectionKey").value("submission"))
+            .andExpect(jsonPath("$.data.text").value(org.hamcrest.Matchers.hasLength(32000)))
+            .andExpect(jsonPath("$.data.nextOffset").value(32000))
+            .andExpect(jsonPath("$.data.hasMore").value(true));
+        mvc.perform(get(base+"/content/submission").param("offset","32000").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.text").value(org.hamcrest.Matchers.hasLength(8000)))
+            .andExpect(jsonPath("$.data.nextOffset").doesNotExist())
+            .andExpect(jsonPath("$.data.hasMore").value(false));
+        mvc.perform(get(base+"/content/results").param("page","2").param("pageSize","20").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items.length()").value(1))
+            .andExpect(jsonPath("$.data.items[0].url").value("/result-21.png"))
+            .andExpect(jsonPath("$.data.hasMore").value(false));
+        mvc.perform(get(base+"/content/provider-log").with(authenticated(token))).andExpect(status().is4xxClientError());
+        mvc.perform(get(base+"/content/submission").param("offset","-1").with(authenticated(token))).andExpect(status().is4xxClientError());
+        mvc.perform(get(base+"/content/submission").param("offset","40001").with(authenticated(token))).andExpect(status().is4xxClientError());
+        mvc.perform(get(base+"/content/submission").param("offset",String.valueOf(Integer.MAX_VALUE)).with(authenticated(token))).andExpect(status().is4xxClientError());
+        mvc.perform(get(base.substring(0,base.lastIndexOf('/'))).with(authenticated(token)))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("no blur"))));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from ai_image_task where tenant_id=?",Long.class,tenant)).isEqualTo(tasksBefore);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from ai_image_result where tenant_id=?",Long.class,tenant)).isEqualTo(resultsBefore);
+    }
+
+    @Test void readsScopedAssetReextractionSnapshotWithoutUsingCurrentAssets() throws Exception {
+        String token=register("13800019814");long tenant=tenant(token),user=user("13800019814");
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'assets','assets',?,'ACTIVE',?,now(),now())",tenant,user,user);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into script(tenant_id,project_id,title,source_type,content,status,created_by,created_at,updated_at) values (?,?,'script','MANUAL_EDIT','fixed source','ACTIVE',?,now(),now())",tenant,project,user);
+        long script=jdbc.queryForObject("select id from script where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into script_version(tenant_id,project_id,script_id,version_no,source_type,content,status,created_by,created_at) values (?,?,?,1,'MANUAL_EDIT','fixed source','DRAFT',?,now())",tenant,project,script,user);
+        long version=jdbc.queryForObject("select id from script_version where script_id=?",Long.class,script);
+        jdbc.update("insert into script_episode(tenant_id,project_id,script_id,script_version_id,stable_key,episode_no,title,content,content_fingerprint,reconciliation_status,status,created_at,updated_at) values (?,?,?,?,'e1',1,'one','fixed source','hash','MATCHED','ACTIVE',now(),now())",tenant,project,script,version);
+        long episode=jdbc.queryForObject("select id from script_episode where script_id=?",Long.class,script);
+        jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,script_id,script_version_id,redacted_input_json,idempotency_key,status,result_type,created_by,created_at,updated_at) values (?,?,'SCOPED_ASSET_REEXTRACTION',?,?, '{}','asset-detail','SUCCEEDED','SCOPED_ASSET_REEXTRACTION',?,now(),now())",tenant,project,script,version,user);
+        long operation=jdbc.queryForObject("select id from script_ai_operation where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into scoped_asset_reextraction_snapshot(operation_id,tenant_id,project_id,script_id,asset_scope,prompt_policy,status,total_units,completed_units,failed_units,created_at,updated_at) values (?,?,?,?,'CHARACTER','REGENERATE_ALL','SUCCEEDED',1,1,0,now(),now())",operation,tenant,project,script);
+        long snapshot=jdbc.queryForObject("select id from scoped_asset_reextraction_snapshot where operation_id=?",Long.class,operation);
+        jdbc.update("update script_ai_operation set result_id=? where id=?",snapshot,operation);
+        jdbc.update("insert into scoped_asset_reextraction_unit(snapshot_id,episode_id,episode_key,content_fingerprint,status,created_at,updated_at) values (?,?,'e1','hash','SUCCEEDED',now(),now())",snapshot,episode);
+        mvc.perform(get("/api/tenants/"+tenant+"/production-tasks/SCRIPT_OPERATION:"+operation+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[2].kind").value("STRUCTURED"))
+            .andExpect(jsonPath("$.data.sections[2].fields[0].value").value("CHARACTER"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].episode_key").value("e1"))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("error_message"))));
+    }
+
+    @Test void readsVideoPromptFramesSettingsAndTaskOwnedResult() throws Exception {
+        String token=register("13800019815");long tenant=tenant(token),user=user("13800019815");
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'video-detail','video-detail',?,'ACTIVE',?,now(),now())",tenant,user,user);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into ai_video_task(tenant_id,project_id,storyboard_id,provider_code,model,prompt,negative_prompt,first_frame_url,last_frame_url,reference_images,duration_seconds,aspect_ratio,resolution,motion_strength,camera_movement,random_seed,status,created_by,created_at,updated_at) values (?,?,1,'test','video-model','saved video prompt','no shake','/first.png','/last.png','[\"/other.png\",\"https://outside.example/secret.png\"]',5,'16:9','1080p','medium','pan',7,'SUCCEEDED',?,now(),now())",tenant,project,user);
+        long task=jdbc.queryForObject("select id from ai_video_task where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into ai_video_result(tenant_id,project_id,storyboard_id,task_id,video_url,storage_path,cover_url,duration_seconds,width,height,is_selected,status,created_at,updated_at) values (?,?,1,?,'/result.mp4','video/result.mp4','/cover.png',5,1920,1080,true,'SUCCEEDED',now(),now())",tenant,project,task);
+        mvc.perform(get("/api/tenants/"+tenant+"/production-tasks/VIDEO:"+task+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].preview").value("saved video prompt"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].url").value("/result.mp4"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].thumbnailUrl").value("/cover.png"))
+            .andExpect(jsonPath("$.data.sections[3].items.length()").value(3))
+            .andExpect(jsonPath("$.data.sections[3].items[0].role").value("首帧"))
+            .andExpect(jsonPath("$.data.sections[3].items[1].role").value("尾帧"))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("outside.example"))));
+    }
+
+    @Test void readsGenerateAndRewriteRequirementsWithFixedInputAndOutputVersions() throws Exception {
+        String token=register("13800019816");long tenant=tenant(token),user=user("13800019816");
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'script-detail','script-detail',?,'ACTIVE',?,now(),now())",tenant,user,user);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into script(tenant_id,project_id,title,source_type,content,status,created_by,created_at,updated_at) values (?,?,'script','MANUAL_EDIT','current changed','ACTIVE',?,now(),now())",tenant,project,user);
+        long script=jdbc.queryForObject("select id from script where tenant_id=?",Long.class,tenant);
+        for(int version=1;version<=3;version++) jdbc.update("insert into script_version(tenant_id,project_id,script_id,version_no,source_type,content,status,created_by,created_at) values (?,?,?,?,'AI_GENERATED',?,'DRAFT',?,now())",tenant,project,script,version,List.of("fixed input","generated output","rewritten output").get(version-1),user);
+        List<Long> versions=jdbc.queryForList("select id from script_version where script_id=? order by version_no",Long.class,script);
+        jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,script_id,script_version_id,redacted_input_json,idempotency_key,status,result_type,result_id,created_by,created_at,updated_at) values (?,?, 'SCRIPT_GENERATE',?,?,?, 'generate-detail','SUCCEEDED','SCRIPT_VERSION',?,?,now(),now())",tenant,project,script,versions.get(0),"{\"storyIdea\":\"lost heir\",\"genre\":\"drama\",\"episodeCount\":12}",versions.get(1),user);
+        jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,script_id,script_version_id,redacted_input_json,idempotency_key,status,result_type,result_id,created_by,created_at,updated_at) values (?,?, 'SCRIPT_REWRITE',?,?,?, 'rewrite-detail','SUCCEEDED','SCRIPT_VERSION',?,?,now(),now())",tenant,project,script,versions.get(0),"{\"rewriteType\":\"TONE\",\"requirement\":\"more restrained\",\"outputLength\":\"SAME\"}",versions.get(2),user);
+        jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,script_id,script_version_id,redacted_input_json,idempotency_key,status,result_type,result_id,created_by,created_at,updated_at) values (?,?, 'PROMPT_GENERATE',?,?,?, 'prompt-detail','SUCCEEDED','SCRIPT_PROMPTS',?,?,now(),now())",tenant,project,script,versions.get(0),"{\"targetType\":\"STORYBOARD\",\"targetId\":42}",project,user);
+        List<Long> operations=jdbc.queryForList("select id from script_ai_operation where tenant_id=? order by id",Long.class,tenant);
+        String base="/api/tenants/"+tenant+"/production-tasks/SCRIPT_OPERATION:";
+        mvc.perform(get(base+operations.get(0)+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].preview").value("fixed input"))
+            .andExpect(jsonPath("$.data.sections[1].fields[2].value").value("lost heir"))
+            .andExpect(jsonPath("$.data.sections[2].preview").value("generated output"));
+        mvc.perform(get(base+operations.get(1)+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[1].fields[2].value").value("TONE"))
+            .andExpect(jsonPath("$.data.sections[1].fields[3].value").value("more restrained"))
+            .andExpect(jsonPath("$.data.sections[2].preview").value("rewritten output"));
+        mvc.perform(get(base+operations.get(2)+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[1].fields[2].value").value("STORYBOARD"))
+            .andExpect(jsonPath("$.data.sections[1].fields[3].value").value("42"))
+            .andExpect(jsonPath("$.data.sections[2].availability").value("NOT_RECORDED"));
+    }
+
+    @Test void readsOnlyTheSelectedReviewRoundAndFrozenDraft() throws Exception {
+        String token=register("13800019817");long tenant=tenant(token),user=user("13800019817");
+        jdbc.update("insert into review_project(tenant_id,name,source_type,original_content,status,created_by,created_at,updated_at) values (?,'review rounds','TXT','current changed draft','ACTIVE',?,now(),now())",tenant,user);
+        long project=jdbc.queryForObject("select id from review_project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into review_script_version(tenant_id,project_id,version_no,source_type,content,created_by,created_at,updated_at) values (?,?,1,'TXT','round one frozen draft',?,now(),now()),(?,?,2,'TXT','round two frozen draft',?,now(),now())",tenant,project,user,tenant,project,user);
+        List<Long> versions=jdbc.queryForList("select id from review_script_version where project_id=? order by version_no",Long.class,project);
+        jdbc.update("insert into review_task(tenant_id,project_id,script_version_id,round_no,review_mode,selected_dimensions_json,review_scope_type,report_markdown,status,overall_progress,idempotency_key,created_by,created_at,updated_at) values (?,?,?,1,'QUICK','[\"PLOT\"]','ALL','# Round one\nIssue A\nSuggestion A','COMPLETED',100,'round-one',?,now(),now()),(?,?,?,2,'DEEP','[\"DIALOGUE\"]','ALL','# Round two secret','COMPLETED',100,'round-two',?,now(),now())",tenant,project,versions.get(0),user,tenant,project,versions.get(1),user);
+        long first=jdbc.queryForObject("select min(id) from review_task where project_id=?",Long.class,project);
+        mvc.perform(get("/api/tenants/"+tenant+"/production-tasks/REVIEW:"+first+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].preview").value("round one frozen draft"))
+            .andExpect(jsonPath("$.data.sections[2].preview").value(org.hamcrest.Matchers.containsString("Suggestion A")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Round two secret"))));
+    }
+
+    @Test void preservesIndependentCreatorWhenAnotherMembersBatchReusesExecution() throws Exception {
+        String first=register("13800019807"), second=register("13800019808");
+        long tenant=tenant(first), a=user("13800019807"), b=user("13800019808");
+        jdbc.update("insert into tenant_member(tenant_id,user_id,member_type,status,joined_at,created_at,updated_at) values (?,?,'MEMBER','ACTIVE',now(),now(),now())",tenant,b);
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'shared','shared',?,'ACTIVE',?,now(),now())",tenant,a,a);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        var execution=executions.create(new com.antshorttv.execution.AiExecutionCreateCommand(tenant,a,project,"storyboard_breakdown","TEXT","SCRIPT_AI_OPERATION",1L,null,"SUBMIT","shared-center","trace",true,"{}"));
+        jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,redacted_input_json,idempotency_key,status,execution_id,created_by,created_at,updated_at) values (?,?,'STORYBOARD_BREAKDOWN','{}','shared','PENDING',?,?,now(),now())",tenant,project,execution.id,a);
+        jdbc.update("insert into storyboard_batch(tenant_id,project_id,script_id,name,idempotency_key,created_by,created_at) values (?,?,1,'shared batch','shared',?,now())",tenant,project,b);
+        long batch=jdbc.queryForObject("select id from storyboard_batch where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into storyboard_batch_item(batch_id,tenant_id,project_id,episode_id,episode_no,execution_id,created_at) values (?,?,?,1,1,?,now())",batch,tenant,project,execution.id);
+        String base="/api/tenants/"+tenant+"/production-tasks";
+        mvc.perform(get(base).with(authenticated(first))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items[0].type").value("SCRIPT_OPERATION"));
+        mvc.perform(get(base+"/STORYBOARD_BATCH:"+batch+"/children").with(authenticated(second))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items[0].creatorId").value(b)).andExpect(jsonPath("$.data.items[0].allowedActions.length()").value(0));
+        jdbc.update("update storyboard_batch set created_by=? where id=?",a,batch);
+        mvc.perform(get(base).with(authenticated(first))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items[0].type").value("STORYBOARD_BATCH"));
+        mvc.perform(get(base+"/STORYBOARD_BATCH:"+batch+"/children").with(authenticated(first))).andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].allowedActions").value(org.hamcrest.Matchers.hasItem("CANCEL")));
+        long operation=jdbc.queryForObject("select id from script_ai_operation where execution_id=?",Long.class,execution.id);
+        mvc.perform(get(base+"/SCRIPT_OPERATION:"+operation).with(authenticated(first))).andExpect(status().isOk());
+        jdbc.update("update ai_execution_task set status='SUCCEEDED',completed_at=now() where id=?",execution.id);
+        long provider=jdbc.queryForObject("select min(id) from ai_provider",Long.class);
+        jdbc.update("insert into ai_model(provider_id,code,name,model_code,service_type,status,is_default,sort,created_at,updated_at) values (?,'CENTER_WARNING','warning','test','TEXT','ENABLED',false,1,now(),now())",provider);
+        long model=jdbc.queryForObject("select id from ai_model where code='CENTER_WARNING'",Long.class);
+        jdbc.update("insert into ai_workflow_agent_run(agent_code,run_type,tenant_id,user_id,project_id,status,model_id,temperature,max_tokens,max_steps,prompt_snapshot,started_at,created_at) values ('test','PRODUCTION',?,?,?,'SUCCEEDED',?,0,100,1,'secret',now(),now())",tenant,a,project,model);
+        long run=jdbc.queryForObject("select id from ai_workflow_agent_run where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into ai_call_log(tenant_id,user_id,service_type,business_scene,status,duration_ms,created_at,execution_id) values (?,?,'TEXT','storyboard_breakdown','SUCCEEDED',1,now(),?)",tenant,a,execution.id);
+        long call=jdbc.queryForObject("select id from ai_call_log where execution_id=?",Long.class,execution.id);
+        jdbc.update("insert into ai_workflow_agent_run_step(run_id,step_no,step_type,status,ai_call_log_id,started_at,created_at) values (?,1,'MODEL','SUCCEEDED',?,now(),now())",run,call);
+        jdbc.update("insert into ai_workflow_agent_run_step(run_id,step_no,step_type,status,ai_call_log_id,started_at,created_at) values (?,2,'MODEL','SUCCEEDED',?,now(),now())",run,call);
+        jdbc.update("insert into storyboard(tenant_id,project_id,episode_no,shot_no,visual_description,status,created_by,created_at,updated_at,generated_by_run_id,shot_plan_json) values (?,?,1,1,'secret body','ACTIVE',?,now(),now(),?,?)",tenant,project,a,run,"{\"warnings\":[\"quality warning\"]}");
+        jdbc.update("update script_ai_operation set result_type='STORYBOARD_SET',result_id=1,status='SUCCEEDED' where id=?",operation);
+        mvc.perform(get(base+"/SCRIPT_OPERATION:"+operation+"/content").with(authenticated(first))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[2].items.length()").value(1))
+            .andExpect(jsonPath("$.data.sections[2].items[0].visual_description").value("secret body"));
+        long item=jdbc.queryForObject("select id from storyboard_batch_item where batch_id=?",Long.class,batch);
+        mvc.perform(get(base+"/STORYBOARD_BATCH:"+batch+"/content").with(authenticated(first))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].items[0].episode_no").value(1));
+        mvc.perform(get(base+"/STORYBOARD_ITEM:"+item+"/content").with(authenticated(first))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].availability").value("NOT_RECORDED"))
+            .andExpect(jsonPath("$.data.sections[1].items[0].visual_description").value("secret body"))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("prompt_snapshot"))));
+        mvc.perform(get(base+"/STORYBOARD_BATCH:"+batch).with(authenticated(first))).andExpect(status().isOk()).andExpect(jsonPath("$.data.statusGroup").value("SUCCEEDED")).andExpect(jsonPath("$.data.warningSummary").isNotEmpty());
+        jdbc.update("update storyboard set shot_plan_json=? where tenant_id=?","{\"warnings\": [ ]}",tenant);
+        mvc.perform(get(base+"/STORYBOARD_BATCH:"+batch).with(authenticated(first))).andExpect(status().isOk()).andExpect(jsonPath("$.data.warningSummary").isEmpty());
+    }
+
+    @Test void pagesMixedPersistedSourcesWithoutLeakingBodiesOrDeadResultLinks() throws Exception {
+        String token=register("13800019810");long tenant=tenant(token),user=user("13800019810");
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'mixed','mixed',?,'ACTIVE',?,now(),now())",tenant,user,user);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into ai_image_task(tenant_id,project_id,task_type,target_type,target_id,provider_code,model,prompt,aspect_ratio,image_count,status,created_by,created_at,updated_at) values (?,?,'CHARACTER','CHARACTER',999999,'test','test','private prompt','1:1',1,'SUCCEEDED',?,now(),now())",tenant,project,user);
+        jdbc.update("insert into ai_video_task(tenant_id,project_id,storyboard_id,provider_code,model,prompt,first_frame_url,duration_seconds,aspect_ratio,status,created_by,created_at,updated_at) values (?,?,999999,'test','test','private video','private url',5,'1:1','RUNNING',?,now(),now())",tenant,project,user);
+        jdbc.update("insert into script_analysis_task(tenant_id,project_id,script_id,script_version_id,workflow_code,status,overall_progress,error_message,idempotency_key,created_by,created_at,updated_at) values (?,?,1,1,'test','FAILED',45,'internalFailure','mixed',?,now(),now())",tenant,project,user);
+        jdbc.update("insert into review_project(tenant_id,name,source_type,original_content,status,created_by,created_at,updated_at) values (?,'review','TEXT','private review','ACTIVE',?,now(),now())",tenant,user);
+        long reviewProject=jdbc.queryForObject("select id from review_project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into review_task(tenant_id,project_id,script_version_id,round_no,review_mode,selected_dimensions_json,review_scope_type,status,overall_progress,idempotency_key,created_by,created_at,updated_at) values (?,?,1,1,'QUICK','[]','ALL','COMPLETED',100,'mixed',?,now(),now())",tenant,reviewProject,user);
+        String base="/api/tenants/"+tenant+"/production-tasks";
+        mvc.perform(get(base).param("pageSize","2").param("createdFrom","2000-01-01T00:00").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(4)).andExpect(jsonPath("$.data.items.length()").value(2)).andExpect(jsonPath("$.data.items[0].type").value("VIDEO"));
+        mvc.perform(get(base+"/summary").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.counts.SUCCEEDED").value(2)).andExpect(jsonPath("$.data.counts.FAILED").value(1));
+        mvc.perform(get(base).param("type","IMAGE").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].destination").isEmpty()).andExpect(jsonPath("$.data.items[0].progress").isEmpty()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("private prompt"))));
+        long analysis=jdbc.queryForObject("select min(id) from script_analysis_task where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into script_analysis_stage(task_id,stage_code,stage_order,status,progress_percent,created_at,updated_at) values (?,'GLOBAL',1,'SUCCEEDED',100,now(),now())",analysis);
+        long stage=jdbc.queryForObject("select min(id) from script_analysis_stage where task_id=?",Long.class,analysis);
+        jdbc.update("insert into script_analysis_result(task_id,stage_id,result_type,schema_version,status,normalized_json,created_at,updated_at) values (?,?,'GLOBAL','1','SUCCEEDED','{\"providerSecret\":\"do not expose\"}',now(),now())",analysis,stage);
+        mvc.perform(get(base+"/SCRIPT_ANALYSIS:"+analysis+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[2].items[0].result_type").value("GLOBAL"))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("providerSecret"))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("internalFailure"))));
+        for(String type:List.of("IMAGE","VIDEO","SCRIPT_ANALYSIS","REVIEW")) {
+            String table=Map.of("IMAGE","ai_image_task","VIDEO","ai_video_task","SCRIPT_ANALYSIS","script_analysis_task","REVIEW","review_task").get(type);
+            long id=jdbc.queryForObject("select min(id) from "+table+" where tenant_id=?",Long.class,tenant);
+            mvc.perform(get(base+"/"+type+":"+id+"/content").with(authenticated(token))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.taskKey").value(type+":"+id)).andExpect(jsonPath("$.data.sections").isArray());
+        }
+        var sql=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc);
+        String plan=sql.queryForObject("explain select * from ("+ProductionTaskSources.ALL+") t where t.parent_id is null and t.root_visible=true order by t.created_at desc limit 20",java.util.Map.of("tenant",tenant),String.class);
+        org.assertj.core.api.Assertions.assertThat(plan.toLowerCase()).contains("tenant_id", "index", "fetch first 20");
+    }
+
+    @Test void mapsOnlyGenuineUserGatesAndBoundsMixedHistory() throws Exception {
+        String token=register("13800019809");long tenant=tenant(token),user=user("13800019809");
+        long batch=batch(tenant,user,"history");
+        for(int i=1;i<=105;i++) jdbc.update("insert into video_decomposition_episode(batch_id,tenant_id,episode_no,source_file_name,storage_path,file_size,status,analysis_version,draft_version,created_by,created_at,updated_at) values (?,?,?,'clip.mp4','test',1,?,1,1,?,now(),now())",batch,tenant,i,i==1?"PENDING_REVIEW":i==2?"LEGACY_UNKNOWN":"SUCCEEDED",user);
+        String base="/api/tenants/"+tenant+"/production-tasks/VIDEO_DECOMPOSITION:"+batch+"/children";
+        mvc.perform(get(base).param("pageSize","999").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(100)).andExpect(jsonPath("$.data.total").value(105));
+        mvc.perform(get(base).param("statusGroup","WAITING_USER").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items[0].domainStatus").value("PENDING_REVIEW"));
+        mvc.perform(get(base).param("statusGroup","FAILED").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items[0].domainStatus").value("LEGACY_UNKNOWN"));
+    }
+
+    @Test void pagesRecordedBatchSubmissionItemsWithoutLoadingSiblingBodies() throws Exception {
+        String token=register("13800019818");long tenant=tenant(token),user=user("13800019818");
+        long batch=batch(tenant,user,"paged batch");
+        for(int i=1;i<=21;i++) jdbc.update("insert into video_decomposition_episode(batch_id,tenant_id,episode_no,source_file_name,storage_path,file_size,status,analysis_version,draft_version,created_by,created_at,updated_at) values (?,?,?,?,'test',1,'PENDING',1,1,?,now(),now())",batch,tenant,i,"clip-"+i+".mp4",user);
+        String base="/api/tenants/"+tenant+"/production-tasks/VIDEO_DECOMPOSITION:"+batch;
+        mvc.perform(get(base+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].items.length()").value(20))
+            .andExpect(jsonPath("$.data.sections[0].hasMore").value(true));
+        mvc.perform(get(base+"/content/submission").param("page","2").param("pageSize","20").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items.length()").value(1))
+            .andExpect(jsonPath("$.data.items[0].source_file_name").value("clip-21.mp4"));
+    }
+
+    @Test void aggregatesBatchOutcomesAndPagesChildrenWithoutExecutionRecords() throws Exception {
+        String owner=register("13800019803");long user=user("13800019803"), tenant=tenant(owner);
+        long batch=batch(tenant,user,"mixed batch");
+        for(int i=1;i<=3;i++) jdbc.update("""
+            insert into video_decomposition_episode (batch_id,tenant_id,project_id,episode_no,source_file_name,
+            storage_path,file_size,status,analysis_version,draft_version,created_by,created_at,updated_at)
+            values (?,?,null,?,'clip.mp4','test',1,?,1,1,?,now(),now())
+            """,batch,tenant,i,List.of("SUCCEEDED","FAILED","CANCELED").get(i-1),user);
+        String base="/api/tenants/"+tenant+"/production-tasks";
+        mvc.perform(get(base).with(authenticated(owner))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items[0].statusGroup").value("PARTIAL"))
+            .andExpect(jsonPath("$.data.items[0].childCounts.total").value(3)).andExpect(jsonPath("$.data.items[0].childCounts.success").value(1))
+            .andExpect(jsonPath("$.data.items[0].childCounts.failed").value(1)).andExpect(jsonPath("$.data.items[0].childCounts.canceled").value(1));
+        mvc.perform(get(base+"/VIDEO_DECOMPOSITION:"+batch+"/children").param("pageSize","2").with(authenticated(owner)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3)).andExpect(jsonPath("$.data.items.length()").value(2));
+        long episode=jdbc.queryForObject("select min(id) from video_decomposition_episode where batch_id=?",Long.class,batch);
+        jdbc.update("update video_decomposition_episode set draft_content='episode screenplay' where id=?",episode);
+        mvc.perform(get(base+"/VIDEO_DECOMPOSITION:"+batch+"/content").with(authenticated(owner))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[0].items[0].source_file_name").value("clip.mp4"));
+        mvc.perform(get(base+"/VIDEO_EPISODE:"+episode+"/content").with(authenticated(owner))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[2].preview").value("episode screenplay"));
+        mvc.perform(get(base).param("statusGroup","FAILED").with(authenticated(owner))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        mvc.perform(get(base+"/summary").param("statusGroup","PARTIAL").with(authenticated(owner))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1));
+        jdbc.update("update video_decomposition_batch set deleted_at=now() where id=?",batch);
+        mvc.perform(get(base+"/VIDEO_DECOMPOSITION:"+batch+"/children").with(authenticated(owner))).andExpect(status().isForbidden());
+    }
+
+    @Test void returnsRestrictedOwnProjectTasksAndRejectsForgedTeamIdentity() throws Exception {
+        String token=register("13800019804");long user=user("13800019804"),tenant=tenant(token);
+        long batch=batch(tenant,user,"secret project title");
+        jdbc.update("update video_decomposition_batch set project_id=999999 where id=?",batch);
+        String base="/api/tenants/"+tenant+"/production-tasks";
+        mvc.perform(get(base).with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].restricted").value(true))
+            .andExpect(jsonPath("$.data.items[0].projectId").isEmpty()).andExpect(jsonPath("$.data.items[0].destination").isEmpty())
+            .andExpect(jsonPath("$.data.items[0].allowedActions.length()").value(0));
+        jdbc.update("update tenant_member set member_type='MEMBER' where tenant_id=? and user_id=?",tenant,user);
+        rbac.initializeTenant(tenant);
+        Long member=jdbc.queryForObject("select id from tenant_member where tenant_id=? and user_id=?",Long.class,tenant,user);
+        Long role=jdbc.queryForObject("select id from role where tenant_id=? and code='ADMIN'",Long.class,tenant);
+        jdbc.update("update role set role_type='CUSTOM' where id=?",role);
+        jdbc.update("insert into member_role(member_id,role_id,created_at) values (?,?,now())",member,role);
+        mvc.perform(get(base).param("scope","team").with(authenticated(token))).andExpect(status().isForbidden());
+        long other=tenant(register("13800019805"));
+        mvc.perform(get("/api/tenants/"+other+"/production-tasks/VIDEO_DECOMPOSITION:"+batch).with(authenticated(token))).andExpect(status().isForbidden());
+        jdbc.update("update tenant_member set status='REMOVED' where id=?",member);
+        mvc.perform(get(base).with(authenticated(token))).andExpect(status().isForbidden());
+    }
+
+    @Test void controlsOwnScriptOperationAndPreservesBusinessIdentityOnRetry() throws Exception {
+        String token=register("13800019806");long user=user("13800019806"),tenant=tenant(token);
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'test','test',?,'ACTIVE',?,now(),now())",tenant,user,user);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        var execution=executions.create(new com.antshorttv.execution.AiExecutionCreateCommand(tenant,user,project,"script_generate","TEXT","SCRIPT_AI_OPERATION",1L,null,"SUBMIT","center-test","trace",true,"{}"));
+        jdbc.update("insert into script_ai_operation(tenant_id,project_id,operation_type,redacted_input_json,idempotency_key,status,execution_id,created_by,created_at,updated_at) values (?,?,'SCRIPT_GENERATE','secret','test','PENDING',?,?,now(),now())",tenant,project,execution.id,user);
+        long operation=jdbc.queryForObject("select id from script_ai_operation where execution_id=?",Long.class,execution.id);
+        String path="/api/tenants/"+tenant+"/production-tasks/SCRIPT_OPERATION:"+operation;
+        mvc.perform(post(path+"/cancel").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.statusGroup").value("CANCELED"));
+        jdbc.update("update ai_execution_task set status='FAILED',retryable=true where id=?",execution.id);
+        mvc.perform(post(path+"/retry").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.taskKey").value("SCRIPT_OPERATION:"+operation)).andExpect(jsonPath("$.data.statusGroup").value("QUEUED"));
+        mvc.perform(post(path+"/retry").with(authenticated(token))).andExpect(status().isForbidden());
+        String adminToken=register("13800019811");long adminUser=user("13800019811");
+        jdbc.update("insert into tenant_member(tenant_id,user_id,member_type,status,joined_at,created_at,updated_at) values (?,?,'MEMBER','ACTIVE',now(),now(),now())",tenant,adminUser);
+        rbac.initializeTenant(tenant);
+        long adminRole=jdbc.queryForObject("select id from role where tenant_id=? and code='ADMIN'",Long.class,tenant);
+        long adminMember=jdbc.queryForObject("select id from tenant_member where tenant_id=? and user_id=?",Long.class,tenant,adminUser);
+        jdbc.update("insert into member_role(member_id,role_id,created_at) values (?,?,now())",adminMember,adminRole);
+        mvc.perform(get(path).with(authenticated(adminToken))).andExpect(status().isOk()).andExpect(jsonPath("$.data.allowedActions").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("CANCEL"))));
+        mvc.perform(post(path+"/cancel").with(authenticated(adminToken))).andExpect(status().isForbidden());
+        jdbc.update("update tenant_member set member_type='MEMBER' where tenant_id=? and user_id=?",tenant,user);
+        jdbc.update("delete from member_role where member_id in (select id from tenant_member where tenant_id=? and user_id=?)",tenant,user);
+        mvc.perform(post(path+"/cancel").with(authenticated(token))).andExpect(status().isForbidden());
+    }
+
+    @Test void listQueryCountDoesNotGrowWithPageRows() throws Exception {
+        String token=register("13800019812");long tenant=tenant(token),user=user("13800019812");
+        for(int i=0;i<30;i++) batch(tenant,user,"bounded-"+i);
+        String base="/api/tenants/"+tenant+"/production-tasks";
+        mvc.perform(get(base).with(authenticated(token))).andExpect(status().isOk());
+        jdbc.execute("set query_statistics true");
+        try {
+            long before=queryCount();
+            mvc.perform(get(base).param("pageSize","1").with(authenticated(token))).andExpect(status().isOk());
+            long middle=queryCount();
+            mvc.perform(get(base).param("pageSize","20").with(authenticated(token))).andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(20));
+            long after=queryCount();
+            org.assertj.core.api.Assertions.assertThat(after-middle).isLessThanOrEqualTo(middle-before+2);
+        } finally {jdbc.execute("set query_statistics false");}
+    }
+    private long queryCount() {return jdbc.queryForObject("select coalesce(sum(execution_count),0) from information_schema.query_statistics",Long.class);}
+
+    @Test void scopesListsDetailsAndControlsByCurrentMembership() throws Exception {
+        String owner = register("13800019801");
+        String member = register("13800019802");
+        long tenant = tenant(owner);
+        long ownerId = user("13800019801"), memberId = user("13800019802");
+        jdbc.update("insert into tenant_member (tenant_id,user_id,member_type,status,joined_at,created_at,updated_at) values (?,?,'MEMBER','ACTIVE',now(),now(),now())",tenant,memberId);
+        long ownTask = batch(tenant,ownerId,"owner batch"), memberTask = batch(tenant,memberId,"member batch");
+        String base = "/api/tenants/"+tenant+"/production-tasks";
+        mvc.perform(get(base)).andExpect(status().isUnauthorized());
+        mvc.perform(get(base).with(authenticated(member)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.items[0].taskKey").value("VIDEO_DECOMPOSITION:"+memberTask));
+        mvc.perform(get(base).param("scope","team").with(authenticated(member))).andExpect(status().isForbidden());
+        mvc.perform(get(base+"/VIDEO_DECOMPOSITION:"+ownTask).with(authenticated(member))).andExpect(status().isForbidden());
+        mvc.perform(get(base).param("creatorId",""+ownerId).with(authenticated(member))).andExpect(status().isForbidden());
+        mvc.perform(get(base).param("scope","team").with(authenticated(owner)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2))
+            .andExpect(jsonPath("$.data.canViewTeamTasks").value(true));
+        mvc.perform(post(base+"/VIDEO_DECOMPOSITION:"+memberTask+"/cancel").with(authenticated(owner)))
+            .andExpect(status().isForbidden());
+        mvc.perform(get(base+"/summary").param("scope","team").with(authenticated(owner)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2));
+        Long membership = jdbc.queryForObject("select id from tenant_member where tenant_id=? and user_id=?",Long.class,tenant,memberId);
+        rbac.initializeTenant(tenant);
+        Long admin = jdbc.queryForObject("select id from role where tenant_id=? and code='ADMIN'",Long.class,tenant);
+        jdbc.update("insert into member_role (member_id,role_id,created_at) values (?,?,now())",membership,admin);
+        mvc.perform(get(base).param("scope","team").with(authenticated(member))).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2));
+        jdbc.update("update role set status='DISABLED' where id=?",admin);
+        mvc.perform(get(base+"/summary").param("scope","team").with(authenticated(member))).andExpect(status().isForbidden());
+        jdbc.update("update tenant_member set member_type='MEMBER' where tenant_id=? and user_id=?",tenant,ownerId);
+        jdbc.update("update tenant_member set member_type='OWNER' where tenant_id=? and user_id=?",tenant,memberId);
+        mvc.perform(get(base).param("scope","team").with(authenticated(owner))).andExpect(status().isForbidden());
+        mvc.perform(get(base).param("scope","team").with(authenticated(member))).andExpect(status().isOk());
+    }
+
+    private String register(String mobile) throws Exception {
+        return SessionTestSupport.sessionCredential(mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"mobile\":\""+mobile+"\",\"nickname\":\"Task tester\",\"verificationCode\":\"123456\",\"password\":\"Password123\"}"))
+            .andExpect(status().isOk()).andReturn());
+    }
+    private long user(String mobile) { return jdbc.queryForObject("select id from app_user where mobile=?",Long.class,mobile); }
+    private long tenant(String token) throws Exception {
+        var result=mvc.perform(post("/api/tenants").with(authenticated(token)).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"name\":\"Task center\",\"type\":\"STUDIO\"}")).andExpect(status().isOk()).andReturn();
+        return ((Number)JsonPath.read(result.getResponse().getContentAsString(),"$.data.id")).longValue();
+    }
+    private long batch(long tenant,long creator,String name) {
+        jdbc.update("insert into video_decomposition_batch (tenant_id,project_id,name,status,total_episodes,completed_episodes,failed_episodes,created_by,created_at,updated_at) values (?,null,?,'PENDING',0,0,0,?,now(),now())",tenant,name,creator);
+        return jdbc.queryForObject("select id from video_decomposition_batch where tenant_id=? and name=?",Long.class,tenant,name);
+    }
+}

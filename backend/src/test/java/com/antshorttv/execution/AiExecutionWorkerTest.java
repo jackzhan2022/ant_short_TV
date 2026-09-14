@@ -73,15 +73,13 @@ class AiExecutionWorkerTest {
     void defersAnExplicitlyBlockedHandlerWithoutMarkingItFailed() {
         Fixture fixture = new Fixture();
         when(fixture.handler.execute(org.mockito.ArgumentMatchers.any()))
-            .thenThrow(new AiExecutionDeferredException("ASSET_EXTRACTION_BUSY", "wait", Duration.ofSeconds(30)));
+            .thenThrow(new AiExecutionDeferredException("wait"));
 
         fixture.worker.run(1L);
 
         verify(fixture.claims).defer(
-            org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq(2L),
-            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq("ASSET_EXTRACTION_BUSY"),
-            org.mockito.ArgumentMatchers.eq("wait"), org.mockito.ArgumentMatchers.any(LocalDateTime.class),
-            org.mockito.ArgumentMatchers.any(LocalDateTime.class));
+            org.mockito.ArgumentMatchers.any(AiExecutionClaim.class),
+            org.mockito.ArgumentMatchers.eq("wait"), org.mockito.ArgumentMatchers.any(LocalDateTime.class));
         verify(fixture.claims, never()).markFailed(
             org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
             org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),

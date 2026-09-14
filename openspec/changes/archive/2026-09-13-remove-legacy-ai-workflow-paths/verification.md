@@ -48,3 +48,13 @@
 账本架构扫描仅对 V114 的一次性释放给出精确路径例外：Flyway 执行时 Spring 账本服务尚未初始化，迁移直接完成原子释放与当前 point_ledger 审计；其资金守恒、幂等和保留项由迁移测试独立验证。日常运行代码仍只通过统一账本服务修改账户。
 
 追加扫描覆盖审核工具名称、STRUCTURED_JSON 和 DEEP_SEMANTIC：当前运行代码无匹配。ScopeGuard 仅接受 MARKDOWN_QUICK、MARKDOWN_DEEP_CHILD 和 MARKDOWN_DEEP_AGGREGATION，旧工具/旧阶段负载白名单已删除。所有实现任务已完成，实际部署仍按 deployment-checklist.md 执行。
+
+## master 合并验证（2026-09-12）
+
+在独立工作区将本变更与 master c2995c1 合并，保留任务中心及线上审计修复。审核页面冲突按仅 Markdown 路径解决，同时保留报告问题计数。
+
+- 后端 ProductionTaskControllerTest、SchemaMigrationTest、WorkflowAgentScopeGuardTest 共 64 项通过，覆盖迁移至 V115 后的任务中心接口与作用域限制。
+- 图片重新生成及视频技术重试的合并回归另有 3 项通过，验证任务中心入口、幂等和冻结执行快照。
+- 前端审核、审核历史、分镜和任务中心共 7 个测试文件、59 项通过。
+- Biome 检查通过（3 条既有警告）；antd 检查退出 0（11 条既有警告）。独立工作区使用 node_modules 目录链接，默认类型检查触发 TS2883 路径可移植性诊断；以 `npx tsc --noEmit --preserveSymlinks` 复核通过，未修改业务代码或类型检查配置。
+- OpenSpec 严格验证及暂存差异空白检查通过。未部署或清理实际业务数据库。

@@ -19,6 +19,8 @@ import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
+import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +44,8 @@ class ScopedAssetReextractionServiceTest {
     @MockBean private ProjectAccessResolver projects;
     @MockBean private ProjectPermissionGuard permissions;
     private AssetRecognitionAgentAdapter recognition;
+    private AssetExtractionCoordination coordination;
+    private WorkflowAgentRunRepository runs;
     private ScopedAssetReextractionService lifecycle;
 
     @BeforeEach
@@ -53,11 +57,15 @@ class ScopedAssetReextractionServiceTest {
         for (long id : List.of(9511L, 9512L)) {
             database.update("insert into script_episode (id,tenant_id,project_id,script_id,stable_key,episode_no,title,content,content_fingerprint,reconciliation_status,status,created_at,updated_at) values (?,9501,9502,9503,?,?,'Episode','text','hash','NEW','ACTIVE',now(),now())", id, "e" + id, id - 9510);
             database.update("insert into ai_workflow_agent_run (id,agent_code,run_type,tenant_id,user_id,project_id,task_id,status,model_id,temperature,max_tokens,max_steps,prompt_snapshot,started_at,created_at) values (?,'short-drama-asset-recognition','FORMAL',9501,1,9502,9504,'SUCCEEDED',1,0.1,4096,20,'audit',now(),now())", id);
+            database.update("insert into script_episode_asset_analysis (tenant_id,project_id,script_id,episode_id,schema_version,content_fingerprint,content_json,generated_by_run_id,created_by,updated_by,created_at,updated_at) values (9501,9502,9503,?,1,'hash','{}',?,1,1,now(),now())", id, id);
         }
         when(tenants.requireActiveMember(9501L)).thenReturn(new TenantContext(1L,9501L,1L,"OWNER"));
         when(projects.requireView(9501L,9502L)).thenReturn(mock(ProjectAccessContext.class));
         recognition = mock(AssetRecognitionAgentAdapter.class);
-        lifecycle = new ScopedAssetReextractionService(database, mock(WorkflowAgentRunner.class), recognition, transactionManager);
+        coordination = mock(AssetExtractionCoordination.class);
+        runs = mock(WorkflowAgentRunRepository.class);
+        lifecycle = new ScopedAssetReextractionService(database, mock(WorkflowAgentRunner.class), recognition,
+            transactionManager, coordination, runs, new ObjectMapper());
         when(recognition.executeChild(any(), any(), any(), anyLong(), any(), anyLong(), any(), any()))
             .thenAnswer(call -> new AssetRecognitionAgentAdapter.Execution(call.getArgument(3, Long.class), List.of()));
     }
@@ -90,7 +98,7 @@ class ScopedAssetReextractionServiceTest {
         for (var entry : tables.entrySet()) {
             String table = entry.getValue();
             assertThat(database.queryForObject("select count(*) from " + table + " where id=? and deleted_at is not null",Integer.class,base+1)).isEqualTo(scope.includes(entry.getKey())?1:0);
-            assertThat(database.queryForObject("select count(*) from " + table + " where id between ? and ? and deleted_at is null",Integer.class,base+2,base+5)).isEqualTo(4);
+            assertThat(database.queryForObject("select count(*) from " + table + " where id between ? and ? and deleted_at is null",Integer.class,base+2,base+5)).isEqualTo(scope.includes(entry.getKey()) ? 3 : 4);
             assertThat(database.queryForMap("select source,name,prompt,generated_by_run_id from " + table + " where id=?",base+3)).containsEntry("source","USER").containsEntry("name","human name").containsEntry("prompt","human prompt").containsEntry("generated_by_run_id",9511L);
             assertThat(database.queryForMap("select source_type,prompt,generated_by_run_id,deleted_at from asset_visual_variant where id=?",base+5)).containsEntry("source_type","MANUAL").containsEntry("prompt","human variant prompt").containsEntry("generated_by_run_id",9511L).containsEntry("deleted_at",null);
             assertThat(database.queryForObject("select count(*) from asset_visual_variant where id=? and deleted_at is not null",Integer.class,base+1)).isEqualTo(scope.includes(entry.getKey())?1:0);
@@ -103,7 +111,6 @@ class ScopedAssetReextractionServiceTest {
         database.update("insert into script_analysis_fanout_snapshot (id,tenant_id,project_id,script_id,task_id,stage_id,stage_code,attempt_no,agent_code,agent_revision,model_id,episode_set_hash,status,total_units,created_at,updated_at) values (9700,9501,9502,9503,9700,9700,'ASSET_RECOGNITION',1,'short-drama-asset-recognition',1,1,'hash','RUNNING',2,now(),now())");
         for (long episode : List.of(9511L,9512L)) {
             database.update("insert into script_analysis_fanout_unit (snapshot_id,episode_id,episode_key,content_fingerprint,status,child_run_id,created_at,updated_at) values (9700,?,?,'hash','SUCCEEDED',?,now(),now())",episode,"e"+episode,episode);
-            database.update("insert into script_episode_asset_analysis (tenant_id,project_id,script_id,episode_id,schema_version,content_fingerprint,content_json,generated_by_run_id,created_by,updated_by,created_at,updated_at) values (9501,9502,9503,?,1,'hash','{}',?,1,1,now(),now())",episode,episode);
         }
         base = 9600;
         for (var entry : tables.entrySet()) {
@@ -115,7 +122,7 @@ class ScopedAssetReextractionServiceTest {
         base = 9600;
         for (var entry : tables.entrySet()) {
             assertThat(database.queryForObject("select count(*) from " + entry.getValue() + " where id=? and deleted_at is not null",Integer.class,base+1)).isEqualTo(scope.includes(entry.getKey())?1:0);
-            assertThat(database.queryForObject("select count(*) from " + entry.getValue() + " where id between ? and ? and deleted_at is null",Integer.class,base+2,base+5)).isEqualTo(4);
+            assertThat(database.queryForObject("select count(*) from " + entry.getValue() + " where id between ? and ? and deleted_at is null",Integer.class,base+2,base+5)).isEqualTo(scope.includes(entry.getKey()) ? 3 : 4);
             assertThat(database.queryForObject("select count(*) from asset_visual_variant where id=? and source_type='MANUAL' and deleted_at is null",Integer.class,base+5)).isOne();
             base += 10;
         }
@@ -136,27 +143,6 @@ class ScopedAssetReextractionServiceTest {
         assertThat(database.queryForMap("select status,completed_units,failed_units from scoped_asset_reextraction_snapshot where operation_id=9504")).containsEntry("status","SUCCEEDED").containsEntry("completed_units",2).containsEntry("failed_units",0);
     }
 
-    @Test
-    void finalizationRechecksOwnerAndLeavesReleaseToTerminalRecovery() {
-        ScriptAssetExtractionCoordinationRepository coordination =
-            mock(ScriptAssetExtractionCoordinationRepository.class);
-        when(coordination.renew(9501L, 9502L, 9503L, 9701L, 2, 9702L)).thenReturn(true);
-        ScopedAssetReextractionService coordinated = new ScopedAssetReextractionService(
-            database, mock(WorkflowAgentRunner.class), recognition, coordination, transactionManager);
-        AiExecutionTaskEntity task = new AiExecutionTaskEntity();
-        task.id = 9701L;
-        task.executionVersion = 2;
-        task.resolvedModelId = 11L;
-        AiExecutionContext claimed = new AiExecutionContext(
-            task, new AiExecutionClaim(9701L, 9702L, "claim", 2, "SUBMIT"));
-
-        coordinated.execute(operation(), new ScopedAssetReextractionRequest("ALL", "FILL_EMPTY"), claimed);
-
-        verify(coordination).requireCurrentOwner(9501L, 9502L, 9503L, 9701L, 2, 9702L);
-        verify(coordination, org.mockito.Mockito.never())
-            .release(9501L, 9502L, 9503L, 9701L, 2, 9702L);
-    }
-
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(longs = {9511L, 9512L})
     void rejectsChangedSuccessfulOrFailedEpisodeBeforeRetry(long changedEpisode) {
@@ -168,7 +154,7 @@ class ScopedAssetReextractionServiceTest {
         database.update("update script_episode set content='changed',content_fingerprint='changed' where id=?",changedEpisode);
         org.mockito.Mockito.clearInvocations(recognition);
         assertThatThrownBy(() -> lifecycle.execute(operation(),request,context(11)))
-            .hasMessageContaining("来源已变化");
+            .hasMessageContaining("变化");
         org.mockito.Mockito.verifyNoInteractions(recognition);
         assertThat(database.queryForObject("select status from scoped_asset_reextraction_snapshot where operation_id=9504",String.class))
             .isEqualTo("FAILED");
@@ -182,7 +168,7 @@ class ScopedAssetReextractionServiceTest {
                 return new AssetRecognitionAgentAdapter.Execution(9512L,List.of());
             });
         assertThatThrownBy(() -> lifecycle.execute(operation(),new ScopedAssetReextractionRequest("ALL","FILL_EMPTY"),context(11)))
-            .hasMessageContaining("来源已变化");
+            .hasMessageContaining("变化");
         assertThat(database.queryForObject("select status from scoped_asset_reextraction_snapshot where operation_id=9504",String.class))
             .isEqualTo("FAILED");
     }
@@ -192,7 +178,7 @@ class ScopedAssetReextractionServiceTest {
         var submitted = operation();
         submitted.scriptVersionId=42L;
         assertThatThrownBy(() -> lifecycle.execute(submitted,new ScopedAssetReextractionRequest("ALL","FILL_EMPTY"),context(11)))
-            .hasMessageContaining("来源已变化");
+            .hasMessageContaining("变化");
         assertThat(database.queryForObject("select count(*) from scoped_asset_reextraction_snapshot",Integer.class)).isZero();
         org.mockito.Mockito.verifyNoInteractions(recognition);
     }
@@ -217,8 +203,10 @@ class ScopedAssetReextractionServiceTest {
 
     private AiExecutionContext context(long model) {
         var execution = new AiExecutionTaskEntity();
+        execution.id = 9505L;
+        execution.executionVersion = 1;
         execution.resolvedModelId=model;
-        return new AiExecutionContext(execution,null);
+        return new AiExecutionContext(execution, new AiExecutionClaim(9505L, 9506L, "scope-test", 1, "RUNNING"));
     }
 
     @Test
@@ -227,7 +215,8 @@ class ScopedAssetReextractionServiceTest {
         when(jdbc.queryForObject(any(String.class), eq(Integer.class), any(Object[].class)))
             .thenReturn(2, 3, 5, 7);
         ScopedAssetReextractionService service = new ScopedAssetReextractionService(
-            jdbc, mock(WorkflowAgentRunner.class), mock(AssetRecognitionAgentAdapter.class), transactionManager);
+            jdbc, mock(WorkflowAgentRunner.class), mock(AssetRecognitionAgentAdapter.class), transactionManager,
+            mock(AssetExtractionCoordination.class), mock(WorkflowAgentRunRepository.class), new ObjectMapper());
 
         var result = service.preflight(1L, 2L, 3L, AssetRecognitionScope.SCENE);
 

@@ -29,10 +29,14 @@
 
 使用 scripts/sql/asset-extraction-duplicate-preflight.sql，在授权数据库执行只读查询。报告相同业务域规范名重复、空规范名以及重复形态；重复形态仅是人工核查候选，不能据此自动合并。所有结果不修改业务数据。索引迁移前必须确认非空 active identity 冲突已处理。
 
-本次已在生产数据库执行只读预检：规范名重复查询及形态同名候选查询均无记录；三类缺失规范名计数均为 0。此结果仅代表审计时刻，正式迁移前需要重新执行。基线 WorkflowAgentScopeGuardTest、ScopedAssetReextractionServiceTest、AssetRecognitionAgentAdapterTest、EpisodeAssetPersistenceServiceTest 的 Maven 命令退出码为 0。
+本次已在生产数据库执行只读预检：规范名重复查询及形态同名候选查询均无记录；三类缺失规范名计数均为 0。此结果仅代表审计时刻，正式迁移前需要重新执行。正式持久化行为通过实际存在的 ScreenplayToolDataServiceTest 和 AssetExtractionCoordinationTest 验证；不能将命令中未匹配到的测试类计为通过。
 
-## 本次实施阻塞
+## 隔离实施与验证
 
-新增守卫测试已复现 SCRIPT_ANALYSIS_TASK 被误判为重提取操作的问题，随后添加 business_type 分流以及重提取独立上下文准备。验证期间，其他在途变更导致 ReviewProjectProgressiveReadIntegrationTest:213 引用不存在的 outstandingIssueCount()，Maven testCompile 失败。另一次直接运行 surefire 时共享 target 中已无匹配测试类，且仍有其他 Java 进程运行；因此不能将缓存测试或共享构建产物当成本次修改的验证结果。
+按用户要求在 `.worktrees/asset-extraction-concurrency`、分支 `codex/stabilize-asset-extraction-concurrency` 隔离实施，保留原工作区脏改动快照。原编译阻塞 `outstandingIssueCount()` 已在取得的在途快照中修正，隔离工作区重新编译和测试，不依赖共享 target 的缓存产物。
 
-任务 2.4 的代码为待验证状态，不勾选完成。未完成的协调服务和迁移草稿已撤回，避免只落库不接入执行的半成品被其他发布携带。继续时需先取得稳定构建快照或协调其他在途构建，然后完成身份回归与剩余任务。
+已接入剧本级协调记录、条件 admission、资源等待和旧 attempt fencing。剧本页在整个分析开始时取得拥有权，以保证等待发生在模型调用前；拥有权保留到统一执行终态，随后在下一次申请中锁定并回收。MySQL REPEATABLE READ 下通过当前锁定读取返回并发刚创建的 execution，避免旧事务快照漏读。
+
+正式保存事务检查拥有权、有效租约、当前版本/源正文并写入提交证据。scoped 执行恢复复用已提交单元，冻结 Agent/Skill 计划，拒绝被其他任务覆盖的旧提交证据。收口事务校验完整证据，保护手动与范围外数据。执行结果与结算重新核对当前 claim，费用按整个 execution 的持久化调用归集。
+
+本地独立 MySQL 8.4.9（127.0.0.1:13316）完成迁移与并发验收，没有写线上数据。专用协调测试覆盖 13 个用例，包括双请求仅一个 operation/reservation、跨入口、软删除唯一性、取消/租约接管、保存后崩溃、源版本变更和幂等收口。发布、回滚、测试命令及项目 33 的付费验收步骤见 `docs/asset-extraction-concurrency-rollout.md`。最终检查结果以该文档和任务清单为准。

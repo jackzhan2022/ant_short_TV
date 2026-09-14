@@ -61,6 +61,14 @@ public record WorkflowAgentRunContract(
     }
 
     public void requireNext(WorkflowToolRunState state, String toolCode) {
+        if ("save_episode_assets".equals(terminalToolCode)) {
+            var completed=state.successfulToolCodes();
+            boolean first=completed.isEmpty() && "read_current_episode".equals(toolCode);
+            boolean lookup=Set.of("search_script_assets","read_asset_details","save_episode_assets").contains(toolCode)
+                && completed.contains("read_current_episode") && !completed.contains("save_episode_assets");
+            if(first || lookup) return;
+            throw new BusinessException(ErrorCode.REQUIRED_TOOL_NOT_CALLED,"必须按顺序调用工具：先读取当前剧集，再检索资产，最后保存。");
+        }
         List<String> sequence = activeSequence(state);
         if (sequence.isEmpty()) {
             return;
@@ -78,7 +86,7 @@ public record WorkflowAgentRunContract(
 
     public void requireComplete(WorkflowToolRunState state) {
         List<String> sequence = activeSequence(state);
-        boolean incomplete = isReviewContract()
+        boolean incomplete = isReviewContract() || "save_episode_assets".equals(terminalToolCode)
             ? !new HashSet<>(state.successfulToolCodes()).containsAll(sequence)
             : state.successfulToolCodes().size() < sequence.size();
         if (incomplete) {

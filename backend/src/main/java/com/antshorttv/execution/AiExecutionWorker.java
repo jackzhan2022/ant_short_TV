@@ -49,20 +49,11 @@ public class AiExecutionWorker {
                     result.resultId(),
                     LocalDateTime.now()
                 );
-            } catch (AiExecutionClaimLostException exception) {
-                throw exception;
             } catch (AiExecutionDeferredException exception) {
                 lease.assertOwned();
-                LocalDateTime now = LocalDateTime.now();
-                claimService.defer(
-                    executionId,
-                    claim.attemptId(),
-                    claimToken,
-                    exception.code(),
-                    exception.getMessage(),
-                    now.plus(exception.delay()),
-                    now
-                );
+                claimService.defer(claim, exception.getMessage(), LocalDateTime.now());
+            } catch (AiExecutionClaimLostException exception) {
+                throw exception;
             } catch (RuntimeException exception) {
                 lease.assertOwned();
                 claimService.markFailed(

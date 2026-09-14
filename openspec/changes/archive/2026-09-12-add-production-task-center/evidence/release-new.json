@@ -1,0 +1,39 @@
+{
+  "stage": "new",
+  "previous": "/opt/antv/releases/202609121303-94d362f",
+  "target": "/opt/antv/releases/202609121450-6652857",
+  "preflight_no_running_work": true,
+  "checks": [
+    {
+      "elapsed_s": 0.46,
+      "bootstrap_unauth": 0
+    },
+    {
+      "elapsed_s": 2.46,
+      "bootstrap_unauth": 0
+    },
+    {
+      "elapsed_s": 4.47,
+      "bootstrap_unauth": 0
+    },
+    {
+      "elapsed_s": 6.47,
+      "bootstrap_unauth": 0
+    },
+    {
+      "elapsed_s": 8.47,
+      "bootstrap_unauth": 0
+    },
+    {
+      "elapsed_s": 10.47,
+      "bootstrap_unauth": 0
+    },
+    {
+      "elapsed_s": 12.61,
+      "bootstrap_unauth": 401
+    }
+  ],
+  "ready_seconds": 12.73,
+  "success": true,
+  "task_bundle_present": true
+}

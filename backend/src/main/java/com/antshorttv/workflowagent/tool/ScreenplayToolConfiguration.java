@@ -9,6 +9,32 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ScreenplayToolConfiguration {
     @Bean
+    WorkflowToolDefinition searchScriptAssetsTool(AssetCatalogService data, ObjectMapper json) {
+        ObjectNode input=objectSchema(json);
+        input.putArray("required").add("assetType");
+        ObjectNode fields=(ObjectNode)input.path("properties");
+        fields.putObject("assetType").put("type","string").putArray("enum").add("CHARACTER").add("SCENE").add("PROP");
+        fields.putObject("query").put("type","string").put("maxLength",200);
+        fields.putObject("cursor").put("type","string").put("maxLength",100);
+        fields.putObject("pageSize").put("type","integer").put("minimum",1).put("maximum",50);
+        return definition("search_script_assets","检索剧本资产","按规范名或明确别名查找当前剧本资产；空查询分页浏览。",
+            input,json.createObjectNode().put("type","object"),ToolRiskLevel.READ_ONLY,
+            executor(data::search));
+    }
+
+    @Bean
+    WorkflowToolDefinition readAssetDetailsTool(AssetCatalogService data, ObjectMapper json) {
+        ObjectNode input=objectSchema(json);
+        input.putArray("required").add("assetKeys");
+        ObjectNode fields=(ObjectNode)input.path("properties");
+        fields.putObject("assetKeys").put("type","array").put("minItems",1).put("maxItems",10)
+            .putObject("items").put("type","string").put("pattern","^[csp]_[1-9][0-9]*$");
+        fields.putObject("cursor").put("type","string").put("maxLength",100);
+        return definition("read_asset_details","读取资产形态","按可信资产 key 分页读取形态详情；续页指定单个 key。",
+            input,json.createObjectNode().put("type","object"),ToolRiskLevel.READ_ONLY,
+            executor(data::details));
+    }
+    @Bean
     WorkflowToolDefinition readProjectContextTool(ScreenplayToolDataService data, ObjectMapper json) {
         return definition("read_project_context", "读取项目上下文", "读取当前授权项目的基础配置。",
             emptyInput(json), projectOutput(json), ToolRiskLevel.READ_ONLY,
@@ -56,52 +82,6 @@ public class ScreenplayToolConfiguration {
         return definition("read_script_assets", "读取剧本资产", "读取当前项目的人物、场景和道具资产。",
             emptyInput(json), assetsOutput(json), ToolRiskLevel.READ_ONLY,
             executor((context, arguments) -> data.readScriptAssets(context)));
-    }
-
-    @Bean
-    WorkflowToolDefinition searchScriptAssetsTool(ScreenplayToolDataService data, ObjectMapper json) {
-        ObjectNode input = objectSchema(json);
-        input.putArray("required").add("assetType").add("name");
-        ObjectNode inputFields = (ObjectNode) input.path("properties");
-        inputFields.putObject("assetType").put("type", "string").putArray("enum")
-            .add("CHARACTER").add("SCENE").add("PROP");
-        inputFields.putObject("name").put("type", "string").put("maxLength", 100);
-        inputFields.putObject("cursor").put("type", "string").put("maxLength", 128);
-        inputFields.putObject("pageSize").put("type", "integer").put("minimum", 1).put("maximum", 50);
-        ObjectNode output = objectSchema(json);
-        output.putArray("required").add("items").add("hasMore");
-        ObjectNode outputFields = (ObjectNode) output.path("properties");
-        outputFields.putObject("items").put("type", "array");
-        outputFields.putObject("hasMore").put("type", "boolean");
-        outputFields.putObject("nextCursor").put("type", "string").put("maxLength", 128);
-        return definition("search_script_assets", "检索剧本资产", "按类型和名称检索当前剧本资产目录。",
-            input, output, ToolRiskLevel.READ_ONLY, executor((context, arguments) -> data.searchScriptAssets(
-                context, arguments.path("assetType").asText(), arguments.path("name").asText(),
-                arguments.path("cursor").asText(null), arguments.path("pageSize").asInt(20))));
-    }
-
-    @Bean
-    WorkflowToolDefinition readAssetDetailsTool(ScreenplayToolDataService data, ObjectMapper json) {
-        ObjectNode input = objectSchema(json); input.putArray("required").add("assetType").add("assetKeys");
-        ObjectNode fields = (ObjectNode) input.path("properties");
-        fields.putObject("assetType").put("type", "string").putArray("enum").add("CHARACTER").add("SCENE").add("PROP");
-        fields.putObject("assetKeys").put("type", "array").put("minItems", 1).put("maxItems", 10)
-            .putObject("items").put("type", "string").put("maxLength", 64);
-        fields.putObject("variantCursor").put("type", "string").put("maxLength", 128);
-        ObjectNode output = objectSchema(json); output.putArray("required").add("items")
-            .add("variantPageSize").add("hasMore");
-        ObjectNode outputFields = (ObjectNode) output.path("properties");
-        outputFields.putObject("items").put("type", "array");
-        outputFields.putObject("variantPageSize").put("type", "integer").put("maximum", 20);
-        outputFields.putObject("hasMore").put("type", "boolean");
-        outputFields.putObject("nextCursor").put("type", "string").put("maxLength", 128);
-        return definition("read_asset_details", "读取资产详情", "批量读取当前剧本中指定资产的受限详情。", input, output,
-            ToolRiskLevel.READ_ONLY, executor((context, arguments) -> {
-                java.util.List<String> keys = new java.util.ArrayList<>();
-                arguments.path("assetKeys").forEach(value -> keys.add(value.asText()));
-                return data.readAssetDetails(context, arguments.path("assetType").asText(), keys,
-                    arguments.path("variantCursor").asText(null));
-            }));
     }
 
     @Bean
@@ -196,6 +176,7 @@ public class ScreenplayToolConfiguration {
         ObjectNode catalog = objectSchema(json);
         catalog.putArray("required").add("characters").add("scenes").add("props");
         ObjectNode catalogFields = (ObjectNode) catalog.path("properties");
+        catalogFields.putObject("pages").put("type","object");
         for (String name : new String[]{"characters", "scenes", "props"}) {
             ObjectNode array = catalogFields.putObject(name).put("type", "array").put("maxItems", 200);
             ObjectNode item = objectSchema(json);

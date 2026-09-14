@@ -63,3 +63,4 @@ The asset-settings interface SHALL attach to an equivalent active task returned 
 #### Scenario: Existing task reaches a terminal state
 - **WHEN** the followed task succeeds, fails or is canceled
 - **THEN** the loading state clears and the terminal result or actionable failure is displayed
+

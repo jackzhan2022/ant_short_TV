@@ -11,6 +11,21 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class RemainingAnalysisAgentRunContractTest {
+    @org.junit.jupiter.api.Test
+    void assetSearchPagesAreAllowedButNeverReplaceRequiredSave() {
+        var contract=WorkflowAgentRunContract.forAgent("short-drama-asset-recognition");
+        var state=new WorkflowToolRunState();
+        assertThatThrownBy(()->contract.requireNext(state,"search_script_assets")).isInstanceOf(BusinessException.class);
+        state.recordSuccess("read_current_episode");
+        for(String tool:List.of("search_script_assets","search_script_assets","read_asset_details")) {
+            contract.requireNext(state,tool);state.recordSuccess(tool);
+        }
+        assertThatThrownBy(()->contract.requireComplete(state)).isInstanceOf(BusinessException.class);
+        contract.requireNext(state,"save_episode_assets");state.recordSuccess("save_episode_assets");
+        contract.requireComplete(state);
+        assertThatThrownBy(()->contract.requireNext(state,"search_script_assets")).isInstanceOf(BusinessException.class);
+    }
+
     static java.util.stream.Stream<Arguments> contracts() {
         return java.util.stream.Stream.of(
             Arguments.of("short-drama-episode-splitting", "read_current_script", "save_episode_splitting"),

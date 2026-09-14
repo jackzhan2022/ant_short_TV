@@ -1,8 +1,7 @@
 # asset-catalog-retrieval Specification
 
 ## Purpose
-Provide bounded, pageable access to authorized script assets while preserving complete episode source coverage and authoritative identity matching during persistence.
-
+TBD - created by archiving change stabilize-asset-extraction-concurrency. Update Purpose after archive.
 ## Requirements
 ### Requirement: Provide bounded episode asset candidates
 The current-episode tool SHALL return complete source coverage data independently of a bounded asset candidate summary. Candidates SHALL prioritize current episode bindings and exact source name or explicit alias matches and expose opaque keys, names and prompt-presence metadata. Partial catalogs SHALL explicitly expose total, hasMore and continuation information and SHALL NOT imply that omitted assets do not exist.

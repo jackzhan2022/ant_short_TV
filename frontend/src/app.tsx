@@ -144,7 +144,7 @@ export const layout: RunTimeLayoutConfig = ({
           '/video-script-decomposition',
           '/script-review-library',
         ]),
-        group('mine', '我的', ['/projects/list', '/style-library']),
+        group('mine', '我的', ['/projects/list', '/tasks', '/style-library']),
         group('management', '管理', [
           '/team/my',
           '/ai-service-management/model-management',

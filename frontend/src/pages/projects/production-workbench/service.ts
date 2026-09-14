@@ -273,6 +273,7 @@ export type AssetSettingsSummary = Pick<
   ProductionWorkspaceState,
   'projectId' | 'characters' | 'scenes' | 'props'
 >;
+export type AssetSettingsWorkspace = AssetSettingsSummary;
 
 export type ScriptPageWorkspace = Pick<
   ProductionWorkspaceState,
@@ -721,9 +722,10 @@ export const submitAssetReextraction = async (
   values: { targetType: AssetReextractionScope; promptPolicy: AssetPromptPolicy },
 ) =>
   request<ApiResponse<API.AiExecutionResponse>>(
-    `/api/projects/${projectId}/asset-reextraction`,
-    {
-      method: 'POST',
+      `/api/projects/${projectId}/asset-reextraction`,
+      {
+        method: 'POST',
+        skipErrorHandler: true,
       headers: { 'Content-Type': 'application/json' },
       data: values,
     },

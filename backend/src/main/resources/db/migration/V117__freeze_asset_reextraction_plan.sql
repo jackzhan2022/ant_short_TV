@@ -1,0 +1,1 @@
+alter table scoped_asset_reextraction_snapshot add column frozen_plan_json longtext null;

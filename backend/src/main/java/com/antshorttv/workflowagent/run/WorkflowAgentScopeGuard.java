@@ -14,9 +14,9 @@ public class WorkflowAgentScopeGuard {
         "read_review_context", "read_review_content"
     );
     private static final Set<String> PROJECT_TOOLS = Set.of(
+        "search_script_assets", "read_asset_details",
         "read_project_context", "list_episode_scripts", "read_episode_script", "read_project_full_script",
         "read_adjacent_episodes", "read_script_analysis", "read_script_assets",
-        "search_script_assets", "read_asset_details",
         "save_episode_script", "read_current_script", "save_global_understanding",
         "read_current_episode", "save_episode_splitting", "save_episode_summary",
         "save_episode_assets", "save_episode_storyboards", "read_script_structure", "analyze_script_chunks"
@@ -26,9 +26,10 @@ public class WorkflowAgentScopeGuard {
         "read_current_episode", "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
     );
     private static final Set<String> SCRIPT_TOOLS = Set.of(
+        "search_script_assets", "read_asset_details",
         "read_current_script", "save_global_understanding", "read_current_episode",
         "save_episode_splitting", "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
-        , "read_script_structure", "analyze_script_chunks", "search_script_assets", "read_asset_details"
+        , "read_script_structure", "analyze_script_chunks"
     );
     private static final Set<String> WRITE_TOOLS = Set.of(
         "save_episode_script", "save_global_understanding", "save_episode_splitting",

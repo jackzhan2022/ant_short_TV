@@ -24,7 +24,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashSet;
@@ -41,195 +40,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ScreenplayToolDataService {
     private static final int ADJACENT_EXCERPT_CODE_POINTS = 600;
-    private static final int ASSET_CATALOG_BUDGET_BYTES = 32 * 1024;
     private static final Pattern SCENE_HEADING = Pattern.compile(
         "(?m)^## S\\d{2,} \\| (?:内景|外景) · .+ \\| .+$");
     private static final Pattern DIALOGUE = Pattern.compile("(?m)^\\S+：(?:（[^）]*）)?.+$");
-
-    String encodeAssetCursor(ToolExecutionContext context, String assetType, String query, long lastId) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(
-            (context.tenantId() + ":" + context.projectId() + ":" + context.scriptId() + ":"
-                + assetType + ":" + sha256(query).substring(0, 16) + ":" + lastId)
-                .getBytes(StandardCharsets.UTF_8));
-    }
-
-    long decodeAssetCursor(ToolExecutionContext context, String assetType, String query, String cursor) {
-        try {
-            String[] values = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8).split(":", -1);
-            if (values.length != 6 || !values[0].equals(String.valueOf(context.tenantId()))
-                || !values[1].equals(String.valueOf(context.projectId()))
-                || !values[2].equals(String.valueOf(context.scriptId())) || !values[3].equals(assetType)
-                || !values[4].equals(sha256(query).substring(0, 16))) {
-                throw new IllegalArgumentException();
-            }
-            return Long.parseLong(values[5]);
-        } catch (RuntimeException exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产检索游标不属于当前剧本作用域。");
-        }
-    }
-
-    long decodeAssetKey(String assetType, String assetKey) {
-        String prefix = switch (assetType) {
-            case "CHARACTER" -> "c_";
-            case "SCENE" -> "s_";
-            case "PROP" -> "p_";
-            default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产类型不正确。");
-        };
-        try {
-            if (assetKey == null || !assetKey.startsWith(prefix)) throw new NumberFormatException();
-            return Long.parseLong(assetKey.substring(prefix.length()));
-        } catch (NumberFormatException exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产 key 与类型不匹配。");
-        }
-    }
-
-    public JsonNode searchScriptAssets(ToolExecutionContext context, String assetType, String name, String cursor, int pageSize) {
-        if (context.scriptId() == null) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少可信剧本作用域。");
-        String type = assetType == null ? "" : assetType.trim().toUpperCase();
-        String table = switch (type) {
-            case "CHARACTER" -> "character_asset";
-            case "SCENE" -> "scene_asset";
-            case "PROP" -> "prop_asset";
-            default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产类型必须为 CHARACTER、SCENE 或 PROP。");
-        };
-        int limit = Math.max(1, Math.min(50, pageSize));
-        String query = name == null || name.isBlank() ? "" : name.trim().toLowerCase();
-        long after = cursor == null || cursor.isBlank() ? 0 : decodeAssetCursor(context, type, query, cursor);
-        List<Map<String, Object>> rows = new java.util.ArrayList<>();
-        long scanAfter = after;
-        while (rows.size() <= limit) {
-            List<Map<String, Object>> batch = jdbc.queryForList(
-                "select id,name,normalized_name,prompt,content_json from " + table
-                    + " where tenant_id=? and project_id=? and script_id=?"
-                    + " and deleted_at is null and id>? order by id limit 100",
-                context.tenantId(), context.projectId(), context.scriptId(), scanAfter);
-            if (batch.isEmpty()) break;
-            for (Map<String, Object> row : batch) {
-                if (matchesAssetQuery(row, query)) rows.add(row);
-                if (rows.size() > limit) break;
-            }
-            scanAfter = number(batch.get(batch.size() - 1).get("id"));
-            if (batch.size() < 100) break;
-        }
-        ObjectNode result = json.createObjectNode();
-        ArrayNode items = result.putArray("items");
-        for (Map<String, Object> row : rows.stream().limit(limit).toList()) {
-            ObjectNode item = items.addObject();
-            item.put("assetKey", switch (type) { case "CHARACTER" -> "c_"; case "SCENE" -> "s_"; default -> "p_"; } + number(row.get("id")));
-            put(item, "name", row.get("name")); put(item, "normalizedName", row.get("normalized_name"));
-            item.put("hasPrompt", hasText(row.get("prompt")));
-        }
-        result.put("hasMore", rows.size() > limit);
-        if (rows.size() > limit) result.put("nextCursor",
-            encodeAssetCursor(context, type, query, number(rows.get(limit - 1).get("id"))));
-        return result;
-    }
-
-    private boolean matchesAssetQuery(Map<String, Object> row, String query) {
-        if (query.isBlank()) return true;
-        if (query.equals(String.valueOf(row.get("name")).trim().toLowerCase())
-            || query.equals(String.valueOf(row.get("normalized_name")).trim().toLowerCase())) {
-            return true;
-        }
-        Object raw = row.get("content_json");
-        if (raw == null) return false;
-        try {
-            for (JsonNode alias : json.readTree(String.valueOf(raw)).path("aliases")) {
-                String value = alias.isTextual() ? alias.asText() : alias.path("name").asText();
-                if (query.equals(value.trim().toLowerCase())) return true;
-            }
-            return false;
-        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
-            throw new IllegalStateException("资产元数据损坏。", exception);
-        }
-    }
-
-    public JsonNode readAssetDetails(
-        ToolExecutionContext context, String assetType, List<String> assetKeys, String variantCursor
-    ) {
-        if (assetKeys == null || assetKeys.isEmpty() || assetKeys.size() > 10) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "单次最多读取 10 个资产详情。");
-        }
-        String type = assetType == null ? "" : assetType.trim().toUpperCase();
-        String table = switch (type) { case "CHARACTER" -> "character_asset"; case "SCENE" -> "scene_asset"; case "PROP" -> "prop_asset";
-            default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产类型必须为 CHARACTER、SCENE 或 PROP。"); };
-        List<Long> ids = assetKeys.stream().map(key -> decodeAssetKey(type, key)).toList();
-        String keyBinding = ids.stream().sorted().map(String::valueOf)
-            .collect(java.util.stream.Collectors.joining(","));
-        long afterVariantId = variantCursor == null || variantCursor.isBlank() ? 0
-            : decodeAssetCursor(context, type + "_DETAIL", keyBinding, variantCursor);
-        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
-        List<Object> args = new java.util.ArrayList<>();
-        args.add(context.tenantId()); args.add(context.projectId()); args.add(context.scriptId()); args.addAll(ids);
-        List<Map<String, Object>> rows = jdbc.queryForList("select id,name,normalized_name,content_json,prompt from " + table
-            + " where tenant_id=? and project_id=? and script_id=? and deleted_at is null and id in (" + placeholders + ")", args.toArray());
-        if (rows.size() != ids.size()) throw new BusinessException(ErrorCode.NOT_FOUND, "部分资产不属于当前剧本作用域。");
-        ObjectNode result = json.createObjectNode();
-        ArrayNode items = result.putArray("items");
-        Map<Long, ObjectNode> itemsById = new java.util.LinkedHashMap<>();
-        for (Long id : ids) {
-            Map<String, Object> row = rows.stream().filter(value -> id == number(value.get("id"))).findFirst()
-                .orElseThrow();
-            ObjectNode item = items.addObject();
-            item.put("assetKey", assetKeys.get(ids.indexOf(id)));
-            put(item, "name", row.get("name"));
-            put(item, "normalizedName", row.get("normalized_name"));
-            Object rawContent = row.get("content_json");
-            if (rawContent != null) {
-                try {
-                    item.set("content", json.readTree(String.valueOf(rawContent)));
-                } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
-                    throw new IllegalStateException("资产元数据损坏。", exception);
-                }
-            }
-            item.put("hasPrompt", hasText(row.get("prompt")));
-            item.putArray("variants");
-            itemsById.put(id, item);
-        }
-        if (result.toString().getBytes(StandardCharsets.UTF_8).length > ASSET_CATALOG_BUDGET_BYTES) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "单条资产详情过大，请缩短可视设定后重试。");
-        }
-        List<Object> variantArgs = new java.util.ArrayList<>();
-        variantArgs.add(context.tenantId()); variantArgs.add(context.projectId()); variantArgs.add(type);
-        variantArgs.addAll(ids); variantArgs.add(afterVariantId);
-        List<Map<String, Object>> variants = jdbc.queryForList(
-            "select id,asset_id,name,appearance,prompt,is_primary from asset_visual_variant"
-                + " where tenant_id=? and project_id=? and asset_type=? and asset_id in (" + placeholders + ")"
-                + " and deleted_at is null and id>? order by id limit 21", variantArgs.toArray());
-        long lastVariantId = afterVariantId;
-        boolean budgetLimited = false;
-        int added = 0;
-        for (Map<String, Object> row : variants.stream().limit(20).toList()) {
-            ObjectNode variant = json.createObjectNode();
-            variant.put("variantKey", "v_" + number(row.get("id")));
-            put(variant, "name", row.get("name"));
-            put(variant, "appearance", row.get("appearance"));
-            variant.put("primary", Boolean.TRUE.equals(row.get("is_primary")));
-            variant.put("hasPrompt", hasText(row.get("prompt")));
-            if (variant.toString().getBytes(StandardCharsets.UTF_8).length > ASSET_CATALOG_BUDGET_BYTES) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "单条资产形态详情过大，请缩短可视设定后重试。");
-            }
-            ArrayNode ownerVariants = (ArrayNode) itemsById.get(number(row.get("asset_id"))).path("variants");
-            ownerVariants.add(variant);
-            if (result.toString().getBytes(StandardCharsets.UTF_8).length > ASSET_CATALOG_BUDGET_BYTES) {
-                ownerVariants.remove(ownerVariants.size() - 1);
-                budgetLimited = true;
-                break;
-            }
-            lastVariantId = number(row.get("id"));
-            added++;
-        }
-        boolean hasMore = variants.size() > added || budgetLimited;
-        result.put("variantPageSize", 20);
-        result.put("hasMore", hasMore);
-        if (hasMore) result.put("nextCursor",
-            encodeAssetCursor(context, type + "_DETAIL", keyBinding, lastVariantId));
-        return result;
-    }
-
-    public JsonNode readAssetDetails(ToolExecutionContext context, String assetType, List<String> assetKeys) {
-        return readAssetDetails(context, assetType, assetKeys, null);
-    }
 
     private final JdbcTemplate jdbc;
     private final ProjectPermissionGuard permissionGuard;
@@ -588,23 +401,22 @@ public class ScreenplayToolDataService {
         context.runState().put("currentEpisodeFingerprint", fingerprint);
         context.runState().put("currentEpisodeContentHash", sha256(content));
         context.runState().put("currentEpisodeContent", content);
-        String assetScope = context.runState().get("assetScope", String.class);
-        CandidateBudget candidateBudget = new CandidateBudget(ASSET_CATALOG_BUDGET_BYTES - 256);
-        CatalogPage characters = currentEpisodeCandidates(
-            context, "character_asset", "CHARACTER", "c_", content,
-            includes(assetScope, "CHARACTER") ? candidateBudget : CandidateBudget.unlimited());
+        AssetCatalogService catalogs = new AssetCatalogService(jdbc, json);
+        ObjectNode candidateCatalog = catalogs.candidates(context, content);
+        ArrayNode characters = catalogs.speakerNames(context);
         // Analysis precedes asset extraction; text classification must not depend on its results.
         // Storyboard runs retain catalog-backed classification for source coverage validation.
         List<EpisodeSourceSegmenter.EpisodeSourceSegment> sourceSegments =
             context.analysisStageId() != null
                 ? episodeSourceSegmenter.segment(content)
-                : episodeSourceSegmenter.segment(content, speakerContext(characters.items()));
+                : episodeSourceSegmenter.segment(content, speakerContext(characters));
         if (sourceSegments.size() > 10_000) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                 "当前剧集原文片段过多，无法交给 Agent 处理。");
         }
         context.runState().put("currentEpisodeSourceSegments", sourceSegments);
         ObjectNode result = json.createObjectNode();
+        String assetScope = context.runState().get("assetScope", String.class);
         result.put("assetScope", assetScope == null ? "ALL" : assetScope);
         put(result, "episodeKey", row.get("stable_key"));
         result.put("episodeNo", ((Number) row.get("episode_no")).intValue());
@@ -626,102 +438,8 @@ public class ScreenplayToolDataService {
                 warning.put("code", segment.classificationWarning());
             }
         }
-        ObjectNode catalog = result.putObject("assetCatalog");
-        CatalogPage scenes = currentEpisodeCandidates(
-            context, "scene_asset", "SCENE", "s_", content,
-            includes(assetScope, "SCENE") ? candidateBudget : CandidateBudget.unlimited());
-        CatalogPage props = currentEpisodeCandidates(
-            context, "prop_asset", "PROP", "p_", content,
-            includes(assetScope, "PROP") ? candidateBudget : CandidateBudget.unlimited());
-        catalog.set("characters", includes(assetScope, "CHARACTER") ? characters.items() : json.createArrayNode());
-        catalog.set("scenes", includes(assetScope, "SCENE") ? scenes.items() : json.createArrayNode());
-        catalog.set("props", includes(assetScope, "PROP") ? props.items() : json.createArrayNode());
-        ObjectNode catalogPaging = result.putObject("assetCatalogPaging");
-        catalogPaging.set("characters", pageMetadata(characters));
-        catalogPaging.set("scenes", pageMetadata(scenes));
-        catalogPaging.set("props", pageMetadata(props));
+        result.set("assetCatalog", candidateCatalog);
         return result;
-    }
-
-    private CatalogPage currentEpisodeCandidates(
-        ToolExecutionContext context, String table, String assetType, String keyPrefix, String content,
-        CandidateBudget budget
-    ) {
-        Integer total = jdbc.queryForObject("select count(*) from " + table
-                + " where tenant_id=? and project_id=? and script_id=? and deleted_at is null", Integer.class,
-            context.tenantId(), context.projectId(), context.scriptId());
-        List<Map<String, Object>> rows = jdbc.queryForList(
-            "select asset.id, asset.name, asset.normalized_name, asset.content_json, asset.prompt,"
-                + " max(case when binding.id is null then 0 else 1 end) episode_bound from " + table + " asset"
-                + " left join asset_visual_variant_episode binding on binding.tenant_id=asset.tenant_id"
-                + " and binding.project_id=asset.project_id and binding.asset_type=? and binding.asset_id=asset.id"
-                + " and binding.episode_id=? and binding.retired_at is null and binding.binding_status='ACTIVE'"
-                + " where asset.tenant_id=? and asset.project_id=? and asset.script_id=? and asset.deleted_at is null"
-                + " group by asset.id, asset.name, asset.normalized_name, asset.content_json, asset.prompt"
-                + " order by episode_bound desc, case when locate(lower(asset.name), lower(?)) > 0 then 0 else 1 end, asset.id limit 51",
-            assetType, context.episodeId(), context.tenantId(), context.projectId(), context.scriptId(), content);
-        ArrayNode items = json.createArrayNode();
-        long lastId = 0;
-        for (Map<String, Object> row : rows.stream().limit(50).toList()) {
-            ObjectNode item = json.createObjectNode();
-            item.put("assetKey", keyPrefix + number(row.get("id")));
-            item.put("episodeBound", number(row.get("episode_bound")) == 1);
-            put(item, "name", row.get("name"));
-            put(item, "normalizedName", row.get("normalized_name"));
-            item.put("hasPrompt", hasText(row.get("prompt")));
-            ArrayNode aliases = item.putArray("aliases");
-            Object rawContent = row.get("content_json");
-            if (rawContent != null) {
-                try {
-                    for (JsonNode alias : json.readTree(String.valueOf(rawContent)).path("aliases")) {
-                        String name = alias.isTextual() ? alias.asText() : alias.path("name").asText();
-                        if (!name.isBlank()) aliases.add(name);
-                    }
-                } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
-                    throw new IllegalStateException("资产元数据损坏。", exception);
-                }
-            }
-            item.putArray("variants");
-            if (!budget.consume(item)) break;
-            items.add(item);
-            lastId = number(row.get("id"));
-        }
-        int totalCount = total == null ? 0 : total;
-        return new CatalogPage(items, totalCount, rows.size() > items.size() || totalCount > items.size(), lastId);
-    }
-
-    private ObjectNode pageMetadata(CatalogPage page) {
-        ObjectNode metadata = json.createObjectNode();
-        metadata.put("pageSize", 50);
-        metadata.put("total", page.total());
-        metadata.put("hasMore", page.hasMore());
-        if (page.hasMore()) metadata.put("nextCursor", Long.toString(page.lastId()));
-        return metadata;
-    }
-
-    private record CatalogPage(ArrayNode items, int total, boolean hasMore, long lastId) { }
-
-    private static final class CandidateBudget {
-        private int remaining;
-
-        private CandidateBudget(int remaining) {
-            this.remaining = remaining;
-        }
-
-        private static CandidateBudget unlimited() {
-            return new CandidateBudget(Integer.MAX_VALUE);
-        }
-
-        private boolean consume(JsonNode item) {
-            int bytes = item.toString().getBytes(StandardCharsets.UTF_8).length + 1;
-            if (bytes > remaining) return false;
-            remaining -= bytes;
-            return true;
-        }
-    }
-
-    private boolean includes(String scope, String type) {
-        return scope == null || "ALL".equals(scope) || type.equals(scope);
     }
 
     private EpisodeSourceSegmenter.SegmentationContext speakerContext(ArrayNode characters) {
@@ -1140,7 +858,8 @@ public class ScreenplayToolDataService {
             statement.setLong(6, context.userId());
             return statement;
         }, key);
-        Object generatedId = key.getKeys() == null ? null : key.getKeys().get("id");
+        Object generatedId = key.getKeys() != null && key.getKeys().containsKey("id")
+            ? key.getKeys().get("id") : key.getKey();
         if (!(generatedId instanceof Number number)) {
             throw new IllegalStateException("Episode script version id was not generated");
         }

@@ -1,8 +1,7 @@
 # asset-extraction-coordination Specification
 
 ## Purpose
-Coordinate script asset extraction across entry points with durable ownership, fenced writes, idempotent persistence, and complete-snapshot finalization.
-
+TBD - created by archiving change stabilize-asset-extraction-concurrency. Update Purpose after archive.
 ## Requirements
 ### Requirement: Atomically admit equivalent extraction requests
 The system SHALL coordinate extraction by tenant, project and script before creating an operation or reserving points. Equivalent active requests SHALL share one task only when submitting user, source version and episode fingerprints, scope, prompt policy and effective model configuration match. Non-equivalent concurrent requests SHALL return a conflict with an authorized task reference without creating another reservation.
@@ -19,8 +18,8 @@ The system SHALL coordinate extraction by tenant, project and script before crea
 The system SHALL allow only one extraction operation owner per tenant/project/script across script analysis and scoped re-extraction. Ownership SHALL be fenced by execution ID, version and current attempt; different scripts SHALL remain independently executable. Database transactions SHALL NOT span model network calls.
 
 #### Scenario: Script analysis reaches recognition during re-extraction
-- **WHEN** scoped re-extraction owns the script and script analysis reaches its asset stage
-- **THEN** that stage waits through persisted scheduling without invoking the model and proceeds only after ownership is acquired
+- **WHEN** scoped re-extraction owns the script and script analysis is scheduled
+- **THEN** analysis waits through persisted scheduling before any model invocation and retains acquired ownership through its asset stage and execution settlement
 
 #### Scenario: Worker resumes after lease takeover
 - **WHEN** an old worker resumes after a new attempt takes ownership
@@ -28,7 +27,7 @@ The system SHALL allow only one extraction operation owner per tenant/project/sc
 
 #### Scenario: Terminal task releases ownership
 - **WHEN** an owner succeeds, fails or is canceled
-- **THEN** ownership is conditionally released and subsequent work can acquire it without accepting late writes from the former owner
+- **THEN** subsequent admission or acquisition conditionally reclaims the terminal owner's record under lock, without accepting late writes from the former owner
 
 ### Requirement: Preserve idempotent formal persistence
 Formal writes SHALL atomically validate execution authority, source fingerprint and commit evidence, reuse exact canonical or explicit alias identity, and keep variants and episode bindings unique within their owners. The system SHALL preserve existing identity locks and prompt policy behavior and SHALL reject ambiguous identity rather than merge guesses.
