@@ -347,6 +347,9 @@ public class ScreenplayToolConfiguration {
         outputFields.putObject("episodeKey").put("type", "string");
         outputFields.putObject("contentFingerprint").put("type", "string");
         outputFields.putObject("counts").put("type", "object");
+        outputFields.putObject("warnings").put("type", "array");
+        outputFields.putObject("savedCategories").put("type", "array");
+        outputFields.putObject("skippedCategories").put("type", "array");
         return definition("save_episode_assets", "保存本集角色场景道具",
             "原子匹配或创建正式资产、视觉形态及当前剧集绑定。证据优先使用当前集 sourceSegments 的 evidenceRef；旧 evidence 必须逐字来自正文。",
             episodeAssetsInput(json), output, ToolRiskLevel.WRITE, ToolFailurePolicy.RETURN_TO_MODEL,

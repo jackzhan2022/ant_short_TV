@@ -116,4 +116,18 @@ class EpisodeAssetsPayloadNormalizerTest {
                 assertThat(error.details().toString()).contains("$.scenes[99].evidence");
             });
     }
+
+    @Test
+    void missingVariantOwnerReportsSubmittedKeyAndAvailablePropKeys() throws Exception {
+        assertThatThrownBy(() -> prepare("""
+            {"schemaVersion":1,"props":[
+              {"localKey":"p1","name":"身份牌","aliases":[],"evidence":"身份牌"},
+              {"localKey":"p2","name":"手杖","aliases":[],"evidence":"手杖"}],
+             "propVariants":[{"localKey":"v1","propLocalKey":"missing_compass",
+              "name":"发光状态","evidence":"发光","preferred":true}]}
+            """, "身份牌、手杖和发光矿石。"))
+            .hasMessageContaining("missing_compass")
+            .hasMessageContaining("p1")
+            .hasMessageContaining("p2");
+    }
 }

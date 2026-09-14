@@ -488,26 +488,24 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
-    void rejectsMissingEvidenceAndRollsBackWholeAssetPayload() throws Exception {
+    void skipsMissingEvidenceAndSavesOtherCategories() throws Exception {
         jdbc.update("update script_episode set content = '林小满出现。', content_fingerprint = 'rollback-fp' where id = ?",
             episodeId);
         ToolExecutionContext assetContext = summaryContext();
         service.readCurrentEpisode(assetContext);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,
-             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满"}],
+             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[],"evidence":"林小满","prompt":"林小满角色提示词"}],
              "characterLooks":[],"scenes":[],
              "props":[{"localKey":"p1","assetKey":null,"name":"不存在的钥匙","aliases":[],"evidence":"钥匙","ownerCharacterLocalKey":null,"description":null}],
              "propVariants":[]}
             """);
 
-        assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
-            .isInstanceOf(com.antshorttv.common.BusinessException.class)
-            .hasMessageContaining("证据");
+        assertThat(service.saveEpisodeAssets(assetContext, payload).path("warnings").toString()).contains("证据");
         assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id = ?",
-            Integer.class, scriptId)).isZero();
+            Integer.class, scriptId)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select count(*) from script_episode_asset_analysis where episode_id = ?",
-            Integer.class, episodeId)).isZero();
+            Integer.class, episodeId)).isEqualTo(1);
     }
 
     @Test
@@ -616,7 +614,7 @@ class ScreenplayToolDataServiceTest {
         assertThatThrownBy(() -> service.saveEpisodeAssets(ambiguousContext, payload))
             .isInstanceOf(com.antshorttv.common.BusinessException.class)
             .satisfies(error -> assertThat(((com.antshorttv.common.BusinessException) error).getErrorCode())
-                .isEqualTo(com.antshorttv.common.ErrorCode.ENTITY_MATCH_AMBIGUOUS))
+                .isEqualTo(com.antshorttv.common.ErrorCode.WORKFLOW_AGENT_TOOL_INVALID))
             .hasMessageContaining("c_");
     }
 
@@ -1111,10 +1109,10 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
-    void reportsPreferredConflictAcrossLocalKeysResolvingToSameAssetWithPaths() throws Exception {
+    void normalizesPreferredConflictAcrossLocalKeysResolvingToSameAssetWithWarnings() throws Exception {
         jdbc.update("update script_episode set content = ?, content_fingerprint = 'preferred-fp' where id = ?",
             "林小满又名小满，穿红裙，后来换成白裙。", episodeId);
-        ToolExecutionContext assetContext = summaryContext();
+        ToolExecutionContext assetContext = assetRunContext();
         service.readCurrentEpisode(assetContext);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,"characters":[
@@ -1125,11 +1123,148 @@ class ScreenplayToolDataServiceTest {
               {"localKey":"l2","characterLocalKey":"c2","name":"白裙","evidence":"白裙","preferred":true,"prompt":"性别:女；衣着描述:白裙"}],
              "scenes":[],"props":[],"propVariants":[]}
             """);
-        assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
-            .hasMessageContaining("$.characterLooks[0].preferred")
-            .hasMessageContaining("$.characterLooks[1].preferred");
+        JsonNode saved = service.saveEpisodeAssets(assetContext, payload);
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        assertThat(saved.path("warnings").toString()).contains("PREFERRED_NORMALIZED");
         assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id = ?",
-            Integer.class, scriptId)).isZero();
+            Integer.class, scriptId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from asset_visual_variant_episode where episode_id=? and retired_at is null and is_preferred=true",
+            Integer.class, episodeId)).isEqualTo(1);
+    }
+
+    @Test
+    void partiallySavesValidAssetsWithDurableWarningsAndStableBindings() throws Exception {
+        jdbc.update("update script_episode set content=?, content_fingerprint='partial' where id=?",
+            "小满穿红裙拿钥匙走进仓库。", episodeId);
+        ToolExecutionContext assetContext = assetRunContext();
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"c1","name":"小满","evidence":"小满","prompt":"小满角色提示词"}],
+             "characterLooks":[{"localKey":"l1","characterLocalKey":"missing","name":"红裙","evidence":"红裙"}],
+             "scenes":[{"localKey":"s1","name":"海边","evidence":"海边"}],
+             "props":[{"localKey":"p1","name":"钥匙","evidence":"钥匙","prompt":"黄铜钥匙"}]}
+            """);
+        JsonNode saved = service.saveEpisodeAssets(assetContext, payload);
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        assertThat(saved.path("savedCategories").toString()).contains("characters", "props");
+        assertThat(saved.path("skippedCategories").toString()).contains("scenes");
+        assertThat(saved.path("warnings").size()).isGreaterThanOrEqualTo(2);
+        schemaValidator.validate(registry.require("save_episode_assets").outputSchema(), saved);
+        List<Long> ids = jdbc.queryForList("select id from asset_visual_variant_episode where episode_id=? order by id", Long.class, episodeId);
+        service.saveEpisodeAssets(assetContext, payload);
+        assertThat(jdbc.queryForList("select id from asset_visual_variant_episode where episode_id=? order by id", Long.class, episodeId)).isEqualTo(ids);
+        assertThat(jdbc.queryForObject("select content_json from script_episode_asset_analysis where episode_id=?", String.class, episodeId)).contains("warnings", "scenes");
+    }
+
+    @Test
+    void invalidSceneAndVariantDoNotErasePreviouslySavedBindings() throws Exception {
+        jdbc.update("update script_episode set content=?, content_fingerprint='preserve' where id=?",
+            "小满穿红裙走进仓库。", episodeId);
+        ToolExecutionContext assetContext = assetRunContext();
+        service.readCurrentEpisode(assetContext);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        JsonNode valid = mapper.readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"c1","name":"小满","evidence":"小满","prompt":"小满角色提示词"}],
+             "scenes":[{"localKey":"s1","name":"仓库","evidence":"仓库","prompt":"仓库场景提示词"}],
+             "characterLooks":[{"localKey":"l1","characterLocalKey":"c1","name":"红裙","evidence":"红裙","preferred":true,"prompt":"性别:女；衣着描述:红裙"}]}
+            """);
+        service.saveEpisodeAssets(assetContext, valid);
+        List<Long> ids = jdbc.queryForList("select id from asset_visual_variant_episode where episode_id=? and retired_at is null order by id", Long.class, episodeId);
+        var bad = (com.fasterxml.jackson.databind.node.ObjectNode) valid.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) bad.at("/scenes/0")).put("evidence", "海边");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) bad.at("/characterLooks/0")).put("variantKey", "v_999999999");
+        JsonNode saved = service.saveEpisodeAssets(assetContext, bad);
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        assertThat(saved.path("warnings").size()).isGreaterThanOrEqualTo(2);
+        assertThat(jdbc.queryForList("select id from asset_visual_variant_episode where episode_id=? and retired_at is null order by id", Long.class, episodeId)).isEqualTo(ids);
+    }
+
+    @Test
+    void allInvalidAssetsRequestCorrectionWithoutWritingCoverage() throws Exception {
+        ToolExecutionContext assetContext = summaryContext();
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"scenes":[{"localKey":"s1","name":"未知地点","evidence":"不存在的证据"}]}
+            """);
+        assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
+            .isInstanceOf(WorkflowToolValidationException.class).hasMessageContaining("证据");
+        assertThat(jdbc.queryForObject("select count(*) from script_episode_asset_analysis where episode_id=?", Integer.class, episodeId)).isZero();
+    }
+
+    @Test
+    void invalidOptionalEvidenceOnlySkipsThatEvidence() throws Exception {
+        jdbc.update("update script_episode set content=?, content_fingerprint='evidence' where id=?", "走进仓库。", episodeId);
+        ToolExecutionContext assetContext = assetRunContext();
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"scenes":[{"localKey":"s1","name":"仓库","evidence":"仓库","prompt":"仓库场景提示词",
+              "usageEvidence":"海边","aliases":[{"name":"海滩","evidence":"海滩"}]}]}
+            """);
+        JsonNode saved = service.saveEpisodeAssets(assetContext, payload);
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        assertThat(saved.path("warnings").size()).isEqualTo(2);
+        assertThat(saved.path("counts").path("scenes").asInt()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select content_json from scene_asset where script_id=?", String.class, scriptId)).doesNotContain("海滩", "海边");
+    }
+
+    @Test
+    void invalidNewEvidencePreservesPreviouslyVerifiedSceneUsage() throws Exception {
+        jdbc.update("update script_episode set content=?, content_fingerprint='usage' where id=?", "夜晚走进仓库。", episodeId);
+        ToolExecutionContext assetContext = assetRunContext();
+        service.readCurrentEpisode(assetContext);
+        var payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"scenes":[{"localKey":"s1","name":"仓库","evidence":"仓库","prompt":"仓库场景提示词",
+              "timeAtmosphere":"夜晚","usageEvidence":"夜晚走进仓库"}]}
+            """);
+        service.saveEpisodeAssets(assetContext, payload);
+        String usage = jdbc.queryForObject("select content_json from asset_visual_variant_episode where episode_id=? and retired_at is null", String.class, episodeId);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) payload.at("/scenes/0")).put("usageEvidence", "海边");
+        service.saveEpisodeAssets(assetContext, payload);
+        assertThat(jdbc.queryForObject("select content_json from asset_visual_variant_episode where episode_id=? and retired_at is null", String.class, episodeId)).isEqualTo(usage);
+    }
+
+    @Test
+    void rejectedVariantsKeepExistingEpisodePreferredLook() throws Exception {
+        jdbc.update("update script_episode set content=?, content_fingerprint='preferred-retained' where id=?",
+            "小满穿红裙，后来穿白裙。", episodeId);
+        ToolExecutionContext assetContext = assetRunContext();
+        service.readCurrentEpisode(assetContext);
+        var payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[{"localKey":"c1","name":"小满","evidence":"小满","prompt":"小满角色提示词"}],
+             "characterLooks":[
+              {"localKey":"l1","characterLocalKey":"c1","name":"红裙","evidence":"红裙","preferred":false,"prompt":"性别:女；衣着描述:红裙"},
+              {"localKey":"l2","characterLocalKey":"c1","name":"白裙","evidence":"白裙","preferred":true,"prompt":"性别:女；衣着描述:白裙"}]}
+            """);
+        service.saveEpisodeAssets(assetContext, payload);
+        Long preferred = jdbc.queryForObject("select variant_id from asset_visual_variant_episode where episode_id=? and retired_at is null and is_preferred=true", Long.class, episodeId);
+        for (JsonNode look : payload.path("characterLooks")) {
+            ((com.fasterxml.jackson.databind.node.ObjectNode) look).put("evidence", "未知");
+        }
+        service.saveEpisodeAssets(assetContext, payload);
+        assertThat(jdbc.queryForObject("select variant_id from asset_visual_variant_episode where episode_id=? and retired_at is null and is_preferred=true", Long.class, episodeId)).isEqualTo(preferred);
+    }
+
+    @Test
+    void bindsOneDefaultVariantWhenTwoSceneKeysResolveToSameFormalScene() throws Exception {
+        jdbc.update("update script_episode set content = ?, content_fingerprint = 'scene-alias-fp' where id = ?",
+            "地下拍卖大厅中央区域灯光亮起。", episodeId);
+        ToolExecutionContext assetContext = summaryContext();
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[],"characterLooks":[],
+             "scenes":[
+              {"localKey":"s1","name":"地下拍卖大厅","aliases":[],"evidence":"地下拍卖大厅","prompt":"地下拍卖大厅场景提示词"},
+              {"localKey":"s2","name":"地下拍卖大厅","aliases":[],"evidence":"拍卖大厅","prompt":"地下拍卖大厅场景提示词"}],
+             "props":[],"propVariants":[]}
+            """);
+
+        assertThat(service.saveEpisodeAssets(assetContext, payload).path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("""
+            select count(*) from asset_visual_variant_episode
+             where episode_id = ? and asset_type = 'SCENE' and retired_at is null
+            """, Integer.class, episodeId)).isEqualTo(1);
     }
 
     @Test
@@ -1286,6 +1421,21 @@ class ScreenplayToolDataServiceTest {
     private ToolExecutionContext episodeContext() {
         return new ToolExecutionContext(
             tenantId, context.userId(), projectId, episodeId, scriptId, null, null, 777L,
+            Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
+    }
+
+    private ToolExecutionContext assetRunContext() {
+        Long modelId = jdbc.queryForObject("select min(id) from ai_model", Long.class);
+        jdbc.update("""
+            insert into ai_workflow_agent_run
+              (agent_code, run_type, tenant_id, user_id, project_id, episode_id, script_id,
+               status, model_id, temperature, max_tokens, max_steps, prompt_snapshot, started_at, created_at)
+            values ('short-drama-asset-recognition', 'EPISODE', ?, ?, ?, ?, ?,
+                    'RUNNING', ?, 0.2, 4096, 7, 'partial-save-test', now(), now())
+            """, tenantId, context.userId(), projectId, episodeId, scriptId, modelId);
+        Long runId = jdbc.queryForObject("select max(id) from ai_workflow_agent_run where tenant_id=?", Long.class, tenantId);
+        return new ToolExecutionContext(
+            tenantId, context.userId(), projectId, episodeId, scriptId, null, null, runId,
             Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
     }
 

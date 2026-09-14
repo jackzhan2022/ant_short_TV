@@ -20,7 +20,6 @@ import com.antshorttv.workflowagent.agent.WorkflowAgentService;
 import com.antshorttv.workflowagent.skill.WorkflowSkillService;
 import com.antshorttv.workflowagent.skill.WorkflowSkillView;
 import com.antshorttv.workflowagent.tool.ToolExecutionContext;
-import com.antshorttv.workflowagent.tool.EpisodeAssetsPayloadNormalizer;
 import com.antshorttv.workflowagent.tool.ToolFailurePolicy;
 import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
 import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
@@ -47,6 +46,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class WorkflowAgentRunner {
+    private static final int ASSET_SAVE_CORRECTIONS = 2;
+    private static final int ASSET_MIN_STEPS = 1 + 2 * (1 + ASSET_SAVE_CORRECTIONS);
     private static final Logger LOG = LoggerFactory.getLogger(WorkflowAgentRunner.class);
     private static final Set<String> TRUSTED_SCOPE_ARGUMENTS = Set.of(
         "tenantId", "userId", "projectId", "episodeId", "scriptId", "taskId",
@@ -175,7 +176,10 @@ public class WorkflowAgentRunner {
         boolean deepReview = input.reviewScope() != null
             && isDeepReviewPhase(input.reviewScope().phase());
         int effectiveMaxSteps = deepReview
-            ? Math.max(agent.maxSteps(), properties.getReviewDeepMaxSteps()) : agent.maxSteps();
+            ? Math.max(agent.maxSteps(), properties.getReviewDeepMaxSteps())
+            : "short-drama-asset-recognition".equals(agent.code())
+                ? Math.max(agent.maxSteps(), ASSET_MIN_STEPS)
+                : agent.maxSteps();
         if (input.modelIdOverride() != null) {
             agents.requireToolCallingModel(effectiveModelId);
         }
@@ -358,9 +362,9 @@ public class WorkflowAgentRunner {
             }
             messages.add(AiChatMessage.assistantToolCalls(calls));
             for (AiToolCall call : calls) {
-                if (stepNo >= agent.maxSteps()) {
+                if (stepNo >= maxSteps) {
                     throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
-                        "Agent 已达到最大执行步数 " + agent.maxSteps() + "，停止执行后续工具。");
+                        "Agent 已达到最大执行步数 " + maxSteps + "，停止执行后续工具。");
                 }
                 requireBeforeDeadline(deadline);
                 scopeGuard.requireExecutionActive(input);
@@ -390,12 +394,11 @@ public class WorkflowAgentRunner {
                 try {
                     requireBoundedSavePayload(call.code(), call.argumentsJson());
                     JsonNode arguments = parseArguments(call.argumentsJson());
-                    if ("save_episode_assets".equals(call.code())) {
-                        arguments = EpisodeAssetsPayloadNormalizer.prepare(arguments, definition.inputSchema(),
-                            context.runState().get("currentEpisodeContent", String.class));
-                    }
                     rejectTrustedScope(arguments);
-                    schemaValidator.validate(definition.inputSchema(), arguments);
+                    // Asset persistence validates each item against trusted content and returns partial-save warnings.
+                    if (!"save_episode_assets".equals(call.code())) {
+                        schemaValidator.validate(definition.inputSchema(), arguments);
+                    }
                     JsonNode output = definition.executor().execute(context, arguments);
                     requireBeforeDeadline(deadline);
                     scopeGuard.requireExecutionActive(input);
@@ -417,7 +420,7 @@ public class WorkflowAgentRunner {
                             ? business.getErrorCode() == ErrorCode.VALIDATION_ERROR
                                 || business.getErrorCode() == ErrorCode.WORKFLOW_AGENT_TOOL_INVALID
                             : exception instanceof IllegalArgumentException;
-                        if (!correctable || assetSaveCorrections >= 2) throw normalized;
+                        if (!correctable || assetSaveCorrections >= ASSET_SAVE_CORRECTIONS) throw normalized;
                         assetSaveCorrections++;
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
                         messages.add(AiChatMessage.user(

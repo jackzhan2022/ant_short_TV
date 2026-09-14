@@ -3,7 +3,7 @@ package com.antshorttv.script;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.workflowagent.tool.ToolExecutionContext;
-import com.antshorttv.workflowagent.tool.EpisodeAssetsPayloadNormalizer;
+import com.antshorttv.workflowagent.tool.EpisodeAssetsPartialPreparation;
 import com.antshorttv.workflowagent.tool.ScreenplayToolConfiguration;
 import com.antshorttv.workflowagent.tool.WorkflowToolValidationException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -62,46 +62,59 @@ public class EpisodeAssetPersistenceService {
     public JsonNode save(ToolExecutionContext context, JsonNode payload) {
         requireCurrentExtractionOwner(context);
         ReadEpisode read = requireReadEpisode(context);
-        payload = EpisodeAssetsPayloadNormalizer.prepare(payload,
+        var prepared = EpisodeAssetsPartialPreparation.prepare(payload,
             new ScreenplayToolConfiguration().episodeAssetsInput(json), read.content());
+        payload = prepared.payload();
+        ArrayNode warnings = prepared.warnings();
         AssetRecognitionScope scope = scope(context);
         AssetPromptPolicy promptPolicy = promptPolicy(context);
         validateScopePayload(payload, scope);
         Map<String, ResolvedAsset> characters = resolveIdentities(
-            context, read.content(), "CHARACTER", payload.path("characters"), promptPolicy);
+            context, read.content(), "CHARACTER", payload.path("characters"), promptPolicy, warnings);
         Map<String, ResolvedAsset> scenes = resolveIdentities(
-            context, read.content(), "SCENE", payload.path("scenes"), promptPolicy);
+            context, read.content(), "SCENE", payload.path("scenes"), promptPolicy, warnings);
+        for (JsonNode prop : payload.path("props")) {
+            if (prop.hasNonNull("ownerCharacterLocalKey")
+                && !characters.containsKey(prop.path("ownerCharacterLocalKey").asText())) {
+                EpisodeAssetsPartialPreparation.warn(warnings, "INVALID_OWNER", "$.props",
+                    "持有人未能保存，仅跳过持有关联。", prop);
+                ((ObjectNode) prop).remove("ownerCharacterLocalKey");
+            }
+        }
         Map<String, ResolvedAsset> props = resolveIdentities(
-            context, read.content(), "PROP", payload.path("props"), promptPolicy);
-        validatePropOwners(payload.path("props"), characters);
-        List<String> preferredErrors = new ArrayList<>();
-        collectResolvedPreferredErrors(payload.path("characterLooks"), "characterLooks",
-            "characterLocalKey", characters, preferredErrors);
-        collectResolvedPreferredErrors(payload.path("propVariants"), "propVariants",
-            "propLocalKey", props, preferredErrors);
-        if (!preferredErrors.isEmpty()) throw WorkflowToolValidationException.aggregate(preferredErrors);
+            context, read.content(), "PROP", payload.path("props"), promptPolicy, warnings);
+        if (characters.isEmpty() && scenes.isEmpty() && props.isEmpty() && !warnings.isEmpty()) {
+            throw WorkflowToolValidationException.aggregate(java.util.stream.StreamSupport.stream(
+                warnings.spliterator(), false).map(w -> w.path("message").asText()).toList());
+        }
 
         List<Binding> bindings = new ArrayList<>();
-        bindExplicitVariants(context, read.content(), "CHARACTER", "characterLocalKey",
-            payload.path("characterLooks"), characters, bindings, promptPolicy);
-        bindExplicitVariants(context, read.content(), "PROP", "propLocalKey",
-            payload.path("propVariants"), props, bindings, promptPolicy);
+        int characterLookCount = bindExplicitVariants(context, read.content(), "CHARACTER", "characterLocalKey",
+            payload.path("characterLooks"), characters, bindings, promptPolicy, warnings);
+        int propVariantCount = bindExplicitVariants(context, read.content(), "PROP", "propLocalKey",
+            payload.path("propVariants"), props, bindings, promptPolicy, warnings);
         addDefaultBindings(context, "CHARACTER", characters, bindings);
         addDefaultBindings(context, "SCENE", scenes, bindings);
         addDefaultBindings(context, "PROP", props, bindings);
         applySceneUsage(payload.path("scenes"), scenes, bindings, read.content());
-        enforcePreferred(bindings);
-        replaceBindings(context, bindings, scope);
+        normalizePreferred(bindings, warnings);
+        upsertBindings(context, bindings);
 
         ObjectNode counts = json.createObjectNode();
-        counts.put("characters", characters.size());
-        counts.put("characterLooks", payload.path("characterLooks").size());
-        counts.put("scenes", scenes.size());
-        counts.put("props", props.size());
-        counts.put("propVariants", payload.path("propVariants").size());
+        counts.put("characters", characters.values().stream().map(ResolvedAsset::id).distinct().count());
+        counts.put("characterLooks", characterLookCount);
+        counts.put("scenes", scenes.values().stream().map(ResolvedAsset::id).distinct().count());
+        counts.put("props", props.values().stream().map(ResolvedAsset::id).distinct().count());
+        counts.put("propVariants", propVariantCount);
         ObjectNode diagnostic = json.createObjectNode();
         diagnostic.set("counts", counts.deepCopy());
         diagnostic.put("bindingCount", bindings.size());
+        diagnostic.set("warnings", warnings);
+        ArrayNode savedCategories = diagnostic.putArray("savedCategories");
+        ArrayNode skippedCategories = diagnostic.putArray("skippedCategories");
+        if (!characters.isEmpty()) savedCategories.add("characters"); else skippedCategories.add("characters");
+        if (!scenes.isEmpty()) savedCategories.add("scenes"); else skippedCategories.add("scenes");
+        if (!props.isEmpty()) savedCategories.add("props"); else skippedCategories.add("props");
         long analysisId = upsertCoverage(context, payload.path("schemaVersion").asInt(),
             read.fingerprint(), diagnostic);
         recordAutoStoryboard(context, read, analysisId);
@@ -113,6 +126,9 @@ public class EpisodeAssetPersistenceService {
         result.put("episodeKey", read.episodeKey());
         result.put("contentFingerprint", read.fingerprint());
         result.set("counts", counts);
+        result.set("warnings", warnings);
+        result.set("savedCategories", savedCategories);
+        result.set("skippedCategories", skippedCategories);
         return result;
     }
 
@@ -195,7 +211,8 @@ public class EpisodeAssetPersistenceService {
     }
 
     private Map<String, ResolvedAsset> resolveIdentities(
-        ToolExecutionContext context, String content, String type, JsonNode items, AssetPromptPolicy promptPolicy
+        ToolExecutionContext context, String content, String type, JsonNode items,
+        AssetPromptPolicy promptPolicy, ArrayNode warnings
     ) {
         Map<String, ResolvedAsset> resolved = new LinkedHashMap<>();
         Set<String> localKeys = new HashSet<>();
@@ -209,8 +226,12 @@ public class EpisodeAssetPersistenceService {
             for (JsonNode alias : aliases) {
                 requireEvidence(content, alias.path("evidence").asText(), "别名 " + alias.path("name").asText());
             }
-            ResolvedAsset asset = resolveIdentity(context, type, item, promptPolicy);
-            resolved.put(localKey, asset);
+            try {
+                ResolvedAsset asset = resolveIdentity(context, type, item, promptPolicy);
+                resolved.put(localKey, asset);
+            } catch (BusinessException error) {
+                warnRecoverable(warnings, error, "$." + category(type) + "." + localKey, item);
+            }
         }
         return resolved;
     }
@@ -399,29 +420,31 @@ public class EpisodeAssetPersistenceService {
             metadata.toString(), id);
     }
 
-    private void validatePropOwners(JsonNode props, Map<String, ResolvedAsset> characters) {
-        for (JsonNode prop : props) {
-            JsonNode owner = prop.path("ownerCharacterLocalKey");
-            if (owner.isTextual() && !owner.asText().isBlank() && !characters.containsKey(owner.asText())) {
-                invalid("道具持有人必须引用本次 characters 的 localKey。");
-            }
-        }
-    }
-
-    private void bindExplicitVariants(
+    private int bindExplicitVariants(
         ToolExecutionContext context, String content, String type, String ownerField,
         JsonNode variants, Map<String, ResolvedAsset> owners, List<Binding> bindings,
-        AssetPromptPolicy promptPolicy
+        AssetPromptPolicy promptPolicy, ArrayNode warnings
     ) {
         Set<String> localKeys = new HashSet<>();
+        Set<Long> saved = new HashSet<>();
         for (JsonNode item : variants) {
             if (!localKeys.add(item.path("localKey").asText())) invalid("运行内形态 key 重复。");
             requireEvidence(content, item.path("evidence").asText(), "形态 " + item.path("name").asText());
             ResolvedAsset owner = owners.get(item.path(ownerField).asText());
-            if (owner == null) invalid("形态持有人必须引用本次资产 localKey。");
-            long variantId = resolveVariant(context, type, owner.id(), item, promptPolicy);
-            bindings.add(new Binding(type, owner.id(), variantId, item.path("preferred").asBoolean(), null));
+            if (owner == null) {
+                EpisodeAssetsPartialPreparation.warn(warnings, "INVALID_OWNER", "$." + ownerField,
+                    "对应资产未保存，跳过该形态。", item);
+                continue;
+            }
+            try {
+                long variantId = resolveVariant(context, type, owner.id(), item, promptPolicy);
+                bindings.add(new Binding(type, owner.id(), variantId, item.path("preferred").asBoolean(), null));
+                saved.add(variantId);
+            } catch (BusinessException error) {
+                warnRecoverable(warnings, error, "$." + ownerField + "." + item.path("localKey").asText(), item);
+            }
         }
+        return saved.size();
     }
 
     private long resolveVariant(
@@ -553,14 +576,20 @@ public class EpisodeAssetPersistenceService {
         for (ResolvedAsset asset : assets.values()) {
             if (bound.contains(asset.id())) continue;
             List<Long> primary = jdbc.queryForList("""
-                select id from asset_visual_variant
-                 where tenant_id = ? and project_id = ? and asset_type = ? and asset_id = ?
-                   and deleted_at is null order by is_primary desc, id limit 1
-                """, Long.class, context.tenantId(), context.projectId(), type, asset.id());
+                select variant.id from asset_visual_variant variant
+                 left join asset_visual_variant_episode binding
+                   on binding.variant_id=variant.id and binding.episode_id=?
+                  and binding.tenant_id=variant.tenant_id and binding.retired_at is null
+                  and binding.binding_status='ACTIVE'
+                 where variant.tenant_id = ? and variant.project_id = ? and variant.asset_type = ? and variant.asset_id = ?
+                   and variant.deleted_at is null
+                 order by binding.is_preferred desc, variant.is_primary desc, variant.id limit 1
+                """, Long.class, context.episodeId(), context.tenantId(), context.projectId(), type, asset.id());
             long variantId = primary.isEmpty()
                 ? insertVariant(context, type, asset.id(), defaultVariantName(type), null, null)
                 : primary.get(0);
             bindings.add(new Binding(type, asset.id(), variantId, true, null));
+            bound.add(asset.id());
         }
     }
 
@@ -570,6 +599,7 @@ public class EpisodeAssetPersistenceService {
         Map<Long, ObjectNode> usage = new HashMap<>();
         for (JsonNode scene : scenes) {
             ResolvedAsset asset = resolved.get(scene.path("localKey").asText());
+            if (asset == null) continue;
             ObjectNode value = json.createObjectNode();
             if (scene.path("timeAtmosphere").isTextual()) {
                 value.put("timeAtmosphere", scene.path("timeAtmosphere").asText());
@@ -589,44 +619,65 @@ public class EpisodeAssetPersistenceService {
         }
     }
 
-    private void enforcePreferred(List<Binding> bindings) {
-        Map<String, Integer> preferred = new HashMap<>();
-        for (Binding binding : bindings) {
-            if (!binding.preferred()) continue;
-            String owner = binding.type() + ":" + binding.assetId();
-            if (preferred.merge(owner, 1, Integer::sum) > 1) {
-                invalid("同一资产在一集内只能有一个首选形态。");
+    private static String category(String type) {
+        return switch (type) { case "CHARACTER" -> "characters"; case "SCENE" -> "scenes"; default -> "props"; };
+    }
+
+    private void warnRecoverable(ArrayNode warnings, BusinessException error, String path, JsonNode item) {
+        // These failures occur before identity/variant writes. Infrastructure errors must roll back.
+        if (error.getErrorCode() != ErrorCode.VALIDATION_ERROR
+            && error.getErrorCode() != ErrorCode.ENTITY_MATCH_AMBIGUOUS) throw error;
+        EpisodeAssetsPartialPreparation.warn(warnings, error.getErrorCode().name(), path, error.getMessage(), item);
+    }
+
+    private void normalizePreferred(List<Binding> bindings, ArrayNode warnings) {
+        Map<String, List<Binding>> groups = new LinkedHashMap<>();
+        bindings.forEach(b -> groups.computeIfAbsent(b.type() + ":" + b.assetId(), k -> new ArrayList<>()).add(b));
+        bindings.clear();
+        for (List<Binding> group : groups.values()) {
+            Binding chosen = group.stream().filter(Binding::preferred).findFirst().orElse(group.get(0));
+            long preferredCount = group.stream().filter(Binding::preferred).count();
+            if (preferredCount != 1) {
+                EpisodeAssetsPartialPreparation.warn(warnings, "PREFERRED_NORMALIZED", "$." + category(chosen.type()),
+                    "资产 " + chosen.assetId() + " 已按提交顺序保留一个首选形态。", null);
+            }
+            Set<Long> seen = new HashSet<>();
+            for (Binding binding : group) {
+                if (seen.add(binding.variantId())) {
+                    bindings.add(new Binding(binding.type(), binding.assetId(), binding.variantId(),
+                        binding.variantId() == chosen.variantId(), binding.contentJson()));
+                }
             }
         }
     }
 
-    private void collectResolvedPreferredErrors(JsonNode items, String field, String ownerField,
-                                               Map<String, ResolvedAsset> owners, List<String> errors) {
-        Map<Long, Integer> firstPreferred = new HashMap<>();
-        for (int i = 0; i < items.size(); i++) {
-            JsonNode item = items.get(i);
-            if (!item.path("preferred").asBoolean()) continue;
-            ResolvedAsset owner = owners.get(item.path(ownerField).asText());
-            Integer first = firstPreferred.putIfAbsent(owner.id(), i);
-            if (first != null) {
-                errors.add("$." + field + "[" + i + "].preferred 与 $." + field + "[" + first
-                    + "].preferred 引用了同一正式资产，只能保留一个首选形态；保留形态记录并修正 preferred。");
-            }
+    private void upsertBindings(ToolExecutionContext context, List<Binding> bindings) {
+        // Partial saves are additive. A missing/invalid category must never retire previous good data.
+        for (Binding preferred : bindings) {
+            if (!preferred.preferred()) continue;
+            jdbc.update("""
+                update asset_visual_variant_episode set is_preferred=false, updated_at=now()
+                 where tenant_id=? and project_id=? and script_id=? and episode_id=?
+                   and asset_type=? and asset_id=? and generated_by_run_id is not null
+                   and retired_at is null and is_preferred=true and variant_id<>?
+                """, context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(),
+                preferred.type(), preferred.assetId(), preferred.variantId());
         }
-    }
-
-    private void replaceBindings(ToolExecutionContext context, List<Binding> bindings, AssetRecognitionScope scope) {
-        String typeFilter = scope == AssetRecognitionScope.ALL ? "" : " and asset_type = ?";
-        List<Object> retireArgs = new ArrayList<>(List.of(
-            context.tenantId(), context.projectId(), context.scriptId(), context.episodeId()));
-        if (scope != AssetRecognitionScope.ALL) retireArgs.add(scope.name());
-        jdbc.update("""
-            update asset_visual_variant_episode
-               set binding_status = 'RETIRED', retired_at = now(), updated_at = now()
-             where tenant_id = ? and project_id = ? and script_id = ? and episode_id = ?
-               and generated_by_run_id is not null and retired_at is null
-            """.replace("retired_at is null", "retired_at is null" + typeFilter), retireArgs.toArray());
         for (Binding binding : bindings) {
+            Integer manualPreferred = jdbc.queryForObject("""
+                select count(*) from asset_visual_variant_episode
+                 where tenant_id=? and episode_id=? and asset_type=? and asset_id=?
+                   and generated_by_run_id is null and retired_at is null and is_preferred=true
+                """, Integer.class, context.tenantId(), context.episodeId(), binding.type(), binding.assetId());
+            boolean preferred = binding.preferred() && (manualPreferred == null || manualPreferred == 0);
+            int updated = jdbc.update("""
+                update asset_visual_variant_episode set is_preferred=?, content_json=coalesce(?, content_json),
+                    generated_by_run_id=?, updated_at=now()
+                 where tenant_id=? and episode_id=? and variant_id=? and retired_at is null
+                   and generated_by_run_id is not null
+                """, preferred, binding.contentJson(), context.agentRunId(), context.tenantId(),
+                context.episodeId(), binding.variantId());
+            if (updated > 0) continue;
             Integer active = jdbc.queryForObject("""
                 select count(*) from asset_visual_variant_episode
                  where variant_id = ? and episode_id = ? and retired_at is null
@@ -639,7 +690,7 @@ public class EpisodeAssetPersistenceService {
                    created_at, updated_at)
                 values (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, now(), now())
                 """, context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(),
-                binding.type(), binding.assetId(), binding.variantId(), binding.preferred(),
+                binding.type(), binding.assetId(), binding.variantId(), preferred,
                 context.userId(), binding.contentJson(), context.agentRunId());
         }
     }
