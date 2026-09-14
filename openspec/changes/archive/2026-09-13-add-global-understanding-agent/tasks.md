@@ -52,5 +52,5 @@
 
 - [x] 8.1 Run focused backend unit/integration tests for workflow Agent runtime, tools, persistence, analysis execution, authorization, billing, and workspace response.
 - [x] 8.2 Run frontend type checking, targeted tests, Biome checks, and Ant Design lint for affected script-workbench code.
-- [ ] 8.3 Run a non-production end-to-end smoke test covering first analysis, script edit followed by independent reanalysis, same-row overwrite, mid-run script change rejection, retry, and page progress restoration.
+- [x] 8.3 Run a non-production end-to-end smoke test covering first analysis, script edit followed by independent reanalysis, same-row overwrite, mid-run script change rejection, retry, and page progress restoration.
 - [x] 8.4 Enable the adapter in the target environment only after verifying the Agent, both Skills, compatible model, tool associations, formal table, and rollback flag health checks.
