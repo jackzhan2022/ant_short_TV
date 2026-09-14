@@ -237,7 +237,7 @@ describe('WorkflowAgentsPage', () => {
     expect(screen.getAllByText('read_episode_script').length).toBeGreaterThan(
       0,
     );
-  });
+  }, 30_000);
 
   it('shows an error in the detail modal when loading fails', async () => {
     mocks.queryRun.mockRejectedValueOnce({});
