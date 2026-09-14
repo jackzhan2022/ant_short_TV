@@ -168,6 +168,55 @@ class ScriptWorkflowControllerTest {
         }
     }
 
+    @Test
+    void scopedAssetReextractionDoesNotReuseARequestAfterEpisodeSourceChanges() throws Exception {
+        String token = registerUser("13800013994", "Scoped Fingerprint Owner");
+        Long tenantId = createTenant(token, "范围指纹团队");
+        Long ownerId = userIdByMobile("13800013994");
+        createDefaultTextService(tenantId, ownerId);
+        grantTeamPoints(tenantId, 2);
+        Long projectId = createProject(token, tenantId, ownerId, "范围指纹项目", "SCOPED_FINGERPRINT", "第1集\n主角归来。");
+        Map<String, Object> script = jdbcTemplate.queryForMap(
+            "select id, current_version_id from script where tenant_id=? and project_id=?", tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into script_episode
+              (tenant_id, project_id, script_id, script_version_id, stable_key, episode_no, content,
+               content_fingerprint, reconciliation_status, status, created_at, updated_at)
+            values (?, ?, ?, ?, 'episode-1', 1, '主角归来。', 'source-a', 'MATCHED', 'ACTIVE', now(), now())
+            """, tenantId, projectId, script.get("id"), script.get("current_version_id"));
+        String body = "{\"targetType\":\"ALL\",\"promptPolicy\":\"FILL_EMPTY\"}";
+
+        mockMvc.perform(post("/api/projects/%d/asset-reextraction".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).header("Idempotency-Key", "scope-fingerprint-a")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted());
+        mockMvc.perform(post("/api/projects/%d/asset-reextraction".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).header("Idempotency-Key", "scope-fingerprint-equivalent")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.admission", is("REUSED")));
+        assertThat(billableCounts(tenantId).get("script_ai_operation")).isEqualTo(1);
+        assertThat(billableCounts(tenantId).get("ai_execution_task")).isEqualTo(1);
+        assertThat(billableCounts(tenantId).get("ai_point_reservation")).isEqualTo(1);
+        jdbcTemplate.update("update script_episode set content_fingerprint='changed-source' where tenant_id=? and project_id=?",
+            tenantId, projectId);
+        assertThat(jdbcTemplate.queryForObject(
+            "select content_fingerprint from script_episode where tenant_id=? and project_id=?", String.class,
+            tenantId, projectId)).isEqualTo("changed-source");
+
+        mockMvc.perform(post("/api/projects/%d/asset-reextraction".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).header("Idempotency-Key", "scope-fingerprint-b")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.admission", is("CONFLICT")));
+        assertThat(billableCounts(tenantId).get("script_ai_operation")).isEqualTo(1);
+        assertThat(billableCounts(tenantId).get("ai_execution_task")).isEqualTo(1);
+        assertThat(billableCounts(tenantId).get("ai_point_reservation")).isEqualTo(1);
+    }
+
     private Map<String,Integer> billableCounts(Long tenantId) {
         Map<String,Integer> result=new LinkedHashMap<>();
         for (String table : List.of("script_ai_operation","ai_execution_task","ai_point_reservation"))

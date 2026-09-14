@@ -22,4 +22,3 @@ The asset settings page SHALL obtain its asset collections from the asset settin
 - **WHEN** either initial settings data request fails
 - **THEN** the page stops displaying the loading skeleton
 - **AND** it displays a recoverable load-failure state with a retry action
-

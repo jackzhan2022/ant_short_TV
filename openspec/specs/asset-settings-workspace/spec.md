@@ -21,4 +21,3 @@ The system SHALL scope asset settings workspace data to the requested project an
 #### Scenario: Project has no formal assets
 - **WHEN** an authorized member requests the asset settings workspace for a project with no assets
 - **THEN** the response returns empty character, scene, and prop collections for that project
-

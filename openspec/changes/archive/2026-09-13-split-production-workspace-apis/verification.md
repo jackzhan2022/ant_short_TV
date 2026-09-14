@@ -2,6 +2,25 @@
 
 ## 后端读取链优化（待本次提交后的发布验收）
 
+## 本地认证态 focused 接口基线（2026-09-13）
+
+- 使用项目 `env` 的远程 MySQL 配置启动本地 Spring Boot JAR，并以项目 33 所属租户的所有者账号进行认证态只读采样；所有请求均返回 HTTP 200。
+- 每个接口采集 5 次，记录中位数（最小值至最大值）与中位响应体大小：
+  - `script-page-workspace`：1989.4ms（1809.2ms 至 3660.3ms），219297 bytes。
+  - `asset-settings-summary`：1388.9ms（812.1ms 至 7944.8ms），103839 bytes。
+  - `storyboard-workspace?episodeNo=1&current=1&pageSize=20`：1402.4ms（981.9ms 至 1479.7ms），154604 bytes。
+- 此次本地 JAR 尚未包含本工作区的 8.2 批量读取改动，也未接入覆盖 MyBatis 与 JdbcTemplate 的 SQL 计数/累计耗时观测。因此这些结果仅作为认证态 focused 接口基线；7.2 保持未勾选，不能据此作新旧链路或 SQL 查询数结论。
+
+## 本地认证态 focused 接口与 SQL 观测（2026-09-13）
+
+- 使用包含 8.2 和请求范围观测改动的本地 JAR，以项目 33 所属租户的所有者账号依次调用每条 focused 路由 5 次。所有请求均返回 HTTP 200；请求使用真实认证 Cookie 和 `X-Tenant-Id: 1`。
+- 每条路由的中位结果如下；HTTP 时间由客户端采集，SQL 次数与累计 SQL 时间来自服务端脱敏日志：
+  - `script-page-workspace`：1781.9ms，219258 bytes，26 条 SQL，1731ms 累计 SQL 时间。
+  - `asset-settings-summary`：1155.3ms，103839 bytes，12 条 SQL，1106ms 累计 SQL 时间。
+  - `storyboard-workspace?episodeNo=1&current=1&pageSize=20`：1349.7ms，154604 bytes，13 条 SQL，1239ms 累计 SQL 时间。
+- 观测日志仅记录标准化路由、HTTP 状态、HTTP 耗时、SQL 次数及累计 SQL 耗时；不记录项目 ID、身份凭据、请求头、SQL 文本、参数或响应内容。
+- 旧 `script-workspace` 聚合接口已由 `remove-legacy-ai-workflow-paths` 退役，无法进行新旧端点对照；本记录因此作为当前 focused 接口的认证态性能基线，而不是虚构的 legacy 对比。
+
 - 轻量分集导航、分析阶段的三类批量读取和访问上下文复用已实现；完整范围及未完成项见 `handoff.md`。
 - 提交前重新执行 `mvn -f backend/pom.xml '-Dtest=ScriptWorkflowReadBoundaryTest,ScriptAnalysisReadBoundaryTest,ScopedPermissionGuardTest,ScriptWorkflowControllerTest,ScriptEpisodeServiceTest' test`：32 项通过，0 failures，0 errors，0 skipped（2026-09-11 19:07）。
 - 随后执行 `mvn -f backend/pom.xml -DskipTests package`：退出码 0，生成 Spring Boot JAR（2026-09-11 19:07）。

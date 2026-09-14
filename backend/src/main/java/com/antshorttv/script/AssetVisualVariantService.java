@@ -19,6 +19,7 @@ public class AssetVisualVariantService {
         this.jdbc = jdbc;
     }
 
+    @Transactional
     public List<VariantResponse> list(Long tenantId, Long projectId, String assetType, Long assetId) {
         AssetType type = AssetType.fromStorageValue(assetType);
         requireAsset(tenantId, projectId, type, assetId);
@@ -26,7 +27,7 @@ public class AssetVisualVariantService {
                 .eq("tenant_id", tenantId).eq("project_id", projectId)
                 .eq("asset_type", type.name()).eq("asset_id", assetId)
                 .isNull("deleted_at").orderByDesc("is_primary").orderByAsc("id"))
-            .stream().map(this::response).toList();
+            .stream().map(this::derivePromptIfMissing).map(this::response).toList();
     }
 
     @Transactional
@@ -273,7 +274,8 @@ public class AssetVisualVariantService {
 
     @Transactional
     public GenerationInput prepareGeneration(Long tenantId, Long projectId, Long variantId) {
-        AssetVisualVariantEntity variant = requireVariant(tenantId, projectId, variantId, true);
+        AssetVisualVariantEntity variant = derivePromptIfMissing(
+            requireVariant(tenantId, projectId, variantId, true));
         AssetType type = AssetType.fromStorageValue(variant.getAssetType());
         String table = switch (type) {
             case CHARACTER -> "character_asset";
@@ -300,6 +302,41 @@ public class AssetVisualVariantService {
 
     private String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private AssetVisualVariantEntity derivePromptIfMissing(AssetVisualVariantEntity variant) {
+        if (variant.getPrompt() != null && !variant.getPrompt().isBlank()) {
+            return variant;
+        }
+        AssetType type = AssetType.fromStorageValue(variant.getAssetType());
+        String table = switch (type) {
+            case CHARACTER -> "character_asset";
+            case SCENE -> "scene_asset";
+            case PROP -> "prop_asset";
+        };
+        java.util.Map<String, Object> asset = jdbc.queryForMap("select name, prompt from " + table
+            + " where id = ? and tenant_id = ? and project_id = ? and deleted_at is null",
+            variant.getAssetId(), variant.getTenantId(), variant.getProjectId());
+        String basis = blankToNull(stringValue(asset.get("prompt")));
+        if (basis == null) {
+            basis = switch (type) {
+                case CHARACTER -> "角色设定：" + stringValue(asset.get("name"));
+                case SCENE -> "场景设定：" + stringValue(asset.get("name"));
+                case PROP -> "道具设定：" + stringValue(asset.get("name"));
+            };
+        }
+        String constraint = switch (type) {
+            case CHARACTER -> "保持该角色身份一致。";
+            case SCENE -> "保持场景空间与氛围一致。";
+            case PROP -> "保持道具形态与材质一致。";
+        };
+        String appearance = blankToNull(variant.getAppearance());
+        String prompt = basis + "；视觉形象：" + variant.getName()
+            + (appearance == null ? "" : "；外观：" + appearance) + "；" + constraint;
+        variant.setPrompt(prompt);
+        variant.setUpdatedAt(LocalDateTime.now());
+        variantMapper.updateById(variant);
+        return variant;
     }
 
     private void clearPrimary(Long tenantId, Long projectId, AssetType type, Long assetId) {

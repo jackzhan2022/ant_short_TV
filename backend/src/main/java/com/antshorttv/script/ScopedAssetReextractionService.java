@@ -77,6 +77,7 @@ class ScopedAssetReextractionService {
         ScopedAssetReextractionRequest request,
         AiExecutionContext executionContext
     ) {
+        requireModel(modelId(executionContext));
         coordination.acquire(operation.scriptId,executionContext);
         // Keep ownership through settlement and retry. Admission reclaims terminal owners.
         return executeOwned(operation,request,executionContext);

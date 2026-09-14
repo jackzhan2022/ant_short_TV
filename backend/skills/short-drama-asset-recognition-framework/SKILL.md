@@ -7,6 +7,8 @@ description: Use when recognizing formal characters, looks, physical scenes, pro
 
 本 Skill 只识别 `read_current_episode` 返回的当前剧集事实，并复用其紧凑资产目录。输出范围仅为 `characters`、`characterLooks`、`scenes`、`props`、`propVariants`；不得输出人物关系，也不得输出道具间的衍生、父子、组成或其他关系。
 
+调用顺序固定为：先调用 `read_current_episode`；候选目录遗漏或 `hasMore=true` 且没有可信 key 时，必须先检索，并调用 `search_script_assets` 查询全剧本规范名和明确别名，命中后可按需调用 `read_asset_details` 分页读取形态；最后调用 `save_episode_assets`。候选目录只是有界摘要，遗漏不能作为资产不存在的证据。已有可信候选足够时不强制额外检索。
+
 ## 确定性身份匹配
 
 资产目录仅为本集候选摘要，未列出不代表不存在。新建前必须调用
@@ -21,7 +23,8 @@ description: Use when recognizing formal characters, looks, physical scenes, pro
 1. 当前目录中已有 `assetKey` 且本集证据明确指向该身份时，原样复用这个不透明 key。
 2. 没有可直接引用的 key 时，只允许按规范名精确匹配同类型资产。
 3. 规范名未命中时，只允许按目录中显式别名精确匹配。
-4. 都未命中才创建 Schema 规定的运行内新身份 key。
+4. 当前候选未命中时，先用 `search_script_assets` 检索；需要核对已有形态时再用 `read_asset_details`。
+5. 全局检索仍未命中时，才创建 Schema 规定的运行内新身份 key。
 
 不得用编辑距离、读音、单字相似、常识或模糊相似度自动合并。两个候选具有同一规范名或别名且正文不能消歧时，不得任选第一个，也不得新建第三个来绕过歧义；提交可验证事实，让 `save_episode_assets` 返回安全的不透明候选 key，整次保存失败后仅在本集证据足以消歧时修正。
 

@@ -67,4 +67,3 @@ The schema cleanup SHALL use new Flyway migrations without rewriting applied mig
 - **WHEN** all migrations run on an empty supported database
 - **THEN** the final schema contains only current runtime structures plus required financial/audit records
 - **AND** current bootstrap preserves or initializes the required configuration idempotently
-

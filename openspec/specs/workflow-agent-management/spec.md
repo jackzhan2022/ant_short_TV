@@ -69,4 +69,3 @@ The system SHALL enforce independent view and edit permissions for Agent（新�
 #### Scenario: Unauthorized mutation is requested
 - **WHEN** a caller without the Agent（新）edit permission invokes a mutation or test endpoint
 - **THEN** the system SHALL deny the operation without changing configuration or starting a run
-

@@ -189,6 +189,7 @@ public class ScreenplayToolConfiguration {
             itemFields.putObject("aliases").put("type", "array").put("maxItems", 50)
                 .putObject("items").put("type", "string").put("maxLength", 100);
             itemFields.putObject("hasPrompt").put("type", "boolean");
+            itemFields.putObject("episodeBound").put("type", "boolean");
             ObjectNode variants = itemFields.putObject("variants").put("type", "array").put("maxItems", 50);
             ObjectNode variant = objectSchema(json);
             variant.putArray("required").add("variantKey").add("name").add("primary")
@@ -204,6 +205,19 @@ public class ScreenplayToolConfiguration {
             array.set("items", item);
         }
         fields.set("assetCatalog", catalog);
+        ObjectNode catalogPaging = objectSchema(json);
+        for (String name : new String[]{"characters", "scenes", "props"}) {
+            ObjectNode page = objectSchema(json);
+            page.putArray("required").add("pageSize").add("total").add("hasMore");
+            ObjectNode pageFields = (ObjectNode) page.path("properties");
+            pageFields.putObject("pageSize").put("type", "integer").put("minimum", 1).put("maximum", 50);
+            pageFields.putObject("total").put("type", "integer").put("minimum", 0);
+            pageFields.putObject("hasMore").put("type", "boolean");
+            pageFields.putObject("nextCursor").put("type", "string").put("maxLength", 64);
+            ((ObjectNode) catalogPaging.path("properties")).set(name, page);
+        }
+        catalogPaging.putArray("required").add("characters").add("scenes").add("props");
+        fields.set("assetCatalogPaging", catalogPaging);
         return definition("read_current_episode", "读取当前正式剧集",
             "读取可信作用域中的当前有效剧集、内容指纹和紧凑资产目录。",
             emptyInput(json), output, ToolRiskLevel.READ_ONLY,
@@ -314,6 +328,9 @@ public class ScreenplayToolConfiguration {
         outputFields.putObject("episodeKey").put("type", "string");
         outputFields.putObject("contentFingerprint").put("type", "string");
         outputFields.putObject("counts").put("type", "object");
+        outputFields.putObject("warnings").put("type", "array");
+        outputFields.putObject("savedCategories").put("type", "array");
+        outputFields.putObject("skippedCategories").put("type", "array");
         return definition("save_episode_assets", "保存本集角色场景道具",
             "原子匹配或创建正式资产、视觉形态及当前剧集绑定。证据优先使用当前集 sourceSegments 的 evidenceRef；旧 evidence 必须逐字来自正文。",
             episodeAssetsInput(json), output, ToolRiskLevel.WRITE, ToolFailurePolicy.RETURN_TO_MODEL,

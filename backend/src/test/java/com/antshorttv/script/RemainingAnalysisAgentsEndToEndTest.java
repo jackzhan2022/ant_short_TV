@@ -218,15 +218,14 @@ class RemainingAnalysisAgentsEndToEndTest {
             {"schemaVersion":1,
              "characters":[{"localKey":"c1","assetKey":null,"name":"小满","aliases":[],"evidence":"小满"}],
              "characterLooks":[],
-             "scenes":[{"localKey":"s1","assetKey":null,"name":"仓库","aliases":[],"evidence":"仓库","description":null,"timeAtmosphere":null,"usageEvidence":"走进仓库"}],
+             "scenes":[{"localKey":"s1","assetKey":null,"name":"仓库","aliases":[],"evidence":"仓库","description":null,"timeAtmosphere":null,"usageEvidence":"走进仓库","prompt":"仓库场景提示词"}],
              "props":[],"propVariants":[]}
             """);
-        assertThatThrownBy(() -> tools.saveEpisodeAssets(ambiguous, ambiguousPayload))
-            .isInstanceOf(BusinessException.class)
-            .extracting(error -> ((BusinessException) error).getErrorCode())
-            .isEqualTo(ErrorCode.ENTITY_MATCH_AMBIGUOUS);
-        assertThat(count("scene_asset", "script_id = " + scriptId)).isZero();
-        assertThat(count("script_episode_asset_analysis", "episode_id = " + episodeId)).isZero();
+        JsonNode partial = tools.saveEpisodeAssets(ambiguous, ambiguousPayload);
+        assertThat(partial.path("saved").asBoolean()).isTrue();
+        assertThat(partial.path("warnings").toString()).contains("ENTITY_MATCH_AMBIGUOUS");
+        assertThat(count("scene_asset", "script_id = " + scriptId)).isEqualTo(1);
+        assertThat(count("script_episode_asset_analysis", "episode_id = " + episodeId)).isEqualTo(1);
 
         AnalysisScope scope = createAnalysisScope("ASSET_RECOGNITION");
         WorkflowAgentExecutionPlan plan = plan("short-drama-asset-recognition");

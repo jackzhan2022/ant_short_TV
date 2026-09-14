@@ -3,6 +3,7 @@ package com.antshorttv.script;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionDeferredException;
 import com.antshorttv.execution.AiExecutionClaimLostException;
 import com.antshorttv.execution.AiExecutionClaimService;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
@@ -250,6 +251,8 @@ public class ScriptAnalysisExecutionService {
                     summary ? com.antshorttv.workflowagent.agent.EpisodeSummaryAgentBootstrap.AGENT_CODE
                         : com.antshorttv.workflowagent.agent.AssetRecognitionAgentBootstrap.AGENT_CODE, false));
             } catch (AiExecutionClaimLostException exception) {
+                throw exception;
+            } catch (AiExecutionDeferredException exception) {
                 throw exception;
             } catch (RuntimeException exception) {
                 requireExecutionActive(executionContext);

@@ -183,6 +183,18 @@ class ScopedAssetReextractionServiceTest {
         org.mockito.Mockito.verifyNoInteractions(recognition);
     }
 
+    @Test
+    void rejectsReextractionWithoutAFrozenModelBeforeCallingTheAgent() {
+        AiExecutionTaskEntity execution = new AiExecutionTaskEntity();
+
+        assertThatThrownBy(() -> lifecycle.execute(operation(),
+            new ScopedAssetReextractionRequest("ALL", "FILL_EMPTY"), new AiExecutionContext(execution, null)))
+            .hasMessageContaining("缺少冻结文本模型");
+        assertThat(database.queryForObject("select count(*) from scoped_asset_reextraction_snapshot", Integer.class))
+            .isZero();
+        org.mockito.Mockito.verifyNoInteractions(recognition);
+    }
+
     private ScriptAiOperationEntity operation() {
         var operation = new ScriptAiOperationEntity();
         operation.id=9504L; operation.tenantId=9501L; operation.projectId=9502L; operation.scriptId=9503L; operation.createdBy=1L;

@@ -98,7 +98,8 @@ class AssetRecognitionAgentAdapterTest {
             1L, AssetRecognitionAgentBootstrap.AGENT_CODE, "识别", null, "prompt", 11L,
             new BigDecimal("0.2"), 1000, 4, "ENABLED", 1L, 1L, 1L, null, null,
             List.of("short-drama-analysis-foundation", "short-drama-asset-recognition-framework"),
-            List.of("read_current_episode", "save_episode_assets")), List.of());
+            List.of("read_current_episode", "search_script_assets", "read_asset_details",
+                "save_episode_assets")), List.of());
     }
 
     private ScriptAnalysisTaskEntity task() {

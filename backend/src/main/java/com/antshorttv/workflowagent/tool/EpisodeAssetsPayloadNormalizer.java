@@ -86,7 +86,7 @@ public final class EpisodeAssetsPayloadNormalizer {
         if (node != null && node.isContainerNode()) node.forEach(EpisodeAssetsPayloadNormalizer::removeSchemaFields);
     }
 
-    private static void resolveEvidence(ObjectNode item, String field, Map<String, String> segments,
+    static void resolveEvidence(ObjectNode item, String field, Map<String, String> segments,
                                         String path, List<String> errors) {
         String refField = field + "Ref";
         if (!item.has(refField)) return;
@@ -155,7 +155,7 @@ public final class EpisodeAssetsPayloadNormalizer {
         return errors;
     }
 
-    private static void checkEvidence(JsonNode evidence, String content, String path, List<String> errors) {
+    static void checkEvidence(JsonNode evidence, String content, String path, List<String> errors) {
         if (!evidence.isTextual() || evidence.asText().isBlank() || !content.contains(evidence.asText())) {
             errors.add(path + " 的证据必须逐字存在于当前剧集；可改用对应 evidenceRef/usageEvidenceRef 引用原文片段。");
         }
@@ -171,7 +171,8 @@ public final class EpisodeAssetsPayloadNormalizer {
             String owner = item.path(ownerField).asText("");
             String path = "$." + field + "[" + i + "]";
             if ((required || !owner.isBlank()) && !keys.contains(owner)) {
-                errors.add(path + "." + ownerField + " 必须引用本次资产 localKey。");
+                errors.add(path + "." + ownerField + " 引用了不存在的 localKey '" + owner
+                    + "'；当前可用 localKey：" + keys.stream().sorted().toList() + "。");
             }
             if (required && item.path("preferred").asBoolean(false)) {
                 Integer first = preferred.putIfAbsent(owner, i);

@@ -69,4 +69,3 @@ Every formal and test run SHALL record its type, actor, scope, status, timing, s
 #### Scenario: Tool execution fails
 - **WHEN** an allowed tool executor returns a terminal failure
 - **THEN** the runtime SHALL record the failed step and normalized error, stop or continue according to the tool's declared failure policy, and finalize the run consistently
-

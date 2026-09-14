@@ -54,4 +54,3 @@ The system SHALL enforce independent Skill（新）view and edit permissions. Fi
 #### Scenario: Atomic replacement fails
 - **WHEN** the server cannot complete a Skill file replacement
 - **THEN** the system SHALL report a normalized failure and SHALL retain either the complete prior file or the complete new file, never a partially written SKILL.md
-

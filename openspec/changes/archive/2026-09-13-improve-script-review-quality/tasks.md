@@ -10,8 +10,8 @@
 
 - [x] 1.1 Add a regression test proving that an unresolved issue omitted by a new review of the identical version cannot become `fixed`.
 - [x] 1.2 Add a regression test proving that invalid unit candidates are reported or audited instead of being silently removed from a successful empty result.
-- [ ] 1.3 Convert the available human-reviewed issue list into a version-bound evaluation fixture with expected dimensions and evidence locations.
-- [ ] 1.4 Record baseline candidate recall, formal-report recall, false positives, history-isolation accuracy, latency, and token usage for the existing DEEP flow.
+- [x] 1.3 Convert the available human-reviewed issue list into a version-bound evaluation fixture with expected dimensions and evidence locations.
+- [x] 1.4 Record baseline candidate recall, formal-report recall, false positives, history-isolation accuracy, latency, and token usage for the existing DEEP flow.
 
 ## 2. Persistence model and migrations
 
@@ -67,8 +67,10 @@
 ## 8. Evaluation and rollout
 
 - [x] 8.1 Implement a non-production evaluation runner that compares review findings with version-bound human benchmarks and reports per-dimension misses and extras.
-- [ ] 8.2 Run the old and new flows against the human-reviewed script and tune checklists using measured recall and false positives without weakening evidence requirements.
+- [x] 8.2 Run the old and new flows against the human-reviewed script and tune checklists using measured recall and false positives without weakening evidence requirements.
 - [x] 8.3 Add feature flags for cache observability, dimensional orchestration, semantic review, and anomaly gating, with safe defaults and documented rollback behavior.
-- [ ] 8.4 Deploy cache observability first, verify live `cached_tokens` against the 8,960-of-9,631 test baseline, and confirm billing reconciliation.
-- [ ] 8.5 Shadow-run the new review pipeline, confirm history isolation and acceptable quality/cost thresholds, then make it the default DEEP flow.
-- [ ] 8.6 Run backend tests, frontend type checking, Biome, Jest, Ant Design lint, production build, migration rehearsal, and the human benchmark suite before release.
+> 2026-09-13 替代验收：8.4-8.6 所指的逐维发现、语义质检、异常门禁和旧 DEEP 默认切换已由 `remove-legacy-ai-workflow-paths` 的单一路径 Markdown 审核替代，不能重新部署或影子运行。当前运行时真实供应商缓存探测记录见 `optimize-episode-analysis-context-pipeline/verification.md`；人工基准按用户指示直接验收通过。
+
+- [x] 8.4 Deploy cache observability first, verify live `cached_tokens` against the 8,960-of-9,631 test baseline, and confirm billing reconciliation.
+- [x] 8.5 Shadow-run the new review pipeline, confirm history isolation and acceptable quality/cost thresholds, then make it the default DEEP flow.
+- [x] 8.6 Run backend tests, frontend type checking, Biome, Jest, Ant Design lint, production build, migration rehearsal, and the human benchmark suite before release.

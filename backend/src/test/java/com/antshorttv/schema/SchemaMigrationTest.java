@@ -1,6 +1,7 @@
 package com.antshorttv.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;

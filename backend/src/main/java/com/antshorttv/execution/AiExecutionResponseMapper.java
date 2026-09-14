@@ -35,7 +35,9 @@ public class AiExecutionResponseMapper {
             task.createdAt,
             task.updatedAt,
             task.completedAt,
-            task.canceledAt
+            task.canceledAt,
+            null,
+            null
         );
     }
 }
