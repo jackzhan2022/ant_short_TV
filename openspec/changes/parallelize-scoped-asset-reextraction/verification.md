@@ -19,3 +19,13 @@
 The first three failures reproduce on an isolated, unmodified `8c120b1` worktree. They are unrelated to scoped re-extraction concurrency. The fourth passes in focused reruns and does not exercise `ScopedAssetReextractionService`.
 
 The change contract intentionally guarantees the configured per-operation fan-out bound. Child-call-level cross-instance model quota enforcement is a separate platform concern because the existing quota counts parent executions rather than individual Agent calls.
+
+## Production verification
+
+- Release `/opt/antv/releases/202609160049-cb06401` is active and serves the protected local API with the expected 401 response and the public homepage with 200.
+- The prior serial operation completed successfully at 59/59 before deployment, so there was no active operation left to cancel.
+- Replacement operation 178 / execution 177943 uses `ALL + REGENERATE_ALL` for 59 episodes.
+- Four child Agent Runs were simultaneously `RUNNING`, matching the configured per-operation fan-out limit.
+- Child Run 1589 froze Skill revision `0b49354f9ef5f4be5424fda93cac6c10fb98337882c3dc454e0e50d55eaa124d`.
+- Progress advanced with four successful units, four running units, zero failed units, and 51 pending units.
+- Active canonical duplicate groups were zero for characters, scenes, and props; active visual-binding duplicate groups were also zero.

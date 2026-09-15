@@ -19,7 +19,7 @@
 
 ## 4. Production Rollout
 
-- [ ] 4.1 Build an executable backend JAR from the verified commit and confirm its artifact structure and SHA-256 checksum.
-- [ ] 4.2 Deploy through a new versioned release, atomically switch `/opt/antv/current`, restart `antv.service`, and verify service/API health with the previous release retained for rollback.
-- [ ] 4.3 Cancel the active serial scoped re-extraction through the supported execution workflow and submit a new `ALL + REGENERATE_ALL` operation.
-- [ ] 4.4 Verify the replacement operation uses the current Skill revision, runs up to four episode children concurrently, advances persisted progress, and produces no duplicate active assets or bindings.
+- [x] 4.1 Build an executable backend JAR from the verified commit and confirm its artifact structure and SHA-256 checksum.
+- [x] 4.2 Deploy through a new versioned release, atomically switch `/opt/antv/current`, restart `antv.service`, and verify service/API health with the previous release retained for rollback.
+- [x] 4.3 Confirm the prior serial operation reached a terminal state, then submit a new `ALL + REGENERATE_ALL` operation through the supported workflow.
+- [x] 4.4 Verify the replacement operation uses the current Skill revision, runs up to four episode children concurrently, advances persisted progress, and produces no duplicate active assets or bindings.
