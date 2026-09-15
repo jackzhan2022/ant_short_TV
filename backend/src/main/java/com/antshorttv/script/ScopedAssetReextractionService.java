@@ -8,8 +8,18 @@ import com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan;
 import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -26,6 +36,69 @@ class ScopedAssetReextractionService {
     private final AssetExtractionCoordination coordination;
     private final com.antshorttv.workflowagent.run.WorkflowAgentRunRepository runs;
     private final com.fasterxml.jackson.databind.ObjectMapper json;
+    private final int concurrency;
+
+    static <T> void runBounded(List<T> items, int concurrency, Consumer<T> action) {
+        if (items.isEmpty()) return;
+        int workerCount = Math.min(Math.max(1, Math.min(16, concurrency)), items.size());
+        if (workerCount == 1) {
+            items.forEach(action);
+            return;
+        }
+        ExecutorService executor = Executors.newFixedThreadPool(workerCount);
+        AtomicReference<RuntimeException> fatalFailure = new AtomicReference<>();
+        ExecutorCompletionService<Void> completions = new ExecutorCompletionService<>(executor);
+        List<Future<Void>> futures = new ArrayList<>();
+        try {
+            for (T item : items) {
+                futures.add(completions.submit(() -> {
+                    if (fatalFailure.get() != null) return null;
+                    try {
+                        action.accept(item);
+                    } catch (RuntimeException exception) {
+                        fatalFailure.compareAndSet(null, exception);
+                        throw exception;
+                    }
+                    return null;
+                }));
+            }
+            for (int completed = 0; completed < futures.size(); completed++) {
+                completions.take().get();
+            }
+        } catch (ExecutionException exception) {
+            futures.forEach(future -> future.cancel(true));
+            RuntimeException fatal = fatalFailure.get();
+            if (fatal != null) throw fatal;
+            throw new IllegalStateException(exception.getCause());
+        } catch (InterruptedException exception) {
+            futures.forEach(future -> future.cancel(true));
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Autowired
+    ScopedAssetReextractionService(
+        JdbcTemplate jdbc,
+        WorkflowAgentRunner runner,
+        AssetRecognitionAgentAdapter recognition,
+        PlatformTransactionManager transactionManager,
+        AssetExtractionCoordination coordination,
+        com.antshorttv.workflowagent.run.WorkflowAgentRunRepository runs,
+        com.fasterxml.jackson.databind.ObjectMapper json,
+        @Value("${ai.workflow-agent.fanout-concurrency:3}") int concurrency
+    ) {
+        this.jdbc = jdbc;
+        this.runner = runner;
+        this.recognition = recognition;
+        this.transactions = new TransactionTemplate(transactionManager);
+        this.coordination = coordination;
+        this.runs = runs;
+        this.json = json;
+        this.concurrency = Math.max(1, Math.min(16, concurrency));
+    }
 
     ScopedAssetReextractionService(
         JdbcTemplate jdbc,
@@ -36,13 +109,7 @@ class ScopedAssetReextractionService {
         com.antshorttv.workflowagent.run.WorkflowAgentRunRepository runs,
         com.fasterxml.jackson.databind.ObjectMapper json
     ) {
-        this.jdbc = jdbc;
-        this.runner = runner;
-        this.recognition = recognition;
-        this.transactions = new TransactionTemplate(transactionManager);
-        this.coordination = coordination;
-        this.runs = runs;
-        this.json = json;
+        this(jdbc, runner, recognition, transactionManager, coordination, runs, json, 1);
     }
 
     AssetReextractionPreflight preflight(long tenantId, long projectId, long scriptId,
@@ -107,50 +174,15 @@ class ScopedAssetReextractionService {
             requireOwner(operation,executionContext);
             return frozenPlan(snapshot.id());
         });
-        List<WorkflowAgentModelCall> calls = new ArrayList<>();
-        for (Unit unit : runnableUnits(snapshot.id())) {
-            transaction(() -> {
-                requireOwner(operation,executionContext);
-                requireSources(operation,snapshot);
-                jdbc.update("update scoped_asset_reextraction_unit set status='RUNNING', started_at=now(), updated_at=now() where id=?", unit.id());
-                return null;
-            });
-            try {
-                ScriptAnalysisTaskEntity task = transientTask(operation);
-                ScriptAnalysisStageEntity stage = transientStage();
-                List<Long> committed=jdbc.queryForList("""
-                    select u.child_run_id from scoped_asset_reextraction_unit u
-                    join script_episode_asset_analysis a on a.episode_id=u.episode_id
-                      and a.generated_by_run_id=u.child_run_id and a.content_fingerprint=u.content_fingerprint
-                    where u.id=? and a.tenant_id=? and a.script_id=?
-                    """,Long.class,unit.id(),operation.tenantId,operation.scriptId);
-                AssetRecognitionAgentAdapter.Execution child = committed.isEmpty()
-                    ? recognition.executeChild(plan, task, stage,unit.episodeId(), executionContext, snapshot.modelId(), scope, policy)
-                    : new AssetRecognitionAgentAdapter.Execution(committed.get(0),runs.modelCalls(committed.get(0),operation.tenantId));
-                transaction(() -> {
-                    requireOwner(operation,executionContext);
-                    jdbc.update("update scoped_asset_reextraction_unit set status='SUCCEEDED', child_run_id=?, error_message=null, finished_at=now(), updated_at=now() where id=?",
-                        child.agentRunId(), unit.id());
-                    return null;
-                });
-                calls.addAll(child.modelCalls());
-            } catch (RuntimeException failure) {
-                transaction(() -> {
-                    requireOwner(operation,executionContext);
-                    jdbc.update("update scoped_asset_reextraction_unit set status='FAILED', error_message=?, finished_at=now(), updated_at=now() where id=?",
-                        message(failure), unit.id());
-                    refresh(snapshot.id(), "FAILED");
-                    return null;
-                });
-                throw failure;
-            }
-            transaction(() -> {
-                requireOwner(operation,executionContext);
-                refresh(snapshot.id(), "RUNNING");
-                return null;
-            });
-        }
+        List<WorkflowAgentModelCall> calls = Collections.synchronizedList(new ArrayList<>());
+        runBounded(runnableUnits(snapshot.id()), concurrency,
+            unit -> executeUnit(operation, executionContext, snapshot, plan, scope, policy, unit, calls));
         if (count("select count(*) from scoped_asset_reextraction_unit where snapshot_id=? and status <> 'SUCCEEDED'", snapshot.id()) != 0) {
+            transaction(() -> {
+                requireOwner(operation, executionContext);
+                refresh(snapshot.id(), "FAILED");
+                return null;
+            });
             throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE, "仍有剧集未完成资产重提取，不能收口旧资产。");
         }
         try {
@@ -178,6 +210,68 @@ class ScopedAssetReextractionService {
             throw failure;
         }
         return new ScriptAiOperationExecutionResult("SCOPED_ASSET_REEXTRACTION", snapshot.id(), List.of(), calls);
+    }
+
+    private void executeUnit(
+        ScriptAiOperationEntity operation,
+        AiExecutionContext executionContext,
+        Snapshot snapshot,
+        WorkflowAgentExecutionPlan plan,
+        AssetRecognitionScope scope,
+        AssetPromptPolicy policy,
+        Unit unit,
+        List<WorkflowAgentModelCall> calls
+    ) {
+        transaction(() -> {
+            requireOwner(operation,executionContext);
+            requireSources(operation,snapshot);
+            jdbc.update("update scoped_asset_reextraction_unit set status='RUNNING', started_at=now(), updated_at=now() where id=?", unit.id());
+            return null;
+        });
+        try {
+            ScriptAnalysisTaskEntity task = transientTask(operation);
+            ScriptAnalysisStageEntity stage = transientStage();
+            List<Long> committed=jdbc.queryForList("""
+                select u.child_run_id from scoped_asset_reextraction_unit u
+                join script_episode_asset_analysis a on a.episode_id=u.episode_id
+                  and a.generated_by_run_id=u.child_run_id and a.content_fingerprint=u.content_fingerprint
+                where u.id=? and a.tenant_id=? and a.script_id=?
+                """,Long.class,unit.id(),operation.tenantId,operation.scriptId);
+            AssetRecognitionAgentAdapter.Execution child = committed.isEmpty()
+                ? recognition.executeChild(plan, task, stage,unit.episodeId(), executionContext, snapshot.modelId(), scope, policy)
+                : new AssetRecognitionAgentAdapter.Execution(committed.get(0),runs.modelCalls(committed.get(0),operation.tenantId));
+            transaction(() -> {
+                requireOwner(operation,executionContext);
+                jdbc.update("update scoped_asset_reextraction_unit set status='SUCCEEDED', child_run_id=?, error_message=null, finished_at=now(), updated_at=now() where id=?",
+                    child.agentRunId(), unit.id());
+                refresh(snapshot.id(), "RUNNING");
+                return null;
+            });
+            calls.addAll(child.modelCalls());
+        } catch (com.antshorttv.execution.AiExecutionClaimLostException failure) {
+            throw failure;
+        } catch (BusinessException failure) {
+            if (failure.getErrorCode() == ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED) throw failure;
+            recordUnitFailure(operation, executionContext, snapshot, unit, failure);
+        } catch (RuntimeException failure) {
+            recordUnitFailure(operation, executionContext, snapshot, unit, failure);
+        }
+    }
+
+    private void recordUnitFailure(
+        ScriptAiOperationEntity operation,
+        AiExecutionContext executionContext,
+        Snapshot snapshot,
+        Unit unit,
+        RuntimeException failure
+    ) {
+        transaction(() -> {
+            requireOwner(operation,executionContext);
+            jdbc.update("update scoped_asset_reextraction_unit set status='FAILED', error_message=?, finished_at=now(), updated_at=now() where id=?",
+                message(failure), unit.id());
+            refresh(snapshot.id(), "FAILED");
+            return null;
+        });
     }
 
     private WorkflowAgentExecutionPlan frozenPlan(long snapshotId) {

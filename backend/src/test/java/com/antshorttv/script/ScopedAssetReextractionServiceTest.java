@@ -23,6 +23,11 @@ import com.antshorttv.workflowagent.run.WorkflowAgentRunRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -47,6 +52,68 @@ class ScopedAssetReextractionServiceTest {
     private AssetExtractionCoordination coordination;
     private WorkflowAgentRunRepository runs;
     private ScopedAssetReextractionService lifecycle;
+
+    @Test
+    void executesUnitsConcurrentlyWithoutExceedingTheConfiguredBound() throws Exception {
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger peak = new AtomicInteger();
+
+        CompletableFuture<Void> execution = CompletableFuture.runAsync(() ->
+            ScopedAssetReextractionService.runBounded(List.of(1, 2, 3), 2, ignored -> {
+                int current = active.incrementAndGet();
+                peak.accumulateAndGet(current, Math::max);
+                bothStarted.countDown();
+                try {
+                    release.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                } finally {
+                    active.decrementAndGet();
+                }
+            })
+        );
+
+        assertThat(bothStarted.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(peak).hasValue(2);
+        release.countDown();
+        execution.get(5, TimeUnit.SECONDS);
+        assertThat(peak).hasValue(2);
+    }
+
+    @Test
+    void doesNotStartQueuedUnitsAfterExecutionOwnershipIsLost() throws Exception {
+        CountDownLatch firstPairStarted = new CountDownLatch(2);
+        CountDownLatch peerInterrupted = new CountDownLatch(1);
+        CountDownLatch releasePeer = new CountDownLatch(1);
+        AtomicBoolean thirdStarted = new AtomicBoolean();
+
+        CompletableFuture<Void> execution = CompletableFuture.runAsync(() ->
+            assertThatThrownBy(() -> ScopedAssetReextractionService.runBounded(
+                List.of(1, 2, 3), 2, item -> {
+                    if (item == 3) thirdStarted.set(true);
+                    firstPairStarted.countDown();
+                    try {
+                        assertThat(firstPairStarted.await(2, TimeUnit.SECONDS)).isTrue();
+                        if (item == 1) throw new com.antshorttv.execution.AiExecutionClaimLostException(9505L);
+                        releasePeer.await();
+                    } catch (InterruptedException exception) {
+                        peerInterrupted.countDown();
+                        Thread.currentThread().interrupt();
+                    }
+                }))
+                .isInstanceOf(com.antshorttv.execution.AiExecutionClaimLostException.class)
+        );
+
+        assertThat(firstPairStarted.await(2, TimeUnit.SECONDS)).isTrue();
+        boolean interrupted = peerInterrupted.await(2, TimeUnit.SECONDS);
+        if (!interrupted) releasePeer.countDown();
+        assertThat(interrupted).isTrue();
+        execution.get(5, TimeUnit.SECONDS);
+        assertThat(thirdStarted).isFalse();
+    }
 
     @BeforeEach
     void seedLifecycle() {
@@ -134,13 +201,34 @@ class ScopedAssetReextractionServiceTest {
             .thenThrow(new IllegalStateException("provider failed"))
             .thenReturn(new AssetRecognitionAgentAdapter.Execution(9512L,List.of()));
         var request = new ScopedAssetReextractionRequest("ALL","FILL_EMPTY");
-        assertThatThrownBy(() -> lifecycle.execute(operation(),request,context(11))).hasMessageContaining("provider failed");
+        assertThatThrownBy(() -> lifecycle.execute(operation(),request,context(11))).hasMessageContaining("未完成");
         assertThat(database.queryForList("select status from scoped_asset_reextraction_unit order by episode_id",String.class)).containsExactly("SUCCEEDED","FAILED");
         lifecycle.execute(operation(),request,context(99));
         verify(recognition,times(1)).executeChild(any(),any(),any(),eq(9511L),any(),eq(11L),any(),any());
         verify(recognition,times(2)).executeChild(any(),any(),any(),eq(9512L),any(),eq(11L),any(),any());
         assertThat(database.queryForObject("select model_id from scoped_asset_reextraction_snapshot where operation_id=9504",Long.class)).isEqualTo(11L);
         assertThat(database.queryForMap("select status,completed_units,failed_units from scoped_asset_reextraction_snapshot where operation_id=9504")).containsEntry("status","SUCCEEDED").containsEntry("completed_units",2).containsEntry("failed_units",0);
+    }
+
+    @Test
+    void letsPeerUnitsFinishWhenOneConcurrentChildFails() {
+        when(recognition.executeChild(any(),any(),any(),eq(9511L),any(),anyLong(),any(),any()))
+            .thenThrow(new IllegalStateException("provider failed"));
+
+        assertThatThrownBy(() -> lifecycle.execute(operation(),
+            new ScopedAssetReextractionRequest("ALL","FILL_EMPTY"),context(11)))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("未完成");
+
+        verify(recognition).executeChild(any(),any(),any(),eq(9512L),any(),eq(11L),any(),any());
+        assertThat(database.queryForList(
+            "select status from scoped_asset_reextraction_unit order by episode_id", String.class))
+            .containsExactly("FAILED", "SUCCEEDED");
+        assertThat(database.queryForMap(
+            "select status,completed_units,failed_units from scoped_asset_reextraction_snapshot where operation_id=9504"))
+            .containsEntry("status", "FAILED")
+            .containsEntry("completed_units", 1)
+            .containsEntry("failed_units", 1);
     }
 
     @ParameterizedTest
@@ -150,7 +238,7 @@ class ScopedAssetReextractionServiceTest {
             .thenThrow(new IllegalStateException("provider failed"));
         var request = new ScopedAssetReextractionRequest("ALL","FILL_EMPTY");
         assertThatThrownBy(() -> lifecycle.execute(operation(),request,context(11)))
-            .hasMessageContaining("provider failed");
+            .hasMessageContaining("未完成");
         database.update("update script_episode set content='changed',content_fingerprint='changed' where id=?",changedEpisode);
         org.mockito.Mockito.clearInvocations(recognition);
         assertThatThrownBy(() -> lifecycle.execute(operation(),request,context(11)))

@@ -172,7 +172,7 @@ class AssetExtractionCoordinationTest {
         var request=new ScopedAssetReextractionRequest("PROP","FILL_EMPTY");
         doAnswer(invocation->{ saveProp(operation,invocation.getArgument(4)); throw new IllegalStateException("crash after commit"); })
             .when(recognition).executeChild(any(),any(),any(),anyLong(),any(),anyLong(),any(),any());
-        assertThatThrownBy(()->scoped.execute(operation,request,original)).hasMessageContaining("crash after commit");
+        assertThatThrownBy(()->scoped.execute(operation,request,original)).hasMessageContaining("未完成");
         assertThat(count("prop_asset")).isEqualTo(1);
         assertThat(count("script_episode_asset_analysis")).isEqualTo(1);
         claims.markFailed(id,original.claim().attemptId(),original.claim().claimToken(),"CRASH","test",
@@ -195,7 +195,7 @@ class AssetExtractionCoordinationTest {
         var request=new ScopedAssetReextractionRequest("PROP","FILL_EMPTY");
         doAnswer(invocation->{saveProp(operation,context);throw new IllegalStateException("crash after commit");})
             .when(recognition).executeChild(any(),any(),any(),anyLong(),any(),anyLong(),any(),any());
-        assertThatThrownBy(()->scoped.execute(operation,request,context)).hasMessageContaining("crash after commit");
+        assertThatThrownBy(()->scoped.execute(operation,request,context)).hasMessageContaining("未完成");
         jdbc.update("update script_episode_asset_analysis set generated_by_run_id=null where episode_id=?",episode);
         assertThatThrownBy(()->scoped.execute(operation,request,context)).hasMessageContaining("其他任务更新");
         verify(recognition,times(1)).executeChild(any(),any(),any(),anyLong(),any(),anyLong(),any(),any());
