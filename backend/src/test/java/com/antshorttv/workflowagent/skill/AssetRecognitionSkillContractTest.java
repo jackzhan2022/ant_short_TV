@@ -44,4 +44,15 @@ class AssetRecognitionSkillContractTest {
             .contains("最小身份锚点", "不得改变资产的核心几何")
             .contains("空间拓扑", "剧情功能");
     }
+
+    @Test
+    void canonicalCharacterPromptIsNeutralReusableAndExcludesEpisodeStaging() {
+        WorkflowSkillView skill = skills.detail("short-drama-asset-recognition-framework");
+
+        assertThat(skill.content())
+            .contains("中性、稳定、可跨剧集复用")
+            .contains("单场地点", "动作", "临时姿势", "临时表情或情绪", "手持剧情道具")
+            .contains("镜头语言", "不得写入角色主体提示词")
+            .contains("自然站立", "中性表情", "双手自然下垂");
+    }
 }

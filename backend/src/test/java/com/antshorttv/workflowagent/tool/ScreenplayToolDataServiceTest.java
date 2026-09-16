@@ -703,6 +703,31 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void rejectsInvalidAiCharacterPromptStructureBeforeWritingAnyAsset() throws Exception {
+        jdbc.update("update script_episode set content = '林小满出现在走廊。', content_fingerprint = 'invalid-prompt-fp' where id = ?",
+            episodeId);
+        ToolExecutionContext assetContext = episodeContext();
+        service.readCurrentEpisode(assetContext);
+        JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"c1","assetKey":null,"name":"林小满","aliases":[],
+               "evidence":"林小满","prompt":"林小满在走廊里惊恐地捂住嘴，手持手机拍摄。"}],
+             "scenes":[{"localKey":"s1","assetKey":null,"name":"走廊","aliases":[],
+               "evidence":"走廊","prompt":"走廊场景提示词"}],
+             "props":[],"characterLooks":[],"propVariants":[]}
+            """);
+
+        assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("角色主体提示词")
+            .hasMessageContaining("Markdown");
+        assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id = ?",
+            Integer.class, scriptId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from scene_asset where script_id = ?",
+            Integer.class, scriptId)).isZero();
+    }
+
+    @Test
     void assetCatalogExposesPromptPresenceWithoutExposingPromptText() {
         jdbc.update("""
             insert into character_asset

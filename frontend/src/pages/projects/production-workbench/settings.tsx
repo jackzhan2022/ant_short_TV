@@ -663,7 +663,11 @@ const ProductionWorkbenchSettings = () => {
     if (!variant) return;
     const prompt = generationPrompt;
     if (!prompt.trim()) {
-      message.error('请先完成资产提示词后再生成图片。');
+      message.error(
+        variant.primary
+          ? '请先完成资产主体提示词后再生成图片。'
+          : '请先完成视觉形象提示词后再生成图片。',
+      );
       return;
     }
     const primaryImage = visualAsset.item.visual?.resolvedImageUrl;

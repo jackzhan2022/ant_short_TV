@@ -35,6 +35,9 @@ public class EpisodeAssetPersistenceService {
         "CHARACTER", "character_asset", "SCENE", "scene_asset", "PROP", "prop_asset");
     private static final Map<String, String> PREFIXES = Map.of(
         "CHARACTER", "c_", "SCENE", "s_", "PROP", "p_");
+    private static final List<String> CHARACTER_PROMPT_FIELDS = List.of(
+        "时代基底", "国家/朝代", "人种", "类型基底", "脸型", "发型", "耳饰",
+        "身材", "头身比", "上身着装", "下身着装", "鞋子", "性别", "年龄");
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -65,6 +68,7 @@ public class EpisodeAssetPersistenceService {
         AssetRecognitionScope scope = scope(context);
         AssetPromptPolicy promptPolicy = promptPolicy(context);
         validateScopePayload(payload, scope);
+        validateAiCharacterPrompts(context, payload.path("characters"));
         Map<String, ResolvedAsset> characters = resolveIdentities(
             context, read.content(), "CHARACTER", payload.path("characters"), promptPolicy);
         Map<String, ResolvedAsset> scenes = resolveIdentities(
@@ -695,6 +699,23 @@ public class EpisodeAssetPersistenceService {
                 invalid("当前资产识别范围不允许提交 " + field + "。" );
             }
         });
+    }
+
+    private void validateAiCharacterPrompts(ToolExecutionContext context, JsonNode characters) {
+        if (context.agentRunId() == null) return;
+        for (JsonNode character : characters) {
+            String value = prompt(character);
+            if (value == null) continue;
+            boolean valid = value.startsWith("## 任务：完成角色的上半身正面平视特写")
+                && value.contains("角色描述:")
+                && !value.contains("{值}");
+            for (String field : CHARACTER_PROMPT_FIELDS) {
+                valid = valid && value.contains("- **" + field + "**:");
+            }
+            if (!valid) {
+                invalid("角色主体提示词必须使用规定的 Markdown 角色设定图模板，并包含完整任务段、角色描述及全部字段；请移除单场地点、动作、临时表情情绪、手持剧情道具和镜头语言后重试。");
+            }
+        }
     }
 
     private long upsertCoverage(

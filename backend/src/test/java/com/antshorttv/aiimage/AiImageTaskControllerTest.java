@@ -203,6 +203,9 @@ class AiImageTaskControllerTest {
              "prompt":"礼服定妆照","aspectRatio":"3:4","imageCount":1}
             """.formatted(variantId));
         Long taskId = readLong(created, "$.data.id");
+        assertThat(jdbcTemplate.queryForObject(
+            "select prompt from ai_image_task where id = ?", String.class, taskId))
+            .isEqualTo("林夏完整定妆");
         MvcResult completed = waitForTaskSuccess(token, tenantId, projectId, taskId);
         Long resultId = readLong(completed, "$.data.results[0].id");
 
@@ -221,6 +224,91 @@ class AiImageTaskControllerTest {
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
             "select main_image_result_id from character_asset where id = ?", Long.class, assetId))
             .isEqualTo(resultId);
+    }
+
+    @Test
+    void usesNonPrimaryVariantPromptAndCanonicalCharacterReference() throws Exception {
+        String token = registerUser("13800014121", "Costume Image Creator");
+        Long tenantId = createTenant(token, "变装图片团队");
+        Long ownerId = userIdByMobile("13800014121");
+        Long projectId = createProject(token, tenantId, ownerId, "变装图片项目", "COSTUME_VARIANT_PROMPT");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, prompt, status, created_by, created_at, updated_at)
+            values (?, ?, '林夏', 'LEAD', '林夏主体定妆', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long assetId = jdbcTemplate.queryForObject(
+            "select id from character_asset where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, prompt, source_type, generation_status,
+               current_image_url, is_primary, created_by, created_at, updated_at)
+            values
+              (?, ?, 'CHARACTER', ?, '默认形态', '历史重复提示词', 'AI', 'COMPLETED',
+               '/canonical.png', true, ?, now(), now()),
+              (?, ?, 'CHARACTER', ?, '雨天造型', '性别:女；衣着描述:湿发白裙', 'AI', 'NOT_STARTED',
+               null, false, ?, now(), now())
+            """, tenantId, projectId, assetId, ownerId, tenantId, projectId, assetId, ownerId);
+        Long lookId = jdbcTemplate.queryForObject(
+            "select id from asset_visual_variant where asset_id = ? and is_primary = false", Long.class, assetId);
+
+        MvcResult created = createImageTask(token, tenantId, projectId, "costume-prompt-create", """
+            {"taskType":"CHARACTER","targetType":"VISUAL_VARIANT","targetId":%d,
+             "prompt":"客户端错误提示词","aspectRatio":"3:4","imageCount":1}
+            """.formatted(lookId));
+        Long taskId = readLong(created, "$.data.id");
+
+        assertThat(jdbcTemplate.queryForMap(
+            "select prompt, reference_images from ai_image_task where id = ?", taskId))
+            .containsEntry("PROMPT", "性别:女；衣着描述:湿发白裙")
+            .containsEntry("REFERENCE_IMAGES", "/canonical.png");
+    }
+
+    @Test
+    void rejectsVisualVariantImageTaskWhenApplicablePromptIsMissing() throws Exception {
+        String token = registerUser("13800014122", "Missing Prompt Creator");
+        Long tenantId = createTenant(token, "缺少提示词团队");
+        Long ownerId = userIdByMobile("13800014122");
+        Long projectId = createProject(token, tenantId, ownerId, "缺少提示词项目", "MISSING_VARIANT_PROMPT");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, prompt, status, created_by, created_at, updated_at)
+            values (?, ?, '林夏', 'LEAD', '林夏主体定妆', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long assetId = jdbcTemplate.queryForObject(
+            "select id from character_asset where tenant_id = ? and project_id = ? order by id desc limit 1",
+            Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, prompt, source_type, generation_status,
+               current_image_url, is_primary, created_by, created_at, updated_at)
+            values
+              (?, ?, 'CHARACTER', ?, '默认形态', null, 'AI', 'COMPLETED', '/canonical.png', true, ?, now(), now()),
+              (?, ?, 'CHARACTER', ?, '雨天造型', null, 'AI', 'NOT_STARTED', null, false, ?, now(), now())
+            """, tenantId, projectId, assetId, ownerId, tenantId, projectId, assetId, ownerId);
+        Long lookId = jdbcTemplate.queryForObject(
+            "select id from asset_visual_variant where asset_id = ? and is_primary = false", Long.class, assetId);
+
+        mockMvc.perform(post("/api/projects/%d/ai-image-tasks".formatted(projectId))
+                .with(authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "missing-variant-prompt")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"taskType":"CHARACTER","targetType":"VISUAL_VARIANT","targetId":%d,
+                     "prompt":"客户端兜底文本","aspectRatio":"3:4","imageCount":1}
+            """.formatted(lookId)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorMessage", is("请先完成视觉形象提示词后再生成图片。")));
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_image_task where tenant_id = ? and project_id = ?",
+            Integer.class, tenantId, projectId)).isZero();
     }
 
     @Test

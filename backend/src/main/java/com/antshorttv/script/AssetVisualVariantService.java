@@ -27,7 +27,7 @@ public class AssetVisualVariantService {
                 .eq("tenant_id", tenantId).eq("project_id", projectId)
                 .eq("asset_type", type.name()).eq("asset_id", assetId)
                 .isNull("deleted_at").orderByDesc("is_primary").orderByAsc("id"))
-            .stream().map(this::derivePromptIfMissing).map(this::response).toList();
+            .stream().map(this::response).toList();
     }
 
     @Transactional
@@ -53,7 +53,7 @@ public class AssetVisualVariantService {
         entity.setAssetId(assetId);
         entity.setName(command.name().trim());
         entity.setAppearance(blankToNull(command.appearance()));
-        entity.setPrompt(blankToNull(command.prompt()));
+        entity.setPrompt(primary ? null : blankToNull(command.prompt()));
         entity.setSourceType(defaultValue(command.sourceType(), "MANUAL"));
         entity.setGenerationStatus(defaultValue(command.generationStatus(), "NOT_STARTED"));
         entity.setCurrentImageResultId(command.currentImageResultId());
@@ -63,6 +63,9 @@ public class AssetVisualVariantService {
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         variantMapper.insert(entity);
+        if (primary && blankToNull(command.prompt()) != null) {
+            updateCanonicalPrompt(entity, command.prompt());
+        }
         if (primary) publishLegacyIfUsable(entity);
         return response(entity);
     }
@@ -77,7 +80,11 @@ public class AssetVisualVariantService {
         }
         entity.setName(command.name().trim());
         entity.setAppearance(blankToNull(command.appearance()));
-        entity.setPrompt(blankToNull(command.prompt()));
+        if (Boolean.TRUE.equals(entity.getIsPrimary())) {
+            updateCanonicalPrompt(entity, command.prompt());
+        } else {
+            entity.setPrompt(blankToNull(command.prompt()));
+        }
         entity.setSourceType("MANUAL");
         entity.setUpdatedAt(LocalDateTime.now());
         variantMapper.updateById(entity);
@@ -274,21 +281,14 @@ public class AssetVisualVariantService {
 
     @Transactional
     public GenerationInput prepareGeneration(Long tenantId, Long projectId, Long variantId) {
-        AssetVisualVariantEntity variant = derivePromptIfMissing(
-            requireVariant(tenantId, projectId, variantId, true));
+        AssetVisualVariantEntity variant = requireVariant(tenantId, projectId, variantId, true);
         AssetType type = AssetType.fromStorageValue(variant.getAssetType());
-        String table = switch (type) {
-            case CHARACTER -> "character_asset";
-            case SCENE -> "scene_asset";
-            case PROP -> "prop_asset";
-        };
-        java.util.Map<String, Object> asset = jdbc.queryForMap("select name, prompt from " + table
-            + " where id = ? and tenant_id = ? and project_id = ? and deleted_at is null",
-            variant.getAssetId(), tenantId, projectId);
         boolean primaryVariant = Boolean.TRUE.equals(variant.getIsPrimary());
-        String prompt = primaryVariant ? stringValue(asset.get("prompt")) : variant.getPrompt();
+        String prompt = effectivePrompt(variant);
         if (prompt == null || prompt.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先完成资产提示词后再生成图片。");
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, primaryVariant
+                ? "请先完成资产主体提示词后再生成图片。"
+                : "请先完成视觉形象提示词后再生成图片。");
         }
         if (type != AssetType.CHARACTER || primaryVariant) {
             return new GenerationInput(prompt, List.of());
@@ -300,43 +300,25 @@ public class AssetVisualVariantService {
         return new GenerationInput(prompt, List.of(primary.imageUrl()));
     }
 
-    private String stringValue(Object value) {
-        return value == null ? null : String.valueOf(value);
+    private String effectivePrompt(AssetVisualVariantEntity variant) {
+        if (!Boolean.TRUE.equals(variant.getIsPrimary())) return blankToNull(variant.getPrompt());
+        return jdbc.queryForObject("select prompt from " + assetTable(variant)
+                + " where id = ? and tenant_id = ? and project_id = ? and deleted_at is null",
+            String.class, variant.getAssetId(), variant.getTenantId(), variant.getProjectId());
     }
 
-    private AssetVisualVariantEntity derivePromptIfMissing(AssetVisualVariantEntity variant) {
-        if (variant.getPrompt() != null && !variant.getPrompt().isBlank()) {
-            return variant;
-        }
-        AssetType type = AssetType.fromStorageValue(variant.getAssetType());
-        String table = switch (type) {
+    private void updateCanonicalPrompt(AssetVisualVariantEntity variant, String prompt) {
+        jdbc.update("update " + assetTable(variant) + " set prompt = ?, updated_at = now()"
+                + " where id = ? and tenant_id = ? and project_id = ? and deleted_at is null",
+            blankToNull(prompt), variant.getAssetId(), variant.getTenantId(), variant.getProjectId());
+    }
+
+    private String assetTable(AssetVisualVariantEntity variant) {
+        return switch (AssetType.fromStorageValue(variant.getAssetType())) {
             case CHARACTER -> "character_asset";
             case SCENE -> "scene_asset";
             case PROP -> "prop_asset";
         };
-        java.util.Map<String, Object> asset = jdbc.queryForMap("select name, prompt from " + table
-            + " where id = ? and tenant_id = ? and project_id = ? and deleted_at is null",
-            variant.getAssetId(), variant.getTenantId(), variant.getProjectId());
-        String basis = blankToNull(stringValue(asset.get("prompt")));
-        if (basis == null) {
-            basis = switch (type) {
-                case CHARACTER -> "角色设定：" + stringValue(asset.get("name"));
-                case SCENE -> "场景设定：" + stringValue(asset.get("name"));
-                case PROP -> "道具设定：" + stringValue(asset.get("name"));
-            };
-        }
-        String constraint = switch (type) {
-            case CHARACTER -> "保持该角色身份一致。";
-            case SCENE -> "保持场景空间与氛围一致。";
-            case PROP -> "保持道具形态与材质一致。";
-        };
-        String appearance = blankToNull(variant.getAppearance());
-        String prompt = basis + "；视觉形象：" + variant.getName()
-            + (appearance == null ? "" : "；外观：" + appearance) + "；" + constraint;
-        variant.setPrompt(prompt);
-        variant.setUpdatedAt(LocalDateTime.now());
-        variantMapper.updateById(variant);
-        return variant;
     }
 
     private void clearPrimary(Long tenantId, Long projectId, AssetType type, Long assetId) {
@@ -459,7 +441,7 @@ public class AssetVisualVariantService {
 
     private VariantResponse response(AssetVisualVariantEntity entity) {
         return new VariantResponse(entity.getId(), entity.getAssetType(), entity.getAssetId(), entity.getName(),
-            entity.getAppearance(), entity.getPrompt(), entity.getSourceType(), entity.getGenerationStatus(),
+            entity.getAppearance(), effectivePrompt(entity), entity.getSourceType(), entity.getGenerationStatus(),
             entity.getGenerationTaskId(), entity.getCurrentImageResultId(), entity.getCurrentImageUrl(),
             currentImageThumbnailUrl(entity),
             entity.getGenerationErrorCode(), entity.getGenerationErrorMessage(),

@@ -192,7 +192,7 @@ const workspace = {
           {
             id: 11,
             name: '日常形象',
-            prompt: '性别:男；衣着描述:黄色上衣，蓝色背带裤',
+            prompt: '6岁男孩，写实都市风格',
             primary: true,
             usable: true,
             generationStatus: 'COMPLETED',
@@ -267,6 +267,8 @@ describe('ProductionWorkbenchSettings', () => {
   beforeEach(() => {
     sessionStorage.clear();
     vi.clearAllMocks();
+    workspace.characters[0].visual.variants[0].prompt =
+      '6岁男孩，写实都市风格';
     workspace.characters[0].visual.variants[1].prompt =
       '性别:男；衣着描述:白色礼服，领结';
     mocks.queryScriptWorkspace.mockResolvedValue({ data: workspace });
@@ -560,11 +562,44 @@ describe('ProductionWorkbenchSettings', () => {
         1,
         expect.objectContaining({
           targetId: 11,
-          prompt: '性别:男；衣着描述:黄色上衣，蓝色背带裤',
+          prompt: '6岁男孩，写实都市风格',
         }),
       );
     });
     expect(mocks.updateVisualVariant).not.toHaveBeenCalled();
+  });
+
+  it('saves an edited primary prompt through the effective visual update path', async () => {
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findByText('斌斌');
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成图片日常形象' }));
+    expect(screen.getByLabelText('日常形象生成提示词')).toHaveValue(
+      '6岁男孩，写实都市风格',
+    );
+    fireEvent.change(screen.getByLabelText('日常形象生成提示词'), {
+      target: { value: '6岁男孩主体角色设定图' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提交日常形象生成' }));
+
+    await waitFor(() => {
+      expect(mocks.updateVisualVariant).toHaveBeenCalledWith(
+        1,
+        11,
+        expect.objectContaining({ prompt: '6岁男孩主体角色设定图' }),
+      );
+      expect(mocks.createAiImageTask).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          targetId: 11,
+          prompt: '6岁男孩主体角色设定图',
+          referenceImages: undefined,
+        }),
+      );
+    });
   });
 
   it('blocks visual generation when the persisted prompt is empty', async () => {
@@ -581,6 +616,28 @@ describe('ProductionWorkbenchSettings', () => {
 
     await waitFor(() => {
       expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+      expect(mocks.messageError).toHaveBeenCalledWith(
+        '请先完成视觉形象提示词后再生成图片。',
+      );
+    });
+  });
+
+  it('blocks primary generation with a canonical asset prompt message', async () => {
+    workspace.characters[0].visual.variants[0].prompt = '';
+    render(<ProductionWorkbenchSettings />);
+
+    await screen.findByText('斌斌');
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成图片日常形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '提交日常形象生成' }));
+
+    await waitFor(() => {
+      expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+      expect(mocks.messageError).toHaveBeenCalledWith(
+        '请先完成资产主体提示词后再生成图片。',
+      );
     });
   });
   it('renders the reference-style asset workbench instead of the old image task table', async () => {

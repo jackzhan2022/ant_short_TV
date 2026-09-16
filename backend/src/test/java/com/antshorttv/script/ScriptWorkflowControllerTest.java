@@ -186,17 +186,19 @@ class ScriptWorkflowControllerTest {
             """, tenantId, projectId, script.get("id"), script.get("current_version_id"));
         String body = "{\"targetType\":\"ALL\",\"promptPolicy\":\"FILL_EMPTY\"}";
 
-        mockMvc.perform(post("/api/projects/%d/asset-reextraction".formatted(projectId))
+        MvcResult firstSubmission = mockMvc.perform(post("/api/projects/%d/asset-reextraction".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId).header("Idempotency-Key", "scope-fingerprint-a")
                 .contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isAccepted());
+            .andExpect(status().isAccepted())
+            .andReturn();
+        Long firstExecutionId = readLong(firstSubmission, "$.data.id");
         mockMvc.perform(post("/api/projects/%d/asset-reextraction".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId).header("Idempotency-Key", "scope-fingerprint-equivalent")
                 .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isAccepted())
-            .andExpect(jsonPath("$.data.admission", is("REUSED")));
+            .andExpect(jsonPath("$.data.id", is(firstExecutionId.intValue())));
         assertThat(billableCounts(tenantId).get("script_ai_operation")).isEqualTo(1);
         assertThat(billableCounts(tenantId).get("ai_execution_task")).isEqualTo(1);
         assertThat(billableCounts(tenantId).get("ai_point_reservation")).isEqualTo(1);
@@ -210,8 +212,9 @@ class ScriptWorkflowControllerTest {
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId).header("Idempotency-Key", "scope-fingerprint-b")
                 .contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isAccepted())
-            .andExpect(jsonPath("$.data.admission", is("CONFLICT")));
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.errorCode", is("ASSET_EXTRACTION_CONFLICT")))
+            .andExpect(jsonPath("$.data.executionId", is(firstExecutionId.intValue())));
         assertThat(billableCounts(tenantId).get("script_ai_operation")).isEqualTo(1);
         assertThat(billableCounts(tenantId).get("ai_execution_task")).isEqualTo(1);
         assertThat(billableCounts(tenantId).get("ai_point_reservation")).isEqualTo(1);
@@ -1604,7 +1607,8 @@ class ScriptWorkflowControllerTest {
                     """;
                 case "save_episode_assets" -> """
                     {"schemaVersion":1,"characters":[{"localKey":"c1","assetKey":null,"name":"主角","aliases":[],
-                    "prompt":"主角清晰定妆照","evidence":"主角"}],"characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+                    "prompt":"## 任务：完成角色的上半身正面平视特写和该角色的全身三视图\\n\\n角色描述:\\n\\n- **时代基底**: 现代\\n- **国家/朝代**: 未明确\\n- **人种**: 未明确\\n- **类型基底**: 现实题材\\n- **脸型**: 鹅蛋脸\\n- **发型**: 黑色短发\\n- **耳饰**: 无\\n- **身材**: 匀称\\n- **头身比**: 7头身\\n- **上身着装**: 深色夹克\\n- **下身着装**: 深色长裤\\n- **鞋子**: 黑色休闲鞋\\n- **性别**: 未明确\\n- **年龄**: 青年",
+                    "evidence":"主角"}],"characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
                     """;
                 default -> throw new AssertionError("Unexpected controller Agent tool: " + terminal);
             };

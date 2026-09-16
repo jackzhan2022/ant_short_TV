@@ -29,6 +29,11 @@ class AssetVisualVariantServiceTest {
               (id, tenant_id, project_id, name, scene_type, prompt, status, created_by, created_at, updated_at)
             values (9911, 9901, 9902, '地下停车场', 'INDOOR', '昏暗地下停车场，冷色电影光影', 'CONFIRMED', 9999, now(), now())
             """);
+        jdbc.update("""
+            insert into prop_asset
+              (id, tenant_id, project_id, name, prop_type, prompt, status, created_by, created_at, updated_at)
+            values (9912, 9901, 9902, '旧怀表', 'KEY_PROP', '黄铜旧怀表，表面有划痕', 'CONFIRMED', 9999, now(), now())
+            """);
     }
 
     @Test
@@ -117,28 +122,34 @@ class AssetVisualVariantServiceTest {
     }
 
     @Test
-    void derivesAndPersistsEmptyVariantPromptWithoutReplacingEditedPrompt() {
-        jdbc.update("update character_asset set prompt = '林夏，都市悬疑剧女主角，黑色风衣' where id = 9910");
-        var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+    void primaryVariantsExposeCanonicalPromptsAndIgnoreStoredVariantPrompts() {
+        jdbc.update("update character_asset set prompt = '角色主体提示词' where id = 9910");
+        var character = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
             new AssetVisualVariantService.VariantCommand(
-                "临时造型", "白裙", null, "MANUAL", "NOT_STARTED", null, null, true));
-        var edited = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+                "默认形态", null, null, "MANUAL", "NOT_STARTED", null, null, true));
+        var scene = service.create(9901L, 9902L, "SCENE", 9911L, 9999L,
             new AssetVisualVariantService.VariantCommand(
-                "晚宴造型", "黑礼服", "用户编辑的晚宴提示词", "MANUAL", "NOT_STARTED", null, null, false));
+                "默认场景", null, null, "MANUAL", "NOT_STARTED", null, null, true));
+        var prop = service.create(9901L, 9902L, "PROP", 9912L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "默认形态", null, null, "MANUAL", "NOT_STARTED", null, null, true));
+        jdbc.update("update asset_visual_variant set prompt = '旧角色变体提示词' where id = ?", character.id());
+        jdbc.update("update asset_visual_variant set prompt = '旧场景变体提示词' where id = ?", scene.id());
+        jdbc.update("update asset_visual_variant set prompt = '旧道具变体提示词' where id = ?", prop.id());
 
-        var variants = service.list(9901L, 9902L, "CHARACTER", 9910L);
-        String derivedPrompt = variants.stream()
-            .filter(item -> item.id().equals(variant.id()))
-            .findFirst().orElseThrow().prompt();
-        String editedPrompt = variants.stream()
-            .filter(item -> item.id().equals(edited.id()))
-            .findFirst().orElseThrow().prompt();
+        assertThat(service.list(9901L, 9902L, "CHARACTER", 9910L)).singleElement()
+            .extracting(AssetVisualVariantService.VariantResponse::prompt).isEqualTo("角色主体提示词");
+        assertThat(service.list(9901L, 9902L, "SCENE", 9911L)).singleElement()
+            .extracting(AssetVisualVariantService.VariantResponse::prompt).isEqualTo("昏暗地下停车场，冷色电影光影");
+        assertThat(service.list(9901L, 9902L, "PROP", 9912L)).singleElement()
+            .extracting(AssetVisualVariantService.VariantResponse::prompt).isEqualTo("黄铜旧怀表，表面有划痕");
 
-        assertThat(derivedPrompt).contains("林夏，都市悬疑剧女主角，黑色风衣")
-            .contains("临时造型").contains("白裙").contains("保持该角色身份一致");
-        assertThat(editedPrompt).isEqualTo("用户编辑的晚宴提示词");
-        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, variant.id()))
-            .isEqualTo(derivedPrompt);
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, character.id()))
+            .isEqualTo("旧角色变体提示词");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, scene.id()))
+            .isEqualTo("旧场景变体提示词");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, prop.id()))
+            .isEqualTo("旧道具变体提示词");
     }
 
     @Test
@@ -146,8 +157,9 @@ class AssetVisualVariantServiceTest {
         jdbc.update("update character_asset set prompt = 'canonical character markdown' where id = 9910");
         var primary = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
             new AssetVisualVariantService.VariantCommand(
-                "日常造型", null, "must not be used", "GENERATED", "COMPLETED", 9930L,
+                "日常造型", null, null, "GENERATED", "COMPLETED", 9930L,
                 "https://cdn.example.com/canonical.png", true));
+        jdbc.update("update asset_visual_variant set prompt = 'must not be used' where id = ?", primary.id());
         var delta = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
             new AssetVisualVariantService.VariantCommand(
                 "雨天白裙", "湿裙", "性别:女；衣着描述:白色连衣裙，裙摆湿透，赤脚", "MANUAL", "NOT_STARTED", null, null, false));
@@ -161,7 +173,7 @@ class AssetVisualVariantServiceTest {
     }
 
     @Test
-    void derivesAnEmptyCharacterVariantPromptWhenGenerationSkipsWorkspaceRead() {
+    void doesNotDeriveAnEmptyNonPrimaryVariantPromptDuringReadOrGeneration() {
         jdbc.update("update character_asset set prompt = '林夏角色定妆照' where id = 9910");
         service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
             new AssetVisualVariantService.VariantCommand(
@@ -171,10 +183,42 @@ class AssetVisualVariantServiceTest {
             new AssetVisualVariantService.VariantCommand(
                 "雨天造型", "湿发白裙", null, "MANUAL", "NOT_STARTED", null, null, false));
 
-        var input = service.prepareGeneration(9901L, 9902L, variant.id());
+        assertThat(service.list(9901L, 9902L, "CHARACTER", 9910L))
+            .filteredOn(item -> item.id().equals(variant.id())).singleElement()
+            .extracting(AssetVisualVariantService.VariantResponse::prompt).isNull();
+        assertThatThrownBy(() -> service.prepareGeneration(9901L, 9902L, variant.id()))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("视觉形象提示词");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, variant.id()))
+            .isNull();
+    }
 
-        assertThat(input.prompt()).contains("林夏角色定妆照").contains("雨天造型").contains("湿发白裙");
-        assertThat(input.referenceImages()).containsExactly("https://cdn.example.com/canonical.png");
+    @Test
+    void routesPrimaryPromptEditsToCanonicalAssetAndNonPrimaryEditsToVariant() {
+        jdbc.update("update character_asset set prompt = '原主体提示词' where id = 9910");
+        var primary = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "默认形态", null, null, "AI", "NOT_STARTED", null, null, true));
+        jdbc.update("update asset_visual_variant set prompt = '历史主形象提示词' where id = ?", primary.id());
+        var look = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "雨天造型", "湿发白裙", "原变装提示词", "AI", "NOT_STARTED", null, null, false));
+
+        var updatedPrimary = service.update(9901L, 9902L, primary.id(),
+            new AssetVisualVariantService.VariantCommand(
+                "默认形态", null, "新主体提示词", null, null, null, null, null));
+        var updatedLook = service.update(9901L, 9902L, look.id(),
+            new AssetVisualVariantService.VariantCommand(
+                "雨天造型", "湿发白裙", "新变装提示词", null, null, null, null, null));
+
+        assertThat(updatedPrimary.prompt()).isEqualTo("新主体提示词");
+        assertThat(updatedLook.prompt()).isEqualTo("新变装提示词");
+        assertThat(jdbc.queryForObject("select prompt from character_asset where id = 9910", String.class))
+            .isEqualTo("新主体提示词");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, primary.id()))
+            .isEqualTo("历史主形象提示词");
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id = ?", String.class, look.id()))
+            .isEqualTo("新变装提示词");
     }
 
     @Test
