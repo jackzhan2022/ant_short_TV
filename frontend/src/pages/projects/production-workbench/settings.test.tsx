@@ -206,6 +206,8 @@ const workspace = {
             primary: false,
             usable: false,
             generationStatus: 'FAILED',
+            currentImageUrl: '/wedding.png',
+            currentImageThumbnailUrl: '/wedding-thumb.png',
             errorMessage: '生成超时',
           },
         ],
@@ -439,6 +441,14 @@ describe('ProductionWorkbenchSettings', () => {
       'src',
       '/daily-thumb.png',
     );
+    expect(
+      screen.queryByLabelText('斌斌主体提示词'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByAltText('日常形象预览图')).toHaveAttribute(
+      'src',
+      '/daily-thumb.png',
+    );
+    fireEvent.load(screen.getByTestId('视觉形象原图预加载-11'));
     expect(screen.getByAltText('日常形象预览图')).toHaveAttribute(
       'src',
       '/daily.png',
@@ -450,6 +460,15 @@ describe('ProductionWorkbenchSettings', () => {
       screen.getByRole('button', { name: '选择婚礼礼服' }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
+    expect(screen.getByAltText('婚礼礼服预览图')).toHaveAttribute(
+      'src',
+      '/wedding-thumb.png',
+    );
+    fireEvent.load(screen.getByTestId('视觉形象原图预加载-12'));
+    expect(screen.getByAltText('婚礼礼服预览图')).toHaveAttribute(
+      'src',
+      '/wedding.png',
+    );
     expect(screen.getAllByText('婚礼礼服').length).toBeGreaterThan(0);
     expect(screen.getByText('生成超时')).toBeInTheDocument();
     expect(screen.getByLabelText('婚礼礼服关联剧集')).toHaveTextContent('2');

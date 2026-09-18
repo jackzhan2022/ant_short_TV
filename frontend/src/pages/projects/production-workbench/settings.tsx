@@ -397,6 +397,8 @@ const ProductionWorkbenchSettings = () => {
   const visualRequestIdRef = useRef(0);
   const [selectedVisualVariantId, setSelectedVisualVariantId] =
     useState<number>();
+  const [loadedVisualPreviewKey, setLoadedVisualPreviewKey] =
+    useState<string>();
   const [newVariantName, setNewVariantName] = useState('');
   const [addingVariant, setAddingVariant] = useState(false);
   const [hoveredThumbnailId, setHoveredThumbnailId] = useState<number>();
@@ -903,6 +905,16 @@ const ProductionWorkbenchSettings = () => {
               const selectedVariantIndex = variants.findIndex(
                 (variant) => variant.id === selectedVariant?.id,
               );
+              const selectedVariantOriginalUrl =
+                selectedVariant?.currentImageUrl || undefined;
+              const selectedVariantPreviewKey =
+                selectedVariant && selectedVariantOriginalUrl
+                  ? `${selectedVariant.id}:${selectedVariantOriginalUrl}`
+                  : undefined;
+              const selectedVariantPreviewUrl =
+                selectedVariantPreviewKey === loadedVisualPreviewKey
+                  ? selectedVariantOriginalUrl
+                  : selectedVariant?.currentImageThumbnailUrl || undefined;
               return (
                 <>
                   <Modal
@@ -920,23 +932,6 @@ const ProductionWorkbenchSettings = () => {
                       <div role="status">视觉形象加载中</div>
                     ) : null}
                     {visualError ? <div role="alert">视觉形象加载失败 <button type="button" onClick={() => void openVisualGallery(visualAsset.type, visualAsset.item)}>重试视觉形象</button></div> : null}
-                    <Input.TextArea
-                      defaultValue={visualAsset.item.prompt || ''}
-                      aria-label={`${visualAsset.item.name}主体提示词`}
-                      placeholder="主体生成提示词"
-                      autoSize={{ minRows: 2, maxRows: 4 }}
-                      onBlur={(event) => {
-                        if (
-                          event.target.value !== (visualAsset.item.prompt || '')
-                        ) {
-                          void saveAsset(visualAsset.type, {
-                            ...visualAsset.item,
-                            prompt: event.target.value,
-                          });
-                        }
-                      }}
-                      style={{ marginBottom: 16 }}
-                    />
                     <div
                       style={{
                         display: 'flex',
@@ -1179,9 +1174,9 @@ const ProductionWorkbenchSettings = () => {
                               fontSize: 48,
                             }}
                           >
-                            {selectedVariant.currentImageUrl ? (
+                            {selectedVariantPreviewUrl ? (
                               <img
-                                src={selectedVariant.currentImageUrl}
+                                src={selectedVariantPreviewUrl}
                                 alt={`${selectedVariant.name}预览图`}
                                 style={{
                                   width: '100%',
@@ -1192,6 +1187,21 @@ const ProductionWorkbenchSettings = () => {
                             ) : (
                               selectedVariant.name.slice(0, 1)
                             )}
+                            {selectedVariantPreviewKey ? (
+                              <img
+                                key={selectedVariantPreviewKey}
+                                src={selectedVariantOriginalUrl}
+                                alt=""
+                                aria-hidden="true"
+                                data-testid={`视觉形象原图预加载-${selectedVariant.id}`}
+                                onLoad={() =>
+                                  setLoadedVisualPreviewKey(
+                                    selectedVariantPreviewKey,
+                                  )
+                                }
+                                style={{ display: 'none' }}
+                              />
+                            ) : null}
                             {variants.length > 1 ? (
                               <>
                                 <Button
