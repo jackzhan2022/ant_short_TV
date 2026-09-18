@@ -27,6 +27,7 @@ import {
   useState,
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
+import StableImage from './StableImage';
 import { conflictingExecutionId, useAssetExtractionTracking } from './useAssetExtractionTracking';
 import {
   type ProjectModelOption,
@@ -185,10 +186,7 @@ const AssetCard = ({
 }) => {
   const [imageHovered, setImageHovered] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const [thumbnailFailed, setThumbnailFailed] = useState(false);
-  const thumbnailUrl = thumbnailFailed
-    ? undefined
-    : item.mainImageThumbnailUrl;
+  const thumbnailUrl = item.mainImageThumbnailUrl;
   const bindings = item.visual?.episodeBindings ?? [];
   const variantEpisodes = (item.visual?.variants ?? []).flatMap((variant) => {
     const episodeNos = [
@@ -252,17 +250,12 @@ const AssetCard = ({
             fontWeight: 700,
           }}
         >
-          {thumbnailUrl ? (
-            <img
-              src={thumbnailUrl}
-              alt={`${item.name}当前视觉形象`}
-              loading="lazy"
-              onError={() => setThumbnailFailed(true)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          ) : (
-            item.name.slice(0, 1)
-          )}
+          <StableImage
+            src={thumbnailUrl}
+            alt={`${item.name}当前视觉形象`}
+            fallback={item.name.slice(0, 1)}
+            imageStyle={{ objectFit: 'cover' }}
+          />
           <span
             style={{
               position: 'absolute',
@@ -447,8 +440,6 @@ const ProductionWorkbenchSettings = () => {
   const visualRequestIdRef = useRef(0);
   const [selectedVisualVariantId, setSelectedVisualVariantId] =
     useState<number>();
-  const [loadedVisualPreviewKey, setLoadedVisualPreviewKey] =
-    useState<string>();
   const [newVariantName, setNewVariantName] = useState('');
   const [addingVariant, setAddingVariant] = useState(false);
   const [hoveredThumbnailId, setHoveredThumbnailId] = useState<number>();
@@ -955,16 +946,6 @@ const ProductionWorkbenchSettings = () => {
               const selectedVariantIndex = variants.findIndex(
                 (variant) => variant.id === selectedVariant?.id,
               );
-              const selectedVariantOriginalUrl =
-                selectedVariant?.currentImageUrl || undefined;
-              const selectedVariantPreviewKey =
-                selectedVariant && selectedVariantOriginalUrl
-                  ? `${selectedVariant.id}:${selectedVariantOriginalUrl}`
-                  : undefined;
-              const selectedVariantPreviewUrl =
-                selectedVariantPreviewKey === loadedVisualPreviewKey
-                  ? selectedVariantOriginalUrl
-                  : selectedVariant?.currentImageThumbnailUrl || undefined;
               return (
                 <>
                   <Modal
@@ -1075,24 +1056,15 @@ const ProductionWorkbenchSettings = () => {
                                         fontSize: 22,
                                       }}
                                     >
-                                      {variant.currentImageThumbnailUrl ||
-                                      variant.currentImageUrl ? (
-                                        <img
-                                          src={
-                                            variant.currentImageThumbnailUrl ||
-                                            variant.currentImageUrl ||
-                                            undefined
-                                          }
-                                          alt={`${variant.name}缩略图`}
-                                          style={{
-                                            width: '100%',
-                                            height: '100%',
-                                            objectFit: 'cover',
-                                          }}
-                                        />
-                                      ) : (
-                                        variant.name.slice(0, 1)
-                                      )}
+                                      <StableImage
+                                        src={
+                                          variant.currentImageThumbnailUrl ||
+                                          variant.currentImageUrl
+                                        }
+                                        alt={`${variant.name}缩略图`}
+                                        fallback={variant.name.slice(0, 1)}
+                                        imageStyle={{ objectFit: 'cover' }}
+                                      />
                                       <GenerationStatusOverlay
                                         compact
                                         status={variant.generationStatus}
@@ -1231,34 +1203,21 @@ const ProductionWorkbenchSettings = () => {
                               fontSize: 48,
                             }}
                           >
-                            {selectedVariantPreviewUrl ? (
-                              <img
-                                src={selectedVariantPreviewUrl}
-                                alt={`${selectedVariant.name}预览图`}
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'contain',
-                                }}
-                              />
-                            ) : (
-                              selectedVariant.name.slice(0, 1)
-                            )}
-                            {selectedVariantPreviewKey ? (
-                              <img
-                                key={selectedVariantPreviewKey}
-                                src={selectedVariantOriginalUrl}
-                                alt=""
-                                aria-hidden="true"
-                                data-testid={`视觉形象原图预加载-${selectedVariant.id}`}
-                                onLoad={() =>
-                                  setLoadedVisualPreviewKey(
-                                    selectedVariantPreviewKey,
-                                  )
-                                }
-                                style={{ display: 'none' }}
-                              />
-                            ) : null}
+                            <StableImage
+                              src={
+                                selectedVariant.currentImageUrl ||
+                                selectedVariant.currentImageThumbnailUrl
+                              }
+                              previewSrc={
+                                selectedVariant.currentImageUrl
+                                  ? selectedVariant.currentImageThumbnailUrl
+                                  : undefined
+                              }
+                              alt={`${selectedVariant.name}预览图`}
+                              fallback={selectedVariant.name.slice(0, 1)}
+                              loading="eager"
+                              imageStyle={{ objectFit: 'contain' }}
+                            />
                             <GenerationStatusOverlay
                               status={selectedVariant.generationStatus}
                               label={`${selectedVariant.name}主预览生成状态`}

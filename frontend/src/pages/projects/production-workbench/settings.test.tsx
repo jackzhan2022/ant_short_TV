@@ -382,12 +382,21 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.queryByText(/审核资产/)).not.toBeInTheDocument();
   });
 
-  it('renders summary thumbnails with native lazy loading', async () => {
+  it('reveals summary thumbnails only after stable image loading', async () => {
     render(<ProductionWorkbenchSettings />);
 
     const thumbnail = await screen.findByAltText('斌斌当前视觉形象');
     expect(thumbnail).toHaveAttribute('src', '/daily-thumb.png');
     expect(thumbnail).toHaveAttribute('loading', 'lazy');
+    expect(thumbnail).toHaveStyle({ opacity: '0' });
+    expect(screen.getByLabelText('斌斌当前视觉形象加载中')).toBeInTheDocument();
+
+    fireEvent.load(thumbnail);
+
+    await waitFor(() => expect(thumbnail).toHaveStyle({ opacity: '1' }));
+    expect(
+      screen.queryByLabelText('斌斌当前视觉形象加载中'),
+    ).not.toBeInTheDocument();
   });
 
   it('loads only the opened visual detail and retains assets on detail failure', async () => {
@@ -458,15 +467,22 @@ describe('ProductionWorkbenchSettings', () => {
     expect(
       screen.queryByLabelText('斌斌主体提示词'),
     ).not.toBeInTheDocument();
-    expect(screen.getByAltText('日常形象预览图')).toHaveAttribute(
-      'src',
-      '/daily-thumb.png',
+    const mainPreview = screen.getByTestId('视觉形象主图预览');
+    const dailyOriginal = screen.getByAltText('日常形象预览图');
+    const dailyPreview = mainPreview.querySelector<HTMLImageElement>(
+      'img[src="/daily-thumb.png"]',
     );
-    fireEvent.load(screen.getByTestId('视觉形象原图预加载-11'));
-    expect(screen.getByAltText('日常形象预览图')).toHaveAttribute(
+    expect(dailyOriginal).toHaveAttribute(
       'src',
       '/daily.png',
     );
+    expect(dailyOriginal).toHaveStyle({ opacity: '0' });
+    expect(dailyPreview).not.toBeNull();
+    fireEvent.load(dailyPreview as HTMLImageElement);
+    await waitFor(() => expect(dailyPreview).toHaveStyle({ opacity: '1' }));
+    fireEvent.load(dailyOriginal);
+    await waitFor(() => expect(dailyOriginal).toHaveStyle({ opacity: '1' }));
+    expect(dailyPreview).toHaveStyle({ opacity: '0' });
     expect(
       screen.getByRole('button', { name: '选择日常形象' }),
     ).toBeInTheDocument();
@@ -474,15 +490,21 @@ describe('ProductionWorkbenchSettings', () => {
       screen.getByRole('button', { name: '选择婚礼礼服' }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
-    expect(screen.getByAltText('婚礼礼服预览图')).toHaveAttribute(
-      'src',
-      '/wedding-thumb.png',
+    const weddingOriginal = screen.getByAltText('婚礼礼服预览图');
+    const weddingPreview = mainPreview.querySelector<HTMLImageElement>(
+      'img[src="/wedding-thumb.png"]',
     );
-    fireEvent.load(screen.getByTestId('视觉形象原图预加载-12'));
-    expect(screen.getByAltText('婚礼礼服预览图')).toHaveAttribute(
+    expect(weddingOriginal).toHaveAttribute(
       'src',
       '/wedding.png',
     );
+    expect(weddingOriginal).toHaveStyle({ opacity: '0' });
+    expect(weddingPreview).not.toBeNull();
+    fireEvent.load(weddingPreview as HTMLImageElement);
+    await waitFor(() => expect(weddingPreview).toHaveStyle({ opacity: '1' }));
+    fireEvent.load(weddingOriginal);
+    await waitFor(() => expect(weddingOriginal).toHaveStyle({ opacity: '1' }));
+    expect(weddingPreview).toHaveStyle({ opacity: '0' });
     expect(screen.getAllByText('婚礼礼服').length).toBeGreaterThan(0);
     expect(screen.getByText('生成超时')).toBeInTheDocument();
     expect(
