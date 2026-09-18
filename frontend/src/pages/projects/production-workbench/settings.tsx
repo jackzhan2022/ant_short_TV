@@ -75,6 +75,16 @@ const scopeLabels: Record<ScriptElementType, string> = {
   ...elementLabels,
 };
 
+const generationStatusPresentation = (status: string) => {
+  const presentations: Record<string, { label: string; color?: string }> = {
+    NOT_STARTED: { label: '待生成' },
+    GENERATING: { label: '生成中', color: 'blue' },
+    COMPLETED: { label: '已完成', color: 'green' },
+    FAILED: { label: '生成失败', color: 'red' },
+  };
+  return presentations[status] ?? { label: status };
+};
+
 const getSummary = (type: ElementType, item: AssetRecord) => {
   if (type === 'CHARACTER') {
     const character = item as CharacterAsset;
@@ -161,11 +171,20 @@ const AssetCard = ({
       .filter((binding) => binding.status === 'ACTIVE')
       .map((binding) => binding.episodeId),
   ).size;
-  const pendingCount = (item.visual?.variants ?? []).filter(
-    (variant) =>
-      variant.generationStatus === 'NOT_STARTED' ||
-      variant.generationStatus === 'FAILED',
-  ).length;
+  const assetGenerationStatus = [
+    'GENERATING',
+    'FAILED',
+    'NOT_STARTED',
+    'COMPLETED',
+  ]
+    .map((status) => ({
+      status,
+      count: item.visual?.generationSummary?.[status] ?? 0,
+    }))
+    .find(({ count }) => count > 0);
+  const assetGenerationPresentation = assetGenerationStatus
+    ? generationStatusPresentation(assetGenerationStatus.status)
+    : undefined;
   const visualLabel = type === 'CHARACTER' ? '变装' : '视觉形象';
 
   return (
@@ -269,24 +288,22 @@ const AssetCard = ({
               ) : null}
             </div>
           ) : null}
-          {pendingCount ? (
-            <span
+          {assetGenerationStatus && assetGenerationPresentation ? (
+            <Tag
+              aria-label={`${item.name}视觉形象生成状态`}
+              color={assetGenerationPresentation.color}
               style={{
                 position: 'absolute',
                 bottom: 7,
                 left: '50%',
                 transform: 'translateX(-50%)',
-                padding: '3px 10px',
-                borderRadius: 6,
-                background: 'var(--app-color-text)',
-                color: 'var(--app-color-primary-hover)',
+                margin: 0,
                 fontSize: 12,
-                fontWeight: 500,
                 whiteSpace: 'nowrap',
               }}
             >
-              {pendingCount} 个变装待生成
-            </span>
+              {assetGenerationPresentation.label} {assetGenerationStatus.count}
+            </Tag>
           ) : null}
         </div>
         <div style={{ padding: '10px 0 0' }}>
@@ -915,6 +932,9 @@ const ProductionWorkbenchSettings = () => {
                 selectedVariantPreviewKey === loadedVisualPreviewKey
                   ? selectedVariantOriginalUrl
                   : selectedVariant?.currentImageThumbnailUrl || undefined;
+              const selectedVariantGenerationStatus = selectedVariant
+                ? generationStatusPresentation(selectedVariant.generationStatus)
+                : undefined;
               return (
                 <>
                   <Modal
@@ -974,6 +994,10 @@ const ProductionWorkbenchSettings = () => {
                             {variants.map((variant) => {
                               const selected =
                                 variant.id === selectedVariant?.id;
+                              const variantGenerationStatus =
+                                generationStatusPresentation(
+                                  variant.generationStatus,
+                                );
                               return (
                                 <div
                                   key={variant.id}
@@ -1058,6 +1082,23 @@ const ProductionWorkbenchSettings = () => {
                                       {variant.primary ? ' · 主图' : ''}
                                     </span>
                                   </button>
+                                  <Tag
+                                    aria-label={`${variant.name}缩略图生成状态`}
+                                    color={variantGenerationStatus.color}
+                                    style={{
+                                      position: 'absolute',
+                                      top: 4,
+                                      left: 4,
+                                      zIndex: 1,
+                                      margin: 0,
+                                      paddingInline: 4,
+                                      fontSize: 10,
+                                      lineHeight: '18px',
+                                      pointerEvents: 'none',
+                                    }}
+                                  >
+                                    {variantGenerationStatus.label}
+                                  </Tag>
                                   <Popconfirm
                                     title={`确认删除${variant.name}`}
                                     description="删除后无法恢复，确定继续吗？"
@@ -1279,7 +1320,14 @@ const ProductionWorkbenchSettings = () => {
                               {selectedVariant.primary ? (
                                 <Tag color="blue">主形象</Tag>
                               ) : null}
-                              <Tag>{selectedVariant.generationStatus}</Tag>
+                              {selectedVariantGenerationStatus ? (
+                                <Tag
+                                  aria-label={`${selectedVariant.name}主预览生成状态`}
+                                  color={selectedVariantGenerationStatus.color}
+                                >
+                                  {selectedVariantGenerationStatus.label}
+                                </Tag>
+                              ) : null}
                             </div>
                             <Flex gap={8}>
                               {!selectedVariant.primary ? (

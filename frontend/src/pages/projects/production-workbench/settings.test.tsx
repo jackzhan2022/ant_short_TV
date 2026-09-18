@@ -152,7 +152,11 @@ vi.mock('antd', () => ({
       ),
     },
   ),
-  Tag: ({ children }: any) => <span>{children}</span>,
+  Tag: ({ children, color, ...props }: any) => (
+    <span data-color={color} {...props}>
+      {children}
+    </span>
+  ),
   Typography: {
     Paragraph: ({ children }: any) => <p>{children}</p>,
     Text: ({ children }: any) => <span>{children}</span>,
@@ -211,7 +215,7 @@ const workspace = {
             errorMessage: '生成超时',
           },
         ],
-        generationSummary: { COMPLETED: 1, FAILED: 1 },
+        generationSummary: { COMPLETED: 1, GENERATING: 0, FAILED: 1 },
         episodeBindings: [
           {
             id: 31,
@@ -273,6 +277,9 @@ describe('ProductionWorkbenchSettings', () => {
       '6岁男孩，写实都市风格';
     workspace.characters[0].visual.variants[1].prompt =
       '性别:男；衣着描述:白色礼服，领结';
+    workspace.characters[0].visual.variants[1].generationStatus = 'FAILED';
+    workspace.characters[0].visual.generationSummary.GENERATING = 0;
+    workspace.characters[0].visual.generationSummary.FAILED = 1;
     mocks.queryScriptWorkspace.mockResolvedValue({ data: workspace });
     mocks.queryAssetSettingsSummary.mockResolvedValue({
       data: {
@@ -522,6 +529,36 @@ describe('ProductionWorkbenchSettings', () => {
     await waitFor(() => {
       expect(mocks.deleteVisualVariant).toHaveBeenCalledWith(1, 12);
     });
+  });
+
+  it('shows Chinese generation statuses on the asset card, main preview, and thumbnails', async () => {
+    workspace.characters[0].visual.variants[1].generationStatus = 'GENERATING';
+    workspace.characters[0].visual.generationSummary.GENERATING = 1;
+    workspace.characters[0].visual.generationSummary.FAILED = 0;
+
+    render(<ProductionWorkbenchSettings />);
+
+    expect(
+      await screen.findByLabelText('斌斌视觉形象生成状态'),
+    ).toHaveTextContent('生成中 1');
+    fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+
+    expect(
+      screen.getByLabelText('日常形象主预览生成状态'),
+    ).toHaveTextContent('已完成');
+    expect(
+      screen.getByLabelText('日常形象缩略图生成状态'),
+    ).toHaveTextContent('已完成');
+    expect(
+      screen.getByLabelText('婚礼礼服缩略图生成状态'),
+    ).toHaveTextContent('生成中');
+
+    fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
+    expect(
+      screen.getByLabelText('婚礼礼服主预览生成状态'),
+    ).toHaveTextContent('生成中');
   });
 
   it('opens a separate generator and saves the changed prompt before submitting', async () => {
