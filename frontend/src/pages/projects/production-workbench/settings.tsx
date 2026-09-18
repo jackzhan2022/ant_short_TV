@@ -27,6 +27,7 @@ import {
   useState,
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
+import AssetImagePlaceholder from './AssetImagePlaceholder';
 import StableImage from './StableImage';
 import { conflictingExecutionId, useAssetExtractionTracking } from './useAssetExtractionTracking';
 import {
@@ -253,7 +254,7 @@ const AssetCard = ({
           <StableImage
             src={thumbnailUrl}
             alt={`${item.name}当前视觉形象`}
-            fallback={item.name.slice(0, 1)}
+            fallback={<AssetImagePlaceholder />}
             imageStyle={{ objectFit: 'cover' }}
           />
           <span
@@ -1062,7 +1063,9 @@ const ProductionWorkbenchSettings = () => {
                                           variant.currentImageUrl
                                         }
                                         alt={`${variant.name}缩略图`}
-                                        fallback={variant.name.slice(0, 1)}
+                                        fallback={
+                                          <AssetImagePlaceholder compact />
+                                        }
                                         imageStyle={{ objectFit: 'cover' }}
                                       />
                                       <GenerationStatusOverlay
@@ -1214,7 +1217,7 @@ const ProductionWorkbenchSettings = () => {
                                   : undefined
                               }
                               alt={`${selectedVariant.name}预览图`}
-                              fallback={selectedVariant.name.slice(0, 1)}
+                              fallback={<AssetImagePlaceholder />}
                               loading="eager"
                               imageStyle={{ objectFit: 'contain' }}
                             />

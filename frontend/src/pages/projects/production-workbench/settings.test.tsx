@@ -87,6 +87,7 @@ vi.mock('@ant-design/icons', () => ({
   CheckOutlined: () => <span>check</span>,
   DeleteOutlined: () => <span>delete</span>,
   EditOutlined: () => <span>edit</span>,
+  PictureOutlined: () => <span>picture</span>,
   PlusOutlined: () => <span>plus</span>,
   RobotOutlined: () => <span>robot</span>,
   SearchOutlined: () => <span>search</span>,
@@ -285,6 +286,13 @@ describe('ProductionWorkbenchSettings', () => {
     workspace.characters[0].visual.variants[1].prompt =
       '性别:男；衣着描述:白色礼服，领结';
     workspace.characters[0].visual.variants[1].generationStatus = 'FAILED';
+    workspace.characters[0].mainImageThumbnailUrl = '/daily-thumb.png';
+    workspace.characters[0].visual.variants[0].currentImageUrl = '/daily.png';
+    workspace.characters[0].visual.variants[0].currentImageThumbnailUrl =
+      '/daily-thumb.png';
+    workspace.characters[0].visual.variants[1].currentImageUrl = '/wedding.png';
+    workspace.characters[0].visual.variants[1].currentImageThumbnailUrl =
+      '/wedding-thumb.png';
     workspace.characters[0].visual.generationSummary.GENERATING = 0;
     workspace.characters[0].visual.generationSummary.FAILED = 1;
     mocks.queryScriptWorkspace.mockResolvedValue({ data: workspace });
@@ -566,6 +574,46 @@ describe('ProductionWorkbenchSettings', () => {
     await waitFor(() => {
       expect(mocks.deleteVisualVariant).toHaveBeenCalledWith(1, 12);
     });
+  });
+
+  it('uses unified image placeholders for empty cards and gallery images', async () => {
+    (workspace.characters[0] as any).mainImageThumbnailUrl = undefined;
+    (workspace.characters[0].visual.variants[0] as any).currentImageUrl =
+      undefined;
+    (
+      workspace.characters[0].visual.variants[0] as any
+    ).currentImageThumbnailUrl = undefined;
+    (workspace.characters[0].visual.variants[1] as any).currentImageUrl =
+      undefined;
+    (
+      workspace.characters[0].visual.variants[1] as any
+    ).currentImageThumbnailUrl = undefined;
+
+    render(<ProductionWorkbenchSettings />);
+
+    const assetImage = await screen.findByTestId('asset-image-CHARACTER-1');
+    expect(
+      within(assetImage).getByRole('img', { name: '暂无图片' }),
+    ).toHaveTextContent('暂无图片');
+    fireEvent.mouseEnter(assetImage);
+    fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+
+    expect(
+      within(screen.getByTestId('视觉形象主图预览')).getByRole('img', {
+        name: '暂无图片',
+      }),
+    ).toHaveTextContent('暂无图片');
+    expect(
+      within(screen.getByTestId('视觉形象缩略图-日常形象')).getByRole('img', {
+        name: '暂无图片',
+      }),
+    ).not.toHaveTextContent('暂无图片');
+    expect(
+      within(screen.getByTestId('视觉形象缩略图-婚礼礼服')).getByRole('img', {
+        name: '暂无图片',
+      }),
+    ).not.toHaveTextContent('暂无图片');
   });
 
   it('shows Chinese generation statuses on the asset card, main preview, and thumbnails', async () => {
