@@ -38,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AiImageTaskService {
-    private static final List<String> TASK_TYPES = List.of("CHARACTER", "SCENE", "STORYBOARD_FIRST_FRAME");
+    private static final List<String> TASK_TYPES = List.of("CHARACTER", "SCENE", "PROP", "STORYBOARD_FIRST_FRAME");
     private static final List<String> TARGET_TYPES = List.of("CHARACTER", "SCENE", "STORYBOARD", "VISUAL_VARIANT");
     private static final List<String> ASPECT_RATIOS = List.of("1:1", "3:4", "4:3", "9:16", "16:9");
 
@@ -114,8 +114,38 @@ public class AiImageTaskService {
     @Transactional
     public AiImageTaskResponse create(Long tenantId, Long projectId, CreateAiImageTaskRequest request, HttpServletRequest servletRequest) {
         TenantContext context = requireProject(tenantId, projectId);
+        return createInternal(
+            tenantId, projectId, context.userId(), request,
+            requestKey(servletRequest), traceId(servletRequest), servletRequest);
+    }
+
+    @Transactional
+    AiImageTaskResponse createForBatch(
+        Long tenantId,
+        Long projectId,
+        Long userId,
+        CreateAiImageTaskRequest request,
+        String idempotencyKey,
+        String traceId
+    ) {
+        ProjectEntity project = projectMapper.selectByTenantIdAndId(tenantId, projectId);
+        if (project == null) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在。");
+        }
+        return createInternal(
+            tenantId, projectId, userId, request, idempotencyKey, traceId, null);
+    }
+
+    private AiImageTaskResponse createInternal(
+        Long tenantId,
+        Long projectId,
+        Long userId,
+        CreateAiImageTaskRequest request,
+        String idempotencyKey,
+        String traceId,
+        HttpServletRequest servletRequest
+    ) {
         validateRequest(request);
-        String idempotencyKey = requestKey(servletRequest);
         AiImageTaskEntity existing = taskMapper.selectByIdempotency(tenantId, idempotencyKey);
         if (existing != null) {
             return toResponse(existing);
@@ -146,7 +176,7 @@ public class AiImageTaskService {
         task.setSeed(blankToNull(request.seed()));
         task.setStatus(AiImageTaskStatus.PENDING.name());
         task.setClientIdempotencyKey(idempotencyKey);
-        task.setCreatedBy(context.userId());
+        task.setCreatedBy(userId);
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
         taskMapper.insert(task);
@@ -159,7 +189,7 @@ public class AiImageTaskService {
         AiExecutionTaskEntity execution = executionService.createWithReservation(
             new AiExecutionCreateCommand(
                 tenantId,
-                context.userId(),
+                userId,
                 projectId,
                 "ai_image_generate",
                 "IMAGE",
@@ -168,7 +198,7 @@ public class AiImageTaskService {
                 resolved.modelId(),
                 "SUBMIT",
                 idempotencyKey,
-                traceId(servletRequest),
+                traceId,
                 true,
                 null
             ),
@@ -181,7 +211,7 @@ public class AiImageTaskService {
         task.setExecutionId(execution.id);
         taskMapper.updateById(task);
 
-        operationLogService.record(context.userId(), tenantId, "CREATE_AI_IMAGE_TASK", task.getId(), OperationResult.SUCCESS, servletRequest);
+        operationLogService.record(userId, tenantId, "CREATE_AI_IMAGE_TASK", task.getId(), OperationResult.SUCCESS, servletRequest);
         return toResponse(task);
     }
 
@@ -489,6 +519,10 @@ public class AiImageTaskService {
             : requestedModelId;
         AiModelRoute route = aiModelRouter.route(modelId, "IMAGE");
         return new ResolvedImageModel(route.model().getId(), route.provider().getCode(), route.model().getName());
+    }
+
+    void validateBatchModel(Long tenantId, Long projectId, Long requestedModelId) {
+        resolveImageModel(tenantId, projectId, requestedModelId);
     }
 
     private record ResolvedImageModel(Long modelId, String providerCode, String modelName) {

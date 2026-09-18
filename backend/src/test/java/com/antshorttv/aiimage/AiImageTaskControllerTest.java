@@ -26,6 +26,8 @@ import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
@@ -81,6 +83,9 @@ class AiImageTaskControllerTest {
 
     @Autowired
     private AiExecutionDispatcher executionDispatcher;
+
+    @Autowired
+    private AssetImageBatchScheduler assetImageBatchScheduler;
 
     @Autowired
     private AiSecretCodec aiSecretCodec;
@@ -994,6 +999,135 @@ class AiImageTaskControllerTest {
             .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.data.execution.status", is("PENDING")))
             .andReturn();
+    }
+
+    @Test
+    void preflightsAndCreatesIdempotentAssetImageBatches() throws Exception {
+        String token = registerUser("13800014991", "Batch Image Creator");
+        Long tenantId = createTenant(token, "批量资产图团队");
+        Long ownerId = userIdByMobile("13800014991");
+        Long projectId = createProject(token, tenantId, ownerId, "批量资产图项目", "BATCH_ASSET_IMAGE");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 5);
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, prompt, status, created_by, created_at, updated_at)
+            values
+              (?, ?, '无形象角色', 'LEAD', '角色主体设定图', 'CONFIRMED', ?, now(), now()),
+              (?, ?, '已有形象角色', 'SUPPORT', '已有角色主体', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, ownerId, tenantId, projectId, ownerId);
+        List<Long> assetIds = jdbcTemplate.queryForList("""
+            select id from character_asset where tenant_id = ? and project_id = ? order by id
+            """, Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, prompt, source_type,
+               generation_status, current_image_url, is_primary, created_by, created_at, updated_at)
+            values
+              (?, ?, 'CHARACTER', ?, '默认形象', null, 'MANUAL', 'COMPLETED', '/primary.png', true, ?, now(), now()),
+              (?, ?, 'CHARACTER', ?, '礼服', '礼服造型', 'MANUAL', 'NOT_STARTED', null, false, ?, now(), now())
+            """, tenantId, projectId, assetIds.get(1), ownerId,
+            tenantId, projectId, assetIds.get(1), ownerId);
+        String body = """
+            {"assetType":"CHARACTER","assetIds":[%d,%d],"mode":"ALL",
+             "aspectRatio":"16:9","imageCount":1}
+            """.formatted(assetIds.get(0), assetIds.get(1));
+
+        mockMvc.perform(post("/api/projects/%d/asset-image-batches/preflight".formatted(projectId))
+                .with(authenticated(token)).header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.selectedAssets", is(2)))
+            .andExpect(jsonPath("$.data.plannedTasks", is(2)))
+            .andExpect(jsonPath("$.data.waitingDependencies", is(0)))
+            .andExpect(jsonPath("$.data.skippedCompleted", is(1)))
+            .andExpect(jsonPath("$.data.totalImages", is(2)));
+
+        MvcResult first = mockMvc.perform(post("/api/projects/%d/asset-image-batches".formatted(projectId))
+                .with(authenticated(token)).header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "batch-assets-once")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.total", is(3)))
+            .andExpect(jsonPath("$.data.pending", is(0)))
+            .andExpect(jsonPath("$.data.running", is(2)))
+            .andExpect(jsonPath("$.data.skipped", is(1)))
+            .andReturn();
+        Long batchId = readLong(first, "$.data.id");
+
+        mockMvc.perform(post("/api/projects/%d/asset-image-batches".formatted(projectId))
+                .with(authenticated(token)).header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "batch-assets-once")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.id", is(batchId.intValue())));
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from asset_image_batch where tenant_id = ? and project_id = ?",
+            Integer.class, tenantId, projectId)).isEqualTo(1);
+    }
+
+    @Test
+    void dispatchesCharacterDependentsAfterPrimaryBatchItemSucceeds() throws Exception {
+        String token = registerUser("13800014992", "Staged Batch Creator");
+        Long tenantId = createTenant(token, "分阶段资产图团队");
+        Long ownerId = userIdByMobile("13800014992");
+        Long projectId = createProject(token, tenantId, ownerId, "分阶段资产图项目", "STAGED_ASSET_IMAGE");
+        createImageService(token, tenantId);
+        grantTeamPoints(tenantId, 20);
+        jdbcTemplate.update("""
+            insert into character_asset
+              (tenant_id, project_id, name, role_type, prompt, status, created_by, created_at, updated_at)
+            values (?, ?, '林夏', 'LEAD', '林夏主体设定图', 'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, ownerId);
+        Long assetId = jdbcTemplate.queryForObject(
+            "select id from character_asset where tenant_id = ? and project_id = ?",
+            Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, prompt, source_type,
+               generation_status, is_primary, created_by, created_at, updated_at)
+            values
+              (?, ?, 'CHARACTER', ?, '默认形象', null, 'MANUAL', 'NOT_STARTED', true, ?, now(), now()),
+              (?, ?, 'CHARACTER', ?, '礼服', '白色礼服造型', 'MANUAL', 'NOT_STARTED', false, ?, now(), now())
+            """, tenantId, projectId, assetId, ownerId,
+            tenantId, projectId, assetId, ownerId);
+        String body = """
+            {"assetType":"CHARACTER","assetIds":[%d],"mode":"ALL",
+             "aspectRatio":"16:9","imageCount":1}
+            """.formatted(assetId);
+        MvcResult created = mockMvc.perform(post("/api/projects/%d/asset-image-batches".formatted(projectId))
+                .with(authenticated(token)).header("X-Tenant-Id", tenantId)
+                .header("Idempotency-Key", "staged-assets")
+            .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.pending", is(1)))
+            .andExpect(jsonPath("$.data.running", is(1)))
+            .andReturn();
+        Long batchId = readLong(created, "$.data.id");
+
+        assetImageBatchScheduler.tick();
+        Long primaryTaskId = jdbcTemplate.queryForObject("""
+            select task_id from asset_image_batch_item
+             where batch_id = ? and stage = 'PRIMARY'
+            """, Long.class, batchId);
+        assertThat(primaryTaskId).isNotNull();
+        assertThat(jdbcTemplate.queryForObject("""
+            select count(*) from asset_image_batch_item
+             where batch_id = ? and status = 'WAITING_DEPENDENCY'
+            """, Integer.class, batchId)).isEqualTo(1);
+
+        executionDispatcher.dispatchOnce();
+        waitForTaskSuccess(token, tenantId, projectId, primaryTaskId);
+        assetImageBatchScheduler.tick();
+
+        Map<String, Object> dependent = jdbcTemplate.queryForMap("""
+            select item.task_id, task.reference_images
+              from asset_image_batch_item item
+              join ai_image_task task on task.id = item.task_id
+             where item.batch_id = ? and item.stage = 'DEPENDENT'
+            """, batchId);
+        assertThat(dependent.get("TASK_ID")).isNotNull();
+        assertThat(String.valueOf(dependent.get("REFERENCE_IMAGES"))).contains("download");
     }
 
     private void createImageService(String token, Long tenantId) throws Exception {
