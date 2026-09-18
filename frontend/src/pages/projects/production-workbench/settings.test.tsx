@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchSettings from './settings';
 
@@ -137,6 +143,7 @@ vi.mock('antd', () => ({
     </div>
   ),
   Skeleton: () => <div>资产设定加载中</div>,
+  Spin: () => <span role="progressbar" aria-label="图片生成中" />,
   Flex: ({ children }: any) => <div>{children}</div>,
   Input: Object.assign(
     ({ value, onChange, ...props }: any) => (
@@ -478,6 +485,14 @@ describe('ProductionWorkbenchSettings', () => {
     );
     expect(screen.getAllByText('婚礼礼服').length).toBeGreaterThan(0);
     expect(screen.getByText('生成超时')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('婚礼礼服主预览生成状态'),
+    ).toHaveTextContent('生成失败');
+    expect(
+      within(
+        screen.getByLabelText('婚礼礼服主预览生成状态'),
+      ).queryByRole('progressbar'),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText('婚礼礼服关联剧集')).toHaveTextContent('2');
     expect(screen.getByLabelText('婚礼礼服关联剧集')).toHaveAttribute(
       'title',
@@ -541,24 +556,39 @@ describe('ProductionWorkbenchSettings', () => {
     expect(
       await screen.findByLabelText('斌斌视觉形象生成状态'),
     ).toHaveTextContent('生成中 1');
+    expect(
+      within(
+        screen.getByLabelText('斌斌视觉形象生成状态'),
+      ).getByRole('progressbar'),
+    ).toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
     fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
 
     expect(
-      screen.getByLabelText('日常形象主预览生成状态'),
-    ).toHaveTextContent('已完成');
+      screen.queryByLabelText('日常形象主预览生成状态'),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByLabelText('日常形象缩略图生成状态'),
-    ).toHaveTextContent('已完成');
+      screen.queryByLabelText('日常形象缩略图生成状态'),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByLabelText('婚礼礼服缩略图生成状态'),
     ).toHaveTextContent('生成中');
+    expect(
+      within(
+        screen.getByLabelText('婚礼礼服缩略图生成状态'),
+      ).getByRole('progressbar'),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
     expect(
       screen.getByLabelText('婚礼礼服主预览生成状态'),
     ).toHaveTextContent('生成中');
+    expect(
+      within(
+        screen.getByLabelText('婚礼礼服主预览生成状态'),
+      ).getByRole('progressbar'),
+    ).toBeInTheDocument();
   });
 
   it('opens a separate generator and saves the changed prompt before submitting', async () => {

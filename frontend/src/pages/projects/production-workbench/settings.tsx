@@ -15,6 +15,7 @@ import {
   Popconfirm,
   Radio,
   Skeleton,
+  Spin,
   Tag,
   Typography,
 } from 'antd';
@@ -75,14 +76,57 @@ const scopeLabels: Record<ScriptElementType, string> = {
   ...elementLabels,
 };
 
-const generationStatusPresentation = (status: string) => {
-  const presentations: Record<string, { label: string; color?: string }> = {
-    NOT_STARTED: { label: '待生成' },
-    GENERATING: { label: '生成中', color: 'blue' },
-    COMPLETED: { label: '已完成', color: 'green' },
-    FAILED: { label: '生成失败', color: 'red' },
-  };
-  return presentations[status] ?? { label: status };
+const generationStatusLabel = (status: string) =>
+  ({
+    NOT_STARTED: '等待生成',
+    GENERATING: '生成中',
+    FAILED: '生成失败',
+  })[status] ?? status;
+
+const GenerationStatusOverlay = ({
+  status,
+  label,
+  count,
+  compact = false,
+}: {
+  status: string;
+  label: string;
+  count?: number;
+  compact?: boolean;
+}) => {
+  if (status === 'COMPLETED') return null;
+  const generating = status === 'GENERATING';
+  const failed = status === 'FAILED';
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: compact ? 2 : 6,
+        background: failed
+          ? 'rgb(255 77 79 / 14%)'
+          : 'rgb(255 255 255 / 78%)',
+        color: failed ? '#cf1322' : 'var(--app-color-text-secondary)',
+        fontSize: compact ? 10 : 13,
+        fontWeight: 500,
+        lineHeight: compact ? '14px' : '20px',
+        pointerEvents: 'none',
+      }}
+    >
+      {generating ? <Spin size={compact ? 'small' : 'medium'} /> : null}
+      <span>
+        {generationStatusLabel(status)}
+        {count ? ` ${count}` : ''}
+      </span>
+    </span>
+  );
 };
 
 const getSummary = (type: ElementType, item: AssetRecord) => {
@@ -175,16 +219,12 @@ const AssetCard = ({
     'GENERATING',
     'FAILED',
     'NOT_STARTED',
-    'COMPLETED',
   ]
     .map((status) => ({
       status,
       count: item.visual?.generationSummary?.[status] ?? 0,
     }))
     .find(({ count }) => count > 0);
-  const assetGenerationPresentation = assetGenerationStatus
-    ? generationStatusPresentation(assetGenerationStatus.status)
-    : undefined;
   const visualLabel = type === 'CHARACTER' ? '变装' : '视觉形象';
 
   return (
@@ -228,6 +268,7 @@ const AssetCard = ({
               position: 'absolute',
               top: 8,
               left: 8,
+              zIndex: 2,
               padding: '3px 8px',
               borderRadius: 4,
               background: 'var(--app-color-text)',
@@ -240,7 +281,9 @@ const AssetCard = ({
             {item.status === 'CONFIRMED' ? '已确认' : '待确认'}
           </span>
           {imageHovered || actionMenuOpen ? (
-            <div style={{ position: 'absolute', top: 8, right: 8 }}>
+            <div
+              style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}
+            >
               <Button
                 size="small"
                 aria-label={`${item.name}资产操作`}
@@ -288,22 +331,12 @@ const AssetCard = ({
               ) : null}
             </div>
           ) : null}
-          {assetGenerationStatus && assetGenerationPresentation ? (
-            <Tag
-              aria-label={`${item.name}视觉形象生成状态`}
-              color={assetGenerationPresentation.color}
-              style={{
-                position: 'absolute',
-                bottom: 7,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                margin: 0,
-                fontSize: 12,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {assetGenerationPresentation.label} {assetGenerationStatus.count}
-            </Tag>
+          {assetGenerationStatus ? (
+            <GenerationStatusOverlay
+              status={assetGenerationStatus.status}
+              count={assetGenerationStatus.count}
+              label={`${item.name}视觉形象生成状态`}
+            />
           ) : null}
         </div>
         <div style={{ padding: '10px 0 0' }}>
@@ -932,9 +965,6 @@ const ProductionWorkbenchSettings = () => {
                 selectedVariantPreviewKey === loadedVisualPreviewKey
                   ? selectedVariantOriginalUrl
                   : selectedVariant?.currentImageThumbnailUrl || undefined;
-              const selectedVariantGenerationStatus = selectedVariant
-                ? generationStatusPresentation(selectedVariant.generationStatus)
-                : undefined;
               return (
                 <>
                   <Modal
@@ -994,10 +1024,6 @@ const ProductionWorkbenchSettings = () => {
                             {variants.map((variant) => {
                               const selected =
                                 variant.id === selectedVariant?.id;
-                              const variantGenerationStatus =
-                                generationStatusPresentation(
-                                  variant.generationStatus,
-                                );
                               return (
                                 <div
                                   key={variant.id}
@@ -1039,6 +1065,7 @@ const ProductionWorkbenchSettings = () => {
                                     <div
                                       style={{
                                         display: 'grid',
+                                        position: 'relative',
                                         aspectRatio: '1 / 1',
                                         placeItems: 'center',
                                         overflow: 'hidden',
@@ -1066,6 +1093,11 @@ const ProductionWorkbenchSettings = () => {
                                       ) : (
                                         variant.name.slice(0, 1)
                                       )}
+                                      <GenerationStatusOverlay
+                                        compact
+                                        status={variant.generationStatus}
+                                        label={`${variant.name}缩略图生成状态`}
+                                      />
                                     </div>
                                     <span
                                       style={{
@@ -1082,23 +1114,6 @@ const ProductionWorkbenchSettings = () => {
                                       {variant.primary ? ' · 主图' : ''}
                                     </span>
                                   </button>
-                                  <Tag
-                                    aria-label={`${variant.name}缩略图生成状态`}
-                                    color={variantGenerationStatus.color}
-                                    style={{
-                                      position: 'absolute',
-                                      top: 4,
-                                      left: 4,
-                                      zIndex: 1,
-                                      margin: 0,
-                                      paddingInline: 4,
-                                      fontSize: 10,
-                                      lineHeight: '18px',
-                                      pointerEvents: 'none',
-                                    }}
-                                  >
-                                    {variantGenerationStatus.label}
-                                  </Tag>
                                   <Popconfirm
                                     title={`确认删除${variant.name}`}
                                     description="删除后无法恢复，确定继续吗？"
@@ -1127,6 +1142,7 @@ const ProductionWorkbenchSettings = () => {
                                         position: 'absolute',
                                         top: 4,
                                         right: 4,
+                                        zIndex: 2,
                                         opacity:
                                           hoveredThumbnailId === variant.id
                                             ? 1
@@ -1243,6 +1259,10 @@ const ProductionWorkbenchSettings = () => {
                                 style={{ display: 'none' }}
                               />
                             ) : null}
+                            <GenerationStatusOverlay
+                              status={selectedVariant.generationStatus}
+                              label={`${selectedVariant.name}主预览生成状态`}
+                            />
                             {variants.length > 1 ? (
                               <>
                                 <Button
@@ -1260,6 +1280,7 @@ const ProductionWorkbenchSettings = () => {
                                   style={{
                                     position: 'absolute',
                                     left: 16,
+                                    zIndex: 2,
                                     borderRadius: 999,
                                   }}
                                 >
@@ -1278,6 +1299,7 @@ const ProductionWorkbenchSettings = () => {
                                   style={{
                                     position: 'absolute',
                                     right: 16,
+                                    zIndex: 2,
                                     borderRadius: 999,
                                   }}
                                 >
@@ -1293,6 +1315,7 @@ const ProductionWorkbenchSettings = () => {
                                 position: 'absolute',
                                 top: 10,
                                 left: 10,
+                                zIndex: 2,
                                 maxWidth: 'calc(100% - 20px)',
                                 overflow: 'hidden',
                                 padding: '4px 8px',
@@ -1319,14 +1342,6 @@ const ProductionWorkbenchSettings = () => {
                               </Typography.Text>
                               {selectedVariant.primary ? (
                                 <Tag color="blue">主形象</Tag>
-                              ) : null}
-                              {selectedVariantGenerationStatus ? (
-                                <Tag
-                                  aria-label={`${selectedVariant.name}主预览生成状态`}
-                                  color={selectedVariantGenerationStatus.color}
-                                >
-                                  {selectedVariantGenerationStatus.label}
-                                </Tag>
                               ) : null}
                             </div>
                             <Flex gap={8}>
