@@ -1,0 +1,41 @@
+create table asset_image_batch (
+  id bigint primary key auto_increment,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  asset_type varchar(32) not null,
+  generation_mode varchar(32) not null,
+  model_id bigint null,
+  aspect_ratio varchar(16) not null,
+  image_count int not null,
+  status varchar(32) not null,
+  idempotency_key varchar(200) not null,
+  creation_token varchar(36) not null,
+  created_by bigint not null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  unique key uk_asset_image_batch_idempotency (tenant_id, project_id, idempotency_key),
+  index idx_asset_image_batch_project (tenant_id, project_id, created_at)
+);
+
+create table asset_image_batch_item (
+  id bigint primary key auto_increment,
+  batch_id bigint not null,
+  tenant_id bigint not null,
+  project_id bigint not null,
+  asset_type varchar(32) not null,
+  asset_id bigint not null,
+  variant_id bigint not null,
+  variant_name varchar(200) not null,
+  stage varchar(32) not null,
+  status varchar(32) not null,
+  dependency_item_id bigint null,
+  task_id bigint null,
+  error_message varchar(1000) null,
+  created_at datetime not null,
+  updated_at datetime not null,
+  unique key uk_asset_image_batch_variant (batch_id, variant_id),
+  unique key uk_asset_image_batch_task (task_id),
+  index idx_asset_image_batch_item_ready (status, task_id, id),
+  index idx_asset_image_batch_item_batch (tenant_id, project_id, batch_id, id),
+  constraint fk_asset_image_batch_item_batch foreign key (batch_id) references asset_image_batch(id)
+);

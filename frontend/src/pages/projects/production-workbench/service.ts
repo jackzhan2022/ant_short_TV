@@ -546,12 +546,18 @@ export const queryScriptContent = async (projectId: number) =>
     `/api/projects/${projectId}/script-content`,
   );
 
-export const queryScriptVersion = async (projectId: number, versionId: number) =>
+export const queryScriptVersion = async (
+  projectId: number,
+  versionId: number,
+) =>
   request<ApiResponse<ScriptVersion>>(
     `/api/projects/${projectId}/script-versions/${versionId}`,
   );
 
-export const queryScriptEpisode = async (projectId: number, episodeId: number) =>
+export const queryScriptEpisode = async (
+  projectId: number,
+  episodeId: number,
+) =>
   request<ApiResponse<ScriptEpisode>>(
     `/api/projects/${projectId}/script-episodes/${episodeId}`,
   );
@@ -679,14 +685,11 @@ export const saveCurrentScript = async (
   projectId: number,
   values: SaveScriptValues,
 ) =>
-  request<ApiResponse<void>>(
-    `/api/projects/${projectId}/scripts/current`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      data: values,
-    },
-  );
+  request<ApiResponse<void>>(`/api/projects/${projectId}/scripts/current`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    data: values,
+  });
 
 export const applyScriptVersion = async (
   projectId: number,
@@ -719,13 +722,16 @@ export const queryAssetReextractionPreflight = async (
 
 export const submitAssetReextraction = async (
   projectId: number,
-  values: { targetType: AssetReextractionScope; promptPolicy: AssetPromptPolicy },
+  values: {
+    targetType: AssetReextractionScope;
+    promptPolicy: AssetPromptPolicy;
+  },
 ) =>
   request<ApiResponse<API.AiExecutionResponse>>(
-      `/api/projects/${projectId}/asset-reextraction`,
-      {
-        method: 'POST',
-        skipErrorHandler: true,
+    `/api/projects/${projectId}/asset-reextraction`,
+    {
+      method: 'POST',
+      skipErrorHandler: true,
       headers: { 'Content-Type': 'application/json' },
       data: values,
     },
@@ -860,17 +866,14 @@ export const createStoryboard = async (
   projectId: number,
   values: SaveStoryboardValues,
 ) =>
-  request<ApiResponse<void>>(
-    `/api/projects/${projectId}/storyboards`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Idempotency-Key': crypto.randomUUID(),
-      },
-      data: values,
+  request<ApiResponse<void>>(`/api/projects/${projectId}/storyboards`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': crypto.randomUUID(),
     },
-  );
+    data: values,
+  });
 
 export const updateStoryboard = async (
   projectId: number,
@@ -901,10 +904,9 @@ export const moveStoryboard = async (
   );
 
 export const confirmStoryboards = async (projectId: number) =>
-  request<ApiResponse<void>>(
-    `/api/projects/${projectId}/storyboards/confirm`,
-    { method: 'PUT' },
-  );
+  request<ApiResponse<void>>(`/api/projects/${projectId}/storyboards/confirm`, {
+    method: 'PUT',
+  });
 
 export const deleteStoryboard = async (
   projectId: number,
@@ -955,6 +957,97 @@ export const createAiImageTask = async (
       headers: { 'Content-Type': 'application/json' },
       data: values,
     },
+  );
+
+export type AssetImageBatchValues = {
+  assetType: Exclude<ScriptElementType, 'ALL'>;
+  assetIds: number[];
+  mode: 'PRIMARY' | 'ALL';
+  modelId?: number;
+  aspectRatio: string;
+  imageCount: number;
+};
+
+export type AssetImageBatchPreflight = {
+  assetType: Exclude<ScriptElementType, 'ALL'>;
+  mode: 'PRIMARY' | 'ALL';
+  selectedAssets: number;
+  plannedTasks: number;
+  waitingDependencies: number;
+  skippedCompleted: number;
+  skippedGenerating: number;
+  skippedMissingPrompt: number;
+  skippedOther: number;
+  totalImages: number;
+};
+
+export type AssetImageBatchItem = {
+  id: number;
+  assetId: number;
+  variantId: number;
+  variantName: string;
+  stage: string;
+  status: string;
+  dependencyItemId?: number | null;
+  taskId?: number | null;
+  errorMessage?: string | null;
+};
+
+export type AssetImageBatch = {
+  id: number;
+  projectId: number;
+  assetType: Exclude<ScriptElementType, 'ALL'>;
+  mode: 'PRIMARY' | 'ALL';
+  status: string;
+  total: number;
+  pending: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  modelId?: number | null;
+  aspectRatio: string;
+  imageCount: number;
+  items: AssetImageBatchItem[];
+  createdAt: string;
+};
+
+export const queryAssetImageBatchPreflight = async (
+  projectId: number,
+  values: AssetImageBatchValues,
+) =>
+  request<ApiResponse<AssetImageBatchPreflight>>(
+    `/api/projects/${projectId}/asset-image-batches/preflight`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: values,
+    },
+  );
+
+export const createAssetImageBatch = async (
+  projectId: number,
+  values: AssetImageBatchValues,
+  idempotencyKey: string = crypto.randomUUID(),
+) =>
+  request<ApiResponse<AssetImageBatch>>(
+    `/api/projects/${projectId}/asset-image-batches`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+      },
+      data: values,
+    },
+  );
+
+export const queryAssetImageBatch = async (
+  projectId: number,
+  batchId: number,
+) =>
+  request<ApiResponse<AssetImageBatch>>(
+    `/api/projects/${projectId}/asset-image-batches/${batchId}`,
   );
 
 export const regenerateAiImageTask = async (

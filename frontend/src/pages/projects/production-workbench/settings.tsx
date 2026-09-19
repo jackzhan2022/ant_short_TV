@@ -8,6 +8,8 @@ import { useParams } from '@umijs/max';
 import {
   App,
   Button,
+  Checkbox,
+  Dropdown,
   Empty,
   Flex,
   Input,
@@ -15,6 +17,7 @@ import {
   Popconfirm,
   Radio,
   Skeleton,
+  Spin,
   Tag,
   Typography,
 } from 'antd';
@@ -26,22 +29,29 @@ import {
   useState,
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
-import { conflictingExecutionId, useAssetExtractionTracking } from './useAssetExtractionTracking';
+import AssetImagePlaceholder from './AssetImagePlaceholder';
 import {
   type ProjectModelOption,
   queryProjectAiConfig,
   queryProjectAiModels,
 } from './ai-config/service';
+import StableImage from './StableImage';
 import {
+  type AssetImageBatch,
+  type AssetImageBatchPreflight,
+  type AssetImageBatchValues,
+  type AssetPromptPolicy,
+  type AssetReextractionPreflight,
   type AssetSettingsWorkspace,
   type CharacterAsset,
   createAiImageTask,
+  createAssetImageBatch,
   createVisualVariant,
   deleteScriptElement,
   deleteVisualVariant,
-  type AssetPromptPolicy,
-  type AssetReextractionPreflight,
   type PropAsset,
+  queryAssetImageBatch,
+  queryAssetImageBatchPreflight,
   queryAssetReextractionPreflight,
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
@@ -53,6 +63,10 @@ import {
   updateVisualVariant,
   type VisualVariant,
 } from './service';
+import {
+  conflictingExecutionId,
+  useAssetExtractionTracking,
+} from './useAssetExtractionTracking';
 
 type ElementType = Exclude<ScriptElementType, 'ALL'>;
 type AssetRecord = CharacterAsset | SceneAsset | PropAsset;
@@ -73,6 +87,57 @@ const elementLabels: Record<ElementType, string> = {
 const scopeLabels: Record<ScriptElementType, string> = {
   ALL: '全部资产',
   ...elementLabels,
+};
+
+const generationStatusLabel = (status: string) =>
+  ({
+    NOT_STARTED: '等待生成',
+    GENERATING: '生成中',
+    FAILED: '生成失败',
+  })[status] ?? status;
+
+const GenerationStatusOverlay = ({
+  status,
+  label,
+  count,
+  compact = false,
+}: {
+  status: string;
+  label: string;
+  count?: number;
+  compact?: boolean;
+}) => {
+  if (status === 'COMPLETED') return null;
+  const generating = status === 'GENERATING';
+  const failed = status === 'FAILED';
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: compact ? 2 : 6,
+        background: failed ? 'rgb(255 77 79 / 14%)' : 'rgb(255 255 255 / 78%)',
+        color: failed ? '#cf1322' : 'var(--app-color-text-secondary)',
+        fontSize: compact ? 10 : 13,
+        fontWeight: 500,
+        lineHeight: compact ? '14px' : '20px',
+        pointerEvents: 'none',
+      }}
+    >
+      {generating ? <Spin size={compact ? 'small' : 'medium'} /> : null}
+      <span>
+        {generationStatusLabel(status)}
+        {count ? ` ${count}` : ''}
+      </span>
+    </span>
+  );
 };
 
 const getSummary = (type: ElementType, item: AssetRecord) => {
@@ -122,19 +187,20 @@ const AssetCard = ({
   onDelete,
   onSave,
   onManageVisual,
+  selected,
+  onSelectedChange,
 }: {
   item: AssetRecord;
   type: ElementType;
   onDelete: (type: ElementType, id: number) => void;
   onSave: (type: ElementType, item: AssetRecord) => void;
   onManageVisual: (type: ElementType, item: AssetRecord) => void;
+  selected: boolean;
+  onSelectedChange: (selected: boolean) => void;
 }) => {
   const [imageHovered, setImageHovered] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const [thumbnailFailed, setThumbnailFailed] = useState(false);
-  const thumbnailUrl = thumbnailFailed
-    ? undefined
-    : item.mainImageThumbnailUrl;
+  const thumbnailUrl = item.mainImageThumbnailUrl;
   const bindings = item.visual?.episodeBindings ?? [];
   const variantEpisodes = (item.visual?.variants ?? []).flatMap((variant) => {
     const episodeNos = [
@@ -161,11 +227,12 @@ const AssetCard = ({
       .filter((binding) => binding.status === 'ACTIVE')
       .map((binding) => binding.episodeId),
   ).size;
-  const pendingCount = (item.visual?.variants ?? []).filter(
-    (variant) =>
-      variant.generationStatus === 'NOT_STARTED' ||
-      variant.generationStatus === 'FAILED',
-  ).length;
+  const assetGenerationStatus = ['GENERATING', 'FAILED', 'NOT_STARTED']
+    .map((status) => ({
+      status,
+      count: item.visual?.generationSummary?.[status] ?? 0,
+    }))
+    .find(({ count }) => count > 0);
   const visualLabel = type === 'CHARACTER' ? '变装' : '视觉形象';
 
   return (
@@ -193,22 +260,18 @@ const AssetCard = ({
             fontWeight: 700,
           }}
         >
-          {thumbnailUrl ? (
-            <img
-              src={thumbnailUrl}
-              alt={`${item.name}当前视觉形象`}
-              loading="lazy"
-              onError={() => setThumbnailFailed(true)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          ) : (
-            item.name.slice(0, 1)
-          )}
+          <StableImage
+            src={thumbnailUrl}
+            alt={`${item.name}当前视觉形象`}
+            fallback={<AssetImagePlaceholder />}
+            imageStyle={{ objectFit: 'cover' }}
+          />
           <span
             style={{
               position: 'absolute',
               top: 8,
               left: 8,
+              zIndex: 2,
               padding: '3px 8px',
               borderRadius: 4,
               background: 'var(--app-color-text)',
@@ -221,7 +284,7 @@ const AssetCard = ({
             {item.status === 'CONFIRMED' ? '已确认' : '待确认'}
           </span>
           {imageHovered || actionMenuOpen ? (
-            <div style={{ position: 'absolute', top: 8, right: 8 }}>
+            <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
               <Button
                 size="small"
                 aria-label={`${item.name}资产操作`}
@@ -269,38 +332,34 @@ const AssetCard = ({
               ) : null}
             </div>
           ) : null}
-          {pendingCount ? (
-            <span
-              style={{
-                position: 'absolute',
-                bottom: 7,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                padding: '3px 10px',
-                borderRadius: 6,
-                background: 'var(--app-color-text)',
-                color: 'var(--app-color-primary-hover)',
-                fontSize: 12,
-                fontWeight: 500,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {pendingCount} 个变装待生成
-            </span>
+          {assetGenerationStatus ? (
+            <GenerationStatusOverlay
+              status={assetGenerationStatus.status}
+              count={assetGenerationStatus.count}
+              label={`${item.name}视觉形象生成状态`}
+            />
           ) : null}
         </div>
         <div style={{ padding: '10px 0 0' }}>
-          <Typography.Text
-            strong
-            ellipsis={{ tooltip: item.name }}
-            style={{
-              display: 'block',
-              fontSize: 14,
-              color: 'var(--app-color-text)',
-            }}
-          >
-            {item.name}
-          </Typography.Text>
+          <Flex align="center" gap={8}>
+            <Checkbox
+              aria-label={`选择${item.name}`}
+              checked={selected}
+              onChange={(event) => onSelectedChange(event.target.checked)}
+            />
+            <Typography.Text
+              strong
+              ellipsis={{ tooltip: item.name }}
+              style={{
+                display: 'block',
+                minWidth: 0,
+                fontSize: 14,
+                color: 'var(--app-color-text)',
+              }}
+            >
+              {item.name}
+            </Typography.Text>
+          </Flex>
           <div
             style={{
               display: '-webkit-box',
@@ -369,20 +428,45 @@ const ProductionWorkbenchSettings = () => {
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
   const [activeType, setActiveType] = useState<ElementType>('CHARACTER');
+  const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const [batchMode, setBatchMode] = useState<'PRIMARY' | 'ALL'>('PRIMARY');
+  const [batchPreflight, setBatchPreflight] =
+    useState<AssetImageBatchPreflight>();
+  const [batchModelId, setBatchModelId] = useState<number>();
+  const [batchAspectRatio, setBatchAspectRatio] = useState('16:9');
+  const [batchImageCount, setBatchImageCount] = useState(1);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [activeImageBatch, setActiveImageBatch] = useState<AssetImageBatch>();
+  const batchIdempotencyKeyRef = useRef<string | undefined>(undefined);
+  const batchRequestIdRef = useRef(0);
+  const batchProjectIdRef = useRef(projectId);
+  batchProjectIdRef.current = projectId;
   const [processingAction, setProcessingAction] = useState<string>();
   const submittingExtraction = useRef(false);
   const [extractionNotice, setExtractionNotice] = useState('');
-  const { task: activeExecution, busy: extractionBusy, follow } = useAssetExtractionTracking(
+  const {
+    task: activeExecution,
+    busy: extractionBusy,
+    follow,
+  } = useAssetExtractionTracking(
     projectId,
     async (terminal) => {
       if (terminal.status === 'SUCCEEDED') {
         await reload();
         messageRef.current.success('资产提取任务已完成');
       } else {
-        messageRef.current.error(terminal.errorMessage || '资产提取任务已结束，未完成生成');
+        messageRef.current.error(
+          terminal.errorMessage || '资产提取任务已结束，未完成生成',
+        );
       }
     },
-    (error) => messageRef.current.error(error instanceof Error ? error.message : '任务状态读取失败，刷新页面可恢复跟踪'),
+    (error) =>
+      messageRef.current.error(
+        error instanceof Error
+          ? error.message
+          : '任务状态读取失败，刷新页面可恢复跟踪',
+      ),
   );
   const [reextractionPreflight, setReextractionPreflight] =
     useState<AssetReextractionPreflight>();
@@ -406,7 +490,7 @@ const ProductionWorkbenchSettings = () => {
   const [generationSubmitting, setGenerationSubmitting] = useState(false);
   const [imageModels, setImageModels] = useState<ProjectModelOption[]>([]);
   const [generationModelId, setGenerationModelId] = useState<number>();
-  const [generationAspectRatio, setGenerationAspectRatio] = useState('3:4');
+  const [generationAspectRatio, setGenerationAspectRatio] = useState('16:9');
   const [generationImageCount, setGenerationImageCount] = useState(1);
   const workspaceRequestId = useRef(0);
 
@@ -449,6 +533,74 @@ const ProductionWorkbenchSettings = () => {
     };
   }, [loadVersion, projectId]);
 
+  useEffect(() => {
+    batchRequestIdRef.current += 1;
+    setSelectedAssetIds([]);
+    setBatchPreflight(undefined);
+    setActiveImageBatch(undefined);
+    setBatchLoading(false);
+    setBatchSubmitting(false);
+    setBatchModelId(undefined);
+    setImageModels([]);
+  }, [projectId]);
+
+  useEffect(() => {
+    const batchId = activeImageBatch?.id;
+    if (
+      !batchId ||
+      ['SUCCEEDED', 'COMPLETED_WITH_FAILURES', 'FAILED'].includes(
+        activeImageBatch.status,
+      )
+    ) {
+      return;
+    }
+    let active = true;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const response = await queryAssetImageBatch(projectId, batchId);
+        if (!active) return;
+        const batch = response.data;
+        const terminal = [
+          'SUCCEEDED',
+          'COMPLETED_WITH_FAILURES',
+          'FAILED',
+        ].includes(batch.status);
+        setActiveImageBatch(batch);
+        void queryAssetSettingsSummary(projectId)
+          .then((summary) => {
+            if (
+              batchProjectIdRef.current === projectId &&
+              (active || terminal)
+            ) {
+              setWorkspace({ ...emptyWorkspace(projectId), ...summary.data });
+            }
+          })
+          .catch(() => {
+            // Batch completion remains authoritative when a card refresh fails.
+          });
+        if (terminal) {
+          if (batch.status === 'SUCCEEDED') {
+            messageRef.current.success('资产图批次已完成');
+          } else if (batch.status === 'COMPLETED_WITH_FAILURES') {
+            messageRef.current.warning('资产图批次部分完成');
+          } else {
+            messageRef.current.error('资产图批次生成失败');
+          }
+          return;
+        }
+        timer = window.setTimeout(poll, 2000);
+      } catch {
+        if (active) timer = window.setTimeout(poll, 2000);
+      }
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [activeImageBatch?.id, activeImageBatch?.status, projectId]);
+
   const assetsByType = useMemo(
     () => ({
       CHARACTER: workspace.characters,
@@ -460,7 +612,10 @@ const ProductionWorkbenchSettings = () => {
 
   const activeAssets = assetsByType[activeType];
   const activeGeneration = activeAssets.reduce(
-    (summary: { completed: number; failed: number; generating: number }, item: AssetRecord) => {
+    (
+      summary: { completed: number; failed: number; generating: number },
+      item: AssetRecord,
+    ) => {
       Object.entries(item.visual?.generationSummary ?? {}).forEach(
         ([status, count]) => {
           if (status === 'COMPLETED') summary.completed += count;
@@ -493,10 +648,14 @@ const ProductionWorkbenchSettings = () => {
     } catch (error) {
       const conflictId = conflictingExecutionId(error);
       if (conflictId) {
-        setExtractionNotice('当前剧本已有其他资产提取任务，已转为跟踪该任务；本次未创建新任务');
+        setExtractionNotice(
+          '当前剧本已有其他资产提取任务，已转为跟踪该任务；本次未创建新任务',
+        );
         follow(conflictId);
-      }
-      else message.error(error instanceof Error ? error.message : '资产重提取失败');
+      } else
+        message.error(
+          error instanceof Error ? error.message : '资产重提取失败',
+        );
     } finally {
       submittingExtraction.current = false;
       setProcessingAction(undefined);
@@ -504,10 +663,14 @@ const ProductionWorkbenchSettings = () => {
   };
 
   const extractAssets = async (targetType: ScriptElementType) => {
-    if (submittingExtraction.current || extractionBusy || processingAction) return;
+    if (submittingExtraction.current || extractionBusy || processingAction)
+      return;
     setProcessingAction(`extract-${targetType}`);
     try {
-      const response = await queryAssetReextractionPreflight(projectId, targetType);
+      const response = await queryAssetReextractionPreflight(
+        projectId,
+        targetType,
+      );
       const preflight = response.data;
       if (!preflight) {
         throw new Error('资产影响预检失败');
@@ -520,8 +683,113 @@ const ProductionWorkbenchSettings = () => {
       setReextractionPreflight(preflight);
       setProcessingAction(undefined);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '资产影响预检失败');
+      message.error(
+        error instanceof Error ? error.message : '资产影响预检失败',
+      );
       setProcessingAction(undefined);
+    }
+  };
+
+  const assetImageBatchValues = (
+    mode: 'PRIMARY' | 'ALL',
+    modelId = batchModelId,
+  ): AssetImageBatchValues => ({
+    assetType: activeType,
+    assetIds: selectedAssetIds,
+    mode,
+    modelId,
+    aspectRatio: batchAspectRatio,
+    imageCount: batchImageCount,
+  });
+
+  const openAssetImageBatch = async (mode: 'PRIMARY' | 'ALL') => {
+    if (!selectedAssetIds.length) return;
+    const requestId = ++batchRequestIdRef.current;
+    const requestProjectId = projectId;
+    setBatchLoading(true);
+    setBatchMode(mode);
+    setBatchAspectRatio('16:9');
+    setBatchImageCount(1);
+    try {
+      const [modelsResponse, configResponse] = await Promise.all([
+        queryProjectAiModels(projectId),
+        queryProjectAiConfig(projectId),
+      ]);
+      const modelId = configResponse.data.imageModelId || undefined;
+      const response = await queryAssetImageBatchPreflight(projectId, {
+        assetType: activeType,
+        assetIds: selectedAssetIds,
+        mode,
+        modelId,
+        aspectRatio: '16:9',
+        imageCount: 1,
+      });
+      if (
+        batchRequestIdRef.current !== requestId ||
+        batchProjectIdRef.current !== requestProjectId
+      ) {
+        return;
+      }
+      setImageModels(modelsResponse.data.imageModels || []);
+      setBatchModelId(modelId);
+      setBatchPreflight(response.data);
+      batchIdempotencyKeyRef.current = crypto.randomUUID();
+    } catch (error) {
+      if (
+        batchRequestIdRef.current === requestId &&
+        batchProjectIdRef.current === requestProjectId
+      ) {
+        message.error(
+          error instanceof Error ? error.message : '资产图批量预检失败',
+        );
+      }
+    } finally {
+      if (
+        batchRequestIdRef.current === requestId &&
+        batchProjectIdRef.current === requestProjectId
+      ) {
+        setBatchLoading(false);
+      }
+    }
+  };
+
+  const submitAssetImageBatch = async () => {
+    if (!batchPreflight || !selectedAssetIds.length) return;
+    const requestId = batchRequestIdRef.current;
+    const requestProjectId = projectId;
+    setBatchSubmitting(true);
+    try {
+      const response = await createAssetImageBatch(
+        projectId,
+        assetImageBatchValues(batchMode),
+        batchIdempotencyKeyRef.current || crypto.randomUUID(),
+      );
+      if (
+        batchRequestIdRef.current !== requestId ||
+        batchProjectIdRef.current !== requestProjectId
+      ) {
+        return;
+      }
+      setActiveImageBatch(response.data);
+      setBatchPreflight(undefined);
+      setSelectedAssetIds([]);
+      message.success('资产图批次已提交');
+    } catch (error) {
+      if (
+        batchRequestIdRef.current === requestId &&
+        batchProjectIdRef.current === requestProjectId
+      ) {
+        message.error(
+          error instanceof Error ? error.message : '资产图批次提交失败',
+        );
+      }
+    } finally {
+      if (
+        batchRequestIdRef.current === requestId &&
+        batchProjectIdRef.current === requestProjectId
+      ) {
+        setBatchSubmitting(false);
+      }
     }
   };
 
@@ -568,7 +836,13 @@ const ProductionWorkbenchSettings = () => {
       const requestId = visualRequestIdRef.current;
       const [summaryResponse, detailResponse] = await Promise.all([
         queryAssetSettingsSummary(projectId),
-        visualAsset ? queryAssetVisualWorkspace(projectId, visualAsset.type, visualAsset.item.id) : Promise.resolve(undefined),
+        visualAsset
+          ? queryAssetVisualWorkspace(
+              projectId,
+              visualAsset.type,
+              visualAsset.item.id,
+            )
+          : Promise.resolve(undefined),
       ]);
       const next = summaryResponse.data;
       setWorkspace({ ...emptyWorkspace(projectId), ...next });
@@ -581,7 +855,10 @@ const ProductionWorkbenchSettings = () => {
               : next.props;
         const item = list.find((asset) => asset.id === visualAsset.item.id);
         if (item && visualRequestIdRef.current === requestId) {
-          setVisualAsset({ type: visualAsset.type, item: { ...item, visual: detailResponse?.data } });
+          setVisualAsset({
+            type: visualAsset.type,
+            item: { ...item, visual: detailResponse?.data },
+          });
         }
       }
       message.success(successText);
@@ -603,7 +880,7 @@ const ProductionWorkbenchSettings = () => {
     }
     setGenerationVariantId(variant.id);
     setGenerationPrompt(variant.prompt || '');
-    setGenerationAspectRatio(visualAsset.type === 'CHARACTER' ? '3:4' : '16:9');
+    setGenerationAspectRatio('16:9');
     setGenerationImageCount(1);
     try {
       const [modelsResponse, configResponse] = await Promise.all([
@@ -633,7 +910,11 @@ const ProductionWorkbenchSettings = () => {
     setVisualLoading(true);
     setVisualError(false);
     try {
-      const response = await queryAssetVisualWorkspace(projectId, type, item.id);
+      const response = await queryAssetVisualWorkspace(
+        projectId,
+        type,
+        item.id,
+      );
       if (visualRequestIdRef.current !== requestId) return;
       setVisualAsset((current) =>
         current?.type === type && current.item.id === item.id
@@ -827,7 +1108,11 @@ const ProductionWorkbenchSettings = () => {
           >
             <AiExecutionStatus task={activeExecution} />
             <div>{extractionNotice}</div>
-            <button type="button" disabled={extractionBusy} onClick={() => activeExecution.id && follow(activeExecution.id)}>
+            <button
+              type="button"
+              disabled={extractionBusy}
+              onClick={() => activeExecution.id && follow(activeExecution.id)}
+            >
               查看任务 #{activeExecution.id}
             </button>
           </div>
@@ -838,7 +1123,11 @@ const ProductionWorkbenchSettings = () => {
           open={Boolean(reextractionPreflight)}
           okText="确认提交"
           cancelText="取消"
-          confirmLoading={Boolean(reextractionPreflight && processingAction === `extract-${reextractionPreflight.targetType}`)}
+          confirmLoading={Boolean(
+            reextractionPreflight &&
+              processingAction ===
+                `extract-${reextractionPreflight.targetType}`,
+          )}
           onCancel={() => setReextractionPreflight(undefined)}
           onOk={() => {
             if (!reextractionPreflight) return;
@@ -850,7 +1139,8 @@ const ProductionWorkbenchSettings = () => {
           {reextractionPreflight ? (
             <Flex vertical gap={16}>
               <Typography.Text>
-                当前范围已有 {reextractionPreflight.existingAssets} 个资产、{reextractionPreflight.existingVariants} 个视觉形态，
+                当前范围已有 {reextractionPreflight.existingAssets} 个资产、
+                {reextractionPreflight.existingVariants} 个视觉形态，
                 {reextractionPreflight.existingPrompts} 条非空提示词。
               </Typography.Text>
               <Radio.Group
@@ -863,12 +1153,104 @@ const ProductionWorkbenchSettings = () => {
               />
               {reextractionPolicy === 'REGENERATE_ALL' ? (
                 <Typography.Text type="warning">
-                  将替换当前范围内 {reextractionPreflight.existingPrompts} 条已有提示词。
+                  将替换当前范围内 {reextractionPreflight.existingPrompts}{' '}
+                  条已有提示词。
                 </Typography.Text>
               ) : null}
             </Flex>
           ) : null}
         </Modal>
+
+        <Modal
+          title="批量生成资产图"
+          open={Boolean(batchPreflight)}
+          okText="确认提交"
+          cancelText="取消"
+          confirmLoading={batchSubmitting}
+          okButtonProps={{
+            disabled: !batchPreflight || batchPreflight.plannedTasks === 0,
+          }}
+          onCancel={() => setBatchPreflight(undefined)}
+          onOk={() => void submitAssetImageBatch()}
+        >
+          {batchPreflight ? (
+            <Flex vertical gap={14}>
+              <Typography.Text>
+                已选择 {batchPreflight.selectedAssets} 个资产，计划生成{' '}
+                {batchPreflight.plannedTasks} 个形象，共{' '}
+                {batchPreflight.plannedTasks * batchImageCount} 张图片
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                依赖主形象 {batchPreflight.waitingDependencies} 个，跳过已完成{' '}
+                {batchPreflight.skippedCompleted} 个、生成中{' '}
+                {batchPreflight.skippedGenerating} 个、缺少提示词{' '}
+                {batchPreflight.skippedMissingPrompt} 个、其它不可生成{' '}
+                {batchPreflight.skippedOther} 个
+              </Typography.Text>
+              <Flex gap={12} wrap>
+                <label>
+                  图片模型
+                  <select
+                    aria-label="批量图片模型"
+                    value={batchModelId ?? ''}
+                    onChange={(event) =>
+                      setBatchModelId(
+                        event.target.value
+                          ? Number(event.target.value)
+                          : undefined,
+                      )
+                    }
+                  >
+                    <option value="">项目默认模型</option>
+                    {imageModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  图片比例
+                  <select
+                    aria-label="批量图片比例"
+                    value={batchAspectRatio}
+                    onChange={(event) =>
+                      setBatchAspectRatio(event.target.value)
+                    }
+                  >
+                    <option value="1:1">1:1</option>
+                    <option value="3:4">3:4</option>
+                    <option value="4:3">4:3</option>
+                    <option value="9:16">9:16</option>
+                    <option value="16:9">16:9</option>
+                  </select>
+                </label>
+                <label>
+                  每个形象
+                  <select
+                    aria-label="批量图片数量"
+                    value={batchImageCount}
+                    onChange={(event) =>
+                      setBatchImageCount(Number(event.target.value))
+                    }
+                  >
+                    <option value={1}>1 张</option>
+                    <option value={2}>2 张</option>
+                    <option value={4}>4 张</option>
+                  </select>
+                </label>
+              </Flex>
+            </Flex>
+          ) : null}
+        </Modal>
+
+        {activeImageBatch ? (
+          <div role="status" aria-label="资产图批次状态">
+            资产图批次 #{activeImageBatch.id}：{activeImageBatch.status}，成功{' '}
+            {activeImageBatch.succeeded}，失败 {activeImageBatch.failed}，等待{' '}
+            {activeImageBatch.pending + activeImageBatch.running}
+          </div>
+        ) : null}
 
         {visualAsset
           ? (() => {
@@ -919,24 +1301,22 @@ const ProductionWorkbenchSettings = () => {
                     {visualLoading ? (
                       <div role="status">视觉形象加载中</div>
                     ) : null}
-                    {visualError ? <div role="alert">视觉形象加载失败 <button type="button" onClick={() => void openVisualGallery(visualAsset.type, visualAsset.item)}>重试视觉形象</button></div> : null}
-                    <Input.TextArea
-                      defaultValue={visualAsset.item.prompt || ''}
-                      aria-label={`${visualAsset.item.name}主体提示词`}
-                      placeholder="主体生成提示词"
-                      autoSize={{ minRows: 2, maxRows: 4 }}
-                      onBlur={(event) => {
-                        if (
-                          event.target.value !== (visualAsset.item.prompt || '')
-                        ) {
-                          void saveAsset(visualAsset.type, {
-                            ...visualAsset.item,
-                            prompt: event.target.value,
-                          });
-                        }
-                      }}
-                      style={{ marginBottom: 16 }}
-                    />
+                    {visualError ? (
+                      <div role="alert">
+                        视觉形象加载失败{' '}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void openVisualGallery(
+                              visualAsset.type,
+                              visualAsset.item,
+                            )
+                          }
+                        >
+                          重试视觉形象
+                        </button>
+                      </div>
+                    ) : null}
                     <div
                       style={{
                         display: 'flex',
@@ -1020,6 +1400,7 @@ const ProductionWorkbenchSettings = () => {
                                     <div
                                       style={{
                                         display: 'grid',
+                                        position: 'relative',
                                         aspectRatio: '1 / 1',
                                         placeItems: 'center',
                                         overflow: 'hidden',
@@ -1029,24 +1410,22 @@ const ProductionWorkbenchSettings = () => {
                                         fontSize: 22,
                                       }}
                                     >
-                                      {variant.currentImageThumbnailUrl ||
-                                      variant.currentImageUrl ? (
-                                        <img
-                                          src={
-                                            variant.currentImageThumbnailUrl ||
-                                            variant.currentImageUrl ||
-                                            undefined
-                                          }
-                                          alt={`${variant.name}缩略图`}
-                                          style={{
-                                            width: '100%',
-                                            height: '100%',
-                                            objectFit: 'cover',
-                                          }}
-                                        />
-                                      ) : (
-                                        variant.name.slice(0, 1)
-                                      )}
+                                      <StableImage
+                                        src={
+                                          variant.currentImageThumbnailUrl ||
+                                          variant.currentImageUrl
+                                        }
+                                        alt={`${variant.name}缩略图`}
+                                        fallback={
+                                          <AssetImagePlaceholder compact />
+                                        }
+                                        imageStyle={{ objectFit: 'cover' }}
+                                      />
+                                      <GenerationStatusOverlay
+                                        compact
+                                        status={variant.generationStatus}
+                                        label={`${variant.name}缩略图生成状态`}
+                                      />
                                     </div>
                                     <span
                                       style={{
@@ -1091,6 +1470,7 @@ const ProductionWorkbenchSettings = () => {
                                         position: 'absolute',
                                         top: 4,
                                         right: 4,
+                                        zIndex: 2,
                                         opacity:
                                           hoveredThumbnailId === variant.id
                                             ? 1
@@ -1179,19 +1559,25 @@ const ProductionWorkbenchSettings = () => {
                               fontSize: 48,
                             }}
                           >
-                            {selectedVariant.currentImageUrl ? (
-                              <img
-                                src={selectedVariant.currentImageUrl}
-                                alt={`${selectedVariant.name}预览图`}
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'contain',
-                                }}
-                              />
-                            ) : (
-                              selectedVariant.name.slice(0, 1)
-                            )}
+                            <StableImage
+                              src={
+                                selectedVariant.currentImageUrl ||
+                                selectedVariant.currentImageThumbnailUrl
+                              }
+                              previewSrc={
+                                selectedVariant.currentImageUrl
+                                  ? selectedVariant.currentImageThumbnailUrl
+                                  : undefined
+                              }
+                              alt={`${selectedVariant.name}预览图`}
+                              fallback={<AssetImagePlaceholder />}
+                              loading="eager"
+                              imageStyle={{ objectFit: 'contain' }}
+                            />
+                            <GenerationStatusOverlay
+                              status={selectedVariant.generationStatus}
+                              label={`${selectedVariant.name}主预览生成状态`}
+                            />
                             {variants.length > 1 ? (
                               <>
                                 <Button
@@ -1209,6 +1595,7 @@ const ProductionWorkbenchSettings = () => {
                                   style={{
                                     position: 'absolute',
                                     left: 16,
+                                    zIndex: 2,
                                     borderRadius: 999,
                                   }}
                                 >
@@ -1227,6 +1614,7 @@ const ProductionWorkbenchSettings = () => {
                                   style={{
                                     position: 'absolute',
                                     right: 16,
+                                    zIndex: 2,
                                     borderRadius: 999,
                                   }}
                                 >
@@ -1242,6 +1630,7 @@ const ProductionWorkbenchSettings = () => {
                                 position: 'absolute',
                                 top: 10,
                                 left: 10,
+                                zIndex: 2,
                                 maxWidth: 'calc(100% - 20px)',
                                 overflow: 'hidden',
                                 padding: '4px 8px',
@@ -1269,7 +1658,6 @@ const ProductionWorkbenchSettings = () => {
                               {selectedVariant.primary ? (
                                 <Tag color="blue">主形象</Tag>
                               ) : null}
-                              <Tag>{selectedVariant.generationStatus}</Tag>
                             </div>
                             <Flex gap={8}>
                               {!selectedVariant.primary ? (
@@ -1506,7 +1894,10 @@ const ProductionWorkbenchSettings = () => {
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setActiveType(section.type)}
+                  onClick={() => {
+                    setActiveType(section.type);
+                    setSelectedAssetIds([]);
+                  }}
                   style={{
                     border: 0,
                     borderRadius: 0,
@@ -1547,10 +1938,11 @@ const ProductionWorkbenchSettings = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'flex-end',
+              flexWrap: 'wrap',
               gap: 14,
               color: 'var(--app-color-text-secondary)',
               fontSize: 13,
-              whiteSpace: 'nowrap',
+              whiteSpace: 'normal',
             }}
           >
             <span>
@@ -1562,28 +1954,71 @@ const ProductionWorkbenchSettings = () => {
             <span>生成中 {activeGeneration.generating}</span>
             <span style={{ color: 'var(--app-color-border)' }}>|</span>
             <span>失败 {activeGeneration.failed}</span>
-            <Button
-              type="text"
-              size="small"
-              icon={<RobotOutlined />}
-              aria-label={`AI提取${elementLabels[activeType]}`}
-              disabled={extractionBusy}
-              loading={processingAction === `extract-${activeType}`}
-              onClick={() => extractAssets(activeType)}
+            <Checkbox
+              aria-label="全选当前分类"
+              checked={
+                activeAssets.length > 0 &&
+                selectedAssetIds.length === activeAssets.length
+              }
+              indeterminate={
+                selectedAssetIds.length > 0 &&
+                selectedAssetIds.length < activeAssets.length
+              }
+              onChange={(event) =>
+                setSelectedAssetIds(
+                  event.target.checked
+                    ? activeAssets.map((item) => item.id)
+                    : [],
+                )
+              }
             >
-              批量生成
-            </Button>
-            <Button
-              type="text"
-              size="small"
-              icon={<RobotOutlined />}
-              aria-label="AI提取全部资产"
+              全选
+            </Checkbox>
+            <span>已选择 {selectedAssetIds.length} 项</span>
+            <Dropdown
+              trigger={['click']}
               disabled={extractionBusy}
-              loading={processingAction === 'extract-ALL'}
-              onClick={() => extractAssets('ALL')}
+              menu={{
+                items: [
+                  { key: 'CURRENT', label: '提取当前分类' },
+                  { key: 'ALL', label: '提取全部资产' },
+                ],
+                onClick: ({ key }) =>
+                  void extractAssets(key === 'ALL' ? 'ALL' : activeType),
+              }}
             >
-              全部生成
-            </Button>
+              <Button
+                type="text"
+                size="small"
+                icon={<RobotOutlined />}
+                aria-label="资产提取"
+                loading={Boolean(processingAction?.startsWith('extract-'))}
+              >
+                资产提取
+              </Button>
+            </Dropdown>
+            <Dropdown
+              trigger={['click']}
+              disabled={!selectedAssetIds.length || batchLoading}
+              menu={{
+                items: [
+                  { key: 'PRIMARY', label: '生成主形象图' },
+                  { key: 'ALL', label: '生成全部形象图' },
+                ],
+                onClick: ({ key }) =>
+                  void openAssetImageBatch(key === 'ALL' ? 'ALL' : 'PRIMARY'),
+              }}
+            >
+              <Button
+                type="primary"
+                size="small"
+                aria-label="资产图生成"
+                disabled={!selectedAssetIds.length || batchLoading}
+                loading={batchLoading}
+              >
+                资产图生成
+              </Button>
+            </Dropdown>
           </div>
         </div>
 
@@ -1608,6 +2043,14 @@ const ProductionWorkbenchSettings = () => {
                       key={`${section.type}-${item.id}`}
                       item={item}
                       type={section.type}
+                      selected={selectedAssetIds.includes(item.id)}
+                      onSelectedChange={(selected) =>
+                        setSelectedAssetIds((current) =>
+                          selected
+                            ? [...current, item.id]
+                            : current.filter((id) => id !== item.id),
+                        )
+                      }
                       onDelete={deleteAsset}
                       onSave={saveAsset}
                       onManageVisual={(type, item) => {
