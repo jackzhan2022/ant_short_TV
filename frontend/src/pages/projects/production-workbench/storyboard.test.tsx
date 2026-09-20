@@ -5,6 +5,8 @@ import type { ScriptEpisode } from './service';
 
 const mocks = vi.hoisted(() => ({
   queryProject: vi.fn(),
+  queryProjectAiModels: vi.fn(),
+  queryProjectAiConfig: vi.fn(),
   queryScriptWorkspace: vi.fn(),
   queryScriptPageWorkspace: vi.fn(),
   queryAssetSettingsSummary: vi.fn(),
@@ -15,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   regenerateAiImageTask: vi.fn(),
   cancelAiImageTask: vi.fn(),
   queryAiVideoTasks: vi.fn(),
+  queryAiVoiceTasks: vi.fn(),
   createAiVideoTask: vi.fn(),
   cancelAiVideoTask: vi.fn(),
   regenerateAiVideoTask: vi.fn(),
@@ -39,6 +42,11 @@ vi.mock('@umijs/max', () => ({
 
 vi.mock('@/services/account-team/project', () => ({
   queryProject: mocks.queryProject,
+}));
+
+vi.mock('./ai-config/service', () => ({
+  queryProjectAiModels: mocks.queryProjectAiModels,
+  queryProjectAiConfig: mocks.queryProjectAiConfig,
 }));
 
 vi.mock('@/services/ai-execution/task', () => ({
@@ -81,6 +89,7 @@ vi.mock('./service', () => ({
   regenerateAiImageTask: mocks.regenerateAiImageTask,
   cancelAiImageTask: mocks.cancelAiImageTask,
   queryAiVideoTasks: mocks.queryAiVideoTasks,
+  queryAiVoiceTasks: mocks.queryAiVoiceTasks,
   createAiVideoTask: mocks.createAiVideoTask,
   cancelAiVideoTask: mocks.cancelAiVideoTask,
   regenerateAiVideoTask: mocks.regenerateAiVideoTask,
@@ -127,9 +136,18 @@ vi.mock('@ant-design/icons', () => ({
 
 vi.mock('antd', () => ({
   App: {
-    useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
+    useApp: () => ({
+      message: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+    }),
   },
-  Button: ({ children, icon, onClick, ...rest }: any) => (
+  Button: ({
+    children,
+    icon,
+    onClick,
+    block: _block,
+    loading: _loading,
+    ...rest
+  }: any) => (
     <button type="button" onClick={onClick} {...rest}>
       {icon}
       {children}
@@ -138,6 +156,12 @@ vi.mock('antd', () => ({
   Empty: ({ description }: any) => <div>{description || '暂无数据'}</div>,
   Flex: ({ children }: any) => <div>{children}</div>,
   Image: ({ alt, src }: any) => <img alt={alt} src={src} />,
+  Popover: ({ children, content }: any) => (
+    <div>
+      {children}
+      {content}
+    </div>
+  ),
   Input: {
     TextArea: ({ 'aria-label': ariaLabel, onBlur, onChange, value }: any) => (
       <textarea
@@ -148,6 +172,15 @@ vi.mock('antd', () => ({
       />
     ),
   },
+  InputNumber: ({ 'aria-label': ariaLabel, onChange, value, ...rest }: any) => (
+    <input
+      aria-label={ariaLabel}
+      type="number"
+      value={value}
+      onChange={(event) => onChange?.(Number(event.target.value))}
+      {...rest}
+    />
+  ),
   Select: ({
     'aria-label': ariaLabel,
     options = [],
@@ -169,6 +202,14 @@ vi.mock('antd', () => ({
     </select>
   ),
   Spin: ({ children }: any) => <div>{children}</div>,
+  Switch: ({ 'aria-label': ariaLabel, checked, onChange }: any) => (
+    <input
+      aria-label={ariaLabel}
+      checked={checked}
+      type="checkbox"
+      onChange={(event) => onChange?.(event.target.checked)}
+    />
+  ),
   Tag: ({ children }: any) => <span>{children}</span>,
   Tabs: ({ items = [] }: any) => (
     <div>
@@ -193,6 +234,7 @@ const setupWorkspaceResponse = (
     storyboards: any[];
     imageTasks: any[];
     videoTasks: any[];
+    voiceTasks: any[];
   }>,
 ) => {
   const characters = Array.from({ length: 13 }, (_, index) => {
@@ -298,7 +340,39 @@ const setupWorkspaceResponse = (
       code: 'DANGEROUS_HIDE_AND_SEEK',
       status: 'IN_PROGRESS',
       coverUrl: '/cover.png',
+      aspectRatio: '16:9',
+      videoResolution: '1080p',
+      videoGenerateAudio: false,
+      videoWatermark: true,
     },
+  });
+  mocks.queryProjectAiModels.mockResolvedValue({
+    data: {
+      textModels: [],
+      imageModels: [],
+      videoModels: [
+        {
+          id: 10,
+          name: 'Seedance 2.0 Standard',
+          constraints: {
+            duration: { min: 4, max: 15, intelligent: true },
+            resolutions: ['480p', '720p', '1080p', '4k'],
+          },
+        },
+        {
+          id: 11,
+          name: 'Seedance 2.0 Fast',
+          constraints: {
+            duration: { min: 4, max: 15, intelligent: true },
+            resolutions: ['480p', '720p'],
+          },
+        },
+      ],
+      audioModels: [],
+    },
+  });
+  mocks.queryProjectAiConfig.mockResolvedValue({
+    data: { projectId: 1, videoModelId: 10 },
   });
   const workspaceData = {
       script: {
@@ -446,6 +520,9 @@ const setupWorkspaceResponse = (
         ],
       },
     ],
+  });
+  mocks.queryAiVoiceTasks.mockResolvedValue({
+    data: overrides?.voiceTasks ?? [],
   });
   mocks.createAiVideoTask.mockResolvedValue({
     data: { id: 9002, storyboardId: 101, executionId: 7002, results: [] },
@@ -638,7 +715,6 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.queryByText('Serena在门外听见阴谋。')).not.toBeInTheDocument();
     expect(screen.queryByText(/夜幕压低小区楼影/)).not.toBeInTheDocument();
   });
-
   it('shows an honest empty summary and episode number when episode metadata is missing', async () => {
     setupWorkspaceResponse({
       episodes: [
@@ -763,11 +839,14 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => {
       expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1, {
         storyboardId: 101,
+        modelId: 10,
         prompt: '新的分镜视频提示词',
         firstFrameUrl: 'https://example.com/shot-101-first.png',
         durationSeconds: 5,
-        aspectRatio: '9:16',
-        resolution: '720p',
+        aspectRatio: '16:9',
+        resolution: '1080p',
+        generateAudio: false,
+        watermark: true,
       });
       expect(mocks.pollExecution).toHaveBeenCalledWith(
         1,
@@ -909,11 +988,14 @@ describe('ProductionWorkbench script page', () => {
       imagePrompt: '',
       videoPrompt: '画风: 现代都市通用\n李慧\n镜头1 3s\n镜头2 3s',
       promptDocument: {
-        version: 1,
+        version: 2,
         nodes: [
           { type: 'text', text: '画风: 现代都市通用\n' },
           {
             type: 'mention',
+            mediaType: 'IMAGE',
+            sourceType: 'ASSET_VISUAL_VARIANT',
+            sourceId: 33,
             assetType: 'CHARACTER',
             assetId: 3,
             variantId: 33,
@@ -948,7 +1030,7 @@ describe('ProductionWorkbench script page', () => {
         expect.objectContaining({
           videoPrompt: '李慧',
           promptDocument: {
-            version: 1,
+            version: 2,
             nodes: [{ type: 'text', text: '李慧' }],
           },
         }),
@@ -1041,7 +1123,7 @@ describe('ProductionWorkbench script page', () => {
     });
   });
 
-  it('maps short storyboard duration to a supported video generation duration', async () => {
+  it('inherits project settings and submits the real video model id', async () => {
     render(<ProductionWorkbench />);
 
     await waitFor(() => {
@@ -1055,7 +1137,12 @@ describe('ProductionWorkbench script page', () => {
         1,
         expect.objectContaining({
           storyboardId: 102,
-          durationSeconds: 5,
+          modelId: 10,
+          durationSeconds: 4,
+          aspectRatio: '16:9',
+          resolution: '1080p',
+          generateAudio: false,
+          watermark: true,
         }),
       );
     });
@@ -1146,6 +1233,190 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(await screen.findByRole('button', { name: '重试加载分镜' }));
     await waitFor(() => expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(3));
     expect(mocks.createStoryboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to 720p when the selected model does not support the current resolution', async () => {
+    mocks.queryProject.mockResolvedValue({
+      data: {
+        id: 1,
+        name: '4k 项目',
+        aspectRatio: '16:9',
+        videoResolution: '4k',
+        videoGenerateAudio: true,
+        videoWatermark: false,
+      },
+    });
+    render(<ProductionWorkbench />);
+
+    const selector = await screen.findByRole('combobox', {
+      name: '视频生成模型',
+    });
+    await waitFor(() => expect(selector).toHaveValue('10'));
+    fireEvent.change(selector, { target: { value: '11' } });
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: /视频参数/ })[0]).toHaveTextContent('720p');
+    });
+  });
+
+  it('submits intelligent duration and per-storyboard video overrides', async () => {
+    render(<ProductionWorkbench />);
+
+    const duration = await screen.findByRole('spinbutton', {
+      name: '分镜1视频时长',
+    });
+    fireEvent.change(duration, { target: { value: '-1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '分镜1视频分辨率' }), {
+      target: { value: '720p' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: '分镜1生成音频' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '分镜1视频水印' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+
+    await waitFor(() => {
+      expect(mocks.createAiVideoTask).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          storyboardId: 101,
+          durationSeconds: -1,
+          resolution: '720p',
+          generateAudio: true,
+          watermark: false,
+        }),
+      );
+    });
+  });
+
+  it('continues successful batch video submissions when one storyboard fails', async () => {
+    mocks.createAiVideoTask
+      .mockRejectedValueOnce(new Error('invalid storyboard'))
+      .mockResolvedValueOnce({
+        data: { id: 9300, storyboardId: 102, executionId: 7300, results: [] },
+      });
+    render(<ProductionWorkbench />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /批量生成视频/ }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(2);
+      expect(mocks.pollExecution).toHaveBeenCalledWith(
+        1,
+        7300,
+        expect.any(Function),
+      );
+    });
+  });
+
+  it('inserts typed image video and audio references from the existing material controls', async () => {
+    const storyboard = {
+      id: 301,
+      shotNo: 1,
+      storyboardNo: 1,
+      episodeId: 1001,
+      episodeNo: 1,
+      shotType: '中景',
+      visualDescription: '李慧站在停车场。',
+      characters: '李慧',
+      scene: '停车场',
+      props: '',
+      dialogue: '',
+      durationSeconds: 13,
+      imagePrompt: '',
+      videoPrompt: '参考素材：',
+      promptDocument: {
+        version: 2,
+        nodes: [{ type: 'text', text: '参考素材：' }],
+      },
+    };
+    const character = {
+      id: 3,
+      name: '李慧',
+      roleType: 'LEAD',
+      gender: '女',
+      ageRange: '常规',
+      identity: '母亲',
+      personality: [],
+      appearance: '短发',
+      prompt: '李慧提示词',
+      visual: {
+        variantCount: 1,
+        variants: [
+          {
+            id: 33,
+            assetType: 'CHARACTER',
+            assetId: 3,
+            name: '李慧主形态',
+            sourceType: 'USER',
+            generationStatus: 'SUCCEEDED',
+            currentImageUrl: '/lihui.png',
+            primary: true,
+            usable: true,
+          },
+        ],
+        generationSummary: {},
+        episodeBindings: [],
+      },
+    };
+    setupWorkspaceResponse({
+      storyboards: [storyboard],
+      characters: [character],
+      videoTasks: [
+        {
+          id: 801,
+          storyboardId: 301,
+          status: 'SUCCEEDED',
+          results: [
+            {
+              id: 811,
+              materialId: 501,
+              videoUrl: '/reference.mp4',
+              status: 'ACTIVE',
+            },
+          ],
+        },
+      ],
+      voiceTasks: [
+        {
+          id: 901,
+          storyboardId: 301,
+          speakerName: '旁白',
+          status: 'SUCCEEDED',
+          results: [
+            {
+              id: 911,
+              materialId: 601,
+              audioUrl: '/reference.mp3',
+              status: 'ACTIVE',
+            },
+          ],
+        },
+      ],
+    });
+    render(<ProductionWorkbench />);
+
+    await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    fireEvent.click(screen.getAllByRole('button', { name: '引用素材 李慧主形态' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '引用素材 分镜1视频' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '引用素材 旁白音频' })[0]);
+
+    await waitFor(() => {
+      expect(mocks.updateStoryboard).toHaveBeenLastCalledWith(
+        1,
+        301,
+        expect.objectContaining({
+          promptDocument: expect.objectContaining({
+            version: 2,
+            nodes: expect.arrayContaining([
+              expect.objectContaining({ mediaType: 'IMAGE', sourceId: 33 }),
+              expect.objectContaining({ mediaType: 'VIDEO', sourceId: 501 }),
+              expect.objectContaining({ mediaType: 'AUDIO', sourceId: 601 }),
+            ]),
+          }),
+        }),
+      );
+    });
   });
 
   it('adds and copies storyboards using the existing storyboard backend', async () => {

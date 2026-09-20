@@ -23,6 +23,7 @@ public class VideoMaterialEntity {
     private Integer width;
     private Integer height;
     private String format;
+    private BigDecimal fps;
     private Long fileSize;
     private String status;
     private Long createdBy;
@@ -139,6 +140,14 @@ public class VideoMaterialEntity {
 
     public void setFormat(String format) {
         this.format = format;
+    }
+
+    public BigDecimal getFps() {
+        return fps;
+    }
+
+    public void setFps(BigDecimal fps) {
+        this.fps = fps;
     }
 
     public Long getFileSize() {

@@ -80,7 +80,7 @@ class StoryboardToolDataServiceTest {
             .startsWith("画风: 现代都市通用")
             .contains(StoryboardToolDataService.FIXED_MEDIA_CONSTRAINT)
             .contains("镜头4 3.8s", "Serena: No...", StoryboardToolDataService.FIXED_CONSISTENCY_CONSTRAINT);
-        assertThat(row.get("prompt_document_json").toString()).contains("\"version\":1", "\"nodes\"");
+        assertThat(row.get("prompt_document_json").toString()).contains("\"version\":2", "\"nodes\"");
         assertThat(row.get("shot_plan_json").toString()).contains("\"durationSeconds\":3.8");
         assertThat(row.get("shot_plan_json").toString())
             .contains("\"dialogue\":\"Serena: No...\"")
@@ -142,6 +142,9 @@ class StoryboardToolDataServiceTest {
         assertThat(prompt).contains("【人物】", "<Serena>对应Serena");
         assertThat(document)
             .contains("\"type\":\"mention\"")
+            .contains("\"mediaType\":\"IMAGE\"")
+            .contains("\"sourceType\":\"ASSET_VISUAL_VARIANT\"")
+            .contains("\"sourceId\":" + episodeVariantId)
             .contains("\"assetType\":\"CHARACTER\"")
             .contains("\"assetId\":" + assetId)
             .contains("\"variantId\":" + episodeVariantId)

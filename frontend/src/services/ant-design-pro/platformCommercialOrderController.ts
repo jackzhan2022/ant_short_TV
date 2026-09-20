@@ -3,9 +3,9 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/platform/commercial/orders */
-export async function list10(
+export async function list11(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list10Params,
+  params: API.list11Params,
   options?: { [key: string]: any }
 ) {
   return request<API.ApiResponsePlatformCommercialOrderPageResponse>(
@@ -21,9 +21,9 @@ export async function list10(
 }
 
 /** 此处后端没有提供注释 GET /api/platform/commercial/orders/${param0} */
-export async function detail9(
+export async function detail10(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail9Params,
+  params: API.detail10Params,
   options?: { [key: string]: any }
 ) {
   const { orderId: param0, ...queryParams } = params;

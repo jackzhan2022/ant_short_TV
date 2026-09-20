@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -162,6 +163,23 @@ public class AiVideoProviderAdapter {
         };
     }
 
-    public record VideoResult(String status, String videoUrl, String errorMessage) {
+    public record VideoResult(
+        String status,
+        String videoUrl,
+        String errorMessage,
+        String metadataJson,
+        BigDecimal durationSeconds,
+        String resolution,
+        String ratio,
+        Long seed,
+        BigDecimal fps,
+        String serviceTier,
+        Boolean generateAudio,
+        Long completionTokens,
+        Long totalTokens
+    ) {
+        public VideoResult(String status, String videoUrl, String errorMessage) {
+            this(status, videoUrl, errorMessage, null, null, null, null, null, null, null, null, null, null);
+        }
     }
 }

@@ -3,7 +3,7 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/platform/commercial/entitlements */
-export async function list11(options?: { [key: string]: any }) {
+export async function list12(options?: { [key: string]: any }) {
   return request<API.ApiResponseListCommercialEntitlementDefinitionResponse>(
     "/api/platform/commercial/entitlements",
     {
@@ -14,7 +14,7 @@ export async function list11(options?: { [key: string]: any }) {
 }
 
 /** 此处后端没有提供注释 POST /api/platform/commercial/entitlements */
-export async function create7(
+export async function create8(
   body: API.CommercialDisplayEntitlementCommand,
   options?: { [key: string]: any }
 ) {

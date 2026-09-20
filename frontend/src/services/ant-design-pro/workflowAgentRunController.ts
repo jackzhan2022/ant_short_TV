@@ -3,9 +3,9 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/platform/ai/workflow-agent-runs */
-export async function list14(
+export async function list15(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list14Params,
+  params: API.list15Params,
   options?: { [key: string]: any }
 ) {
   return request<API.ApiResponseListWorkflowAgentRunSummary>(
@@ -41,9 +41,9 @@ export async function runFormal(
 }
 
 /** 此处后端没有提供注释 GET /api/platform/ai/workflow-agent-runs/${param0} */
-export async function detail12(
+export async function detail13(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail12Params,
+  params: API.detail13Params,
   options?: { [key: string]: any }
 ) {
   const { runId: param0, ...queryParams } = params;

@@ -1246,6 +1246,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:EDIT", projectId);
+        StoryboardPromptDocuments.validate(request.promptDocument());
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         Long episodeId = lockStoryboardEpisode(tenantId, projectId, script == null ? null : script.getId(), request.episodeNo());
         insertStoryboard(tenantId, projectId, script == null ? null : script.getId(), episodeId, context.userId(), request.episodeNo(), request.shotNo(), request.sceneNo(), request.shotType(), request.visualDescription(), request.characters(), request.actions(), request.dialogue(), request.scene(), request.props(), request.mood(), request.durationSeconds(), request.imagePrompt(), request.videoPrompt(), normalizeStatus(request.status()));
@@ -1266,6 +1267,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:EDIT", projectId);
+        StoryboardPromptDocuments.validate(request.promptDocument());
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         Long episodeId = lockStoryboardEpisode(tenantId, projectId, script == null ? null : script.getId(), request.episodeNo());
         jdbcTemplate.update("""

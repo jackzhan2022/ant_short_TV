@@ -344,6 +344,9 @@ describe('ShortDramaCreationPage', () => {
           scriptName: '雨夜归来',
           code: expect.stringMatching(/^SHORT_DRAMA_/),
           ownerId: 1,
+          videoResolution: '720p',
+          videoGenerateAudio: true,
+          videoWatermark: false,
         }),
       );
       expect(mocks.historyPush).toHaveBeenCalledWith(

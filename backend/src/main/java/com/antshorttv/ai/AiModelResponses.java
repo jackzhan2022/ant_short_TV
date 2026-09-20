@@ -2,6 +2,7 @@ package com.antshorttv.ai;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import com.fasterxml.jackson.databind.JsonNode;
 
 record PlatformProviderResponse(
     Long id,
@@ -33,6 +34,7 @@ record PlatformModelResponse(
     Boolean isDefault,
     Integer sort,
     List<String> capabilities,
+    String configJson,
     LocalDateTime updatedAt
 ) {
 }
@@ -40,7 +42,8 @@ record PlatformModelResponse(
 record ProjectModelOptionResponse(
     Long id,
     String name,
-    String description
+    String description,
+    JsonNode constraints
 ) {
 }
 

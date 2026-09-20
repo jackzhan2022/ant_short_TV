@@ -35,6 +35,7 @@ import com.antshorttv.project.ProjectOperationLogEntity;
 import com.antshorttv.project.ProjectOperationLogMapper;
 import com.antshorttv.script.StoryboardEntity;
 import com.antshorttv.script.StoryboardMapper;
+import com.antshorttv.script.StoryboardPromptCompiler;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.storage.ObjectStorageService;
@@ -51,6 +52,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -68,6 +70,7 @@ public class AiVideoTaskService {
     private final ProjectAccessResolver projectAccessResolver;
     private final StoryboardMapper storyboardMapper;
     private final AiVideoTaskMapper aiVideoTaskMapper;
+    private final AiVideoTaskReferenceMapper referenceMapper;
     private final AiVideoResultMapper aiVideoResultMapper;
     private final VideoMaterialMapper materialMapper;
     private final ProjectOperationLogMapper projectOperationLogMapper;
@@ -78,6 +81,9 @@ public class AiVideoTaskService {
     private final AiTaskExecutionSupport executionSupport;
     private final AiVideoProviderAdapter providerAdapter;
     private final SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter;
+    private final StoryboardPromptCompiler promptCompiler;
+    private final VideoTaskReferenceResolver referenceResolver;
+    private final SeedanceVideoRequestValidator seedanceValidator;
     private final com.antshorttv.ai.AiInvocationService invocationService;
     private final ProjectAiConfigService projectAiConfigService;
     private final AiModelRouter aiModelRouter;
@@ -99,6 +105,7 @@ public class AiVideoTaskService {
         ProjectAccessResolver projectAccessResolver,
         StoryboardMapper storyboardMapper,
         AiVideoTaskMapper aiVideoTaskMapper,
+        AiVideoTaskReferenceMapper referenceMapper,
         AiVideoResultMapper aiVideoResultMapper,
         VideoMaterialMapper materialMapper,
         ProjectOperationLogMapper projectOperationLogMapper,
@@ -109,6 +116,9 @@ public class AiVideoTaskService {
         AiTaskExecutionSupport executionSupport,
         AiVideoProviderAdapter providerAdapter,
         SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter,
+        StoryboardPromptCompiler promptCompiler,
+        VideoTaskReferenceResolver referenceResolver,
+        SeedanceVideoRequestValidator seedanceValidator,
         com.antshorttv.ai.AiInvocationService invocationService,
         ProjectAiConfigService projectAiConfigService,
         AiModelRouter aiModelRouter,
@@ -129,6 +139,7 @@ public class AiVideoTaskService {
         this.projectAccessResolver = projectAccessResolver;
         this.storyboardMapper = storyboardMapper;
         this.aiVideoTaskMapper = aiVideoTaskMapper;
+        this.referenceMapper = referenceMapper;
         this.aiVideoResultMapper = aiVideoResultMapper;
         this.materialMapper = materialMapper;
         this.projectOperationLogMapper = projectOperationLogMapper;
@@ -139,6 +150,9 @@ public class AiVideoTaskService {
         this.executionSupport = executionSupport;
         this.providerAdapter = providerAdapter;
         this.seedanceArkProviderAdapter = seedanceArkProviderAdapter;
+        this.promptCompiler = promptCompiler;
+        this.referenceResolver = referenceResolver;
+        this.seedanceValidator = seedanceValidator;
         this.invocationService = invocationService;
         this.projectAiConfigService = projectAiConfigService;
         this.aiModelRouter = aiModelRouter;
@@ -181,12 +195,13 @@ public class AiVideoTaskService {
         HttpServletRequest servletRequest
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        requireProjectAccess(context, projectId);
-        validateCreateRequest(request);
+        ProjectEntity project = requireProjectAccess(context, projectId);
         StoryboardEntity storyboard = requireStoryboard(tenantId, projectId, request.storyboardId());
-        String firstFrameUrl = resolveFirstFrameUrl(storyboard, request);
         AiModelRoute route = resolveVideoModel(tenantId, projectId, request.modelId());
-        String requestHash = requestHash(request, route.model().getId(), firstFrameUrl);
+        PreparedVideoRequest prepared = isSeedance(route)
+            ? prepareSeedanceRequest(project, storyboard, route, request)
+            : prepareLegacyRequest(storyboard, route, request);
+        String requestHash = prepared.requestHash();
         AiVideoTaskEntity duplicate = aiVideoTaskMapper.selectActiveDuplicate(tenantId, projectId, requestHash);
         if (duplicate != null) {
             return response(duplicate);
@@ -204,14 +219,18 @@ public class AiVideoTaskService {
         task.providerCode = route.provider().getCode();
         task.model = route.model().getModelCode();
         task.prompt = request.prompt().trim();
+        task.compiledPrompt = prepared.compiledPrompt();
         task.negativePrompt = blankToNull(request.negativePrompt());
         task.firstFrameImageId = request.firstFrameImageId() == null ? storyboard.firstFrameImageId : request.firstFrameImageId();
-        task.firstFrameUrl = materialFileAccessService.publicUrl(firstFrameUrl);
+        task.firstFrameUrl = prepared.firstFrameUrl();
         task.lastFrameImageId = request.lastFrameImageId();
         task.lastFrameUrl = blankToNull(request.lastFrameUrl());
-        task.durationSeconds = request.durationSeconds() == null ? 5 : request.durationSeconds();
-        task.aspectRatio = request.aspectRatio();
-        task.resolution = request.resolution() == null || request.resolution().isBlank() ? "STANDARD" : request.resolution();
+        task.durationSeconds = prepared.durationSeconds();
+        task.aspectRatio = prepared.aspectRatio();
+        task.resolution = prepared.resolution();
+        task.generateAudio = prepared.generateAudio();
+        task.watermark = prepared.watermark();
+        task.requestSnapshotJson = prepared.snapshotJson();
         task.motionStrength = request.motionStrength() == null || request.motionStrength().isBlank() ? "MEDIUM" : request.motionStrength();
         task.cameraMovement = blankToNull(request.cameraMovement());
         task.randomSeed = request.randomSeed();
@@ -223,6 +242,7 @@ public class AiVideoTaskService {
         task.updatedAt = now;
         task.nextPollAt = now;
         aiVideoTaskMapper.insert(task);
+        persistReferences(task, prepared.references(), now);
 
         AiExecutionTaskEntity execution = executionService.createWithReservation(
             new AiExecutionCreateCommand(
@@ -242,7 +262,7 @@ public class AiVideoTaskService {
             ),
             Map.of(
                 AiUsageMetric.CALL, BigDecimal.ONE,
-                AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(task.durationSeconds)
+                AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(prepared.billingDurationSeconds())
             ),
             Map.of("resolution", task.resolution, "aspectRatio", task.aspectRatio)
         );
@@ -280,9 +300,13 @@ public class AiVideoTaskService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         AiVideoTaskEntity task = requireTask(tenantId, projectId, taskId);
+        if (AiVideoTaskStatus.CANCELED.name().equals(task.status)) {
+            return response(task);
+        }
         if (!CANCELABLE_STATUSES.contains(task.status)) {
             throw new BusinessException(ErrorCode.AI_VIDEO_TASK_STATUS_INVALID, "当前任务状态不可取消。");
         }
+        cancelAcceptedSeedanceTask(task);
         task.status = AiVideoTaskStatus.CANCELED.name();
         task.externalStatus = "CANCELED";
         task.completedAt = LocalDateTime.now();
@@ -291,6 +315,30 @@ public class AiVideoTaskService {
         settleExecution(task, AiSettlementOutcome.PRE_CALL_CANCELED, null, null, "CANCELED");
         recordOperation(context, projectId, "CANCEL_AI_VIDEO_TASK", task.id, servletRequest);
         return response(task);
+    }
+
+    private void cancelAcceptedSeedanceTask(AiVideoTaskEntity task) {
+        if (!"VOLCENGINE_ARK".equalsIgnoreCase(task.providerCode)
+            || task.externalTaskId == null || task.externalTaskId.isBlank()) {
+            return;
+        }
+        AiExecutionAttemptEntity attempt = startExecutionAttempt(task, "VIDEO_CANCEL");
+        try {
+            AiInvocationResult<AiVideoProviderAdapter.VideoResult> invocation = invocationService.invokeProviderNative(
+                invocationRequest(task, attempt),
+                "externalTaskId=" + task.externalTaskId,
+                route -> {
+                    seedanceArkProviderAdapter.cancel(
+                        route.providerConfig(), route.model(), task.externalTaskId, attempt.idempotencyKey);
+                    return com.antshorttv.ai.AiProviderExecutionOutcome.completed(
+                        new AiVideoProviderAdapter.VideoResult("CANCELED", null, null), null);
+                }
+            );
+            finishExecutionAttempt(attempt, invocation, "SUCCEEDED", false, null, null);
+        } catch (AiGatewayException exception) {
+            finishExecutionAttempt(attempt, exception, "FAILED", true);
+            throw exception;
+        }
     }
 
     @Transactional
@@ -308,6 +356,8 @@ public class AiVideoTaskService {
             source.durationSeconds,
             source.aspectRatio,
             source.resolution,
+            source.generateAudio,
+            source.watermark,
             source.cameraMovement,
             source.motionStrength,
             source.randomSeed
@@ -430,7 +480,132 @@ public class AiVideoTaskService {
         return AiVideoTaskResponse.from(task, aiVideoResultMapper.selectByTask(task.tenantId, task.projectId, task.id));
     }
 
-    private void validateCreateRequest(CreateAiVideoTaskRequest request) {
+    private PreparedVideoRequest prepareLegacyRequest(
+        StoryboardEntity storyboard,
+        AiModelRoute route,
+        CreateAiVideoTaskRequest request
+    ) {
+        validateLegacyCreateRequest(request);
+        String firstFrameUrl = resolveFirstFrameUrl(storyboard, request);
+        int duration = request.durationSeconds() == null ? 5 : request.durationSeconds();
+        String resolution = request.resolution() == null || request.resolution().isBlank()
+            ? "STANDARD" : request.resolution().trim();
+        return new PreparedVideoRequest(
+            request.prompt().trim(),
+            materialFileAccessService.publicUrl(firstFrameUrl),
+            duration,
+            request.aspectRatio(),
+            resolution,
+            request.generateAudio() == null || request.generateAudio(),
+            Boolean.TRUE.equals(request.watermark()),
+            null,
+            requestHash(request, route.model().getId(), firstFrameUrl),
+            duration,
+            List.of()
+        );
+    }
+
+    private PreparedVideoRequest prepareSeedanceRequest(
+        ProjectEntity project,
+        StoryboardEntity storyboard,
+        AiModelRoute route,
+        CreateAiVideoTaskRequest request
+    ) {
+        if (storyboard.promptDocumentJson == null || storyboard.promptDocumentJson.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先为分镜重新绑定 version 2 参考素材。");
+        }
+        StoryboardPromptCompiler.CompiledPrompt compiled;
+        try {
+            compiled = promptCompiler.compile(objectMapper.readTree(storyboard.promptDocumentJson));
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜提示词文档不正确。");
+        }
+        List<VideoTaskReferenceResolver.ResolvedReference> references = referenceResolver.resolve(
+            storyboard.tenantId, storyboard.projectId, compiled.references());
+        int duration = request.durationSeconds() == null
+            ? (storyboard.durationSeconds == null ? 5 : storyboard.durationSeconds)
+            : request.durationSeconds();
+        String aspectRatio = firstNonBlank(request.aspectRatio(), project.aspectRatio, "9:16");
+        if (!SUPPORTED_ASPECT_RATIOS.contains(aspectRatio)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "项目视频比例不受支持。");
+        }
+        String resolution = firstNonBlank(request.resolution(), project.videoResolution, "720p").toLowerCase();
+        boolean generateAudio = request.generateAudio() == null
+            ? project.videoGenerateAudio == null || project.videoGenerateAudio
+            : request.generateAudio();
+        boolean watermark = request.watermark() == null
+            ? Boolean.TRUE.equals(project.videoWatermark)
+            : request.watermark();
+        seedanceValidator.validate(route.model(), duration, resolution, references);
+        int billingDuration = duration == -1
+            ? seedanceValidator.constraints(route.model()).path("duration").path("max").asInt()
+            : duration;
+        String firstFrameUrl = references.stream()
+            .filter(item -> "IMAGE".equals(item.reference().mediaType()))
+            .findFirst()
+            .map(VideoTaskReferenceResolver.ResolvedReference::providerUrl)
+            .orElseThrow(() -> new BusinessException(
+                ErrorCode.AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED, "请至少绑定一张参考图片。"));
+
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("modelId", route.model().getId());
+        snapshot.put("endpointId", route.model().getModelCode());
+        snapshot.put("compiledPrompt", compiled.text());
+        snapshot.put("duration", duration);
+        snapshot.put("billingDurationSeconds", billingDuration);
+        snapshot.put("ratio", aspectRatio);
+        snapshot.put("resolution", resolution);
+        snapshot.put("generateAudio", generateAudio);
+        snapshot.put("watermark", watermark);
+        snapshot.put("references", references);
+        String snapshotJson;
+        try {
+            snapshotJson = objectMapper.writeValueAsString(snapshot);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to serialize video request snapshot.", exception);
+        }
+        return new PreparedVideoRequest(
+            compiled.text(), firstFrameUrl, duration, aspectRatio, resolution, generateAudio, watermark,
+            snapshotJson, hash(snapshotJson), billingDuration, references);
+    }
+
+    private void persistReferences(
+        AiVideoTaskEntity task,
+        List<VideoTaskReferenceResolver.ResolvedReference> references,
+        LocalDateTime now
+    ) {
+        for (VideoTaskReferenceResolver.ResolvedReference resolved : references) {
+            StoryboardPromptCompiler.Reference source = resolved.reference();
+            AiVideoTaskReferenceEntity entity = new AiVideoTaskReferenceEntity();
+            entity.tenantId = task.tenantId;
+            entity.projectId = task.projectId;
+            entity.taskId = task.id;
+            entity.storyboardId = task.storyboardId;
+            entity.mediaType = source.mediaType();
+            entity.mediaIndex = source.mediaIndex();
+            entity.providerRole = source.providerRole();
+            entity.sourceType = source.sourceType();
+            entity.sourceId = source.sourceId();
+            entity.variantId = source.variantId();
+            entity.displayName = resolved.displayName() == null ? source.displayName() : resolved.displayName();
+            entity.compiledLabel = source.compiledLabel();
+            entity.objectStoragePath = resolved.objectStoragePath();
+            entity.providerUrl = resolved.providerUrl();
+            entity.format = resolved.format();
+            entity.fileSize = resolved.fileSize();
+            entity.width = resolved.width();
+            entity.height = resolved.height();
+            entity.durationSeconds = resolved.durationSeconds();
+            entity.fps = resolved.fps();
+            entity.sortOrder = source.sortOrder();
+            entity.createdAt = now;
+            referenceMapper.insert(entity);
+        }
+    }
+
+    private void validateLegacyCreateRequest(CreateAiVideoTaskRequest request) {
         int duration = request.durationSeconds() == null ? 5 : request.durationSeconds();
         if (!SUPPORTED_DURATIONS.contains(duration)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择正确的视频时长。");
@@ -438,6 +613,18 @@ public class AiVideoTaskService {
         if (!SUPPORTED_ASPECT_RATIOS.contains(request.aspectRatio())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择视频比例。");
         }
+    }
+
+    private boolean isSeedance(AiModelRoute route) {
+        return "VOLCENGINE_ARK".equalsIgnoreCase(route.provider().getCode())
+            && route.model().getCode() != null
+            && route.model().getCode().startsWith("SEEDANCE_");
+    }
+
+    private String firstNonBlank(String first, String second, String fallback) {
+        if (first != null && !first.isBlank()) return first.trim();
+        if (second != null && !second.isBlank()) return second.trim();
+        return fallback;
     }
 
     private String resolveFirstFrameUrl(StoryboardEntity storyboard, CreateAiVideoTaskRequest request) {
@@ -525,8 +712,13 @@ public class AiVideoTaskService {
             invocation = queryProviderTask(task, attempt);
             task.lastPollAt = now;
             if (invocation.response() != null && "SUCCEEDED".equals(invocation.response().status())) {
+                AiVideoProviderAdapter.VideoResult providerResult = invocation.response();
+                task.providerResultMetadataJson = providerResult.metadataJson();
+                if (providerResult.durationSeconds() != null) {
+                    task.durationSeconds = providerResult.durationSeconds().intValue();
+                }
                 if (aiVideoResultMapper.selectByTask(task.tenantId, task.projectId, task.id).isEmpty()) {
-                    createGeneratedResult(task, invocation.response().videoUrl());
+                    createGeneratedResult(task, providerResult);
                 }
                 task.status = AiVideoTaskStatus.SUCCEEDED.name();
                 task.externalStatus = "SUCCEEDED";
@@ -603,7 +795,12 @@ public class AiVideoTaskService {
             "externalTaskId=" + task.externalTaskId,
             route -> mockProviderEnabled && (task.externalTaskId == null || task.externalTaskId.startsWith("mock-video-"))
                 ? com.antshorttv.ai.AiProviderExecutionOutcome.completed(
-                    new AiVideoProviderAdapter.VideoResult("SUCCEEDED", null, null),
+                    new AiVideoProviderAdapter.VideoResult(
+                        "SUCCEEDED", null, null,
+                        "{\"resolution\":\"720p\",\"ratio\":\"%s\",\"duration\":%d,\"fps\":24,\"generateAudio\":true}"
+                            .formatted(task.aspectRatio, task.durationSeconds == null || task.durationSeconds == -1 ? 5 : task.durationSeconds),
+                        BigDecimal.valueOf(task.durationSeconds == null || task.durationSeconds == -1 ? 5 : task.durationSeconds),
+                        "720p", task.aspectRatio, 1L, BigDecimal.valueOf(24), "default", true, 1L, 1L),
                     "mock-query-" + task.id
                 )
                 : pollProviderTask(route, task.externalTaskId, attempt.idempotencyKey)
@@ -642,7 +839,10 @@ public class AiVideoTaskService {
         aiVideoTaskMapper.updateById(task);
     }
 
-    private void createGeneratedResult(AiVideoTaskEntity task, String externalVideoUrl) throws Exception {
+    private void createGeneratedResult(
+        AiVideoTaskEntity task,
+        AiVideoProviderAdapter.VideoResult providerResult
+    ) throws Exception {
         LocalDateTime now = LocalDateTime.now();
         AiVideoResultEntity result = new AiVideoResultEntity();
         result.tenantId = task.tenantId;
@@ -652,12 +852,29 @@ public class AiVideoTaskService {
         result.storyboardId = task.storyboardId;
         String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
         result.storagePath = "/materials/%d/%d/videos/%s/%d.mp4".formatted(task.tenantId, task.projectId, day, task.id);
-        long fileSize = writeVideoFile(result.storagePath, externalVideoUrl);
+        long fileSize = writeVideoFile(result.storagePath, providerResult.videoUrl());
         result.videoUrl = materialFileAccessService.publicUrl(result.storagePath);
         result.coverUrl = task.firstFrameUrl == null ? null : materialFileAccessService.publicUrl(task.firstFrameUrl);
-        result.durationSeconds = BigDecimal.valueOf(task.durationSeconds == null ? 5 : task.durationSeconds);
-        result.width = "16:9".equals(task.aspectRatio) ? 1280 : 720;
-        result.height = "16:9".equals(task.aspectRatio) ? 720 : 1280;
+        result.durationSeconds = providerResult.durationSeconds() == null
+            ? BigDecimal.valueOf(task.durationSeconds == null ? 5 : task.durationSeconds)
+            : providerResult.durationSeconds();
+        int baseHeight = switch (providerResult.resolution() == null ? task.resolution : providerResult.resolution()) {
+            case "480p" -> 480;
+            case "1080p" -> 1080;
+            case "4k" -> 2160;
+            default -> 720;
+        };
+        String ratio = providerResult.ratio() == null ? task.aspectRatio : providerResult.ratio();
+        if ("16:9".equals(ratio)) {
+            result.width = baseHeight * 16 / 9;
+            result.height = baseHeight;
+        } else if ("1:1".equals(ratio)) {
+            result.width = baseHeight;
+            result.height = baseHeight;
+        } else {
+            result.width = baseHeight;
+            result.height = baseHeight * 16 / 9;
+        }
         result.fileSize = fileSize;
         result.format = "mp4";
         result.isSelected = false;
@@ -703,6 +920,10 @@ public class AiVideoTaskService {
             normalizeHashPart(request.motionStrength()),
             String.valueOf(request.randomSeed())
         );
+        return hash(source);
+    }
+
+    private String hash(String source) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(source.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
@@ -978,6 +1199,21 @@ public class AiVideoTaskService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private record PreparedVideoRequest(
+        String compiledPrompt,
+        String firstFrameUrl,
+        int durationSeconds,
+        String aspectRatio,
+        String resolution,
+        boolean generateAudio,
+        boolean watermark,
+        String snapshotJson,
+        String requestHash,
+        int billingDurationSeconds,
+        List<VideoTaskReferenceResolver.ResolvedReference> references
+    ) {
     }
 
 }

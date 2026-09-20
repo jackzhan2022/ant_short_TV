@@ -5,6 +5,10 @@ export type ProjectModelOption = {
   id: number;
   name: string;
   description?: string;
+  constraints?: {
+    duration?: { min: number; max: number; intelligent?: boolean };
+    resolutions?: string[];
+  } | null;
 };
 
 export type ProjectAiModels = {

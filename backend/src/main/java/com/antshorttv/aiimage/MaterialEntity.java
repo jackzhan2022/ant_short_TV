@@ -21,6 +21,7 @@ public class MaterialEntity {
     private Long fileSize;
     private Integer width;
     private Integer height;
+    private java.math.BigDecimal fps;
     private Long createdBy;
     private LocalDateTime createdAt;
 
@@ -50,6 +51,8 @@ public class MaterialEntity {
     public void setWidth(Integer width) { this.width = width; }
     public Integer getHeight() { return height; }
     public void setHeight(Integer height) { this.height = height; }
+    public java.math.BigDecimal getFps() { return fps; }
+    public void setFps(java.math.BigDecimal fps) { this.fps = fps; }
     public Long getCreatedBy() { return createdBy; }
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }

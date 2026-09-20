@@ -136,6 +136,9 @@ class ProjectControllerTest {
                       "description":"从短剧创作入口创建",
                       "ownerId":%d,
                       "aspectRatio":"16:9",
+                      "videoResolution":"1080p",
+                      "videoGenerateAudio":false,
+                      "videoWatermark":true,
                       "fileFormat":"SCRIPT",
                       "scriptType":"PREMIUM_DRAMA",
                       "breakdownStrength":"MEDIUM",
@@ -147,6 +150,9 @@ class ProjectControllerTest {
                     """.formatted(ownerUserId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.aspectRatio", is("16:9")))
+            .andExpect(jsonPath("$.data.videoResolution", is("1080p")))
+            .andExpect(jsonPath("$.data.videoGenerateAudio", is(false)))
+            .andExpect(jsonPath("$.data.videoWatermark", is(true)))
             .andExpect(jsonPath("$.data.fileFormat", is("SCRIPT")))
             .andExpect(jsonPath("$.data.scriptType", is("PREMIUM_DRAMA")))
             .andExpect(jsonPath("$.data.breakdownStrength", is("MEDIUM")))
@@ -188,7 +194,29 @@ class ProjectControllerTest {
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.visualStyle", is("3D风格-高清真实渲染")))
+            .andExpect(jsonPath("$.data.videoResolution", is("1080p")))
+            .andExpect(jsonPath("$.data.videoGenerateAudio", is(false)))
+            .andExpect(jsonPath("$.data.videoWatermark", is(true)))
             .andExpect(jsonPath("$.data.initialScriptContent", is("第一场，雨夜重逢。")));
+
+        mockMvc.perform(put("/api/projects/%d".formatted(createdId.longValue()))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "name":"独立菜单短剧",
+                      "aspectRatio":"9:16",
+                      "videoResolution":"480p",
+                      "videoGenerateAudio":true,
+                      "videoWatermark":false
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.aspectRatio", is("9:16")))
+            .andExpect(jsonPath("$.data.videoResolution", is("480p")))
+            .andExpect(jsonPath("$.data.videoGenerateAudio", is(true)))
+            .andExpect(jsonPath("$.data.videoWatermark", is(false)));
 
         mockMvc.perform(post("/api/projects")
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
@@ -198,7 +226,10 @@ class ProjectControllerTest {
                     {"name":"旧入口项目","code":"LEGACY_SHORT_DRAMA","description":"旧请求","ownerId":%d}
                     """.formatted(ownerUserId)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.name", is("旧入口项目")));
+            .andExpect(jsonPath("$.data.name", is("旧入口项目")))
+            .andExpect(jsonPath("$.data.videoResolution", is("720p")))
+            .andExpect(jsonPath("$.data.videoGenerateAudio", is(true)))
+            .andExpect(jsonPath("$.data.videoWatermark", is(false)));
     }
 
     @Test

@@ -200,6 +200,9 @@ export type Project = {
   startDate?: string | null;
   endDate?: string | null;
   aspectRatio?: string | null;
+  videoResolution?: string | null;
+  videoGenerateAudio?: boolean | null;
+  videoWatermark?: boolean | null;
   fileFormat?: string | null;
   scriptType?: string | null;
   breakdownStrength?: string | null;

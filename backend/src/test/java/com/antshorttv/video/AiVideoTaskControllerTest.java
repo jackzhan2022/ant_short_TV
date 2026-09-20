@@ -37,7 +37,8 @@ import org.springframework.test.annotation.DirtiesContext;
 @SpringBootTest(properties = {
     "ai.video.max-concurrent-per-tenant=1",
     "ai.video.storage-root=target/test-video-storage",
-    "ai.video.task-timeout-minutes=20"
+    "ai.video.task-timeout-minutes=20",
+    "app.public-base-url=https://app.example"
 })
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
@@ -57,6 +58,95 @@ class AiVideoTaskControllerTest {
 
     @Autowired
     private AiSecretCodec aiSecretCodec;
+
+    @Test
+    void compilesAndFreezesSeedanceReferencesBeforeCreatingExecution() throws Exception {
+        String token = registerUser("13800016021", "Seedance Owner");
+        Long tenantId = createTenant(token, "Seedance 多模态团队");
+        Long ownerId = userIdByMobile("13800016021");
+        Long projectId = createProject(token, tenantId, ownerId, "Seedance 多模态项目", "SEEDANCE_MULTIMODAL");
+        Long modelId = enableSeedanceMini();
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        long variantId = seedStoryboardImageReference(tenantId, projectId, storyboardId, ownerId);
+        grantTeamPoints(tenantId, 5);
+
+        MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "storyboardId":%d,
+                      "modelId":%d,
+                      "prompt":"界面展示提示词",
+                      "durationSeconds":5,
+                      "aspectRatio":"9:16",
+                      "resolution":"720p",
+                      "generateAudio":true,
+                      "watermark":false
+                    }
+                    """.formatted(storyboardId, modelId)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("GENERATING")))
+            .andReturn();
+        Long taskId = readLong(created, "$.data.id");
+
+        var task = jdbc.queryForMap("""
+            select compiled_prompt, request_snapshot_json, generate_audio, watermark, execution_id
+              from ai_video_task where id = ?
+            """, taskId);
+        assertThat(task.get("compiled_prompt")).isEqualTo("首帧使用图片1完成广告");
+        assertThat(task.get("request_snapshot_json").toString())
+            .contains("\"compiledPrompt\":\"首帧使用图片1完成广告\"", "\"resolution\":\"720p\"");
+        assertThat(task.get("generate_audio")).isEqualTo(true);
+        assertThat(task.get("watermark")).isEqualTo(false);
+        assertThat(task.get("execution_id")).isNotNull();
+        var reference = jdbc.queryForMap("select * from ai_video_task_reference where task_id = ?", taskId);
+        assertThat(reference.get("source_id")).isEqualTo(variantId);
+        assertThat(reference.get("compiled_label")).isEqualTo("图片1");
+        assertThat(reference.get("provider_role")).isEqualTo("reference_image");
+        assertThat(reference.get("provider_url").toString()).contains("seedance-frame.png");
+        jdbc.update("update ai_image_result set image_url = 'https://cdn.example/replaced.png' where id = 1");
+        assertThat(jdbc.queryForObject(
+            "select provider_url from ai_video_task_reference where task_id = ?", String.class, taskId))
+            .contains("seedance-frame.png");
+        mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/poll".formatted(projectId, taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
+        assertThat(jdbc.queryForObject(
+            "select provider_result_metadata_json from ai_video_task where id = ?", String.class, taskId))
+            .contains("\"resolution\":\"720p\"", "\"generateAudio\":true");
+        assertThat(jdbc.queryForObject(
+            "select duration_seconds from ai_video_result where task_id = ?", java.math.BigDecimal.class, taskId))
+            .isEqualByComparingTo("5");
+
+        Long invalidStoryboardId = createStoryboardWithShot(tenantId, projectId, ownerId, 2);
+        jdbc.update("""
+            update storyboard
+               set prompt_document_json = '{"version":2,"nodes":[
+                 {"type":"text","text":"无效"},
+                 {"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT",
+                  "sourceId":999999,"displayName":"不存在图片"}]}'
+             where id = ?
+            """, invalidStoryboardId);
+        int taskCount = jdbc.queryForObject("select count(*) from ai_video_task", Integer.class);
+        int executionCount = jdbc.queryForObject("select count(*) from ai_execution_task", Integer.class);
+
+        mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"storyboardId":%d,"modelId":%d,"prompt":"无效引用",
+                     "durationSeconds":5,"aspectRatio":"9:16","resolution":"720p"}
+                    """.formatted(invalidStoryboardId, modelId)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+        assertThat(jdbc.queryForObject("select count(*) from ai_video_task", Integer.class)).isEqualTo(taskCount);
+        assertThat(jdbc.queryForObject("select count(*) from ai_execution_task", Integer.class)).isEqualTo(executionCount);
+    }
 
     @Test
     void createsCompletesSavesBindsAndProtectsStoryboardVideoResult() throws Exception {
@@ -828,6 +918,133 @@ class AiVideoTaskControllerTest {
               "motionStrength":"MEDIUM"
             }
             """.formatted(storyboardId, modelId, prompt);
+    }
+
+    @Test
+    void cancelsSeedanceTaskRemotelyAndKeepsRepeatedCancellationIdempotent() throws Exception {
+        AtomicInteger deletes = new AtomicInteger();
+        AtomicInteger queries = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/api/v3/contents/generations/tasks", exchange -> {
+            if ("POST".equals(exchange.getRequestMethod())) {
+                writeJson(exchange, 200, "{\"id\":\"ark-cancel-task\",\"status\":\"queued\"}");
+            } else if ("DELETE".equals(exchange.getRequestMethod())) {
+                deletes.incrementAndGet();
+                writeJson(exchange, 200, "{\"Result\":{}}");
+            } else {
+                queries.incrementAndGet();
+                writeJson(exchange, 200, "{\"id\":\"ark-cancel-task\",\"status\":\"running\"}");
+            }
+        });
+        server.start();
+        try {
+            String token = registerUser("13800016022", "Seedance Cancel Owner");
+            Long tenantId = createTenant(token, "Seedance 取消团队");
+            Long ownerId = userIdByMobile("13800016022");
+            Long projectId = createProject(token, tenantId, ownerId, "Seedance 取消项目", "SEEDANCE_CANCEL");
+            Long modelId = enableSeedanceMini("http://127.0.0.1:%d/api/v3".formatted(server.getAddress().getPort()));
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            seedStoryboardImageReference(tenantId, projectId, storyboardId, ownerId);
+            grantTeamPoints(tenantId, 5);
+            MvcResult createResult = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"storyboardId":%d,"modelId":%d,"prompt":"Seedance 取消",
+                         "durationSeconds":5,"aspectRatio":"9:16","resolution":"720p"}
+                        """.formatted(storyboardId, modelId)))
+                .andExpect(status().isOk())
+                .andReturn();
+            Long taskId = readLong(createResult, "$.data.id");
+
+            for (int attempt = 0; attempt < 2; attempt++) {
+                mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/cancel".formatted(projectId, taskId))
+                        .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                        .header("X-Tenant-Id", tenantId))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status", is("CANCELED")));
+            }
+            aiVideoTaskService.pollDueTasks();
+
+            assertThat(deletes.get()).isEqualTo(1);
+            assertThat(queries.get()).isZero();
+            assertThat(jdbc.queryForObject(
+                "select status from ai_point_reservation where execution_id = (select execution_id from ai_video_task where id = ?)",
+                String.class, taskId)).isEqualTo("RELEASED");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private Long enableSeedanceMini() {
+        return enableSeedanceMini("mock://seedance");
+    }
+
+    private Long enableSeedanceMini(String baseUrl) {
+        Long providerId = jdbc.queryForObject(
+            "select id from ai_provider where code = 'VOLCENGINE_ARK'", Long.class);
+        jdbc.update("update ai_provider set status = 'ENABLED' where id = ?", providerId);
+        jdbc.update("""
+            update ai_provider_config
+               set api_key_cipher = ?, base_url = ?, status = 'ENABLED'
+             where provider_id = ?
+            """, aiSecretCodec.encrypt("ark-test-key"), baseUrl, providerId);
+        Long modelId = jdbc.queryForObject(
+            "select id from ai_model where code = 'SEEDANCE_2_0_MINI'", Long.class);
+        jdbc.update("""
+            update ai_model
+               set model_code = 'ep-test-mini', status = 'ENABLED', is_default = true
+             where id = ?
+            """, modelId);
+        jdbc.update("""
+            update ai_model_capability set status = 'ENABLED'
+             where model_id = ? and capability = 'VIDEO_GENERATION'
+            """, modelId);
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbc, modelId, "VIDEO_SECOND", java.math.BigDecimal.valueOf(5), java.math.BigDecimal.ONE);
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbc, modelId, "CALL", java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO);
+        return modelId;
+    }
+
+    private long seedStoryboardImageReference(
+        Long tenantId,
+        Long projectId,
+        Long storyboardId,
+        Long createdBy
+    ) {
+        jdbc.update("""
+            insert into ai_image_result
+              (tenant_id, project_id, task_id, target_type, target_id, image_url,
+               storage_path, mime_type, width, height, file_size, is_selected, status,
+               created_at, updated_at)
+            values (?, ?, 1, 'VISUAL_VARIANT', 1, 'https://cdn.example/seedance-frame.png',
+                    null, 'image/png', 720, 1280, 1000, true, 'ACTIVE', now(), now())
+            """, tenantId, projectId);
+        Long resultId = jdbc.queryForObject("select max(id) from ai_image_result", Long.class);
+        jdbc.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, source_type,
+               generation_status, current_image_result_id, current_image_url, is_primary,
+               created_by, created_at, updated_at)
+            values (?, ?, 'CHARACTER', 1, '林晚', 'USER', 'SUCCEEDED', ?,
+                    'https://cdn.example/seedance-frame.png', false, ?, now(), now())
+            """, tenantId, projectId, resultId, createdBy);
+        Long variantId = jdbc.queryForObject("select max(id) from asset_visual_variant", Long.class);
+        jdbc.update("""
+            update storyboard
+               set prompt_document_json = ?, video_prompt = '首帧使用林晚完成广告'
+             where id = ?
+            """, """
+            {"version":2,"nodes":[
+              {"type":"text","text":"首帧使用"},
+              {"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT",
+               "sourceId":%d,"assetType":"CHARACTER","assetId":1,"variantId":%d,"displayName":"林晚"},
+              {"type":"text","text":"完成广告"}
+            ]}
+            """.formatted(variantId, variantId), storyboardId);
+        return variantId;
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {

@@ -12,6 +12,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,7 @@ public class ProjectAiConfigService {
     private final AiModelMapper aiModelMapper;
     private final AiModelRouter aiModelRouter;
     private final OperationLogService operationLogService;
+    private final ObjectMapper objectMapper;
 
     public ProjectAiConfigService(
         TenantContextResolver tenantContextResolver,
@@ -30,7 +33,8 @@ public class ProjectAiConfigService {
         ProjectAiConfigMapper projectAiConfigMapper,
         AiModelMapper aiModelMapper,
         AiModelRouter aiModelRouter,
-        OperationLogService operationLogService
+        OperationLogService operationLogService,
+        ObjectMapper objectMapper
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.projectMapper = projectMapper;
@@ -38,6 +42,7 @@ public class ProjectAiConfigService {
         this.aiModelMapper = aiModelMapper;
         this.aiModelRouter = aiModelRouter;
         this.operationLogService = operationLogService;
+        this.objectMapper = objectMapper;
     }
 
     public ProjectAiModelsResponse availableModels(Long tenantId, Long projectId) {
@@ -114,8 +119,22 @@ public class ProjectAiConfigService {
                 .orderByDesc(AiModelEntity::getId))
             .stream()
             .filter(this::modelAvailable)
-            .map(model -> new ProjectModelOptionResponse(model.getId(), model.getName(), model.getDescription()))
+            .map(model -> new ProjectModelOptionResponse(
+                model.getId(), model.getName(), model.getDescription(), safeConstraints(model)))
             .toList();
+    }
+
+    private JsonNode safeConstraints(AiModelEntity model) {
+        if (!"VIDEO".equals(model.getServiceType())
+            || model.getConfigJson() == null || model.getConfigJson().isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode constraints = objectMapper.readTree(model.getConfigJson()).path("videoGeneration");
+            return constraints.isObject() ? constraints.deepCopy() : null;
+        } catch (Exception exception) {
+            return null;
+        }
     }
 
     private void validateModel(Long modelId, String serviceType) {

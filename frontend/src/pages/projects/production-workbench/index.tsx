@@ -132,6 +132,9 @@ const ProductionWorkbench = () => {
         startDate: project.startDate || undefined,
         endDate: project.endDate || undefined,
         aspectRatio: project.aspectRatio || undefined,
+        videoResolution: project.videoResolution || undefined,
+        videoGenerateAudio: project.videoGenerateAudio ?? undefined,
+        videoWatermark: project.videoWatermark ?? undefined,
         fileFormat: project.fileFormat || undefined,
         scriptType: project.scriptType || undefined,
         breakdownStrength: project.breakdownStrength || undefined,
@@ -206,7 +209,9 @@ const ProductionWorkbench = () => {
             <span style={{ marginRight: 12 }}>
               {project?.aspectRatio || '-'}
             </span>
-            <span style={{ marginRight: 12 }}>720p</span>
+            <span style={{ marginRight: 12 }}>
+              {project?.videoResolution || '720p'}
+            </span>
             <span style={{ marginRight: 12 }}>
               {project?.visualStyle || '-'}
             </span>

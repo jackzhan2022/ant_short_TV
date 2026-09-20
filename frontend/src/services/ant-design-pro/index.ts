@@ -17,10 +17,12 @@ import * as workflowSkillController from "./workflowSkillController";
 import * as workflowAgentController from "./workflowAgentController";
 import * as platformAiManagementController from "./platformAiManagementController";
 import * as tenantMemberController from "./tenantMemberController";
+import * as productionTaskController from "./productionTaskController";
 import * as tenantInvitationController from "./tenantInvitationController";
 import * as commercialOrderController from "./commercialOrderController";
 import * as aiExecutionController from "./aiExecutionController";
 import * as scriptContentController from "./scriptContentController";
+import * as assetImageBatchController from "./assetImageBatchController";
 import * as aiVideoTaskController from "./aiVideoTaskController";
 import * as inspirationThumbnailBackfillController from "./inspirationThumbnailBackfillController";
 import * as platformCommercialPackageController from "./platformCommercialPackageController";
@@ -55,10 +57,12 @@ export default {
   workflowAgentController,
   platformAiManagementController,
   tenantMemberController,
+  productionTaskController,
   tenantInvitationController,
   commercialOrderController,
   aiExecutionController,
   scriptContentController,
+  assetImageBatchController,
   aiVideoTaskController,
   inspirationThumbnailBackfillController,
   platformCommercialPackageController,

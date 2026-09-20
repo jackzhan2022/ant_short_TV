@@ -14,9 +14,9 @@ export async function myInvitations(options?: { [key: string]: any }) {
 }
 
 /** 此处后端没有提供注释 GET /api/invitations/${param0} */
-export async function detail13(
+export async function detail14(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail13Params,
+  params: API.detail14Params,
   options?: { [key: string]: any }
 ) {
   const { token: param0, ...queryParams } = params;

@@ -19,15 +19,27 @@ import {
   Flex,
   Image,
   Input,
+  InputNumber,
+  Popover,
   Select,
+  Switch,
   Tag,
+  Tabs,
   Typography,
 } from 'antd';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
+import { queryProject } from '@/services/account-team/project';
+import type { Project } from '@/services/account-team/types';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import {
+  queryProjectAiConfig,
+  queryProjectAiModels,
+  type ProjectModelOption,
+} from './ai-config/service';
 import type {
   AiImageTask,
+  AiVoiceTask,
   AiVideoTask,
   CharacterAsset,
   PropAsset,
@@ -52,6 +64,7 @@ import {
   queryAiImageTask,
   queryAiImageTasks,
   queryAiVideoTasks,
+  queryAiVoiceTasks,
   queryAssetSettingsSummary,
   queryScriptPageWorkspace,
   queryLatestStoryboardBatch,
@@ -71,6 +84,16 @@ type StoryboardDraft = Record<
   }
 >;
 type StoryboardWithProps = StoryboardShot & { props?: string };
+type PromptReferenceOption = Extract<
+  StoryboardPromptNode,
+  { type: 'mention' }
+>;
+type VideoGenerationSettings = {
+  durationSeconds: number;
+  resolution: string;
+  generateAudio: boolean;
+  watermark: boolean;
+};
 
 const successStatuses = ['SUCCESS', 'SUCCEEDED'];
 const terminalStoryboardBatchStatuses = new Set([
@@ -79,7 +102,6 @@ const terminalStoryboardBatchStatuses = new Set([
   'COMPLETED_WITH_FAILURES',
   'FAILED',
 ]);
-const supportedVideoDurations = [5, 8, 10];
 const storyboardPageSize = 20;
 
 const getTaskImage = (
@@ -266,9 +288,12 @@ const MaterialPromptEditor = ({
       }
       const mention = window.document.createElement('span');
       mention.contentEditable = 'false';
-      mention.dataset.assetType = node.assetType;
-      mention.dataset.assetId = String(node.assetId);
-      mention.dataset.variantId = String(node.variantId);
+      mention.dataset.mediaType = node.mediaType;
+      mention.dataset.sourceType = node.sourceType;
+      mention.dataset.sourceId = String(node.sourceId);
+      if (node.assetType) mention.dataset.assetType = node.assetType;
+      if (node.assetId) mention.dataset.assetId = String(node.assetId);
+      if (node.variantId) mention.dataset.variantId = String(node.variantId);
       mention.dataset.displayName = node.displayName;
       mention.textContent = node.displayName;
       mention.style.cssText = [
@@ -300,12 +325,23 @@ const MaterialPromptEditor = ({
         return;
       }
       if (!(node instanceof HTMLElement)) return;
-      if (node.dataset.assetId && node.dataset.variantId && node.dataset.assetType) {
+      if (node.dataset.mediaType && node.dataset.sourceType && node.dataset.sourceId) {
         nodes.push({
           type: 'mention',
-          assetType: node.dataset.assetType as 'CHARACTER' | 'SCENE' | 'PROP',
-          assetId: Number(node.dataset.assetId),
-          variantId: Number(node.dataset.variantId),
+          mediaType: node.dataset.mediaType as 'IMAGE' | 'VIDEO' | 'AUDIO',
+          sourceType: node.dataset.sourceType,
+          sourceId: Number(node.dataset.sourceId),
+          assetType: node.dataset.assetType as
+            | 'CHARACTER'
+            | 'SCENE'
+            | 'PROP'
+            | undefined,
+          assetId: node.dataset.assetId
+            ? Number(node.dataset.assetId)
+            : undefined,
+          variantId: node.dataset.variantId
+            ? Number(node.dataset.variantId)
+            : undefined,
           displayName: node.dataset.displayName || node.textContent || '',
         });
         return;
@@ -315,7 +351,7 @@ const MaterialPromptEditor = ({
       if (node.tagName === 'BR') appendText('\n');
     };
     Array.from(editorRef.current?.childNodes || []).forEach(walk);
-    const nextDocument: StoryboardPromptDocument = { version: 1, nodes };
+    const nextDocument: StoryboardPromptDocument = { version: 2, nodes };
     initializedKey.current = JSON.stringify(nextDocument.nodes);
     onChange(plainTextFromDocument(nextDocument), nextDocument);
   };
@@ -345,15 +381,14 @@ const MaterialPromptEditor = ({
   );
 };
 
-const normalizeVideoDuration = (durationSeconds?: number) => {
-  if (!durationSeconds) {
-    return supportedVideoDurations[0];
-  }
-  return (
-    supportedVideoDurations.find((duration) => duration >= durationSeconds) ||
-    supportedVideoDurations.at(-1) ||
-    supportedVideoDurations[0]
-  );
+const normalizeVideoDuration = (
+  durationSeconds: number | undefined,
+  constraints?: ProjectModelOption['constraints'],
+) => {
+  const min = constraints?.duration?.min ?? 4;
+  const max = constraints?.duration?.max ?? 15;
+  if (durationSeconds === -1) return -1;
+  return Math.min(max, Math.max(min, Math.round(durationSeconds || min)));
 };
 
 const getStoryboardVideo = (
@@ -451,9 +486,13 @@ const StoryboardCard = ({
   episodes,
   imageTasks,
   videoTasks,
+  referenceOptions,
   draft,
   model,
+  modelConstraints,
+  generationSettings,
   onDraftChange,
+  onGenerationSettingsChange,
   onGenerate,
   onCancelVideo,
   onRetryVideo,
@@ -474,12 +513,16 @@ const StoryboardCard = ({
   episodes: ScriptEpisode[];
   imageTasks: AiImageTask[];
   videoTasks: AiVideoTask[];
+  referenceOptions: Record<'IMAGE' | 'VIDEO' | 'AUDIO', PromptReferenceOption[]>;
   draft: StoryboardDraft[number];
   model: string;
+  modelConstraints?: ProjectModelOption['constraints'];
+  generationSettings: VideoGenerationSettings;
   onDraftChange: (
     storyboardId: number,
     values: Partial<StoryboardDraft[number]>,
   ) => void;
+  onGenerationSettingsChange: (values: Partial<VideoGenerationSettings>) => void;
   onGenerate: (storyboard: StoryboardShot) => void;
   onCancelVideo: (task: AiVideoTask) => void;
   onRetryVideo: (task: AiVideoTask) => void;
@@ -502,6 +545,97 @@ const StoryboardCard = ({
   const scene = firstByName(scenes, sceneNames);
   const prop = firstByName(props, propNames);
   const video = getStoryboardVideo(item, videoTasks);
+  const insertReference = (reference: PromptReferenceOption) => {
+    const currentNodes = draft.promptDocument?.nodes?.length
+      ? draft.promptDocument.nodes
+      : [{ type: 'text' as const, text: draft.videoPrompt }];
+    const separator = currentNodes.length ? [{ type: 'text' as const, text: ' ' }] : [];
+    const promptDocument: StoryboardPromptDocument = {
+      version: 2,
+      nodes: [...currentNodes, ...separator, reference],
+    };
+    const videoPrompt = plainTextFromDocument(promptDocument);
+    onDraftChange(item.id, { videoPrompt, promptDocument });
+    onUpdateStoryboard(item, { videoPrompt, promptDocument });
+  };
+  const referencePicker = (
+    <Tabs
+      size="small"
+      items={(['IMAGE', 'VIDEO', 'AUDIO'] as const).map((mediaType) => ({
+        key: mediaType,
+        label: { IMAGE: '图片', VIDEO: '视频', AUDIO: '音频' }[mediaType],
+        children: referenceOptions[mediaType].length ? (
+          <Flex vertical gap={4} style={{ width: 240, maxHeight: 280, overflowY: 'auto' }}>
+            {referenceOptions[mediaType].map((reference) => (
+              <Button
+                key={`${reference.sourceType}-${reference.sourceId}`}
+                type="text"
+                block
+                aria-label={`引用素材 ${reference.displayName}`}
+                onClick={() => insertReference(reference)}
+                style={{ justifyContent: 'flex-start' }}
+              >
+                {reference.displayName}
+              </Button>
+            ))}
+          </Flex>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可用素材" />
+        ),
+      }))}
+    />
+  );
+  const parameterEditor = (
+    <div style={{ width: 260, display: 'grid', gap: 12 }}>
+      <Flex justify="space-between" align="center" gap={12}>
+        <Typography.Text>时长</Typography.Text>
+        <Flex align="center" gap={6}>
+          <InputNumber
+            aria-label={`分镜${index + 1}视频时长`}
+            min={modelConstraints?.duration?.intelligent ? -1 : modelConstraints?.duration?.min}
+            max={modelConstraints?.duration?.max}
+            value={generationSettings.durationSeconds}
+            onChange={(value) =>
+              onGenerationSettingsChange({
+                durationSeconds: typeof value === 'number' ? value : generationSettings.durationSeconds,
+              })
+            }
+            style={{ width: 108 }}
+          />
+          <Typography.Text>秒</Typography.Text>
+        </Flex>
+      </Flex>
+      <Flex justify="space-between" align="center" gap={12}>
+        <Typography.Text>分辨率</Typography.Text>
+        <Select
+          aria-label={`分镜${index + 1}视频分辨率`}
+          value={generationSettings.resolution}
+          options={(modelConstraints?.resolutions || ['720p']).map((value) => ({
+            label: value,
+            value,
+          }))}
+          onChange={(resolution) => onGenerationSettingsChange({ resolution })}
+          style={{ width: 138 }}
+        />
+      </Flex>
+      <Flex justify="space-between" align="center">
+        <Typography.Text>生成音频</Typography.Text>
+        <Switch
+          aria-label={`分镜${index + 1}生成音频`}
+          checked={generationSettings.generateAudio}
+          onChange={(generateAudio) => onGenerationSettingsChange({ generateAudio })}
+        />
+      </Flex>
+      <Flex justify="space-between" align="center">
+        <Typography.Text>视频水印</Typography.Text>
+        <Switch
+          aria-label={`分镜${index + 1}视频水印`}
+          checked={generationSettings.watermark}
+          onChange={(watermark) => onGenerationSettingsChange({ watermark })}
+        />
+      </Flex>
+    </div>
+  );
   const resolveEpisodeVisual = (asset?: SceneAsset | PropAsset) => {
     const visual = asset?.visual;
     const episodeId = episodes.find(
@@ -923,7 +1057,9 @@ const StoryboardCard = ({
               gap={10}
               style={{ color: '#b5bdcc', marginBottom: 12 }}
             >
-              <Button aria-label="添加提示词引用" icon={<PlusOutlined />} />
+              <Popover content={referencePicker} trigger="click" placement="bottomLeft">
+                <Button aria-label="添加提示词引用" icon={<PlusOutlined />} />
+              </Popover>
               <Button aria-label="复制提示词" icon={<AppstoreOutlined />} />
               <span>
                 使用 @
@@ -953,10 +1089,19 @@ const StoryboardCard = ({
                 <Button size="small" icon={<ThunderboltOutlined />}>
                   {model}
                 </Button>
-                <Button size="small">
-                  ◷ {item.durationSeconds || 5}s | 1个 | 720p | mp4
-                </Button>
-                <Button size="small">@</Button>
+                <Popover content={parameterEditor} trigger="click" placement="bottomLeft">
+                  <Button
+                    size="small"
+                    aria-label={`分镜${index + 1}视频参数`}
+                  >
+                    ◷ {generationSettings.durationSeconds === -1
+                      ? '智能'
+                      : `${generationSettings.durationSeconds}s`} | 1个 | {generationSettings.resolution} | mp4
+                  </Button>
+                </Popover>
+                <Popover content={referencePicker} trigger="click" placement="bottomLeft">
+                  <Button size="small" aria-label="选择提示词素材">@</Button>
+                </Popover>
               </Flex>
               <Button
                 type="primary"
@@ -1132,11 +1277,17 @@ const ProductionWorkbenchStoryboard = () => {
   const { message } = App.useApp();
   const [imageTasks, setImageTasks] = useState<AiImageTask[]>([]);
   const [videoTasks, setVideoTasks] = useState<AiVideoTask[]>([]);
+  const [voiceTasks, setVoiceTasks] = useState<AiVoiceTask[]>([]);
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [storyboardPage, setStoryboardPage] = useState(1);
   const [storyboardTotal, setStoryboardTotal] = useState(0);
   const [mutationRefreshFailed, setMutationRefreshFailed] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('Doubao-Seedance-2.5');
+  const [project, setProject] = useState<Project>();
+  const [videoModels, setVideoModels] = useState<ProjectModelOption[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<number>();
+  const [videoSettings, setVideoSettings] = useState<
+    Record<number, VideoGenerationSettings>
+  >({});
   const [drafts, setDrafts] = useState<StoryboardDraft>({});
   const [storyboardExecution, setStoryboardExecution] =
     useState<API.AiExecutionResponse>();
@@ -1163,14 +1314,18 @@ const ProductionWorkbenchStoryboard = () => {
     const requestId = storyboardRequestId.current + 1;
     storyboardRequestId.current = requestId;
     Promise.all([
+      queryProject(projectId),
+      queryProjectAiModels(projectId),
+      queryProjectAiConfig(projectId),
       queryScriptPageWorkspace(projectId),
       queryAssetSettingsSummary(projectId),
       queryStoryboardWorkspace(projectId),
       queryAiImageTasks(projectId, undefined).catch(() => ({ data: [] })),
       queryAiVideoTasks(projectId, undefined).catch(() => ({ data: [] })),
+      queryAiVoiceTasks(projectId, undefined).catch(() => ({ data: [] })),
       queryLatestStoryboardBatch(projectId).catch(() => ({ data: null })),
     ])
-      .then(([workspaceResponse, assetResponse, storyboardResponse, imageTaskResponse, videoTaskResponse, batchResponse]) => {
+      .then(([projectResponse, modelResponse, configResponse, workspaceResponse, assetResponse, storyboardResponse, imageTaskResponse, videoTaskResponse, voiceTaskResponse, batchResponse]) => {
         if (!active || storyboardRequestId.current !== requestId) {
           return;
         }
@@ -1195,7 +1350,32 @@ const ProductionWorkbenchStoryboard = () => {
           globalUnderstanding:
             workspaceResponse.data?.globalUnderstanding || null,
         };
+        const nextProject = projectResponse.data as Project;
+        const nextVideoModels = modelResponse.data?.videoModels || [];
+        const nextModelId = configResponse.data?.videoModelId || nextVideoModels[0]?.id;
+        const nextConstraints = nextVideoModels.find(
+          (model) => model.id === nextModelId,
+        )?.constraints;
+        setProject(nextProject);
+        setVideoModels(nextVideoModels);
+        setSelectedModelId(nextModelId || undefined);
         setWorkspace(nextWorkspace);
+        setVideoSettings(
+          Object.fromEntries(
+            nextWorkspace.storyboards.map((storyboard) => [
+              storyboard.id,
+              {
+                durationSeconds: normalizeVideoDuration(
+                  storyboard.durationSeconds,
+                  nextConstraints,
+                ),
+                resolution: nextProject.videoResolution || '720p',
+                generateAudio: nextProject.videoGenerateAudio !== false,
+                watermark: nextProject.videoWatermark === true,
+              },
+            ]),
+          ),
+        );
         setStoryboardPage(storyboardResponse.data?.current || 1);
         setStoryboardTotal(
           storyboardResponse.data?.total ?? nextWorkspace.storyboards.length,
@@ -1203,6 +1383,7 @@ const ProductionWorkbenchStoryboard = () => {
         setImageTasks(imageTaskResponse.data || []);
         const nextVideoTasks = videoTaskResponse.data || [];
         setVideoTasks(nextVideoTasks);
+        setVoiceTasks(voiceTaskResponse.data || []);
         setStoryboardBatch(batchResponse.data || undefined);
         for (const task of nextVideoTasks.filter(
           (item) =>
@@ -1274,6 +1455,92 @@ const ProductionWorkbenchStoryboard = () => {
   const characters = workspace.characters;
   const scenes = workspace.scenes;
   const props = workspace.props;
+  const referenceOptions = useMemo<
+    Record<'IMAGE' | 'VIDEO' | 'AUDIO', PromptReferenceOption[]>
+  >(() => {
+    const images = [...characters, ...scenes, ...props].flatMap((asset) =>
+      (asset.visual?.variants || [])
+        .filter((variant) => variant.usable && variant.currentImageUrl)
+        .map((variant) => ({
+          type: 'mention' as const,
+          mediaType: 'IMAGE' as const,
+          sourceType: 'ASSET_VISUAL_VARIANT',
+          sourceId: variant.id,
+          assetType: variant.assetType,
+          assetId: variant.assetId,
+          variantId: variant.id,
+          displayName: variant.name || asset.name,
+        })),
+    );
+    const videos = videoTasks.flatMap((task) => {
+      const storyboard = workspace.storyboards.find(
+        (item) => item.id === task.storyboardId,
+      );
+      return (task.results || [])
+        .filter((result) => result.materialId)
+        .map((result) => ({
+          type: 'mention' as const,
+          mediaType: 'VIDEO' as const,
+          sourceType: 'VIDEO_MATERIAL',
+          sourceId: result.materialId as number,
+          displayName: `分镜${storyboard?.storyboardNo || storyboard?.shotNo || task.storyboardId}视频`,
+        }));
+    });
+    const audio = voiceTasks.flatMap((task) =>
+      (task.results || [])
+        .filter((result) => result.materialId)
+        .map((result) => ({
+          type: 'mention' as const,
+          mediaType: 'AUDIO' as const,
+          sourceType: 'AUDIO_MATERIAL',
+          sourceId: result.materialId as number,
+          displayName: `${task.speakerName || '分镜旁白'}音频`,
+        })),
+    );
+    return { IMAGE: images, VIDEO: videos, AUDIO: audio };
+  }, [characters, scenes, props, videoTasks, voiceTasks, workspace.storyboards]);
+  const selectedVideoModel = videoModels.find(
+    (model) => model.id === selectedModelId,
+  );
+  const settingsFor = (storyboard: StoryboardShot): VideoGenerationSettings =>
+    videoSettings[storyboard.id] || {
+      durationSeconds: normalizeVideoDuration(
+        storyboard.durationSeconds,
+        selectedVideoModel?.constraints,
+      ),
+      resolution: project?.videoResolution || '720p',
+      generateAudio: project?.videoGenerateAudio !== false,
+      watermark: project?.videoWatermark === true,
+    };
+  const changeSelectedModel = (value: number | string) => {
+    const nextId = Number(value);
+    const nextModel = videoModels.find((model) => model.id === nextId);
+    const supported = nextModel?.constraints?.resolutions || ['720p'];
+    let fellBack = false;
+    const nextSettings = Object.fromEntries(
+      workspace.storyboards.map((storyboard) => {
+        const current = videoSettings[storyboard.id] || settingsFor(storyboard);
+        const resolution = supported.includes(current.resolution)
+          ? current.resolution
+          : '720p';
+        if (resolution !== current.resolution) fellBack = true;
+        return [
+          storyboard.id,
+          {
+            ...current,
+            resolution,
+            durationSeconds: normalizeVideoDuration(
+              current.durationSeconds,
+              nextModel?.constraints,
+            ),
+          },
+        ];
+      }),
+    );
+    setSelectedModelId(nextId);
+    setVideoSettings(nextSettings);
+    if (fellBack) message.warning('所选模型不支持当前分辨率，已切换为 720p');
+  };
   const episodeNumbers = useMemo(() => {
     const fromEpisodes = (workspace.episodes || []).map(
       (item) => item.episodeNo,
@@ -1617,13 +1884,17 @@ const ProductionWorkbenchStoryboard = () => {
   const createVideoTaskForStoryboard = async (storyboard: StoryboardShot) => {
     const prompt =
       drafts[storyboard.id]?.videoPrompt || getStoryboardPrompt(storyboard);
+    const settings = settingsFor(storyboard);
     const response = await createAiVideoTask(projectId, {
       storyboardId: storyboard.id,
+      modelId: selectedModelId,
       prompt,
       firstFrameUrl: storyboard.firstFrameUrl || undefined,
-      durationSeconds: normalizeVideoDuration(storyboard.durationSeconds),
-      aspectRatio: '9:16',
-      resolution: '720p',
+      durationSeconds: settings.durationSeconds,
+      aspectRatio: project?.aspectRatio || '9:16',
+      resolution: settings.resolution,
+      generateAudio: settings.generateAudio,
+      watermark: settings.watermark,
     });
     return response.data as AiVideoTask | undefined;
   };
@@ -1644,21 +1915,29 @@ const ProductionWorkbenchStoryboard = () => {
   };
 
   const batchGenerateVideo = async () => {
-    try {
-      const tasks = await Promise.all(
-        visibleStoryboards.map((item) => createVideoTaskForStoryboard(item)),
-      );
-      for (const task of tasks.filter((item): item is AiVideoTask =>
-        Boolean(item),
-      )) {
+    const outcomes = await Promise.allSettled(
+      visibleStoryboards.map((item) => createVideoTaskForStoryboard(item)),
+    );
+    let created = 0;
+    outcomes.forEach((outcome, index) => {
+      if (outcome.status === 'rejected') {
+        const storyboard = visibleStoryboards[index];
+        message.error(
+          `分镜${storyboard.storyboardNo || storyboard.shotNo || index + 1}视频生成失败`,
+        );
+        return;
+      }
+      const task = outcome.value;
+      if (task) {
+        created += 1;
         setVideoTasks((previous) => [...previous, task]);
         void followVideoExecution(task).catch(() =>
           message.error('视频任务状态刷新失败'),
         );
       }
+    });
+    if (created > 0) {
       message.success('批量视频任务已创建');
-    } catch {
-      message.error('批量生成视频失败');
     }
   };
 
@@ -1902,14 +2181,12 @@ const ProductionWorkbenchStoryboard = () => {
           <Flex gap={10}>
             <Select
               aria-label="视频生成模型"
-              value={selectedModel}
-              onChange={setSelectedModel}
-              options={[
-                {
-                  label: 'Doubao-Seedance-2.5',
-                  value: 'Doubao-Seedance-2.5',
-                },
-              ]}
+              value={selectedModelId}
+              onChange={changeSelectedModel}
+              options={videoModels.map((model) => ({
+                label: model.name,
+                value: model.id,
+              }))}
               style={{ width: 202 }}
             />
             <Button icon={<BarsOutlined />} onClick={batchGenerateVideo}>
@@ -2003,6 +2280,7 @@ const ProductionWorkbenchStoryboard = () => {
                 episodes={workspace?.episodes ?? []}
                 imageTasks={imageTasks}
                 videoTasks={videoTasks}
+                referenceOptions={referenceOptions}
                 draft={
                   drafts[item.id] || {
                     scriptText: getStoryboardScriptText(item),
@@ -2010,8 +2288,16 @@ const ProductionWorkbenchStoryboard = () => {
                     promptDocument: item.promptDocument,
                   }
                 }
-                model={selectedModel}
+                model={selectedVideoModel?.name || '未配置视频模型'}
+                modelConstraints={selectedVideoModel?.constraints}
+                generationSettings={settingsFor(item)}
                 onDraftChange={updateDraft}
+                onGenerationSettingsChange={(values) =>
+                  setVideoSettings((previous) => ({
+                    ...previous,
+                    [item.id]: { ...settingsFor(item), ...values },
+                  }))
+                }
                 onGenerate={generateVideo}
                 onCancelVideo={cancelVideo}
                 onRetryVideo={retryVideo}

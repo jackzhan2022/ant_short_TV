@@ -3,9 +3,9 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/inspiration-creations */
-export async function list15(
+export async function list16(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list15Params,
+  params: API.list16Params,
   options?: { [key: string]: any }
 ) {
   return request<API.ApiResponseInspirationCreationPageResponse>(
@@ -25,9 +25,9 @@ export async function list15(
 }
 
 /** 此处后端没有提供注释 GET /api/inspiration-creations/${param0} */
-export async function detail14(
+export async function detail15(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail14Params,
+  params: API.detail15Params,
   options?: { [key: string]: any }
 ) {
   const { id: param0, ...queryParams } = params;

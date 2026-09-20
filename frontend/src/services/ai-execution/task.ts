@@ -1,6 +1,6 @@
 import {
   cancel1,
-  detail3,
+  detail4,
   regenerate as regenerateRequest,
   retry1,
 } from '@/services/ant-design-pro/aiExecutionController';
@@ -139,7 +139,7 @@ function responseData(response: API.ApiResponseAiExecutionResponse) {
 
 const generatedClient: AiExecutionClient = {
   detail: async (tenantId, executionId) =>
-    responseData(await detail3({ tenantId, executionId })),
+    responseData(await detail4({ tenantId, executionId })),
   cancel: async (tenantId, executionId) =>
     responseData(await cancel1({ tenantId, executionId })),
   retry: async (tenantId, executionId) =>

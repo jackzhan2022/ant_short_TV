@@ -1302,7 +1302,22 @@ class ScriptWorkflowControllerTest {
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"episodeNo":1,"shotNo":10,"shotType":"近景","visualDescription":"林晚抬眼看向众人","characters":"林晚","scene":"宴会厅","dialogue":"我回来了。","durationSeconds":5,"imagePrompt":"林晚近景首帧","videoPrompt":"慢慢推近","status":"CONFIRMED"}
+                    {"episodeNo":1,"shotNo":10,"visualDescription":"旧版提示词",
+                     "promptDocument":{"version":1,"nodes":[{"type":"text","text":"legacy"}]}}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d".formatted(projectId, storyboardId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"episodeNo":1,"shotNo":10,"shotType":"近景","visualDescription":"林晚抬眼看向众人","characters":"林晚","scene":"宴会厅","dialogue":"我回来了。","durationSeconds":5,"imagePrompt":"林晚近景首帧","videoPrompt":"慢慢推近","status":"CONFIRMED",
+                     "promptDocument":{"version":2,"nodes":[
+                       {"type":"text","text":"参考"},
+                       {"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT","sourceId":123,"assetType":"CHARACTER","assetId":456,"variantId":123,"displayName":"林晚"}
+                     ]}}
                     """))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(nullValue()));

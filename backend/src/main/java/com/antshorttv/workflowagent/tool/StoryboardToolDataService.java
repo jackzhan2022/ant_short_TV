@@ -416,7 +416,7 @@ public class StoryboardToolDataService {
         }
         text.append("### 约束词\n【保持一致】\n").append(FIXED_CONSISTENCY_CONSTRAINT);
         ObjectNode document = json.createObjectNode();
-        document.put("version", 1);
+        document.put("version", 2);
         ArrayNode nodes = document.putArray("nodes");
         addMentionNodes(nodes, text.toString(), materialSet.materials);
         return new RenderedPrompt(text.toString(), document);
@@ -459,6 +459,9 @@ public class StoryboardToolDataService {
             addText(nodes, text.substring(cursor, next));
             ObjectNode mention = nodes.addObject();
             mention.put("type", "mention");
+            mention.put("mediaType", "IMAGE");
+            mention.put("sourceType", "ASSET_VISUAL_VARIANT");
+            mention.put("sourceId", match.variantId);
             mention.put("assetType", match.kind.assetType);
             mention.put("assetId", match.assetId);
             mention.put("variantId", match.variantId);

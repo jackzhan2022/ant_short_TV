@@ -21,6 +21,9 @@ public class ProjectEntity {
     public LocalDate startDate;
     public LocalDate endDate;
     public String aspectRatio;
+    public String videoResolution;
+    public Boolean videoGenerateAudio;
+    public Boolean videoWatermark;
     public String fileFormat;
     public String scriptType;
     public String breakdownStrength;

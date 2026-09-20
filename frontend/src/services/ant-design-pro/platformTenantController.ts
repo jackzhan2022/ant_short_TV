@@ -3,9 +3,9 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/platform/tenants */
-export async function list8(
+export async function list9(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list8Params,
+  params: API.list9Params,
   options?: { [key: string]: any }
 ) {
   return request<API.ApiResponsePlatformTenantPageResponse>(
@@ -21,9 +21,9 @@ export async function list8(
 }
 
 /** 此处后端没有提供注释 GET /api/platform/tenants/${param0} */
-export async function detail8(
+export async function detail9(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail8Params,
+  params: API.detail9Params,
   options?: { [key: string]: any }
 ) {
   const { tenantId: param0, ...queryParams } = params;

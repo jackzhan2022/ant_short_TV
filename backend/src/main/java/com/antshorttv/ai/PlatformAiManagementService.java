@@ -242,6 +242,7 @@ public class PlatformAiManagementService {
         LocalDateTime now = LocalDateTime.now();
         AiModelEntity model = new AiModelEntity();
         fillModel(model, request, now);
+        validateSeedanceEndpointForEnable(model);
         if (Boolean.TRUE.equals(model.getIsDefault())) {
             clearModelDefault(model.getServiceType(), null);
         }
@@ -258,6 +259,7 @@ public class PlatformAiManagementService {
         requireProvider(request.providerId());
         validateServiceType(request.serviceType());
         fillModel(model, request, LocalDateTime.now());
+        validateSeedanceEndpointForEnable(model);
         if (Boolean.TRUE.equals(model.getIsDefault())) {
             clearModelDefault(model.getServiceType(), model.getId());
         }
@@ -272,6 +274,7 @@ public class PlatformAiManagementService {
         AuthenticatedUser user = currentPrincipal.require();
         AiModelEntity model = requireModel(id);
         model.setStatus(enabled ? "ENABLED" : "DISABLED");
+        validateSeedanceEndpointForEnable(model);
         model.setUpdatedAt(LocalDateTime.now());
         if (!enabled) {
             model.setIsDefault(false);
@@ -328,8 +331,19 @@ public class PlatformAiManagementService {
         return new PlatformModelResponse(
             model.getId(), model.getProviderId(), provider == null ? null : provider.getName(), model.getCode(),
             model.getName(), model.getModelCode(), model.getServiceType(), model.getDescription(), model.getStatus(),
-            model.getIsDefault(), model.getSort(), capabilities, model.getUpdatedAt()
+            model.getIsDefault(), model.getSort(), capabilities, model.getConfigJson(), model.getUpdatedAt()
         );
+    }
+
+    private void validateSeedanceEndpointForEnable(AiModelEntity model) {
+        if (!"ENABLED".equals(model.getStatus()) || model.getCode() == null
+            || !model.getCode().startsWith("SEEDANCE_")) {
+            return;
+        }
+        String endpointId = model.getModelCode();
+        if (endpointId == null || endpointId.isBlank() || endpointId.startsWith("__SEEDANCE_")) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先配置 Seedance Endpoint ID 后再启用模型。");
+        }
     }
 
     private void fillModel(AiModelEntity model, PlatformModelRequest request, LocalDateTime now) {

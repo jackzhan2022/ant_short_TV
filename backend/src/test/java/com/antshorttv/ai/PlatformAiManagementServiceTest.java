@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antshorttv.authsession.AuthenticatedUser;
@@ -17,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class PlatformAiManagementServiceTest {
 
@@ -102,6 +104,38 @@ class PlatformAiManagementServiceTest {
         )).isInstanceOf(com.antshorttv.common.BusinessException.class);
     }
 
+    @Test
+    void savesConfiguredSeedanceEndpointThroughAuthorizedModelUpdate() {
+        AiModelEntity model = seedanceModel("__SEEDANCE_2_0_MINI_ENDPOINT_ID__");
+        when(currentPrincipal.require()).thenReturn(
+            new AuthenticatedUser(9L, "13800000009", "session", LocalDateTime.now().plusHours(1)));
+        when(modelMapper.selectById(10L)).thenReturn(model);
+        when(providerMapper.selectById(1L)).thenReturn(arkProvider());
+        when(capabilityMapper.selectList(any())).thenReturn(List.of());
+
+        PlatformModelResponse response = service.updateModel(10L, new PlatformModelRequest(
+            1L, "SEEDANCE_2_0_MINI", "Seedance 2.0 mini", "ep-configured-mini", "VIDEO",
+            "configured", false, true, 330, "{\"videoGeneration\":{}}"
+        ), null);
+
+        ArgumentCaptor<AiModelEntity> saved = ArgumentCaptor.forClass(AiModelEntity.class);
+        verify(modelMapper).updateById(saved.capture());
+        assertThat(saved.getValue().getModelCode()).isEqualTo("ep-configured-mini");
+        assertThat(response.modelCode()).isEqualTo("ep-configured-mini");
+    }
+
+    @Test
+    void rejectsEnablingSeedanceModelWithPlaceholderEndpoint() {
+        AiModelEntity model = seedanceModel("__SEEDANCE_2_0_MINI_ENDPOINT_ID__");
+        when(currentPrincipal.require()).thenReturn(
+            new AuthenticatedUser(9L, "13800000009", "session", LocalDateTime.now().plusHours(1)));
+        when(modelMapper.selectById(10L)).thenReturn(model);
+
+        assertThatThrownBy(() -> service.updateModelStatus(10L, true, null))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("Endpoint ID");
+    }
+
     private void prepare(AiModelRoute route) {
         preparePrincipalAndProvider();
         when(configMapper.selectOne(any())).thenReturn(route.providerConfig());
@@ -137,6 +171,31 @@ class PlatformAiManagementServiceTest {
         provider.setCode("OpenAI");
         provider.setStatus("ENABLED");
         return provider;
+    }
+
+    private AiProviderEntity arkProvider() {
+        AiProviderEntity provider = new AiProviderEntity();
+        provider.setId(1L);
+        provider.setName("火山方舟");
+        provider.setCode("VOLCENGINE_ARK");
+        provider.setStatus("ENABLED");
+        return provider;
+    }
+
+    private AiModelEntity seedanceModel(String modelCode) {
+        AiModelEntity model = new AiModelEntity();
+        model.setId(10L);
+        model.setProviderId(1L);
+        model.setCode("SEEDANCE_2_0_MINI");
+        model.setName("Seedance 2.0 mini");
+        model.setModelCode(modelCode);
+        model.setServiceType("VIDEO");
+        model.setStatus("DISABLED");
+        model.setIsDefault(true);
+        model.setSort(330);
+        model.setCreatedAt(LocalDateTime.now());
+        model.setUpdatedAt(LocalDateTime.now());
+        return model;
     }
 
     private AiProviderConfigEntity config(String baseUrl) {

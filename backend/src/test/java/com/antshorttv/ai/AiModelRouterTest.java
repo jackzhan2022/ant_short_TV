@@ -138,7 +138,7 @@ class AiModelRouterTest {
             "select id from ai_provider where code = 'VOLCENGINE_ARK' limit 1", Long.class);
         jdbcTemplate.update("update ai_provider set status = 'ENABLED' where id = ?", arkProviderId);
         jdbcTemplate.update("update ai_provider_config set api_key_cipher = 'test-cipher', status = 'ENABLED' where provider_id = ?", arkProviderId);
-        for (String code : new String[] {"SEEDANCE_2_0_FAST", "SEEDANCE_2_0_STANDARD", "SEEDANCE_2_5"}) {
+        for (String code : new String[] {"SEEDANCE_2_0_MINI", "SEEDANCE_2_0_FAST", "SEEDANCE_2_0_STANDARD", "SEEDANCE_2_5"}) {
             Long modelId = jdbcTemplate.queryForObject("select id from ai_model where code = ?", Long.class, code);
             jdbcTemplate.update("update ai_model set status = 'ENABLED' where id = ?", modelId);
             jdbcTemplate.update("update ai_model_capability set status = 'ENABLED' where model_id = ? and capability = 'VIDEO_GENERATION'", modelId);
@@ -149,6 +149,29 @@ class AiModelRouterTest {
             assertThat(route.adapter()).isInstanceOf(com.antshorttv.video.SeedanceArkVideoProviderAdapter.class);
             assertThat(route.model().getCode()).isEqualTo(code);
         }
+    }
+
+    @Test
+    void routesConfiguredSeedanceMiniAsDefaultVideoModel() {
+        Long arkProviderId = jdbcTemplate.queryForObject(
+            "select id from ai_provider where code = 'VOLCENGINE_ARK' limit 1", Long.class);
+        jdbcTemplate.update("update ai_provider set status = 'ENABLED' where id = ?", arkProviderId);
+        jdbcTemplate.update(
+            "update ai_provider_config set api_key_cipher = 'test-cipher', status = 'ENABLED' where provider_id = ?",
+            arkProviderId);
+        Long miniId = jdbcTemplate.queryForObject(
+            "select id from ai_model where code = 'SEEDANCE_2_0_MINI'", Long.class);
+        jdbcTemplate.update(
+            "update ai_model set model_code = 'ep-configured-mini', status = 'ENABLED', is_default = true where id = ?",
+            miniId);
+        jdbcTemplate.update(
+            "update ai_model_capability set status = 'ENABLED' where model_id = ? and capability = 'VIDEO_GENERATION'",
+            miniId);
+
+        AiModelRoute route = router.route(null, "VIDEO");
+
+        assertThat(route.model().getId()).isEqualTo(miniId);
+        assertThat(route.model().getCode()).isEqualTo("SEEDANCE_2_0_MINI");
     }
 
     private Long insertModel(String code, String serviceType, boolean isDefault, int sort) {

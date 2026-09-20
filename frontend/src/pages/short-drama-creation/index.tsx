@@ -20,7 +20,9 @@ import {
   Input,
   Modal,
   Radio,
+  Select,
   Spin,
+  Switch,
   Tooltip,
   Typography,
   Upload,
@@ -116,6 +118,9 @@ const ShortDramaCreationPage = () => {
   const [projectForm, setProjectForm] = useState<Partial<ProjectFormValues>>({
     coverSource: 'FIRST_FRAME',
     aspectRatio: '16:9',
+    videoResolution: '720p',
+    videoGenerateAudio: true,
+    videoWatermark: false,
     fileFormat: 'SCRIPT',
     scriptType: 'PREMIUM_DRAMA',
     breakdownStrength: 'MEDIUM',
@@ -315,6 +320,9 @@ const ShortDramaCreationPage = () => {
         startDate: projectForm.startDate,
         endDate: projectForm.endDate,
         aspectRatio: projectForm.aspectRatio,
+        videoResolution: projectForm.videoResolution,
+        videoGenerateAudio: projectForm.videoGenerateAudio,
+        videoWatermark: projectForm.videoWatermark,
         fileFormat: projectForm.fileFormat,
         scriptType: projectForm.scriptType,
         breakdownStrength: projectForm.breakdownStrength,
@@ -497,6 +505,42 @@ const ShortDramaCreationPage = () => {
             placeholder="请输入剧本名称"
             value={projectForm.scriptName || ''}
           />
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            视频生成 <InfoCircleOutlined />
+          </Typography.Text>
+          <Flex gap={16} align="center" wrap>
+            <Select
+              aria-label="默认视频分辨率"
+              value={projectForm.videoResolution}
+              onChange={(value) => updateForm({ videoResolution: value })}
+              options={['480p', '720p', '1080p', '4k'].map((value) => ({
+                label: value,
+                value,
+              }))}
+              style={{ width: 132 }}
+            />
+            <Flex gap={8} align="center">
+              <Typography.Text>生成音频</Typography.Text>
+              <Switch
+                aria-label="默认生成音频"
+                checked={projectForm.videoGenerateAudio !== false}
+                onChange={(checked) =>
+                  updateForm({ videoGenerateAudio: checked })
+                }
+              />
+            </Flex>
+            <Flex gap={8} align="center">
+              <Typography.Text>视频水印</Typography.Text>
+              <Switch
+                aria-label="默认视频水印"
+                checked={projectForm.videoWatermark === true}
+                onChange={(checked) => updateForm({ videoWatermark: checked })}
+              />
+            </Flex>
+          </Flex>
         </section>
 
         <section className={styles.settingBlock}>

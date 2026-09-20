@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
@@ -229,6 +230,9 @@ public class ProjectService {
         project.startDate = request.startDate();
         project.endDate = request.endDate();
         project.aspectRatio = request.aspectRatio();
+        project.videoResolution = normalizeVideoResolution(request.videoResolution(), "720p");
+        project.videoGenerateAudio = request.videoGenerateAudio() == null || request.videoGenerateAudio();
+        project.videoWatermark = Boolean.TRUE.equals(request.videoWatermark());
         project.fileFormat = request.fileFormat();
         project.scriptType = request.scriptType();
         project.breakdownStrength = request.breakdownStrength();
@@ -297,6 +301,13 @@ public class ProjectService {
         project.startDate = request.startDate();
         project.endDate = request.endDate();
         project.aspectRatio = request.aspectRatio();
+        project.videoResolution = normalizeVideoResolution(request.videoResolution(), project.videoResolution);
+        if (request.videoGenerateAudio() != null) {
+            project.videoGenerateAudio = request.videoGenerateAudio();
+        }
+        if (request.videoWatermark() != null) {
+            project.videoWatermark = request.videoWatermark();
+        }
         project.fileFormat = request.fileFormat();
         project.scriptType = request.scriptType();
         project.breakdownStrength = request.breakdownStrength();
@@ -748,6 +759,9 @@ public class ProjectService {
             project.startDate,
             project.endDate,
             project.aspectRatio,
+            project.videoResolution == null ? "720p" : project.videoResolution,
+            project.videoGenerateAudio == null || project.videoGenerateAudio,
+            Boolean.TRUE.equals(project.videoWatermark),
             project.fileFormat,
             project.scriptType,
             project.breakdownStrength,
@@ -762,6 +776,17 @@ public class ProjectService {
             project.createdAt,
             project.updatedAt
         );
+    }
+
+    private String normalizeVideoResolution(String value, String fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback == null || fallback.isBlank() ? "720p" : fallback;
+        }
+        String normalized = value.trim().toLowerCase();
+        if (!Set.of("480p", "720p", "1080p", "4k").contains(normalized)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "项目视频分辨率不受支持。");
+        }
+        return normalized;
     }
 
     private ProjectMemberResponse toMemberResponse(ProjectMemberEntity member, Long tenantId) {

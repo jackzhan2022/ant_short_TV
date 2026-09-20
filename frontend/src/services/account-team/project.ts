@@ -18,6 +18,9 @@ export type ProjectFormValues = {
   startDate?: string;
   endDate?: string;
   aspectRatio?: string;
+  videoResolution?: string;
+  videoGenerateAudio?: boolean;
+  videoWatermark?: boolean;
   fileFormat?: string;
   scriptType?: string;
   breakdownStrength?: string;

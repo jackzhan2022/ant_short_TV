@@ -97,6 +97,8 @@ declare namespace API {
     updatedAt?: string;
     completedAt?: string;
     canceledAt?: string;
+    admission?: string;
+    conflictExecutionId?: number;
   };
 
   type AiImageResultResponse = {
@@ -207,11 +209,14 @@ declare namespace API {
     providerCode?: string;
     model?: string;
     prompt?: string;
+    compiledPrompt?: string;
     negativePrompt?: string;
     firstFrameUrl?: string;
     durationSeconds?: number;
     aspectRatio?: string;
     resolution?: string;
+    generateAudio?: boolean;
+    watermark?: boolean;
     motionStrength?: string;
     cameraMovement?: string;
     externalTaskId?: string;
@@ -336,6 +341,20 @@ declare namespace API {
   type ApiResponseAiVoiceTaskResponse = {
     success?: boolean;
     data?: AiVoiceTaskResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseAssetImageBatchPreflightResponse = {
+    success?: boolean;
+    data?: AssetImageBatchPreflightResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseAssetImageBatchResponse = {
+    success?: boolean;
+    data?: AssetImageBatchResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -732,6 +751,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseMapStringObject = {
+    success?: boolean;
+    data?: Record<string, any>;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseModelBillingHistoryResponse = {
     success?: boolean;
     data?: ModelBillingHistoryResponse;
@@ -749,6 +775,13 @@ declare namespace API {
   type ApiResponseModelPriceVersionResponse = {
     success?: boolean;
     data?: ModelPriceVersionResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponsePage = {
+    success?: boolean;
+    data?: Page;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -984,6 +1017,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseSummary = {
+    success?: boolean;
+    data?: Summary;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseTeamPointAccountResponse = {
     success?: boolean;
     data?: TeamPointAccountResponse;
@@ -1099,6 +1139,59 @@ declare namespace API {
   type applyVersionParams = {
     projectId: number;
     versionId: number;
+  };
+
+  type AssetImageBatchItemResponse = {
+    id?: number;
+    assetId?: number;
+    variantId?: number;
+    variantName?: string;
+    stage?: string;
+    status?: string;
+    dependencyItemId?: number;
+    taskId?: number;
+    errorMessage?: string;
+  };
+
+  type AssetImageBatchPreflightResponse = {
+    assetType?: string;
+    mode?: string;
+    selectedAssets?: number;
+    plannedTasks?: number;
+    waitingDependencies?: number;
+    skippedCompleted?: number;
+    skippedGenerating?: number;
+    skippedMissingPrompt?: number;
+    skippedOther?: number;
+    totalImages?: number;
+  };
+
+  type AssetImageBatchRequest = {
+    assetType: string;
+    assetIds: number[];
+    mode: string;
+    modelId?: number;
+    aspectRatio: string;
+    imageCount: number;
+  };
+
+  type AssetImageBatchResponse = {
+    id?: number;
+    projectId?: number;
+    assetType?: string;
+    mode?: string;
+    status?: string;
+    total?: number;
+    pending?: number;
+    running?: number;
+    succeeded?: number;
+    failed?: number;
+    skipped?: number;
+    modelId?: number;
+    aspectRatio?: string;
+    imageCount?: number;
+    items?: AssetImageBatchItemResponse[];
+    createdAt?: string;
   };
 
   type AssetReextractionPreflight = {
@@ -1286,6 +1379,12 @@ declare namespace API {
     mainImageThumbnailUrl?: string;
   };
 
+  type childrenParams = {
+    tenantId: number;
+    taskKey: string;
+    query: ProductionTaskQuery;
+  };
+
   type CommercialCatalogItemResponse = {
     packageId?: number;
     packageVersionId?: number;
@@ -1455,6 +1554,26 @@ declare namespace API {
     expectedCurrentScriptVersionId?: number;
   };
 
+  type contentParams = {
+    tenantId: number;
+    taskKey: string;
+  };
+
+  type contentSectionParams = {
+    tenantId: number;
+    taskKey: string;
+    sectionKey: string;
+    offset?: number;
+    page?: number;
+    pageSize?: number;
+  };
+
+  type controlParams = {
+    tenantId: number;
+    taskKey: string;
+    action: string;
+  };
+
   type copy1Params = {
     code: string;
   };
@@ -1484,6 +1603,10 @@ declare namespace API {
   };
 
   type create6Params = {
+    projectId: number;
+  };
+
+  type create7Params = {
     projectId: number;
   };
 
@@ -1526,8 +1649,10 @@ declare namespace API {
     lastFrameImageId?: number;
     lastFrameUrl?: string;
     durationSeconds?: number;
-    aspectRatio: string;
+    aspectRatio?: string;
     resolution?: string;
+    generateAudio?: boolean;
+    watermark?: boolean;
     cameraMovement?: string;
     motionStrength?: string;
     randomSeed?: number;
@@ -1575,6 +1700,9 @@ declare namespace API {
     startDate?: string;
     endDate?: string;
     aspectRatio?: string;
+    videoResolution?: string;
+    videoGenerateAudio?: boolean;
+    videoWatermark?: boolean;
     fileFormat?: string;
     scriptType?: string;
     breakdownStrength?: string;
@@ -1788,7 +1916,7 @@ declare namespace API {
   };
 
   type detail10Params = {
-    code: string;
+    orderId: number;
   };
 
   type detail11Params = {
@@ -1796,14 +1924,18 @@ declare namespace API {
   };
 
   type detail12Params = {
-    runId: number;
+    code: string;
   };
 
   type detail13Params = {
-    token: string;
+    runId: number;
   };
 
   type detail14Params = {
+    token: string;
+  };
+
+  type detail15Params = {
     id: number;
   };
 
@@ -1814,21 +1946,21 @@ declare namespace API {
 
   type detail2Params = {
     tenantId: number;
-    orderId: number;
+    taskKey: string;
   };
 
   type detail3Params = {
     tenantId: number;
-    executionId: number;
+    orderId: number;
   };
 
   type detail4Params = {
-    id: number;
+    tenantId: number;
+    executionId: number;
   };
 
   type detail5Params = {
-    projectId: number;
-    taskId: number;
+    id: number;
   };
 
   type detail6Params = {
@@ -1837,15 +1969,16 @@ declare namespace API {
   };
 
   type detail7Params = {
-    id: number;
+    projectId: number;
+    taskId: number;
   };
 
   type detail8Params = {
-    tenantId: number;
+    id: number;
   };
 
   type detail9Params = {
-    orderId: number;
+    tenantId: number;
   };
 
   type detailParams = {
@@ -2112,6 +2245,11 @@ declare namespace API {
     referenceContent?: string;
   };
 
+  type getParams = {
+    projectId: number;
+    batchId: number;
+  };
+
   type grantsParams = {
     tenantId: number;
   };
@@ -2183,7 +2321,7 @@ declare namespace API {
     tenantId: number;
   };
 
-  type list10Params = {
+  type list11Params = {
     keyword?: string;
     status?: string;
     packageType?: string;
@@ -2191,26 +2329,27 @@ declare namespace API {
     pageSize?: number;
   };
 
-  type list12Params = {
-    query?: string;
-  };
-
   type list13Params = {
     query?: string;
   };
 
   type list14Params = {
+    query?: string;
+  };
+
+  type list15Params = {
     agentCode?: string;
     limit?: number;
   };
 
-  type list15Params = {
+  type list16Params = {
     page?: number;
     pageSize?: number;
   };
 
   type list1Params = {
     tenantId: number;
+    query: ProductionTaskQuery;
   };
 
   type list2Params = {
@@ -2219,6 +2358,10 @@ declare namespace API {
 
   type list3Params = {
     tenantId: number;
+  };
+
+  type list4Params = {
+    tenantId: number;
     current?: number;
     pageSize?: number;
     serviceType?: string;
@@ -2226,24 +2369,24 @@ declare namespace API {
     businessScene?: string;
   };
 
-  type list4Params = {
+  type list5Params = {
     category?: string;
     keyword?: string;
   };
 
-  type list6Params = {
+  type list7Params = {
     projectId: number;
     status?: string;
     storyboardId?: number;
   };
 
-  type list7Params = {
+  type list8Params = {
     projectId: number;
     taskType?: string;
     status?: string;
   };
 
-  type list8Params = {
+  type list9Params = {
     keyword?: string;
     status?: string;
     packageType?: string;
@@ -2334,6 +2477,14 @@ declare namespace API {
 
   type MoveStoryboardRequest = {
     shotNo?: number;
+  };
+
+  type Page = {
+    items?: Record<string, any>[];
+    total?: number;
+    page?: number;
+    pageSize?: number;
+    canViewTeamTasks?: boolean;
   };
 
   type PermissionResponse = {
@@ -2455,6 +2606,7 @@ declare namespace API {
     isDefault?: boolean;
     sort?: number;
     capabilities?: string[];
+    configJson?: string;
     updatedAt?: string;
   };
 
@@ -2592,6 +2744,22 @@ declare namespace API {
     taskId: number;
   };
 
+  type preflightParams = {
+    projectId: number;
+  };
+
+  type ProductionTaskQuery = {
+    scope?: string;
+    type?: string;
+    statusGroup?: string;
+    projectId?: number;
+    creatorId?: number;
+    createdFrom?: string;
+    createdTo?: string;
+    page?: number;
+    pageSize?: number;
+  };
+
   type ProjectAiConfigRequest = {
     textModelId?: number;
     imageModelId?: number;
@@ -2640,6 +2808,7 @@ declare namespace API {
     id?: number;
     name?: string;
     description?: string;
+    constraints?: JsonNode;
   };
 
   type projectParams = {
@@ -2660,6 +2829,9 @@ declare namespace API {
     startDate?: string;
     endDate?: string;
     aspectRatio?: string;
+    videoResolution?: string;
+    videoGenerateAudio?: boolean;
+    videoWatermark?: boolean;
     fileFormat?: string;
     scriptType?: string;
     breakdownStrength?: string;
@@ -3594,6 +3766,16 @@ declare namespace API {
     status?: string;
   };
 
+  type Summary = {
+    total?: number;
+    counts?: Record<string, any>;
+  };
+
+  type summaryParams = {
+    tenantId: number;
+    query: ProductionTaskQuery;
+  };
+
   type taskParams = {
     taskId: number;
   };
@@ -3847,6 +4029,9 @@ declare namespace API {
     startDate?: string;
     endDate?: string;
     aspectRatio?: string;
+    videoResolution?: string;
+    videoGenerateAudio?: boolean;
+    videoWatermark?: boolean;
     fileFormat?: string;
     scriptType?: string;
     breakdownStrength?: string;

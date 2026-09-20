@@ -244,14 +244,17 @@ export type StoryboardPromptNode =
   | { type: 'text'; text: string }
   | {
       type: 'mention';
-      assetType: 'CHARACTER' | 'SCENE' | 'PROP';
-      assetId: number;
-      variantId: number;
+      mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO';
+      sourceType: string;
+      sourceId: number;
+      assetType?: 'CHARACTER' | 'SCENE' | 'PROP';
+      assetId?: number;
+      variantId?: number;
       displayName: string;
     };
 
 export type StoryboardPromptDocument = {
-  version: 1;
+  version: 2;
   nodes: StoryboardPromptNode[];
 };
 
@@ -1171,6 +1174,8 @@ export type CreateAiVideoTaskValues = {
   durationSeconds?: number;
   aspectRatio: string;
   resolution?: string;
+  generateAudio?: boolean;
+  watermark?: boolean;
   cameraMovement?: string;
   motionStrength?: string;
   randomSeed?: number;

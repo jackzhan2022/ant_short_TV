@@ -101,6 +101,9 @@ describe('ProductionWorkbench shell', () => {
         id: 1,
         name: '最危险的捉迷藏',
         aspectRatio: '9:16',
+        videoResolution: '1080p',
+        videoGenerateAudio: false,
+        videoWatermark: true,
         fileFormat: 'SCRIPT',
         scriptType: 'PREMIUM_DRAMA',
         breakdownStrength: 'MEDIUM',
@@ -145,6 +148,7 @@ describe('ProductionWorkbench shell', () => {
     expect(await screen.findByText((_, element) => element?.textContent === '✦ 88')).toBeInTheDocument();
     expect(screen.getAllByText('9:16').length).toBeGreaterThan(0);
     expect(screen.getByText('写实都市')).toBeInTheDocument();
+    expect(screen.getByText('1080p')).toBeInTheDocument();
     expect(screen.queryByText('绘梦工坊')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '初始设定' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '角色资产' })).not.toBeInTheDocument();
@@ -188,7 +192,12 @@ describe('ProductionWorkbench shell', () => {
 
     await waitFor(() => expect(mocks.updateProject).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ name: '新项目名' }),
+      expect.objectContaining({
+        name: '新项目名',
+        videoResolution: '1080p',
+        videoGenerateAudio: false,
+        videoWatermark: true,
+      }),
     ));
     expect(dialog).not.toBeInTheDocument();
   });

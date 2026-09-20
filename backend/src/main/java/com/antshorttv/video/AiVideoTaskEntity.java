@@ -17,6 +17,7 @@ public class AiVideoTaskEntity {
     public String providerCode;
     public String model;
     public String prompt;
+    public String compiledPrompt;
     public String negativePrompt;
     public Long firstFrameImageId;
     public String firstFrameUrl;
@@ -26,6 +27,10 @@ public class AiVideoTaskEntity {
     public Integer durationSeconds;
     public String aspectRatio;
     public String resolution;
+    public Boolean generateAudio;
+    public Boolean watermark;
+    public String requestSnapshotJson;
+    public String providerResultMetadataJson;
     public String motionStrength;
     public String cameraMovement;
     public Long randomSeed;
