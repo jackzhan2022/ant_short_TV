@@ -136,6 +136,28 @@ class PlatformAiManagementServiceTest {
             .hasMessageContaining("Endpoint ID");
     }
 
+    @Test
+    void enablingModelSynchronizesItsDefaultCapability() {
+        AiModelEntity model = seedanceModel("ep-configured-mini");
+        AiModelCapabilityEntity capability = new AiModelCapabilityEntity();
+        capability.setId(20L);
+        capability.setModelId(model.getId());
+        capability.setCapability("VIDEO_GENERATION");
+        capability.setStatus("DISABLED");
+        when(currentPrincipal.require()).thenReturn(
+            new AuthenticatedUser(9L, "13800000009", "session", LocalDateTime.now().plusHours(1)));
+        when(modelMapper.selectById(10L)).thenReturn(model);
+        when(capabilityMapper.selectOne(any())).thenReturn(capability);
+
+        service.updateModelStatus(10L, true, null);
+
+        ArgumentCaptor<AiModelCapabilityEntity> saved =
+            ArgumentCaptor.forClass(AiModelCapabilityEntity.class);
+        verify(capabilityMapper).updateById(saved.capture());
+        assertThat(saved.getValue().getCapability()).isEqualTo("VIDEO_GENERATION");
+        assertThat(saved.getValue().getStatus()).isEqualTo("ENABLED");
+    }
+
     private void prepare(AiModelRoute route) {
         preparePrincipalAndProvider();
         when(configMapper.selectOne(any())).thenReturn(route.providerConfig());

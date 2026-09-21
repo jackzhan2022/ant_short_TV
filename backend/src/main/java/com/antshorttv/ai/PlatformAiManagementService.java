@@ -280,6 +280,7 @@ public class PlatformAiManagementService {
             model.setIsDefault(false);
         }
         aiModelMapper.updateById(model);
+        ensureDefaultCapability(model, model.getUpdatedAt());
         operationLogService.record(user.userId(), null, enabled ? "ENABLE_PLATFORM_AI_MODEL" : "DISABLE_PLATFORM_AI_MODEL", id, OperationResult.SUCCESS, servletRequest);
         return modelResponse(model);
     }
