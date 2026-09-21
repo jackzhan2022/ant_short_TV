@@ -50,6 +50,6 @@
 - [x] 6.1 Regenerate affected frontend service contracts through the repository OpenAPI workflow when generated APIs change, without editing generated service files manually.
 - [x] 6.2 Run focused frontend tests, focused backend tests, schema migration tests, frontend type checking, `npm run lint`, `npx antd lint ./src`, backend tests, and the production build; resolve all failures.
 - [x] 6.3 Verify an upgraded database preserves historical Models, tasks, results, pricing, accounting, and logs while clearing only version 1 prompt JSON and retaining plain prompts.
-- [ ] 6.4 Configure the four Endpoint IDs and Provider credentials through platform management, enable all four Models, set mini as default, and verify tenant Model options do not expose credentials or Endpoint IDs.
+- [x] 6.4 Configure the four Endpoint IDs and Provider credentials through platform management, enable all four Models, set mini as default, and verify tenant Model options do not expose credentials or Endpoint IDs.
 - [ ] 6.5 Run real Ark smoke tests for multimodal submit, polling, project-owned result download, remote cancellation, failure diagnostics, and deterministic retry without logging secrets or signed URL queries.
 - [x] 6.6 Update the video-generation operations/runbook documentation with configuration, validation, version 1 cleanup, smoke-test, rollback, and recovery procedures.
