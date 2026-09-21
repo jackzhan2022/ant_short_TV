@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   acceptInvitation: vi.fn(),
   createTenant: vi.fn(),
   registerByMobile: vi.fn(),
+  sendRegistrationVerificationCode: vi.fn(),
   queryAuthBootstrap: vi.fn(),
   replace: vi.fn(),
   setInitialState: vi.fn(),
@@ -73,7 +74,7 @@ vi.mock('antd', () => {
   Form.Item = ({ children, name }: any) =>
     React.cloneElement(children, { name });
 
-  const Input = ({ name, placeholder, prefix, suffix }: any) => {
+  const Input = ({ name, placeholder, prefix, suffix, onChange }: any) => {
     const [value, setValue] = React.useState('');
     return (
       <label>
@@ -83,7 +84,10 @@ vi.mock('antd', () => {
           name={name}
           placeholder={placeholder}
           value={value}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            setValue(event.target.value);
+            onChange?.(event);
+          }}
         />
         {suffix}
       </label>
@@ -132,6 +136,7 @@ vi.mock('@/components', () => ({
 vi.mock('@/services/account-team/auth', () => ({
   queryAuthBootstrap: mocks.queryAuthBootstrap,
   registerByMobile: mocks.registerByMobile,
+  sendRegistrationVerificationCode: mocks.sendRegistrationVerificationCode,
   setCurrentTenantId: mocks.setCurrentTenantId,
 }));
 
@@ -148,6 +153,7 @@ describe('Register Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.registerByMobile.mockResolvedValue({ success: true, data: {} });
+    mocks.sendRegistrationVerificationCode.mockResolvedValue({ success: true });
     mocks.queryAuthBootstrap.mockResolvedValue({
       data: {
         user: { id: 1, mobile: '13800000000', nickname: '新用户', status: 'ACTIVE' },
@@ -203,6 +209,19 @@ describe('Register Page', () => {
     expect(await screen.findByText('开启您的AI创作之旅')).toBeInTheDocument();
     expect(screen.getByText('完善注册信息')).toBeInTheDocument();
     expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('sends a verification code to the entered mobile number', async () => {
+    render(<Register />);
+
+    fireEvent.change(screen.getByPlaceholderText('请输入手机号'), {
+      target: { value: '13800000000' },
+    });
+    fireEvent.click(screen.getByText('获取验证码'));
+
+    await waitFor(() => {
+      expect(mocks.sendRegistrationVerificationCode).toHaveBeenCalledWith('13800000000');
+    });
   });
 
   it('creates a team from the completion step before entering workspace', async () => {

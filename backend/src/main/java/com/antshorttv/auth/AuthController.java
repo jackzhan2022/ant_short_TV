@@ -22,6 +22,14 @@ public class AuthController {
         this.cookieService = cookieService;
     }
 
+    @PostMapping("/auth/verification-code/register")
+    public ApiResponse<Void> sendRegistrationVerificationCode(
+        @Valid @RequestBody SendVerificationCodeRequest request
+    ) {
+        authService.sendRegistrationVerificationCode(request.mobile());
+        return ApiResponse.ok();
+    }
+
     @PostMapping("/auth/register")
     public ApiResponse<AuthSessionResponse> register(
         @Valid @RequestBody RegisterRequest request,

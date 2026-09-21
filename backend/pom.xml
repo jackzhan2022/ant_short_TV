@@ -67,6 +67,11 @@
             <version>0.2.17</version>
         </dependency>
         <dependency>
+            <groupId>com.tencentcloudapi</groupId>
+            <artifactId>tencentcloud-sdk-java</artifactId>
+            <version>3.1.1180</version>
+        </dependency>
+        <dependency>
             <groupId>org.jcodec</groupId>
             <artifactId>jcodec-javase</artifactId>
             <version>0.2.5</version>

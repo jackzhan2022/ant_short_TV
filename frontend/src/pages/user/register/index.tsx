@@ -1,9 +1,10 @@
 import { Helmet, Link, history, useIntl, useModel } from '@umijs/max';
 import { App, Button, Form, Input } from 'antd';
-import { useState, type FC } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import {
   queryAuthBootstrap,
   registerByMobile,
+  sendRegistrationVerificationCode,
   setCurrentTenantId,
 } from '@/services/account-team/auth';
 import { toBootstrapState } from '@/services/account-team/bootstrap';
@@ -18,6 +19,32 @@ const Register: FC = () => {
   const intl = useIntl();
   const [registered, setRegistered] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [mobile, setMobile] = useState('');
+  const [sendingCode, setSendingCode] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown === 0) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setCooldown((seconds) => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
+
+  const handleSendVerificationCode = async () => {
+    if (!/^1\d{10}$/.test(mobile)) {
+      message.error('请输入正确的手机号');
+      return;
+    }
+    setSendingCode(true);
+    try {
+      await sendRegistrationVerificationCode(mobile);
+      setCooldown(60);
+      message.success('验证码已发送');
+    } finally {
+      setSendingCode(false);
+    }
+  };
 
   const applyBootstrap = async (tenantId?: number) => {
     const bootstrap = (
@@ -260,6 +287,7 @@ const Register: FC = () => {
             prefix={
               <span style={{ color: '#202124', marginRight: 8 }}>手机号:</span>
             }
+            onChange={(event) => setMobile(event.target.value)}
             style={{
               height: 48,
               borderRadius: 8,
@@ -286,15 +314,17 @@ const Register: FC = () => {
               <Button
                 type="text"
                 size="small"
+                disabled={sendingCode || cooldown > 0}
+                loading={sendingCode}
                 style={{
                   height: 28,
                   padding: '0 0 0 12px',
                   color: '#b7b7bd',
                   fontSize: 14,
                 }}
-                onClick={() => message.success('验证码为：123456')}
+                onClick={handleSendVerificationCode}
               >
-                获取验证码
+                {cooldown > 0 ? `${cooldown}s 后重试` : '获取验证码'}
               </Button>
             }
             style={{

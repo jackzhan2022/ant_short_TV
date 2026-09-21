@@ -43,6 +43,15 @@ auth:
   platform:
     initial-admin-mobile: ${PLATFORM_INITIAL_ADMIN_MOBILE:}
 
+sms:
+  tencent:
+    secret-id: ${TENCENT_SMS_SECRET_ID:}
+    secret-key: ${TENCENT_SMS_SECRET_KEY:}
+    sdk-app-id: ${TENCENT_SMS_SDK_APP_ID:}
+    sign-name: ${TENCENT_SMS_SIGN_NAME:}
+    register-template-id: ${TENCENT_SMS_REGISTER_TEMPLATE_ID:}
+    region: ${TENCENT_SMS_REGION:ap-guangzhou}
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true

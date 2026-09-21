@@ -61,10 +61,10 @@ public class AuthService {
 
     @Transactional
     public AuthResult register(RegisterRequest request, HttpServletRequest servletRequest) {
-        verificationCodeService.verify(request.mobile(), request.verificationCode());
         if (userMapper.selectByMobile(request.mobile()) != null) {
             throw new BusinessException(ErrorCode.DUPLICATE_MOBILE, "该手机号已注册。");
         }
+        verificationCodeService.verify(request.mobile(), request.verificationCode());
 
         LocalDateTime now = LocalDateTime.now();
         UserEntity user = new UserEntity();
@@ -104,6 +104,13 @@ public class AuthService {
             authSessionService.revokeCurrent(user.sessionId(), "LOGOUT");
             operationLogService.record(user.userId(), null, "LOGOUT", user.userId(), OperationResult.SUCCESS, servletRequest);
         });
+    }
+
+    public void sendRegistrationVerificationCode(String mobile) {
+        if (userMapper.selectByMobile(mobile) != null) {
+            throw new BusinessException(ErrorCode.DUPLICATE_MOBILE, "该手机号已注册。");
+        }
+        verificationCodeService.sendRegistrationCode(mobile);
     }
 
     private AuthResult sessionFor(UserEntity user, String nextAction, HttpServletRequest servletRequest) {

@@ -37,3 +37,12 @@ auth:
     cookie-secure: false
   platform:
     initial-admin-mobile: "13800000999"
+
+sms:
+  tencent:
+    secret-id: test-secret-id
+    secret-key: test-secret-key
+    sdk-app-id: "1400000000"
+    sign-name: 测试平台
+    register-template-id: "1000000"
+    region: ap-guangzhou

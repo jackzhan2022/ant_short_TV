@@ -13,6 +13,14 @@ export type RegisterParams = LoginByMobileParams & {
   nickname: string;
 };
 
+export async function sendRegistrationVerificationCode(mobile: string) {
+  return request<ApiResponse<void>>('/api/auth/verification-code/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: { mobile },
+  });
+}
+
 export function saveAuthSession(session: {
   currentTenantId?: number;
 }) {

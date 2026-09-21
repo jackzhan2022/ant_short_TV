@@ -2,10 +2,13 @@ package com.antshorttv.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -28,13 +32,29 @@ class AuthControllerTest {
     @Autowired
     private UserMapper userMapper;
 
+    @MockBean(name = "tencentCloudSmsSender")
+    private SmsSender smsSender;
+
+    @Test
+    void sendsRegistrationVerificationCodeBeforeRegistration() throws Exception {
+        mockMvc.perform(post("/api/auth/verification-code/register")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"mobile":"13800000001"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success", is(true)));
+    }
+
     @Test
     void registersUserWithHashedPasswordAndRejectsDuplicateMobile() throws Exception {
+        String verificationCode = sendVerificationCode("13800000002");
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"13800000002","verificationCode":"123456","nickname":"李四","password":"Password123"}
-                    """))
+                    {"mobile":"13800000002","verificationCode":"%s","nickname":"李四","password":"Password123"}
+                    """.formatted(verificationCode)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success", is(true)))
             .andExpect(jsonPath("$.data.user.mobile", is("13800000002")))
@@ -53,8 +73,8 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"13800000002","verificationCode":"123456","nickname":"李四","password":"Password123"}
-                    """))
+                    {"mobile":"13800000002","verificationCode":"%s","nickname":"李四","password":"Password123"}
+                    """.formatted(verificationCode)))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.success", is(false)))
             .andExpect(jsonPath("$.errorCode", is("DUPLICATE_MOBILE")));
@@ -110,15 +130,28 @@ class AuthControllerTest {
     }
 
     private Cookie registerUser(String mobile, String password, String nickname) throws Exception {
+        String verificationCode = sendVerificationCode(mobile);
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"%s","password":"%s"}
-                    """.formatted(mobile, nickname, password)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"%s","password":"%s"}
+                    """.formatted(mobile, verificationCode, nickname, password)))
             .andExpect(status().isOk())
             .andReturn();
 
         return result.getResponse().getCookie("ANT_SHORT_SESSION");
+    }
+
+    private String sendVerificationCode(String mobile) throws Exception {
+        mockMvc.perform(post("/api/auth/verification-code/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"mobile":"%s"}
+                    """.formatted(mobile)))
+            .andExpect(status().isOk());
+        org.mockito.ArgumentCaptor<String> code = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(smsSender).sendRegistrationVerificationCode(eq(mobile), code.capture());
+        return code.getValue();
     }
 
     @Test
