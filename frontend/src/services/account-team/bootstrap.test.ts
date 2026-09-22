@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyBootstrapSelection } from './bootstrap';
+import { applyBootstrapSelection, toBootstrapState } from './bootstrap';
 
 const mocks = vi.hoisted(() => ({
   queryAuthBootstrap: vi.fn(),
@@ -13,6 +13,19 @@ vi.mock('./auth', () => ({
 
 describe('applyBootstrapSelection', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('maps inspiration managers to an administrator current user', () => {
+    const state = toBootstrapState({
+      user: { id: 1, mobile: '13800000999', nickname: '管理员', status: 'ACTIVE' },
+      session: { sessionId: 's1', expiresAt: '2026-09-01T00:00:00' },
+      platform: { roles: ['PLATFORM_ADMIN'], permissions: ['PLATFORM_INSPIRATION_MANAGE'] },
+      tenants: [],
+      selectedTenant: null,
+      nextAction: 'SELECT_TENANT',
+    });
+
+    expect(state.currentUser.access).toBe('admin');
+  });
 
   it('applies validated state before persisting the selected tenant', async () => {
     mocks.queryAuthBootstrap.mockResolvedValue({

@@ -39,9 +39,10 @@ public class InspirationCreationService {
         int safePageSize = pageSize == null || pageSize < 1
             ? DEFAULT_PAGE_SIZE
             : Math.min(pageSize, MAX_PAGE_SIZE);
-        LambdaQueryWrapper<InspirationCreationEntity> query = importedQuery();
-        Long total = mapper.selectCount(query);
+        Long total = mapper.selectCount(importedQuery());
         List<InspirationCreationListResponse> records = mapper.selectList(importedQuery()
+                .orderByAsc(InspirationCreationEntity::getSortOrder)
+                .orderByAsc(InspirationCreationEntity::getId)
                 .last("limit %d offset %d".formatted(safePageSize, (safePage - 1) * safePageSize)))
             .stream()
             .map(entity -> InspirationCreationListResponse.from(entity, tags(entity)))
@@ -106,9 +107,7 @@ public class InspirationCreationService {
         return new LambdaQueryWrapper<InspirationCreationEntity>()
             .eq(InspirationCreationEntity::getImportStatus, InspirationCreationImportStatus.IMPORTED.name())
             .eq(InspirationCreationEntity::getPublishStatus, "PUBLISHED")
-            .isNull(InspirationCreationEntity::getDeletedAt)
-            .orderByAsc(InspirationCreationEntity::getSortOrder)
-            .orderByAsc(InspirationCreationEntity::getId);
+            .isNull(InspirationCreationEntity::getDeletedAt);
     }
 
     private JsonNode detailJson(InspirationCreationEntity entity) {

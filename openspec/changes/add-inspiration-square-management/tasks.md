@@ -44,6 +44,6 @@
 ## 7. Verification and release readiness
 
 - [x] 7.1 Run all focused frontend and backend inspiration tests, then run `npm run lint`, `npx antd lint ./src`, and the relevant backend test suite.
-- [ ] 7.2 Start the application with mock-compatible data and verify image upload/compression, video thumbnail generation, edit, publish, unpublish, reorder, delete, and ordinary-user visibility in a browser.
-- [ ] 7.3 Verify desktop and mobile layouts for text overflow, drawer scrolling, fixed control dimensions, and absence of overlapping UI.
+- [x] 7.2 Start the application with mock-compatible data and verify image upload/compression, video thumbnail generation, edit, publish, unpublish, reorder, delete, and ordinary-user visibility in a browser.
+- [x] 7.3 Verify desktop and mobile layouts for text overflow, drawer scrolling, fixed control dimensions, and absence of overlapping UI.
 - [x] 7.4 Document the migration, new permission, upload limits, storage cleanup behavior, and rollback procedure in the release notes.

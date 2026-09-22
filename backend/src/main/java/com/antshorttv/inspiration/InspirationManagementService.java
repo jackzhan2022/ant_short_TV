@@ -50,6 +50,8 @@ public class InspirationManagementService {
         Long total = mapper.selectCount(managementQuery(keyword, publishStatus, mediaType));
         List<InspirationManagementItemResponse> records = mapper.selectList(
                 managementQuery(keyword, publishStatus, mediaType)
+                    .orderByAsc(InspirationCreationEntity::getSortOrder)
+                    .orderByAsc(InspirationCreationEntity::getId)
                     .last("limit %d offset %d".formatted(size, (current - 1) * size))
             ).stream().map(this::response).toList();
         return new InspirationManagementPageResponse(records, total == null ? 0 : total, current, size);
@@ -177,8 +179,7 @@ public class InspirationManagementService {
         if (mediaType != null && !mediaType.isBlank()) {
             query.eq(InspirationCreationEntity::getCreationType, mediaType.toUpperCase());
         }
-        return query.orderByAsc(InspirationCreationEntity::getSortOrder)
-            .orderByAsc(InspirationCreationEntity::getId);
+        return query;
     }
 
     private InspirationCreationEntity requireManaged(Long id) {

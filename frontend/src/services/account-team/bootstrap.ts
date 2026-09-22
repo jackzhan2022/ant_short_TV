@@ -1,7 +1,10 @@
 import type { AuthBootstrap, LayoutCurrentUser, UserProfile } from './types';
 import { queryAuthBootstrap, setCurrentTenantId } from './auth';
 
-const toLayoutCurrentUser = (user: UserProfile): LayoutCurrentUser => ({
+const toLayoutCurrentUser = (
+  user: UserProfile,
+  platformPermissions: string[],
+): LayoutCurrentUser => ({
   name: user.nickname,
   avatar: user.avatar || undefined,
   userid: String(user.id),
@@ -9,11 +12,16 @@ const toLayoutCurrentUser = (user: UserProfile): LayoutCurrentUser => ({
   phone: user.mobile,
   title: user.status === 'ACTIVE' ? '创作团队成员' : '账号已停用',
   group: '剧智创',
-  access: 'user',
+  access: platformPermissions.includes('PLATFORM_INSPIRATION_MANAGE')
+    ? 'admin'
+    : 'user',
 });
 
 export const toBootstrapState = (bootstrap: AuthBootstrap) => ({
-  currentUser: toLayoutCurrentUser(bootstrap.user),
+  currentUser: toLayoutCurrentUser(
+    bootstrap.user,
+    bootstrap.platform.permissions,
+  ),
   currentTenantId: bootstrap.selectedTenant?.tenant.id,
   tenants: bootstrap.tenants,
   selectedTenant: bootstrap.selectedTenant,
