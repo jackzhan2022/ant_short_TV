@@ -2,7 +2,6 @@ package com.antshorttv.style;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
-import com.antshorttv.storage.ObjectStorageService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import java.util.List;
 import org.springframework.core.io.Resource;
@@ -12,16 +11,13 @@ import org.springframework.stereotype.Service;
 public class StyleLibraryService {
     private final StyleLibraryMapper styleLibraryMapper;
     private final StyleLibraryImageStorage imageStorage;
-    private final ObjectStorageService objectStorageService;
 
     public StyleLibraryService(
         StyleLibraryMapper styleLibraryMapper,
-        StyleLibraryImageStorage imageStorage,
-        ObjectStorageService objectStorageService
+        StyleLibraryImageStorage imageStorage
     ) {
         this.styleLibraryMapper = styleLibraryMapper;
         this.imageStorage = imageStorage;
-        this.objectStorageService = objectStorageService;
     }
 
     public List<StyleLibraryResponse> list(String category, String keyword) {
@@ -47,7 +43,7 @@ public class StyleLibraryService {
                 entity.getName(),
                 entity.getCategory(),
                 entity.getDescription(),
-                objectStorageService.publicUrl(entity.getStoragePath()),
+                "/api/style-library/images/" + entity.getExternalId(),
                 entity.getStoragePath(),
                 entity.getImageWidth(),
                 entity.getImageHeight()

@@ -1,7 +1,6 @@
 package com.antshorttv.style;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -28,12 +27,6 @@ class StyleLibraryServiceTest {
     @org.springframework.boot.test.mock.mockito.MockBean
     private ObjectStorageService objectStorageService;
 
-    @org.junit.jupiter.api.BeforeEach
-    void setUp() {
-        when(objectStorageService.publicUrl(anyString()))
-            .thenAnswer(invocation -> "https://minio.aixmax.cn/ant-short-tv/" + invocation.getArgument(0) + "?X-Amz-Signature=test");
-    }
-
     @Test
     void listsPublicStylesInDeterministicOrder() {
         var styles = styleLibraryService.list(null, null);
@@ -43,9 +36,7 @@ class StyleLibraryServiceTest {
         assertThat(styles.get(0).category()).isEqualTo("3D风格");
         assertThat(styles.get(0).storagePath()).isEqualTo("style-library/public/864621266010645040/cover-compressed.jpg");
         assertThat(styles.get(0).imageUrl())
-            .startsWith("https://minio.aixmax.cn/ant-short-tv/style-library/public/864621266010645040/cover-compressed.jpg?");
-        assertThat(styles.get(0).imageUrl()).contains("X-Amz-Signature=");
-        assertThat(styles.get(0).imageUrl()).doesNotContain("/console/api/v1/download-shared-object/");
+            .isEqualTo("/api/style-library/images/864621266010645040");
     }
 
     @Test

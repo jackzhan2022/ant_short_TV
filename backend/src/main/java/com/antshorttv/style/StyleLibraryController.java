@@ -31,7 +31,7 @@ public class StyleLibraryController {
     @GetMapping("/images/{externalId}")
     public ResponseEntity<Resource> image(@PathVariable String externalId) {
         return ResponseEntity.ok()
-            .contentType(MediaType.IMAGE_PNG)
+            .contentType(MediaType.IMAGE_JPEG)
             .body(styleLibraryService.image(externalId));
     }
 }

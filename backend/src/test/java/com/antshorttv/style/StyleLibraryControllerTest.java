@@ -21,7 +21,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.anyString;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -35,14 +34,11 @@ class StyleLibraryControllerTest {
 
     @Test
     void queriesPublicStylesWithFilters() throws Exception {
-        when(objectStorageService.publicUrl(anyString()))
-            .thenAnswer(invocation -> "https://minio.aixmax.cn/ant-short-tv/" + invocation.getArgument(0) + "?X-Amz-Signature=test");
-
         mockMvc.perform(get("/api/style-library"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(139)))
             .andExpect(jsonPath("$.data[0].externalId", is("864621266010645040")))
-            .andExpect(jsonPath("$.data[0].imageUrl", is("https://minio.aixmax.cn/ant-short-tv/style-library/public/864621266010645040/cover-compressed.jpg?X-Amz-Signature=test")))
+            .andExpect(jsonPath("$.data[0].imageUrl", is("/api/style-library/images/864621266010645040")))
             .andExpect(jsonPath("$.data[0].sourceImageUrl").doesNotExist());
 
         mockMvc.perform(get("/api/style-library").param("category", "3D风格"))
@@ -63,7 +59,7 @@ class StyleLibraryControllerTest {
 
         mockMvc.perform(get("/api/style-library/images/864621266010645040"))
             .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.IMAGE_PNG))
+            .andExpect(content().contentType(MediaType.IMAGE_JPEG))
             .andExpect(content().bytes("image".getBytes()));
     }
 }
