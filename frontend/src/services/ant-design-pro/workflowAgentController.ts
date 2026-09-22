@@ -3,9 +3,9 @@
 import { request } from "@umijs/max";
 
 /** 此处后端没有提供注释 GET /api/platform/ai/workflow-agents */
-export async function list14(
+export async function list15(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.list14Params,
+  params: API.list15Params,
   options?: { [key: string]: any }
 ) {
   return request<API.ApiResponseListWorkflowAgentRecord>(
@@ -21,7 +21,7 @@ export async function list14(
 }
 
 /** 此处后端没有提供注释 POST /api/platform/ai/workflow-agents */
-export async function create10(
+export async function create11(
   body: API.CreateAgentRequest,
   options?: { [key: string]: any }
 ) {
@@ -56,9 +56,9 @@ export async function detail12(
 }
 
 /** 此处后端没有提供注释 PUT /api/platform/ai/workflow-agents/${param0} */
-export async function update4(
+export async function update5(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.update4Params,
+  params: API.update5Params,
   body: API.UpdateAgentRequest,
   options?: { [key: string]: any }
 ) {
@@ -78,9 +78,9 @@ export async function update4(
 }
 
 /** 此处后端没有提供注释 DELETE /api/platform/ai/workflow-agents/${param0} */
-export async function delete3(
+export async function delete4(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.delete3Params,
+  params: API.delete4Params,
   options?: { [key: string]: any }
 ) {
   const { code: param0, ...queryParams } = params;

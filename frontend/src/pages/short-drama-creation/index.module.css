@@ -534,6 +534,74 @@
   font-size: 13px;
 }
 
+.inspirationOverlay small {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.managementFilters {
+  margin-bottom: 16px;
+}
+.managementFilters :where(.ant-input-search) {
+  flex: 1 1 240px;
+}
+.managementFilters :where(.ant-select) {
+  width: 130px;
+}
+.managementForm {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--app-color-border-secondary);
+}
+.compressionInfo {
+  margin-top: 8px;
+  color: var(--app-color-success);
+  font-size: 13px;
+}
+.managementList {
+  display: grid;
+  gap: 10px;
+}
+.managementItem {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 20px 72px minmax(0, 1fr) auto 32px 32px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--app-color-border-secondary);
+}
+.managementItem img {
+  width: 72px;
+  height: 54px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.managementItemCopy {
+  min-width: 0;
+}
+.managementItemCopy strong,
+.managementItemCopy span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.managementItemCopy span {
+  margin: 4px 0;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+.dragHandle {
+  color: var(--app-color-text-tertiary);
+  cursor: grab;
+}
+
 @media (max-width: 1100px) {
   .scriptPanel,
   .inspirationSection {
@@ -592,5 +660,13 @@
   .detailThumb {
     width: 72px;
     height: 72px;
+  }
+
+  .managementItem {
+    grid-template-columns: 20px 56px minmax(0, 1fr) 32px;
+  }
+  .managementItem img {
+    width: 56px;
+    height: 48px;
   }
 }

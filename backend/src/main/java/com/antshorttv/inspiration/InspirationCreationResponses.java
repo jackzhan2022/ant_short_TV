@@ -16,10 +16,12 @@ record InspirationCreationListResponse(
     String thumbnailUrl,
     String mimeType,
     Long fileSize,
+    List<String> tags,
+    String promptSummary,
     Integer sortOrder,
     LocalDateTime sourceCreatedAt
 ) {
-    static InspirationCreationListResponse from(InspirationCreationEntity entity) {
+    static InspirationCreationListResponse from(InspirationCreationEntity entity, List<String> tags) {
         return new InspirationCreationListResponse(
             entity.getId(),
             entity.getExternalId(),
@@ -32,9 +34,19 @@ record InspirationCreationListResponse(
             readyThumbnailUrl(entity),
             entity.getMimeType(),
             entity.getFileSize(),
+            tags,
+            promptSummary(entity.getPromptText()),
             entity.getSortOrder(),
             entity.getSourceCreatedAt()
         );
+    }
+
+    private static String promptSummary(String promptText) {
+        if (promptText == null || promptText.isBlank()) {
+            return null;
+        }
+        String normalized = promptText.trim();
+        return normalized.length() <= 120 ? normalized : normalized.substring(0, 120) + "...";
     }
 
     private static String readyThumbnailUrl(InspirationCreationEntity entity) {
@@ -54,11 +66,17 @@ record InspirationCreationDetailResponse(
     String thumbnailUrl,
     String mimeType,
     Long fileSize,
+    List<String> tags,
+    String promptText,
     Integer sortOrder,
     LocalDateTime sourceCreatedAt,
     JsonNode detailJson
 ) {
-    static InspirationCreationDetailResponse from(InspirationCreationEntity entity, JsonNode detailJson) {
+    static InspirationCreationDetailResponse from(
+        InspirationCreationEntity entity,
+        List<String> tags,
+        JsonNode detailJson
+    ) {
         return new InspirationCreationDetailResponse(
             entity.getId(),
             entity.getExternalId(),
@@ -71,6 +89,8 @@ record InspirationCreationDetailResponse(
             "READY".equals(entity.getThumbnailStatus()) ? entity.getThumbnailUrl() : null,
             entity.getMimeType(),
             entity.getFileSize(),
+            tags,
+            entity.getPromptText(),
             entity.getSortOrder(),
             entity.getSourceCreatedAt(),
             detailJson

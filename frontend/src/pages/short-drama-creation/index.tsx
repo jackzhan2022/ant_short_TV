@@ -2,15 +2,17 @@ import {
   ArrowLeftOutlined,
   CameraOutlined,
   CloseOutlined,
+  CopyOutlined,
   GlobalOutlined,
   InfoCircleOutlined,
   MobileOutlined,
   PlayCircleOutlined,
+  SettingOutlined,
   UploadOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import { history } from '@umijs/max';
+import { history, useModel } from '@umijs/max';
 import {
   App,
   Button,
@@ -32,6 +34,7 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import type { TenantMember } from '@/services/account-team/types';
 import type { PublicStyle } from '../style-library/service';
+import InspirationManagementDrawer from './InspirationManagementDrawer';
 import styles from './index.module.css';
 import LazyInspirationThumbnail from './LazyInspirationThumbnail';
 import {
@@ -61,6 +64,7 @@ const inspirationTabs = [
 const inspirationPageSize = 8;
 
 const resolvePromptText = (detail?: InspirationCreationDetail) => {
+  if (detail?.promptText?.trim()) return detail.promptText.trim();
   if (!detail?.detailJson) {
     return detail?.title || '暂无提示词';
   }
@@ -89,6 +93,8 @@ const resolvePromptText = (detail?: InspirationCreationDetail) => {
 
 const ShortDramaCreationPage = () => {
   const { message } = App.useApp();
+  const { initialState } = useModel('@@initialState');
+  const isAdmin = initialState?.currentUser?.access === 'admin';
   const tenantId = getCurrentTenantId();
   const [step, setStep] = useState<CreationStep>(1);
   const [activeTab, setActiveTab] = useState<DramaRegion>('domestic');
@@ -110,6 +116,7 @@ const ShortDramaCreationPage = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedInspiration, setSelectedInspiration] =
     useState<InspirationCreationDetail>();
+  const [managementOpen, setManagementOpen] = useState(false);
   const [members, setMembers] = useState<TenantMember[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const inspirationBottomRef = useRef<HTMLDivElement>(null);
@@ -422,9 +429,21 @@ const ShortDramaCreationPage = () => {
       )}
 
       <section className={styles.inspirationSection}>
-        <Typography.Text className={styles.sectionTitle}>
-          灵感广场
-        </Typography.Text>
+        <Flex align="center" justify="space-between">
+          <Typography.Text className={styles.sectionTitle}>
+            灵感广场
+          </Typography.Text>
+          {isAdmin && (
+            <Tooltip title="管理灵感广场">
+              <Button
+                aria-label="管理灵感广场"
+                icon={<SettingOutlined />}
+                type="text"
+                onClick={() => setManagementOpen(true)}
+              />
+            </Tooltip>
+          )}
+        </Flex>
         <Spin spinning={inspirationLoading && !inspirationGallery.length}>
           {inspirationGallery.length ? (
             <div className={styles.inspirationGrid}>
@@ -447,6 +466,9 @@ const ShortDramaCreationPage = () => {
                     />
                     <span className={styles.inspirationOverlay}>
                       <strong>{title}</strong>
+                      {item.promptSummary && (
+                        <small>{item.promptSummary}</small>
+                      )}
                     </span>
                   </button>
                 );
@@ -712,6 +734,13 @@ const ShortDramaCreationPage = () => {
   return (
     <PageContainer className={styles.pageContainer} title={false}>
       {step === 1 ? firstStep : secondStep}
+      {isAdmin && (
+        <InspirationManagementDrawer
+          open={managementOpen}
+          onClose={() => setManagementOpen(false)}
+          onChanged={() => void loadInspirationPage(1)}
+        />
+      )}
       <Modal
         centered
         closable
@@ -758,7 +787,10 @@ const ShortDramaCreationPage = () => {
             <div className={styles.detailInfoPanel}>
               <div className={styles.detailThumb}>
                 {selectedInspiration.mimeType?.startsWith('video/') ? (
-                  <video muted playsInline src={selectedInspiration.url} />
+                  <img
+                    alt={selectedInspiration.title || '灵感缩略图'}
+                    src={selectedInspiration.thumbnailUrl}
+                  />
                 ) : (
                   <img
                     alt={selectedInspiration.title || '灵感缩略图'}
@@ -777,6 +809,26 @@ const ShortDramaCreationPage = () => {
                 <Typography.Paragraph className={styles.detailPrompt}>
                   {resolvePromptText(selectedInspiration)}
                 </Typography.Paragraph>
+                <Flex gap={8} wrap>
+                  {selectedInspiration.tags?.map((tag) => (
+                    <Typography.Text key={tag} type="secondary">
+                      #{tag}
+                    </Typography.Text>
+                  ))}
+                  <Button
+                    icon={<CopyOutlined />}
+                    size="small"
+                    type="text"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(
+                        resolvePromptText(selectedInspiration),
+                      );
+                      message.success('提示词已复制');
+                    }}
+                  >
+                    复制提示词
+                  </Button>
+                </Flex>
                 <Typography.Text className={styles.detailMeta} type="secondary">
                   {[
                     selectedInspiration.taskType,

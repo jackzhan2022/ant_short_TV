@@ -31,6 +31,11 @@ public class InspirationCreationEntity {
     private String importStatus;
     private String importError;
     private Integer sortOrder;
+    private String promptText;
+    private String tagsJson;
+    private String publishStatus;
+    private String sourceType;
+    private LocalDateTime deletedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -80,6 +85,16 @@ public class InspirationCreationEntity {
     public void setImportError(String importError) { this.importError = importError; }
     public Integer getSortOrder() { return sortOrder; }
     public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+    public String getPromptText() { return promptText; }
+    public void setPromptText(String promptText) { this.promptText = promptText; }
+    public String getTagsJson() { return tagsJson; }
+    public void setTagsJson(String tagsJson) { this.tagsJson = tagsJson; }
+    public String getPublishStatus() { return publishStatus; }
+    public void setPublishStatus(String publishStatus) { this.publishStatus = publishStatus; }
+    public String getSourceType() { return sourceType; }
+    public void setSourceType(String sourceType) { this.sourceType = sourceType; }
+    public LocalDateTime getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(LocalDateTime deletedAt) { this.deletedAt = deletedAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

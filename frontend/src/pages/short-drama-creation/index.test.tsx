@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   queryInspirationCreations: vi.fn(),
   queryStyleLibrary: vi.fn(),
   queryTenantMembers: vi.fn(),
+  queryManagedInspirations: vi.fn(),
+  currentAccess: 'admin',
 }));
 
 const intersectionObservers = vi.hoisted(
@@ -52,6 +54,9 @@ vi.mock('@umijs/max', () => ({
   history: {
     push: mocks.historyPush,
   },
+  useModel: () => ({
+    initialState: { currentUser: { access: mocks.currentAccess } },
+  }),
 }));
 
 vi.mock('@/services/account-team/auth', () => ({
@@ -64,6 +69,12 @@ vi.mock('./service', () => ({
   queryInspirationCreations: mocks.queryInspirationCreations,
   queryStyleLibrary: mocks.queryStyleLibrary,
   queryTenantMembers: mocks.queryTenantMembers,
+  queryManagedInspirations: mocks.queryManagedInspirations,
+  createManagedInspiration: vi.fn(),
+  updateManagedInspiration: vi.fn(),
+  updateManagedInspirationStatus: vi.fn(),
+  reorderManagedInspirations: vi.fn(),
+  deleteManagedInspiration: vi.fn(),
 }));
 
 vi.mock('./ScriptContentImport', () => ({
@@ -95,6 +106,10 @@ describe('ShortDramaCreationPage', () => {
     vi.clearAllMocks();
     intersectionObservers.length = 0;
     mocks.getCurrentTenantId.mockReturnValue(9);
+    mocks.currentAccess = 'admin';
+    mocks.queryManagedInspirations.mockResolvedValue({
+      data: { records: [], total: 0, current: 1, pageSize: 100 },
+    });
     mocks.queryTenantMembers.mockResolvedValue({
       data: [{ userId: 1, nickname: '负责人A' }],
     });
@@ -223,6 +238,27 @@ describe('ShortDramaCreationPage', () => {
       '/api/inspiration-creations/101/thumbnail',
     );
     expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({});
+  });
+
+  it('shows management only to administrators and opens the drawer', async () => {
+    const { unmount } = render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '管理灵感广场' }));
+    expect(await screen.findByText('灵感广场管理')).toBeInTheDocument();
+    expect(mocks.queryManagedInspirations).toHaveBeenCalled();
+    unmount();
+    mocks.currentAccess = 'user';
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    expect(
+      screen.queryByRole('button', { name: '管理灵感广场' }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens an inspiration detail panel with media and prompt', async () => {

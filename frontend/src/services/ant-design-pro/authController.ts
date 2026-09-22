@@ -39,3 +39,18 @@ export async function register(
     ...(options || {}),
   });
 }
+
+/** 此处后端没有提供注释 POST /api/auth/verification-code/register */
+export async function sendRegistrationVerificationCode(
+  body: API.SendVerificationCodeRequest,
+  options?: { [key: string]: any }
+) {
+  return request<API.ApiResponseVoid>("/api/auth/verification-code/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    data: body,
+    ...(options || {}),
+  });
+}

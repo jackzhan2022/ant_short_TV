@@ -8,6 +8,7 @@ import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import io.minio.http.Method;
 import jakarta.annotation.PostConstruct;
 import java.io.ByteArrayInputStream;
@@ -79,6 +80,21 @@ public class ObjectStorageService {
             return new InputStreamResource(object);
         } catch (Exception exception) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "对象文件不存在。");
+        }
+    }
+
+    public void delete(String storagePath) {
+        if (!enabled() || storagePath == null || storagePath.isBlank()) {
+            return;
+        }
+        try {
+            ensureBucket();
+            client().removeObject(RemoveObjectArgs.builder()
+                .bucket(properties.getBucket())
+                .object(key(storagePath))
+                .build());
+        } catch (Exception exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "对象存储删除失败：" + exception.getMessage());
         }
     }
 

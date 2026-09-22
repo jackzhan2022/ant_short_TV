@@ -17,12 +17,15 @@ public interface InspirationCreationMapper extends BaseMapper<InspirationCreatio
         return selectOne(new LambdaQueryWrapper<InspirationCreationEntity>()
             .eq(InspirationCreationEntity::getId, id)
             .eq(InspirationCreationEntity::getImportStatus, InspirationCreationImportStatus.IMPORTED.name())
+            .eq(InspirationCreationEntity::getPublishStatus, "PUBLISHED")
+            .isNull(InspirationCreationEntity::getDeletedAt)
             .last("limit 1"));
     }
 
     default List<InspirationCreationEntity> selectThumbnailBackfillCandidates(int limit) {
         return selectList(new LambdaQueryWrapper<InspirationCreationEntity>()
             .eq(InspirationCreationEntity::getImportStatus, InspirationCreationImportStatus.IMPORTED.name())
+            .isNull(InspirationCreationEntity::getDeletedAt)
             .and(query -> query.isNull(InspirationCreationEntity::getThumbnailStatus)
                 .or()
                 .ne(InspirationCreationEntity::getThumbnailStatus, "READY"))

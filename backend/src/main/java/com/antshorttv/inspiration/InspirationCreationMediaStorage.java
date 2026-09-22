@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Path;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
@@ -54,6 +55,22 @@ public class InspirationCreationMediaStorage {
         objectStorageService.upload(storagePath, thumbnail.bytes(), thumbnail.mimeType());
     }
 
+    public void uploadOriginal(String storagePath, byte[] bytes, String mimeType) {
+        objectStorageService.upload(storagePath, bytes, mimeType);
+    }
+
+    public void uploadOriginalFile(String storagePath, Path file, String mimeType) {
+        objectStorageService.uploadFile(storagePath, file, mimeType);
+    }
+
+    public void delete(String storagePath) {
+        try {
+            objectStorageService.delete(storagePath);
+        } catch (RuntimeException ignored) {
+            // Cleanup is best-effort; database visibility remains authoritative.
+        }
+    }
+
     static String storagePath(String externalId, String mediaUrl, String mimeType) {
         return "inspiration/creations/%s/original.%s".formatted(externalId, extension(mediaUrl, mimeType));
     }
@@ -90,7 +107,7 @@ public class InspirationCreationMediaStorage {
             .orElseGet(() -> contentType(mediaUrl, null));
     }
 
-    private static String extension(String mediaUrl, String mimeType) {
+    static String extension(String mediaUrl, String mimeType) {
         String path = URI.create(mediaUrl).getPath();
         int dot = path == null ? -1 : path.lastIndexOf('.');
         if (dot >= 0 && dot < path.length() - 1) {

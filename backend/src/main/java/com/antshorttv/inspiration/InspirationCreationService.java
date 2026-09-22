@@ -44,7 +44,7 @@ public class InspirationCreationService {
         List<InspirationCreationListResponse> records = mapper.selectList(importedQuery()
                 .last("limit %d offset %d".formatted(safePageSize, (safePage - 1) * safePageSize)))
             .stream()
-            .map(InspirationCreationListResponse::from)
+            .map(entity -> InspirationCreationListResponse.from(entity, tags(entity)))
             .toList();
         return new InspirationCreationPageResponse(records, total == null ? 0 : total, safePage, safePageSize);
     }
@@ -52,7 +52,7 @@ public class InspirationCreationService {
     public InspirationCreationDetailResponse detail(Long id) {
         currentPrincipal.require();
         InspirationCreationEntity entity = requireImported(id);
-        return InspirationCreationDetailResponse.from(entity, detailJson(entity));
+        return InspirationCreationDetailResponse.from(entity, tags(entity), detailJson(entity));
     }
 
     public Resource file(Long id) {
@@ -105,6 +105,8 @@ public class InspirationCreationService {
     private LambdaQueryWrapper<InspirationCreationEntity> importedQuery() {
         return new LambdaQueryWrapper<InspirationCreationEntity>()
             .eq(InspirationCreationEntity::getImportStatus, InspirationCreationImportStatus.IMPORTED.name())
+            .eq(InspirationCreationEntity::getPublishStatus, "PUBLISHED")
+            .isNull(InspirationCreationEntity::getDeletedAt)
             .orderByAsc(InspirationCreationEntity::getSortOrder)
             .orderByAsc(InspirationCreationEntity::getId);
     }
@@ -117,6 +119,20 @@ public class InspirationCreationService {
             return objectMapper.readTree(entity.getDetailJson());
         } catch (Exception exception) {
             return objectMapper.createObjectNode();
+        }
+    }
+
+    private List<String> tags(InspirationCreationEntity entity) {
+        if (entity.getTagsJson() == null || entity.getTagsJson().isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(
+                entity.getTagsJson(),
+                objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)
+            );
+        } catch (Exception exception) {
+            return List.of();
         }
     }
 }

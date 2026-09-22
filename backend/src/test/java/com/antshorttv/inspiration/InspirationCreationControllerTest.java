@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.antshorttv.auth.RegisterRequest;
 import com.antshorttv.auth.AuthService;
+import com.antshorttv.auth.VerificationCodeService;
 import com.antshorttv.storage.ObjectStorageService;
 import jakarta.servlet.http.Cookie;
 import java.time.LocalDateTime;
@@ -41,6 +42,9 @@ class InspirationCreationControllerTest {
     @MockBean
     private ObjectStorageService objectStorageService;
 
+    @MockBean
+    private VerificationCodeService verificationCodeService;
+
     private Cookie sessionCookie;
 
     @BeforeEach
@@ -65,6 +69,12 @@ class InspirationCreationControllerTest {
         mapper.updateById(first);
         InspirationCreationEntity failed = creation("external-2", "FAILED", 1);
         mapper.insert(failed);
+        InspirationCreationEntity unpublished = creation("external-unpublished", "IMPORTED", 2);
+        unpublished.setPublishStatus("UNPUBLISHED");
+        mapper.insert(unpublished);
+        InspirationCreationEntity deleted = creation("external-deleted", "IMPORTED", 3);
+        deleted.setDeletedAt(LocalDateTime.now());
+        mapper.insert(deleted);
 
         mockMvc.perform(get("/api/inspiration-creations?page=1&pageSize=1")
                 .cookie(sessionCookie))
@@ -97,6 +107,31 @@ class InspirationCreationControllerTest {
         mockMvc.perform(get("/api/inspiration-creations/{id}", 999999L)
                 .cookie(sessionCookie))
             .andExpect(status().isNotFound());
+
+        entity.setPublishStatus("UNPUBLISHED");
+        mapper.updateById(entity);
+        mockMvc.perform(get("/api/inspiration-creations/{id}", entity.getId())
+                .cookie(sessionCookie))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listReturnsPromptSummaryAndDetailReturnsCompletePromptAndTags() throws Exception {
+        InspirationCreationEntity entity = creation("external-prompt", "IMPORTED", 1);
+        entity.setPromptText("这是完整提示词，用于验证公开列表摘要和详情完整内容。");
+        entity.setTagsJson("[\"都市\",\"逆袭\"]");
+        mapper.insert(entity);
+
+        mockMvc.perform(get("/api/inspiration-creations").cookie(sessionCookie))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.records[0].promptSummary", is(entity.getPromptText())))
+            .andExpect(jsonPath("$.data.records[0].promptText").doesNotExist())
+            .andExpect(jsonPath("$.data.records[0].tags[0]", is("都市")));
+
+        mockMvc.perform(get("/api/inspiration-creations/{id}", entity.getId()).cookie(sessionCookie))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.promptText", is(entity.getPromptText())))
+            .andExpect(jsonPath("$.data.tags[1]", is("逆袭")));
     }
 
     @Test
@@ -175,6 +210,8 @@ class InspirationCreationControllerTest {
         entity.setFileSize(10L);
         entity.setSourceCreatedAt(LocalDateTime.of(2026, 8, 21, 12, 0));
         entity.setImportStatus(status);
+        entity.setPublishStatus("PUBLISHED");
+        entity.setSourceType("IMPORTED");
         entity.setSortOrder(sortOrder);
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());

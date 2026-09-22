@@ -12,6 +12,7 @@ import * as projectAiConfigController from "./projectAiConfigController";
 import * as aiImageTaskController from "./aiImageTaskController";
 import * as projectController from "./projectController";
 import * as platformTenantController from "./platformTenantController";
+import * as inspirationManagementController from "./inspirationManagementController";
 import * as platformCommercialEntitlementController from "./platformCommercialEntitlementController";
 import * as workflowSkillController from "./workflowSkillController";
 import * as workflowAgentController from "./workflowAgentController";
@@ -52,6 +53,7 @@ export default {
   aiImageTaskController,
   projectController,
   platformTenantController,
+  inspirationManagementController,
   platformCommercialEntitlementController,
   workflowSkillController,
   workflowAgentController,

@@ -450,6 +450,20 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseInspirationManagementItemResponse = {
+    success?: boolean;
+    data?: InspirationManagementItemResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseInspirationManagementPageResponse = {
+    success?: boolean;
+    data?: InspirationManagementPageResponse;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseInspirationThumbnailBackfillResult = {
     success?: boolean;
     data?: InspirationThumbnailBackfillResult;
@@ -1610,6 +1624,13 @@ declare namespace API {
     projectId: number;
   };
 
+  type create8Params = {
+    title: string;
+    promptText: string;
+    tags?: string[];
+    publishStatus?: string;
+  };
+
   type CreateAgentRequest = {
     code: string;
     name: string;
@@ -1826,10 +1847,14 @@ declare namespace API {
   };
 
   type delete2Params = {
-    code: string;
+    id: number;
   };
 
   type delete3Params = {
+    code: string;
+  };
+
+  type delete4Params = {
     code: string;
   };
 
@@ -2278,6 +2303,8 @@ declare namespace API {
     thumbnailUrl?: string;
     mimeType?: string;
     fileSize?: number;
+    tags?: string[];
+    promptText?: string;
     sortOrder?: number;
     sourceCreatedAt?: string;
     detailJson?: JsonNode;
@@ -2295,6 +2322,8 @@ declare namespace API {
     thumbnailUrl?: string;
     mimeType?: string;
     fileSize?: number;
+    tags?: string[];
+    promptSummary?: string;
     sortOrder?: number;
     sourceCreatedAt?: string;
   };
@@ -2304,6 +2333,43 @@ declare namespace API {
     total?: number;
     current?: number;
     pageSize?: number;
+  };
+
+  type InspirationManagementItemResponse = {
+    id?: number;
+    title?: string;
+    tags?: string[];
+    promptText?: string;
+    creationType?: string;
+    mimeType?: string;
+    url?: string;
+    thumbnailUrl?: string;
+    publishStatus?: string;
+    sourceType?: string;
+    sortOrder?: number;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+
+  type InspirationManagementPageResponse = {
+    records?: InspirationManagementItemResponse[];
+    total?: number;
+    current?: number;
+    pageSize?: number;
+  };
+
+  type InspirationMetadataRequest = {
+    title?: string;
+    tags?: string[];
+    promptText?: string;
+  };
+
+  type InspirationPublishStatusRequest = {
+    publishStatus?: string;
+  };
+
+  type InspirationReorderRequest = {
+    orderedIds?: number[];
   };
 
   type InspirationThumbnailBackfillResult = {
@@ -2321,7 +2387,15 @@ declare namespace API {
     tenantId: number;
   };
 
-  type list11Params = {
+  type list10Params = {
+    page?: number;
+    pageSize?: number;
+    keyword?: string;
+    publishStatus?: string;
+    mediaType?: string;
+  };
+
+  type list12Params = {
     keyword?: string;
     status?: string;
     packageType?: string;
@@ -2329,20 +2403,20 @@ declare namespace API {
     pageSize?: number;
   };
 
-  type list13Params = {
-    query?: string;
-  };
-
   type list14Params = {
     query?: string;
   };
 
   type list15Params = {
+    query?: string;
+  };
+
+  type list16Params = {
     agentCode?: string;
     limit?: number;
   };
 
-  type list16Params = {
+  type list17Params = {
     page?: number;
     pageSize?: number;
   };
@@ -3603,6 +3677,10 @@ declare namespace API {
     subtitleId: number;
   };
 
+  type SendVerificationCodeRequest = {
+    mobile: string;
+  };
+
   type setCurrentEpisodeVideoVersionParams = {
     projectId: number;
     versionId: number;
@@ -3943,10 +4021,14 @@ declare namespace API {
   };
 
   type update3Params = {
-    code: string;
+    id: number;
   };
 
   type update4Params = {
+    code: string;
+  };
+
+  type update5Params = {
     code: string;
   };
 
@@ -4055,6 +4137,10 @@ declare namespace API {
   };
 
   type updateProviderParams = {
+    id: number;
+  };
+
+  type updatePublishStatusParams = {
     id: number;
   };
 
