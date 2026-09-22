@@ -3,6 +3,7 @@ package com.antshorttv.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,8 @@ import com.antshorttv.video.VideoUnderstandingRequest;
 import com.antshorttv.video.VideoUnderstandingResponse;
 import java.util.Map;
 import java.time.Duration;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -24,13 +27,27 @@ class AiInvocationServiceTest {
     private final PromptTemplateRenderer promptRenderer = mock(PromptTemplateRenderer.class);
     private final AiInvocationErrorMapper errorMapper = new AiInvocationErrorMapper();
     private final QwenVideoUnderstandingAdapter qwenAdapter = mock(QwenVideoUnderstandingAdapter.class);
+    private final AiProviderConcurrencyLimiter concurrencyLimiter = mock(AiProviderConcurrencyLimiter.class);
     private final AiInvocationService service = new AiInvocationService(
         router,
         logWriter,
         promptRenderer,
         errorMapper,
-        qwenAdapter
+        qwenAdapter,
+        concurrencyLimiter
     );
+
+    @BeforeEach
+    void executeLimitedProviderCalls() {
+        when(concurrencyLimiter.execute(any(), any())).thenAnswer(invocation ->
+            invocation.<Supplier<?>>getArgument(1).get());
+        try {
+            when(concurrencyLimiter.executeChecked(any(), any())).thenAnswer(invocation ->
+                invocation.<AiProviderConcurrencyLimiter.CheckedOperation<?>>getArgument(1).execute());
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
 
     @Test
     void invokesTextThroughUnifiedContractAndReturnsLogId() {
@@ -60,6 +77,7 @@ class AiInvocationServiceTest {
         assertThat(logCaptor.getValue().responseLength()).isEqualTo(4);
         assertThat(logCaptor.getValue().finishReason()).isNull();
         assertThat(logCaptor.getValue().truncated()).isFalse();
+        verify(concurrencyLimiter).execute(eq(route.provider()), any());
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.ai.AiInvocationLogRequest;
 import com.antshorttv.ai.AiModelRoute;
 import com.antshorttv.ai.AiModelRouter;
+import com.antshorttv.ai.AiProviderConcurrencyLimiter;
 import com.antshorttv.common.ErrorCode;
 import org.springframework.stereotype.Service;
 
@@ -15,15 +16,18 @@ public class VideoUnderstandingGateway {
     private final AiModelRouter aiModelRouter;
     private final QwenVideoUnderstandingAdapter qwenAdapter;
     private final AiCallLogWriter aiCallLogWriter;
+    private final AiProviderConcurrencyLimiter concurrencyLimiter;
 
     public VideoUnderstandingGateway(
         AiModelRouter aiModelRouter,
         QwenVideoUnderstandingAdapter qwenAdapter,
-        AiCallLogWriter aiCallLogWriter
+        AiCallLogWriter aiCallLogWriter,
+        AiProviderConcurrencyLimiter concurrencyLimiter
     ) {
         this.aiModelRouter = aiModelRouter;
         this.qwenAdapter = qwenAdapter;
         this.aiCallLogWriter = aiCallLogWriter;
+        this.concurrencyLimiter = concurrencyLimiter;
     }
 
     public VideoUnderstandingCallResult call(AiContext context, VideoUnderstandingRequest request) {
@@ -31,12 +35,13 @@ public class VideoUnderstandingGateway {
         AiModelRoute route = aiModelRouter.route(context.modelId(), "VIDEO_UNDERSTANDING");
         long started = System.currentTimeMillis();
         try {
-            VideoUnderstandingResponse response = qwenAdapter.videoUnderstanding(
-                route.provider(),
-                route.providerConfig(),
-                route.model(),
-                request
-            );
+            VideoUnderstandingResponse response = concurrencyLimiter.execute(route.provider(), () ->
+                qwenAdapter.videoUnderstanding(
+                    route.provider(),
+                    route.providerConfig(),
+                    route.model(),
+                    request
+                ));
             Long callLogId = record(
                 context.withModelId(route.model().getId()),
                 route,

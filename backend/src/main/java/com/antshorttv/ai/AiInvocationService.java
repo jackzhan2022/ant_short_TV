@@ -16,19 +16,22 @@ public class AiInvocationService {
     private final PromptTemplateRenderer promptTemplateRenderer;
     private final AiInvocationErrorMapper errorMapper;
     private final QwenVideoUnderstandingAdapter qwenVideoUnderstandingAdapter;
+    private final AiProviderConcurrencyLimiter concurrencyLimiter;
 
     public AiInvocationService(
         AiModelRouter aiModelRouter,
         AiCallLogWriter aiCallLogWriter,
         PromptTemplateRenderer promptTemplateRenderer,
         AiInvocationErrorMapper errorMapper,
-        QwenVideoUnderstandingAdapter qwenVideoUnderstandingAdapter
+        QwenVideoUnderstandingAdapter qwenVideoUnderstandingAdapter,
+        AiProviderConcurrencyLimiter concurrencyLimiter
     ) {
         this.aiModelRouter = aiModelRouter;
         this.aiCallLogWriter = aiCallLogWriter;
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.errorMapper = errorMapper;
         this.qwenVideoUnderstandingAdapter = qwenVideoUnderstandingAdapter;
+        this.concurrencyLimiter = concurrencyLimiter;
     }
 
     public AiInvocationResult<AiTextResponse> invokeText(AiInvocationRequest request) {
@@ -36,13 +39,14 @@ public class AiInvocationService {
         AiModelRoute route = aiModelRouter.route(effectiveRequest.modelId(), AiCapability.TEXT.modelServiceType());
         long started = System.currentTimeMillis();
         try {
-            AiTextResponse response = route.adapter().text(
-                route.provider(),
-                route.providerConfig(),
-                route.model(),
-                effectiveRequest.textRequest(),
-                effectiveRequest.idempotencyKey()
-            );
+            AiTextResponse response = concurrencyLimiter.execute(route.provider(), () ->
+                route.adapter().text(
+                    route.provider(),
+                    route.providerConfig(),
+                    route.model(),
+                    effectiveRequest.textRequest(),
+                    effectiveRequest.idempotencyKey()
+                ));
             Long logId = aiCallLogWriter.record(AiInvocationLogRequest.successText(
                 effectiveRequest.toAiContext().withModelId(route.model().getId()),
                 route,
@@ -62,13 +66,14 @@ public class AiInvocationService {
         AiModelRoute route = aiModelRouter.route(request.modelId(), AiCapability.IMAGE.modelServiceType());
         long started = System.currentTimeMillis();
         try {
-            AiImageResponse response = route.adapter().image(
-                route.provider(),
-                route.providerConfig(),
-                route.model(),
-                request.imageRequest(),
-                request.idempotencyKey()
-            );
+            AiImageResponse response = concurrencyLimiter.execute(route.provider(), () ->
+                route.adapter().image(
+                    route.provider(),
+                    route.providerConfig(),
+                    route.model(),
+                    request.imageRequest(),
+                    request.idempotencyKey()
+                ));
             String responseSummary = response.imageUrls() == null ? "generated=0" : "generated=%d".formatted(response.imageUrls().size());
             Long logId = aiCallLogWriter.record(AiInvocationLogRequest.success(
                 request.toAiContext().withModelId(route.model().getId()),
@@ -108,12 +113,13 @@ public class AiInvocationService {
         AiModelRoute route = aiModelRouter.route(request.modelId(), AiCapability.VIDEO_UNDERSTANDING.modelServiceType());
         long started = System.currentTimeMillis();
         try {
-            VideoUnderstandingResponse response = qwenVideoUnderstandingAdapter.videoUnderstanding(
-                route.provider(),
-                route.providerConfig(),
-                route.model(),
-                videoRequest
-            );
+            VideoUnderstandingResponse response = concurrencyLimiter.execute(route.provider(), () ->
+                qwenVideoUnderstandingAdapter.videoUnderstanding(
+                    route.provider(),
+                    route.providerConfig(),
+                    route.model(),
+                    videoRequest
+                ));
             Long logId = aiCallLogWriter.record(AiInvocationLogRequest.success(
                 request.toAiContext().withModelId(route.model().getId()),
                 route,
@@ -151,15 +157,16 @@ public class AiInvocationService {
         AiModelRoute route = aiModelRouter.route(request.modelId(), request.capability().modelServiceType());
         long started = System.currentTimeMillis();
         try {
-            AiProviderExecutionOutcome<T> outcome = route.adapter().submit(
-                route.provider(),
-                route.providerConfig(),
-                route.model(),
-                new AiProviderSubmissionRequest(
-                    request.capability(), payload, request.idempotencyKey(), request.executionId(),
-                    request.attemptId(), request.executionVersion(), request.phase()
-                )
-            );
+            AiProviderExecutionOutcome<T> outcome = concurrencyLimiter.execute(route.provider(), () ->
+                route.adapter().submit(
+                    route.provider(),
+                    route.providerConfig(),
+                    route.model(),
+                    new AiProviderSubmissionRequest(
+                        request.capability(), payload, request.idempotencyKey(), request.executionId(),
+                        request.attemptId(), request.executionVersion(), request.phase()
+                    )
+                ));
             return recordProviderOutcome(request, route, outcome, String.valueOf(payload), started);
         } catch (Exception exception) {
             AiGatewayException normalized = errorMapper.normalize(exception, request.capability());
@@ -171,15 +178,16 @@ public class AiInvocationService {
         AiModelRoute route = aiModelRouter.route(request.modelId(), request.capability().modelServiceType());
         long started = System.currentTimeMillis();
         try {
-            AiProviderExecutionOutcome<T> outcome = route.adapter().poll(
-                route.provider(),
-                route.providerConfig(),
-                route.model(),
-                new AiProviderPollingRequest(
-                    request.capability(), externalTaskId, request.idempotencyKey(), request.executionId(),
-                    request.attemptId(), request.executionVersion(), request.phase()
-                )
-            );
+            AiProviderExecutionOutcome<T> outcome = concurrencyLimiter.execute(route.provider(), () ->
+                route.adapter().poll(
+                    route.provider(),
+                    route.providerConfig(),
+                    route.model(),
+                    new AiProviderPollingRequest(
+                        request.capability(), externalTaskId, request.idempotencyKey(), request.executionId(),
+                        request.attemptId(), request.executionVersion(), request.phase()
+                    )
+                ));
             return recordProviderOutcome(request, route, outcome, externalTaskId, started);
         } catch (Exception exception) {
             AiGatewayException normalized = errorMapper.normalize(exception, request.capability());
@@ -198,7 +206,7 @@ public class AiInvocationService {
             return recordProviderOutcome(
                 request,
                 route,
-                operation.execute(route),
+                concurrencyLimiter.executeChecked(route.provider(), () -> operation.execute(route)),
                 requestSummary,
                 started
             );

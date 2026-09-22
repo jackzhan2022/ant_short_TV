@@ -6,6 +6,7 @@
 
 | 环境变量 | 默认值 | 说明 |
 | --- | ---: | --- |
+| `AI_PROVIDER_MAX_CONCURRENCY` | `4` | 单个 AI 服务商账号的统一出站请求并发上限，所有业务共享 |
 | `AI_WORKFLOW_FANOUT_CONCURRENCY` | `3` | 单阶段逐集并发数，服务端限制为 1–16 |
 | `AI_WORKFLOW_SPLIT_SAFE_CONTEXT_TOKENS` | `800000` | 全文请求的安全预算；估算值含提示词和工具输出预留 |
 | `AI_WORKFLOW_SPLIT_PROMPT_RESERVE_TOKENS` | `12000` | 全文拆分提示词预留 |

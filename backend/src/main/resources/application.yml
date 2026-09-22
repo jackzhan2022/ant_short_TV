@@ -91,6 +91,8 @@ commercial:
 
 ai:
   secret-key: ${AI_SECRET_KEY:}
+  provider:
+    max-concurrency: ${AI_PROVIDER_MAX_CONCURRENCY:4}
   workflow-agent:
     skill-root: ${AI_WORKFLOW_SKILL_ROOT:skills}
     max-skill-file-bytes: ${AI_WORKFLOW_MAX_SKILL_FILE_BYTES:1048576}

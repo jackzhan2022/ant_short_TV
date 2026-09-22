@@ -7,10 +7,16 @@ import org.springframework.stereotype.Service;
 public class DefaultAiGateway extends AiGateway {
     private final AiModelRouter aiModelRouter;
     private final AiCallLogWriter aiCallLogWriter;
+    private final AiProviderConcurrencyLimiter concurrencyLimiter;
 
-    public DefaultAiGateway(AiModelRouter aiModelRouter, AiCallLogWriter aiCallLogWriter) {
+    public DefaultAiGateway(
+        AiModelRouter aiModelRouter,
+        AiCallLogWriter aiCallLogWriter,
+        AiProviderConcurrencyLimiter concurrencyLimiter
+    ) {
         this.aiModelRouter = aiModelRouter;
         this.aiCallLogWriter = aiCallLogWriter;
+        this.concurrencyLimiter = concurrencyLimiter;
     }
 
     @Override
@@ -19,7 +25,8 @@ public class DefaultAiGateway extends AiGateway {
         AiModelRoute route = aiModelRouter.route(context.modelId(), "TEXT");
         long started = System.currentTimeMillis();
         try {
-            AiTextResponse response = route.adapter().text(route.provider(), route.providerConfig(), route.model(), request);
+            AiTextResponse response = concurrencyLimiter.execute(route.provider(), () ->
+                route.adapter().text(route.provider(), route.providerConfig(), route.model(), request));
             record(context.withModelId(route.model().getId()), route, "TEXT", request.userPrompt(), response.content(), "SUCCESS", null, started, response);
             return response;
         } catch (AiGatewayException exception) {
@@ -34,7 +41,8 @@ public class DefaultAiGateway extends AiGateway {
         AiModelRoute route = aiModelRouter.route(context.modelId(), "IMAGE");
         long started = System.currentTimeMillis();
         try {
-            AiImageResponse response = route.adapter().image(route.provider(), route.providerConfig(), route.model(), request);
+            AiImageResponse response = concurrencyLimiter.execute(route.provider(), () ->
+                route.adapter().image(route.provider(), route.providerConfig(), route.model(), request));
             record(context.withModelId(route.model().getId()), route, "IMAGE", request.prompt(), "generated=%d".formatted(response.imageUrls().size()), "SUCCESS", null, started, response);
             return response;
         } catch (AiGatewayException exception) {
