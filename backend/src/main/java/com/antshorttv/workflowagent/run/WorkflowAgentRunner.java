@@ -47,17 +47,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class WorkflowAgentRunner {
     private static final int ASSET_SAVE_CORRECTIONS = 2;
+    private static final int STORYBOARD_SAVE_CORRECTIONS = 1;
     private static final int ASSET_MIN_STEPS = 1 + 2 * (1 + ASSET_SAVE_CORRECTIONS);
+    private static final int STORYBOARD_MIN_STEPS =
+        WorkflowAgentRunContract.forAgent("short-drama-storyboard").preparationToolCodes().size()
+            + 2 * (1 + STORYBOARD_SAVE_CORRECTIONS);
     private static final Logger LOG = LoggerFactory.getLogger(WorkflowAgentRunner.class);
     private static final Set<String> TRUSTED_SCOPE_ARGUMENTS = Set.of(
         "tenantId", "userId", "projectId", "episodeId", "scriptId", "taskId",
         "analysisStageId", "agentRunId", "permissions"
     );
-    private static final List<String> EPISODE_SHARED_TOOL_SCHEMA = List.of(
-        "read_current_episode", "read_adjacent_episodes", "read_script_analysis",
-        "read_project_context", "read_script_assets", "save_episode_summary",
-        "save_episode_assets", "save_episode_storyboards");
-
     private final WorkflowAgentService agents;
     private final WorkflowSkillService skills;
     private final WorkflowToolRegistry tools;
@@ -179,7 +178,9 @@ public class WorkflowAgentRunner {
             ? Math.max(agent.maxSteps(), properties.getReviewDeepMaxSteps())
             : "short-drama-asset-recognition".equals(agent.code())
                 ? Math.max(agent.maxSteps(), ASSET_MIN_STEPS)
-                : agent.maxSteps();
+                : "short-drama-storyboard".equals(agent.code())
+                    ? Math.max(agent.maxSteps(), STORYBOARD_MIN_STEPS)
+                    : agent.maxSteps();
         if (input.modelIdOverride() != null) {
             agents.requireToolCallingModel(effectiveModelId);
         }
@@ -278,6 +279,7 @@ public class WorkflowAgentRunner {
                 allowlist, deadline, stepNo);
         }
         int assetSaveCorrections = 0;
+        int storyboardSaveCorrections = 0;
         String traceId = "workflow-agent-" + UUID.randomUUID();
         for (int modelRound = 1; stepNo < maxSteps; modelRound++) {
             requireBeforeDeadline(deadline);
@@ -361,7 +363,8 @@ public class WorkflowAgentRunner {
                 return new WorkflowAgentRunResult(runId, output, modelCalls);
             }
             messages.add(AiChatMessage.assistantToolCalls(calls));
-            for (AiToolCall call : calls) {
+            for (int callIndex = 0; callIndex < calls.size(); callIndex++) {
+                AiToolCall call = calls.get(callIndex);
                 if (stepNo >= maxSteps) {
                     throw new BusinessException(ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
                         "Agent 已达到最大执行步数 " + maxSteps + "，停止执行后续工具。");
@@ -391,6 +394,7 @@ public class WorkflowAgentRunner {
                     }
                     throw error;
                 }
+                boolean toolReturned = false;
                 try {
                     requireBoundedSavePayload(call.code(), call.argumentsJson());
                     JsonNode arguments = parseArguments(call.argumentsJson());
@@ -400,6 +404,7 @@ public class WorkflowAgentRunner {
                         schemaValidator.validate(definition.inputSchema(), arguments);
                     }
                     JsonNode output = definition.executor().execute(context, arguments);
+                    toolReturned = true;
                     requireBeforeDeadline(deadline);
                     scopeGuard.requireExecutionActive(input);
                     schemaValidator.validate(definition.outputSchema(), output);
@@ -429,6 +434,23 @@ public class WorkflowAgentRunner {
                                 + "不得再次读取正文或其他上下文；优先使用当前预加载 sourceSegments 中的"
                                 + " evidenceRef: {segmentId: \"S0001\"} 和 usageEvidenceRef，"
                                 + "segmentId 必须实际存在且支持对应证据；证据不得编造。"));
+                        break;
+                    }
+                    if ("short-drama-storyboard".equals(agent.code())
+                        && "save_episode_storyboards".equals(call.code())
+                        && storyboardSaveCorrections < STORYBOARD_SAVE_CORRECTIONS
+                        && isCorrectableStoryboardSaveFailure(exception, toolReturned)) {
+                        storyboardSaveCorrections++;
+                        messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
+                        for (int skipped = callIndex + 1; skipped < calls.size(); skipped++) {
+                            messages.add(AiChatMessage.toolResult(calls.get(skipped).id(), writeError(
+                                new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
+                                    "本轮分镜保存校验失败，后续工具调用未执行。"))));
+                        }
+                        messages.add(AiChatMessage.user(
+                            "分镜保存校验失败。仅修正错误所指的分镜和字段，保持剧集指纹与其他有效内容，"
+                                + "使用 schemaVersion 3 再调用一次 save_episode_storyboards；"
+                                + "不要调用读取工具。"));
                         break;
                     }
                     if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL
@@ -566,8 +588,8 @@ public class WorkflowAgentRunner {
             reduction.propCount(), reduction.optionalSectionsDropped());
         messages.add(AiChatMessage.user(
             "以下是服务端已按可信作用域读取并审计的完整分镜规划上下文。"
-                + "不要再次读取，也不要引用旧分镜。sourceFrom/sourceTo 必须位于每个分镜对象内部；"
-                + "soundSegmentIds 只允许 DIALOGUE、NARRATION、INNER_OS，禁止 ACTION、METADATA。"
+                + "不要再次读取，也不要引用旧分镜。每个分镜只提交 sourceTo，"
+                + "不提交 sourceFrom 或 soundSegmentIds；声音归属由服务端派生。"
                 + "请直接规划整集并调用 save_episode_storyboards：\n"
                 + writeJson(reduction.context())));
         return stepNo;
@@ -633,7 +655,10 @@ public class WorkflowAgentRunner {
                 .toList();
         }
         if ("short-drama-storyboard".equals(agentCode)) {
-            return episodeSharedProviderTools();
+            return allowedTools.stream()
+                .filter(tool -> contract.isTerminal(tool.code()))
+                .map(this::providerTool)
+                .toList();
         }
         if (!splitting) {
             return allowedTools.stream().map(this::providerTool).toList();
@@ -643,14 +668,6 @@ public class WorkflowAgentRunner {
             : Set.of("read_current_script", "save_episode_splitting");
         return allowedTools.stream()
             .filter(tool -> activeCodes.contains(tool.code()))
-            .map(this::providerTool)
-            .toList();
-    }
-
-    private List<AiToolDefinition> episodeSharedProviderTools() {
-        return EPISODE_SHARED_TOOL_SCHEMA.stream()
-            .filter(tools::contains)
-            .map(tools::require)
             .map(this::providerTool)
             .toList();
     }
@@ -667,6 +684,13 @@ public class WorkflowAgentRunner {
     private boolean isCorrectableSplitBoundaryFailure(String toolCode, BusinessException error) {
         return "save_episode_splitting".equals(toolCode)
             && error.getErrorCode() == ErrorCode.VALIDATION_ERROR;
+    }
+
+    private boolean isCorrectableStoryboardSaveFailure(Exception exception, boolean toolReturned) {
+        if (exception instanceof WorkflowToolValidationException validation) {
+            return !"SOURCE_SEGMENTS_UNAVAILABLE".equals(validation.details().get("validationCode"));
+        }
+        return !toolReturned && exception instanceof IllegalArgumentException;
     }
 
     private void beginFallback(

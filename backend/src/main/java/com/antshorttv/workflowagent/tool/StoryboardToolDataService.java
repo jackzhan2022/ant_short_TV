@@ -56,7 +56,7 @@ public class StoryboardToolDataService {
             throw invalid("分镜来源指纹与本次读取的当前剧集不一致。");
         }
         int schemaVersion = payload.path("schemaVersion").asInt();
-        if (schemaVersion != 2 && schemaVersion != 3) {
+        if (schemaVersion != 3) {
             throw invalid("不支持的分镜 Schema 版本。");
         }
         JsonNode submitted = payload.path("storyboards");
@@ -89,11 +89,17 @@ public class StoryboardToolDataService {
         }
         String visualStyle = projectVisualStyle(context);
         List<EpisodeSourceSegment> segments = trustedSegments(context);
-        StoryboardNormalizer.Result normalization = schemaVersion == 3
-            ? new StoryboardNormalizer(json).normalize(submitted, segments)
-            : new StoryboardNormalizer.Result((ArrayNode) submitted, 0, 0);
+        StoryboardNormalizer.Result normalization = new StoryboardNormalizer(json).normalize(submitted, segments);
         submitted = normalization.storyboards();
-        List<ValidatedStoryboard> validated = validateAll(context, source, segments, submitted, visualStyle);
+        List<ValidatedStoryboard> validated;
+        try {
+            validated = validateAll(context, source, segments, submitted, visualStyle);
+        } catch (BusinessException error) {
+            if (error instanceof WorkflowToolValidationException
+                || error.getErrorCode() != ErrorCode.WORKFLOW_AGENT_TOOL_INVALID) throw error;
+            throw new WorkflowToolValidationException(error.getMessage(),
+                Map.of("validationCode", "STORYBOARD_CONTENT_INVALID"));
+        }
         ArrayNode classificationWarnings = classificationWarnings(segments);
         for (ValidatedStoryboard board : validated) {
             ObjectNode diagnostics = ((ObjectNode) board.plan).putObject("diagnostics");
@@ -270,7 +276,8 @@ public class StoryboardToolDataService {
                     from.ordinal, to.ordinal);
             }
             if (total.compareTo(BigDecimal.TEN) < 0 || total.compareTo(new BigDecimal("15")) > 0) {
-                throw invalid("每个正式分镜总时长必须为 10 至 15 秒。");
+                throw validation("STORYBOARD_DURATION_OUT_OF_RANGE", storyboardNo, null, null,
+                    "每个正式分镜总时长必须为 10 至 15 秒。");
             }
             MaterialSet materials = resolveMaterials(context, board);
             RenderedPrompt prompt = render(visualStyle, validatedBoard, total, materials);

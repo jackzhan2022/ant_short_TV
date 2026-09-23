@@ -918,7 +918,7 @@ class WorkflowAgentRunnerTest {
         verify(invocation, org.mockito.Mockito.times(1)).invokeText(requests.capture());
         assertThat(requests.getValue().textRequest().tools())
             .extracting(com.antshorttv.ai.AiToolDefinition::code)
-            .containsExactlyElementsOf(codes);
+            .containsExactly("save_episode_storyboards");
         assertThat(requests.getValue().textRequest().messages())
             .extracting(AiChatMessage::content)
             .anySatisfy(content -> assertThat(content)
@@ -1032,7 +1032,7 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
-    void storyboardHardValidationStopsAfterOneBusinessModelCall() throws Exception {
+    void storyboardValidationGetsOneCorrectionBeforeSaving() throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",
             "save_episode_storyboards");
@@ -1041,21 +1041,37 @@ class WorkflowAgentRunnerTest {
         AtomicInteger saves = new AtomicInteger();
         definitions.add(storyboardSave(saves, false));
         runner = runnerWith(definitions, 30);
-        when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(new WorkflowAgentRecord(
+            7L, "short-drama-storyboard", "分镜规划", "", "执行", 8L,
+            new BigDecimal("0.2"), 8192, 8, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(), codes));
         when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(new AiToolCall("bad", "save_episode_storyboards", "{}")), 960L));
+            .thenReturn(result(null, List.of(
+                new AiToolCall("bad", "save_episode_storyboards", "{}"),
+                new AiToolCall("skipped", "save_episode_storyboards", "{}")), 960L))
+            .thenReturn(result(null, List.of(new AiToolCall("corrected", "save_episode_storyboards", "{}")), 961L));
 
-        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+        runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
-            null, null, 9L, 700L, 701L, 1, 8L)))
-            .isInstanceOf(WorkflowToolValidationException.class);
+            null, null, 9L, 700L, 701L, 1, 8L));
 
-        assertThat(saves).hasValue(1);
-        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
+        assertThat(saves).hasValue(2);
+        var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
+        verify(runs).start(start.capture());
+        assertThat(start.getValue().maxSteps()).isEqualTo(9);
+        var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(1).textRequest().messages().stream()
+            .filter(message -> message.role() == com.antshorttv.ai.AiChatRole.TOOL)
+            .map(AiChatMessage::toolCallId))
+            .containsExactly("bad", "skipped");
+        assertThat(requests.getAllValues().get(1).textRequest().messages())
+            .extracting(AiChatMessage::content)
+            .anySatisfy(content -> assertThat(content).contains("SOURCE_SEGMENT_GAP", "S0002"));
     }
 
     @Test
-    void storyboardTerminalPolicyDoesNotRetryARepeatableFailure() throws Exception {
+    void storyboardValidationStopsAfterOneCorrection() throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",
             "save_episode_storyboards");
@@ -1066,12 +1082,161 @@ class WorkflowAgentRunnerTest {
         runner = runnerWith(definitions, 30);
         when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
         when(invocation.invokeText(any()))
-            .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_storyboards", "{}")), 970L));
+            .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_storyboards", "{}")), 970L))
+            .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_storyboards", "{}")), 971L));
 
         assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
             null, null, 9L, 700L, 701L, 1, 8L)))
             .isInstanceOf(WorkflowToolValidationException.class);
+        assertThat(saves).hasValue(2);
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(any());
+    }
+
+    @Test
+    void storyboardCanCorrectV2BeforeCallingSaveExecutor() throws Exception {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets",
+            "save_episode_storyboards");
+        List<WorkflowToolDefinition> definitions = new ArrayList<>();
+        codes.subList(0, 5).forEach(code -> definitions.add(storyboardRead(code, new ArrayList<>())));
+        AtomicInteger saves = new AtomicInteger();
+        definitions.add(new WorkflowToolDefinition(
+            "save_episode_storyboards", "save", "save",
+            json.readTree("""
+                {"type":"object","required":["schemaVersion"],
+                 "properties":{"schemaVersion":{"type":"integer","minimum":3,"maximum":3}}}
+                """),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    saves.incrementAndGet();
+                    return json.createObjectNode();
+                }
+            }));
+        runner = runnerWith(definitions, 30);
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
+        String payload = """
+            {"schemaVersion":%d,"episodeFingerprint":"fp","storyboards":[{
+              "storyboardNo":1,"sourceTo":"S0001",
+              "usedAssetKeys":{"characters":[],"scenes":[],"props":[]},
+              "shots":[
+                {"shotNo":1,"durationSeconds":3,"positioning":"wide","action":"move"},
+                {"shotNo":2,"durationSeconds":3,"positioning":"close","action":"react"}
+              ]
+            }]}
+            """;
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall(
+                "legacy", "save_episode_storyboards", payload.formatted(2))), 983L))
+            .thenReturn(result(null, List.of(new AiToolCall(
+                "v3", "save_episode_storyboards", payload.formatted(3))), 984L));
+
+        runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L));
+
+        assertThat(saves).hasValue(1);
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(any());
+    }
+
+    @Test
+    void storyboardDoesNotCorrectChangedEpisodeFailure() throws Exception {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets",
+            "save_episode_storyboards");
+        List<WorkflowToolDefinition> definitions = new ArrayList<>();
+        codes.subList(0, 5).forEach(code -> definitions.add(storyboardRead(code, new ArrayList<>())));
+        definitions.add(new WorkflowToolDefinition(
+            "save_episode_storyboards", "save", "save", json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前剧集内容已变化");
+                }
+            }));
+        runner = runnerWith(definitions, 30);
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("save", "save_episode_storyboards", "{}")), 980L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L)))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("已变化");
+        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
+    }
+
+    @Test
+    void storyboardDoesNotCorrectUnavailableTrustedSource() throws Exception {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets",
+            "save_episode_storyboards");
+        List<WorkflowToolDefinition> definitions = new ArrayList<>();
+        codes.subList(0, 5).forEach(code -> definitions.add(storyboardRead(code, new ArrayList<>())));
+        definitions.add(new WorkflowToolDefinition(
+            "save_episode_storyboards", "save", "save", json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\"}"), ToolRiskLevel.WRITE,
+            ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    throw new WorkflowToolValidationException("正文片段不可用", Map.of(
+                        "validationCode", "SOURCE_SEGMENTS_UNAVAILABLE"));
+                }
+            }));
+        runner = runnerWith(definitions, 30);
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("save", "save_episode_storyboards", "{}")), 982L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L)))
+            .isInstanceOf(WorkflowToolValidationException.class);
+        verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
+    }
+
+    @Test
+    void storyboardDoesNotRepeatSaveAfterOutputSchemaFailure() throws Exception {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets",
+            "save_episode_storyboards");
+        List<WorkflowToolDefinition> definitions = new ArrayList<>();
+        codes.subList(0, 5).forEach(code -> definitions.add(storyboardRead(code, new ArrayList<>())));
+        AtomicInteger saves = new AtomicInteger();
+        definitions.add(new WorkflowToolDefinition(
+            "save_episode_storyboards", "save", "save", json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\",\"required\":[\"saved\"],\"properties\":{\"saved\":{\"type\":\"boolean\"}}}"),
+            ToolRiskLevel.WRITE, ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                @Override
+                public com.fasterxml.jackson.databind.JsonNode execute(
+                    com.antshorttv.workflowagent.tool.ToolExecutionContext context,
+                    com.fasterxml.jackson.databind.JsonNode arguments
+                ) {
+                    saves.incrementAndGet();
+                    return json.createObjectNode();
+                }
+            }));
+        runner = runnerWith(definitions, 30);
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboardAgent(codes));
+        when(invocation.invokeText(any())).thenReturn(result(null,
+            List.of(new AiToolCall("save", "save_episode_storyboards", "{}")), 981L));
+
+        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L)))
+            .isInstanceOf(BusinessException.class);
         assertThat(saves).hasValue(1);
         verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
     }

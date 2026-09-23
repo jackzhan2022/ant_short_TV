@@ -152,22 +152,50 @@ class StoryboardToolDataServiceTest {
     }
 
     @Test
-    void invalidSoundAssignmentOrStalePayloadPreservesPriorStoryboardSet() throws Exception {
-        JsonNode invalid = validPayload();
-        ((ArrayNode) invalid.path("storyboards").get(0).path("shots").get(1)
-            .path("soundSegmentIds")).removeAll();
-
-        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), invalid))
-            .isInstanceOf(WorkflowToolValidationException.class)
-            .hasMessageContaining("声音片段");
-        assertThat(jdbc.queryForObject("""
-            select visual_description from storyboard where episode_id = ? and deleted_at is null
-            """, String.class, episodeId)).isEqualTo("old storyboard");
-
+    void stalePayloadPreservesPriorStoryboardSet() throws Exception {
         jdbc.update("update script_episode set content_fingerprint = 'changed' where id = ?", episodeId);
         assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), validPayload()))
             .isInstanceOf(com.antshorttv.common.BusinessException.class)
             .hasMessageContaining("已变化");
+        assertPriorStoryboardUnchanged();
+    }
+
+    @Test
+    void rejectsLegacyV2WithoutReplacingExistingStoryboards() throws Exception {
+        ObjectNode legacy = (ObjectNode) validPayload();
+        legacy.put("schemaVersion", 2);
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), legacy))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("Schema");
+        assertPriorStoryboardUnchanged();
+    }
+
+    @Test
+    void reportsStoryboardNumberForCorrectableDurationFailure() throws Exception {
+        JsonNode payload = validPayload();
+        for (JsonNode shot : payload.path("storyboards").get(0).path("shots")) {
+            ((ObjectNode) shot).put("durationSeconds", 2);
+        }
+
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .isInstanceOfSatisfying(WorkflowToolValidationException.class, failure -> {
+                assertThat(failure.details().get("validationCode"))
+                    .isEqualTo("STORYBOARD_DURATION_OUT_OF_RANGE");
+                assertThat(failure.details().get("storyboardNo")).isEqualTo(1);
+            });
+        assertPriorStoryboardUnchanged();
+    }
+
+    @Test
+    void reportsBlankShotContentAsCorrectableValidation() throws Exception {
+        JsonNode payload = validPayload();
+        ((ObjectNode) payload.path("storyboards").get(0).path("shots").get(0))
+            .put("positioning", "   ");
+
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .isInstanceOf(WorkflowToolValidationException.class)
+            .hasMessageContaining("positioning");
+        assertPriorStoryboardUnchanged();
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -195,7 +223,7 @@ class StoryboardToolDataServiceTest {
     }
 
     @Test
-    void acceptsAdjacentRangesAndRejectsUnknownGapOverlapAndReversedRanges() throws Exception {
+    void normalizesAdjacentRangesAndRejectsUnknownOrReversedEnds() throws Exception {
         JsonNode twoBoards = twoBoardPayload();
         assertThat(service.saveEpisodeStoryboards(context(), twoBoards).path("storyboardCount").asInt())
             .isEqualTo(2);
@@ -203,47 +231,31 @@ class StoryboardToolDataServiceTest {
         jdbc.update("update storyboard set deleted_at = now() where episode_id = ? and generated_by_run_id = 700", episodeId);
         jdbc.update("update storyboard set deleted_at = null where episode_id = ? and generated_by_run_id is null", episodeId);
         JsonNode unknown = twoBoardPayload();
-        ((ObjectNode) unknown.path("storyboards").get(0)).put("sourceFrom", "S9999");
+        ((ObjectNode) unknown.path("storyboards").get(0)).put("sourceTo", "S9999");
         assertValidation(unknown, 0, "SOURCE_SEGMENT_UNKNOWN");
-        JsonNode gap = twoBoardPayload();
-        ((ObjectNode) gap.path("storyboards").get(0)).put("sourceTo", "S0001");
-        for (JsonNode shot : gap.path("storyboards").get(0).path("shots")) {
-            ((ArrayNode) shot.path("soundSegmentIds")).removeAll();
-        }
-        assertValidation(gap, 1, "SOURCE_SEGMENT_GAP");
-        JsonNode overlap = twoBoardPayload();
-        ((ObjectNode) overlap.path("storyboards").get(1)).put("sourceFrom", "S0002");
-        assertValidation(overlap, 1, "SOURCE_SEGMENT_OVERLAP");
         JsonNode reversed = twoBoardPayload();
-        ((ObjectNode) reversed.path("storyboards").get(0))
-            .put("sourceFrom", "S0002").put("sourceTo", "S0001");
-        assertValidation(reversed, 0, "SOURCE_SEGMENT_REVERSED");
+        ((ObjectNode) reversed.path("storyboards").get(1)).put("sourceTo", "S0001");
+        assertValidation(reversed, 1, "SOURCE_SEGMENT_REVERSED");
     }
 
     @Test
-    void rejectsDuplicateSoundSegmentAndPreservesExistingSet() throws Exception {
+    void derivesSoundsInsteadOfUsingModelSuppliedSoundSegments() throws Exception {
         JsonNode payload = validPayload();
-        ((ArrayNode) payload.path("storyboards").get(0).path("shots").get(2)
-            .path("soundSegmentIds")).add("S0002");
+        ((ObjectNode) payload.path("storyboards").get(0).path("shots").get(2))
+            .putArray("soundSegmentIds").add("S9999");
 
-        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
-            .isInstanceOfSatisfying(WorkflowToolValidationException.class,
-                failure -> assertThat(failure.details().get("validationCode"))
-                    .isEqualTo("SOUND_SEGMENT_DUPLICATE"));
-        assertPriorStoryboardUnchanged();
+        assertThat(service.saveEpisodeStoryboards(context(), payload).path("derivedSoundCount").asInt())
+            .isEqualTo(1);
     }
 
     @Test
     void savesV3WithCanonicalNumbersRangesAndBackendDerivedSounds() throws Exception {
         ObjectNode payload = (ObjectNode) validPayload();
-        payload.put("schemaVersion", 3);
         ObjectNode board = (ObjectNode) payload.path("storyboards").get(0);
         board.put("storyboardNo", 12);
-        board.remove("sourceFrom");
         for (int index = 0; index < board.path("shots").size(); index++) {
             ObjectNode shot = (ObjectNode) board.path("shots").get(index);
             shot.put("shotNo", 20 + index);
-            shot.remove("soundSegmentIds");
         }
         ((ObjectNode) board.path("shots").get(0)).put("sourceAnchor", "S0001");
         ((ObjectNode) board.path("shots").get(1)).put("sourceAnchor", "S0002")
@@ -312,21 +324,20 @@ class StoryboardToolDataServiceTest {
     private JsonNode validPayload() throws Exception {
         return json.readTree("""
             {
-              "schemaVersion":2,
+              "schemaVersion":3,
               "episodeFingerprint":"fp-1",
               "storyboards":[{
                 "storyboardNo":1,
-                "sourceFrom":"S0001",
                 "sourceTo":"S0003",
                 "time":"夜",
                 "lighting":"暖黄色侧光",
                 "usedAssetKeys":{"characters":[],"scenes":[],"props":[]},
                 "unmatchedMaterials":{"characters":[],"scenes":[],"props":[]},
                 "shots":[
-                  {"shotNo":1,"durationSeconds":3,"positioning":"空镜","action":"固定镜头拍摄开场","soundSegmentIds":[]},
-                  {"shotNo":2,"durationSeconds":3,"positioning":"Serena站立","action":"镜头缓缓拉近","soundSegmentIds":["S0002"]},
-                  {"shotNo":3,"durationSeconds":3,"positioning":"Serena站立","action":"Serena神情转为坚定","soundSegmentIds":[]},
-                  {"shotNo":4,"durationSeconds":3.8,"positioning":"走廊尽头","action":"镜头拉远至结束","soundSegmentIds":[]}
+                  {"shotNo":1,"durationSeconds":3,"positioning":"空镜","action":"固定镜头拍摄开场"},
+                  {"shotNo":2,"durationSeconds":3,"positioning":"Serena站立","action":"镜头缓缓拉近"},
+                  {"shotNo":3,"durationSeconds":3,"positioning":"Serena站立","action":"Serena神情转为坚定"},
+                  {"shotNo":4,"durationSeconds":3.8,"positioning":"走廊尽头","action":"镜头拉远至结束"}
                 ]
               }]
             }
@@ -339,10 +350,7 @@ class StoryboardToolDataServiceTest {
         ObjectNode first = (ObjectNode) boards.get(0);
         first.put("sourceTo", "S0002");
         ObjectNode second = first.deepCopy();
-        second.put("storyboardNo", 2).put("sourceFrom", "S0003").put("sourceTo", "S0003");
-        for (JsonNode shot : second.path("shots")) {
-            ((ArrayNode) shot.path("soundSegmentIds")).removeAll();
-        }
+        second.put("storyboardNo", 2).put("sourceTo", "S0003");
         boards.add(second);
         return payload;
     }
