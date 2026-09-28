@@ -169,6 +169,12 @@ class ScopedAssetReextractionServiceTest {
             assertThat(database.queryForMap("select source,name,prompt,generated_by_run_id from " + table + " where id=?",base+3)).containsEntry("source","USER").containsEntry("name","human name").containsEntry("prompt","human prompt").containsEntry("generated_by_run_id",9511L);
             assertThat(database.queryForMap("select source_type,prompt,generated_by_run_id,deleted_at from asset_visual_variant where id=?",base+5)).containsEntry("source_type","MANUAL").containsEntry("prompt","human variant prompt").containsEntry("generated_by_run_id",9511L).containsEntry("deleted_at",null);
             assertThat(database.queryForObject("select count(*) from asset_visual_variant where id=? and deleted_at is not null",Integer.class,base+1)).isEqualTo(scope.includes(entry.getKey())?1:0);
+            assertThat(database.queryForObject("""
+                select count(*) from asset_visual_variant
+                 where tenant_id=9501 and project_id=9502 and asset_type=?
+                   and asset_id between ? and ? and is_primary=true and deleted_at is null
+                """,Integer.class,entry.getKey(),base+1,base+5))
+                .isEqualTo(scope.includes(entry.getKey()) ? 2 : 0);
             base += 10;
         }
         assertThat(database.queryForObject("select status from scoped_asset_reextraction_snapshot where operation_id=9504",String.class)).isEqualTo("SUCCEEDED");
@@ -191,6 +197,12 @@ class ScopedAssetReextractionServiceTest {
             assertThat(database.queryForObject("select count(*) from " + entry.getValue() + " where id=? and deleted_at is not null",Integer.class,base+1)).isEqualTo(scope.includes(entry.getKey())?1:0);
             assertThat(database.queryForObject("select count(*) from " + entry.getValue() + " where id between ? and ? and deleted_at is null",Integer.class,base+2,base+5)).isEqualTo(scope.includes(entry.getKey()) ? 3 : 4);
             assertThat(database.queryForObject("select count(*) from asset_visual_variant where id=? and source_type='MANUAL' and deleted_at is null",Integer.class,base+5)).isOne();
+            assertThat(database.queryForObject("""
+                select count(*) from asset_visual_variant
+                 where tenant_id=9501 and project_id=9502 and asset_type=?
+                   and asset_id between ? and ? and is_primary=true and deleted_at is null
+                """,Integer.class,entry.getKey(),base+1,base+5))
+                .isEqualTo(scope.includes(entry.getKey()) ? 2 : 0);
             base += 10;
         }
     }

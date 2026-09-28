@@ -204,7 +204,7 @@ class AssetImageBatchService {
         if (!notBlank(prompt)) return "SKIPPED_MISSING_PROMPT";
         if ("COMPLETED".equals(generationStatus)) return "SKIPPED_COMPLETED";
         if ("GENERATING".equals(generationStatus)) return "SKIPPED_GENERATING";
-        if (!Set.of("NOT_STARTED", "FAILED").contains(generationStatus)) {
+        if (!Set.of("NOT_STARTED", "NOT_GENERATED", "FAILED").contains(generationStatus)) {
             return "SKIPPED_OTHER";
         }
         if ("CHARACTER".equals(assetType) && !primary && !primaryUsable) {

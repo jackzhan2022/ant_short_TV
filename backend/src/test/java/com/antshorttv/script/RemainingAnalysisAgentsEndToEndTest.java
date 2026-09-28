@@ -138,6 +138,11 @@ class RemainingAnalysisAgentsEndToEndTest {
              join character_asset asset on asset.id = variant.asset_id
             where variant.asset_type = 'CHARACTER' and asset.script_id = ? and variant.deleted_at is null
             """, Integer.class, scriptId)).isGreaterThanOrEqualTo(2);
+        assertThat(jdbc.queryForList("""
+            select distinct variant.generation_status from asset_visual_variant variant
+             join character_asset asset on asset.id = variant.asset_id
+            where asset.script_id = ? and variant.deleted_at is null
+            """, String.class, scriptId)).containsExactly("NOT_STARTED");
         assertThat(jdbc.queryForObject("""
             select count(*) from asset_visual_variant_episode
              where script_id = ? and asset_type = 'PROP' and retired_at is null
