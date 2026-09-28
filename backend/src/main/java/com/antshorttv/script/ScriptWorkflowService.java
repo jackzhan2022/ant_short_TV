@@ -1268,22 +1268,57 @@ public class ScriptWorkflowService {
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:EDIT", projectId);
         StoryboardPromptDocuments.validate(request.promptDocument());
+        StoryboardUpdateState existing = lockStoryboardForUpdate(tenantId, projectId, storyboardId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
-        Long episodeId = lockStoryboardEpisode(tenantId, projectId, script == null ? null : script.getId(), request.episodeNo());
+        Integer episodeNo = request.episodeNo() == null ? existing.episodeNo() : request.episodeNo();
+        Integer shotNo = request.shotNo() == null ? existing.shotNo() : request.shotNo();
+        Long episodeId = lockStoryboardEpisode(tenantId, projectId, script == null ? null : script.getId(), episodeNo);
         jdbcTemplate.update("""
             update storyboard
-               set episode_no = ?, episode_id = ?, shot_no = ?, storyboard_no = coalesce(?, storyboard_no, shot_no),
+               set episode_no = ?, episode_id = ?, shot_no = ?, storyboard_no = ?,
                    scene_no = ?, shot_type = ?, visual_description = ?, characters = ?, actions = ?,
                    dialogue = ?, scene = ?, props = ?, mood = ?, duration_seconds = ?, image_prompt = ?,
                    video_prompt = ?, prompt_document_json = coalesce(?, prompt_document_json), status = ?, updated_at = now()
              where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-            """, request.episodeNo(), episodeId, request.shotNo(), request.storyboardNo(), blankToNull(request.sceneNo()),
-            blankToNull(request.shotType()), request.visualDescription().trim(), blankToNull(request.characters()),
-            blankToNull(request.actions()), blankToNull(request.dialogue()), blankToNull(request.scene()),
-            blankToNull(request.props()), blankToNull(request.mood()), request.durationSeconds(),
-            blankToNull(request.imagePrompt()), blankToNull(request.videoPrompt()), writeJson(request.promptDocument()),
-            normalizeStatus(request.status()), tenantId, projectId, storyboardId);
+            """, episodeNo, episodeId, shotNo,
+            request.storyboardNo() == null ? existing.storyboardNo() : request.storyboardNo(),
+            mergeText(request.sceneNo(), existing.sceneNo()),
+            mergeText(request.shotType(), existing.shotType()), request.visualDescription().trim(),
+            mergeText(request.characters(), existing.characters()),
+            mergeText(request.actions(), existing.actions()), mergeText(request.dialogue(), existing.dialogue()),
+            mergeText(request.scene(), existing.scene()), mergeText(request.props(), existing.props()),
+            mergeText(request.mood(), existing.mood()),
+            request.durationSeconds() == null ? existing.durationSeconds() : request.durationSeconds(),
+            mergeText(request.imagePrompt(), existing.imagePrompt()),
+            mergeText(request.videoPrompt(), existing.videoPrompt()), writeJson(request.promptDocument()),
+            request.status() == null ? existing.status() : normalizeStatus(request.status()),
+            tenantId, projectId, storyboardId);
         return null;
+    }
+
+    private StoryboardUpdateState lockStoryboardForUpdate(Long tenantId, Long projectId, Long storyboardId) {
+        List<StoryboardUpdateState> rows = jdbcTemplate.query("""
+            select episode_no, shot_no, storyboard_no, scene_no, shot_type, characters, actions,
+                   dialogue, scene, props, mood, duration_seconds, image_prompt, video_prompt, status
+              from storyboard
+             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
+             for update
+            """, (rs, rowNum) -> new StoryboardUpdateState(
+                rs.getObject("episode_no", Integer.class), rs.getObject("shot_no", Integer.class),
+                rs.getObject("storyboard_no", Integer.class), rs.getString("scene_no"),
+                rs.getString("shot_type"), rs.getString("characters"), rs.getString("actions"),
+                rs.getString("dialogue"), rs.getString("scene"), rs.getString("props"),
+                rs.getString("mood"), rs.getObject("duration_seconds", Integer.class),
+                rs.getString("image_prompt"), rs.getString("video_prompt"), rs.getString("status")),
+            tenantId, projectId, storyboardId);
+        if (rows.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "分镜不存在。");
+        }
+        return rows.get(0);
+    }
+
+    private String mergeText(String requested, String existing) {
+        return requested == null ? existing : blankToNull(requested);
     }
 
     @Transactional
@@ -1743,6 +1778,25 @@ public class ScriptWorkflowService {
             return "DRAFT";
         }
         return value;
+    }
+
+    private record StoryboardUpdateState(
+        Integer episodeNo,
+        Integer shotNo,
+        Integer storyboardNo,
+        String sceneNo,
+        String shotType,
+        String characters,
+        String actions,
+        String dialogue,
+        String scene,
+        String props,
+        String mood,
+        Integer durationSeconds,
+        String imagePrompt,
+        String videoPrompt,
+        String status
+    ) {
     }
 
     private String joinTags(List<String> values) {
