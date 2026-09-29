@@ -34,17 +34,22 @@ class StoryboardToolSchemaTest {
         assertThat(shot.path("properties").has("dialogue")).isFalse();
         assertThat(shot.path("properties").has("narration")).isFalse();
         assertThat(shot.path("properties").has("innerOs")).isFalse();
-        assertThat(board.path("properties").path("sourceFrom").path("description").asText())
-            .contains("每个分镜对象内部");
-        assertThat(shot.path("properties").path("soundSegmentIds").path("description").asText())
-            .contains("Schema v2", "Schema v3", "后端派生");
+        assertThat(board.path("properties").has("sourceFrom")).isFalse();
+        assertThat(shot.path("properties").has("soundSegmentIds")).isFalse();
         assertThat(schema.path("properties").path("schemaVersion").path("minimum").asInt())
-            .isEqualTo(2);
+            .isEqualTo(3);
         assertThat(schema.path("properties").path("schemaVersion").path("maximum").asInt())
             .isEqualTo(3);
 
         JsonNode invalid = json.readTree("""
-            {"schemaVersion":2,"episodeFingerprint":"fp","storyboards":[]}
+            {"schemaVersion":2,"episodeFingerprint":"fp","storyboards":[{
+              "storyboardNo":1,"sourceTo":"S0001",
+              "usedAssetKeys":{"characters":[],"scenes":[],"props":[]},
+              "shots":[
+                {"shotNo":1,"durationSeconds":2,"positioning":"wide","action":"move"},
+                {"shotNo":2,"durationSeconds":2,"positioning":"close","action":"react"}
+              ]
+            }]}
             """);
         assertThatThrownBy(() -> new WorkflowToolSchemaValidator().validate(schema, invalid))
             .isInstanceOf(IllegalArgumentException.class);

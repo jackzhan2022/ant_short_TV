@@ -36,6 +36,9 @@ class AssetRecognitionFinalizerTest {
     void completeCoverageRetiresOnlyAgentManagedUnboundRows() {
         when(jdbc.queryForList(anyString(), any(Object[].class)))
             .thenReturn(List.of(Map.of("tenant_id", 1L, "project_id", 2L, "script_id", 3L)));
+        when(jdbc.queryForList(anyString(), org.mockito.ArgumentMatchers.eq(Long.class), any(Object[].class)))
+            .thenAnswer(invocation -> invocation.getArgument(0, String.class).contains("select asset.id")
+                ? List.of(10L) : List.of(20L));
         when(jdbc.queryForObject(anyString(), any(Class.class), any(Object[].class))).thenReturn(0);
 
         finalizer.finish(9L);
@@ -46,6 +49,12 @@ class AssetRecognitionFinalizerTest {
         org.assertj.core.api.Assertions.assertThat(statements)
             .contains("generated_by_run_id is not null", "source = 'AI'", "not exists")
             .doesNotContain("source = 'USER'");
+
+        ArgumentCaptor<String> primaryQueries = ArgumentCaptor.forClass(String.class);
+        verify(jdbc, atLeast(3)).queryForList(
+            primaryQueries.capture(), org.mockito.ArgumentMatchers.eq(Long.class), any(Object[].class));
+        assertThat(String.join("\n", primaryQueries.getAllValues()))
+            .contains("is_primary = true", "generation_status = 'COMPLETED'");
     }
 
     @Test

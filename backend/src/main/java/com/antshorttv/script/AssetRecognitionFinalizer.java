@@ -117,6 +117,7 @@ public class AssetRecognitionFinalizer {
                 + " and variant.project_id = asset.project_id and variant.asset_type = ? and variant.asset_id = asset.id"
                 + " and variant.source_type <> 'AI' and variant.deleted_at is null)",
                 tenantId, projectId, scriptId, type, type);
+            AssetVisualPrimaryRepair.repair(jdbc, tenantId, projectId, scriptId, type, table);
         }
     }
 }

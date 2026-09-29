@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
+import com.antshorttv.auth.SmsSender;
 import com.antshorttv.execution.AiExecutionWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
@@ -58,6 +59,7 @@ class ScriptWorkflowControllerTest {
     @Autowired private com.antshorttv.rbac.RbacPermissionService rbacPermissions;
     @Autowired private com.antshorttv.workflowagent.agent.WorkflowAgentRepository workflowAgents;
     @org.springframework.boot.test.mock.mockito.SpyBean private com.antshorttv.ai.XiongXiongAiAdapter controlledProvider;
+    @org.springframework.boot.test.mock.mockito.MockBean(name = "tencentCloudSmsSender") private SmsSender smsSender;
 
     @Test
     void automaticStoryboardResumesFundsAndRecoversSubmissionWithoutDoubleReservation() throws Exception {
@@ -332,6 +334,63 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.current", is(1)))
             .andExpect(jsonPath("$.data.pageSize", is(100)))
             .andExpect(jsonPath("$.data.storyboards", hasSize(0)));
+    }
+
+    @Test
+    void partialStoryboardUpdatePreservesOmittedFieldsAndAllowsExplicitClearing() throws Exception {
+        String mobile = "13800013050";
+        String token = registerUser(mobile, "Partial Storyboard Owner");
+        Long tenantId = createTenant(token, "分镜局部更新团队");
+        Long ownerId = userIdByMobile(mobile);
+        Long projectId = createProject(
+            token, tenantId, ownerId, "分镜局部更新项目", "PARTIAL_STORYBOARD_UPDATE",
+            "第1集：开端\nRowan进入卧室。"
+        );
+        Long scriptId = jdbcTemplate.queryForObject(
+            "select id from script where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("""
+            insert into storyboard
+              (tenant_id, project_id, script_id, episode_no, shot_no, shot_type, visual_description,
+               characters, scene, props, duration_seconds, status, created_by, created_at, updated_at)
+            values (?, ?, ?, 1, 7, '近景', 'Rowan进入卧室', 'Serena', '卧室', '手机', 5,
+                    'CONFIRMED', ?, now(), now())
+            """, tenantId, projectId, scriptId, ownerId);
+        Long storyboardId = jdbcTemplate.queryForObject(
+            "select id from storyboard where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d".formatted(projectId, storyboardId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"visualDescription":"Rowan进入卧室","characters":"Rowan"}
+                    """))
+            .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForMap("""
+            select episode_no, shot_no, shot_type, characters, scene, props, duration_seconds, status
+              from storyboard where id = ?
+            """, storyboardId))
+            .containsEntry("EPISODE_NO", 1)
+            .containsEntry("SHOT_NO", 7)
+            .containsEntry("SHOT_TYPE", "近景")
+            .containsEntry("CHARACTERS", "Rowan")
+            .containsEntry("SCENE", "卧室")
+            .containsEntry("PROPS", "手机")
+            .containsEntry("DURATION_SECONDS", 5)
+            .containsEntry("STATUS", "CONFIRMED");
+
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d".formatted(projectId, storyboardId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"visualDescription":"Rowan进入卧室","characters":""}
+                    """))
+            .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select characters from storyboard where id = ?", String.class, storyboardId)).isNull();
     }
 
     @Test
@@ -1503,11 +1562,18 @@ class ScriptWorkflowControllerTest {
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {
+        mockMvc.perform(post("/api/auth/verification-code/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"mobile\":\"%s\"}".formatted(mobile)))
+            .andExpect(status().isOk());
+        org.mockito.ArgumentCaptor<String> verificationCode = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(smsSender).sendRegistrationVerificationCode(
+            org.mockito.ArgumentMatchers.eq(mobile), verificationCode.capture());
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"%s","password":"Password123"}
-                    """.formatted(mobile, nickname)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"%s","password":"Password123"}
+                    """.formatted(mobile, verificationCode.getValue(), nickname)))
             .andExpect(status().isOk())
             .andReturn();
         return com.antshorttv.support.SessionTestSupport.sessionCredential(result);

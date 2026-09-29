@@ -553,7 +553,7 @@ public class EpisodeAssetPersistenceService {
                   (tenant_id, project_id, asset_type, asset_id, name, appearance, source_type,
                    generation_status, is_primary, created_by, content_json, generated_by_run_id,
                    created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, 'AI', 'NOT_GENERATED', ?, ?, ?, ?, now(), now())
+                values (?, ?, ?, ?, ?, ?, 'AI', 'NOT_STARTED', ?, ?, ?, ?, now(), now())
                 """, java.sql.Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, context.tenantId());
             statement.setLong(2, context.projectId());

@@ -12,6 +12,9 @@ class AssetImageBatchServiceTest {
             "NOT_STARTED", "角色主体", true, "CHARACTER", false))
             .isEqualTo("PENDING");
         assertThat(AssetImageBatchService.classify(
+            "NOT_GENERATED", "历史角色主体", true, "CHARACTER", false))
+            .isEqualTo("PENDING");
+        assertThat(AssetImageBatchService.classify(
             "FAILED", "礼服", false, "CHARACTER", true))
             .isEqualTo("PENDING");
         assertThat(AssetImageBatchService.classify(

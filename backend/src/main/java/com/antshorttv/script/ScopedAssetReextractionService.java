@@ -385,6 +385,8 @@ class ScopedAssetReextractionService {
                 + " and b.project_id=asset.project_id and b.asset_type=? and b.asset_id=asset.id"
                 + " and b.retired_at is null and b.binding_status='ACTIVE')",
                 snapshot.tenantId(),snapshot.projectId(),snapshot.scriptId(),type);
+            AssetVisualPrimaryRepair.repair(
+                jdbc, snapshot.tenantId(), snapshot.projectId(), snapshot.scriptId(), type, table);
         }
     }
 

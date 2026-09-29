@@ -365,7 +365,7 @@ public class ScreenplayToolConfiguration {
         schema.put("description", "根对象只包含 schemaVersion、episodeFingerprint 和 storyboards；来源范围属于每个分镜对象。");
         schema.putArray("required").add("schemaVersion").add("episodeFingerprint").add("storyboards");
         ObjectNode fields = (ObjectNode) schema.path("properties");
-        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 2).put("maximum", 3);
+        fields.putObject("schemaVersion").put("type", "integer").put("minimum", 3).put("maximum", 3);
         fields.putObject("episodeFingerprint").put("type", "string").put("minLength", 1).put("maxLength", 128);
         ObjectNode boards = fields.putObject("storyboards").put("type", "array")
             .put("minItems", 1).put("maxItems", 200);
@@ -373,8 +373,6 @@ public class ScreenplayToolConfiguration {
         board.putArray("required").add("storyboardNo").add("sourceTo").add("usedAssetKeys").add("shots");
         ObjectNode boardFields = (ObjectNode) board.path("properties");
         boardFields.putObject("storyboardNo").put("type", "integer").put("minimum", 1);
-        boardFields.putObject("sourceFrom").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16)
-            .put("description", "必须放在每个分镜对象内部，表示该分镜覆盖的首个来源片段 ID；根对象禁止出现此字段。");
         boardFields.putObject("sourceTo").put("type", "string").put("pattern", "^S\\d{4,}$").put("maxLength", 16)
             .put("description", "必须放在每个分镜对象内部，表示该分镜覆盖的末个来源片段 ID；根对象禁止出现此字段。");
         boardFields.set("time", nullableType(json, "string").put("maxLength", 100));
@@ -396,11 +394,6 @@ public class ScreenplayToolConfiguration {
         shotFields.putObject("sourceAnchor").put("type", "string").put("pattern", "^S\\d{4,}$")
             .put("maxLength", 16)
             .put("description", "Schema v3 可选来源锚点；必须按镜头顺序非递减。未提供时由后端按来源顺序和镜头时长推导。");
-        shotFields.putObject("soundSegmentIds").put("type", "array").put("maxItems", 100)
-            .put("uniqueItems", true)
-            .put("description", "仅用于读取和兼容历史 Schema v2；Schema v3 不应提交，最终声音归属由后端派生。")
-            .putObject("items").put("type", "string")
-            .put("pattern", "^S\\d{4,}$").put("maxLength", 16);
         shots.set("items", shot);
         boards.set("items", board);
         return schema;
