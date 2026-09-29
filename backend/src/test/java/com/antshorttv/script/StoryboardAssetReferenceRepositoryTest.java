@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,6 +71,18 @@ class StoryboardAssetReferenceRepositoryTest {
         assertThat(grouped.get(9822L)).hasSize(2);
     }
 
+    @Test
+    void responseProjectionUsesMysqlSafeTableAliases() {
+        RecordingJdbcTemplate recordingJdbc = new RecordingJdbcTemplate();
+        StoryboardAssetReferenceRepository directRepository =
+            new StoryboardAssetReferenceRepository(recordingJdbc, null);
+
+        directRepository.listResponsesForStoryboards(9801L, 9811L, List.of(9821L));
+
+        assertThat(recordingJdbc.sql)
+            .doesNotContainPattern("(?i)\\b(?:from|join)\\s+\\w+\\s+character\\b");
+    }
+
     private StoryboardAssetReferenceEntity reference(String type, Long assetId, int order) {
         StoryboardAssetReferenceEntity entity = new StoryboardAssetReferenceEntity();
         entity.assetType = type;
@@ -82,5 +95,15 @@ class StoryboardAssetReferenceRepositoryTest {
         entity.lockedByUser = true;
         entity.createdBy = 1L;
         return entity;
+    }
+
+    private static final class RecordingJdbcTemplate extends JdbcTemplate {
+        private String sql;
+
+        @Override
+        public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
+            this.sql = sql;
+            return List.of();
+        }
     }
 }
