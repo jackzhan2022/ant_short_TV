@@ -64,7 +64,7 @@ class StoryboardAgentAdapterTest {
         attempt.retryCount = 2;
         when(attempts.selectById(77L)).thenReturn(attempt);
 
-        StoryboardAgentAdapter.Execution result = adapter.execute(operation, 44L, execution);
+        StoryboardAgentAdapter.Execution result = adapter.execute(operation, 44L, execution, true);
 
         ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
         verify(runner).runFormal(input.capture());
@@ -77,6 +77,7 @@ class StoryboardAgentAdapterTest {
         assertThat(input.getValue().attemptId()).isEqualTo(77L);
         assertThat(input.getValue().executionVersion()).isEqualTo(3);
         assertThat(input.getValue().modelIdOverride()).isEqualTo(88L);
+        assertThat(input.getValue().trustedToolState()).containsEntry("materialOverwrite", true);
         assertThat(input.getValue().input())
             .contains("服务端准备", "schemaVersion 3", "save_episode_storyboards")
             .doesNotContain("读取可信上下文");

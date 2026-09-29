@@ -3,6 +3,7 @@ package com.antshorttv.script;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class StoryboardPromptCompilerTest {
@@ -57,5 +58,43 @@ class StoryboardPromptCompilerTest {
 
         assertThat(result.text()).isEqualTo("第一行\n第二行，保留标点。");
         assertThat(result.references()).isEmpty();
+    }
+
+    @Test
+    void formalBindingsAreAuthoritativeAndMergeManualMentionsByMediaIdentity() throws Exception {
+        var document = objectMapper.readTree("""
+            {"version":2,"nodes":[
+              {"type":"text","text":"<Serena>进入走廊，参考"},
+              {"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT",
+               "sourceId":101,"variantId":101,"assetType":"CHARACTER","assetId":11,
+               "displayName":"重复人物"},
+              {"type":"text","text":"和"},
+              {"type":"mention","mediaType":"VIDEO","sourceType":"VIDEO_MATERIAL",
+               "sourceId":301,"displayName":"手工运镜"}
+            ]}
+            """);
+        List<StoryboardPromptCompiler.BindingReference> bindings = List.of(
+            new StoryboardPromptCompiler.BindingReference(
+                "SCENE", 21L, 201L, "主走廊", "MAIN", 0),
+            new StoryboardPromptCompiler.BindingReference(
+                "CHARACTER", 11L, 101L, "Serena", "VISIBLE", 0));
+
+        StoryboardPromptCompiler.CompiledPrompt result = compiler.compile(document, bindings);
+
+        assertThat(result.text()).contains("素材参考：图片1、图片2。")
+            .contains("<Serena>进入走廊，参考图片2和视频1");
+        assertThat(result.references())
+            .extracting(
+                StoryboardPromptCompiler.Reference::sourceId,
+                StoryboardPromptCompiler.Reference::assetType,
+                StoryboardPromptCompiler.Reference::assetId,
+                StoryboardPromptCompiler.Reference::bindingRole,
+                StoryboardPromptCompiler.Reference::formalBinding)
+            .containsExactly(
+                org.assertj.core.groups.Tuple.tuple(201L, "SCENE", 21L, "MAIN", true),
+                org.assertj.core.groups.Tuple.tuple(101L, "CHARACTER", 11L, "VISIBLE", true),
+                org.assertj.core.groups.Tuple.tuple(301L, null, null, null, false));
+        assertThat(result.references()).filteredOn(reference -> reference.sourceId().equals(101L))
+            .hasSize(1);
     }
 }

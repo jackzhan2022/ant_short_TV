@@ -7,7 +7,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.antshorttv.script.StoryboardPromptCompiler;
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +24,7 @@ class StoryboardToolDataServiceTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ObjectMapper json;
     @Autowired private EpisodeSourceSegmenter segmenter;
+    @Autowired private StoryboardPromptCompiler promptCompiler;
 
     private long tenantId;
     private long projectId;
@@ -149,14 +152,199 @@ class StoryboardToolDataServiceTest {
             .contains("\"assetId\":" + assetId)
             .contains("\"variantId\":" + episodeVariantId)
             .contains("\"displayName\":\"Serena\"");
+        assertThat(jdbc.queryForObject("""
+            select count(*) from storyboard_asset_reference reference
+              join storyboard board on board.id=reference.storyboard_id
+             where board.episode_id=? and board.deleted_at is null and reference.retired_at is null
+               and reference.asset_type='CHARACTER' and reference.asset_id=?
+               and reference.variant_id=? and reference.source_type='AI'
+            """, Integer.class, episodeId, assetId, episodeVariantId)).isEqualTo(1);
+    }
+
+    @Test
+    void regenerationCarriesLockedReferencesAcrossTheSameTrustedSourceRange() throws Exception {
+        Long lockedAssetId = insertCharacter("Serena locked", "serena locked");
+        Long aiAssetId = insertCharacter("Rowan", "rowan");
+        Long oldStoryboardId = currentStoryboardId();
+        jdbc.update("update storyboard set shot_plan_json=? where id=?",
+            "{\"sourceFrom\":\"S0001\",\"sourceTo\":\"S0003\"}", oldStoryboardId);
+        insertLockedReference(oldStoryboardId, lockedAssetId, 0);
+        JsonNode payload = validPayload();
+        ((ArrayNode) payload.path("storyboards").get(0).path("usedAssetKeys").path("characters"))
+            .addObject().put("assetKey", "c_" + aiAssetId).put("role", "VISIBLE");
+
+        service.saveEpisodeStoryboards(context(false), payload);
+
+        var active = jdbc.queryForList("""
+            select reference.asset_id,reference.source_type,reference.locked_by_user
+              from storyboard_asset_reference reference
+              join storyboard board on board.id=reference.storyboard_id
+             where board.episode_id=? and board.deleted_at is null and reference.retired_at is null
+             order by reference.sort_order
+            """, episodeId);
+        assertThat(active).anySatisfy(row -> {
+            assertThat(((Number) row.get("asset_id")).longValue()).isEqualTo(lockedAssetId);
+            assertThat(row.get("source_type")).isEqualTo("MANUAL");
+            assertThat(row.get("locked_by_user")).isEqualTo(true);
+        });
+        assertThat(jdbc.queryForObject(
+            "select count(*) from storyboard_asset_reference where storyboard_id=? and retired_at is null",
+            Integer.class, oldStoryboardId)).isZero();
+    }
+
+    @Test
+    void explicitMaterialOverwriteReplacesLockedReferences() throws Exception {
+        Long lockedAssetId = insertCharacter("Serena locked", "serena locked");
+        Long aiAssetId = insertCharacter("Rowan", "rowan");
+        Long oldStoryboardId = currentStoryboardId();
+        jdbc.update("update storyboard set shot_plan_json=? where id=?",
+            "{\"sourceFrom\":\"S0001\",\"sourceTo\":\"S0003\"}", oldStoryboardId);
+        insertLockedReference(oldStoryboardId, lockedAssetId, 0);
+        JsonNode payload = validPayload();
+        ((ArrayNode) payload.path("storyboards").get(0).path("usedAssetKeys").path("characters"))
+            .addObject().put("assetKey", "c_" + aiAssetId).put("role", "VISIBLE");
+
+        service.saveEpisodeStoryboards(context(true), payload);
+
+        assertThat(jdbc.queryForList("""
+            select reference.asset_id from storyboard_asset_reference reference
+              join storyboard board on board.id=reference.storyboard_id
+             where board.episode_id=? and board.deleted_at is null and reference.retired_at is null
+            """, Long.class, episodeId)).containsExactly(aiAssetId);
+    }
+
+    @Test
+    void unmatchedLockedReferenceProducesWarningWithoutUnsafeAttachment() throws Exception {
+        Long lockedAssetId = insertCharacter("Serena locked", "serena locked");
+        Long oldStoryboardId = currentStoryboardId();
+        jdbc.update("update storyboard set shot_plan_json=? where id=?",
+            "{\"sourceFrom\":\"S0098\",\"sourceTo\":\"S0099\"}", oldStoryboardId);
+        insertLockedReference(oldStoryboardId, lockedAssetId, 0);
+
+        service.saveEpisodeStoryboards(context(false), validPayload());
+
+        JsonNode plan = json.readTree(jdbc.queryForObject(
+            "select shot_plan_json from storyboard where episode_id=? and deleted_at is null",
+            String.class, episodeId));
+        assertThat(plan.path("diagnostics").path("lockCarryWarnings").toString())
+            .contains("MANUAL_LOCK_NOT_CARRIED");
+        assertThat(jdbc.queryForObject("""
+            select count(*) from storyboard_asset_reference reference
+              join storyboard board on board.id=reference.storyboard_id
+             where board.episode_id=? and board.deleted_at is null and reference.retired_at is null
+            """, Integer.class, episodeId)).isZero();
     }
 
     @Test
     void stalePayloadPreservesPriorStoryboardSet() throws Exception {
+        Long lockedAssetId = insertCharacter("Stale lock", "stale lock");
+        Long storyboardId = currentStoryboardId();
+        insertLockedReference(storyboardId, lockedAssetId, 0);
         jdbc.update("update script_episode set content_fingerprint = 'changed' where id = ?", episodeId);
         assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), validPayload()))
             .isInstanceOf(com.antshorttv.common.BusinessException.class)
             .hasMessageContaining("已变化");
+        assertPriorStoryboardUnchanged();
+        assertThat(jdbc.queryForObject(
+            "select count(*) from storyboard_asset_reference where storyboard_id=? and retired_at is null",
+            Integer.class, storyboardId)).isEqualTo(1);
+    }
+
+    @Test
+    void stableAssetKeySelectsOneOfDuplicateDisplayNamesWithoutAmbiguity() throws Exception {
+        jdbc.update("""
+            insert into character_asset
+              (tenant_id, project_id, script_id, name, normalized_name, role_type, status, source,
+               content_json, created_by, created_at, updated_at)
+            values
+              (?, ?, ?, 'Serena Aldwych', 'serena aldwych', 'LEAD', 'CONFIRMED', 'MANUAL',
+               '{"aliases":["Serena"]}', ?, now(), now()),
+              (?, ?, ?, 'Serena Vale', 'serena vale', 'SUPPORTING', 'CONFIRMED', 'MANUAL',
+               '{"aliases":["Serena"]}', ?, now(), now())
+            """, tenantId, projectId, scriptId, userId,
+            tenantId, projectId, scriptId, userId);
+        Long selectedId = jdbc.queryForObject(
+            "select min(id) from character_asset where tenant_id = ? and project_id = ?",
+            Long.class, tenantId, projectId);
+        JsonNode payload = validPayload();
+        ObjectNode reference = ((ArrayNode) payload.path("storyboards").get(0)
+            .path("usedAssetKeys").path("characters")).addObject();
+        reference.put("assetKey", "c_" + selectedId)
+            .put("role", "VISIBLE")
+            .put("sourceName", "Serena");
+
+        JsonNode saved = service.saveEpisodeStoryboards(context(), payload);
+
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        JsonNode plan = json.readTree(jdbc.queryForObject(
+            "select shot_plan_json from storyboard where episode_id = ? and deleted_at is null",
+            String.class, episodeId));
+        assertThat(plan.path("usedAssetKeys").path("characters").get(0).path("assetKey").asText())
+            .isEqualTo("c_" + selectedId);
+        assertThat(plan.path("usedAssetKeys").path("characters").get(0).path("role").asText())
+            .isEqualTo("VISIBLE");
+    }
+
+    @Test
+    void project41AmbiguousSerenaAliasIsPreservedAsUnresolvedInsteadOfFailingTheEpisode() throws Exception {
+        jdbc.update("""
+            insert into character_asset
+              (tenant_id, project_id, script_id, name, normalized_name, role_type, status, source,
+               content_json, created_by, created_at, updated_at)
+            values
+              (?, ?, ?, 'Serena Aldwych', 'serena aldwych', 'LEAD', 'CONFIRMED', 'MANUAL',
+               '{"aliases":["Serena"]}', ?, now(), now()),
+              (?, ?, ?, 'Serena Vale', 'serena vale', 'SUPPORTING', 'CONFIRMED', 'MANUAL',
+               '{"aliases":["Serena"]}', ?, now(), now())
+            """, tenantId, projectId, scriptId, userId,
+            tenantId, projectId, scriptId, userId);
+        JsonNode payload = validPayload();
+        ((ArrayNode) payload.path("storyboards").get(0)
+            .path("unmatchedMaterials").path("characters")).add("Serena");
+
+        JsonNode saved = service.saveEpisodeStoryboards(context(), payload);
+
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject(
+            "select material_binding_status from storyboard where episode_id = ? and deleted_at is null",
+            String.class, episodeId)).isEqualTo("ASSET_PENDING");
+    }
+
+    @Test
+    void invalidStructuredVariantReportsItsExactJsonPath() throws Exception {
+        jdbc.update("""
+            insert into character_asset
+              (tenant_id, project_id, script_id, name, normalized_name, role_type, status, source,
+               content_json, created_by, created_at, updated_at)
+            values
+              (?, ?, ?, 'Serena', 'serena', 'LEAD', 'CONFIRMED', 'MANUAL', '{}', ?, now(), now()),
+              (?, ?, ?, 'Rowan', 'rowan', 'SUPPORTING', 'CONFIRMED', 'MANUAL', '{}', ?, now(), now())
+            """, tenantId, projectId, scriptId, userId,
+            tenantId, projectId, scriptId, userId);
+        var ids = jdbc.queryForList(
+            "select id from character_asset where tenant_id = ? and project_id = ? order by id",
+            Long.class, tenantId, projectId);
+        jdbc.update("""
+            insert into asset_visual_variant
+              (tenant_id, project_id, asset_type, asset_id, name, source_type, generation_status,
+               is_primary, created_by, created_at, updated_at)
+            values (?, ?, 'CHARACTER', ?, 'Rowan look', 'MANUAL', 'COMPLETED', true, ?, now(), now())
+            """, tenantId, projectId, ids.get(1), userId);
+        Long wrongVariantId = jdbc.queryForObject(
+            "select id from asset_visual_variant where asset_id = ?", Long.class, ids.get(1));
+        JsonNode payload = validPayload();
+        ObjectNode reference = ((ArrayNode) payload.path("storyboards").get(0)
+            .path("usedAssetKeys").path("characters")).addObject();
+        reference.put("assetKey", "c_" + ids.get(0))
+            .put("variantKey", "v_" + wrongVariantId)
+            .put("role", "VISIBLE");
+
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .isInstanceOfSatisfying(WorkflowToolValidationException.class, failure -> {
+                assertThat(failure.details().get("validationCode")).isEqualTo("VARIANT_OWNERSHIP_INVALID");
+                assertThat(failure.details().get("jsonPath"))
+                    .isEqualTo("$.storyboards[0].usedAssetKeys.characters[0].variantKey");
+            });
         assertPriorStoryboardUnchanged();
     }
 
@@ -272,6 +460,9 @@ class StoryboardToolDataServiceTest {
         assertThat(result.path("derivedSoundCount").asInt()).isEqualTo(1);
         assertThat(plan.path("diagnostics").path("normalizationCount").asInt()).isGreaterThan(0);
         assertThat(plan.path("diagnostics").path("derivedSoundCount").asInt()).isEqualTo(1);
+        assertThat(plan.path("diagnostics").path("normalizationFindings").isArray()).isTrue();
+        assertThat(plan.path("diagnostics").path("normalizationFindings").toString())
+            .contains("SHOT_NUMBER_NORMALIZED", "REPAIRABLE", "$.storyboards[0].shots[0].shotNo");
         assertThat(plan.path("diagnostics").path("classificationWarnings").isArray()).isTrue();
         assertThat(plan.path("storyboardNo").asInt()).isEqualTo(1);
         assertThat(plan.path("sourceFrom").asText()).isEqualTo("S0001");
@@ -294,6 +485,90 @@ class StoryboardToolDataServiceTest {
     }
 
     @Test
+    void exposesFallbackCorrectionAndMaterialResolutionDiagnostics() throws Exception {
+        ObjectNode payload = (ObjectNode) validPayload();
+        payload.put("_serverFallback", true);
+        payload.put("_fallbackItemCount", 1);
+        payload.put("_correctedItemCount", 1);
+        ((ArrayNode) payload.path("storyboards").get(0)
+            .path("unmatchedMaterials").path("characters")).add("Serena");
+
+        JsonNode result = service.saveEpisodeStoryboards(context(), payload);
+        JsonNode plan = json.readTree(jdbc.queryForObject(
+            "select shot_plan_json from storyboard where episode_id = ? and deleted_at is null",
+            String.class, episodeId));
+
+        assertThat(result.path("fallbackItemCount").asInt()).isEqualTo(1);
+        assertThat(result.path("correctedItemCount").asInt()).isEqualTo(1);
+        assertThat(result.path("unresolvedAssetCount").asInt()).isEqualTo(1);
+        assertThat(result.path("assetPendingCount").asInt()).isZero();
+        assertThat(plan.path("diagnostics").path("fallbackItemCount").asInt()).isEqualTo(1);
+        assertThat(plan.path("diagnostics").path("unresolvedAssetCount").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void publishesMultipleIndependentBindingsAndCompilesDeduplicatedVideoReferences() throws Exception {
+        List<Long> characterIds = List.of(
+            insertCharacter("Serena", "serena"), insertCharacter("Rowan", "rowan"));
+        List<Long> sceneIds = List.of(insertScene("走廊", "走廊"), insertScene("卧室", "卧室"));
+        List<Long> propIds = List.of(insertProp("手机", "手机"), insertProp("钥匙", "钥匙"));
+        List<Long> variantIds = new java.util.ArrayList<>();
+        characterIds.forEach(id -> variantIds.add(insertVariant("CHARACTER", id)));
+        sceneIds.forEach(id -> variantIds.add(insertVariant("SCENE", id)));
+        propIds.forEach(id -> variantIds.add(insertVariant("PROP", id)));
+        ObjectNode payload = (ObjectNode) validPayload();
+        ObjectNode used = (ObjectNode) payload.path("storyboards").get(0).path("usedAssetKeys");
+        addReferences((ArrayNode) used.path("characters"), "c_", characterIds,
+            variantIds.subList(0, 2), "VISIBLE");
+        addReferences((ArrayNode) used.path("scenes"), "s_", sceneIds,
+            variantIds.subList(2, 4), "MAIN");
+        addReferences((ArrayNode) used.path("props"), "p_", propIds,
+            variantIds.subList(4, 6), "VISIBLE");
+
+        service.saveEpisodeStoryboards(context(), payload);
+
+        Long storyboardId = currentStoryboardId();
+        var rows = jdbc.queryForList("""
+            select asset_type,asset_id,variant_id,reference_role,sort_order,source_name
+              from storyboard_asset_reference
+             where storyboard_id=? and retired_at is null order by asset_type,sort_order
+            """, storyboardId);
+        assertThat(rows).hasSize(6);
+        assertThat(rows.stream().map(row -> row.get("variant_id")).distinct()).hasSize(6);
+        var bindings = rows.stream().map(row -> new StoryboardPromptCompiler.BindingReference(
+            String.valueOf(row.get("asset_type")), ((Number) row.get("asset_id")).longValue(),
+            ((Number) row.get("variant_id")).longValue(), String.valueOf(row.get("source_name")),
+            String.valueOf(row.get("reference_role")), ((Number) row.get("sort_order")).intValue()
+        )).toList();
+        JsonNode document = json.readTree(jdbc.queryForObject(
+            "select prompt_document_json from storyboard where id=?", String.class, storyboardId));
+        StoryboardPromptCompiler.CompiledPrompt compiled = promptCompiler.compile(document, bindings);
+        assertThat(compiled.references()).hasSize(6);
+        assertThat(compiled.references().stream().map(reference -> reference.sourceId()).distinct())
+            .hasSize(6);
+    }
+
+    @Test
+    void repeatedAnchorFailureFallbackStillPublishesACompleteWarnedEpisode() throws Exception {
+        ObjectNode invalid = (ObjectNode) validPayload();
+        ((ObjectNode) invalid.path("storyboards").get(0)).put("sourceTo", "S9999");
+        var failure = new WorkflowToolValidationException("bad anchor", java.util.Map.of(
+            "validationCode", "SOURCE_SEGMENT_UNKNOWN", "severity", "REPAIRABLE"));
+        ObjectNode fallback = new StoryboardFallbackCompleter(json).complete(context(), invalid, failure);
+
+        JsonNode saved = service.saveEpisodeStoryboards(context(), fallback);
+
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        assertThat(saved.path("fallbackItemCount").asInt()).isEqualTo(1);
+        JsonNode plan = json.readTree(jdbc.queryForObject(
+            "select shot_plan_json from storyboard where episode_id=? and deleted_at is null",
+            String.class, episodeId));
+        assertThat(plan.path("sourceFrom").asText()).isEqualTo("S0001");
+        assertThat(plan.path("sourceTo").asText()).isEqualTo("S0003");
+        assertThat(plan.path("diagnostics").path("fallbackItemCount").asInt()).isEqualTo(1);
+    }
+
+    @Test
     void savesSequenceWordsAsWarningsWithoutRejectingQuotedThen() throws Exception {
         ObjectNode payload = (ObjectNode) validPayload();
         ObjectNode board = (ObjectNode) payload.path("storyboards").get(0);
@@ -310,12 +585,17 @@ class StoryboardToolDataServiceTest {
     }
 
     private ToolExecutionContext context() {
+        return context(false);
+    }
+
+    private ToolExecutionContext context(boolean materialOverwrite) {
         WorkflowToolRunState state = new WorkflowToolRunState();
         state.put("currentEpisodeId", episodeId);
         state.put("currentEpisodeScriptId", scriptId);
         state.put("currentEpisodeFingerprint", "fp-1");
         state.put("currentEpisodeContent", source);
         state.put("currentEpisodeSourceSegments", segmenter.segment(source));
+        state.put("materialOverwrite", materialOverwrite);
         return new ToolExecutionContext(tenantId, userId, projectId, episodeId, scriptId,
             500L, null, 700L, 800L, 900L, 1, Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"),
             Instant.now().plusSeconds(30), state);
@@ -342,6 +622,85 @@ class StoryboardToolDataServiceTest {
               }]
             }
             """);
+    }
+
+    private Long insertCharacter(String name, String normalizedName) {
+        jdbc.update("""
+            insert into character_asset
+              (tenant_id, project_id, script_id, name, normalized_name, role_type, status, source,
+               content_json, created_by, created_at, updated_at)
+            values (?, ?, ?, ?, ?, 'SUPPORTING', 'CONFIRMED', 'MANUAL', '{}', ?, now(), now())
+            """, tenantId, projectId, scriptId, name, normalizedName, userId);
+        return jdbc.queryForObject(
+            "select id from character_asset where tenant_id=? and project_id=? and normalized_name=?",
+            Long.class, tenantId, projectId, normalizedName);
+    }
+
+    private Long insertScene(String name, String normalizedName) {
+        jdbc.update("""
+            insert into scene_asset
+              (tenant_id,project_id,script_id,name,normalized_name,scene_type,status,source,
+               created_by,created_at,updated_at)
+            values (?,?,?,?,?,'INTERIOR','CONFIRMED','MANUAL',?,now(),now())
+            """, tenantId, projectId, scriptId, name, normalizedName, userId);
+        return jdbc.queryForObject(
+            "select id from scene_asset where tenant_id=? and project_id=? and normalized_name=?",
+            Long.class, tenantId, projectId, normalizedName);
+    }
+
+    private Long insertProp(String name, String normalizedName) {
+        jdbc.update("""
+            insert into prop_asset
+              (tenant_id,project_id,script_id,name,normalized_name,prop_type,status,source,
+               created_by,created_at,updated_at)
+            values (?,?,?,?,?,'KEY_PROP','CONFIRMED','MANUAL',?,now(),now())
+            """, tenantId, projectId, scriptId, name, normalizedName, userId);
+        return jdbc.queryForObject(
+            "select id from prop_asset where tenant_id=? and project_id=? and normalized_name=?",
+            Long.class, tenantId, projectId, normalizedName);
+    }
+
+    private Long insertVariant(String assetType, Long assetId) {
+        jdbc.update("""
+            insert into asset_visual_variant
+              (tenant_id,project_id,asset_type,asset_id,name,source_type,generation_status,
+               current_image_url,is_primary,created_by,created_at,updated_at)
+            values (?,?,?,?,?,'MANUAL','COMPLETED',?,true,?,now(),now())
+            """, tenantId, projectId, assetType, assetId,
+            assetType + "-" + assetId, "/variant-" + assetType + "-" + assetId + ".png", userId);
+        return jdbc.queryForObject(
+            "select id from asset_visual_variant where tenant_id=? and project_id=? and asset_type=? and asset_id=?",
+            Long.class, tenantId, projectId, assetType, assetId);
+    }
+
+    private void addReferences(
+        ArrayNode target,
+        String prefix,
+        List<Long> assetIds,
+        List<Long> variantIds,
+        String role
+    ) {
+        for (int index = 0; index < assetIds.size(); index++) {
+            target.addObject().put("assetKey", prefix + assetIds.get(index))
+                .put("variantKey", "v_" + variantIds.get(index))
+                .put("role", role);
+        }
+    }
+
+    private Long currentStoryboardId() {
+        return jdbc.queryForObject(
+            "select id from storyboard where episode_id=? and deleted_at is null",
+            Long.class, episodeId);
+    }
+
+    private void insertLockedReference(Long storyboardId, Long assetId, int sortOrder) {
+        jdbc.update("""
+            insert into storyboard_asset_reference
+              (tenant_id,project_id,storyboard_id,asset_type,asset_id,variant_id,reference_role,
+               sort_order,resolution_status,source_type,source_name,locked_by_user,created_by,
+               created_at,updated_at)
+            values (?,?,?,'CHARACTER',?,null,'VISIBLE',?,'ASSET_PENDING','MANUAL','locked',true,?,now(),now())
+            """, tenantId, projectId, storyboardId, assetId, sortOrder, userId);
     }
 
     private JsonNode twoBoardPayload() throws Exception {

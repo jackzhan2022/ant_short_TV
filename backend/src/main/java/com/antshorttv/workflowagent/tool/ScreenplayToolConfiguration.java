@@ -349,9 +349,17 @@ public class ScreenplayToolConfiguration {
         fields.putObject("storyboardIds").put("type", "array").putObject("items").put("type", "integer");
         fields.putObject("normalizationCount").put("type", "integer").put("minimum", 0);
         fields.putObject("derivedSoundCount").put("type", "integer").put("minimum", 0);
+        fields.putObject("normalizationFindings").put("type", "array")
+            .putObject("items").put("type", "object");
+        for (String count : new String[]{"correctedItemCount", "fallbackItemCount",
+            "unresolvedAssetCount", "assetPendingCount", "businessCallCount", "technicalRetryCount"}) {
+            fields.putObject(count).put("type", "integer").put("minimum", 0);
+        }
         fields.putObject("actionWarnings").put("type", "array")
             .putObject("items").put("type", "object");
         fields.putObject("classificationWarnings").put("type", "array")
+            .putObject("items").put("type", "object");
+        fields.putObject("lockCarryWarnings").put("type", "array")
             .putObject("items").put("type", "object");
         return definition("save_episode_storyboards", "保存本集正式分镜",
             "完整校验并原子覆盖当前有效剧集的正式多镜头分镜。",
@@ -378,14 +386,14 @@ public class ScreenplayToolConfiguration {
         boardFields.set("time", nullableType(json, "string").put("maxLength", 100));
         boardFields.set("lighting", nullableType(json, "string").put("maxLength", 1000));
         boardFields.set("usedAssetKeys", materialGroups(json));
-        boardFields.set("unmatchedMaterials", materialGroups(json));
+        boardFields.set("unmatchedMaterials", materialNameGroups(json));
         ObjectNode shots = boardFields.putObject("shots").put("type", "array")
             .put("minItems", 2).put("maxItems", 20);
         ObjectNode shot = objectSchema(json);
-        shot.putArray("required").add("shotNo").add("durationSeconds").add("positioning").add("action");
+        shot.putArray("required").add("positioning").add("action");
         ObjectNode shotFields = (ObjectNode) shot.path("properties");
-        shotFields.putObject("shotNo").put("type", "integer").put("minimum", 1);
-        shotFields.putObject("durationSeconds").put("type", "number").put("minimum", 1.5).put("maximum", 4);
+        shotFields.putObject("shotNo").put("type", "integer");
+        shotFields.putObject("durationSeconds").put("type", "number");
         shotFields.putObject("positioning").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         shotFields.putObject("action").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         shotFields.set("performance", nullableType(json, "string").put("maxLength", 1000));
@@ -404,8 +412,27 @@ public class ScreenplayToolConfiguration {
         groups.putArray("required").add("characters").add("scenes").add("props");
         ObjectNode fields = (ObjectNode) groups.path("properties");
         for (String field : new String[]{"characters", "scenes", "props"}) {
+            ObjectNode item = objectSchema(json);
+            item.putArray("required").add("assetKey").add("role");
+            ObjectNode itemFields = (ObjectNode) item.path("properties");
+            itemFields.putObject("assetKey").put("type", "string")
+                .put("pattern", "^[csp]_\\d+$").put("maxLength", 40);
+            itemFields.set("variantKey", nullableType(json, "string")
+                .put("pattern", "^v_\\d+$").put("maxLength", 40));
+            itemFields.putObject("role").put("type", "string").putArray("enum")
+                .add("VISIBLE").add("MAIN").add("SUPPORTING").add("TRANSITION");
+            itemFields.set("sourceName", nullableType(json, "string").put("maxLength", 200));
+            fields.putObject(field).put("type", "array").put("maxItems", 100).set("items", item);
+        }
+        return groups;
+    }
+
+    private ObjectNode materialNameGroups(ObjectMapper json) {
+        ObjectNode groups = objectSchema(json);
+        ObjectNode fields = (ObjectNode) groups.path("properties");
+        for (String field : new String[]{"characters", "scenes", "props"}) {
             fields.putObject(field).put("type", "array").put("maxItems", 100)
-                .putObject("items").put("type", "string").put("minLength", 1).put("maxLength", 100);
+                .putObject("items").put("type", "string").put("minLength", 1).put("maxLength", 200);
         }
         return groups;
     }

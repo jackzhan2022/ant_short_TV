@@ -2,6 +2,8 @@ package com.antshorttv.workflowagent.tool;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.script.StoryboardAssetReferenceEntity;
+import com.antshorttv.script.StoryboardAssetReferenceRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,6 +15,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -40,10 +43,16 @@ public class StoryboardToolDataService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final StoryboardAssetReferenceRepository referenceRepository;
 
-    public StoryboardToolDataService(JdbcTemplate jdbc, ObjectMapper json) {
+    public StoryboardToolDataService(
+        JdbcTemplate jdbc,
+        ObjectMapper json,
+        StoryboardAssetReferenceRepository referenceRepository
+    ) {
         this.jdbc = jdbc;
         this.json = json;
+        this.referenceRepository = referenceRepository;
     }
 
     @Transactional
@@ -53,7 +62,8 @@ public class StoryboardToolDataService {
         String trustedFingerprint = context.runState().require("currentEpisodeFingerprint", String.class);
         String suppliedFingerprint = requiredText(payload, "episodeFingerprint");
         if (!trustedFingerprint.equals(suppliedFingerprint)) {
-            throw invalid("分镜来源指纹与本次读取的当前剧集不一致。");
+            throw validation("STALE_FINGERPRINT", "$.episodeFingerprint", null,
+                "分镜来源指纹与本次读取的当前剧集不一致。");
         }
         int schemaVersion = payload.path("schemaVersion").asInt();
         if (schemaVersion != 3) {
@@ -66,7 +76,8 @@ public class StoryboardToolDataService {
 
         Episode episode = lockEpisode(context);
         if (!trustedFingerprint.equals(episode.fingerprint())) {
-            throw invalid("当前剧集内容已变化，请重新生成分镜。");
+            throw validation("STALE_FINGERPRINT", "$.episodeFingerprint", null,
+                "当前剧集内容已变化，请重新生成分镜。");
         }
         if (context.executionId() != null) {
             Integer automatic = jdbc.queryForObject("""
@@ -89,11 +100,15 @@ public class StoryboardToolDataService {
         }
         String visualStyle = projectVisualStyle(context);
         List<EpisodeSourceSegment> segments = trustedSegments(context);
+        LockedMaterialSnapshot lockedMaterials = loadLockedMaterials(context);
+        boolean materialOverwrite = Boolean.TRUE.equals(
+            context.runState().get("materialOverwrite", Boolean.class));
         StoryboardNormalizer.Result normalization = new StoryboardNormalizer(json).normalize(submitted, segments);
         submitted = normalization.storyboards();
         List<ValidatedStoryboard> validated;
         try {
-            validated = validateAll(context, source, segments, submitted, visualStyle);
+            validated = validateAll(context, source, segments, submitted, visualStyle,
+                lockedMaterials, materialOverwrite);
         } catch (BusinessException error) {
             if (error instanceof WorkflowToolValidationException
                 || error.getErrorCode() != ErrorCode.WORKFLOW_AGENT_TOOL_INVALID) throw error;
@@ -101,23 +116,41 @@ public class StoryboardToolDataService {
                 Map.of("validationCode", "STORYBOARD_CONTENT_INVALID"));
         }
         ArrayNode classificationWarnings = classificationWarnings(segments);
+        ArrayNode lockCarryWarnings = lockCarryWarnings(lockedMaterials, materialOverwrite);
+        int fallbackItemCount = payload.path("_fallbackItemCount").asInt(0);
+        int correctedItemCount = payload.path("_correctedItemCount").asInt(0);
+        int unresolvedAssetCount = validated.stream()
+            .mapToInt(board -> board.materials.unresolvedCount()).sum();
+        int assetPendingCount = validated.stream()
+            .mapToInt(board -> board.materials.assetPendingCount()).sum();
         for (ValidatedStoryboard board : validated) {
             ObjectNode diagnostics = ((ObjectNode) board.plan).putObject("diagnostics");
             diagnostics.put("normalizationCount", normalization.normalizedFieldCount());
             diagnostics.put("derivedSoundCount", normalization.derivedSoundCount());
+            diagnostics.set("normalizationFindings", findings(normalization.findings()));
             diagnostics.set("actionWarnings", board.plan.path("warnings").deepCopy());
             diagnostics.set("classificationWarnings", classificationWarnings.deepCopy());
+            diagnostics.set("lockCarryWarnings", lockCarryWarnings.deepCopy());
+            diagnostics.put("correctedItemCount", correctedItemCount);
+            diagnostics.put("fallbackItemCount", fallbackItemCount);
+            diagnostics.put("unresolvedAssetCount", board.materials.unresolvedCount());
+            diagnostics.put("assetPendingCount", board.materials.assetPendingCount());
             diagnostics.put("businessCallCount", 0);
             diagnostics.put("technicalRetryCount", 0);
         }
 
+        LocalDateTime publishedAt = LocalDateTime.now();
+        referenceRepository.retireForStoryboards(context.tenantId(), context.projectId(),
+            lockedMaterials.storyboardIds(), publishedAt);
         jdbc.update("""
             update storyboard set deleted_at = now(), updated_at = now()
              where tenant_id = ? and project_id = ? and episode_id = ? and deleted_at is null
             """, context.tenantId(), context.projectId(), context.episodeId());
         ArrayNode ids = json.createArrayNode();
         for (ValidatedStoryboard board : validated) {
-            ids.add(insert(context, episode, board));
+            long storyboardId = insert(context, episode, board);
+            insertReferences(context, storyboardId, board.materials, publishedAt);
+            ids.add(storyboardId);
         }
         ObjectNode result = json.createObjectNode();
         result.put("saved", true);
@@ -126,10 +159,33 @@ public class StoryboardToolDataService {
         result.set("storyboardIds", ids);
         result.put("normalizationCount", normalization.normalizedFieldCount());
         result.put("derivedSoundCount", normalization.derivedSoundCount());
+        result.set("normalizationFindings", findings(normalization.findings()));
+        result.put("correctedItemCount", correctedItemCount);
+        result.put("fallbackItemCount", fallbackItemCount);
+        result.put("unresolvedAssetCount", unresolvedAssetCount);
+        result.put("assetPendingCount", assetPendingCount);
+        result.put("businessCallCount", 0);
+        result.put("technicalRetryCount", 0);
         ArrayNode actionWarnings = result.putArray("actionWarnings");
         validated.forEach(board -> board.plan.path("warnings").forEach(actionWarnings::add));
         result.set("classificationWarnings", classificationWarnings);
+        result.set("lockCarryWarnings", lockCarryWarnings);
         return result;
+    }
+
+    private ArrayNode findings(List<StoryboardValidationResult.Finding> findings) {
+        ArrayNode values = json.createArrayNode();
+        for (StoryboardValidationResult.Finding finding : findings) {
+            ObjectNode value = values.addObject();
+            value.put("code", finding.code());
+            value.put("severity", finding.severity().name());
+            if (finding.jsonPath() != null) value.put("jsonPath", finding.jsonPath());
+            value.put("message", finding.message());
+            if (finding.normalizedValue() != null) {
+                value.set("normalizedValue", json.valueToTree(finding.normalizedValue()));
+            }
+        }
+        return values;
     }
 
     @Transactional
@@ -192,7 +248,9 @@ public class StoryboardToolDataService {
         String source,
         List<EpisodeSourceSegment> segments,
         JsonNode submitted,
-        String visualStyle
+        String visualStyle,
+        LockedMaterialSnapshot lockedMaterials,
+        boolean materialOverwrite
     ) {
         List<ValidatedStoryboard> values = new ArrayList<>();
         Map<String, IndexedSegment> byId = new LinkedHashMap<>();
@@ -279,7 +337,11 @@ public class StoryboardToolDataService {
                 throw validation("STORYBOARD_DURATION_OUT_OF_RANGE", storyboardNo, null, null,
                     "每个正式分镜总时长必须为 10 至 15 秒。");
             }
-            MaterialSet materials = resolveMaterials(context, board);
+            MaterialSet materials = resolveMaterials(context, board, index);
+            if (!materialOverwrite) {
+                List<Material> locked = lockedMaterials.consume(fromId + "|" + toId);
+                if (!locked.isEmpty()) materials = mergeLockedMaterials(materials, locked);
+            }
             RenderedPrompt prompt = render(visualStyle, validatedBoard, total, materials);
             values.add(new ValidatedStoryboard(storyboardNo, total, validatedBoard, prompt,
                 materials.pending() ? "ASSET_PENDING" : "BOUND", materials));
@@ -297,32 +359,60 @@ public class StoryboardToolDataService {
         return values;
     }
 
-    private MaterialSet resolveMaterials(ToolExecutionContext context, JsonNode board) {
+    private MaterialSet resolveMaterials(ToolExecutionContext context, JsonNode board, int boardIndex) {
         List<Material> materials = new ArrayList<>();
-        boolean pending = false;
         JsonNode used = board.path("usedAssetKeys");
         for (AssetKind kind : AssetKind.values()) {
             Set<String> seen = new HashSet<>();
             JsonNode keys = used.path(kind.jsonField);
             if (keys.isArray()) {
-                for (JsonNode keyNode : keys) {
-                    String key = keyNode.asText();
-                    if (!seen.add(key)) throw invalid("同一分镜不得重复引用素材 key。");
-                    materials.add(resolveKey(context, kind, key));
+                for (int referenceIndex = 0; referenceIndex < keys.size(); referenceIndex++) {
+                    JsonNode keyNode = keys.get(referenceIndex);
+                    String path = "$.storyboards[" + boardIndex + "].usedAssetKeys."
+                        + kind.jsonField + "[" + referenceIndex + "]";
+                    String key = keyNode.isTextual() ? keyNode.asText()
+                        : keyNode.path("assetKey").asText();
+                    if (!seen.add(key)) throw validation("ASSET_REFERENCE_DUPLICATE", path + ".assetKey",
+                        boardIndex + 1, "同一分镜不得重复引用素材 key。");
+                    String variantKey = keyNode.isObject() && keyNode.path("variantKey").isTextual()
+                        ? keyNode.path("variantKey").asText() : null;
+                    String role = keyNode.isObject() ? keyNode.path("role").asText() : defaultRole(kind);
+                    String sourceName = keyNode.isObject() ? keyNode.path("sourceName").asText() : null;
+                    materials.add(resolveKey(context, kind, key, variantKey, role, sourceName,
+                        path, boardIndex + 1, referenceIndex));
                 }
             }
             JsonNode unmatched = board.path("unmatchedMaterials").path(kind.jsonField);
             if (unmatched.isArray()) {
-                for (JsonNode name : unmatched) {
+                for (int unmatchedIndex = 0; unmatchedIndex < unmatched.size(); unmatchedIndex++) {
+                    JsonNode name = unmatched.get(unmatchedIndex);
                     String value = name.asText().trim();
                     if (value.isEmpty()) continue;
                     Material resolved = resolveExactName(context, kind, value);
-                    materials.add(resolved);
-                    pending |= resolved.assetId == null;
+                    materials.add(resolved.withSortOrder(keys.size() + unmatchedIndex));
                 }
             }
         }
-        return new MaterialSet(List.copyOf(materials), pending || materials.stream().anyMatch(m -> m.variantId == null));
+        return new MaterialSet(List.copyOf(materials));
+    }
+
+    private MaterialSet mergeLockedMaterials(MaterialSet proposed, List<Material> locked) {
+        List<Material> merged = new ArrayList<>();
+        for (AssetKind kind : AssetKind.values()) {
+            List<Material> values = new ArrayList<>(proposed.materials.stream()
+                .filter(material -> material.kind == kind).toList());
+            for (Material lockedMaterial : locked.stream()
+                .filter(material -> material.kind == kind)
+                .sorted(Comparator.comparingInt(Material::sortOrder)).toList()) {
+                values.removeIf(material -> material.assetId != null
+                    && material.assetId.equals(lockedMaterial.assetId));
+                values.add(Math.min(lockedMaterial.sortOrder, values.size()), lockedMaterial);
+            }
+            for (int index = 0; index < values.size(); index++) {
+                merged.add(values.get(index).withSortOrder(index));
+            }
+        }
+        return new MaterialSet(List.copyOf(merged));
     }
 
     private Material resolveExactName(ToolExecutionContext context, AssetKind kind, String name) {
@@ -336,8 +426,7 @@ public class StoryboardToolDataService {
                 matches.add(((Number) row.get("id")).longValue());
             }
         }
-        if (matches.size() > 1) throw invalid("素材名称或别名存在歧义：" + name);
-        return matches.isEmpty()
+        return matches.size() != 1
             ? Material.unmatched(kind, name)
             : resolveKey(context, kind, kind.prefix + matches.get(0));
     }
@@ -357,17 +446,47 @@ public class StoryboardToolDataService {
     }
 
     private Material resolveKey(ToolExecutionContext context, AssetKind kind, String key) {
+        return resolveKey(context, kind, key, null, defaultRole(kind), null, null, null, 0);
+    }
+
+    private Material resolveKey(
+        ToolExecutionContext context,
+        AssetKind kind,
+        String key,
+        String variantKey,
+        String role,
+        String sourceName,
+        String path,
+        Integer storyboardNo,
+        int sortOrder
+    ) {
         if (key == null || !key.matches(Pattern.quote(kind.prefix) + "\\d+")) {
-            throw invalid("素材 key 类型错误或无效：" + key);
+            throw validation("ASSET_KEY_INVALID", childPath(path, "assetKey"), storyboardNo,
+                "素材 key 类型错误或无效：" + key);
         }
         long assetId = Long.parseLong(key.substring(kind.prefix.length()));
         List<Map<String, Object>> rows = jdbc.queryForList(
             "select id, name, content_json from " + kind.table
                 + " where id = ? and tenant_id = ? and project_id = ? and script_id = ? and deleted_at is null",
             assetId, context.tenantId(), context.projectId(), context.scriptId());
-        if (rows.size() != 1) throw invalid("素材 key 不属于当前剧本：" + key);
+        if (rows.size() != 1) throw validation("ASSET_OWNERSHIP_INVALID",
+            childPath(path, "assetKey"), storyboardNo, "素材 key 不属于当前剧本：" + key);
         Map<String, Object> row = rows.get(0);
-        Long variantId = firstLong("""
+        Long variantId = null;
+        if (variantKey != null && !variantKey.isBlank()) {
+            if (!variantKey.matches("v_\\d+")) throw validation("VARIANT_KEY_INVALID",
+                childPath(path, "variantKey"), storyboardNo, "视觉形象 key 无效：" + variantKey);
+            long requestedVariantId = Long.parseLong(variantKey.substring(2));
+            variantId = firstLong("""
+                select id from asset_visual_variant
+                 where id=? and tenant_id=? and project_id=? and asset_type=? and asset_id=?
+                   and deleted_at is null
+                """, requestedVariantId, context.tenantId(), context.projectId(), kind.assetType, assetId);
+            if (variantId == null) throw validation("VARIANT_OWNERSHIP_INVALID",
+                childPath(path, "variantKey"), storyboardNo,
+                "视觉形象 key 不属于所选素材：" + variantKey);
+        }
+        if (variantId == null) variantId = firstLong("""
             select variant.id
               from asset_visual_variant_episode binding
               join asset_visual_variant variant on variant.id = binding.variant_id
@@ -386,7 +505,30 @@ public class StoryboardToolDataService {
         }
         String variantName = variantId == null ? null : jdbc.queryForObject(
             "select name from asset_visual_variant where id = ?", String.class, variantId);
-        return new Material(kind, key, assetId, variantId, String.valueOf(row.get("name")), variantName);
+        String name = String.valueOf(row.get("name"));
+        return new Material(kind, key, assetId, variantId, name, variantName,
+            role == null || role.isBlank() ? defaultRole(kind) : role,
+            sourceName == null || sourceName.isBlank() ? name : sourceName,
+            variantUsable(variantId) ? "RESOLVED" : "ASSET_PENDING",
+            "AI", false, sortOrder, context.userId());
+    }
+
+    private boolean variantUsable(Long variantId) {
+        if (variantId == null) return false;
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            select generation_status,current_image_result_id,current_image_url
+              from asset_visual_variant where id=? and deleted_at is null
+            """, variantId);
+        if (rows.size() != 1) return false;
+        Map<String, Object> row = rows.get(0);
+        String url = row.get("current_image_url") == null ? null
+            : String.valueOf(row.get("current_image_url"));
+        return "COMPLETED".equals(row.get("generation_status"))
+            && (row.get("current_image_result_id") != null || url != null && !url.isBlank());
+    }
+
+    private String defaultRole(AssetKind kind) {
+        return kind == AssetKind.SCENE ? "MAIN" : "VISIBLE";
     }
 
     private RenderedPrompt render(String visualStyle, JsonNode board, BigDecimal total, MaterialSet materialSet) {
@@ -473,12 +615,113 @@ public class StoryboardToolDataService {
             mention.put("assetId", match.assetId);
             mention.put("variantId", match.variantId);
             mention.put("displayName", match.name);
+            mention.put("bindingSource", "FORMAL");
             cursor = next + match.name.length();
         }
     }
 
     private void addText(ArrayNode nodes, String value) {
         if (!value.isEmpty()) nodes.addObject().put("type", "text").put("text", value);
+    }
+
+    private LockedMaterialSnapshot loadLockedMaterials(ToolExecutionContext context) {
+        List<Map<String, Object>> boards = jdbc.queryForList("""
+            select id,shot_plan_json from storyboard
+             where tenant_id=? and project_id=? and episode_id=? and deleted_at is null
+             order by storyboard_no,id
+            """, context.tenantId(), context.projectId(), context.episodeId());
+        List<Long> storyboardIds = boards.stream()
+            .map(row -> ((Number) row.get("id")).longValue()).toList();
+        if (storyboardIds.isEmpty()) return new LockedMaterialSnapshot(Map.of(), List.of());
+        Map<Long, String> ranges = new HashMap<>();
+        for (Map<String, Object> board : boards) {
+            try {
+                JsonNode plan = board.get("shot_plan_json") == null ? null
+                    : json.readTree(String.valueOf(board.get("shot_plan_json")));
+                if (plan != null && plan.path("sourceFrom").isTextual()
+                    && plan.path("sourceTo").isTextual()) {
+                    ranges.put(((Number) board.get("id")).longValue(),
+                        plan.path("sourceFrom").asText() + "|" + plan.path("sourceTo").asText());
+                }
+            } catch (JsonProcessingException ignored) {
+                // Historical malformed plans cannot be matched safely and are intentionally skipped.
+            }
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(storyboardIds.size(), "?"));
+        List<Object> arguments = new ArrayList<>(List.of(context.tenantId(), context.projectId()));
+        arguments.addAll(storyboardIds);
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            select reference.storyboard_id,reference.asset_type,reference.asset_id,reference.variant_id,
+                   reference.reference_role,reference.sort_order,reference.resolution_status,
+                   reference.source_name,reference.created_by,
+                   coalesce(character.name,scene.name,prop.name,reference.source_name) asset_name,
+                   variant.name variant_name
+              from storyboard_asset_reference reference
+              left join character_asset character on reference.asset_type='CHARACTER'
+                and character.id=reference.asset_id
+              left join scene_asset scene on reference.asset_type='SCENE' and scene.id=reference.asset_id
+              left join prop_asset prop on reference.asset_type='PROP' and prop.id=reference.asset_id
+              left join asset_visual_variant variant on variant.id=reference.variant_id
+             where reference.tenant_id=? and reference.project_id=? and reference.retired_at is null
+               and reference.locked_by_user=true and reference.storyboard_id in (%s)
+             order by reference.storyboard_id,reference.asset_type,reference.sort_order,reference.id
+            """.formatted(placeholders), arguments.toArray());
+        Map<String, List<Material>> byRange = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String range = ranges.get(((Number) row.get("storyboard_id")).longValue());
+            if (range == null) continue;
+            AssetKind kind = AssetKind.valueOf(String.valueOf(row.get("asset_type")));
+            Long assetId = row.get("asset_id") instanceof Number number ? number.longValue() : null;
+            Long variantId = row.get("variant_id") instanceof Number number ? number.longValue() : null;
+            String key = assetId == null ? null : kind.prefix + assetId;
+            Material material = new Material(kind, key, assetId, variantId,
+                String.valueOf(row.get("asset_name")),
+                row.get("variant_name") == null ? null : String.valueOf(row.get("variant_name")),
+                String.valueOf(row.get("reference_role")),
+                row.get("source_name") == null ? null : String.valueOf(row.get("source_name")),
+                String.valueOf(row.get("resolution_status")), "MANUAL", true,
+                ((Number) row.get("sort_order")).intValue(),
+                ((Number) row.get("created_by")).longValue());
+            byRange.computeIfAbsent(range, ignored -> new ArrayList<>()).add(material);
+        }
+        return new LockedMaterialSnapshot(byRange, storyboardIds);
+    }
+
+    private ArrayNode lockCarryWarnings(LockedMaterialSnapshot snapshot, boolean materialOverwrite) {
+        ArrayNode warnings = json.createArrayNode();
+        if (materialOverwrite) return warnings;
+        for (String range : snapshot.unmatchedRanges()) {
+            ObjectNode warning = warnings.addObject();
+            warning.put("code", "MANUAL_LOCK_NOT_CARRIED");
+            warning.put("sourceRange", range);
+            warning.put("message", "旧分镜的手工锁定素材无法与新分镜安全匹配，未自动附加。");
+        }
+        return warnings;
+    }
+
+    private void insertReferences(
+        ToolExecutionContext context,
+        long storyboardId,
+        MaterialSet materials,
+        LocalDateTime now
+    ) {
+        List<StoryboardAssetReferenceEntity> entities = new ArrayList<>();
+        for (Material material : materials.materials) {
+            StoryboardAssetReferenceEntity entity = new StoryboardAssetReferenceEntity();
+            entity.assetType = material.kind.assetType;
+            entity.assetId = material.assetId;
+            entity.variantId = material.variantId;
+            entity.referenceRole = material.role;
+            entity.sortOrder = material.sortOrder;
+            entity.resolutionStatus = material.resolutionStatus;
+            entity.sourceType = material.sourceType;
+            entity.sourceName = material.sourceName;
+            entity.lockedByUser = material.lockedByUser;
+            entity.generatedByRunId = "AI".equals(material.sourceType) ? context.agentRunId() : null;
+            entity.createdBy = material.createdBy == null ? context.userId() : material.createdBy;
+            entities.add(entity);
+        }
+        referenceRepository.replace(context.tenantId(), context.projectId(), storyboardId, entities, now);
     }
 
     private long insert(ToolExecutionContext context, Episode episode, ValidatedStoryboard board) {
@@ -643,10 +886,26 @@ public class StoryboardToolDataService {
     ) {
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("validationCode", code);
+        details.put("severity", StoryboardValidationResult.classify(code).name());
         if (storyboardNo != null) details.put("storyboardNo", storyboardNo);
         if (expectedSegmentId != null) details.put("expectedSegmentId", expectedSegmentId);
         if (actualSegmentId != null) details.put("actualSegmentId", actualSegmentId);
         return new WorkflowToolValidationException(message, details);
+    }
+
+    private WorkflowToolValidationException validation(
+        String code, String jsonPath, Integer storyboardNo, String message
+    ) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("validationCode", code);
+        details.put("severity", StoryboardValidationResult.classify(code).name());
+        if (jsonPath != null) details.put("jsonPath", jsonPath);
+        if (storyboardNo != null) details.put("storyboardNo", storyboardNo);
+        return new WorkflowToolValidationException(message, details);
+    }
+
+    private String childPath(String path, String field) {
+        return path == null ? null : path + "." + field;
     }
 
     private String requiredText(JsonNode node, String field) {
@@ -726,13 +985,66 @@ public class StoryboardToolDataService {
 
     private record Episode(int episodeNo, String fingerprint) {}
     private record IndexedSegment(int ordinal, EpisodeSourceSegment segment) {}
-    private record Material(AssetKind kind, String key, Long assetId, Long variantId, String name, String variantName) {
+    private record Material(
+        AssetKind kind, String key, Long assetId, Long variantId, String name, String variantName,
+        String role, String sourceName, String resolutionStatus, String sourceType,
+        boolean lockedByUser, int sortOrder, Long createdBy
+    ) {
         static Material unmatched(AssetKind kind, String name) {
-            return new Material(kind, null, null, null, name, null);
+            return new Material(kind, null, null, null, name, null,
+                kind == AssetKind.SCENE ? "MAIN" : "VISIBLE", name, "UNRESOLVED",
+                "AI", false, 0, null);
+        }
+
+        Material withSortOrder(int order) {
+            return new Material(kind, key, assetId, variantId, name, variantName, role, sourceName,
+                resolutionStatus, sourceType, lockedByUser, order, createdBy);
         }
     }
-    private record MaterialSet(List<Material> materials, boolean pending) {}
+    private record MaterialSet(List<Material> materials) {
+        boolean pending() {
+            return materials.stream().anyMatch(material -> !"RESOLVED".equals(material.resolutionStatus));
+        }
+
+        int unresolvedCount() {
+            return (int) materials.stream()
+                .filter(material -> "UNRESOLVED".equals(material.resolutionStatus)).count();
+        }
+
+        int assetPendingCount() {
+            return (int) materials.stream()
+                .filter(material -> "ASSET_PENDING".equals(material.resolutionStatus)).count();
+        }
+    }
     private record RenderedPrompt(String plainText, ObjectNode document) {}
+
+    private static final class LockedMaterialSnapshot {
+        private final Map<String, List<Material>> byRange;
+        private final List<Long> storyboardIds;
+        private final Set<String> matched = new HashSet<>();
+
+        private LockedMaterialSnapshot(Map<String, List<Material>> byRange, List<Long> storyboardIds) {
+            Map<String, List<Material>> copy = new LinkedHashMap<>();
+            byRange.forEach((key, value) -> copy.put(key, List.copyOf(value)));
+            this.byRange = Map.copyOf(copy);
+            this.storyboardIds = List.copyOf(storyboardIds);
+        }
+
+        List<Material> consume(String range) {
+            List<Material> values = byRange.getOrDefault(range, List.of());
+            if (!values.isEmpty()) matched.add(range);
+            return values;
+        }
+
+        List<Long> storyboardIds() {
+            return storyboardIds;
+        }
+
+        List<String> unmatchedRanges() {
+            return byRange.keySet().stream().filter(range -> !matched.contains(range)).sorted().toList();
+        }
+    }
+
     private record ValidatedStoryboard(
         int storyboardNo,
         BigDecimal total,

@@ -48,6 +48,9 @@ class ScriptWorkflowReadBoundaryTest {
             .thenReturn(script);
         var episodes = org.mockito.Mockito.mock(ScriptEpisodeService.class);
         set(service, "scriptEpisodeService", episodes);
+        var references = org.mockito.Mockito.mock(StoryboardAssetReferenceRepository.class);
+        set(service, "storyboardAssetReferenceRepository", references);
+        when(references.listResponsesForStoryboards(anyLong(), anyLong(), any())).thenReturn(Map.of());
         when(episodes.currentEpisodes(10L, 33L, 7L)).thenReturn(List.of(
             new ScriptEpisodeResponse(1L, 1, "第1集", "large persisted episode body", "摘要", "hash", null, null)
         ));

@@ -394,6 +394,81 @@ class ScriptWorkflowControllerTest {
     }
 
     @Test
+    void replacesStoryboardAssetReferencesThroughFocusedEndpoint() throws Exception {
+        String mobile = "13800013051";
+        String token = registerUser(mobile, "Storyboard Reference Owner");
+        Long tenantId = createTenant(token, "分镜素材引用团队");
+        Long ownerId = userIdByMobile(mobile);
+        Long projectId = createProject(
+            token, tenantId, ownerId, "分镜素材引用项目", "STORYBOARD_REFERENCES",
+            "第1集\nSerena在走廊拿起手机。"
+        );
+        Long scriptId = jdbcTemplate.queryForObject(
+            "select id from script where tenant_id=? and project_id=?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("insert into storyboard (tenant_id,project_id,script_id,episode_no,shot_no,visual_description,status,created_by,created_at,updated_at) values (?,?,?,1,1,'shot','DRAFT',?,now(),now())",
+            tenantId, projectId, scriptId, ownerId);
+        Long storyboardId = jdbcTemplate.queryForObject(
+            "select id from storyboard where tenant_id=? and project_id=?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("insert into character_asset (tenant_id,project_id,name,role_type,status,created_by,created_at,updated_at) values (?,?,'Serena','LEAD','CONFIRMED',?,now(),now())",
+            tenantId, projectId, ownerId);
+        jdbcTemplate.update("insert into scene_asset (tenant_id,project_id,name,scene_type,status,created_by,created_at,updated_at) values (?,?,'走廊','INTERIOR','CONFIRMED',?,now(),now())",
+            tenantId, projectId, ownerId);
+        Long characterId = jdbcTemplate.queryForObject(
+            "select id from character_asset where tenant_id=? and project_id=?", Long.class, tenantId, projectId);
+        Long sceneId = jdbcTemplate.queryForObject(
+            "select id from scene_asset where tenant_id=? and project_id=?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("insert into asset_visual_variant (tenant_id,project_id,asset_type,asset_id,name,source_type,generation_status,current_image_url,is_primary,created_by,created_at,updated_at) values (?,?,'CHARACTER',?,'日常装','MANUAL','COMPLETED','/serena.png',true,?,now(),now())",
+            tenantId, projectId, characterId, ownerId);
+        Long characterVariantId = jdbcTemplate.queryForObject(
+            "select id from asset_visual_variant where asset_type='CHARACTER' and asset_id=?",
+            Long.class, characterId);
+
+        String body = """
+            {"references":[
+              {"assetType":"SCENE","assetId":%d,"referenceRole":"MAIN","sortOrder":0},
+              {"assetType":"CHARACTER","assetId":%d,"variantId":%d,
+               "referenceRole":"VISIBLE","sortOrder":0}
+            ]}
+            """.formatted(sceneId, characterId, characterVariantId);
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d/asset-references".formatted(projectId, storyboardId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(2)))
+            .andExpect(jsonPath("$.data[0].assetType", is("CHARACTER")))
+            .andExpect(jsonPath("$.data[0].assetName", is("Serena")))
+            .andExpect(jsonPath("$.data[0].resolutionStatus", is("RESOLVED")))
+            .andExpect(jsonPath("$.data[1].assetType", is("SCENE")));
+
+        mockMvc.perform(get("/api/projects/%d/storyboards/%d/asset-references".formatted(projectId, storyboardId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(2)));
+        mockMvc.perform(get("/api/projects/%d/storyboards/%d/asset-references".formatted(projectId, storyboardId))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d/asset-references".formatted(projectId, storyboardId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"references\":[{\"assetType\":\"CHARACTER\",\"assetId\":999999,\"referenceRole\":\"VISIBLE\",\"sortOrder\":0}]}"))
+            .andExpect(status().isBadRequest());
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from storyboard_asset_reference where storyboard_id=? and retired_at is null",
+            Integer.class, storyboardId)).isEqualTo(2);
+
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d/asset-references".formatted(projectId, storyboardId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"references\":[]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
+    @Test
     void returnsFocusedDetailsAndBoundedStoryboardPages() throws Exception {
         String token = registerUser("13800013034", "Focused Detail Owner");
         Long tenantId = createTenant(token, "按需详情团队");
@@ -440,6 +515,18 @@ class ScriptWorkflowControllerTest {
                 values (?, ?, ?, 1, ?, ?, 'CONFIRMED', ?, now(), now())
                 """, tenantId, projectId, scriptId, shotNo, "镜头" + shotNo, ownerId);
         }
+        Long firstStoryboardId = jdbcTemplate.queryForObject(
+            "select id from storyboard where tenant_id=? and project_id=? and shot_no=1",
+            Long.class, tenantId, projectId);
+        Long characterVariantId = jdbcTemplate.queryForObject(
+            "select id from asset_visual_variant where tenant_id=? and project_id=? and asset_id=?",
+            Long.class, tenantId, projectId, characterId);
+        jdbcTemplate.update("""
+            insert into storyboard_asset_reference
+              (tenant_id,project_id,storyboard_id,asset_type,asset_id,variant_id,reference_role,
+               sort_order,resolution_status,source_type,source_name,locked_by_user,created_by,created_at,updated_at)
+            values (?,?,?,'CHARACTER',?,?,'VISIBLE',0,'RESOLVED','MANUAL','林晚',true,?,now(),now())
+            """, tenantId, projectId, firstStoryboardId, characterId, characterVariantId, ownerId);
 
         mockMvc.perform(get("/api/projects/%d/script-versions/%d".formatted(projectId, versionId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -470,7 +557,10 @@ class ScriptWorkflowControllerTest {
             .andExpect(jsonPath("$.data.current", is(1)))
             .andExpect(jsonPath("$.data.pageSize", is(2)))
             .andExpect(jsonPath("$.data.storyboards", hasSize(2)))
-            .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(1)));
+            .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(1)))
+            .andExpect(jsonPath("$.data.storyboards[0].assetReferences", hasSize(1)))
+            .andExpect(jsonPath("$.data.storyboards[0].assetReferences[0].assetName", is("林晚")))
+            .andExpect(jsonPath("$.data.storyboards[1].assetReferences", hasSize(0)));
         mockMvc.perform(get("/api/projects/%d/storyboard-workspace?episodeNo=1&current=2&pageSize=2".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))

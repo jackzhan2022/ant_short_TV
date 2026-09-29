@@ -68,6 +68,8 @@ public class ScriptWorkflowService {
     private StoryboardAgentAdapter storyboardAgentAdapter;
     @Autowired(required = false)
     private ScopedAssetReextractionService scopedAssetReextractionService;
+    @Autowired
+    private StoryboardAssetReferenceRepository storyboardAssetReferenceRepository;
 
     private final ProjectAccessResolver projectAccessResolver;
     private final ProjectPermissionGuard projectPermissionGuard;
@@ -280,7 +282,8 @@ public class ScriptWorkflowService {
         }
         requireActiveExecutionClaim(executionContext);
         StoryboardAgentAdapter.Execution agent = storyboardAgentAdapter.execute(
-            operation, request.episodeId(), executionContext);
+            operation, request.episodeId(), executionContext,
+            Boolean.TRUE.equals(request.overwriteMaterials()));
         markOperationResult(operation, "STORYBOARD_SET", request.episodeId());
         return new ScriptAiOperationExecutionResult(
             "STORYBOARD_SET", request.episodeId(), List.of(), agent.modelCalls());
@@ -1578,9 +1581,9 @@ public class ScriptWorkflowService {
     }
 
     private List<StoryboardResponse> storyboardPage(Long tenantId, Long projectId, int episodeNo, int limit, int offset) {
-        return jdbcTemplate.query("""
+        List<StoryboardResponse> page = jdbcTemplate.query("""
             select id, shot_no, coalesce(storyboard_no, shot_no) storyboard_no, episode_id, episode_no,
-                   shot_type, visual_description, characters, scene, dialogue, duration_seconds, shot_plan_json,
+                   shot_type, visual_description, characters, scene, props, dialogue, duration_seconds, shot_plan_json,
                    prompt_document_json, material_binding_status, source_fingerprint, generated_by_run_id,
                    image_prompt, video_prompt, first_frame_url, current_video_result_id, current_video_url
               from storyboard where tenant_id = ? and project_id = ? and episode_no = ? and deleted_at is null
@@ -1588,13 +1591,20 @@ public class ScriptWorkflowService {
             """, (rs, rowNum) -> new StoryboardResponse(rs.getLong("id"), rs.getInt("shot_no"),
                 rs.getInt("storyboard_no"), rs.getObject("episode_id", Long.class), rs.getInt("episode_no"),
                 rs.getString("shot_type"), rs.getString("visual_description"), rs.getString("characters"),
-                rs.getString("scene"), rs.getString("dialogue"), rs.getObject("duration_seconds", Integer.class),
+                rs.getString("scene"), rs.getString("props"), rs.getString("dialogue"),
+                rs.getObject("duration_seconds", Integer.class),
                 readJson(rs.getString("shot_plan_json")), readJson(rs.getString("prompt_document_json")),
                 rs.getString("material_binding_status"), rs.getString("source_fingerprint"),
                 rs.getObject("generated_by_run_id", Long.class), rs.getString("image_prompt"),
                 rs.getString("video_prompt"), materialFileAccessService.publicUrl(rs.getString("first_frame_url")),
                 rs.getObject("current_video_result_id", Long.class),
-                materialFileAccessService.publicUrl(rs.getString("current_video_url"))), tenantId, projectId, episodeNo, limit, offset);
+                materialFileAccessService.publicUrl(rs.getString("current_video_url")), List.of()),
+            tenantId, projectId, episodeNo, limit, offset);
+        Map<Long, List<StoryboardAssetReferenceResponse>> references =
+            storyboardAssetReferenceRepository.listResponsesForStoryboards(
+                tenantId, projectId, page.stream().map(StoryboardResponse::id).toList());
+        return page.stream().map(storyboard -> storyboard.withAssetReferences(
+            references.getOrDefault(storyboard.id(), List.of()))).toList();
     }
 
     private com.fasterxml.jackson.databind.JsonNode readJson(String value) {

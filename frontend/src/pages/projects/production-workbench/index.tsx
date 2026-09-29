@@ -166,10 +166,12 @@ const ProductionWorkbench = () => {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--app-color-bg-layout)' }}>
+    <div style={{ minHeight: activeStep === 'storyboard' ? 0 : '100vh', height: activeStep === 'storyboard' ? '100dvh' : undefined, overflow: activeStep === 'storyboard' ? 'hidden' : undefined, background: 'var(--app-color-bg-layout)' }}>
       <header
         style={{
           height: 68,
+          boxSizing: 'border-box',
+          overflowX: activeStep === 'storyboard' ? 'auto' : undefined,
           background: 'var(--app-color-bg-container)',
           borderBottom: '1px solid var(--app-color-border)',
           display: 'flex',
@@ -308,10 +310,11 @@ const ProductionWorkbench = () => {
           margin: '0 auto',
           width: '100%',
           maxWidth: 1880,
-          minWidth: 1100,
+          minWidth: activeStep === 'storyboard' ? 0 : 1100,
           boxSizing: 'border-box',
-          padding: '0 0 72px',
-          minHeight: 'calc(100vh - 100px)',
+          padding: activeStep === 'storyboard' ? 0 : '0 0 72px',
+          height: activeStep === 'storyboard' ? 'calc(100dvh - 100px)' : undefined,
+          minHeight: activeStep === 'storyboard' ? 0 : 'calc(100vh - 100px)',
         }}
       >
         <Outlet context={{ project }} />

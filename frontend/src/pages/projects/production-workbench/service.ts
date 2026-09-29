@@ -142,6 +142,7 @@ export type StoryboardShot = {
   visualDescription: string;
   characters: string;
   scene: string;
+  props?: string | null;
   dialogue: string;
   durationSeconds: number;
   shotPlan?: StoryboardShotPlan | null;
@@ -159,7 +160,29 @@ export type StoryboardShot = {
   currentSubtitleUrl?: string | null;
   currentShotResultId?: number | null;
   currentShotVideoUrl?: string | null;
+  assetReferences?: StoryboardAssetReference[];
 };
+
+export type StoryboardAssetReference = {
+  id?: number | null;
+  assetType: 'CHARACTER' | 'SCENE' | 'PROP';
+  assetId?: number | null;
+  assetName?: string | null;
+  variantId?: number | null;
+  variantName?: string | null;
+  imageUrl?: string | null;
+  referenceRole: 'VISIBLE' | 'MAIN' | 'SUPPORTING' | 'TRANSITION';
+  sortOrder: number;
+  resolutionStatus: 'RESOLVED' | 'ASSET_PENDING' | 'UNRESOLVED';
+  sourceType: 'AI' | 'MANUAL' | 'LEGACY';
+  sourceName?: string | null;
+  lockedByUser: boolean;
+};
+
+export type StoryboardAssetReferenceInput = Pick<
+  StoryboardAssetReference,
+  'assetType' | 'assetId' | 'variantId' | 'referenceRole' | 'sortOrder' | 'sourceName'
+>;
 
 export type StoryboardInternalShot = {
   shotNo: number;
@@ -828,7 +851,7 @@ export const deleteScriptElement = async (
 
 export const breakdownStoryboards = async (
   projectId: number,
-  values: { episodeId: number },
+  values: { episodeId: number; overwriteMaterials?: boolean },
 ) =>
   request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/storyboards/ai-breakdown`,
@@ -836,6 +859,20 @@ export const breakdownStoryboards = async (
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       data: values,
+    },
+  );
+
+export const replaceStoryboardAssetReferences = async (
+  projectId: number,
+  storyboardId: number,
+  references: StoryboardAssetReferenceInput[],
+) =>
+  request<ApiResponse<StoryboardAssetReference[]>>(
+    `/api/projects/${projectId}/storyboards/${storyboardId}/asset-references`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      data: { references },
     },
   );
 
@@ -1162,6 +1199,22 @@ export type AiVideoTask = {
   startedAt?: string | null;
   completedAt?: string | null;
   createdAt?: string;
+  referenceDiagnostics?: {
+    limits?: { image?: number; video?: number; audio?: number };
+    kept?: Array<{
+      reference?: { displayName?: string; bindingRole?: string; assetType?: string; assetId?: number };
+      displayName?: string;
+    }>;
+    omitted?: Array<{
+      displayName?: string;
+      reason?: string;
+      assetType?: string;
+      assetId?: number;
+      sourceType?: string;
+      sourceId?: number;
+      variantId?: number;
+    }>;
+  };
   results: AiVideoResult[];
 };
 

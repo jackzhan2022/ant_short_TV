@@ -3,6 +3,7 @@ package com.antshorttv.workflowagent.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -56,7 +57,7 @@ class StoryboardNormalizerTest {
     }
 
     @Test
-    void rejectsUnknownReversedAndDecreasingCreativeReferences() throws Exception {
+    void project41NonMonotonicAnchorsAreRepairedWhileUnknownCreativeEndsRemainInvalid() throws Exception {
         var segments = segmenter.segment("开场\nSerena: one\n结束");
         ArrayNode submitted = (ArrayNode) json.readTree("""
             [{"storyboardNo":1,"sourceTo":"S9999","shots":[
@@ -70,13 +71,78 @@ class StoryboardNormalizerTest {
                 failure -> assertThat(failure.details().get("validationCode"))
                     .isEqualTo("SOURCE_SEGMENT_UNKNOWN"));
 
-        ((ObjectNode) submitted.get(0)).put("sourceTo", "S0003");
-        ((ObjectNode) submitted.get(0).path("shots").get(0)).put("sourceAnchor", "S0002");
+        ((ObjectNode) submitted.get(0)).put("sourceTo", "S0002");
+        ((ObjectNode) submitted.get(0).path("shots").get(0)).put("sourceAnchor", "S0003");
         ((ObjectNode) submitted.get(0).path("shots").get(1)).put("sourceAnchor", "S0001");
-        assertThatThrownBy(() -> normalizer.normalize(submitted, segments))
-            .isInstanceOfSatisfying(WorkflowToolValidationException.class,
-                failure -> assertThat(failure.details().get("validationCode"))
-                    .isEqualTo("SOURCE_ANCHOR_REVERSED"));
+        ObjectNode finalBoard = ((ObjectNode) submitted.get(0)).deepCopy();
+        finalBoard.put("sourceTo", "S0003");
+        ((ObjectNode) finalBoard.path("shots").get(0)).remove("sourceAnchor");
+        ((ObjectNode) finalBoard.path("shots").get(1)).remove("sourceAnchor");
+        submitted.add(finalBoard);
+
+        StoryboardNormalizer.Result result = normalizer.normalize(submitted, segments);
+
+        assertThat(result.storyboards().get(0).path("shots").get(0).path("sourceAnchor").asText())
+            .isEqualTo("S0002");
+        assertThat(result.storyboards().get(0).path("shots").get(1).path("sourceAnchor").asText())
+            .isEqualTo("S0002");
+        assertThat(result.findings()).extracting(StoryboardValidationResult.Finding::code)
+            .contains("SOURCE_ANCHOR_CLAMPED", "SOURCE_ANCHOR_REORDERED");
+    }
+
+    @Test
+    void appliesShotTypeAndDurationDefaultsAndClampsDurationBounds() throws Exception {
+        var segments = segmenter.segment("开场\nSerena: one\n结束");
+        ArrayNode submitted = (ArrayNode) json.readTree("""
+            [{"sourceTo":"S0003","shots":[
+              {"durationSeconds":0.5,"positioning":"wide","action":"open"},
+              {"positioning":"medium","action":"react"},
+              {"durationSeconds":8,"positioning":"close","action":"finish"}
+            ]}]
+            """);
+
+        StoryboardNormalizer.Result result = new StoryboardNormalizer(json).normalize(submitted, segments);
+        JsonNode board = result.storyboards().get(0);
+
+        assertThat(board.path("shotType").asText()).isEqualTo("MULTI_SHOT");
+        assertThat(board.path("shots").get(0).path("shotNo").asInt()).isEqualTo(1);
+        assertThat(board.path("shots").get(0).path("durationSeconds").decimalValue())
+            .isEqualByComparingTo("1.5");
+        assertThat(board.path("shots").get(1).path("durationSeconds").decimalValue())
+            .isEqualByComparingTo("3");
+        assertThat(board.path("shots").get(2).path("durationSeconds").decimalValue())
+            .isEqualByComparingTo("4");
+        assertThat(result.findings())
+            .allSatisfy(finding -> assertThat(finding.severity())
+                .isEqualTo(StoryboardValidationResult.Severity.REPAIRABLE));
+        assertThat(result.findings()).extracting(StoryboardValidationResult.Finding::jsonPath)
+            .contains("$.storyboards[0].shotType",
+                "$.storyboards[0].shots[0].durationSeconds",
+                "$.storyboards[0].shots[1].durationSeconds",
+                "$.storyboards[0].shots[2].durationSeconds");
+    }
+
+    @Test
+    void replacesAlteredAndRepeatedUtteranceInputWithOneTrustedAssignment() throws Exception {
+        var segments = segmenter.segment("开场\nSerena: one\n结束");
+        ArrayNode submitted = (ArrayNode) json.readTree("""
+            [{"sourceTo":"S0003","shots":[
+              {"durationSeconds":3,"positioning":"wide","action":"open",
+               "dialogue":"changed","soundSegmentIds":["S0002"]},
+              {"durationSeconds":3,"positioning":"close","action":"finish",
+               "dialogue":"changed again","soundSegmentIds":["S0002"]},
+              {"durationSeconds":4,"positioning":"close","action":"hold"}
+            ]}]
+            """);
+
+        StoryboardNormalizer.Result result = new StoryboardNormalizer(json).normalize(submitted, segments);
+        JsonNode shots = result.storyboards().get(0).path("shots");
+
+        assertThat(shots.findValues("dialogue")).isEmpty();
+        assertThat(shots.get(0).path("soundSegmentIds")).isEmpty();
+        assertThat(shots.get(1).path("soundSegmentIds").toString()).isEqualTo("[\"S0002\"]");
+        assertThat(shots.get(2).path("soundSegmentIds")).isEmpty();
+        assertThat(result.derivedSoundCount()).isEqualTo(1);
     }
 
     @Test

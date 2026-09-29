@@ -13,7 +13,9 @@ class ScriptElementExtractionControllerTest {
     void retiredPathsAreUnmappedAndCannotSubmitPaidWork() throws Exception {
         ScriptWorkflowService workflow = mock(ScriptWorkflowService.class);
         StoryboardBatchService batches = mock(StoryboardBatchService.class);
-        var mvc = MockMvcBuilders.standaloneSetup(new ScriptWorkflowController(workflow, batches)).build();
+        StoryboardAssetReferenceService references = mock(StoryboardAssetReferenceService.class);
+        var mvc = MockMvcBuilders.standaloneSetup(
+            new ScriptWorkflowController(workflow, batches, references)).build();
         for (String path : java.util.List.of("/script-workspace", "/asset-settings-workspace",
             "/asset-candidates", "/asset-candidates/2")) {
             mvc.perform(get("/api/projects/1" + path)).andExpect(status().isNotFound());
@@ -22,6 +24,6 @@ class ScriptElementExtractionControllerTest {
             mvc.perform(post("/api/projects/1" + path)).andExpect(status().isNotFound());
         }
         mvc.perform(put("/api/projects/1/script-elements/CHARACTER/2/confirm")).andExpect(status().isNotFound());
-        verifyNoInteractions(workflow, batches);
+        verifyNoInteractions(workflow, batches, references);
     }
 }

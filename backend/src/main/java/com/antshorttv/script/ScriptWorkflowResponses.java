@@ -119,6 +119,7 @@ record StoryboardResponse(
     String visualDescription,
     String characters,
     String scene,
+    String props,
     String dialogue,
     Integer durationSeconds,
     com.fasterxml.jackson.databind.JsonNode shotPlan,
@@ -130,7 +131,8 @@ record StoryboardResponse(
     String videoPrompt,
     String firstFrameUrl,
     Long currentVideoResultId,
-    String currentVideoUrl
+    String currentVideoUrl,
+    List<StoryboardAssetReferenceResponse> assetReferences
 ) {
     static StoryboardResponse from(StoryboardEntity entity) {
         return new StoryboardResponse(
@@ -144,6 +146,7 @@ record StoryboardResponse(
             entity.characters,
             entity.scene,
             null,
+            null,
             entity.durationSeconds,
             parseJson(entity.shotPlanJson),
             parseJson(entity.promptDocumentJson),
@@ -154,8 +157,18 @@ record StoryboardResponse(
             entity.videoPrompt,
             entity.firstFrameUrl,
             entity.currentVideoResultId,
-            entity.currentVideoUrl
+            entity.currentVideoUrl,
+            List.of()
         );
+    }
+
+    StoryboardResponse withAssetReferences(List<StoryboardAssetReferenceResponse> references) {
+        return new StoryboardResponse(
+            id, shotNo, storyboardNo, episodeId, episodeNo, shotType, visualDescription,
+            characters, scene, props, dialogue, durationSeconds, shotPlan, promptDocument,
+            materialBindingStatus, sourceFingerprint, generatedByRunId, imagePrompt, videoPrompt,
+            firstFrameUrl, currentVideoResultId, currentVideoUrl,
+            references == null ? List.of() : references);
     }
 
     private static com.fasterxml.jackson.databind.JsonNode parseJson(String value) {

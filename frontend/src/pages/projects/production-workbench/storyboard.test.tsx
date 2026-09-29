@@ -10,17 +10,23 @@ const mocks = vi.hoisted(() => ({
   queryScriptWorkspace: vi.fn(),
   queryScriptPageWorkspace: vi.fn(),
   queryAssetSettingsSummary: vi.fn(),
+  queryAssetVisualWorkspace: vi.fn(),
   queryStoryboardWorkspace: vi.fn(),
   queryAiImageTasks: vi.fn(),
   queryAiImageTask: vi.fn(),
+  selectAiImageResult: vi.fn(),
   createAiImageTask: vi.fn(),
   regenerateAiImageTask: vi.fn(),
   cancelAiImageTask: vi.fn(),
   queryAiVideoTasks: vi.fn(),
+  bindAiVideoResultToStoryboard: vi.fn(),
   queryAiVoiceTasks: vi.fn(),
+  createAiVoiceTask: vi.fn(),
   createAiVideoTask: vi.fn(),
   cancelAiVideoTask: vi.fn(),
   regenerateAiVideoTask: vi.fn(),
+  replaceStoryboardAssetReferences: vi.fn(),
+  createAssetImageBatch: vi.fn(),
   createStoryboard: vi.fn(),
   updateStoryboard: vi.fn(),
   deleteStoryboard: vi.fn(),
@@ -82,17 +88,23 @@ vi.mock('@/components/AiExecutionStatus', () => ({
 vi.mock('./service', () => ({
   queryScriptPageWorkspace: mocks.queryScriptPageWorkspace,
   queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
+  queryAssetVisualWorkspace: mocks.queryAssetVisualWorkspace,
   queryStoryboardWorkspace: mocks.queryStoryboardWorkspace,
   queryAiImageTasks: mocks.queryAiImageTasks,
   queryAiImageTask: mocks.queryAiImageTask,
+  selectAiImageResult: mocks.selectAiImageResult,
   createAiImageTask: mocks.createAiImageTask,
   regenerateAiImageTask: mocks.regenerateAiImageTask,
   cancelAiImageTask: mocks.cancelAiImageTask,
   queryAiVideoTasks: mocks.queryAiVideoTasks,
+  bindAiVideoResultToStoryboard: mocks.bindAiVideoResultToStoryboard,
   queryAiVoiceTasks: mocks.queryAiVoiceTasks,
+  createAiVoiceTask: mocks.createAiVoiceTask,
   createAiVideoTask: mocks.createAiVideoTask,
   cancelAiVideoTask: mocks.cancelAiVideoTask,
   regenerateAiVideoTask: mocks.regenerateAiVideoTask,
+  replaceStoryboardAssetReferences: mocks.replaceStoryboardAssetReferences,
+  createAssetImageBatch: mocks.createAssetImageBatch,
   createStoryboard: mocks.createStoryboard,
   updateStoryboard: mocks.updateStoryboard,
   deleteStoryboard: mocks.deleteStoryboard,
@@ -108,6 +120,8 @@ vi.mock('./ShotProductionWorkspace', () => ({
 
 vi.mock('@ant-design/icons', () => ({
   AppstoreOutlined: () => <span>appstore</span>,
+  ArrowDownOutlined: () => <span>down</span>,
+  ArrowUpOutlined: () => <span>up</span>,
   ArrowLeftOutlined: () => <span>back</span>,
   AudioOutlined: () => <span>audio</span>,
   BarsOutlined: () => <span>bars</span>,
@@ -156,12 +170,21 @@ vi.mock('antd', () => ({
   Empty: ({ description }: any) => <div>{description || '暂无数据'}</div>,
   Flex: ({ children }: any) => <div>{children}</div>,
   Image: ({ alt, src }: any) => <img alt={alt} src={src} />,
+  Modal: ({ children, onCancel, onOk, okText, open, title }: any) =>
+    open ? (
+      <div role="dialog" aria-label={title}>
+        {children}
+        <button type="button" onClick={onCancel}>取消</button>
+        <button type="button" onClick={onOk}>{okText || '确定'}</button>
+      </div>
+    ) : null,
   Popover: ({ children, content }: any) => (
     <div>
       {children}
       {content}
     </div>
   ),
+  Tooltip: ({ children }: any) => children,
   Input: {
     TextArea: ({ 'aria-label': ariaLabel, onBlur, onChange, value }: any) => (
       <textarea
@@ -186,11 +209,16 @@ vi.mock('antd', () => ({
     options = [],
     value,
     onChange,
+    showSearch: _showSearch,
+    allowClear: _allowClear,
     ...rest
   }: any) => (
     <select
       aria-label={ariaLabel}
-      onChange={(event) => onChange?.(event.target.value)}
+      onChange={(event) => {
+        const option = options.find((item: any) => String(item.value) === event.target.value);
+        onChange?.(option?.value ?? event.target.value);
+      }}
       value={value}
       {...rest}
     >
@@ -457,7 +485,7 @@ const setupWorkspaceResponse = (
     data: { characters: workspaceData.characters, scenes: workspaceData.scenes, props: workspaceData.props },
   });
   mocks.queryStoryboardWorkspace.mockResolvedValue({
-    data: { current: 1, pageSize: 20, total: workspaceData.storyboards.length, storyboards: workspaceData.storyboards },
+    data: { episodes: workspaceData.episodes, episodeNo: 1, current: 1, pageSize: 20, total: workspaceData.storyboards.length, storyboards: workspaceData.storyboards },
   });
   mocks.queryAiImageTasks.mockResolvedValue({
     data: overrides?.imageTasks ?? [
@@ -615,14 +643,337 @@ describe('ProductionWorkbench script page', () => {
     mocks.regenerateAiVideoTask.mockResolvedValue({
       data: { id: 9004, executionId: 7004 },
     });
+    mocks.createAiVoiceTask.mockResolvedValue({
+      data: { id: 9200, storyboardId: 101, status: 'PENDING', results: [] },
+    });
+    mocks.replaceStoryboardAssetReferences.mockImplementation(
+      async (_projectId: number, _storyboardId: number, references: any[]) => ({
+        data: references.map((reference, index) => ({
+          ...reference,
+          id: 5000 + index,
+          resolutionStatus: reference.variantId ? 'RESOLVED' : 'ASSET_PENDING',
+          sourceType: 'MANUAL',
+          lockedByUser: true,
+        })),
+      }),
+    );
+    mocks.createAssetImageBatch.mockResolvedValue({ data: { id: 8800 } });
     setupWorkspaceResponse();
+    mocks.queryAssetVisualWorkspace.mockResolvedValue({ data: { variants: [], episodeBindings: [] } });
+  });
+
+  it('loads current shot visuals and renders a legacy scene marker as a bound tag', async () => {
+    setupWorkspaceResponse({ storyboards: [{
+      id: 301, shotNo: 1, episodeNo: 1, scene: '停车场', characters: '', visualDescription: '镜头', durationSeconds: 5,
+      videoPrompt: '【场景】\n<停车场>参考停车场。\n【道具】\n<手机>对应手机。',
+      promptDocument: { version: 2, nodes: [{ type: 'text', text: '【场景】\n<停车场>参考停车场。\n【道具】\n<手机>对应手机。' }] },
+    }] });
+    mocks.queryAssetVisualWorkspace.mockResolvedValue({ data: {
+      variants: [{ id: 33, assetType: 'SCENE', assetId: 1, name: '停车场主形象', currentImageResultId: 77, currentImageUrl: '/parking.png', usable: true, primary: true }],
+      episodeBindings: [],
+    } });
+    render(<ProductionWorkbench />);
+
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledWith(1, 'SCENE', 1));
+    const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    await waitFor(() => expect(editor.querySelector('[data-source-id="33"]')).not.toBeNull());
+    expect(editor.querySelector('[data-unbound-reference="手机"]')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: '引用素材 停车场主形象' }).length).toBeGreaterThan(0);
+  });
+
+  it('adds reorders and selects independent variants for multiple character references', async () => {
+    const variants = (assetId: number) => ({
+      variants: [
+        { id: assetId * 10 + 1, assetId, name: `形态${assetId}-1`, primary: true, usable: true, currentImageUrl: `/${assetId}-1.png` },
+        { id: assetId * 10 + 2, assetId, name: `形态${assetId}-2`, primary: false, usable: true, currentImageUrl: `/${assetId}-2.png` },
+      ],
+      episodeBindings: [],
+      variantCount: 2,
+      generationSummary: {},
+    });
+    setupWorkspaceResponse({
+      characters: [
+        { id: 11, name: 'Serena', visual: variants(11) },
+        { id: 12, name: 'Rowan', visual: variants(12) },
+        { id: 13, name: 'Mirabel', visual: variants(13) },
+      ],
+      storyboards: [{
+        id: 301, shotNo: 1, episodeNo: 1, visualDescription: '三人同框', durationSeconds: 12,
+        characters: 'Serena、Rowan', scene: '', props: '', videoPrompt: '镜头',
+        assetReferences: [
+          { id: 1, assetType: 'CHARACTER', assetId: 11, assetName: 'Serena', variantId: 111, variantName: '形态11-1', referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'RESOLVED', sourceType: 'MANUAL', lockedByUser: true },
+          { id: 2, assetType: 'CHARACTER', assetId: 12, assetName: 'Rowan', variantId: 121, variantName: '形态12-1', referenceRole: 'VISIBLE', sortOrder: 1, resolutionStatus: 'RESOLVED', sourceType: 'MANUAL', lockedByUser: true },
+        ],
+      }],
+    });
+    render(<ProductionWorkbench />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '添加分镜1角色' }));
+    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenLastCalledWith(
+      1, 301, expect.arrayContaining([expect.objectContaining({ assetId: 13, variantId: 131 })]),
+    ));
+
+    fireEvent.change(screen.getByLabelText('分镜1角色3视觉形态'), {
+      target: { value: '132' },
+    });
+    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenLastCalledWith(
+      1, 301, expect.arrayContaining([expect.objectContaining({ assetId: 13, variantId: 132 })]),
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: '上移分镜1角色3' }));
+    await waitFor(() => {
+      const references = mocks.replaceStoryboardAssetReferences.mock.calls.at(-1)?.[2];
+      expect(references.filter((reference: any) => reference.assetType === 'CHARACTER')
+        .map((reference: any) => reference.assetId)).toEqual([11, 13, 12]);
+    });
+  });
+
+  it('saves multiple scene roles and props through the focused endpoint', async () => {
+    setupWorkspaceResponse({
+      scenes: [{ id: 21, name: '走廊' }, { id: 22, name: '卧室' }],
+      props: [{ id: 31, name: '手机' }, { id: 32, name: '钥匙' }],
+      storyboards: [{
+        id: 302, shotNo: 1, episodeNo: 1, visualDescription: '转场', durationSeconds: 12,
+        characters: '', scene: '走廊', props: '手机', videoPrompt: '镜头',
+        assetReferences: [
+          { id: 1, assetType: 'SCENE', assetId: 21, assetName: '走廊', referenceRole: 'MAIN', sortOrder: 0, resolutionStatus: 'ASSET_PENDING', sourceType: 'MANUAL', lockedByUser: true },
+          { id: 2, assetType: 'PROP', assetId: 31, assetName: '手机', referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'ASSET_PENDING', sourceType: 'MANUAL', lockedByUser: true },
+        ],
+      }],
+    });
+    render(<ProductionWorkbench />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '添加分镜1场景' }));
+    fireEvent.click(screen.getByRole('button', { name: '添加分镜1道具' }));
+    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenCalled());
+    expect(screen.getByLabelText('分镜1场景2作用')).toBeInTheDocument();
+    expect(screen.getByLabelText('分镜1道具2')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('分镜1场景2作用'), {
+      target: { value: 'TRANSITION' },
+    });
+    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenLastCalledWith(
+      1, 302, expect.arrayContaining([expect.objectContaining({ assetId: 22, referenceRole: 'TRANSITION' })]),
+    ));
+    fireEvent.click(screen.getByRole('button', { name: '移除分镜1道具1' }));
+    await waitFor(() => {
+      const references = mocks.replaceStoryboardAssetReferences.mock.calls.at(-1)?.[2];
+      expect(references.filter((reference: any) => reference.assetType === 'PROP')).toHaveLength(1);
+    });
+  });
+
+  it('rolls back only the affected card when focused reference saving fails', async () => {
+    setupWorkspaceResponse({ storyboards: [{
+      id: 303, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+      characters: 'Serena', scene: '', props: '', videoPrompt: '镜头',
+      assetReferences: [{ id: 1, assetType: 'CHARACTER', assetId: 1, assetName: '斌斌',
+        referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'ASSET_PENDING',
+        sourceType: 'MANUAL', lockedByUser: true }],
+    }] });
+    mocks.replaceStoryboardAssetReferences.mockRejectedValueOnce(new Error('save failed'));
+    render(<ProductionWorkbench />);
+    await screen.findByLabelText('分镜1角色1');
+    const pageCalls = mocks.queryStoryboardWorkspace.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: '移除分镜1角色1' }));
+
+    await waitFor(() => expect(screen.getByLabelText('分镜1角色1')).toBeInTheDocument());
+    expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(pageCalls);
+  });
+
+  it('confirms unresolved references and starts real asset image generation', async () => {
+    setupWorkspaceResponse({ storyboards: [{
+      id: 304, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+      characters: 'Serena', scene: '停车场', props: '', videoPrompt: '镜头',
+      assetReferences: [
+        { id: 1, assetType: 'CHARACTER', assetId: null, sourceName: 'Serena',
+          referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'UNRESOLVED',
+          sourceType: 'AI', lockedByUser: false },
+        { id: 2, assetType: 'SCENE', assetId: 1, assetName: '停车场',
+          referenceRole: 'MAIN', sortOrder: 0, resolutionStatus: 'ASSET_PENDING',
+          sourceType: 'AI', lockedByUser: false },
+      ],
+    }] });
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText('待确认')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('分镜1角色1'), { target: { value: '3' } });
+    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenLastCalledWith(
+      1, 304, expect.arrayContaining([expect.objectContaining({ assetType: 'CHARACTER', assetId: 3 })]),
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1场景1资产图' }));
+    await waitFor(() => expect(mocks.createAssetImageBatch).toHaveBeenCalledWith(1, {
+      assetType: 'SCENE', assetIds: [1], mode: 'ALL', aspectRatio: '16:9', imageCount: 1,
+    }));
+  });
+
+  it('shows model media limits and omitted provider references without removing bindings', async () => {
+    setupWorkspaceResponse({
+      storyboards: [{
+        id: 305, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+        characters: 'Serena', scene: '', props: '', videoPrompt: '镜头',
+        assetReferences: [{ id: 1, assetType: 'CHARACTER', assetId: 1, assetName: 'Serena',
+          referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'RESOLVED',
+          sourceType: 'MANUAL', lockedByUser: true }],
+      }],
+      videoTasks: [{
+        id: 9005, storyboardId: 305, status: 'SUCCEEDED', results: [],
+        referenceDiagnostics: {
+          limits: { image: 2, video: 1, audio: 1 },
+          kept: [],
+          omitted: [{ assetType: 'CHARACTER', assetId: 1, displayName: 'Serena', reason: 'MODEL_COUNT_LIMIT' }],
+        },
+      }],
+    });
+    mocks.queryProjectAiModels.mockResolvedValue({ data: {
+      textModels: [], imageModels: [], audioModels: [],
+      videoModels: [{ id: 10, name: 'Seedance', constraints: {
+        duration: { min: 4, max: 15 }, resolutions: ['720p'],
+        image: { maxCount: 2 }, video: { maxCount: 1 }, audio: { maxCount: 1 },
+      } }],
+    } });
+
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText('图片上限 2')).toBeInTheDocument();
+    expect(screen.getByText('视频上限 1')).toBeInTheDocument();
+    expect(screen.getByText('音频上限 1')).toBeInTheDocument();
+    expect(screen.getByText('已省略 Serena：MODEL_COUNT_LIMIT')).toBeInTheDocument();
+    expect(screen.getByLabelText('分镜1角色1')).toBeInTheDocument();
+  });
+
+  it('suggests one visible character and uses available asset thumbnails', async () => {
+    setupWorkspaceResponse({
+      characters: [
+        { id: 11, name: 'Serena', mainImageThumbnailUrl: '/serena.png' },
+        { id: 12, name: 'Rowan' },
+      ],
+      scenes: [{ id: 21, name: '封印深渊', mainImageThumbnailUrl: '/scene.png' }],
+      props: [{ id: 31, name: 'Serena的手机', mainImageThumbnailUrl: '/phone.png' }],
+      storyboards: [{
+        id: 301, shotNo: 1, episodeNo: 1, characters: '', scene: '封印深渊', props: 'Serena的手机',
+        visualDescription: 'Serena站在门外，双手握着手机。', durationSeconds: 5, videoPrompt: '镜头提示',
+      }],
+    });
+    render(<ProductionWorkbench />);
+
+    const role = await screen.findByRole('combobox', { name: '分镜1出镜角色' });
+    expect(role).toHaveValue('Serena');
+    expect(screen.getByAltText('Serena参考图')).toHaveAttribute('src', '/serena.png');
+    expect(screen.getAllByAltText('封印深渊参考图')[0]).toHaveAttribute('src', '/scene.png');
+    expect(screen.getByAltText('Serena的手机')).toHaveAttribute('src', '/phone.png');
+    expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '确认分镜1出镜角色' }));
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 301, expect.objectContaining({ characters: 'Serena' })));
+  });
+
+  it('does not guess among multiple characters and marks a missing scene image', async () => {
+    setupWorkspaceResponse({
+      characters: [{ id: 11, name: 'Serena' }, { id: 12, name: 'Rowan' }],
+      scenes: [{ id: 21, name: '走廊' }],
+      storyboards: [{
+        id: 301, shotNo: 1, episodeNo: 1, characters: '', scene: '走廊', visualDescription: 'Serena和Rowan站在走廊。', durationSeconds: 5, videoPrompt: '镜头提示',
+      }],
+    });
+    render(<ProductionWorkbench />);
+
+    await screen.findByRole('combobox', { name: '分镜1出镜角色' });
+    expect(screen.queryByText('按画面推断，待确认')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '确认分镜1出镜角色' })).not.toBeInTheDocument();
+    expect(screen.getByText('未生成场景参考图')).toBeInTheDocument();
+  });
+
+  it('waits for the latest prompt document to save before creating a video task', async () => {
+    let resolveSave: (value: unknown) => void = () => undefined;
+    mocks.updateStoryboard.mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<ProductionWorkbench />);
+    const generate = await screen.findByRole('button', { name: '生成分镜1视频' });
+    fireEvent.click(generate);
+
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({
+      promptDocument: expect.objectContaining({ nodes: expect.arrayContaining([expect.objectContaining({ sourceType: 'STORYBOARD_FIRST_FRAME', sourceId: 101 })]) }),
+    })));
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    resolveSave({ data: {} });
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalled());
+  });
+
+  it('does not overwrite a just-edited script while saving the video prompt', async () => {
+    let finishScriptSave: (value: unknown) => void = () => undefined;
+    mocks.updateStoryboard.mockImplementationOnce(() => new Promise((resolve) => { finishScriptSave = resolve; }));
+    render(<ProductionWorkbench />);
+    const script = await screen.findByRole('textbox', { name: '分镜1剧本原文' });
+    fireEvent.change(script, { target: { value: '▲停车场\n最新画面描述' } });
+    fireEvent.blur(script);
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+    finishScriptSave({ data: {} });
+
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledTimes(2));
+    expect(mocks.updateStoryboard).toHaveBeenLastCalledWith(1, 101, expect.objectContaining({
+      visualDescription: '最新画面描述',
+    }));
+  });
+
+  it('blocks paid video creation without a usable image reference', async () => {
+    setupWorkspaceResponse({ storyboards: [{
+      id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5,
+      videoPrompt: '没有图片', promptDocument: { version: 2, nodes: [{ type: 'text', text: '没有图片' }] },
+    }] });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(mocks.createAiVideoTask).not.toHaveBeenCalled());
+    expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+  });
+
+  it('uses a newly selected first-frame result without reloading the storyboard page', async () => {
+    setupWorkspaceResponse({
+      storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头提示', promptDocument: { version: 2, nodes: [{ type: 'text', text: '镜头提示' }] }, firstFrameUrl: null }],
+      imageTasks: [{ id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', results: [{ id: 811, selected: true, status: 'ACTIVE', imageUrl: '/first-frame.png' }] }],
+    });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
+
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 301, expect.objectContaining({
+      promptDocument: expect.objectContaining({ nodes: expect.arrayContaining([expect.objectContaining({ sourceType: 'STORYBOARD_FIRST_FRAME', sourceId: 301 })]) }),
+    })));
+    expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1, expect.objectContaining({ firstFrameUrl: '/first-frame.png' }));
+  });
+
+  it('selects a completed image result as the storyboard first frame', async () => {
+    setupWorkspaceResponse({
+      storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头提示', firstFrameUrl: null }],
+      imageTasks: [
+        { id: 802, targetType: 'STORYBOARD', targetId: 301, status: 'PENDING', createdAt: '2026-09-24', results: [] },
+        { id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', createdAt: '2026-09-23', results: [{ id: 811, selected: false, status: 'ACTIVE', imageUrl: '/first-frame.png' }] },
+      ],
+    });
+    mocks.selectAiImageResult.mockResolvedValue({ data: { id: 811, selected: true, status: 'ACTIVE', targetId: 301, imageUrl: '/first-frame.png' } });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '设为分镜1首帧' }));
+
+    await waitFor(() => expect(mocks.selectAiImageResult).toHaveBeenCalledWith(1, 811));
+    const editor = screen.getByRole('textbox', { name: '分镜1视频提示词' });
+    await waitFor(() => expect(editor.querySelector('[data-source-type="STORYBOARD_FIRST_FRAME"]')).not.toBeNull());
+  });
+
+  it('binds a generated video result as the current storyboard video', async () => {
+    setupWorkspaceResponse({ videoTasks: [{
+      id: 9001, storyboardId: 101, status: 'SUCCEEDED', results: [{ id: 9101, taskId: 9001, storyboardId: 101, videoUrl: '/video.mp4', isSelected: false }],
+    }] });
+    mocks.bindAiVideoResultToStoryboard.mockResolvedValue({ data: { id: 9101, storyboardId: 101, videoUrl: '/video.mp4', isSelected: true } });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '设为当前分镜视频' }));
+    await waitFor(() => expect(mocks.bindAiVideoResultToStoryboard).toHaveBeenCalledWith(1, 9101));
+    expect(await screen.findByText('当前分镜视频')).toBeInTheDocument();
   });
 
   it('renders the storyboard section from the screenshot and switches episodes', async () => {
     render(<ProductionWorkbench />);
 
     await waitFor(() => {
-      expect(mocks.queryScriptPageWorkspace).toHaveBeenCalledWith(1);
+      expect(mocks.queryScriptPageWorkspace).not.toHaveBeenCalled();
       expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledWith(1);
       expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1);
       expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
@@ -637,7 +988,7 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(screen.getByText('分镜2')).toBeInTheDocument();
     expect(screen.getAllByText('全能参考生视频').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('首尾帧生视频').length).toBeGreaterThan(0);
+    expect(screen.queryByText('首尾帧生视频')).not.toBeInTheDocument();
     expect(
       screen.getAllByDisplayValue(/停车场，灰色轿车的车主卸下货物/).length,
     ).toBeGreaterThan(0);
@@ -653,7 +1004,7 @@ describe('ProductionWorkbench script page', () => {
     expect(
       screen.getAllByRole('textbox', { name: /视频提示词/ })[0],
     ).toHaveTextContent(/停车场首帧提示词|写实都市|镜头1/);
-    expect(screen.getAllByText('当前分镜').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('当前预览').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: '2' }));
 
@@ -670,6 +1021,93 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(screen.getAllByDisplayValue(/别出声/).length).toBeGreaterThan(0);
     expect(screen.queryByText('分镜2')).not.toBeInTheDocument();
+  });
+
+  it('exposes only working controls and copies the persisted prompt', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<ProductionWorkbench />);
+
+    const copyPrompt = await screen.findByRole('button', { name: '复制分镜1提示词' });
+    expect(screen.queryByRole('button', { name: '分镜表' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '详情' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '更多角色操作' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '更多场景操作' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '更多道具操作' })).not.toBeInTheDocument();
+    expect(screen.queryByText('首尾帧生视频')).not.toBeInTheDocument();
+
+    fireEvent.click(copyPrompt);
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('停车场')));
+  });
+
+  it('creates a real voice task from the storyboard dialogue', async () => {
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '分镜1自定义音色' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '分镜1音色ID' }), {
+      target: { value: 'female-cn-01' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成语音' }));
+
+    await waitFor(() => expect(mocks.createAiVoiceTask).toHaveBeenCalledWith(1, {
+      storyboardId: 101,
+      voiceType: 'DIALOGUE',
+      speakerName: '李慧',
+      voiceId: 'female-cn-01',
+      textContent: expect.stringContaining('停车场'),
+      speed: 1,
+      pitch: 1,
+      volume: 1,
+    }));
+  });
+
+  it('persists clearing storyboard asset selections', async () => {
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '清空分镜1出镜角色' }));
+    fireEvent.click(screen.getByRole('button', { name: '清空分镜1场景' }));
+    fireEvent.click(screen.getByRole('button', { name: '清空分镜1场景道具' }));
+
+    await waitFor(() => {
+      expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({ characters: '' }));
+      expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({ scene: '' }));
+      expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({ props: '' }));
+    });
+  });
+
+  it('expands the selected episode formal summary details', async () => {
+    setupWorkspaceResponse({ episodes: [{
+      episodeId: 1001,
+      episodeNo: 1,
+      title: '致命捉迷藏',
+      formalSummary: {
+        id: 1,
+        schemaVersion: 1,
+        source: 'AI',
+        content: {
+          summary: '第一集概要',
+          highlights: ['后备箱成为关键线索'],
+          endingHook: '车内传来异响',
+        },
+      },
+    }] });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看本集详情' }));
+
+    expect(screen.getByText('后备箱成为关键线索')).toBeInTheDocument();
+    expect(screen.getByText('车内传来异响')).toBeInTheDocument();
+  });
+
+  it('switches the main preview from video to the selected reference image', async () => {
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看分镜1首帧' }));
+
+    expect(screen.getByRole('img', { name: '分镜1主预览' })).toHaveAttribute(
+      'src',
+      'https://example.com/shot-101-first.png',
+    );
   });
 
   it('uses the selected episode formal summary instead of demo or legacy content', async () => {
@@ -714,6 +1152,38 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByText('第2集 暴雨追杀')).toBeInTheDocument();
     expect(screen.queryByText('Serena在门外听见阴谋。')).not.toBeInTheDocument();
     expect(screen.queryByText(/夜幕压低小区楼影/)).not.toBeInTheDocument();
+  });
+
+  it('shows the first episode before optional media requests finish', async () => {
+    const pending = new Promise<never>(() => undefined);
+    mocks.queryAiImageTasks.mockReturnValue(pending);
+    mocks.queryAiVideoTasks.mockReturnValue(pending);
+    mocks.queryAiVoiceTasks.mockReturnValue(pending);
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText('第1集 致命捉迷藏')).toBeInTheDocument();
+    expect(screen.getByText('分镜1')).toBeInTheDocument();
+    expect(mocks.queryScriptPageWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('shows the selected episode while asset and model requests are still pending', async () => {
+    const pending = new Promise<never>(() => undefined);
+    mocks.queryAssetSettingsSummary.mockReturnValue(pending);
+    mocks.queryProjectAiModels.mockReturnValue(pending);
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText('第1集 致命捉迷藏')).toBeInTheDocument();
+    expect(screen.getByText('分镜1')).toBeInTheDocument();
+  });
+
+  it('keeps episode navigation and the workbench in separate viewport scroll areas', async () => {
+    render(<ProductionWorkbench />);
+    const episodeButton = await screen.findByRole('button', { name: '1' });
+    const navigation = episodeButton.closest('aside');
+    const workbench = screen.getByText('分镜表').closest('[data-testid="storyboard-workbench"]');
+
+    expect(navigation).toHaveStyle({ overflowY: 'auto' });
+    expect(workbench).toHaveStyle({ overflowY: 'auto' });
   });
   it('shows an honest empty summary and episode number when episode metadata is missing', async () => {
     setupWorkspaceResponse({
@@ -765,7 +1235,7 @@ describe('ProductionWorkbench script page', () => {
         current: 2,
         pageSize: 20,
       });
-      expect(mocks.queryScriptPageWorkspace).toHaveBeenCalledTimes(1);
+      expect(mocks.queryScriptPageWorkspace).not.toHaveBeenCalled();
       expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(1);
     });
   });
@@ -840,7 +1310,7 @@ describe('ProductionWorkbench script page', () => {
       expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1, {
         storyboardId: 101,
         modelId: 10,
-        prompt: '新的分镜视频提示词',
+        prompt: expect.stringContaining('新的分镜视频提示词'),
         firstFrameUrl: 'https://example.com/shot-101-first.png',
         durationSeconds: 5,
         aspectRatio: '16:9',
@@ -871,7 +1341,7 @@ describe('ProductionWorkbench script page', () => {
         7100,
         expect.any(Function),
       );
-      expect(mocks.queryScriptPageWorkspace.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(mocks.queryStoryboardWorkspace.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -1174,7 +1644,7 @@ describe('ProductionWorkbench script page', () => {
         videoPrompt: '画风：写实都市。镜头1 1s 远景摇镜停车场内灰色轿车。',
       });
       expect(mocks.queryStoryboardWorkspace).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 1, pageSize: 20 });
-      expect(mocks.queryScriptPageWorkspace).toHaveBeenCalledTimes(1);
+      expect(mocks.queryScriptPageWorkspace).not.toHaveBeenCalled();
       expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(1);
     });
   });
@@ -1185,6 +1655,7 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('分镜1出镜角色')).toBeInTheDocument();
     });
+    mocks.queryStoryboardWorkspace.mockClear();
 
     fireEvent.change(screen.getByLabelText('分镜1出镜角色'), {
       target: { value: '斌斌' },
@@ -1221,6 +1692,7 @@ describe('ProductionWorkbench script page', () => {
         101,
         expect.objectContaining({ props: '棒棒糖' }),
       );
+      expect(mocks.queryStoryboardWorkspace).not.toHaveBeenCalled();
     });
   });
 
@@ -1350,6 +1822,7 @@ describe('ProductionWorkbench script page', () => {
             name: '李慧主形态',
             sourceType: 'USER',
             generationStatus: 'SUCCEEDED',
+            currentImageResultId: 77,
             currentImageUrl: '/lihui.png',
             primary: true,
             usable: true,

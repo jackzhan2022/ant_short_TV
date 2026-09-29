@@ -20,7 +20,11 @@ class StoryboardSkillContractTest {
             .doesNotContain("每个内部镜头都提交 `soundSegmentIds`")
             .doesNotContain("sourceStartMarker", "sourceEndMarker", "完成全部读取后");
         assertThat(skills.detail("short-drama-storyboard-material-reference").content())
-            .contains("实际使用", "assetKey", "当前剧集绑定", "项目主形态", "精确匹配", "ASSET_PENDING");
+            .contains("实际使用", "assetKey", "variantKey", "role", "sourceName",
+                "当前剧集绑定", "项目主形态", "精确匹配", "UNRESOLVED", "ASSET_PENDING")
+            .contains("不得按显示名称反查")
+            .contains("服务端选择")
+            .doesNotContain("未匹配名称保留为普通文本");
         assertThat(skills.detail("short-drama-seedance-video-prompt").content())
             .contains("镜头切换", "镜头拉近", "镜头跟随", "固定镜头", "推荐示例", "不是封闭枚举");
     }

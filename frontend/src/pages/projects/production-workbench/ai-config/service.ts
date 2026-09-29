@@ -8,6 +8,9 @@ export type ProjectModelOption = {
   constraints?: {
     duration?: { min: number; max: number; intelligent?: boolean };
     resolutions?: string[];
+    image?: { minCount?: number; maxCount?: number };
+    video?: { maxCount?: number; maxTotalDurationSeconds?: number };
+    audio?: { maxCount?: number; maxTotalDurationSeconds?: number };
   } | null;
 };
 

@@ -15,6 +15,9 @@ import java.util.Map;
 
 /** Canonicalizes bookkeeping fields that must not consume a model correction round. */
 final class StoryboardNormalizer {
+    private static final BigDecimal MIN_SHOT_DURATION = new BigDecimal("1.5");
+    private static final BigDecimal MAX_SHOT_DURATION = new BigDecimal("4");
+    private static final BigDecimal DEFAULT_SHOT_DURATION = new BigDecimal("3");
     private final ObjectMapper json;
 
     StoryboardNormalizer(ObjectMapper json) {
@@ -38,10 +41,19 @@ final class StoryboardNormalizer {
         int normalized = 0;
         int requiredCursor = 0;
         int derivedSounds = 0;
+        List<StoryboardValidationResult.Finding> findings = new ArrayList<>();
         for (int boardIndex = 0; boardIndex < boards.size(); boardIndex++) {
             ObjectNode board = (ObjectNode) boards.get(boardIndex);
             int boardNo = boardIndex + 1;
-            normalized += putIfChanged(board, "storyboardNo", boardNo);
+            String boardPath = "$.storyboards[" + boardIndex + "]";
+            normalized += putIfChanged(board, "storyboardNo", boardNo, boardPath + ".storyboardNo",
+                "STORYBOARD_NUMBER_NORMALIZED", findings);
+            if (!board.path("shotType").isTextual() || board.path("shotType").asText().isBlank()) {
+                board.put("shotType", "MULTI_SHOT");
+                findings.add(StoryboardValidationResult.repair("SHOT_TYPE_DEFAULTED",
+                    boardPath + ".shotType", "缺少镜头类型，已使用默认值。", "MULTI_SHOT"));
+                normalized++;
+            }
 
             IndexedSegment start = requiredCursor < required.size() ? required.get(requiredCursor) : null;
             if (start == null) {
@@ -58,8 +70,10 @@ final class StoryboardNormalizer {
                 IndexedSegment lastRequired = required.get(required.size() - 1);
                 if (end.ordinal < lastRequired.ordinal) end = lastRequired;
             }
-            normalized += putIfChanged(board, "sourceFrom", start.value.id());
-            normalized += putIfChanged(board, "sourceTo", end.value.id());
+            normalized += putIfChanged(board, "sourceFrom", start.value.id(), boardPath + ".sourceFrom",
+                "SOURCE_RANGE_DERIVED", findings);
+            normalized += putIfChanged(board, "sourceTo", end.value.id(), boardPath + ".sourceTo",
+                "SOURCE_RANGE_EXTENDED", findings);
 
             int nextRequired = requiredCursor;
             while (nextRequired < required.size() && required.get(nextRequired).ordinal <= end.ordinal) {
@@ -72,12 +86,37 @@ final class StoryboardNormalizer {
             requiredCursor = nextRequired;
 
             ArrayNode shots = (ArrayNode) board.path("shots");
-            List<Integer> anchors = anchors(shots, byId, boardNo, start.ordinal, end.ordinal);
+            for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
+                ObjectNode shot = (ObjectNode) shots.get(shotIndex);
+                String durationPath = boardPath + ".shots[" + shotIndex + "].durationSeconds";
+                BigDecimal duration = shot.path("durationSeconds").isNumber()
+                    ? shot.path("durationSeconds").decimalValue() : DEFAULT_SHOT_DURATION;
+                String code = shot.path("durationSeconds").isNumber()
+                    ? "SHOT_DURATION_CLAMPED" : "SHOT_DURATION_DEFAULTED";
+                BigDecimal bounded = duration.max(MIN_SHOT_DURATION).min(MAX_SHOT_DURATION);
+                if (!shot.path("durationSeconds").isNumber()
+                    || shot.path("durationSeconds").decimalValue().compareTo(bounded) != 0) {
+                    shot.put("durationSeconds", bounded);
+                    findings.add(StoryboardValidationResult.repair(code, durationPath,
+                        "镜头时长已规范化到允许范围。", bounded));
+                    normalized++;
+                }
+            }
+            List<Integer> anchors = anchors(shots, byId, boardNo, start.ordinal, end.ordinal,
+                boardPath, findings);
             List<List<String>> soundIds = new ArrayList<>();
             for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
                 ObjectNode shot = (ObjectNode) shots.get(shotIndex);
-                normalized += putIfChanged(shot, "shotNo", shotIndex + 1);
-                normalized += putIfChanged(shot, "sourceAnchor", segments.get(anchors.get(shotIndex)).id());
+                String shotPath = boardPath + ".shots[" + shotIndex + "]";
+                normalized += putIfChanged(shot, "shotNo", shotIndex + 1, shotPath + ".shotNo",
+                    "SHOT_NUMBER_NORMALIZED", findings);
+                normalized += putIfChanged(shot, "sourceAnchor", segments.get(anchors.get(shotIndex)).id(),
+                    shotPath + ".sourceAnchor", "SOURCE_ANCHOR_DERIVED", findings);
+                if (shot.has("dialogue") || shot.has("narration") || shot.has("innerOs")) {
+                    findings.add(StoryboardValidationResult.repair("UTTERANCE_REPLACED", shotPath,
+                        "模型提交的台词字段已移除，将从可信原文注入。", null));
+                    normalized++;
+                }
                 shot.remove(List.of("dialogue", "narration", "innerOs"));
                 soundIds.add(new ArrayList<>());
             }
@@ -103,7 +142,8 @@ final class StoryboardNormalizer {
             throw failure("SOURCE_SEGMENT_GAP", boards.size() + 1,
                 required.get(requiredCursor).value.id(), "分镜未完整覆盖当前剧集正文。");
         }
-        return new Result(boards, normalized, derivedSounds);
+        return new Result(boards, normalized, derivedSounds,
+            StoryboardValidationResult.immutable(findings));
     }
 
     private List<Integer> anchors(
@@ -111,23 +151,39 @@ final class StoryboardNormalizer {
         Map<String, IndexedSegment> byId,
         int boardNo,
         int from,
-        int to
+        int to,
+        String boardPath,
+        List<StoryboardValidationResult.Finding> findings
     ) {
         List<Integer> values = new ArrayList<>();
         int previousExplicit = from;
-        for (JsonNode shot : shots) {
+        for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
+            JsonNode shot = shots.get(shotIndex);
             String id = text(shot, "sourceAnchor");
             if (id.isBlank()) {
                 values.add(null);
                 continue;
             }
-            IndexedSegment anchor = require(byId, id, boardNo);
-            if (anchor.ordinal < from || anchor.ordinal > to || anchor.ordinal < previousExplicit) {
-                throw failure("SOURCE_ANCHOR_REVERSED", boardNo, id,
-                    "镜头来源锚点必须位于当前分镜范围内并按顺序非递减。");
+            IndexedSegment anchor = byId.get(id);
+            String path = boardPath + ".shots[" + shotIndex + "].sourceAnchor";
+            if (anchor == null) {
+                values.add(null);
+                findings.add(StoryboardValidationResult.repair("SOURCE_ANCHOR_UNKNOWN", path,
+                    "未知来源锚点已交由服务端推导。", null));
+                continue;
             }
-            previousExplicit = anchor.ordinal;
-            values.add(anchor.ordinal);
+            int bounded = Math.max(from, Math.min(anchor.ordinal, to));
+            if (bounded != anchor.ordinal) {
+                findings.add(StoryboardValidationResult.repair("SOURCE_ANCHOR_CLAMPED", path,
+                    "来源锚点已限制到当前分镜范围。", segmentId(byId, bounded)));
+            }
+            if (bounded < previousExplicit) {
+                bounded = previousExplicit;
+                findings.add(StoryboardValidationResult.repair("SOURCE_ANCHOR_REORDERED", path,
+                    "来源锚点已调整为非递减顺序。", segmentId(byId, bounded)));
+            }
+            previousExplicit = bounded;
+            values.add(bounded);
         }
         BigDecimal total = BigDecimal.ZERO;
         for (JsonNode shot : shots) total = total.add(shot.path("durationSeconds").decimalValue());
@@ -155,6 +211,11 @@ final class StoryboardNormalizer {
         return values;
     }
 
+    private String segmentId(Map<String, IndexedSegment> byId, int ordinal) {
+        return byId.values().stream().filter(value -> value.ordinal == ordinal)
+            .findFirst().orElseThrow().value.id();
+    }
+
     private IndexedSegment require(Map<String, IndexedSegment> byId, String id, int boardNo) {
         IndexedSegment segment = byId.get(id);
         if (segment == null) {
@@ -170,9 +231,39 @@ final class StoryboardNormalizer {
         return 1;
     }
 
+    private int putIfChanged(
+        ObjectNode node,
+        String field,
+        int value,
+        String path,
+        String code,
+        List<StoryboardValidationResult.Finding> findings
+    ) {
+        if (node.path(field).isInt() && node.path(field).asInt() == value) return 0;
+        node.put(field, value);
+        findings.add(StoryboardValidationResult.repair(code, path,
+            "字段已由服务端规范化。", value));
+        return 1;
+    }
+
     private int putIfChanged(ObjectNode node, String field, String value) {
         if (node.path(field).isTextual() && value.equals(node.path(field).asText())) return 0;
         node.put(field, value);
+        return 1;
+    }
+
+    private int putIfChanged(
+        ObjectNode node,
+        String field,
+        String value,
+        String path,
+        String code,
+        List<StoryboardValidationResult.Finding> findings
+    ) {
+        if (node.path(field).isTextual() && value.equals(node.path(field).asText())) return 0;
+        node.put(field, value);
+        findings.add(StoryboardValidationResult.repair(code, path,
+            "字段已由服务端规范化。", value));
         return 1;
     }
 
@@ -200,11 +291,17 @@ final class StoryboardNormalizer {
     ) {
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("validationCode", code);
+        details.put("severity", StoryboardValidationResult.classify(code).name());
         if (storyboardNo != null) details.put("storyboardNo", storyboardNo);
         if (actualSegmentId != null) details.put("actualSegmentId", actualSegmentId);
         return new WorkflowToolValidationException(message, details);
     }
 
-    record Result(ArrayNode storyboards, int normalizedFieldCount, int derivedSoundCount) {}
+    record Result(
+        ArrayNode storyboards,
+        int normalizedFieldCount,
+        int derivedSoundCount,
+        List<StoryboardValidationResult.Finding> findings
+    ) {}
     private record IndexedSegment(int ordinal, EpisodeSourceSegment value) {}
 }

@@ -51,12 +51,32 @@ class AssetCatalogServiceTest {
             .hasMessageContaining("未授权");
     }
     @Test void candidatesDoNotExpandTheWholeScript() {
-        when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(props());
+        when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(invocation ->
+            invocation.<String>getArgument(0).contains("asset_visual_variant") ? List.of() : props());
         var catalog=service.candidates(context(),"双环徽章放在桌上");
         assertThat(catalog.path("props").size()).isEqualTo(1);
         assertThat(catalog.path("props").get(0).path("assetKey").asText()).isEqualTo("p_215");
         assertThat(catalog.path("pages").path("props").path("hasMore").asBoolean()).isTrue();
         assertThat(catalog.path("characters").isEmpty()).isTrue();
+    }
+
+    @Test void candidatesIncludeStableVariantKeysAndReadiness() {
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("asset_visual_variant")) return List.of(Map.of(
+                "id", 301L, "asset_id", 215L, "name", "发光形态", "is_primary", true,
+                "generation_status", "COMPLETED", "current_image_url", "/prop.png",
+                "episode_bound", 1));
+            return props();
+        });
+
+        var catalog = service.candidates(context(), "双环徽章放在桌上");
+        var variant = catalog.path("props").get(0).path("variants").get(0);
+
+        assertThat(variant.path("variantKey").asText()).isEqualTo("v_301");
+        assertThat(variant.path("primary").asBoolean()).isTrue();
+        assertThat(variant.path("episodePreferred").asBoolean()).isTrue();
+        assertThat(variant.path("imageReady").asBoolean()).isTrue();
     }
     @Test void oversizedSingleDetailAndTooManyKeysFailExplicitly() {
         var content=json.createObjectNode().put("description","长".repeat(40_000));

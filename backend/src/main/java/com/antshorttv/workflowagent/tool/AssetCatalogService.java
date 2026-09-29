@@ -126,8 +126,12 @@ public class AssetCatalogService {
             var relevant=rows.stream().filter(row->bound.contains(((Number)row.get("id")).longValue())
                 || mentioned(row,source)).sorted(java.util.Comparator.comparingInt(
                     row->bound.contains(((Number)row.get("id")).longValue())?0:1)).toList();
+            Map<Long, ArrayNode> variants = candidateVariants(context, type,
+                relevant.stream().map(row -> ((Number) row.get("id")).longValue()).toList());
             for(var row:relevant) {
                 var item=summary(type,row);
+                item.set("variants", variants.getOrDefault(
+                    ((Number) row.get("id")).longValue(), json.createArrayNode()));
                 if(values.size()>=50 || bytes(result)+bytes(item)>BYTE_LIMIT-2048) break;
                 values.add(item);
             }
@@ -138,6 +142,51 @@ public class AssetCatalogService {
             page.put("assetType",type);
         }
         return result;
+    }
+
+    private Map<Long, ArrayNode> candidateVariants(
+        ToolExecutionContext context, String type, List<Long> assetIds
+    ) {
+        if (assetIds.isEmpty()) return Map.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(assetIds.size(), "?"));
+        List<Object> arguments = new java.util.ArrayList<>(List.of(
+            context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(),
+            context.tenantId(), context.projectId(), type));
+        arguments.addAll(assetIds);
+        List<Map<String,Object>> rows = jdbc.queryForList("""
+            select variant.id,variant.asset_id,variant.name,variant.is_primary,
+                   variant.generation_status,variant.current_image_result_id,variant.current_image_url,
+                   case when exists (select 1 from asset_visual_variant_episode binding
+                     where binding.tenant_id=? and binding.project_id=? and binding.script_id=?
+                       and binding.episode_id=? and binding.variant_id=variant.id
+                       and binding.is_preferred=true and binding.binding_status='ACTIVE'
+                       and binding.retired_at is null) then 1 else 0 end episode_bound
+              from asset_visual_variant variant
+             where variant.tenant_id=? and variant.project_id=? and variant.asset_type=?
+               and variant.asset_id in (%s) and variant.deleted_at is null
+             order by variant.asset_id,variant.is_primary desc,variant.id
+            """.formatted(placeholders), arguments.toArray());
+        Map<Long, ArrayNode> result = new java.util.LinkedHashMap<>();
+        for (Map<String,Object> row : rows) {
+            Long assetId = ((Number) row.get("asset_id")).longValue();
+            ObjectNode variant = json.createObjectNode();
+            variant.put("variantKey", "v_" + row.get("id"));
+            variant.put("name", String.valueOf(row.get("name")));
+            variant.put("primary", truthy(row.get("is_primary")));
+            variant.put("episodePreferred", truthy(row.get("episode_bound")));
+            variant.put("generationStatus", String.valueOf(row.get("generation_status")));
+            String imageUrl = row.get("current_image_url") == null
+                ? null : row.get("current_image_url").toString();
+            variant.put("imageReady", "COMPLETED".equals(row.get("generation_status"))
+                && (row.get("current_image_result_id") != null
+                    || imageUrl != null && !imageUrl.isBlank()));
+            result.computeIfAbsent(assetId, ignored -> json.createArrayNode()).add(variant);
+        }
+        return result;
+    }
+
+    private boolean truthy(Object value) {
+        return Boolean.TRUE.equals(value) || value instanceof Number number && number.intValue() != 0;
     }
 
     private List<Map<String,Object>> identities(ToolExecutionContext c,String type) {

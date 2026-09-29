@@ -1047,7 +1047,10 @@ class WorkflowAgentRunnerTest {
             LocalDateTime.now(), LocalDateTime.now(), List.of(), codes));
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(
-                new AiToolCall("bad", "save_episode_storyboards", "{}"),
+                new AiToolCall("bad", "save_episode_storyboards", """
+                    {"storyboards":[{"storyboardNo":1,"action":"valid"},
+                                      {"storyboardNo":2,"action":"invalid"}]}
+                    """),
                 new AiToolCall("skipped", "save_episode_storyboards", "{}")), 960L))
             .thenReturn(result(null, List.of(new AiToolCall("corrected", "save_episode_storyboards", "{}")), 961L));
 
@@ -1058,7 +1061,7 @@ class WorkflowAgentRunnerTest {
         assertThat(saves).hasValue(2);
         var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
         verify(runs).start(start.capture());
-        assertThat(start.getValue().maxSteps()).isEqualTo(9);
+        assertThat(start.getValue().maxSteps()).isEqualTo(10);
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
         verify(invocation, org.mockito.Mockito.times(2)).invokeText(requests.capture());
         assertThat(requests.getAllValues().get(1).textRequest().messages().stream()
@@ -1067,11 +1070,13 @@ class WorkflowAgentRunnerTest {
             .containsExactly("bad", "skipped");
         assertThat(requests.getAllValues().get(1).textRequest().messages())
             .extracting(AiChatMessage::content)
-            .anySatisfy(content -> assertThat(content).contains("SOURCE_SEGMENT_GAP", "S0002"));
+            .anySatisfy(content -> assertThat(content)
+                .contains("SOURCE_SEGMENT_GAP", "S0002", "invalidStoryboards", "\"storyboardNo\":2")
+                .doesNotContain("\"storyboardNo\":1,\"action\":\"valid\""));
     }
 
     @Test
-    void storyboardValidationStopsAfterOneCorrection() throws Exception {
+    void repeatedRepairableStoryboardValidationFallsBackAndSucceeds() throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",
             "save_episode_storyboards");
@@ -1085,11 +1090,12 @@ class WorkflowAgentRunnerTest {
             .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_storyboards", "{}")), 970L))
             .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_storyboards", "{}")), 971L));
 
-        assertThatThrownBy(() -> runner.runFormal(new WorkflowAgentRunInput(
+        WorkflowAgentRunResult result = runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
-            null, null, 9L, 700L, 701L, 1, 8L)))
-            .isInstanceOf(WorkflowToolValidationException.class);
-        assertThat(saves).hasValue(2);
+            null, null, 9L, 700L, 701L, 1, 8L));
+
+        assertThat(result.output()).contains("\"saved\":true", "\"fallbackItemCount\":1");
+        assertThat(saves).hasValue(3);
         verify(invocation, org.mockito.Mockito.times(2)).invokeText(any());
     }
 
@@ -1587,9 +1593,13 @@ class WorkflowAgentRunnerTest {
                     com.fasterxml.jackson.databind.JsonNode arguments
                 ) {
                     int attempt = saves.incrementAndGet();
+                    if (arguments.path("_serverFallback").asBoolean()) {
+                        return json.createObjectNode().put("saved", true).put("fallbackItemCount", 1);
+                    }
                     if (attempt == 1 || alwaysFail) {
                         throw new WorkflowToolValidationException("segment gap", Map.of(
                             "validationCode", "SOURCE_SEGMENT_GAP",
+                            "severity", "REPAIRABLE",
                             "storyboardNo", 2,
                             "expectedSegmentId", "S0002",
                             "actualSegmentId", "S0003"));

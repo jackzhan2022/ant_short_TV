@@ -65,8 +65,12 @@ record UpdateScriptElementRequest(
 }
 
 record StoryboardBreakdownRequest(
-    @NotNull Long episodeId
+    @NotNull Long episodeId,
+    Boolean overwriteMaterials
 ) {
+    StoryboardBreakdownRequest(Long episodeId) {
+        this(episodeId, false);
+    }
 }
 
 record ScopedAssetReextractionRequest(

@@ -25,13 +25,16 @@ public class ScriptWorkflowController {
 
     private final ScriptWorkflowService scriptWorkflowService;
     private final StoryboardBatchService storyboardBatchService;
+    private final StoryboardAssetReferenceService storyboardAssetReferenceService;
 
     public ScriptWorkflowController(
         ScriptWorkflowService scriptWorkflowService,
-        StoryboardBatchService storyboardBatchService
+        StoryboardBatchService storyboardBatchService,
+        StoryboardAssetReferenceService storyboardAssetReferenceService
     ) {
         this.scriptWorkflowService = scriptWorkflowService;
         this.storyboardBatchService = storyboardBatchService;
+        this.storyboardAssetReferenceService = storyboardAssetReferenceService;
     }
 
 
@@ -416,6 +419,29 @@ public class ScriptWorkflowController {
         HttpServletRequest request
     ) {
         return ApiResponse.success(scriptWorkflowService.updateStoryboard(tenantId(request), projectId, storyboardId, body, request));
+    }
+
+    @GetMapping("/storyboards/{storyboardId}/asset-references")
+    @RequireProjectPermission("STORYBOARD:VIEW")
+    public ApiResponse<java.util.List<StoryboardAssetReferenceResponse>> storyboardAssetReferences(
+        @PathVariable Long projectId,
+        @PathVariable Long storyboardId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(storyboardAssetReferenceService.list(
+            tenantId(request), projectId, storyboardId));
+    }
+
+    @PutMapping("/storyboards/{storyboardId}/asset-references")
+    @RequireProjectPermission("STORYBOARD:EDIT")
+    public ApiResponse<java.util.List<StoryboardAssetReferenceResponse>> replaceStoryboardAssetReferences(
+        @PathVariable Long projectId,
+        @PathVariable Long storyboardId,
+        @Valid @RequestBody ReplaceStoryboardAssetReferencesRequest body,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(storyboardAssetReferenceService.replace(
+            tenantId(request), projectId, storyboardId, body));
     }
 
     @PutMapping("/storyboards/{storyboardId}/move")

@@ -36,11 +36,14 @@ import com.antshorttv.project.ProjectOperationLogMapper;
 import com.antshorttv.script.StoryboardEntity;
 import com.antshorttv.script.StoryboardMapper;
 import com.antshorttv.script.StoryboardPromptCompiler;
+import com.antshorttv.script.StoryboardAssetReferenceEntity;
+import com.antshorttv.script.StoryboardAssetReferenceRepository;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.storage.ObjectStorageService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
@@ -52,6 +55,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,7 +86,9 @@ public class AiVideoTaskService {
     private final AiVideoProviderAdapter providerAdapter;
     private final SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter;
     private final StoryboardPromptCompiler promptCompiler;
+    private final StoryboardAssetReferenceRepository storyboardReferenceRepository;
     private final VideoTaskReferenceResolver referenceResolver;
+    private final VideoReferenceSubsetSelector referenceSubsetSelector;
     private final SeedanceVideoRequestValidator seedanceValidator;
     private final com.antshorttv.ai.AiInvocationService invocationService;
     private final ProjectAiConfigService projectAiConfigService;
@@ -117,7 +123,9 @@ public class AiVideoTaskService {
         AiVideoProviderAdapter providerAdapter,
         SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter,
         StoryboardPromptCompiler promptCompiler,
+        StoryboardAssetReferenceRepository storyboardReferenceRepository,
         VideoTaskReferenceResolver referenceResolver,
+        VideoReferenceSubsetSelector referenceSubsetSelector,
         SeedanceVideoRequestValidator seedanceValidator,
         com.antshorttv.ai.AiInvocationService invocationService,
         ProjectAiConfigService projectAiConfigService,
@@ -151,7 +159,9 @@ public class AiVideoTaskService {
         this.providerAdapter = providerAdapter;
         this.seedanceArkProviderAdapter = seedanceArkProviderAdapter;
         this.promptCompiler = promptCompiler;
+        this.storyboardReferenceRepository = storyboardReferenceRepository;
         this.referenceResolver = referenceResolver;
+        this.referenceSubsetSelector = referenceSubsetSelector;
         this.seedanceValidator = seedanceValidator;
         this.invocationService = invocationService;
         this.projectAiConfigService = projectAiConfigService;
@@ -514,15 +524,38 @@ public class AiVideoTaskService {
         if (storyboard.promptDocumentJson == null || storyboard.promptDocumentJson.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先为分镜重新绑定 version 2 参考素材。");
         }
+        List<StoryboardAssetReferenceEntity> formalRows = storyboardReferenceRepository.listActive(
+            storyboard.tenantId, storyboard.projectId, storyboard.id);
+        List<Map<String, Object>> omittedReferences = new ArrayList<>();
+        List<StoryboardPromptCompiler.BindingReference> formalBindings = new ArrayList<>();
+        for (StoryboardAssetReferenceEntity row : formalRows) {
+            if ("RESOLVED".equals(row.resolutionStatus) && row.variantId != null) {
+                formalBindings.add(new StoryboardPromptCompiler.BindingReference(
+                    row.assetType, row.assetId, row.variantId, row.sourceName,
+                    row.referenceRole, row.sortOrder));
+            } else {
+                Map<String, Object> omitted = new LinkedHashMap<>();
+                omitted.put("assetType", row.assetType);
+                omitted.put("assetId", row.assetId);
+                omitted.put("variantId", row.variantId);
+                omitted.put("displayName", row.sourceName);
+                omitted.put("referenceRole", row.referenceRole);
+                omitted.put("sortOrder", row.sortOrder);
+                omitted.put("reason", "UNRESOLVED".equals(row.resolutionStatus)
+                    ? "UNRESOLVED_BINDING" : "ASSET_IMAGE_PENDING");
+                omittedReferences.add(omitted);
+            }
+        }
         StoryboardPromptCompiler.CompiledPrompt compiled;
         try {
-            compiled = promptCompiler.compile(objectMapper.readTree(storyboard.promptDocumentJson));
+            compiled = promptCompiler.compile(
+                objectMapper.readTree(storyboard.promptDocumentJson), formalBindings);
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜提示词文档不正确。");
         }
-        List<VideoTaskReferenceResolver.ResolvedReference> references = referenceResolver.resolve(
+        List<VideoTaskReferenceResolver.ResolvedReference> resolvedReferences = referenceResolver.resolve(
             storyboard.tenantId, storyboard.projectId, compiled.references());
         int duration = request.durationSeconds() == null
             ? (storyboard.durationSeconds == null ? 5 : storyboard.durationSeconds)
@@ -538,9 +571,17 @@ public class AiVideoTaskService {
         boolean watermark = request.watermark() == null
             ? Boolean.TRUE.equals(project.videoWatermark)
             : request.watermark();
+        JsonNode constraints = seedanceValidator.constraints(route.model());
+        VideoReferenceSubsetSelector.Selection selection = referenceSubsetSelector.select(
+            resolvedReferences, constraints);
+        List<VideoTaskReferenceResolver.ResolvedReference> references = selection.kept();
+        omittedReferences.addAll(selection.omitted().stream()
+            .map(item -> objectMapper.convertValue(item,
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}))
+            .toList());
         seedanceValidator.validate(route.model(), duration, resolution, references);
         int billingDuration = duration == -1
-            ? seedanceValidator.constraints(route.model()).path("duration").path("max").asInt()
+            ? constraints.path("duration").path("max").asInt()
             : duration;
         String firstFrameUrl = references.stream()
             .filter(item -> "IMAGE".equals(item.reference().mediaType()))
@@ -559,7 +600,12 @@ public class AiVideoTaskService {
         snapshot.put("resolution", resolution);
         snapshot.put("generateAudio", generateAudio);
         snapshot.put("watermark", watermark);
+        snapshot.put("referenceLimits", Map.of(
+            "image", constraints.path("image").path("maxCount").asInt(0),
+            "video", constraints.path("video").path("maxCount").asInt(0),
+            "audio", constraints.path("audio").path("maxCount").asInt(0)));
         snapshot.put("references", references);
+        snapshot.put("omittedReferences", omittedReferences);
         String snapshotJson;
         try {
             snapshotJson = objectMapper.writeValueAsString(snapshot);

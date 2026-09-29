@@ -3,6 +3,8 @@ package com.antshorttv.video;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 record AiVideoTaskResponse(
     Long id,
@@ -33,6 +35,7 @@ record AiVideoTaskResponse(
     LocalDateTime startedAt,
     LocalDateTime completedAt,
     LocalDateTime createdAt,
+    JsonNode referenceDiagnostics,
     List<AiVideoResultResponse> results
 ) {
     static AiVideoTaskResponse from(AiVideoTaskEntity entity, List<AiVideoResultEntity> results) {
@@ -65,8 +68,24 @@ record AiVideoTaskResponse(
             entity.startedAt,
             entity.completedAt,
             entity.createdAt,
+            referenceDiagnostics(entity.requestSnapshotJson),
             results.stream().map(AiVideoResultResponse::from).toList()
         );
+    }
+
+    private static JsonNode referenceDiagnostics(String snapshotJson) {
+        ObjectMapper mapper = new ObjectMapper();
+        var result = mapper.createObjectNode();
+        if (snapshotJson == null || snapshotJson.isBlank()) return result;
+        try {
+            JsonNode snapshot = mapper.readTree(snapshotJson);
+            result.set("limits", snapshot.path("referenceLimits").deepCopy());
+            result.set("kept", snapshot.path("references").deepCopy());
+            result.set("omitted", snapshot.path("omittedReferences").deepCopy());
+        } catch (Exception ignored) {
+            // Older tasks without a valid snapshot expose an empty diagnostic object.
+        }
+        return result;
     }
 }
 

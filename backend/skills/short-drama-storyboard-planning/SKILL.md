@@ -13,11 +13,12 @@ description: Use when planning one complete short-drama episode into formal mult
 - 每个分镜总时长必须为 10 至 15 秒；每个内部镜头必须为 1.5 至 4 秒，保留小数。
 - 每个内部镜头以一个主要动作或一个明确情绪变化为中心。无法在 4 秒内完成的连续事件应拆镜；动作密度只会形成质量告警，不应为规避校验而删改剧情。
 - 相邻且空间连续的地点可以属于同一分镜；时间跳跃、远距离地点变化或明确戏剧段落变化必须新建分镜。
-- `storyboardNo` 和每个分镜内的 `shotNo` 按数组顺序填写即可，后端会规范化为从 1 开始的连续编号。
+- `storyboardNo` 和每个分镜内的 `shotNo` 可以省略，后端会按数组顺序规范化为从 1 开始的连续编号。
+- 内部镜头时长可以省略；后端会补默认值，并把超出 1.5 至 4 秒的值限制到允许范围。
 
 ## 剧情与声音
 
-保存时固定提交 `schemaVersion: 3`。根对象只放 `schemaVersion`、`episodeFingerprint` 和 `storyboards`。每个分镜提交创意终点 `sourceTo`；后端按数组顺序推导 `sourceFrom`、连续编号与最后一段的完整覆盖。未知、越界或顺序颠倒的创意终点仍会硬失败。
+保存时固定提交 `schemaVersion: 3`。根对象只放 `schemaVersion`、`episodeFingerprint` 和 `storyboards`。每个分镜提交创意终点 `sourceTo`；后端按数组顺序推导 `sourceFrom`、连续编号与最后一段的完整覆盖。未知或顺序颠倒的分镜终点会返回精确路径；内部镜头锚点由后端限制到可信范围并调整为非递减顺序。
 
 内部镜头可提交非递减的 `sourceAnchor`，用于表达镜头在来源顺序中的落点；省略时后端会按镜头顺序和时长权重补齐。不要提交或枚举 `soundSegmentIds`，后端会把 `DIALOGUE`、`NARRATION` 和 `INNER_OS` 各归属一次，并注入未经改写的可信原文。
 

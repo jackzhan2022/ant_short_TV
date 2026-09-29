@@ -22,6 +22,7 @@ import com.antshorttv.workflowagent.skill.WorkflowSkillView;
 import com.antshorttv.workflowagent.tool.ToolExecutionContext;
 import com.antshorttv.workflowagent.tool.ToolFailurePolicy;
 import com.antshorttv.workflowagent.tool.WorkflowToolDefinition;
+import com.antshorttv.workflowagent.tool.StoryboardFallbackCompleter;
 import com.antshorttv.workflowagent.tool.WorkflowToolRegistry;
 import com.antshorttv.workflowagent.tool.WorkflowToolSchemaValidator;
 import com.antshorttv.workflowagent.tool.WorkflowToolRunState;
@@ -30,6 +31,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -51,7 +53,7 @@ public class WorkflowAgentRunner {
     private static final int ASSET_MIN_STEPS = 1 + 2 * (1 + ASSET_SAVE_CORRECTIONS);
     private static final int STORYBOARD_MIN_STEPS =
         WorkflowAgentRunContract.forAgent("short-drama-storyboard").preparationToolCodes().size()
-            + 2 * (1 + STORYBOARD_SAVE_CORRECTIONS);
+            + 2 * (1 + STORYBOARD_SAVE_CORRECTIONS) + 1;
     private static final Logger LOG = LoggerFactory.getLogger(WorkflowAgentRunner.class);
     private static final Set<String> TRUSTED_SCOPE_ARGUMENTS = Set.of(
         "tenantId", "userId", "projectId", "episodeId", "scriptId", "taskId",
@@ -67,6 +69,7 @@ public class WorkflowAgentRunner {
     private final WorkflowAgentProperties properties;
     private final ObjectMapper json;
     private final StoryboardContextReducer storyboardContextReducer;
+    private final StoryboardFallbackCompleter storyboardFallbackCompleter;
     private final EpisodeSplittingRunPolicy splitPolicy;
 
     @Autowired
@@ -93,6 +96,7 @@ public class WorkflowAgentRunner {
         this.properties = properties;
         this.json = json;
         this.storyboardContextReducer = storyboardContextReducer;
+        this.storyboardFallbackCompleter = new StoryboardFallbackCompleter(json);
         this.splitPolicy = splitPolicy;
     }
 
@@ -395,9 +399,10 @@ public class WorkflowAgentRunner {
                     throw error;
                 }
                 boolean toolReturned = false;
+                JsonNode arguments = null;
                 try {
                     requireBoundedSavePayload(call.code(), call.argumentsJson());
-                    JsonNode arguments = parseArguments(call.argumentsJson());
+                    arguments = parseArguments(call.argumentsJson());
                     rejectTrustedScope(arguments);
                     // Asset persistence validates each item against trusted content and returns partial-save warnings.
                     if (!"save_episode_assets".equals(call.code())) {
@@ -450,8 +455,28 @@ public class WorkflowAgentRunner {
                         messages.add(AiChatMessage.user(
                             "分镜保存校验失败。仅修正错误所指的分镜和字段，保持剧集指纹与其他有效内容，"
                                 + "使用 schemaVersion 3 再调用一次 save_episode_storyboards；"
-                                + "不要调用读取工具。"));
+                                + "不要调用读取工具。\n" + correctionContext(arguments, exception)));
                         break;
+                    }
+                    if ("short-drama-storyboard".equals(agent.code())
+                        && "save_episode_storyboards".equals(call.code())
+                        && storyboardSaveCorrections >= STORYBOARD_SAVE_CORRECTIONS
+                        && isCorrectableStoryboardSaveFailure(exception, toolReturned)
+                        && exception instanceof WorkflowToolValidationException validation) {
+                        ObjectNode fallbackArguments = storyboardFallbackCompleter.complete(
+                            context, arguments, validation);
+                        JsonNode output = definition.executor().execute(context, fallbackArguments);
+                        requireBeforeDeadline(deadline);
+                        scopeGuard.requireExecutionActive(input);
+                        schemaValidator.validate(definition.outputSchema(), output);
+                        String serialized = writeJson(output);
+                        int fallbackStep = ++stepNo;
+                        runs.recordToolStep(runId, fallbackStep, call.code(),
+                            writeJson(fallbackArguments), serialized);
+                        runState.recordSuccess(call.code());
+                        messages.add(AiChatMessage.toolResult(call.id(), serialized));
+                        runs.complete(runId, serialized);
+                        return new WorkflowAgentRunResult(runId, serialized, modelCalls);
                     }
                     if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL
                         || isCorrectableSplitBoundaryFailure(call.code(), normalized)) {
@@ -688,9 +713,27 @@ public class WorkflowAgentRunner {
 
     private boolean isCorrectableStoryboardSaveFailure(Exception exception, boolean toolReturned) {
         if (exception instanceof WorkflowToolValidationException validation) {
-            return !"SOURCE_SEGMENTS_UNAVAILABLE".equals(validation.details().get("validationCode"));
+            return !"FATAL".equals(validation.details().get("severity"))
+                && !"SOURCE_SEGMENTS_UNAVAILABLE".equals(validation.details().get("validationCode"));
         }
         return !toolReturned && exception instanceof IllegalArgumentException;
+    }
+
+    private String correctionContext(JsonNode arguments, Exception exception) {
+        ObjectNode context = json.createObjectNode();
+        if (exception instanceof WorkflowToolValidationException validation) {
+            context.set("errors", json.valueToTree(validation.details()));
+            Object storyboardNo = validation.details().get("storyboardNo");
+            ArrayNode invalid = context.putArray("invalidStoryboards");
+            if (storyboardNo instanceof Number number && arguments != null) {
+                for (JsonNode board : arguments.path("storyboards")) {
+                    if (board.path("storyboardNo").asInt() == number.intValue()) {
+                        invalid.add(board.deepCopy());
+                    }
+                }
+            }
+        }
+        return writeJson(context);
     }
 
     private void beginFallback(

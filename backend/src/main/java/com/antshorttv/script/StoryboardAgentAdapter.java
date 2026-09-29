@@ -49,6 +49,15 @@ public class StoryboardAgentAdapter {
         Long episodeId,
         AiExecutionContext executionContext
     ) {
+        return execute(operation, episodeId, executionContext, false);
+    }
+
+    public Execution execute(
+        ScriptAiOperationEntity operation,
+        Long episodeId,
+        AiExecutionContext executionContext,
+        boolean overwriteMaterials
+    ) {
         Long modelId = executionContext.task().resolvedModelId == null
             ? executionContext.task().requestedModelId : executionContext.task().resolvedModelId;
         EpisodePromptContextService.Prepared prepared = contexts == null
@@ -60,7 +69,8 @@ public class StoryboardAgentAdapter {
             null, operation.createdBy, executionContext.task().id, executionContext.claim().attemptId(),
             executionContext.task().executionVersion, modelId, null,
             prepared == null ? null : prepared.commonPrefix(),
-            prepared == null ? null : prepared.cacheKey(), Map.of());
+            prepared == null ? null : prepared.cacheKey(), Map.of())
+            .withTrustedToolState(Map.of("materialOverwrite", overwriteMaterials));
         try {
             WorkflowAgentRunResult run = runner.runFormal(input);
             if (!storyboards.hasCompleteRunSet(
