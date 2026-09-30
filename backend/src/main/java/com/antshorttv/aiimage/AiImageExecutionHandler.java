@@ -119,6 +119,11 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         AiExecutionTaskEntity execution = context.task();
         AiImageTaskEntity task = taskMapper.selectById(execution.businessId);
         List<AiImageResultEntity> existingResults = resultMapper.selectByTask(task.getId());
+        if (AiImageTaskStatus.SUCCESS.name().equals(task.getStatus())) {
+            requirePublishedResultSet(task, existingResults);
+            requireActiveClaim(context);
+            return new AiExecutionHandlerResult("AI_IMAGE_TASK", task.getId());
+        }
         if (AiImageTaskStatus.RENDERING.name().equals(task.getStatus())) {
             requireCompleteResultSet(task, existingResults);
             return reconcileRenditions(context, task, existingResults);
@@ -375,6 +380,17 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
     ) {
         if (!completeResultSet(task, results)) {
             throw new IllegalStateException("AI 图片结果集合不完整，不能完成展示版本发布。");
+        }
+    }
+
+    private void requirePublishedResultSet(
+        AiImageTaskEntity task,
+        List<AiImageResultEntity> results
+    ) {
+        if (task.getCompletedAt() == null || !completeResultSet(task, results)
+            || results.stream().anyMatch(result ->
+                !AiImageResultStatus.ACTIVE.name().equals(result.getStatus()))) {
+            throw new IllegalStateException("已完成 AI 图片任务的结果集合不一致。");
         }
     }
 

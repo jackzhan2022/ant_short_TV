@@ -48,6 +48,48 @@ import org.mockito.InOrder;
 class AiImageExecutionHandlerRenditionTest {
 
     @Test
+    void resumesExecutionSuccessAfterAtomicDomainPublicationWithoutRepeatingSideEffects() {
+        Fixture fixture = new Fixture();
+        fixture.task.setStatus(AiImageTaskStatus.SUCCESS.name());
+        fixture.task.setCompletedAt(java.time.LocalDateTime.now());
+        AiImageResultEntity active = fixture.result(AiImageResultStatus.ACTIVE.name());
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of(active));
+
+        AiExecutionHandlerResult resumed = fixture.handler.execute(fixture.context());
+
+        assertThat(resumed).isEqualTo(new AiExecutionHandlerResult("AI_IMAGE_TASK", 33L));
+        verify(fixture.invocations, never()).invokeImage(any());
+        verify(fixture.accounting, never()).recordIfAbsent(any());
+        verify(fixture.settlements, never()).finalizeOutcome(
+            any(), any(), any(), any(), any(), any()
+        );
+        verify(fixture.renditions, never()).display(any());
+        verify(fixture.variants, never()).generationSucceededIfClaimActive(
+            any(), any(), any(), any(), any(), any(), any(), any()
+        );
+        verify(fixture.results, never()).activateForPublication(any(), any());
+    }
+
+    @Test
+    void rejectsSuccessResumeWithPartialActiveResultSet() {
+        Fixture fixture = new Fixture();
+        fixture.task.setStatus(AiImageTaskStatus.SUCCESS.name());
+        fixture.task.setCompletedAt(java.time.LocalDateTime.now());
+        fixture.task.setImageCount(2);
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of(
+            fixture.result(AiImageResultStatus.ACTIVE.name())
+        ));
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("结果集合不一致");
+
+        verify(fixture.invocations, never()).invokeImage(any());
+        verify(fixture.renditions, never()).display(any());
+        verify(fixture.results, never()).activateForPublication(any(), any());
+    }
+
+    @Test
     void defersCompletionAfterSubmittingGeneratedImageForDisplayProcessing() {
         Fixture fixture = new Fixture();
         fixture.task.setTaskType("CHARACTER");
