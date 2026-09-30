@@ -36,7 +36,6 @@ import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest(properties = {
     "ai.video.max-concurrent-per-tenant=1",
-    "ai.video.storage-root=target/test-video-storage",
     "ai.video.task-timeout-minutes=20",
     "app.public-base-url=https://app.example"
 })

@@ -7,7 +7,10 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
@@ -26,20 +29,36 @@ public class InspirationCreationMediaStorage {
         if (mediaUrl == null || mediaUrl.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "媒体URL不能为空。");
         }
+        Path temporary = null;
         try {
-            HttpResponse<byte[]> response = httpClient.send(HttpRequest.newBuilder(URI.create(mediaUrl)).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<InputStream> response = httpClient.send(
+                HttpRequest.newBuilder(URI.create(mediaUrl)).GET().build(),
+                HttpResponse.BodyHandlers.ofInputStream()
+            );
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR, "媒体下载失败：" + response.statusCode());
             }
-            byte[] bytes = response.body();
             String mimeType = contentType(response, mediaUrl);
             String storagePath = storagePath(externalId, mediaUrl, mimeType);
-            objectStorageService.upload(storagePath, bytes, mimeType);
-            return new InspirationCreationMediaTransfer(storagePath, mimeType, (long) bytes.length, bytes);
+            temporary = Files.createTempFile("inspiration-import-", ".media");
+            try (InputStream input = response.body()) {
+                Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
+            }
+            long fileSize = Files.size(temporary);
+            objectStorageService.uploadFile(storagePath, temporary, mimeType);
+            return new InspirationCreationMediaTransfer(storagePath, mimeType, fileSize);
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "媒体下载失败：" + exception.getMessage());
+        } finally {
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (Exception ignored) {
+                    // The operating system will eventually clean up an orphaned temporary file.
+                }
+            }
         }
     }
 
@@ -51,16 +70,30 @@ public class InspirationCreationMediaStorage {
         return objectStorageService.resource(entity.getThumbnailPath());
     }
 
-    public void uploadThumbnail(String storagePath, InspirationThumbnail thumbnail) {
-        objectStorageService.upload(storagePath, thumbnail.bytes(), thumbnail.mimeType());
-    }
-
     public void uploadOriginal(String storagePath, byte[] bytes, String mimeType) {
         objectStorageService.upload(storagePath, bytes, mimeType);
     }
 
     public void uploadOriginalFile(String storagePath, Path file, String mimeType) {
         objectStorageService.uploadFile(storagePath, file, mimeType);
+    }
+
+    public void copyVerifiedUpload(
+        String sourcePath,
+        String targetPath,
+        long size,
+        String mimeType
+    ) {
+        try (InputStream input = objectStorageService.resource(sourcePath).getInputStream()) {
+            objectStorageService.upload(targetPath, input, size, mimeType);
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException(
+                ErrorCode.VALIDATION_ERROR,
+                "COS 暂存素材固化失败：" + exception.getMessage()
+            );
+        }
     }
 
     public void delete(String storagePath) {
@@ -76,7 +109,11 @@ public class InspirationCreationMediaStorage {
     }
 
     static String thumbnailPath(String externalId) {
-        return "inspiration/creations/%s/thumbnail.jpg".formatted(externalId);
+        return "inspiration/creations/%s/derived/display.webp".formatted(externalId);
+    }
+
+    static String coverOriginalPath(String externalId) {
+        return "inspiration/creations/%s/cover/original.jpg".formatted(externalId);
     }
 
     static String contentType(String storagePath, String storedMimeType) {
@@ -99,7 +136,7 @@ public class InspirationCreationMediaStorage {
         return "application/octet-stream";
     }
 
-    private static String contentType(HttpResponse<byte[]> response, String mediaUrl) {
+    private static String contentType(HttpResponse<?> response, String mediaUrl) {
         return response.headers()
             .firstValue("Content-Type")
             .map(value -> value.split(";")[0].trim())
@@ -135,7 +172,6 @@ public class InspirationCreationMediaStorage {
 record InspirationCreationMediaTransfer(
     String storagePath,
     String mimeType,
-    Long fileSize,
-    byte[] bytes
+    Long fileSize
 ) {
 }

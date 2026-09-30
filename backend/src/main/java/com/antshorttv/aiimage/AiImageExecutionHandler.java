@@ -335,9 +335,10 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             StoredImage storedImage = providerImageUrl == null || providerImageUrl.isBlank()
                 ? storageService.createPlaceholder(task, result.getId(), index)
                 : storageService.storeGenerated(task, result.getId(), index, providerImageUrl);
-            result.setImageUrl("/api/projects/%d/ai-image-results/%d/download".formatted(task.getProjectId(), result.getId()));
+            result.setImageUrl("/api/projects/%d/ai-image-results/%d/display".formatted(task.getProjectId(), result.getId()));
             result.setThumbnailUrl("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(task.getProjectId(), result.getId()));
             result.setStoragePath(storedImage.storagePath());
+            result.setDisplayPath(storedImage.displayPath());
             result.setThumbnailPath(storedImage.thumbnailPath());
             result.setMimeType(storedImage.mimeType());
             result.setWidth(storedImage.width());

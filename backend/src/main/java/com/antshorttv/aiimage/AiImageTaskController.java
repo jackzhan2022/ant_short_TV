@@ -6,7 +6,6 @@ import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
-import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -26,9 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/projects/{projectId}")
 public class AiImageTaskController {
     private final AiImageTaskService aiImageTaskService;
+    private final AiImageDeliveryService deliveryService;
 
-    public AiImageTaskController(AiImageTaskService aiImageTaskService) {
+    public AiImageTaskController(AiImageTaskService aiImageTaskService, AiImageDeliveryService deliveryService) {
         this.aiImageTaskService = aiImageTaskService;
+        this.deliveryService = deliveryService;
     }
 
     @GetMapping("/ai-image-tasks")
@@ -96,28 +97,34 @@ public class AiImageTaskController {
     }
 
     @GetMapping("/ai-image-results/{resultId}/download")
-    public ResponseEntity<Resource> downloadResult(
+    public ResponseEntity<Void> downloadResult(
         @PathVariable Long projectId,
         @PathVariable Long resultId
     ) {
-        var stored = aiImageTaskService.originalResource(projectId, resultId);
-        AiImageResultEntity result = stored.result();
-        return ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType(result.getMimeType() == null ? "image/png" : result.getMimeType()))
+        var grant = deliveryService.issue(projectId, resultId, ImageRendition.ORIGINAL);
+        return ResponseEntity.status(HttpStatus.FOUND)
+            .location(java.net.URI.create(grant.url()))
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
-                .filename("ai-image-result-%d.%s".formatted(resultId, extension(result.getMimeType())))
+                .filename("ai-image-result-%d".formatted(resultId))
                 .build()
                 .toString())
-            .body(stored.resource());
+            .build();
+    }
+
+    @GetMapping("/ai-image-results/{resultId}/display")
+    public ResponseEntity<Void> displayResult(
+        @PathVariable Long projectId, @PathVariable Long resultId
+    ) {
+        var grant = deliveryService.issue(projectId, resultId, ImageRendition.DISPLAY);
+        return ResponseEntity.status(HttpStatus.FOUND).location(java.net.URI.create(grant.url())).build();
     }
 
     @GetMapping("/ai-image-results/{resultId}/thumbnail")
-    public ResponseEntity<Resource> thumbnailResult(
+    public ResponseEntity<Void> thumbnailResult(
         @PathVariable Long projectId, @PathVariable Long resultId
     ) {
-        var stored = aiImageTaskService.thumbnailResource(projectId, resultId);
-        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG)
-            .body(stored.resource());
+        var grant = deliveryService.issue(projectId, resultId, ImageRendition.THUMBNAIL);
+        return ResponseEntity.status(HttpStatus.FOUND).location(java.net.URI.create(grant.url())).build();
     }
 
     @PostMapping("/ai-image-results/{resultId}/save-material")
@@ -156,9 +163,4 @@ public class AiImageTaskController {
         return TenantRequestSupport.tenantId(request);
     }
 
-    private String extension(String mimeType) {
-        if ("image/jpeg".equals(mimeType)) return "jpg";
-        if ("image/webp".equals(mimeType)) return "webp";
-        return "png";
-    }
 }

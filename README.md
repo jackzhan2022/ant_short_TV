@@ -85,17 +85,17 @@ Useful local URLs:
 - `http://localhost:8080/v3/api-docs`
 - `http://localhost:8080/api/currentUser`
 
-Object storage is enabled by default for backend file storage and reads. Configure MinIO/S3 through environment variables:
+Media storage uses private Tencent COS in Guangzhou and private CDN delivery. Attach the least-privilege CAM role to the backend instance; do not configure permanent COS keys in the application:
 
 ```powershell
-$env:OBJECT_STORAGE_MODE = "s3"
-$env:OBJECT_STORAGE_ENDPOINT = "https://minio.aixmax.cn"
-$env:OBJECT_STORAGE_BUCKET = "ant-short-tv"
-$env:OBJECT_STORAGE_ACCESS_KEY = "<access-key>"
-$env:OBJECT_STORAGE_SECRET_KEY = "<secret-key>"
+$env:OBJECT_STORAGE_BUCKET = "antv-1418200553"
+$env:OBJECT_STORAGE_REGION = "ap-guangzhou"
+$env:OBJECT_STORAGE_CLASS = "INTELLIGENT_TIERING"
+$env:OBJECT_STORAGE_CDN_DOMAIN = "https://antvcdn.aixmax.cn"
+$env:OBJECT_STORAGE_CDN_TYPE_D_KEY = "<cdn-type-d-key>"
 ```
 
-The backend creates the bucket automatically when `OBJECT_STORAGE_AUTO_CREATE_BUCKET` is `true`.
+The backend never creates buckets automatically. Browser uploads receive prefix-scoped 60-minute STS credentials, while browser reads use permission-checked seven-day Type D CDN grants. See `docs/tencent-cos-media-storage-runbook.md` for required COS, CDN, CAM, lifecycle, and Cloud Infinite settings.
 
 ## Development Flow
 

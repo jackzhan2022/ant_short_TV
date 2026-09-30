@@ -1,7 +1,9 @@
 package com.antshorttv.inspiration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,10 +14,11 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -35,7 +38,6 @@ class InspirationCreationImportServiceTest {
     @Test
     void importsListAndDetailWithLocalMediaOnly() throws Exception {
         mapper.delete(null);
-        when(objectStorageService.enabled()).thenReturn(true);
         byte[] sourcePng = png();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/creations", exchange -> {
@@ -83,29 +85,23 @@ class InspirationCreationImportServiceTest {
         assertThat(entity.getStoragePath()).isEqualTo("inspiration/creations/842344185310472160/original.png");
         assertThat(entity.getUrl()).isEqualTo("/api/inspiration-creations/%d/file".formatted(entity.getId()));
         assertThat(entity.getThumbnailStatus()).isEqualTo("READY");
+        assertThat(entity.getThumbnailPath())
+            .isEqualTo("inspiration/creations/842344185310472160/derived/display.webp");
         assertThat(entity.getThumbnailUrl()).isEqualTo("/api/inspiration-creations/%d/thumbnail".formatted(entity.getId()));
         assertThat(entity.getDetailJson()).contains("\"url\":\"/api/inspiration-creations/%d/file\"".formatted(entity.getId()));
         assertThat(entity.getDetailJson()).doesNotContain("127.0.0.1");
         assertThat(entity.getDetailJson()).contains("保留文本");
 
-        ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
-        verify(objectStorageService).upload(
+        verify(objectStorageService).uploadFile(
             eq("inspiration/creations/842344185310472160/original.png"),
-            bytes.capture(),
+            any(java.nio.file.Path.class),
             eq("image/png")
-        );
-        assertThat(bytes.getValue()).containsExactly(png());
-        verify(objectStorageService).upload(
-            eq("inspiration/creations/842344185310472160/thumbnail.jpg"),
-            org.mockito.ArgumentMatchers.any(byte[].class),
-            eq("image/jpeg")
         );
     }
 
     @Test
     void upsertsDuplicateExternalIdAndIsolatesItemFailures() throws Exception {
         mapper.delete(null);
-        when(objectStorageService.enabled()).thenReturn(true);
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/creations", exchange -> {
             String base = "http://127.0.0.1:%d".formatted(server.getAddress().getPort());
@@ -189,6 +185,15 @@ class InspirationCreationImportServiceTest {
         });
         server.start();
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
+        AtomicReference<byte[]> uploaded = new AtomicReference<>();
+        doAnswer(invocation -> {
+            uploaded.set(Files.readAllBytes(invocation.getArgument(1)));
+            return null;
+        }).when(objectStorageService).uploadFile(
+            eq("inspiration/creations/abc-123/original.png"),
+            any(java.nio.file.Path.class),
+            eq("image/png")
+        );
         InspirationCreationMediaStorage storage = new InspirationCreationMediaStorage(objectStorageService);
 
         try {
@@ -204,9 +209,12 @@ class InspirationCreationImportServiceTest {
             server.stop(0);
         }
 
-        ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
-        verify(objectStorageService).upload(eq("inspiration/creations/abc-123/original.png"), bytes.capture(), eq("image/png"));
-        assertThat(bytes.getValue()).containsExactly("image-bytes".getBytes());
+        verify(objectStorageService).uploadFile(
+            eq("inspiration/creations/abc-123/original.png"),
+            any(java.nio.file.Path.class),
+            eq("image/png")
+        );
+        assertThat(uploaded.get()).containsExactly("image-bytes".getBytes());
     }
 
     private byte[] png() throws Exception {

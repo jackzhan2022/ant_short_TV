@@ -16,11 +16,10 @@ mybatis-plus:
       id-type: auto
 
 object-storage:
-  mode: local
-  endpoint: https://minio.aixmax.cn
-  bucket: ant-short-tv
-  access-key: test-access-key
-  secret-key: test-secret-key
+  bucket: antv-1418200553
+  region: ap-guangzhou
+  cdn-domain: https://antvcdn.aixmax.cn
+  cdn-type-d-key: test-cdn-type-d-key
 
 ai:
   secret-key: test-ai-secret-key

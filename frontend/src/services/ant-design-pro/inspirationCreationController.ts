@@ -48,7 +48,7 @@ export async function file(
   options?: { [key: string]: any }
 ) {
   const { id: param0, ...queryParams } = params;
-  return request<string>(`/api/inspiration-creations/${param0}/file`, {
+  return request<any>(`/api/inspiration-creations/${param0}/file`, {
     method: "GET",
     params: { ...queryParams },
     ...(options || {}),
@@ -62,7 +62,7 @@ export async function thumbnail(
   options?: { [key: string]: any }
 ) {
   const { id: param0, ...queryParams } = params;
-  return request<string>(`/api/inspiration-creations/${param0}/thumbnail`, {
+  return request<any>(`/api/inspiration-creations/${param0}/thumbnail`, {
     method: "GET",
     params: { ...queryParams },
     ...(options || {}),

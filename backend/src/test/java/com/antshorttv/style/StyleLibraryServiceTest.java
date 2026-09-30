@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.ObjectStorageKeyFactory;
 import com.sun.net.httpserver.HttpServer;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
@@ -34,7 +35,8 @@ class StyleLibraryServiceTest {
         assertThat(styles).hasSize(139);
         assertThat(styles.get(0).externalId()).isEqualTo("864621266010645040");
         assertThat(styles.get(0).category()).isEqualTo("3D风格");
-        assertThat(styles.get(0).storagePath()).isEqualTo("style-library/public/864621266010645040/cover-compressed.jpg");
+        assertThat(styles.get(0).storagePath())
+            .isEqualTo("platform/style-library/864621266010645040/source/derived/display.webp");
         assertThat(styles.get(0).imageUrl())
             .isEqualTo("/api/style-library/images/864621266010645040");
     }
@@ -56,7 +58,7 @@ class StyleLibraryServiceTest {
     void derivesObjectStoragePathWithoutProjectMaterialScope() {
         String path = StyleLibraryImageStorage.storagePath("864621266010645040", "https://example.com/a.png");
 
-        assertThat(path).isEqualTo("style-library/public/864621266010645040/cover-compressed.jpg");
+        assertThat(path).isEqualTo("platform/style-library/864621266010645040/source/derived/display.webp");
         assertThat(path).doesNotContain("materials/");
     }
 
@@ -81,7 +83,7 @@ class StyleLibraryServiceTest {
         });
         server.start();
         ObjectStorageService storageService = mock(ObjectStorageService.class);
-        StyleLibraryImageStorage storage = new StyleLibraryImageStorage(storageService);
+        StyleLibraryImageStorage storage = new StyleLibraryImageStorage(storageService, new ObjectStorageKeyFactory());
 
         try {
             storage.transfer(
@@ -94,13 +96,10 @@ class StyleLibraryServiceTest {
 
         ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
         verify(storageService).upload(
-            eq("style-library/public/864621266010645040/cover-compressed.jpg"),
+            eq("platform/style-library/864621266010645040/source/original.png"),
             bytes.capture(),
-            eq("image/jpeg")
+            eq("image/png")
         );
-        BufferedImage compressed = ImageIO.read(new java.io.ByteArrayInputStream(bytes.getValue()));
-        assertThat(compressed.getWidth()).isEqualTo(1280);
-        assertThat(compressed.getHeight()).isEqualTo(720);
-        assertThat(bytes.getValue().length).isLessThan(sourceBytes.size());
+        assertThat(bytes.getValue()).isEqualTo(sourceBytes.toByteArray());
     }
 }

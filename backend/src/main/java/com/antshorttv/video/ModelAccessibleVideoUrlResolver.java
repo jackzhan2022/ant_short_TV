@@ -2,39 +2,33 @@ package com.antshorttv.video;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
-import com.antshorttv.material.MaterialFileAccessService;
+import com.antshorttv.storage.ObjectStorageService;
 import java.net.URI;
+import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ModelAccessibleVideoUrlResolver {
-    private final MaterialFileAccessService materialFileAccessService;
-    private final String publicBaseUrl;
+    private final ObjectStorageService objectStorageService;
+    private final Duration validity;
 
     public ModelAccessibleVideoUrlResolver(
-        MaterialFileAccessService materialFileAccessService,
-        @Value("${app.public-base-url:}") String publicBaseUrl
+        ObjectStorageService objectStorageService,
+        @Value("${ai.video.task-timeout-minutes:20}") int taskTimeoutMinutes
     ) {
-        this.materialFileAccessService = materialFileAccessService;
-        this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim();
+        this.objectStorageService = objectStorageService;
+        this.validity = Duration.ofMinutes(taskTimeoutMinutes + 30L);
     }
 
     public String resolve(String storagePath) {
-        String publicUrl = materialFileAccessService.publicUrl(storagePath);
-        URI uri = parse(publicUrl);
+        URI uri = parse(storagePath);
         if (uri.isAbsolute()) {
             validateHttpUrl(uri);
             return uri.toString();
         }
-        if (publicBaseUrl.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未配置模型可访问的外部访问地址。");
-        }
-        URI baseUri = parse(publicBaseUrl.endsWith("/") ? publicBaseUrl : publicBaseUrl + "/");
-        validateHttpUrl(baseUri);
-        URI resolved = baseUri.resolve(publicUrl.startsWith("/") ? publicUrl.substring(1) : publicUrl);
-        validateHttpUrl(resolved);
-        return resolved.toString();
+        String key = storagePath.startsWith("/") ? storagePath.substring(1) : storagePath;
+        return objectStorageService.modelAccessUrl(key, validity);
     }
 
     private URI parse(String value) {

@@ -2,6 +2,8 @@ package com.antshorttv.inspiration;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.storage.MediaUploadSessionService;
+import com.antshorttv.storage.VerifiedMediaUpload;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,7 +14,6 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class InspirationManagementService {
@@ -22,17 +23,20 @@ public class InspirationManagementService {
     private final InspirationCreationMapper mapper;
     private final InspirationManagementMediaService mediaService;
     private final InspirationCreationMediaStorage mediaStorage;
+    private final MediaUploadSessionService uploadSessions;
     private final ObjectMapper objectMapper;
 
     public InspirationManagementService(
         InspirationCreationMapper mapper,
         InspirationManagementMediaService mediaService,
         InspirationCreationMediaStorage mediaStorage,
+        MediaUploadSessionService uploadSessions,
         ObjectMapper objectMapper
     ) {
         this.mapper = mapper;
         this.mediaService = mediaService;
         this.mediaStorage = mediaStorage;
+        this.uploadSessions = uploadSessions;
         this.objectMapper = objectMapper;
     }
 
@@ -58,11 +62,18 @@ public class InspirationManagementService {
     }
 
     @Transactional
-    public InspirationManagementItemResponse create(MultipartFile file, InspirationCreateMetadata request) {
+    public InspirationManagementItemResponse create(
+        Long userId,
+        Long tenantId,
+        InspirationCreateUploadRequest request
+    ) {
         validateMetadata(request.title(), request.promptText());
         String publishStatus = normalizePublishStatus(request.publishStatus());
         String externalId = "manual-" + UUID.randomUUID();
-        ManagedInspirationMedia media = mediaService.store(externalId, file);
+        VerifiedMediaUpload upload = uploadSessions.requireCompleted(
+            userId, tenantId, request.uploadSessionToken()
+        );
+        ManagedInspirationMedia media = mediaService.store(externalId, upload);
         try {
             LocalDateTime now = LocalDateTime.now();
             InspirationCreationEntity entity = new InspirationCreationEntity();

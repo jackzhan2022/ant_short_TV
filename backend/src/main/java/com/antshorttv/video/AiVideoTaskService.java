@@ -41,6 +41,7 @@ import com.antshorttv.script.StoryboardAssetReferenceRepository;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.ObjectStorageKeyFactory;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -82,6 +83,7 @@ public class AiVideoTaskService {
     private final OperationLogService operationLogService;
     private final MaterialFileAccessService materialFileAccessService;
     private final ObjectStorageService objectStorageService;
+    private final ObjectStorageKeyFactory objectStorageKeyFactory;
     private final AiTaskExecutionSupport executionSupport;
     private final AiVideoProviderAdapter providerAdapter;
     private final SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter;
@@ -104,7 +106,6 @@ public class AiVideoTaskService {
     private final int taskTimeoutMinutes;
     private final int pollRetryLimit;
     private final int dueTaskBatchSize;
-    private final Path storageRoot;
     private final boolean mockProviderEnabled;
 
     public AiVideoTaskService(
@@ -119,6 +120,7 @@ public class AiVideoTaskService {
         OperationLogService operationLogService,
         MaterialFileAccessService materialFileAccessService,
         ObjectStorageService objectStorageService,
+        ObjectStorageKeyFactory objectStorageKeyFactory,
         AiTaskExecutionSupport executionSupport,
         AiVideoProviderAdapter providerAdapter,
         SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter,
@@ -141,7 +143,6 @@ public class AiVideoTaskService {
         @Value("${ai.video.task-timeout-minutes:20}") int taskTimeoutMinutes,
         @Value("${ai.video.poll-retry-limit:3}") int pollRetryLimit,
         @Value("${ai.video.due-task-batch-size:20}") int dueTaskBatchSize,
-        @Value("${ai.video.storage-root:storage}") String storageRoot,
         @Value("${ai.testing.mock-provider-enabled:false}") boolean mockProviderEnabled
     ) {
         this.projectAccessResolver = projectAccessResolver;
@@ -155,6 +156,7 @@ public class AiVideoTaskService {
         this.operationLogService = operationLogService;
         this.materialFileAccessService = materialFileAccessService;
         this.objectStorageService = objectStorageService;
+        this.objectStorageKeyFactory = objectStorageKeyFactory;
         this.executionSupport = executionSupport;
         this.providerAdapter = providerAdapter;
         this.seedanceArkProviderAdapter = seedanceArkProviderAdapter;
@@ -177,7 +179,6 @@ public class AiVideoTaskService {
         this.taskTimeoutMinutes = taskTimeoutMinutes;
         this.pollRetryLimit = pollRetryLimit;
         this.dueTaskBatchSize = dueTaskBatchSize;
-        this.storageRoot = Path.of(storageRoot);
         this.mockProviderEnabled = mockProviderEnabled;
     }
 
@@ -896,8 +897,15 @@ public class AiVideoTaskService {
         result.taskId = task.id;
         result.executionId = task.executionId;
         result.storyboardId = task.storyboardId;
-        String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
-        result.storagePath = "/materials/%d/%d/videos/%s/%d.mp4".formatted(task.tenantId, task.projectId, day, task.id);
+        result.storagePath = objectStorageKeyFactory.projectOriginal(
+            task.tenantId,
+            task.projectId,
+            "videos",
+            task.id,
+            "result",
+            now.toLocalDate(),
+            "mp4"
+        );
         long fileSize = writeVideoFile(result.storagePath, providerResult.videoUrl());
         result.videoUrl = materialFileAccessService.publicUrl(result.storagePath);
         result.coverUrl = task.firstFrameUrl == null ? null : materialFileAccessService.publicUrl(task.firstFrameUrl);
@@ -931,17 +939,21 @@ public class AiVideoTaskService {
     }
 
     private long writeVideoFile(String storagePath, String externalVideoUrl) throws Exception {
-        byte[] bytes = externalVideoUrl == null || externalVideoUrl.isBlank()
-            ? placeholderMp4Bytes()
-            : providerAdapter.download(externalVideoUrl);
-        if (objectStorageService.enabled()) {
-            objectStorageService.upload(storagePath, bytes, "video/mp4");
-            return bytes.length;
+        Path file = Files.createTempFile("ant-short-tv-ai-video-", ".mp4");
+        try {
+            long size;
+            if (externalVideoUrl == null || externalVideoUrl.isBlank()) {
+                byte[] placeholder = placeholderMp4Bytes();
+                Files.write(file, placeholder);
+                size = placeholder.length;
+            } else {
+                size = providerAdapter.downloadTo(externalVideoUrl, file);
+            }
+            objectStorageService.uploadFile(storagePath, file, "video/mp4");
+            return size;
+        } finally {
+            Files.deleteIfExists(file);
         }
-        Path file = storageRoot.resolve(storagePath.substring(1));
-        Files.createDirectories(file.getParent());
-        Files.write(file, bytes);
-        return Files.size(file);
     }
 
     private byte[] placeholderMp4Bytes() {

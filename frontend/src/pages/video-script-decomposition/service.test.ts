@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   queryVideoDecompositionBatchScreenplays,
   retryVideoDecompositionEpisode,
+  uploadEpisodeVideo,
 } from './service';
+import { startMediaUpload } from '@/services/mediaUpload';
 
 vi.mock('@umijs/max', () => ({ request: vi.fn() }));
+vi.mock('@/services/mediaUpload', () => ({ startMediaUpload: vi.fn() }));
 
 describe('video decomposition service', () => {
   beforeEach(() => {
@@ -25,6 +28,35 @@ describe('video decomposition service', () => {
     expect(request).toHaveBeenCalledWith(
       '/api/video-script-decomposition/episodes/88/retry',
       expect.objectContaining({ data: { phase: 'VIDEO_ANALYSIS' } }),
+    );
+  });
+
+  it('uploads episode bytes directly to COS', async () => {
+    vi.mocked(startMediaUpload).mockResolvedValue({
+      sessionToken: 'session-1',
+      objectKey: 'uploads/11/session-1/source.mp4',
+      contentType: 'video/mp4',
+      size: 3,
+      eTag: 'etag-1',
+    });
+    const file = new File([new Uint8Array([1, 2, 3])], 'episode.mp4', {
+      type: 'video/mp4',
+    });
+
+    const result = await uploadEpisodeVideo(file);
+
+    expect(startMediaUpload).toHaveBeenCalledWith(file, expect.any(Object));
+    expect(result.data).toEqual({
+      fileName: 'episode.mp4',
+      storagePath: 'uploads/11/session-1/source.mp4',
+      uploadSessionToken: 'session-1',
+      mimeType: 'video/mp4',
+      fileSize: 3,
+      durationSeconds: null,
+    });
+    expect(request).not.toHaveBeenCalledWith(
+      '/api/video-script-decomposition/uploads',
+      expect.anything(),
     );
   });
 });

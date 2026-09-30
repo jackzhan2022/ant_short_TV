@@ -3,14 +3,12 @@ package com.antshorttv.aiimage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antshorttv.material.MaterialFileAccessService;
 import com.antshorttv.storage.ObjectStorageService;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
@@ -24,11 +22,9 @@ import org.springframework.core.io.Resource;
 class ObjectStorageRoutingTest {
 
     @Test
-    void generatedImageDetectsOriginalFormatAndWritesPngThumbnailLocally() throws Exception {
-        Path directory = Files.createTempDirectory("ai-image-local");
+    void generatedImageDetectsOriginalFormatAndUsesPersistentWebpRenditions() throws Exception {
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
-        when(objectStorageService.enabled()).thenReturn(false);
-        AiImageStorageService storageService = new AiImageStorageService(directory.toString(), objectStorageService);
+        AiImageStorageService storageService = new AiImageStorageService(objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory());
         AiImageTaskEntity task = imageTask();
         BufferedImage source = new BufferedImage(800, 400, BufferedImage.TYPE_INT_RGB);
         java.io.ByteArrayOutputStream original = new java.io.ByteArrayOutputStream();
@@ -39,25 +35,23 @@ class ObjectStorageRoutingTest {
 
         assertThat(stored.mimeType()).isEqualTo("image/jpeg");
         assertThat(stored.storagePath()).endsWith("/original.jpg");
-        BufferedImage thumbnail = ImageIO.read(directory.resolve(stored.thumbnailPath()).toFile());
-        assertThat(thumbnail.getWidth()).isEqualTo(512);
-        assertThat(thumbnail.getHeight()).isEqualTo(256);
-        assertThat(Files.readAllBytes(directory.resolve(stored.thumbnailPath()))).startsWith((byte) 0x89, (byte) 0x50, (byte) 0x4e, (byte) 0x47);
+        assertThat(stored.displayPath()).endsWith("/derived/display.webp");
+        assertThat(stored.thumbnailPath()).isEqualTo(stored.displayPath());
+        verify(objectStorageService).upload(eq(stored.storagePath()), org.mockito.ArgumentMatchers.any(byte[].class), eq("image/jpeg"));
     }
 
     @Test
-    void imagePlaceholderUploadsToObjectStorageWhenEnabled() throws Exception {
+    void imagePlaceholderUploadsToObjectStorage() throws Exception {
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
-        when(objectStorageService.enabled()).thenReturn(true);
         AiImageStorageService storageService = new AiImageStorageService(
-            Files.createTempDirectory("ai-image-local").toString(),
-            objectStorageService
+            objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory()
         );
         AiImageTaskEntity task = imageTask();
 
         StoredImage stored = storageService.createPlaceholder(task, 44L, 1);
 
-        String expectedPath = "materials/11/22/images/%s/33-1-44/original.png".formatted(LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE));
+        String expectedPath = "materials/11/22/images/%s/44/task-33-1/original.png"
+            .formatted(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM")));
         ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
         verify(objectStorageService).upload(eq(expectedPath), bytes.capture(), eq("image/png"));
         assertThat(bytes.getValue()).isNotEmpty();
@@ -65,10 +59,11 @@ class ObjectStorageRoutingTest {
     }
 
     @Test
-    void generatedImageUploadsOriginalAndThumbnailToObjectStorage() throws Exception {
+    void generatedImageUploadsOnlyOriginalToObjectStorage() throws Exception {
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
-        when(objectStorageService.enabled()).thenReturn(true);
-        AiImageStorageService storageService = new AiImageStorageService("target/unused-image-storage", objectStorageService);
+        AiImageStorageService storageService = new AiImageStorageService(
+            objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory()
+        );
         BufferedImage source = new BufferedImage(1024, 512, BufferedImage.TYPE_INT_RGB);
         java.io.ByteArrayOutputStream image = new java.io.ByteArrayOutputStream();
         ImageIO.write(source, "jpeg", image);
@@ -76,22 +71,23 @@ class ObjectStorageRoutingTest {
         StoredImage stored = storageService.storeGenerated(imageTask(), 44L, 1,
             "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(image.toByteArray()));
 
-        ArgumentCaptor<String> paths = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> path = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
         ArgumentCaptor<String> contentTypes = ArgumentCaptor.forClass(String.class);
-        verify(objectStorageService, times(2)).upload(paths.capture(), bytes.capture(), contentTypes.capture());
-        assertThat(paths.getAllValues()).containsExactly(stored.storagePath(), stored.thumbnailPath());
-        assertThat(contentTypes.getAllValues()).containsExactly("image/jpeg", "image/png");
-        assertThat(ImageIO.read(new java.io.ByteArrayInputStream(bytes.getAllValues().get(1))).getWidth()).isEqualTo(512);
+        verify(objectStorageService).upload(path.capture(), bytes.capture(), contentTypes.capture());
+        assertThat(path.getValue()).isEqualTo(stored.storagePath());
+        assertThat(contentTypes.getValue()).isEqualTo("image/jpeg");
+        assertThat(bytes.getValue()).isEqualTo(image.toByteArray());
     }
 
     @Test
-    void imageResourceReadsFromObjectStorageWhenEnabled() {
+    void imageResourceReadsFromObjectStorage() {
         Resource resource = new ByteArrayResource("image".getBytes());
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
-        when(objectStorageService.enabled()).thenReturn(true);
         when(objectStorageService.resource("materials/1/2/images/a.png")).thenReturn(resource);
-        AiImageStorageService storageService = new AiImageStorageService("target/unused-image-storage", objectStorageService);
+        AiImageStorageService storageService = new AiImageStorageService(
+            objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory()
+        );
         AiImageResultEntity result = new AiImageResultEntity();
         result.setStoragePath("materials/1/2/images/a.png");
 
@@ -99,19 +95,17 @@ class ObjectStorageRoutingTest {
     }
 
     @Test
-    void materialResourceReadsFromObjectStorageWhenEnabled() {
+    void materialResourceReadsFromObjectStorage() {
         Resource resource = new ByteArrayResource("video".getBytes());
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
-        when(objectStorageService.enabled()).thenReturn(true);
-        when(objectStorageService.resource("/materials/1/2/videos/a.mp4")).thenReturn(resource);
+        when(objectStorageService.resource("materials/1/2/videos/a.mp4")).thenReturn(resource);
         MaterialFileAccessService accessService = new MaterialFileAccessService(
-            "target/unused-material-storage",
-            "test-secret",
-            objectStorageService
+            objectStorageService,
+            new com.antshorttv.storage.ObjectStorageKeyFactory()
         );
 
         assertThat(accessService.resource("/materials/1/2/videos/a.mp4")).isSameAs(resource);
-        verify(objectStorageService).resource("/materials/1/2/videos/a.mp4");
+        verify(objectStorageService).resource("materials/1/2/videos/a.mp4");
     }
 
     private AiImageTaskEntity imageTask() {

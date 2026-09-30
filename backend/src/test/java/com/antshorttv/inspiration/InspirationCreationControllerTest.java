@@ -3,9 +3,10 @@ package com.antshorttv.inspiration;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,9 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -135,26 +134,26 @@ class InspirationCreationControllerTest {
     }
 
     @Test
-    void fileEndpointStreamsImportedMedia() throws Exception {
+    void fileEndpointRedirectsImportedMediaToPrivateCdn() throws Exception {
         InspirationCreationEntity entity = creation("external-4", "IMPORTED", 1);
         entity.setMimeType("video/mp4");
         entity.setStoragePath("inspiration/creations/external-4/original.mp4");
         mapper.insert(entity);
-        when(objectStorageService.resource("inspiration/creations/external-4/original.mp4"))
-            .thenReturn(new ByteArrayResource("video".getBytes()));
-
         mockMvc.perform(get("/api/inspiration-creations/{id}/file", entity.getId())
                 .cookie(sessionCookie))
-            .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.valueOf("video/mp4")))
-            .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
-                result.getResponse().getHeader(HttpHeaders.CACHE_CONTROL)
-            ).contains("private"))
-            .andExpect(content().bytes("video".getBytes()));
+            .andExpect(status().isFound())
+            .andExpect(header().string(
+                HttpHeaders.LOCATION,
+                org.hamcrest.Matchers.allOf(
+                    startsWith("https://antvcdn.aixmax.cn/inspiration/creations/external-4/original.mp4"),
+                    org.hamcrest.Matchers.containsString("sign="),
+                    org.hamcrest.Matchers.containsString("t=")
+                )
+            ));
     }
 
     @Test
-    void listReturnsProtectedThumbnailAndThumbnailEndpointStreamsIt() throws Exception {
+    void listReturnsProtectedThumbnailAndThumbnailEndpointRedirectsToPrivateCdn() throws Exception {
         InspirationCreationEntity entity = creation("external-thumbnail", "IMPORTED", 1);
         entity.setThumbnailPath("inspiration/creations/external-thumbnail/thumbnail.jpg");
         entity.setThumbnailUrl("/api/inspiration-creations/0/thumbnail");
@@ -163,9 +162,6 @@ class InspirationCreationControllerTest {
         mapper.insert(entity);
         entity.setThumbnailUrl("/api/inspiration-creations/%d/thumbnail".formatted(entity.getId()));
         mapper.updateById(entity);
-        when(objectStorageService.resource("inspiration/creations/external-thumbnail/thumbnail.jpg"))
-            .thenReturn(new ByteArrayResource("thumbnail".getBytes()));
-
         mockMvc.perform(get("/api/inspiration-creations")
                 .cookie(sessionCookie))
             .andExpect(status().isOk())
@@ -173,12 +169,11 @@ class InspirationCreationControllerTest {
 
         mockMvc.perform(get("/api/inspiration-creations/{id}/thumbnail", entity.getId())
                 .cookie(sessionCookie))
-            .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.IMAGE_JPEG))
-            .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
-                result.getResponse().getHeader(HttpHeaders.CACHE_CONTROL)
-            ).contains("private"))
-            .andExpect(content().bytes("thumbnail".getBytes()));
+            .andExpect(status().isFound())
+            .andExpect(header().string(
+                HttpHeaders.LOCATION,
+                startsWith("https://antvcdn.aixmax.cn/inspiration/creations/external-thumbnail/thumbnail.jpg")
+            ));
     }
 
     @Test

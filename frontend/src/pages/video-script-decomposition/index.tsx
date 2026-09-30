@@ -54,6 +54,7 @@ type EpisodeUpload = {
   mimeType?: string;
   status: 'READY';
   storagePath?: string;
+  uploadSessionToken?: string;
 };
 
 const MAX_VIDEO_SIZE = 1024 * 1024 * 1024;
@@ -111,6 +112,8 @@ const normalizeEpisodes = (files: UploadFile[]): EpisodeUpload[] =>
     status: 'READY',
     storagePath: (file.response as VideoDecompositionUpload | undefined)
       ?.storagePath,
+    uploadSessionToken: (file.response as VideoDecompositionUpload | undefined)
+      ?.uploadSessionToken,
   }));
 
 const statusColor = (status: string) => {
@@ -205,10 +208,6 @@ const VideoScriptDecompositionPage = () => {
     multiple: true,
     fileList: files,
     beforeUpload: (file) => {
-      if (file.size > MAX_VIDEO_SIZE) {
-        message.error(`${file.name} 超过 1GB，不能加入拆剧批次`);
-        return Upload.LIST_IGNORE;
-      }
       if (file.type && !SUPPORTED_VIDEO_TYPES.includes(file.type)) {
         message.error(`${file.name} 暂不支持该视频格式`);
         return Upload.LIST_IGNORE;
@@ -217,7 +216,10 @@ const VideoScriptDecompositionPage = () => {
     },
     customRequest: async (options) => {
       try {
-        const response = await uploadEpisodeVideo(options.file as File);
+        const response = await uploadEpisodeVideo(
+          options.file as File,
+          (percent) => options.onProgress?.({ percent }),
+        );
         options.onSuccess?.(response.data);
       } catch (error) {
         options.onError?.(error as Error);
@@ -349,6 +351,7 @@ const VideoScriptDecompositionPage = () => {
                     videos: episodes.map((episode) => ({
                       fileName: episode.fileName,
                       storagePath: episode.storagePath || '',
+                      uploadSessionToken: episode.uploadSessionToken || '',
                       mimeType: episode.mimeType,
                       fileSize: episode.size,
                     })),

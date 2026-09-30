@@ -6,47 +6,47 @@ import com.antshorttv.rbac.ProjectPermissionGuard;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import org.springframework.core.io.Resource;
-import org.springframework.http.CacheControl;
-import org.springframework.http.MediaType;
+import com.antshorttv.security.TenantContext;
+import com.antshorttv.storage.DeliveryGrantRequest;
+import com.antshorttv.storage.MediaDeliveryGrantService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class MaterialFileController {
     private final MaterialFileAccessService accessService;
     private final ProjectPermissionGuard projectPermissionGuard;
+    private final MediaDeliveryGrantService deliveryGrants;
 
     public MaterialFileController(
         MaterialFileAccessService accessService,
-        ProjectPermissionGuard projectPermissionGuard
+        ProjectPermissionGuard projectPermissionGuard,
+        MediaDeliveryGrantService deliveryGrants
     ) {
         this.accessService = accessService;
         this.projectPermissionGuard = projectPermissionGuard;
+        this.deliveryGrants = deliveryGrants;
     }
 
     @GetMapping("/materials/{tenantId}/{projectId}/**")
-    public ResponseEntity<Resource> read(
+    public ResponseEntity<Void> read(
         @PathVariable Long tenantId,
         @PathVariable Long projectId,
-        @RequestParam(required = false) String token,
         HttpServletRequest request
     ) {
-        String storagePath = storagePath(request);
-        if (!accessService.isValidToken(storagePath, token)) {
-            requireProjectAccess(tenantId, projectId);
-        }
-        return ResponseEntity.ok()
-            .cacheControl(CacheControl.noStore())
-            .contentType(MediaType.parseMediaType(accessService.contentType(storagePath)))
-            .body(accessService.resource(storagePath));
-    }
-
-    private void requireProjectAccess(Long tenantId, Long projectId) {
-        projectPermissionGuard.require(tenantId, projectId, "PROJECT:VIEW");
+        String objectKey = accessService.normalize(storagePath(request));
+        TenantContext context = projectPermissionGuard.require(tenantId, projectId, "PROJECT:VIEW");
+        long resourceId = Integer.toUnsignedLong(objectKey.hashCode()) + 1;
+        var grant = deliveryGrants.issue(new DeliveryGrantRequest(
+            tenantId, projectId, context.userId(), "MATERIAL_PATH", resourceId,
+            "object", "ORIGINAL", objectKey, objectKey.endsWith(".mp4")
+        ));
+        return ResponseEntity.status(HttpStatus.FOUND)
+            .location(java.net.URI.create(grant.url()))
+            .build();
     }
 
     private String storagePath(HttpServletRequest request) {

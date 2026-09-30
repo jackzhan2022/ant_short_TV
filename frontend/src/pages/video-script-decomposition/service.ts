@@ -1,4 +1,5 @@
 import { request } from '@umijs/max';
+import { startMediaUpload } from '@/services/mediaUpload';
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -10,6 +11,7 @@ export type ApiResponse<T> = {
 export type VideoDecompositionUpload = {
   fileName: string;
   storagePath: string;
+  uploadSessionToken: string;
   mimeType?: string;
   fileSize: number;
   durationSeconds?: number | null;
@@ -119,16 +121,24 @@ export const queryVideoUnderstandingModels = async () =>
     '/api/platform/ai/models',
   );
 
-export const uploadEpisodeVideo = async (file: File) => {
-  const data = new FormData();
-  data.append('file', file);
-  return request<ApiResponse<VideoDecompositionUpload>>(
-    '/api/video-script-decomposition/uploads',
-    {
-      method: 'POST',
-      data,
+export const uploadEpisodeVideo = async (
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<ApiResponse<VideoDecompositionUpload>> => {
+  const uploaded = await startMediaUpload(file, {
+    onProgress: (progress) => onProgress?.(progress.percent * 100),
+  });
+  return {
+    success: true,
+    data: {
+      fileName: file.name,
+      storagePath: uploaded.objectKey,
+      uploadSessionToken: uploaded.sessionToken,
+      mimeType: uploaded.contentType,
+      fileSize: uploaded.size,
+      durationSeconds: null,
     },
-  );
+  };
 };
 
 export const createVideoDecompositionBatch = async (

@@ -654,6 +654,45 @@ export async function deleteStoryboard(
   );
 }
 
+/** 此处后端没有提供注释 GET /api/projects/${param0}/storyboards/${param1}/asset-references */
+export async function storyboardAssetReferences(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.storyboardAssetReferencesParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, storyboardId: param1, ...queryParams } = params;
+  return request<API.ApiResponseListStoryboardAssetReferenceResponse>(
+    `/api/projects/${param0}/storyboards/${param1}/asset-references`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 PUT /api/projects/${param0}/storyboards/${param1}/asset-references */
+export async function replaceStoryboardAssetReferences(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.replaceStoryboardAssetReferencesParams,
+  body: API.ReplaceStoryboardAssetReferencesRequest,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, storyboardId: param1, ...queryParams } = params;
+  return request<API.ApiResponseListStoryboardAssetReferenceResponse>(
+    `/api/projects/${param0}/storyboards/${param1}/asset-references`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 PUT /api/projects/${param0}/storyboards/${param1}/move */
 export async function moveStoryboard(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

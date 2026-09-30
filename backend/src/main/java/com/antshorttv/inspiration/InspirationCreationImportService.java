@@ -2,6 +2,7 @@ package com.antshorttv.inspiration;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.storage.CloudInfiniteVideoCoverService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,8 +15,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -31,7 +30,7 @@ public class InspirationCreationImportService {
     private final InspirationCreationMapper mapper;
     private final InspirationCreationMediaStorage mediaStorage;
     private final ObjectMapper objectMapper;
-    private final InspirationThumbnailProcessor thumbnailProcessor;
+    private final CloudInfiniteVideoCoverService videoCovers;
     private final HttpClient httpClient = HttpClient.newBuilder()
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build();
@@ -40,12 +39,12 @@ public class InspirationCreationImportService {
         InspirationCreationMapper mapper,
         InspirationCreationMediaStorage mediaStorage,
         ObjectMapper objectMapper,
-        InspirationThumbnailProcessor thumbnailProcessor
+        CloudInfiniteVideoCoverService videoCovers
     ) {
         this.mapper = mapper;
         this.mediaStorage = mediaStorage;
         this.objectMapper = objectMapper;
-        this.thumbnailProcessor = thumbnailProcessor;
+        this.videoCovers = videoCovers;
     }
 
     public List<InspirationCreationEntity> importFrom(InspirationCreationImportRequest request) {
@@ -109,13 +108,15 @@ public class InspirationCreationImportService {
 
     private void updateThumbnail(InspirationCreationEntity entity, InspirationCreationMediaTransfer transfer) {
         try {
-            InspirationThumbnail thumbnail = thumbnail(transfer);
-            String path = InspirationCreationMediaStorage.thumbnailPath(entity.getExternalId());
-            mediaStorage.uploadThumbnail(path, thumbnail);
+            String path = transfer.mimeType().startsWith("video/")
+                ? videoCovers.create(
+                    transfer.storagePath(), InspirationCreationMediaStorage.coverOriginalPath(entity.getExternalId())
+                )
+                : InspirationCreationMediaStorage.thumbnailPath(entity.getExternalId());
             entity.setThumbnailPath(path);
             entity.setThumbnailUrl(thumbnailUrl(entity.getId()));
-            entity.setThumbnailMimeType(thumbnail.mimeType());
-            entity.setThumbnailFileSize((long) thumbnail.bytes().length);
+            entity.setThumbnailMimeType("image/webp");
+            entity.setThumbnailFileSize(0L);
             entity.setThumbnailStatus("READY");
             entity.setThumbnailError(null);
         } catch (Exception exception) {
@@ -125,19 +126,6 @@ public class InspirationCreationImportService {
             entity.setThumbnailFileSize(null);
             entity.setThumbnailStatus("FAILED");
             entity.setThumbnailError(message(exception));
-        }
-    }
-
-    private InspirationThumbnail thumbnail(InspirationCreationMediaTransfer transfer) throws Exception {
-        if (!transfer.mimeType().startsWith("video/")) {
-            return thumbnailProcessor.fromImage(transfer.bytes(), transfer.mimeType());
-        }
-        Path video = Files.createTempFile("inspiration-thumbnail-", ".mp4");
-        try {
-            Files.write(video, transfer.bytes());
-            return thumbnailProcessor.fromVideo(video);
-        } finally {
-            Files.deleteIfExists(video);
         }
     }
 

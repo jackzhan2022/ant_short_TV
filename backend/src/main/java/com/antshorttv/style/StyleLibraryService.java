@@ -4,7 +4,6 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import java.util.List;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -51,7 +50,7 @@ public class StyleLibraryService {
             .toList();
     }
 
-    public Resource image(String externalId) {
+    public String image(String externalId) {
         StyleLibraryEntity style = styleLibraryMapper.selectOne(new LambdaQueryWrapper<StyleLibraryEntity>()
             .eq(StyleLibraryEntity::getExternalId, externalId)
             .eq(StyleLibraryEntity::getIsPublic, true)
@@ -59,6 +58,6 @@ public class StyleLibraryService {
         if (style == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "风格不存在。");
         }
-        return imageStorage.resource(style);
+        return imageStorage.deliveryUrl(style);
     }
 }

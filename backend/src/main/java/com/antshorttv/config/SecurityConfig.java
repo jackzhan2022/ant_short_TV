@@ -36,7 +36,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-                .ignoringRequestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/verification-code/**", "/api/commercial/payments/wechat/notify"))
+                .ignoringRequestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/verification-code/**", "/api/commercial/payments/wechat/notify", "/api/media-processing/callbacks/tencent-ci/**"))
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler))
@@ -45,6 +45,7 @@ public class SecurityConfig {
                     "/api/auth/login", "/api/auth/register",
                     "/api/auth/verification-code/**",
                     "/api/commercial/payments/wechat/notify",
+                    "/api/media-processing/callbacks/tencent-ci/**",
                     "/api/style-library/**", "/api/public/**",
                     "/actuator/health", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
                 ).permitAll()

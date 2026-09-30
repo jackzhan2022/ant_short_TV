@@ -64,19 +64,17 @@ springdoc:
     path: /swagger-ui.html
 
 object-storage:
-  mode: ${OBJECT_STORAGE_MODE:s3}
-  endpoint: ${OBJECT_STORAGE_ENDPOINT:https://minio.aixmax.cn}
-  bucket: ${OBJECT_STORAGE_BUCKET:ant-short-tv}
-  access-key: ${OBJECT_STORAGE_ACCESS_KEY:}
-  secret-key: ${OBJECT_STORAGE_SECRET_KEY:}
-  region: ${OBJECT_STORAGE_REGION:}
-  auto-create-bucket: ${OBJECT_STORAGE_AUTO_CREATE_BUCKET:true}
-
-inspiration:
-  thumbnail:
-    max-dimension: ${INSPIRATION_THUMBNAIL_MAX_DIMENSION:640}
-    jpeg-quality: ${INSPIRATION_THUMBNAIL_JPEG_QUALITY:0.82}
-    backfill-batch-size: ${INSPIRATION_THUMBNAIL_BACKFILL_BATCH_SIZE:20}
+  bucket: ${OBJECT_STORAGE_BUCKET:antv-1418200553}
+  region: ${OBJECT_STORAGE_REGION:ap-guangzhou}
+  storage-class: ${OBJECT_STORAGE_CLASS:INTELLIGENT_TIERING}
+  cdn-domain: ${OBJECT_STORAGE_CDN_DOMAIN:https://antvcdn.aixmax.cn}
+  cdn-type-d-key: ${OBJECT_STORAGE_CDN_TYPE_D_KEY:}
+  cdn-authorization-seconds: ${OBJECT_STORAGE_CDN_AUTHORIZATION_SECONDS:604800}
+  video-renewal-threshold-seconds: ${OBJECT_STORAGE_VIDEO_RENEWAL_THRESHOLD_SECONDS:7200}
+  sts-duration-seconds: ${OBJECT_STORAGE_STS_DURATION_SECONDS:3600}
+  sts-name-prefix: ${OBJECT_STORAGE_STS_NAME_PREFIX:antv-upload}
+  image-webp-quality: ${OBJECT_STORAGE_IMAGE_WEBP_QUALITY:80}
+  ci-callback-url: ${OBJECT_STORAGE_CI_CALLBACK_URL:}
 
 commercial:
   wechat:
@@ -131,7 +129,6 @@ ai:
     worker-threads: ${AI_EXECUTION_WORKER_THREADS:4}
     queue-capacity: ${AI_EXECUTION_QUEUE_CAPACITY:100}
   video:
-    storage-root: ${AI_VIDEO_STORAGE_ROOT:storage}
     max-concurrent-per-tenant: ${AI_VIDEO_MAX_CONCURRENT_PER_TENANT:3}
     task-timeout-minutes: ${AI_VIDEO_TASK_TIMEOUT_MINUTES:20}
     poll-retry-limit: ${AI_VIDEO_POLL_RETRY_LIMIT:3}

@@ -13,6 +13,7 @@ import com.antshorttv.script.StoryboardMapper;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.ObjectStorageKeyFactory;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -23,7 +24,6 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -34,10 +34,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import javax.imageio.ImageIO;
 import org.jcodec.api.awt.AWTSequenceEncoder;
 import org.springframework.core.io.Resource;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,7 +60,7 @@ public class ShotProductionService {
     private final ObjectMapper objectMapper;
     private final MaterialFileAccessService materialFileAccessService;
     private final ObjectStorageService objectStorageService;
-    private final Path storageRoot;
+    private final ObjectStorageKeyFactory objectStorageKeyFactory;
 
     public ShotProductionService(
         ProjectAccessResolver projectAccessResolver,
@@ -82,7 +80,7 @@ public class ShotProductionService {
         ObjectMapper objectMapper,
         MaterialFileAccessService materialFileAccessService,
         ObjectStorageService objectStorageService,
-        @Value("${ai.video.storage-root:storage}") String storageRoot
+        ObjectStorageKeyFactory objectStorageKeyFactory
     ) {
         this.projectAccessResolver = projectAccessResolver;
         this.storyboardMapper = storyboardMapper;
@@ -101,7 +99,7 @@ public class ShotProductionService {
         this.objectMapper = objectMapper;
         this.materialFileAccessService = materialFileAccessService;
         this.objectStorageService = objectStorageService;
-        this.storageRoot = Path.of(storageRoot);
+        this.objectStorageKeyFactory = objectStorageKeyFactory;
     }
 
     public List<AiVoiceTaskResponse> voiceTasks(Long tenantId, Long projectId, String status, Long storyboardId) {
@@ -759,8 +757,9 @@ public class ShotProductionService {
         result.projectId = task.projectId;
         result.taskId = task.id;
         result.storyboardId = task.storyboardId;
-        String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
-        result.storagePath = "/materials/%d/%d/audios/%s/%d.mp3".formatted(task.tenantId, task.projectId, day, task.id);
+        result.storagePath = objectStorageKeyFactory.projectOriginal(
+            task.tenantId, task.projectId, "audios", task.id, "result", now.toLocalDate(), "mp3"
+        );
         result.fileSize = writeFile(result.storagePath, "mock mp3 audio: " + task.textContent);
         result.audioUrl = materialFileAccessService.publicUrl(result.storagePath);
         result.durationSeconds = duration;
@@ -779,8 +778,9 @@ public class ShotProductionService {
         result.projectId = task.projectId;
         result.taskId = task.id;
         result.storyboardId = task.storyboardId;
-        String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
-        result.storagePath = "/materials/%d/%d/shots/%s/%d.mp4".formatted(task.tenantId, task.projectId, day, task.id);
+        result.storagePath = objectStorageKeyFactory.projectOriginal(
+            task.tenantId, task.projectId, "shots", task.id, "result", now.toLocalDate(), "mp4"
+        );
         result.fileSize = writeFile(result.storagePath, "mock composed mp4: " + storyboard.currentVideoUrl);
         result.videoUrl = materialFileAccessService.publicUrl(result.storagePath);
         result.coverUrl = storyboard.firstFrameUrl == null ? null : materialFileAccessService.publicUrl(storyboard.firstFrameUrl);
@@ -876,9 +876,17 @@ public class ShotProductionService {
             .setScale(2, RoundingMode.HALF_UP);
         Integer width = items.isEmpty() ? 720 : items.get(0).width;
         Integer height = items.isEmpty() ? 1280 : items.get(0).height;
-        String day = DateTimeFormatter.BASIC_ISO_DATE.format(now);
-        String storagePath = "/materials/%d/%d/episodes/%d/%s/task_%d_v%d.mp4".formatted(task.tenantId, task.projectId, task.episodeNo, day, task.id, versionNo);
-        String coverPath = "/materials/%d/%d/episodes/%d/%s/task_%d_v%d_cover.png".formatted(task.tenantId, task.projectId, task.episodeNo, day, task.id, versionNo);
+        String storagePath = objectStorageKeyFactory.projectOriginal(
+            task.tenantId, task.projectId, "episodes", task.id, "v" + versionNo, now.toLocalDate(), "mp4"
+        );
+        boolean generateCover = Boolean.parseBoolean(String.valueOf(
+            readJsonMap(task.composeConfig).getOrDefault("generateCover", true)
+        ));
+        String coverUrl = null;
+        if (generateCover && !items.isEmpty()) {
+            StoryboardEntity first = storyboardMapper.selectById(items.get(0).storyboardId);
+            coverUrl = first == null ? null : materialFileAccessService.publicUrl(first.firstFrameUrl);
+        }
 
         EpisodeVideoVersionEntity version = new EpisodeVideoVersionEntity();
         version.tenantId = task.tenantId;
@@ -889,7 +897,7 @@ public class ShotProductionService {
         version.versionName = blankToNull(requestedVersionName) == null ? "第%d集 成片 v%d".formatted(task.episodeNo, versionNo) : requestedVersionName.trim();
         version.storagePath = storagePath;
         version.videoUrl = materialFileAccessService.publicUrl(storagePath);
-        version.coverUrl = materialFileAccessService.publicUrl(coverPath);
+        version.coverUrl = coverUrl;
         version.durationSeconds = duration;
         version.width = width;
         version.height = height;
@@ -900,7 +908,6 @@ public class ShotProductionService {
         version.createdAt = now;
         version.updatedAt = now;
         version.fileSize = writeEpisodeVideoFile(storagePath, task, items, width, height);
-        writeEpisodeCoverFile(coverPath, task, items, width, height);
         episodeVideoVersionMapper.insert(version);
         markCurrentVersion(version, now);
         return version;
@@ -987,55 +994,22 @@ public class ShotProductionService {
         Integer height
     ) {
         try {
-            if (objectStorageService.enabled()) {
-                Path file = Files.createTempFile("ant-short-tv-episode-", ".mp4");
-                try {
-                    AWTSequenceEncoder encoder = AWTSequenceEncoder.createSequenceEncoder(file.toFile(), 2);
-                    int frameCount = Math.max(2, Math.min(12, items.size() * 2));
-                    for (int index = 0; index < frameCount; index++) {
-                        encoder.encodeImage(episodeFrame(task, items, width, height, index));
-                    }
-                    encoder.finish();
-                    long fileSize = Files.size(file);
-                    objectStorageService.uploadFile(storagePath, file, "video/mp4");
-                    return fileSize;
-                } finally {
-                    Files.deleteIfExists(file);
+            Path file = Files.createTempFile("ant-short-tv-episode-", ".mp4");
+            try {
+                AWTSequenceEncoder encoder = AWTSequenceEncoder.createSequenceEncoder(file.toFile(), 2);
+                int frameCount = Math.max(2, Math.min(12, items.size() * 2));
+                for (int index = 0; index < frameCount; index++) {
+                    encoder.encodeImage(episodeFrame(task, items, width, height, index));
                 }
+                encoder.finish();
+                long fileSize = Files.size(file);
+                objectStorageService.uploadFile(storagePath, file, "video/mp4");
+                return fileSize;
+            } finally {
+                Files.deleteIfExists(file);
             }
-            Path file = storageFile(storagePath);
-            Files.createDirectories(file.getParent());
-            AWTSequenceEncoder encoder = AWTSequenceEncoder.createSequenceEncoder(file.toFile(), 2);
-            int frameCount = Math.max(2, Math.min(12, items.size() * 2));
-            for (int index = 0; index < frameCount; index++) {
-                encoder.encodeImage(episodeFrame(task, items, width, height, index));
-            }
-            encoder.finish();
-            return Files.size(file);
         } catch (Exception exception) {
             throw new IllegalStateException("成片文件生成失败：" + exception.getMessage(), exception);
-        }
-    }
-
-    private void writeEpisodeCoverFile(
-        String storagePath,
-        EpisodeComposeTaskEntity task,
-        List<EpisodeComposeItemEntity> items,
-        Integer width,
-        Integer height
-    ) {
-        try {
-            if (objectStorageService.enabled()) {
-                ByteArrayOutputStream output = new ByteArrayOutputStream();
-                ImageIO.write(episodeFrame(task, items, width, height, 0), "png", output);
-                objectStorageService.upload(storagePath, output.toByteArray(), "image/png");
-                return;
-            }
-            Path file = storageFile(storagePath);
-            Files.createDirectories(file.getParent());
-            ImageIO.write(episodeFrame(task, items, width, height, 0), "png", file.toFile());
-        } catch (Exception exception) {
-            throw new IllegalStateException("成片封面生成失败：" + exception.getMessage(), exception);
         }
     }
 
@@ -1069,8 +1043,10 @@ public class ShotProductionService {
     }
 
     private String subtitleStoragePath(Long tenantId, Long projectId, Long subtitleId) {
-        String day = DateTimeFormatter.BASIC_ISO_DATE.format(LocalDateTime.now());
-        return "/materials/%d/%d/subtitles/%s/%s.srt".formatted(tenantId, projectId, day, UUID.randomUUID());
+        return objectStorageKeyFactory.projectOriginal(
+            tenantId, projectId, "subtitles", subtitleId, UUID.randomUUID().toString(),
+            LocalDateTime.now().toLocalDate(), "srt"
+        );
     }
 
     private Long createMaterial(TenantContext context, Long projectId, String type, Long taskId, Long resultId, String name, String url, String coverUrl, BigDecimal duration, Integer width, Integer height, String format, Long fileSize) {
@@ -1254,26 +1230,11 @@ public class ShotProductionService {
     private long writeFile(String storagePath, String content) {
         try {
             byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-            if (objectStorageService.enabled()) {
-                objectStorageService.upload(storagePath, bytes, materialFileAccessService.contentType(storagePath));
-                return bytes.length;
-            }
-            Path file = storageFile(storagePath);
-            Files.createDirectories(file.getParent());
-            Files.write(file, bytes);
-            return Files.size(file);
+            objectStorageService.upload(storagePath, bytes, materialFileAccessService.contentType(storagePath));
+            return bytes.length;
         } catch (Exception exception) {
             throw new IllegalStateException("文件写入失败：" + exception.getMessage(), exception);
         }
-    }
-
-    private Path storageFile(String storagePath) {
-        Path root = storageRoot.toAbsolutePath().normalize();
-        Path file = root.resolve(storagePath.substring(1)).normalize();
-        if (!file.startsWith(root)) {
-            throw new IllegalStateException("文件路径不合法");
-        }
-        return file;
     }
 
     private BigDecimal estimateDuration(String text) {
