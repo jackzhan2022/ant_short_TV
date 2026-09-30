@@ -424,6 +424,9 @@ class CloudInfiniteProcessingServiceTest {
             current = entity;
             byToken.put(entity.callbackTokenHash, entity);
         }
+        @Override void resetForSubmission(MediaProcessingJobEntity entity) {
+            update(entity);
+        }
     }
 
     private static final class InMemoryMediaObjectStore extends MediaObjectStore {

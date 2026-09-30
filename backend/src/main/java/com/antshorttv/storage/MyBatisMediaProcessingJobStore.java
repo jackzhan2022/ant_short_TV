@@ -18,4 +18,7 @@ class MyBatisMediaProcessingJobStore extends MediaProcessingJobStore {
     }
     @Override void insert(MediaProcessingJobEntity entity) { mapper.insert(entity); }
     @Override void update(MediaProcessingJobEntity entity) { mapper.updateById(entity); }
+    @Override void resetForSubmission(MediaProcessingJobEntity entity) {
+        mapper.resetForSubmission(entity);
+    }
 }

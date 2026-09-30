@@ -70,7 +70,7 @@ public class MediaProcessingJobCoordinator {
         entity.completedAt = null;
         entity.createdAt = existing == null ? now : existing.createdAt;
         entity.updatedAt = now;
-        if (existing == null) jobs.insert(entity); else jobs.update(entity);
+        if (existing == null) jobs.insert(entity); else jobs.resetForSubmission(entity);
         return new PreparedMediaProcessingJob(submission, effectiveTokenHash, true, response(entity));
     }
 

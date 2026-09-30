@@ -486,6 +486,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             result.setUpdatedAt(LocalDateTime.now());
             resultMapper.updateById(result);
         } catch (RuntimeException exception) {
+            imageRenditions.retire(mediaIdentity(result));
             resultMapper.deleteById(result.getId());
             createdResultIds.remove(result.getId());
             throw exception;

@@ -5,4 +5,5 @@ abstract class MediaProcessingJobStore {
     abstract MediaProcessingJobEntity findByTokenHash(String tokenHash);
     abstract void insert(MediaProcessingJobEntity entity);
     abstract void update(MediaProcessingJobEntity entity);
+    abstract void resetForSubmission(MediaProcessingJobEntity entity);
 }

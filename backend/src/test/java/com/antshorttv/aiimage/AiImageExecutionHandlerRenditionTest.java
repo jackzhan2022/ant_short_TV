@@ -155,6 +155,39 @@ class AiImageExecutionHandlerRenditionTest {
     }
 
     @Test
+    void retiresDurablyRegisteredMediaBeforeDeletingResultWhenStorageSubmissionFails() {
+        Fixture fixture = new Fixture();
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of());
+        doAnswer(invocation -> {
+            ((AiImageResultEntity) invocation.getArgument(0)).setId(44L);
+            return 1;
+        }).when(fixture.results).insert(any(AiImageResultEntity.class));
+        when(fixture.invocations.invokeImage(any())).thenReturn(fixture.providerResult(List.of(
+            "data:image/png;base64,aW1hZ2U="
+        )));
+        when(fixture.storage.storeGenerated(any(), anyLong(), anyInt(), anyString()))
+            .thenThrow(new IllegalStateException("CI submission unavailable after registration"));
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("CI submission unavailable after registration");
+
+        InOrder cleanup = inOrder(fixture.renditions, fixture.results);
+        cleanup.verify(fixture.renditions).retire(fixture.identity(fixture.result(
+            AiImageResultStatus.PROCESSING.name()
+        )));
+        cleanup.verify(fixture.results).deleteById(44L);
+        assertThat(fixture.task.getStatus()).isEqualTo(AiImageTaskStatus.RUNNING.name());
+        verify(fixture.results, never()).activateForPublication(any(), any());
+        verify(fixture.variants, never()).generationSucceededIfClaimActive(
+            any(), any(), any(), any(), any(), any(), any(), any()
+        );
+        verify(fixture.variants, never()).generationFailedIfClaimActive(
+            any(), any(), any(), any(), any(), any(), any(), any()
+        );
+    }
+
+    @Test
     void publishesGeneratedResultOnlyAfterCallbackMadeDisplayReady() {
         Fixture fixture = new Fixture();
         fixture.task.setStatus("RENDERING");
