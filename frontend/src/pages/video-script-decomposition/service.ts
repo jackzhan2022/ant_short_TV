@@ -125,9 +125,10 @@ export const uploadEpisodeVideo = async (
   file: File,
   onProgress?: (percent: number) => void,
 ): Promise<ApiResponse<VideoDecompositionUpload>> => {
-  const uploaded = await startMediaUpload(file, {
+  const upload = await startMediaUpload(file, {
     onProgress: (progress) => onProgress?.(progress.percent * 100),
   });
+  const uploaded = await upload.attempt;
   return {
     success: true,
     data: {

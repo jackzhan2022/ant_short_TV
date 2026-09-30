@@ -32,16 +32,37 @@ export type VerifiedMediaUpload = {
   eTag: string;
 };
 
-export type UploadControls = {
+export type MediaUploadHandle = {
+  readonly session: MediaUploadSession;
+  readonly sessionToken: string;
+  readonly objectKey: string;
+  readonly taskId?: COS.TaskId;
+  readonly attempt: Promise<VerifiedMediaUpload>;
   pause: () => void;
-  resume: () => void;
+  resume: () => Promise<VerifiedMediaUpload>;
   cancel: () => void;
+  retryCompletion: () => Promise<VerifiedMediaUpload>;
 };
 
-type CosClient = Pick<
-  COS,
-  'uploadFile' | 'pauseTask' | 'restartTask' | 'cancelTask'
+export type UploadControls = Pick<
+  MediaUploadHandle,
+  'pause' | 'resume' | 'cancel'
 >;
+
+type CosClient = {
+  uploadFile: (
+    params: COS.UploadFileParams,
+    callback: CosUploadCallback,
+  ) => void;
+  pauseTask: COS['pauseTask'];
+  restartTask: COS['restartTask'];
+  cancelTask: COS['cancelTask'];
+};
+
+type CosUploadCallback = (
+  error: COS.CosError | null,
+  data: COS.UploadFileResult,
+) => void;
 
 export type CosClientFactory = (options: COS.COSOptions) => CosClient;
 
@@ -110,12 +131,52 @@ const completeSession = async (sessionToken: string) =>
     ),
   );
 
+type UploadAttempt = {
+  promise: Promise<VerifiedMediaUpload>;
+  resolve: (value: VerifiedMediaUpload) => void;
+  reject: (reason: Error) => void;
+  settled: boolean;
+};
+
+const createUploadAttempt = (): UploadAttempt => {
+  let resolvePromise!: (value: VerifiedMediaUpload) => void;
+  let rejectPromise!: (reason: Error) => void;
+  const promise = new Promise<VerifiedMediaUpload>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  const attempt: UploadAttempt = {
+    promise,
+    resolve: (value) => {
+      if (!attempt.settled) {
+        attempt.settled = true;
+        resolvePromise(value);
+      }
+    },
+    reject: (reason) => {
+      if (!attempt.settled) {
+        attempt.settled = true;
+        rejectPromise(reason);
+      }
+    },
+    settled: false,
+  };
+  return attempt;
+};
+
 export const startMediaUpload = async (
   file: File,
   options: StartMediaUploadOptions = {},
-): Promise<VerifiedMediaUpload> => {
+): Promise<MediaUploadHandle> => {
   const session = await createSession(file, options.projectId);
   let authorizationFailure: Error | undefined;
+  let taskId: COS.TaskId | undefined;
+  let currentAttempt = createUploadAttempt();
+  let pendingAttempts = [currentAttempt];
+  let completionPromise: Promise<VerifiedMediaUpload> | undefined;
+  let completedUpload: VerifiedMediaUpload | undefined;
+  let cosUploadSucceeded = false;
+  let canceled = false;
   const factory = options.clientFactory || defaultClientFactory;
   const cos = factory({
     ChunkSize: 16 * 1024 * 1024,
@@ -138,32 +199,144 @@ export const startMediaUpload = async (
     },
   });
 
-  try {
-    await cos.uploadFile({
-      Bucket: session.bucket,
-      Region: session.region,
-      StorageClass: session.storageClass,
-      Key: session.objectKey,
-      Body: file,
-      SliceSize: 16 * 1024 * 1024,
-      onProgress: options.onProgress,
-      onTaskReady: (taskId) => {
-        options.onControls?.({
-          pause: () => cos.pauseTask(taskId),
-          resume: () => cos.restartTask(taskId),
-          cancel: () => cos.cancelTask(taskId),
+  const completion = () => {
+    if (completedUpload) {
+      return Promise.resolve(completedUpload);
+    }
+    if (!completionPromise) {
+      completionPromise = completeSession(session.sessionToken)
+        .then((uploaded) => {
+          completedUpload = uploaded;
+          return uploaded;
+        })
+        .catch((error) => {
+          completionPromise = undefined;
+          throw error;
         });
-      },
-    });
-  } catch {
+    }
+    return completionPromise;
+  };
+
+  const normalizedCosFailure = () => {
     if (authorizationFailure) {
-      throw authorizationFailure;
+      return authorizationFailure;
     }
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      throw new Error('网络已断开，上传任务可在恢复网络后重试');
+      return new Error('网络已断开，上传任务可在恢复网络后重试');
     }
-    throw new Error('COS 上传失败，请重试');
+    return new Error('COS 上传失败，请重试');
+  };
+
+  const rejectPendingAttempts = (error: Error) => {
+    const attempts = pendingAttempts;
+    pendingAttempts = [];
+    for (const attempt of attempts) {
+      attempt.reject(error);
+    }
+  };
+
+  const handle: MediaUploadHandle = {
+    session,
+    sessionToken: session.sessionToken,
+    objectKey: session.objectKey,
+    get taskId() {
+      return taskId;
+    },
+    get attempt() {
+      return currentAttempt.promise;
+    },
+    pause: () => {
+      if (taskId && !canceled && !completedUpload) {
+        cos.pauseTask(taskId);
+      }
+    },
+    resume: () => {
+      if (canceled) {
+        return Promise.reject(new Error('上传已取消'));
+      }
+      if (cosUploadSucceeded) {
+        return Promise.reject(new Error('COS 上传已完成，请重试确认'));
+      }
+      if (!taskId) {
+        return Promise.reject(new Error('COS 上传任务尚未就绪，无法恢复'));
+      }
+      authorizationFailure = undefined;
+      currentAttempt = createUploadAttempt();
+      pendingAttempts.push(currentAttempt);
+      try {
+        cos.restartTask(taskId);
+      } catch {
+        rejectPendingAttempts(normalizedCosFailure());
+      }
+      return currentAttempt.promise;
+    },
+    cancel: () => {
+      if (canceled || completedUpload) {
+        return;
+      }
+      canceled = true;
+      if (taskId) {
+        cos.cancelTask(taskId);
+      }
+      rejectPendingAttempts(new Error('上传已取消'));
+    },
+    retryCompletion: () => {
+      if (canceled) {
+        return Promise.reject(new Error('上传已取消'));
+      }
+      if (!cosUploadSucceeded) {
+        return Promise.reject(new Error('COS 上传尚未完成'));
+      }
+      return completion();
+    },
+  };
+
+  try {
+    cos.uploadFile(
+      {
+        Bucket: session.bucket,
+        Region: session.region,
+        StorageClass: session.storageClass,
+        Key: session.objectKey,
+        Body: file,
+        SliceSize: 16 * 1024 * 1024,
+        onProgress: options.onProgress,
+        onTaskReady: (readyTaskId) => {
+          taskId = readyTaskId;
+          options.onControls?.(handle);
+        },
+      },
+      (error) => {
+        if (canceled) {
+          return;
+        }
+        if (cosUploadSucceeded) {
+          return;
+        }
+        if (error) {
+          rejectPendingAttempts(normalizedCosFailure());
+          return;
+        }
+        cosUploadSucceeded = true;
+        const completingAttempts = pendingAttempts;
+        pendingAttempts = [];
+        void completion().then(
+          (uploaded) => {
+            for (const attempt of completingAttempts) {
+              attempt.resolve(uploaded);
+            }
+          },
+          (completionError) => {
+            for (const attempt of completingAttempts) {
+              attempt.reject(completionError);
+            }
+          },
+        );
+      },
+    );
+  } catch {
+    rejectPendingAttempts(normalizedCosFailure());
   }
 
-  return await completeSession(session.sessionToken);
+  return handle;
 };

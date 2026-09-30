@@ -5,7 +5,11 @@ import {
   retryVideoDecompositionEpisode,
   uploadEpisodeVideo,
 } from './service';
-import { startMediaUpload } from '@/services/mediaUpload';
+import {
+  startMediaUpload,
+  type MediaUploadHandle,
+  type VerifiedMediaUpload,
+} from '@/services/mediaUpload';
 
 vi.mock('@umijs/max', () => ({ request: vi.fn() }));
 vi.mock('@/services/mediaUpload', () => ({ startMediaUpload: vi.fn() }));
@@ -32,13 +36,33 @@ describe('video decomposition service', () => {
   });
 
   it('uploads episode bytes directly to COS', async () => {
-    vi.mocked(startMediaUpload).mockResolvedValue({
+    const uploaded: VerifiedMediaUpload = {
       sessionToken: 'session-1',
       objectKey: 'uploads/11/session-1/source.mp4',
       contentType: 'video/mp4',
       size: 3,
       eTag: 'etag-1',
-    });
+    };
+    const handle: MediaUploadHandle = {
+      session: {
+        sessionToken: 'session-1',
+        bucket: 'antv-1418200553',
+        region: 'ap-guangzhou',
+        storageClass: 'INTELLIGENT_TIERING',
+        objectKey: 'uploads/11/session-1/source.mp4',
+        status: 'PENDING',
+        expiresAt: '2026-10-07T00:00:00Z',
+      },
+      sessionToken: 'session-1',
+      objectKey: 'uploads/11/session-1/source.mp4',
+      taskId: 'task-1',
+      attempt: Promise.resolve(uploaded),
+      pause: vi.fn(),
+      resume: vi.fn().mockResolvedValue(uploaded),
+      cancel: vi.fn(),
+      retryCompletion: vi.fn().mockResolvedValue(uploaded),
+    };
+    vi.mocked(startMediaUpload).mockResolvedValue(handle);
     const file = new File([new Uint8Array([1, 2, 3])], 'episode.mp4', {
       type: 'video/mp4',
     });

@@ -56,7 +56,8 @@ export const createManagedInspiration = async (values: {
   tags: string[];
   publishStatus: string;
 }) => {
-  const uploaded = await startMediaUpload(values.file);
+  const upload = await startMediaUpload(values.file);
+  const uploaded = await upload.attempt;
   return request<ApiResponse<ManagedInspiration>>(
     '/api/platform/inspiration-creations',
     {
