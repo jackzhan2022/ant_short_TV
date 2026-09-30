@@ -49,7 +49,7 @@
 - [x] 6.1 Implement idempotent Cloud Infinite job submission and persistence for one original-resolution `imageSlim` display rendition per image, converting unsupported source formats to PNG first, plus deterministic `imageSlim` video-cover outputs.
 - [x] 6.2 Implement authenticated, idempotent callback processing that validates job/input/output correlation and records terminal rendition metadata or retryable failure.
 - [ ] 6.3 Route every new generated, uploaded, imported, reference, style, and cover image original through the fixed persistent display-rendition workflow.
-- [ ] 6.4 Update generated-image completion to publish only after its required `imageSlim` display object is ready.
+- [x] 6.4 Update generated-image completion to publish only after its required `imageSlim` display object is ready.
 - [x] 6.5 Implement deterministic video cover selection: AI first-frame reuse, episode first-storyboard-frame reuse, and one-second Cloud Infinite snapshot with short-video fallback.
 - [x] 6.6 Honor `generateCover=false` for optional episode covers while retaining required-thumbnail behavior in domains that mandate a cover.
 - [x] 6.7 Remove JCodec video thumbnail extraction, synthetic episode-cover generation, and Java image-thumbnail generation from migrated flows after equivalent Cloud Infinite tests pass.
