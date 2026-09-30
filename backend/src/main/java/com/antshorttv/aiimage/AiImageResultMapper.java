@@ -7,6 +7,13 @@ import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
 public interface AiImageResultMapper extends BaseMapper<AiImageResultEntity> {
+    default List<AiImageResultEntity> selectByTask(Long taskId) {
+        return selectList(new LambdaQueryWrapper<AiImageResultEntity>()
+            .eq(AiImageResultEntity::getTaskId, taskId)
+            .ne(AiImageResultEntity::getStatus, AiImageResultStatus.DELETED.name())
+            .orderByAsc(AiImageResultEntity::getId));
+    }
+
     default List<AiImageResultEntity> selectActiveByTask(Long taskId) {
         return selectList(new LambdaQueryWrapper<AiImageResultEntity>()
             .eq(AiImageResultEntity::getTaskId, taskId)

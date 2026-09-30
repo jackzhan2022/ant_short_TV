@@ -63,6 +63,34 @@ class ObjectStorageServiceCosTest {
     }
 
     @Test
+    void uploadsOriginalWithoutSynchronousProcessingAndReturnsHeadMetadata() {
+        COS cos = mock(COS.class);
+        PutObjectResult result = new PutObjectResult();
+        result.setETag("put-etag");
+        when(cos.putObject(any(PutObjectRequest.class))).thenReturn(result);
+        String key = "materials/11/22/images/202609/44/result-44/original.jpg";
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentLength(3);
+        metadata.setContentType("image/jpeg");
+        metadata.setETag("head-etag");
+        metadata.setHeader("x-cos-storage-class", "INTELLIGENT_TIERING");
+        when(cos.getObjectMetadata("antv-1418200553", key)).thenReturn(metadata);
+        ObjectStorageService service = service(cos);
+
+        StoredObject stored = service.uploadOriginal(
+            key, new byte[] {1, 2, 3}, "image/jpeg"
+        );
+
+        ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(cos).putObject(request.capture());
+        verify(cos).getObjectMetadata("antv-1418200553", key);
+        assertThat(request.getValue().getPicOperations()).isNull();
+        assertThat(stored).isEqualTo(new StoredObject(
+            key, 3L, "image/jpeg", "head-etag", "INTELLIGENT_TIERING"
+        ));
+    }
+
+    @Test
     void convertsWebpToPngBeforeApplyingImageSlim() {
         COS cos = mock(COS.class);
         when(cos.putObject(any(PutObjectRequest.class))).thenReturn(new PutObjectResult());

@@ -7,7 +7,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antshorttv.material.MaterialFileAccessService;
+import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.ImageDisplayRenditionPlanner;
+import com.antshorttv.storage.MediaObjectIdentity;
 import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.RegisteredImageDisplay;
+import com.antshorttv.storage.StoredObject;
 import java.nio.file.Files;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -22,9 +27,57 @@ import org.springframework.core.io.Resource;
 class ObjectStorageRoutingTest {
 
     @Test
+    void generatedImageRegistersVerifiedOriginalAndSubmitsDisplayRendition() throws Exception {
+        ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
+        ImageDisplayRenditionService renditions = mock(ImageDisplayRenditionService.class);
+        AiImageStorageService storageService = new AiImageStorageService(
+            objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory(), renditions
+        );
+        BufferedImage source = new BufferedImage(800, 400, BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream original = new java.io.ByteArrayOutputStream();
+        ImageIO.write(source, "jpeg", original);
+        StoredObject verified = new StoredObject(
+            "materials/11/22/images/" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"))
+                + "/44/task-33-1/original.jpg",
+            original.size(),
+            "image/jpeg",
+            "etag-original",
+            "INTELLIGENT_TIERING"
+        );
+        when(objectStorageService.uploadOriginal(
+            eq(verified.key()), org.mockito.ArgumentMatchers.any(byte[].class), eq("image/jpeg")
+        )).thenReturn(verified);
+        when(renditions.registerOriginalAndSubmit(
+            org.mockito.ArgumentMatchers.any(), eq(verified), eq(800), eq(400), eq("ai-image-result:44")
+        )).thenReturn(new RegisteredImageDisplay(
+            verified.key(),
+            verified.key().replace("/original.jpg", "/derived/display.jpg"),
+            "SUBMITTED"
+        ));
+
+        StoredImage stored = storageService.storeGenerated(
+            imageTask(), 44L, 1,
+            "data:image/png;base64," + Base64.getEncoder().encodeToString(original.toByteArray())
+        );
+
+        assertThat(stored.storagePath()).isEqualTo(verified.key());
+        assertThat(stored.displayPath()).endsWith("/derived/display.jpg");
+        verify(objectStorageService).uploadOriginal(
+            eq(verified.key()), org.mockito.ArgumentMatchers.any(byte[].class), eq("image/jpeg")
+        );
+        ArgumentCaptor<MediaObjectIdentity> identity = ArgumentCaptor.forClass(MediaObjectIdentity.class);
+        verify(renditions).registerOriginalAndSubmit(
+            identity.capture(), eq(verified), eq(800), eq(400), eq("ai-image-result:44")
+        );
+        assertThat(identity.getValue()).isEqualTo(
+            new MediaObjectIdentity(11L, 22L, "AI_IMAGE_RESULT", 44L, "result-44")
+        );
+    }
+
+    @Test
     void generatedImageDetectsOriginalFormatAndUsesPersistentImageSlimRendition() throws Exception {
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
-        AiImageStorageService storageService = new AiImageStorageService(objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory());
+        AiImageStorageService storageService = storageService(objectStorageService);
         AiImageTaskEntity task = imageTask();
         BufferedImage source = new BufferedImage(800, 400, BufferedImage.TYPE_INT_RGB);
         java.io.ByteArrayOutputStream original = new java.io.ByteArrayOutputStream();
@@ -37,15 +90,15 @@ class ObjectStorageRoutingTest {
         assertThat(stored.storagePath()).endsWith("/original.jpg");
         assertThat(stored.displayPath()).endsWith("/derived/display.jpg");
         assertThat(stored.thumbnailPath()).isEqualTo(stored.displayPath());
-        verify(objectStorageService).upload(eq(stored.storagePath()), org.mockito.ArgumentMatchers.any(byte[].class), eq("image/jpeg"));
+        verify(objectStorageService).uploadOriginal(
+            eq(stored.storagePath()), org.mockito.ArgumentMatchers.any(byte[].class), eq("image/jpeg")
+        );
     }
 
     @Test
     void imagePlaceholderUploadsToObjectStorage() throws Exception {
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
-        AiImageStorageService storageService = new AiImageStorageService(
-            objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory()
-        );
+        AiImageStorageService storageService = storageService(objectStorageService);
         AiImageTaskEntity task = imageTask();
 
         StoredImage stored = storageService.createPlaceholder(task, 44L, 1);
@@ -53,7 +106,7 @@ class ObjectStorageRoutingTest {
         String expectedPath = "materials/11/22/images/%s/44/task-33-1/original.png"
             .formatted(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM")));
         ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
-        verify(objectStorageService).upload(eq(expectedPath), bytes.capture(), eq("image/png"));
+        verify(objectStorageService).uploadOriginal(eq(expectedPath), bytes.capture(), eq("image/png"));
         assertThat(bytes.getValue()).isNotEmpty();
         assertThat(stored).isNotNull();
     }
@@ -61,9 +114,7 @@ class ObjectStorageRoutingTest {
     @Test
     void generatedImageUploadsOnlyOriginalToObjectStorage() throws Exception {
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
-        AiImageStorageService storageService = new AiImageStorageService(
-            objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory()
-        );
+        AiImageStorageService storageService = storageService(objectStorageService);
         BufferedImage source = new BufferedImage(1024, 512, BufferedImage.TYPE_INT_RGB);
         java.io.ByteArrayOutputStream image = new java.io.ByteArrayOutputStream();
         ImageIO.write(source, "jpeg", image);
@@ -74,7 +125,7 @@ class ObjectStorageRoutingTest {
         ArgumentCaptor<String> path = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
         ArgumentCaptor<String> contentTypes = ArgumentCaptor.forClass(String.class);
-        verify(objectStorageService).upload(path.capture(), bytes.capture(), contentTypes.capture());
+        verify(objectStorageService).uploadOriginal(path.capture(), bytes.capture(), contentTypes.capture());
         assertThat(path.getValue()).isEqualTo(stored.storagePath());
         assertThat(contentTypes.getValue()).isEqualTo("image/jpeg");
         assertThat(bytes.getValue()).isEqualTo(image.toByteArray());
@@ -85,9 +136,7 @@ class ObjectStorageRoutingTest {
         Resource resource = new ByteArrayResource("image".getBytes());
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
         when(objectStorageService.resource("materials/1/2/images/a.png")).thenReturn(resource);
-        AiImageStorageService storageService = new AiImageStorageService(
-            objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory()
-        );
+        AiImageStorageService storageService = storageService(objectStorageService);
         AiImageResultEntity result = new AiImageResultEntity();
         result.setStoragePath("materials/1/2/images/a.png");
 
@@ -116,5 +165,35 @@ class ObjectStorageRoutingTest {
         task.setTaskType("STORYBOARD_FIRST_FRAME");
         task.setAspectRatio("1:1");
         return task;
+    }
+
+    private AiImageStorageService storageService(ObjectStorageService objectStorageService) {
+        com.antshorttv.storage.ObjectStorageKeyFactory keys =
+            new com.antshorttv.storage.ObjectStorageKeyFactory();
+        ImageDisplayRenditionService renditions = mock(ImageDisplayRenditionService.class);
+        when(objectStorageService.uploadOriginal(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(byte[].class),
+            org.mockito.ArgumentMatchers.anyString()
+        )).thenAnswer(invocation -> new StoredObject(
+            invocation.getArgument(0),
+            ((byte[]) invocation.getArgument(1)).length,
+            invocation.getArgument(2),
+            "etag-original",
+            "INTELLIGENT_TIERING"
+        ));
+        when(renditions.registerOriginalAndSubmit(
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.anyInt(),
+            org.mockito.ArgumentMatchers.anyInt(),
+            org.mockito.ArgumentMatchers.anyString()
+        )).thenAnswer(invocation -> {
+            StoredObject original = invocation.getArgument(1);
+            String display = new ImageDisplayRenditionPlanner(keys)
+                .plan(original.key(), original.contentType()).objectKey();
+            return new RegisteredImageDisplay(original.key(), display, "SUBMITTED");
+        });
+        return new AiImageStorageService(objectStorageService, keys, renditions);
     }
 }

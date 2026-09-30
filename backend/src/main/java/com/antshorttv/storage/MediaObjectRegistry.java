@@ -54,6 +54,15 @@ public class MediaObjectRegistry {
         );
     }
 
+    @Transactional
+    public RegisteredMediaObject find(MediaObjectIdentity identity, String renditionType) {
+        if (identity == null) throw new IllegalArgumentException("媒体对象身份不能为空。");
+        MediaObjectEntity entity = store.find(
+            identity, requireText(renditionType, "派生类型").toUpperCase()
+        );
+        return entity == null ? null : response(entity);
+    }
+
     private RegisteredMediaObject register(
         MediaObjectIdentity identity,
         String renditionType,

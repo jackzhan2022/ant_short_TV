@@ -4,7 +4,10 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.storage.ObjectStorageKeyFactory;
 import com.antshorttv.storage.ObjectStorageService;
-import com.antshorttv.storage.ImageDisplayRenditionPlanner;
+import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.MediaObjectIdentity;
+import com.antshorttv.storage.RegisteredImageDisplay;
+import com.antshorttv.storage.StoredObject;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
@@ -25,12 +28,16 @@ import org.springframework.stereotype.Service;
 public class AiImageStorageService {
     private final ObjectStorageService objectStorageService;
     private final ObjectStorageKeyFactory keys;
-    private final ImageDisplayRenditionPlanner imageRenditions;
+    private final ImageDisplayRenditionService imageRenditions;
 
-    public AiImageStorageService(ObjectStorageService objectStorageService, ObjectStorageKeyFactory keys) {
+    public AiImageStorageService(
+        ObjectStorageService objectStorageService,
+        ObjectStorageKeyFactory keys,
+        ImageDisplayRenditionService imageRenditions
+    ) {
         this.objectStorageService = objectStorageService;
         this.keys = keys;
-        this.imageRenditions = new ImageDisplayRenditionPlanner(keys);
+        this.imageRenditions = imageRenditions;
     }
 
     public StoredImage storeGenerated(AiImageTaskEntity task, Long resultId, int index, String dataUrl) {
@@ -107,11 +114,20 @@ public class AiImageStorageService {
             LocalDate.now(),
             extension(mimeType)
         );
-        String displayPath = imageRenditions.plan(originalPath, mimeType).objectKey();
+        StoredObject verified = objectStorageService.uploadOriginal(originalPath, original, mimeType);
+        RegisteredImageDisplay registered = imageRenditions.registerOriginalAndSubmit(
+            new MediaObjectIdentity(
+                task.getTenantId(), task.getProjectId(), "AI_IMAGE_RESULT", resultId, "result-" + resultId
+            ),
+            verified,
+            width,
+            height,
+            "ai-image-result:" + resultId
+        );
+        String displayPath = registered.displayKey();
         String thumbnailPath = displayPath;
-        objectStorageService.upload(originalPath, original, mimeType);
         return new StoredImage(
-            originalPath, displayPath, thumbnailPath, mimeType, width, height, (long) original.length
+            verified.key(), displayPath, thumbnailPath, verified.contentType(), width, height, verified.size()
         );
     }
 

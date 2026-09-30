@@ -80,7 +80,34 @@ public class ObjectStorageService {
         }
     }
 
+    public StoredObject uploadOriginal(String storagePath, byte[] bytes, String contentType) {
+        try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
+            uploadObject(storagePath, input, bytes.length, contentType, false);
+            StoredObject verified = metadata(storagePath);
+            if (verified.size() != bytes.length
+                || !same(verified.contentType(), contentType)
+                || !same(verified.storageClass(), properties.getStorageClass())) {
+                throw new IllegalStateException("原始对象元数据校验失败。");
+            }
+            return verified;
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw storageFailure("原始对象上传失败", exception);
+        }
+    }
+
     public StoredObject upload(String storagePath, InputStream input, long size, String contentType) {
+        return uploadObject(storagePath, input, size, contentType, true);
+    }
+
+    private StoredObject uploadObject(
+        String storagePath,
+        InputStream input,
+        long size,
+        String contentType,
+        boolean createSynchronousRendition
+    ) {
         try {
             String key = keys.objectKey(storagePath);
             ObjectMetadata metadata = new ObjectMetadata();
@@ -89,7 +116,8 @@ public class ObjectStorageService {
                 ? "application/octet-stream" : contentType);
             PutObjectRequest request = new PutObjectRequest(properties.getBucket(), key, input, metadata);
             request.setStorageClass(StorageClass.fromValue(properties.getStorageClass()));
-            ImageDisplayRenditionPlan rendition = isImageOriginal(key, metadata.getContentType())
+            ImageDisplayRenditionPlan rendition = createSynchronousRendition
+                && isImageOriginal(key, metadata.getContentType())
                 ? imageRenditions.plan(key, metadata.getContentType()) : null;
             if (rendition != null) request.setPicOperations(imageOperations(rendition));
             PutObjectResult result = metrics.record(

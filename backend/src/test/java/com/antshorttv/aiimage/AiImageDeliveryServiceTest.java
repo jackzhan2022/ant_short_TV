@@ -1,8 +1,10 @@
 package com.antshorttv.aiimage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,6 +63,24 @@ class AiImageDeliveryServiceTest {
         verify(grants).issue(request.capture());
         assertThat(request.getValue().objectKey()).isEqualTo(result.getDisplayPath());
         assertThat(request.getValue().renditionType()).isEqualTo("THUMBNAIL");
+    }
+
+    @Test
+    void rejectsDisplayAndOriginalDeliveryUntilTheDisplayRenditionIsReady() {
+        AiImageResultMapper mapper = mock(AiImageResultMapper.class);
+        ProjectPermissionGuard permissions = mock(ProjectPermissionGuard.class);
+        MediaDeliveryGrantService grants = mock(MediaDeliveryGrantService.class);
+        AiImageResultEntity result = result();
+        result.setStatus(AiImageResultStatus.PROCESSING.name());
+        when(mapper.selectById(44L)).thenReturn(result);
+        AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants);
+
+        assertThatThrownBy(() -> service.issue(22L, 44L, ImageRendition.DISPLAY))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
+        assertThatThrownBy(() -> service.issue(22L, 44L, ImageRendition.ORIGINAL))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
+        verify(permissions, never()).require(any(), any(), any());
+        verify(grants, never()).issue(any());
     }
 
     private AiImageResultEntity result() {

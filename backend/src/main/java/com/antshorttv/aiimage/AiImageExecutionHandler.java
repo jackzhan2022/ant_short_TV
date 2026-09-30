@@ -18,6 +18,7 @@ import com.antshorttv.execution.AiExecutionAttemptEntity;
 import com.antshorttv.execution.AiExecutionAttemptMapper;
 import com.antshorttv.execution.AiExecutionClaimLostException;
 import com.antshorttv.execution.AiExecutionContext;
+import com.antshorttv.execution.AiExecutionDeferredException;
 import com.antshorttv.execution.AiExecutionHandler;
 import com.antshorttv.execution.AiExecutionHandlerResult;
 import com.antshorttv.execution.AiExecutionRetryPolicy;
@@ -31,6 +32,9 @@ import com.antshorttv.points.AiSettlementOutcome;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.antshorttv.script.AssetVisualVariantService;
+import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.MediaObjectIdentity;
+import com.antshorttv.storage.RegisteredMediaObject;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -51,6 +55,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
     private final AiImageTaskMapper taskMapper;
     private final AiImageResultMapper resultMapper;
     private final AiImageStorageService storageService;
+    private final ImageDisplayRenditionService imageRenditions;
     private final AiInvocationService invocationService;
     private final AiExecutionTaskMapper executionTaskMapper;
     private final AiExecutionAttemptMapper attemptMapper;
@@ -64,6 +69,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         AiImageTaskMapper taskMapper,
         AiImageResultMapper resultMapper,
         AiImageStorageService storageService,
+        ImageDisplayRenditionService imageRenditions,
         AiInvocationService invocationService,
         AiExecutionTaskMapper executionTaskMapper,
         AiExecutionAttemptMapper attemptMapper,
@@ -76,6 +82,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         this.taskMapper = taskMapper;
         this.resultMapper = resultMapper;
         this.storageService = storageService;
+        this.imageRenditions = imageRenditions;
         this.invocationService = invocationService;
         this.executionTaskMapper = executionTaskMapper;
         this.attemptMapper = attemptMapper;
@@ -108,6 +115,10 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
     public AiExecutionHandlerResult execute(AiExecutionContext context) {
         AiExecutionTaskEntity execution = context.task();
         AiImageTaskEntity task = taskMapper.selectById(execution.businessId);
+        List<AiImageResultEntity> existingResults = resultMapper.selectByTask(task.getId());
+        if (!existingResults.isEmpty()) {
+            return reconcileRenditions(context, task, existingResults);
+        }
         java.util.List<Long> createdResultIds = new java.util.ArrayList<>();
         markDomainRunning(task);
         try {
@@ -124,8 +135,8 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             }
             recordUsageAndSettle(context, task, result, task.getImageCount());
             requireActiveClaim(context);
-            markDomainSucceeded(task, result.aiCallLogId());
-            return new AiExecutionHandlerResult("AI_IMAGE_TASK", task.getId());
+            markDomainAwaitingRenditions(task, result.aiCallLogId());
+            throw new AiExecutionDeferredException("等待 AI 图片展示版本完成处理。");
         } catch (AiExecutionClaimLostException exception) {
             discardUnpublishedResults(task, createdResultIds);
             throw exception;
@@ -288,6 +299,74 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         taskMapper.updateById(task);
     }
 
+    private void markDomainAwaitingRenditions(AiImageTaskEntity task, Long callLogId) {
+        task.setAiCallLogId(callLogId);
+        task.setUpdatedAt(LocalDateTime.now());
+        taskMapper.updateById(task);
+    }
+
+    private AiExecutionHandlerResult reconcileRenditions(
+        AiExecutionContext context,
+        AiImageTaskEntity task,
+        List<AiImageResultEntity> results
+    ) {
+        for (AiImageResultEntity result : results) {
+            RegisteredMediaObject display = imageRenditions.display(mediaIdentity(result));
+            if (display != null && "FAILED".equals(display.status())) {
+                result.setStatus(AiImageResultStatus.FAILED.name());
+                result.setUpdatedAt(LocalDateTime.now());
+                resultMapper.updateById(result);
+                markRenditionFailedIfClaimActive(context, task);
+                throw new IllegalStateException("AI 图片展示版本处理失败。");
+            }
+            if (display == null || !"READY".equals(display.status())) {
+                throw new AiExecutionDeferredException("等待 AI 图片展示版本完成处理。");
+            }
+            if (!AiImageResultStatus.ACTIVE.name().equals(result.getStatus())) {
+                result.setStatus(AiImageResultStatus.ACTIVE.name());
+                result.setUpdatedAt(LocalDateTime.now());
+                resultMapper.updateById(result);
+            }
+        }
+        requireActiveClaim(context);
+        AiImageResultEntity first = results.get(0);
+        if ("VISUAL_VARIANT".equals(task.getTargetType())) {
+            boolean published = assetVisualVariantService.generationSucceededIfClaimActive(
+                task.getTenantId(), task.getProjectId(), task.getTargetId(), task.getId(),
+                first.getId(), first.getImageUrl(), context.task().id, context.claim().claimToken());
+            if (!published) throw new AiExecutionClaimLostException(context.task().id);
+        }
+        markDomainSucceeded(task, task.getAiCallLogId());
+        return new AiExecutionHandlerResult("AI_IMAGE_TASK", task.getId());
+    }
+
+    private void markRenditionFailedIfClaimActive(
+        AiExecutionContext context,
+        AiImageTaskEntity task
+    ) {
+        String message = "AI 图片展示版本处理失败。";
+        int updated = taskMapper.markFailedIfClaimActive(
+            task.getId(), context.task().id, context.claim().claimToken(), message,
+            task.getAiCallLogId()
+        );
+        if (updated != 1) throw new AiExecutionClaimLostException(context.task().id);
+        if ("VISUAL_VARIANT".equals(task.getTargetType())) {
+            boolean variantUpdated = assetVisualVariantService.generationFailedIfClaimActive(
+                task.getTenantId(), task.getProjectId(), task.getTargetId(), task.getId(),
+                "IMAGE_DISPLAY_RENDITION_FAILED", message, context.task().id,
+                context.claim().claimToken()
+            );
+            if (!variantUpdated) throw new AiExecutionClaimLostException(context.task().id);
+        }
+    }
+
+    private MediaObjectIdentity mediaIdentity(AiImageResultEntity result) {
+        return new MediaObjectIdentity(
+            result.getTenantId(), result.getProjectId(), "AI_IMAGE_RESULT", result.getId(),
+            "result-" + result.getId()
+        );
+    }
+
     private boolean markDomainFailedIfClaimActive(
         AiExecutionContext context, AiImageTaskEntity task, String message, Long callLogId
     ) {
@@ -325,7 +404,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         result.setImageUrl("");
         result.setThumbnailUrl("");
         result.setIsSelected(false);
-        result.setStatus(AiImageResultStatus.ACTIVE.name());
+        result.setStatus(AiImageResultStatus.PROCESSING.name());
         result.setCreatedAt(LocalDateTime.now());
         result.setUpdatedAt(result.getCreatedAt());
         resultMapper.insert(result);
@@ -352,12 +431,6 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             throw exception;
         }
         requireActiveClaim(context);
-        if (index == 1 && "VISUAL_VARIANT".equals(task.getTargetType())) {
-            boolean published = assetVisualVariantService.generationSucceededIfClaimActive(
-                task.getTenantId(), task.getProjectId(), task.getTargetId(), task.getId(),
-                result.getId(), result.getImageUrl(), context.task().id, context.claim().claimToken());
-            if (!published) throw new AiExecutionClaimLostException(context.task().id);
-        }
     }
 
     private void discardUnpublishedResults(AiImageTaskEntity task, java.util.List<Long> resultIds) {

@@ -109,6 +109,7 @@ class CloudInfiniteProcessingServiceTest {
         assertThat(media.width).isEqualTo(1200);
         assertThat(media.height).isEqualTo(800);
         assertThat(media.mimeType).isEqualTo("image/png");
+        assertThat(media.current.status).isEqualTo("READY");
     }
 
     @Test
@@ -124,6 +125,7 @@ class CloudInfiniteProcessingServiceTest {
         assertThat(jobs.current.errorCode).isEqualTo("ImageSlimFailed");
         assertThat(media.failedCalls).isEqualTo(1);
         assertThat(media.readyCalls).isZero();
+        assertThat(media.current.status).isEqualTo("FAILED");
     }
 
     @Test
@@ -231,11 +233,15 @@ class CloudInfiniteProcessingServiceTest {
         }
         @Override void ready(Long id, long size, String eTag, String mimeType, int width, int height) {
             readyCalls++;
+            current.status = "READY";
             this.size = size;
             this.mimeType = mimeType;
             this.width = width;
             this.height = height;
         }
-        @Override void failed(Long id, String message) { failedCalls++; }
+        @Override void failed(Long id, String message) {
+            failedCalls++;
+            current.status = "FAILED";
+        }
     }
 }
