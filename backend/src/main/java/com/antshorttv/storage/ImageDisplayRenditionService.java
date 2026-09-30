@@ -39,4 +39,23 @@ public class ImageDisplayRenditionService {
     public RegisteredMediaObject display(MediaObjectIdentity identity) {
         return registry.find(identity, "DISPLAY_IMAGE_SLIM");
     }
+
+    @Transactional
+    public RegisteredImageDisplay retryFailedDisplay(
+        MediaObjectIdentity identity,
+        String correlationData
+    ) {
+        RegisteredImageOriginal original = registry.original(identity);
+        if (original == null || !"READY".equals(original.status())) {
+            throw new IllegalStateException("AI 图片原图尚未就绪，无法重试展示版本。");
+        }
+        SubmittedMediaProcessingJob job = processing.submitImageDisplay(new SubmitImageDisplayJob(
+            identity,
+            original.objectKey(),
+            original.mimeType(),
+            original.storageClass(),
+            correlationData
+        ));
+        return new RegisteredImageDisplay(original.objectKey(), job.outputKey(), job.status());
+    }
 }

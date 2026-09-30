@@ -17,7 +17,11 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
+import java.util.stream.Stream;
 
 class CloudInfiniteProcessingServiceTest {
     private COS cos;
@@ -129,6 +133,64 @@ class CloudInfiniteProcessingServiceTest {
     }
 
     @Test
+    void resubmitsFailedJobAndReturnsRenditionToPending() {
+        SubmitImageDisplayJob command = command("image/png");
+        service.submitImageDisplay(command);
+        service.handleCallback(
+            callbackToken(), failedCallback("ImageSlimFailed", "imageSlim failed")
+        );
+
+        service.submitImageDisplay(command);
+
+        assertThat(jobs.current.status).isEqualTo("SUBMITTED");
+        assertThat(jobs.current.attemptNo).isEqualTo(2);
+        assertThat(media.current.status).isEqualTo("PENDING");
+        verify(cos, times(2)).createPicProcessJob(any());
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidSuccessMetadata")
+    void persistsMalformedSuccessCallbackAsRetryableFailure(
+        long size,
+        int width,
+        int height,
+        String eTag,
+        String format
+    ) {
+        service.submitImageDisplay(command("image/png"));
+        String token = callbackToken();
+
+        service.handleCallback(token, TencentCiTaskCallback.success(
+            "job-1",
+            command("image/png").inputKey(),
+            "materials/11/22/images/202609/42/v1/derived/display.png",
+            "asset-42-display",
+            size,
+            width,
+            height,
+            eTag,
+            format
+        ));
+
+        assertThat(jobs.current.status).isEqualTo("FAILED");
+        assertThat(jobs.current.errorCode).isEqualTo("INVALID_RESULT_METADATA");
+        assertThat(jobs.current.errorMessage).contains("元数据");
+        assertThat(media.current.status).isEqualTo("FAILED");
+        assertThat(media.failedCalls).isEqualTo(1);
+        assertThat(media.readyCalls).isZero();
+    }
+
+    private static Stream<Arguments> invalidSuccessMetadata() {
+        return Stream.of(
+            Arguments.of(0L, 1200, 800, "etag-derived", "PNG"),
+            Arguments.of(321L, 0, 800, "etag-derived", "PNG"),
+            Arguments.of(321L, 1200, 0, "etag-derived", "PNG"),
+            Arguments.of(321L, 1200, 800, " ", "PNG"),
+            Arguments.of(321L, 1200, 800, "etag-derived", "BMP")
+        );
+    }
+
+    @Test
     void keepsFailedJobTerminalWhenSuccessCallbackArrivesLater() {
         service.submitImageDisplay(command("image/png"));
         String token = callbackToken();
@@ -210,7 +272,10 @@ class CloudInfiniteProcessingServiceTest {
             current = entity;
             byToken.put(entity.callbackTokenHash, entity);
         }
-        @Override void update(MediaProcessingJobEntity entity) { current = entity; }
+        @Override void update(MediaProcessingJobEntity entity) {
+            current = entity;
+            byToken.put(entity.callbackTokenHash, entity);
+        }
     }
 
     private static final class InMemoryMediaObjectStore extends MediaObjectStore {
@@ -230,6 +295,14 @@ class CloudInfiniteProcessingServiceTest {
         @Override void insert(MediaObjectEntity entity) {
             entity.id = nextId++;
             current = entity;
+        }
+        @Override boolean retryFailed(Long id) {
+            if (current == null || !current.id.equals(id) || !"FAILED".equals(current.status)) {
+                return false;
+            }
+            current.status = "PENDING";
+            current.errorMessage = null;
+            return true;
         }
         @Override void ready(Long id, long size, String eTag, String mimeType, int width, int height) {
             readyCalls++;

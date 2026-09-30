@@ -73,4 +73,39 @@ class ImageDisplayRenditionServiceTest {
 
         assertThat(service.display(identity)).isEqualTo(ready);
     }
+
+    @Test
+    void retriesFailedDisplayFromTheRegisteredOriginal() {
+        MediaObjectRegistry registry = mock(MediaObjectRegistry.class);
+        CloudInfiniteProcessingService processing = mock(CloudInfiniteProcessingService.class);
+        ImageDisplayRenditionService service = new ImageDisplayRenditionService(registry, processing);
+        MediaObjectIdentity identity = new MediaObjectIdentity(
+            11L, 22L, "AI_IMAGE_RESULT", 44L, "result-44"
+        );
+        RegisteredImageOriginal original = new RegisteredImageOriginal(
+            "materials/11/22/images/202609/44/result-44/original.jpg",
+            "image/jpeg",
+            "INTELLIGENT_TIERING",
+            "READY"
+        );
+        when(registry.original(identity)).thenReturn(original);
+        when(processing.submitImageDisplay(org.mockito.ArgumentMatchers.any())).thenReturn(
+            new SubmittedMediaProcessingJob(
+                "job-2", "SUBMITTED",
+                "materials/11/22/images/202609/44/result-44/derived/display.jpg"
+            )
+        );
+
+        RegisteredImageDisplay retried = service.retryFailedDisplay(
+            identity, "ai-image-result:44"
+        );
+
+        assertThat(retried.status()).isEqualTo("SUBMITTED");
+        ArgumentCaptor<SubmitImageDisplayJob> command =
+            ArgumentCaptor.forClass(SubmitImageDisplayJob.class);
+        verify(processing).submitImageDisplay(command.capture());
+        assertThat(command.getValue().inputKey()).isEqualTo(original.objectKey());
+        assertThat(command.getValue().sourceMimeType()).isEqualTo(original.mimeType());
+        assertThat(command.getValue().storageClass()).isEqualTo(original.storageClass());
+    }
 }

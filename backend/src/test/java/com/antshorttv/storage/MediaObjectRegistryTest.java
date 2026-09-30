@@ -140,6 +140,16 @@ class MediaObjectRegistryTest {
         }
 
         @Override
+        boolean retryFailed(Long id) {
+            if (current == null || !current.id.equals(id) || !"FAILED".equals(current.status)) {
+                return false;
+            }
+            current.status = "PENDING";
+            current.errorMessage = null;
+            return true;
+        }
+
+        @Override
         void ready(Long id, long size, String eTag, String mimeType, int width, int height) {
         }
 

@@ -313,11 +313,13 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         for (AiImageResultEntity result : results) {
             RegisteredMediaObject display = imageRenditions.display(mediaIdentity(result));
             if (display != null && "FAILED".equals(display.status())) {
-                result.setStatus(AiImageResultStatus.FAILED.name());
+                imageRenditions.retryFailedDisplay(
+                    mediaIdentity(result), "ai-image-result:" + result.getId()
+                );
+                result.setStatus(AiImageResultStatus.PROCESSING.name());
                 result.setUpdatedAt(LocalDateTime.now());
                 resultMapper.updateById(result);
-                markRenditionFailedIfClaimActive(context, task);
-                throw new IllegalStateException("AI 图片展示版本处理失败。");
+                throw new AiExecutionDeferredException("AI 图片展示版本正在重试。");
             }
             if (display == null || !"READY".equals(display.status())) {
                 throw new AiExecutionDeferredException("等待 AI 图片展示版本完成处理。");
@@ -338,26 +340,6 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         }
         markDomainSucceeded(task, task.getAiCallLogId());
         return new AiExecutionHandlerResult("AI_IMAGE_TASK", task.getId());
-    }
-
-    private void markRenditionFailedIfClaimActive(
-        AiExecutionContext context,
-        AiImageTaskEntity task
-    ) {
-        String message = "AI 图片展示版本处理失败。";
-        int updated = taskMapper.markFailedIfClaimActive(
-            task.getId(), context.task().id, context.claim().claimToken(), message,
-            task.getAiCallLogId()
-        );
-        if (updated != 1) throw new AiExecutionClaimLostException(context.task().id);
-        if ("VISUAL_VARIANT".equals(task.getTargetType())) {
-            boolean variantUpdated = assetVisualVariantService.generationFailedIfClaimActive(
-                task.getTenantId(), task.getProjectId(), task.getTargetId(), task.getId(),
-                "IMAGE_DISPLAY_RENDITION_FAILED", message, context.task().id,
-                context.claim().claimToken()
-            );
-            if (!variantUpdated) throw new AiExecutionClaimLostException(context.task().id);
-        }
     }
 
     private MediaObjectIdentity mediaIdentity(AiImageResultEntity result) {

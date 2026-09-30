@@ -137,19 +137,23 @@ public class CloudInfiniteProcessingService {
         if ("Success".equalsIgnoreCase(detail.state()) && "Success".equalsIgnoreCase(detail.code())) {
             TencentCiProcessResult result = detail.operation().picProcessResult() == null
                 ? null : detail.operation().picProcessResult().processResult();
-            if (result == null) throw new IllegalArgumentException("万象成功回调缺少图片元数据。");
-            entity.status = "SUCCEEDED";
-            entity.completedAt = now;
-            mediaObjects.ready(
-                entity.mediaObjectId, result.size(), result.eTag(), mimeType(result.format()),
-                result.width(), result.height()
-            );
+            if (!valid(result)) {
+                failed(
+                    entity,
+                    "INVALID_RESULT_METADATA",
+                    "万象成功回调图片元数据不完整或格式无效。",
+                    now
+                );
+            } else {
+                entity.status = "SUCCEEDED";
+                entity.completedAt = now;
+                mediaObjects.ready(
+                    entity.mediaObjectId, result.size(), result.eTag(), mimeType(result.format()),
+                    result.width(), result.height()
+                );
+            }
         } else {
-            entity.status = "FAILED";
-            entity.errorCode = detail.code();
-            entity.errorMessage = detail.message();
-            entity.completedAt = now;
-            mediaObjects.failed(entity.mediaObjectId, detail.message());
+            failed(entity, detail.code(), detail.message(), now);
         }
         entity.updatedAt = now;
         jobs.update(entity);
@@ -234,8 +238,30 @@ public class CloudInfiniteProcessingService {
         return "Running".equalsIgnoreCase(state) ? "RUNNING" : "SUBMITTED";
     }
     private String mimeType(String format) {
-        if (blank(format)) throw new IllegalArgumentException("万象成功回调缺少图片格式。");
-        return "image/" + ("jpg".equalsIgnoreCase(format) ? "jpeg" : format.toLowerCase());
+        return switch (format.toLowerCase(java.util.Locale.ROOT)) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            default -> throw new IllegalArgumentException("万象成功回调图片格式无效。");
+        };
+    }
+    private boolean valid(TencentCiProcessResult result) {
+        return result != null && result.size() > 0 && result.width() > 0 && result.height() > 0
+            && !blank(result.eTag()) && !blank(result.format())
+            && Set.of("jpg", "jpeg", "png", "gif")
+                .contains(result.format().toLowerCase(java.util.Locale.ROOT));
+    }
+    private void failed(
+        MediaProcessingJobEntity entity,
+        String code,
+        String message,
+        LocalDateTime now
+    ) {
+        entity.status = "FAILED";
+        entity.errorCode = code;
+        entity.errorMessage = message;
+        entity.completedAt = now;
+        mediaObjects.failed(entity.mediaObjectId, message);
     }
     private boolean same(String left, String right) { return left != null && left.equals(right); }
     private static boolean blank(String value) { return value == null || value.isBlank(); }

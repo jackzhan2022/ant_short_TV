@@ -24,6 +24,13 @@ interface MediaObjectMapper extends BaseMapper<MediaObjectEntity> {
 
     @Update("""
         update media_object
+           set status = 'PENDING', error_message = null, updated_at = current_timestamp
+         where id = #{id} and status = 'FAILED'
+        """)
+    int retryFailed(@Param("id") Long id);
+
+    @Update("""
+        update media_object
            set file_size = #{size}, etag = #{eTag}, mime_type = #{mimeType},
                width = #{width}, height = #{height}, status = 'READY',
                error_message = null, updated_at = current_timestamp

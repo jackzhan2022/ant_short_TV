@@ -63,6 +63,15 @@ public class MediaObjectRegistry {
         return entity == null ? null : response(entity);
     }
 
+    @Transactional
+    public RegisteredImageOriginal original(MediaObjectIdentity identity) {
+        if (identity == null) throw new IllegalArgumentException("媒体对象身份不能为空。");
+        MediaObjectEntity entity = store.find(identity, "ORIGINAL");
+        return entity == null ? null : new RegisteredImageOriginal(
+            entity.objectKey, entity.mimeType, entity.storageClass, entity.status
+        );
+    }
+
     private RegisteredMediaObject register(
         MediaObjectIdentity identity,
         String renditionType,
@@ -80,6 +89,13 @@ public class MediaObjectRegistry {
         if (existing != null) {
             if (!existing.identity().equals(identity) || !existing.objectKey.equals(objectKey)) {
                 throw new IllegalStateException("不可变媒体对象不能替换为其他对象键或归属。");
+            }
+            if ("PENDING".equals(status) && "FAILED".equals(existing.status)) {
+                if (!store.retryFailed(existing.id)) {
+                    throw new IllegalStateException("失败派生对象无法进入重试状态。");
+                }
+                existing.status = "PENDING";
+                existing.errorMessage = null;
             }
             return response(existing);
         }

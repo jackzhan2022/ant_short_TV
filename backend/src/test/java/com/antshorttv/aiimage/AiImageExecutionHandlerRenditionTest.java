@@ -161,7 +161,7 @@ class AiImageExecutionHandlerRenditionTest {
     }
 
     @Test
-    void failedDisplayRemainsFailedAndRetryableWithoutPublishingOriginal() {
+    void retriesFailedDisplayWithoutReinvokingProviderAndDefersCompletion() {
         Fixture fixture = new Fixture();
         AiImageResultEntity result = fixture.result(AiImageResultStatus.PROCESSING.name());
         when(fixture.results.selectByTask(33L)).thenReturn(List.of(result));
@@ -174,31 +174,27 @@ class AiImageExecutionHandlerRenditionTest {
                 "FAILED"
             )
         );
-        when(fixture.tasks.markFailedIfClaimActive(
-            33L, 99L, "claim-1", "AI 图片展示版本处理失败。", 900L
-        )).thenReturn(1);
-        when(fixture.variants.generationFailedIfClaimActive(
-            11L, 22L, 77L, 33L, "IMAGE_DISPLAY_RENDITION_FAILED",
-            "AI 图片展示版本处理失败。", 99L, "claim-1"
-        )).thenReturn(true);
+        when(fixture.renditions.retryFailedDisplay(
+            fixture.identity(result), "ai-image-result:44"
+        )).thenReturn(new com.antshorttv.storage.RegisteredImageDisplay(
+            result.getStoragePath(), result.getDisplayPath(), "SUBMITTED"
+        ));
 
         assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
-            .isInstanceOf(IllegalStateException.class)
-            .isNotInstanceOf(AiExecutionDeferredException.class)
-            .hasMessage("AI 图片展示版本处理失败。");
+            .isInstanceOf(AiExecutionDeferredException.class);
 
-        assertThat(result.getStatus()).isEqualTo(AiImageResultStatus.FAILED.name());
+        assertThat(result.getStatus()).isEqualTo(AiImageResultStatus.PROCESSING.name());
         verify(fixture.results).updateById(result);
-        verify(fixture.tasks).markFailedIfClaimActive(
-            33L, 99L, "claim-1", "AI 图片展示版本处理失败。", 900L
-        );
-        verify(fixture.variants).generationFailedIfClaimActive(
-            11L, 22L, 77L, 33L, "IMAGE_DISPLAY_RENDITION_FAILED",
-            "AI 图片展示版本处理失败。", 99L, "claim-1"
+        verify(fixture.renditions).retryFailedDisplay(
+            fixture.identity(result), "ai-image-result:44"
         );
         verify(fixture.variants, never()).generationSucceededIfClaimActive(
             any(), any(), any(), any(), any(), any(), any(), any()
         );
+        verify(fixture.variants, never()).generationFailedIfClaimActive(
+            any(), any(), any(), any(), any(), any(), any(), any()
+        );
+        verify(fixture.invocations, never()).invokeImage(any());
         verify(fixture.storage, never()).resource(result);
     }
 
@@ -244,6 +240,9 @@ class AiImageExecutionHandlerRenditionTest {
             result.setTargetType("VISUAL_VARIANT");
             result.setTargetId(77L);
             result.setImageUrl("/api/projects/22/ai-image-results/44/display");
+            result.setStoragePath(
+                "materials/11/22/images/202609/44/result-44/original.jpg"
+            );
             result.setDisplayPath(
                 "materials/11/22/images/202609/44/result-44/derived/display.jpg"
             );
