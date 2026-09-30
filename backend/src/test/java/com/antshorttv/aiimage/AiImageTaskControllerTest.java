@@ -615,7 +615,7 @@ class AiImageTaskControllerTest {
         Long resultId = readLong(completed, "$.data.results[0].id");
         String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
         String thumbnailUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].thumbnailUrl");
-        assertThat(imageUrl).contains("/download").doesNotContain("data:image");
+        assertThat(imageUrl).contains("/display").doesNotContain("data:image");
         assertThat(thumbnailUrl).contains("/thumbnail").doesNotContain("data:image");
 
         mockMvc.perform(get("/api/projects/%d/ai-image-tasks".formatted(projectId))
@@ -745,7 +745,7 @@ class AiImageTaskControllerTest {
 
             String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
             String thumbnailUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].thumbnailUrl");
-            org.assertj.core.api.Assertions.assertThat(imageUrl).contains("/download").doesNotContain("data:image");
+            org.assertj.core.api.Assertions.assertThat(imageUrl).contains("/display").doesNotContain("data:image");
             org.assertj.core.api.Assertions.assertThat(thumbnailUrl).contains("/thumbnail").doesNotContain("data:image");
             Long executionId = readLong(completed, "$.data.executionId");
             Long callLogExecutionId = jdbcTemplate.queryForObject("""

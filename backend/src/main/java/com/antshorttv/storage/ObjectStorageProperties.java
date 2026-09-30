@@ -13,22 +13,19 @@ public class ObjectStorageProperties {
     private String cdnTypeDKey;
     private long cdnAuthorizationSeconds = 604800;
     private long videoRenewalThresholdSeconds = 7200;
-    private long stsDurationSeconds = 3600;
-    private String stsNamePrefix = "antv-upload";
-    private int imageWebpQuality = 80;
+    private long uploadSignatureSeconds = 300;
     private String ciCallbackUrl;
 
     public void validate() {
         require(bucket, "object-storage.bucket");
         require(region, "object-storage.region");
+        require(storageClass, "object-storage.storage-class");
         require(cdnDomain, "object-storage.cdn-domain");
         require(cdnTypeDKey, "object-storage.cdn-type-d-key");
         if (cdnAuthorizationSeconds < 1 || videoRenewalThresholdSeconds < 0
-            || videoRenewalThresholdSeconds >= cdnAuthorizationSeconds || stsDurationSeconds < 1) {
+            || videoRenewalThresholdSeconds >= cdnAuthorizationSeconds
+            || uploadSignatureSeconds < 60 || uploadSignatureSeconds > 900) {
             throw new IllegalStateException("对象存储授权有效期配置不合法。");
-        }
-        if (imageWebpQuality < 1 || imageWebpQuality > 100) {
-            throw new IllegalStateException("对象存储图片派生配置不合法。");
         }
     }
 
@@ -58,12 +55,8 @@ public class ObjectStorageProperties {
     public void setCdnAuthorizationSeconds(long value) { this.cdnAuthorizationSeconds = value; }
     public long getVideoRenewalThresholdSeconds() { return videoRenewalThresholdSeconds; }
     public void setVideoRenewalThresholdSeconds(long value) { this.videoRenewalThresholdSeconds = value; }
-    public long getStsDurationSeconds() { return stsDurationSeconds; }
-    public void setStsDurationSeconds(long value) { this.stsDurationSeconds = value; }
-    public String getStsNamePrefix() { return stsNamePrefix; }
-    public void setStsNamePrefix(String value) { this.stsNamePrefix = value; }
-    public int getImageWebpQuality() { return imageWebpQuality; }
-    public void setImageWebpQuality(int value) { this.imageWebpQuality = value; }
+    public long getUploadSignatureSeconds() { return uploadSignatureSeconds; }
+    public void setUploadSignatureSeconds(long value) { this.uploadSignatureSeconds = value; }
     public String getCiCallbackUrl() { return ciCallbackUrl; }
     public void setCiCallbackUrl(String value) { this.ciCallbackUrl = value; }
 

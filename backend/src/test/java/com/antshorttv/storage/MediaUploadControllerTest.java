@@ -10,6 +10,7 @@ import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import java.time.Instant;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -76,11 +77,36 @@ class MediaUploadControllerTest {
         assertThat(controller.complete("session-1", servletRequest).data().eTag()).isEqualTo("etag");
     }
 
+    @Test
+    void authorizesCosRequestUsingCurrentMemberIdentity() {
+        MediaUploadSessionService service = mock(MediaUploadSessionService.class);
+        TenantContextResolver tenants = mock(TenantContextResolver.class);
+        ProjectPermissionGuard projects = mock(ProjectPermissionGuard.class);
+        when(tenants.requireActiveMember(11L)).thenReturn(new TenantContext(33L, 11L, 44L, "MEMBER"));
+        CosUploadAuthorizationRequest body = new CosUploadAuthorizationRequest(
+            "PUT",
+            "/uploads/11/session-1/source.mp4",
+            Map.of(),
+            Map.of("host", "cos.example")
+        );
+        when(service.authorize(33L, "session-1", body)).thenReturn(
+            new CosUploadAuthorization("authorization", "security-token", 1_700_000_300L)
+        );
+        MediaUploadController controller = new MediaUploadController(service, tenants, projects);
+        MockHttpServletRequest servletRequest = new MockHttpServletRequest();
+        servletRequest.addHeader("X-Tenant-Id", "11");
+
+        var value = controller.authorize("session-1", body, servletRequest).data();
+
+        assertThat(value.authorization()).isEqualTo("authorization");
+        verify(service).authorize(33L, "session-1", body);
+    }
+
     private MediaUploadSession session() {
         return new MediaUploadSession(
-            "session-1", "antv-1418200553", "ap-guangzhou", "uploads/11/session-1/source.mp4",
-            "PENDING", Instant.parse("2026-10-07T00:00:00Z"),
-            new TemporaryCosCredentials("id", "key", "token", 1L, "request")
+            "session-1", "antv-1418200553", "ap-guangzhou", "INTELLIGENT_TIERING",
+            "uploads/11/session-1/source.mp4",
+            "PENDING", Instant.parse("2026-10-07T00:00:00Z")
         );
     }
 }

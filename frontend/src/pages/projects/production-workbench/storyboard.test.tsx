@@ -930,7 +930,7 @@ describe('ProductionWorkbench script page', () => {
   it('uses a newly selected first-frame result without reloading the storyboard page', async () => {
     setupWorkspaceResponse({
       storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头提示', promptDocument: { version: 2, nodes: [{ type: 'text', text: '镜头提示' }] }, firstFrameUrl: null }],
-      imageTasks: [{ id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', results: [{ id: 811, selected: true, status: 'ACTIVE', imageUrl: '/first-frame.png' }] }],
+      imageTasks: [{ id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', results: [{ id: 811, selected: true, status: 'ACTIVE', imageUrl: '/first-frame.png', thumbnailUrl: '/first-frame-thumb.png' }] }],
     });
     render(<ProductionWorkbench />);
     fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
@@ -946,7 +946,7 @@ describe('ProductionWorkbench script page', () => {
       storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头提示', firstFrameUrl: null }],
       imageTasks: [
         { id: 802, targetType: 'STORYBOARD', targetId: 301, status: 'PENDING', createdAt: '2026-09-24', results: [] },
-        { id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', createdAt: '2026-09-23', results: [{ id: 811, selected: false, status: 'ACTIVE', imageUrl: '/first-frame.png' }] },
+        { id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', createdAt: '2026-09-23', results: [{ id: 811, selected: false, status: 'ACTIVE', imageUrl: '/first-frame.png', thumbnailUrl: '/first-frame-thumb.png' }] },
       ],
     });
     mocks.selectAiImageResult.mockResolvedValue({ data: { id: 811, selected: true, status: 'ACTIVE', targetId: 301, imageUrl: '/first-frame.png' } });

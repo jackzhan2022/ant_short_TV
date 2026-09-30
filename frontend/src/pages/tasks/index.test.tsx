@@ -146,6 +146,10 @@ it('loads content only for the open task and renders its saved sections', async 
   expect(await screen.findByText('保存的提示词')).toBeInTheDocument();
   expect(screen.getByText('来源版本：REVIEW:1@2026-09-12')).toBeInTheDocument();
   expect(screen.getByText('生成结果')).toBeInTheDocument();
+  expect(screen.getByAltText('生成结果 1')).not.toHaveAttribute(
+    'src',
+    '/result.png',
+  );
   expect(screen.getByText('仅展示前 20 项结果。')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: '复制全文' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '加载更多结果' }));

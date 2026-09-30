@@ -61,7 +61,7 @@ The system SHALL issue external AI providers a COS presigned URL scoped to the r
 - **AND** the URL reveals no application or cloud credential
 
 ### Requirement: Delivery secrets and complete signed URLs are excluded from logs
-The system MUST NOT log Type D keys, complete signed CDN URLs, STS credentials, COS authorization headers, or model-access URL query strings. Operational events SHALL identify resources through internal IDs, redacted keys, and request identifiers.
+The system MUST NOT log Type D keys, complete signed CDN URLs, COS instance-role credentials, COS authorization headers, security tokens, or model-access URL query strings. Operational events SHALL identify resources through internal IDs, redacted keys, and request identifiers.
 
 #### Scenario: Delivery or upload request fails
 - **WHEN** an error is recorded for URL signing, COS access, CDN delivery, or STS issuance

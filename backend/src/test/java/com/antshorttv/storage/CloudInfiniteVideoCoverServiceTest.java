@@ -17,7 +17,7 @@ import org.mockito.ArgumentCaptor;
 class CloudInfiniteVideoCoverServiceTest {
 
     @Test
-    void persistsOneSecondSnapshotAndReturnsWebpCoverKey() {
+    void persistsOneSecondSnapshotAndReturnsImageSlimCoverKey() {
         COS cos = mock(COS.class);
         ObjectStorageService storage = mock(ObjectStorageService.class);
         when(cos.getSnapshot(any())).thenReturn(new ByteArrayInputStream(new byte[] {1, 2, 3}));
@@ -39,7 +39,7 @@ class CloudInfiniteVideoCoverServiceTest {
             eq(new byte[] {1, 2, 3}),
             eq("image/jpeg")
         );
-        assertThat(cover).isEqualTo("platform/inspiration/abc/cover/derived/display.webp");
+        assertThat(cover).isEqualTo("platform/inspiration/abc/cover/derived/display.jpg");
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.storage.ObjectStorageKeyFactory;
 import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.ImageDisplayRenditionPlanner;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
@@ -24,10 +25,12 @@ import org.springframework.stereotype.Service;
 public class AiImageStorageService {
     private final ObjectStorageService objectStorageService;
     private final ObjectStorageKeyFactory keys;
+    private final ImageDisplayRenditionPlanner imageRenditions;
 
     public AiImageStorageService(ObjectStorageService objectStorageService, ObjectStorageKeyFactory keys) {
         this.objectStorageService = objectStorageService;
         this.keys = keys;
+        this.imageRenditions = new ImageDisplayRenditionPlanner(keys);
     }
 
     public StoredImage storeGenerated(AiImageTaskEntity task, Long resultId, int index, String dataUrl) {
@@ -104,7 +107,7 @@ public class AiImageStorageService {
             LocalDate.now(),
             extension(mimeType)
         );
-        String displayPath = keys.rendition(originalPath, "display", "webp");
+        String displayPath = imageRenditions.plan(originalPath, mimeType).objectKey();
         String thumbnailPath = displayPath;
         objectStorageService.upload(originalPath, original, mimeType);
         return new StoredImage(

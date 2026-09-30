@@ -46,11 +46,10 @@ const variantsFor = (assets: Asset[], assetId?: number | null) =>
   assets.find((asset) => asset.id === assetId)?.visual?.variants || [];
 
 const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) => {
-  if (reference.imageUrl) return reference.imageUrl;
   const asset = assets.find((candidate) => candidate.id === reference.assetId);
   const variant = variantsFor(assets, reference.assetId)
     .find((candidate) => candidate.id === reference.variantId);
-  return variant?.currentImageThumbnailUrl || variant?.currentImageUrl
+  return variant?.currentImageThumbnailUrl
     || asset?.mainImageThumbnailUrl || undefined;
 };
 
@@ -124,7 +123,7 @@ export default function StoryboardAssetReferenceEditor({
       assetName: asset.name,
       variantId: variant?.id,
       variantName: variant?.name,
-      imageUrl: variant?.currentImageThumbnailUrl || variant?.currentImageUrl,
+      imageUrl: variant?.currentImageThumbnailUrl,
       referenceRole: assetType === 'SCENE' ? 'MAIN' : 'VISIBLE',
       sortOrder: 0,
       resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
@@ -181,7 +180,7 @@ export default function StoryboardAssetReferenceEditor({
                           sourceName: reference.sourceName || asset?.name,
                           variantId: variant?.id,
                           variantName: variant?.name,
-                          imageUrl: variant?.currentImageThumbnailUrl || variant?.currentImageUrl,
+                          imageUrl: variant?.currentImageThumbnailUrl,
                           resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
                           sourceType: 'MANUAL',
                           lockedByUser: true,
@@ -200,7 +199,7 @@ export default function StoryboardAssetReferenceEditor({
                           ...reference,
                           variantId: variantId || null,
                           variantName: variant?.name,
-                          imageUrl: variant?.currentImageThumbnailUrl || variant?.currentImageUrl,
+                          imageUrl: variant?.currentImageThumbnailUrl,
                           resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
                         });
                       }}

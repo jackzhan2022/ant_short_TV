@@ -241,6 +241,23 @@ describe('ShortDramaCreationPage', () => {
   });
 
   it('shows management only to administrators and opens the drawer', async () => {
+    mocks.queryManagedInspirations.mockResolvedValue({
+      data: {
+        records: [
+          {
+            id: 201,
+            title: '待压缩素材',
+            promptText: '测试提示词',
+            publishStatus: 'UNPUBLISHED',
+            mediaType: 'IMAGE',
+            url: '/api/inspiration-management/201/file',
+          },
+        ],
+        total: 1,
+        current: 1,
+        pageSize: 100,
+      },
+    });
     const { unmount } = render(
       <App>
         <ShortDramaCreationPage />
@@ -249,6 +266,10 @@ describe('ShortDramaCreationPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '管理灵感广场' }));
     expect(await screen.findByText('灵感广场管理')).toBeInTheDocument();
     expect(mocks.queryManagedInspirations).toHaveBeenCalled();
+    expect(screen.getByAltText('待压缩素材')).not.toHaveAttribute(
+      'src',
+      '/api/inspiration-management/201/file',
+    );
     unmount();
     mocks.currentAccess = 'user';
     render(
@@ -279,7 +300,7 @@ describe('ShortDramaCreationPage', () => {
     ).toBeInTheDocument();
     expect(within(dialog).getAllByAltText('线上灵感 A')[0]).toHaveAttribute(
       'src',
-      '/api/inspiration-creations/101/file',
+      '/api/inspiration-creations/101/thumbnail',
     );
   });
 

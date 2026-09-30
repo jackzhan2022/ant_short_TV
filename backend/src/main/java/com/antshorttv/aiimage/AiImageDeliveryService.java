@@ -33,8 +33,7 @@ public class AiImageDeliveryService {
         TenantContext context = permissions.require(result.getTenantId(), projectId, "AI_IMAGE_TASK:VIEW");
         String objectKey = switch (rendition) {
             case ORIGINAL -> result.getStoragePath();
-            case DISPLAY -> result.getDisplayPath();
-            case THUMBNAIL -> result.getThumbnailPath();
+            case DISPLAY, THUMBNAIL -> result.getDisplayPath();
         };
         if (objectKey == null || objectKey.isBlank()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "图片资源尚未就绪。");

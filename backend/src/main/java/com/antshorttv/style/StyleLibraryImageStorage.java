@@ -4,6 +4,7 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.storage.ObjectStorageKeyFactory;
 import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.ImageDisplayRenditionPlanner;
 import java.net.URI;
 import org.springframework.stereotype.Service;
 
@@ -26,7 +27,11 @@ public class StyleLibraryImageStorage {
         try (var input = URI.create(sourceImageUrl).toURL().openStream()) {
             byte[] bytes = input.readAllBytes();
             objectStorageService.upload(originalPath, bytes, contentType(originalPath));
-            return new StoredStyleImage(keys.rendition(originalPath, "display", "webp"), bytes.length);
+            return new StoredStyleImage(
+                new ImageDisplayRenditionPlanner(keys)
+                    .plan(originalPath, contentType(originalPath)).objectKey(),
+                bytes.length
+            );
         } catch (Exception exception) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "风格参考图转存失败：" + exception.getMessage());
         }
@@ -34,7 +39,9 @@ public class StyleLibraryImageStorage {
 
     static String storagePath(String externalId, String sourceImageUrl) {
         ObjectStorageKeyFactory keys = new ObjectStorageKeyFactory();
-        return keys.rendition(originalPath(externalId, sourceImageUrl), "display", "webp");
+        String originalPath = originalPath(externalId, sourceImageUrl);
+        return new ImageDisplayRenditionPlanner(keys)
+            .plan(originalPath, contentType(originalPath)).objectKey();
     }
 
     private static String originalPath(String externalId, String sourceImageUrl) {

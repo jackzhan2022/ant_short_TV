@@ -2,6 +2,7 @@ package com.antshorttv.storage;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Locale;
@@ -18,8 +19,7 @@ public class MediaUploadSessionService {
     );
 
     private final MediaUploadSessionStore store;
-    private final TemporaryCosCredentialIssuer credentials;
-    private final CosUploadPolicyFactory policies;
+    private final CosUploadRequestAuthorizer authorizer;
     private final ObjectStorageKeyFactory keys;
     private final ObjectStorageService storage;
     private final ObjectStorageProperties properties;
@@ -28,27 +28,24 @@ public class MediaUploadSessionService {
     @Autowired
     public MediaUploadSessionService(
         MediaUploadSessionStore store,
-        TemporaryCosCredentialIssuer credentials,
-        CosUploadPolicyFactory policies,
+        CosUploadRequestAuthorizer authorizer,
         ObjectStorageKeyFactory keys,
         ObjectStorageService storage,
         ObjectStorageProperties properties
     ) {
-        this(store, credentials, policies, keys, storage, properties, Clock.systemUTC());
+        this(store, authorizer, keys, storage, properties, Clock.systemUTC());
     }
 
     MediaUploadSessionService(
         MediaUploadSessionStore store,
-        TemporaryCosCredentialIssuer credentials,
-        CosUploadPolicyFactory policies,
+        CosUploadRequestAuthorizer authorizer,
         ObjectStorageKeyFactory keys,
         ObjectStorageService storage,
         ObjectStorageProperties properties,
         Clock clock
     ) {
         this.store = store;
-        this.credentials = credentials;
-        this.policies = policies;
+        this.authorizer = authorizer;
         this.keys = keys;
         this.storage = storage;
         this.properties = properties;
@@ -78,16 +75,20 @@ public class MediaUploadSessionService {
         entity.createdAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
         entity.updatedAt = entity.createdAt;
         store.insert(entity);
-        return response(entity, issue(entity));
+        return response(entity);
     }
 
     @Transactional
-    public MediaUploadSession renew(Long userId, String sessionToken) {
+    public CosUploadAuthorization authorize(
+        Long userId,
+        String sessionToken,
+        CosUploadAuthorizationRequest request
+    ) {
         MediaUploadSessionEntity entity = requireOwned(userId, sessionToken);
         if (!"PENDING".equals(entity.status)) {
-            throw new IllegalArgumentException("当前上传会话不可续签。");
+            throw new IllegalArgumentException("当前上传会话不可签名。");
         }
-        return response(entity, issue(entity));
+        return authorizer.authorize(entity.objectKey, request);
     }
 
     @Transactional
@@ -99,14 +100,29 @@ public class MediaUploadSessionService {
         if (!"PENDING".equals(entity.status)) {
             throw new IllegalArgumentException("当前上传会话不可完成。");
         }
-        StoredObject object = storage.metadata(entity.objectKey);
-        if (entity.declaredSize != null && entity.declaredSize != object.size()) {
+        String stagingKey = entity.objectKey;
+        StoredObject staged = storage.metadata(stagingKey);
+        if (entity.declaredSize != null && entity.declaredSize != staged.size()) {
             throw new IllegalArgumentException("上传文件大小与会话声明不一致。");
         }
-        if (!entity.contentType.equalsIgnoreCase(object.contentType())) {
+        if (!entity.contentType.equalsIgnoreCase(staged.contentType())) {
             throw new IllegalArgumentException("上传文件类型与会话声明不一致。");
         }
+        if (staged.storageClass() == null
+            || !properties.getStorageClass().equalsIgnoreCase(staged.storageClass())) {
+            throw new IllegalArgumentException("上传对象存储类型与配置不一致。");
+        }
+        LocalDate createdDate = entity.createdAt.toLocalDate();
+        String durableKey = keys.verifiedUploadOriginal(
+            entity.tenantId,
+            entity.projectId,
+            entity.sessionToken,
+            createdDate,
+            extension(entity.fileName)
+        );
+        StoredObject object = storage.promoteVerifiedUpload(staged, durableKey);
         Instant now = clock.instant();
+        entity.objectKey = object.key();
         entity.verifiedSize = object.size();
         entity.etag = object.eTag();
         entity.status = "COMPLETED";
@@ -139,7 +155,7 @@ public class MediaUploadSessionService {
 
     @Transactional
     public MediaUploadSession status(Long userId, String sessionToken) {
-        return response(requireOwned(userId, sessionToken), null);
+        return response(requireOwned(userId, sessionToken));
     }
 
     @Transactional
@@ -153,11 +169,6 @@ public class MediaUploadSessionService {
         store.update(entity);
     }
 
-    private TemporaryCosCredentials issue(MediaUploadSessionEntity entity) {
-        String name = properties.getStsNamePrefix() + "-" + entity.sessionToken.substring(0, 12);
-        return credentials.issue(name, policies.policyFor(entity.objectKey), properties.getStsDurationSeconds());
-    }
-
     private MediaUploadSessionEntity requireOwned(Long userId, String token) {
         MediaUploadSessionEntity entity = store.find(token);
         if (entity == null || !entity.userId.equals(userId)) {
@@ -169,15 +180,15 @@ public class MediaUploadSessionService {
         return entity;
     }
 
-    private MediaUploadSession response(MediaUploadSessionEntity entity, TemporaryCosCredentials value) {
+    private MediaUploadSession response(MediaUploadSessionEntity entity) {
         return new MediaUploadSession(
             entity.sessionToken,
             properties.getBucket(),
             properties.getRegion(),
+            properties.getStorageClass(),
             entity.objectKey,
             entity.status,
-            entity.expiresAt.toInstant(ZoneOffset.UTC),
-            value
+            entity.expiresAt.toInstant(ZoneOffset.UTC)
         );
     }
 

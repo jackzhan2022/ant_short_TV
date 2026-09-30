@@ -21,14 +21,31 @@ import org.springframework.context.annotation.Configuration;
 public class TencentCosConfiguration {
 
     @Bean(destroyMethod = "shutdown")
-    public COS cosClient(ObjectStorageProperties properties) {
+    public COS cosClient(
+        ObjectStorageProperties properties,
+        CosStorageMetrics metrics,
+        COSCredentialsProvider credentials
+    ) {
         properties.validate();
-        COSCredentialsProvider credentials = new TencentCloudCredentialsAdapter();
+        ClientConfig config = clientConfig(properties);
+        metrics.internalEndpointConfigured(config.getEndPointSuffix().startsWith("cos-internal."));
+        return new COSClient(credentials, config);
+    }
+
+    @Bean
+    public COSCredentialsProvider cosCredentialsProvider() {
+        return new TencentCloudCredentialsAdapter();
+    }
+
+    static ClientConfig clientConfig(ObjectStorageProperties properties) {
         ClientConfig config = new ClientConfig(new Region(properties.getRegion()));
         config.setHttpProtocol(HttpProtocol.https);
         config.setMaxErrorRetry(3);
         config.setCheckRequestPath(true);
-        return new COSClient(credentials, config);
+        config.setEndPointSuffix(
+            "cos-internal.%s.tencentcos.cn".formatted(properties.getRegion())
+        );
+        return config;
     }
 
     @Bean(destroyMethod = "shutdownNow")

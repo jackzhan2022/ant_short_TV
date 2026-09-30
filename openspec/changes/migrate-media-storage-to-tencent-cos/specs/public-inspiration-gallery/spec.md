@@ -1,12 +1,12 @@
 ## MODIFIED Requirements
 
 ### Requirement: Imported media is transferred to the platform object bucket
-The system SHALL stream each external image or video during import into the configured COS bucket under an immutable platform inspiration asset/version namespace without buffering an entire video in application memory. Imported images SHALL receive one persistent intelligent-compression display WebP shared by thumbnail and preview roles, and imported videos SHALL receive a persistent WebP cover.
+The system SHALL stream each external image or video during import into the configured COS bucket under an immutable platform inspiration asset/version namespace without buffering an entire video in application memory. Imported images SHALL receive one persistent original-resolution `imageSlim` display rendition shared by thumbnail, detail, and preview roles, and imported videos SHALL receive a persistent `imageSlim` cover.
 
 #### Scenario: Image creation media is transferred
 - **WHEN** an external image creation is imported with a valid media URL
 - **THEN** the system streams the original image to an immutable COS original key
-- **AND** records that key and the required persistent WebP rendition keys on the public inspiration record
+- **AND** records that key and the required persistent display rendition keys on the public inspiration record
 
 #### Scenario: Video creation media is transferred
 - **WHEN** an external video creation is imported with a valid media URL
@@ -41,16 +41,16 @@ The system SHALL preserve `GET /api/inspiration-creations/{id}/file` as the auth
 - **THEN** the system returns not found and creates no delivery grant
 
 ### Requirement: Imported inspiration media has a stored thumbnail
-The system SHALL create a persistent thumbnail WebP for each imported inspiration creation and store it under the immutable asset version's derived namespace. Image thumbnails SHALL be generated from the stored original through Cloud Infinite, and video covers SHALL use the deterministic video-cover policy.
+The system SHALL create a persistent `imageSlim` display object for each imported inspiration creation and store it under the immutable asset version's derived namespace. Image display objects SHALL retain the original dimensions, and video covers SHALL use the deterministic video-cover policy.
 
 #### Scenario: Image import generates a thumbnail
 - **WHEN** an external image creation original is imported successfully
-- **THEN** Cloud Infinite creates a proportional thumbnail WebP without upscaling
+- **THEN** Cloud Infinite creates an original-resolution `imageSlim` display object without resizing
 - **AND** the record stores its object key, MIME type, file size, dimensions, and ready status
 
 #### Scenario: Video import generates a thumbnail
 - **WHEN** an external video creation original is imported successfully without a bound cover
-- **THEN** Cloud Infinite persists a one-second snapshot or bounded first-decodable-frame fallback as WebP
+- **THEN** Cloud Infinite persists a one-second snapshot or bounded first-decodable-frame fallback and applies `imageSlim`
 - **AND** the record stores the cover metadata and ready status
 
 #### Scenario: Thumbnail generation fails
@@ -60,11 +60,11 @@ The system SHALL create a persistent thumbnail WebP for each imported inspiratio
 - **AND** allows the idempotent processing job to be retried
 
 ### Requirement: Thumbnail files are protected and cacheable
-The system SHALL preserve the authenticated thumbnail resource boundary for published, non-deleted records and SHALL return or redirect to a Type D CDN URL for the persistent thumbnail WebP. CDN nodes SHALL cache immutable thumbnails for 30 days and eligible browsers for seven days under the private-media-delivery contract.
+The system SHALL preserve the authenticated thumbnail resource boundary for published, non-deleted records and SHALL return or redirect to a Type D CDN URL for the persistent `imageSlim` display object. CDN nodes SHALL cache immutable display objects for 30 days and eligible browsers for seven days under the private-media-delivery contract.
 
 #### Scenario: Authenticated user requests a ready published thumbnail
 - **WHEN** an authenticated user requests `GET /api/inspiration-creations/{id}/thumbnail` for a published, non-deleted record with a ready thumbnail
-- **THEN** the system returns authorized CDN access to the stored thumbnail WebP
+- **THEN** the system returns authorized CDN access to the stored `imageSlim` display object
 
 #### Scenario: Thumbnail is unavailable
 - **WHEN** a user requests the thumbnail endpoint for an unpublished, deleted, missing, failed, or not-ready thumbnail

@@ -423,6 +423,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseCosUploadAuthorization = {
+    success?: boolean;
+    data?: CosUploadAuthorization;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseEpisodeComposeTaskResponse = {
     success?: boolean;
     data?: EpisodeComposeTaskResponse;
@@ -1280,6 +1287,10 @@ declare namespace API {
     nextAction?: string;
   };
 
+  type authorizeParams = {
+    sessionToken: string;
+  };
+
   type AuthSessionResponse = {
     user?: UserProfileResponse;
     tenants?: TenantSummaryResponse[];
@@ -1636,6 +1647,19 @@ declare namespace API {
 
   type CopySkillRequest = {
     targetCode: string;
+  };
+
+  type CosUploadAuthorization = {
+    authorization?: string;
+    securityToken?: string;
+    expiresAt?: number;
+  };
+
+  type CosUploadAuthorizationRequest = {
+    method: string;
+    pathname: string;
+    query?: Record<string, any>;
+    headers?: Record<string, any>;
   };
 
   type create2Params = {
@@ -2527,10 +2551,10 @@ declare namespace API {
     sessionToken?: string;
     bucket?: string;
     region?: string;
+    storageClass?: string;
     objectKey?: string;
     status?: string;
     expiresAt?: string;
-    credentials?: TemporaryCosCredentials;
   };
 
   type memberRolesParams = {
@@ -3146,10 +3170,6 @@ declare namespace API {
 
   type RenameEpisodeVideoVersionRequest = {
     versionName: string;
-  };
-
-  type renewParams = {
-    sessionToken: string;
   };
 
   type replaceStoryboardAssetReferencesParams = {
@@ -4012,14 +4032,6 @@ declare namespace API {
     snapshotJson?: string;
     createdAt?: string;
     updatedAt?: string;
-  };
-
-  type TemporaryCosCredentials = {
-    tmpSecretId?: string;
-    tmpSecretKey?: string;
-    sessionToken?: string;
-    expiredTime?: number;
-    requestId?: string;
   };
 
   type TenantInvitationResponse = {

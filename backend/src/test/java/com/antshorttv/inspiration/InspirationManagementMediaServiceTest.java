@@ -32,7 +32,7 @@ class InspirationManagementMediaServiceTest {
 
         assertThat(media.creationType()).isEqualTo("IMAGE");
         assertThat(media.storagePath()).endsWith("original.jpg");
-        assertThat(media.thumbnailPath()).endsWith("derived/display.webp");
+        assertThat(media.thumbnailPath()).endsWith("derived/display.jpg");
         verify(storage).copyVerifiedUpload(
             upload.objectKey(), media.storagePath(), upload.size(), upload.contentType()
         );
@@ -58,7 +58,7 @@ class InspirationManagementMediaServiceTest {
 
         assertThat(media.storagePath()).isEqualTo("inspiration/creations/manual-cos/original.png");
         assertThat(media.thumbnailPath()).isEqualTo(
-            "inspiration/creations/manual-cos/derived/display.webp"
+            "inspiration/creations/manual-cos/derived/display.png"
         );
         verify(storage).copyVerifiedUpload(
             "uploads/11/session-1/source.png",

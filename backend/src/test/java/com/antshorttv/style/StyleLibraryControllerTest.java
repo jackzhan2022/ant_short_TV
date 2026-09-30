@@ -54,16 +54,16 @@ class StyleLibraryControllerTest {
     @Test
     void redirectsPublicStyleImageToPrivateCdn() throws Exception {
         when(objectStorageService.publicUrl(
-            "platform/style-library/864621266010645040/source/derived/display.webp"
+            "platform/style-library/864621266010645040/source/derived/display.png"
         )).thenReturn(
-            "https://antvcdn.aixmax.cn/platform/style-library/864621266010645040/source/derived/display.webp?t=1&sign=x"
+            "https://antvcdn.aixmax.cn/platform/style-library/864621266010645040/source/derived/display.png?t=1&sign=x"
         );
 
         mockMvc.perform(get("/api/style-library/images/864621266010645040"))
             .andExpect(status().isFound())
             .andExpect(header().string(
                 HttpHeaders.LOCATION,
-                startsWith("https://antvcdn.aixmax.cn/platform/style-library/864621266010645040/source/derived/display.webp")
+                startsWith("https://antvcdn.aixmax.cn/platform/style-library/864621266010645040/source/derived/display.png")
             ));
     }
 }

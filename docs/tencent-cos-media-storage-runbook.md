@@ -13,9 +13,9 @@ Pre-release production and test deployments intentionally share these resources.
 
 ## Required CAM Scope
 
-Attach a least-privilege instance role to the backend. It needs object read/write/metadata and multipart operations for the application prefixes, Cloud Infinite processing operations, and STS federation-token issuance. For asynchronous image processing include `ci:CreateMediaJobs`, `ci:DescribePicProcessQueues`, and the narrowly scoped `cam:PassRole` permission required by Tencent's job API. Do not place permanent SecretId or SecretKey values in application configuration.
+Attach the `AntvBackendCosRole` instance role to the backend. It needs object read/write/metadata and multipart operations plus Cloud Infinite processing operations. The current pre-release deployment uses the managed COS and CI full-access policies for operational simplicity; replace them with bucket-scoped policies after readiness verification. Do not place permanent SecretId or SecretKey values in application configuration.
 
-Browser STS policies are generated per upload object and allow only `PutObject`, multipart initiate/upload/list/complete/abort, and `HeadObject`. They do not allow reads, deletes, or bucket listing.
+The browser never receives a SecretId or SecretKey. It requests a short-lived signature for each COS upload request. The backend signs only the pending session's exact object pathname and the required put, multipart initiate/upload/list/complete/abort, and head requests after validating query keys and headers.
 
 ## COS Configuration
 
@@ -40,4 +40,4 @@ Each image original produces one persistent intelligent-compression `display.web
 
 ## Release Checks
 
-Verify correct, expired, and tampered Type D URLs; browser upload renewal; cross-tenant denial; CDN HIT behavior across signature changes; video `206 Partial Content`; lifecycle targeting; Cloud Infinite outputs; cost alerts; and absence of media bodies on the application server's public link.
+Verify correct, expired, and tampered Type D URLs; browser request-signature renewal; cross-tenant and cross-object signing denial; CDN HIT behavior across signature changes; video `206 Partial Content`; lifecycle targeting; Cloud Infinite outputs; cost alerts; and absence of media bodies on the application server's public link.

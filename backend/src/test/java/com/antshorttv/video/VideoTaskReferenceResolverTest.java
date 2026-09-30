@@ -2,15 +2,21 @@ package com.antshorttv.video;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.script.StoryboardPromptCompiler;
+import com.antshorttv.storage.ObjectStorageService;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,8 +32,13 @@ class VideoTaskReferenceResolverTest {
     @Autowired
     private VideoTaskReferenceResolver resolver;
 
+    @MockBean
+    private ObjectStorageService objectStorageService;
+
     @BeforeEach
     void seedReferences() {
+        when(objectStorageService.modelAccessUrl(anyString(), any(Duration.class)))
+            .thenAnswer(invocation -> "https://cos.example/" + invocation.getArgument(0, String.class));
         jdbc.update("""
             insert into ai_image_result
               (id, tenant_id, project_id, task_id, target_type, target_id, image_url,
@@ -76,7 +87,7 @@ class VideoTaskReferenceResolverTest {
             .containsExactly("png", 720, 1280, 1000L);
         assertThat(resolved.get(1).durationSeconds()).isEqualByComparingTo("5.5");
         assertThat(resolved.get(2).format()).isEqualTo("mp3");
-        assertThat(resolved).allSatisfy(item -> assertThat(item.providerUrl()).startsWith("https://app.example/materials/"));
+        assertThat(resolved).allSatisfy(item -> assertThat(item.providerUrl()).startsWith("https://cos.example/materials/"));
     }
 
     @Test

@@ -8,22 +8,20 @@ type ApiResponse<T> = {
   errorMessage?: string;
 };
 
-export type TemporaryCosCredentials = {
-  tmpSecretId: string;
-  tmpSecretKey: string;
-  sessionToken: string;
-  expiredTime: number;
-  requestId?: string;
-};
-
 export type MediaUploadSession = {
   sessionToken: string;
   bucket: string;
   region: string;
+  storageClass: COS.StorageClass;
   objectKey: string;
   status: string;
   expiresAt: string;
-  credentials?: TemporaryCosCredentials | null;
+};
+
+type CosUploadAuthorization = {
+  authorization: string;
+  securityToken: string;
+  expiresAt: number;
 };
 
 export type VerifiedMediaUpload = {
@@ -77,11 +75,30 @@ const createSession = async (file: File, projectId?: number) =>
     }),
   );
 
-const renewSession = async (sessionToken: string) =>
+const stringValues = (values: Record<string, unknown> | undefined) =>
+  Object.fromEntries(
+    Object.entries(values || {})
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([key, value]) => [key, String(value)]),
+  );
+
+const authorizeRequest = async (
+  sessionToken: string,
+  options: COS.GetAuthorizationOptions,
+) =>
   unwrap(
-    await request<ApiResponse<MediaUploadSession>>(
-      `/api/media-uploads/${sessionToken}/credentials`,
-      { method: 'POST' },
+    await request<ApiResponse<CosUploadAuthorization>>(
+      `/api/media-uploads/${sessionToken}/authorization`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        data: {
+          method: options.Method,
+          pathname: options.Pathname,
+          query: stringValues(options.Query),
+          headers: stringValues(options.Headers),
+        },
+      },
     ),
   );
 
@@ -97,32 +114,27 @@ export const startMediaUpload = async (
   file: File,
   options: StartMediaUploadOptions = {},
 ): Promise<VerifiedMediaUpload> => {
-  let session = await createSession(file, options.projectId);
+  const session = await createSession(file, options.projectId);
+  let authorizationFailure: Error | undefined;
   const factory = options.clientFactory || defaultClientFactory;
   const cos = factory({
     ChunkSize: 16 * 1024 * 1024,
     SliceSize: 16 * 1024 * 1024,
     ChunkParallelLimit: 3,
     FileParallelLimit: 1,
-    getAuthorization: (_requestOptions, callback) => {
-      void (async () => {
-        const now = Math.floor(Date.now() / 1000);
-        if (!session.credentials || session.credentials.expiredTime <= now + 60) {
-          session = await renewSession(session.sessionToken);
-        }
-        const credentials = session.credentials;
-        if (!credentials) {
-          throw new Error('服务端未返回 COS 临时凭证');
-        }
-        callback({
-          TmpSecretId: credentials.tmpSecretId,
-          TmpSecretKey: credentials.tmpSecretKey,
-          SecurityToken: credentials.sessionToken,
-          StartTime: now - 60,
-          ExpiredTime: credentials.expiredTime,
-          ScopeLimit: true,
+    getAuthorization: (requestOptions, callback) => {
+      void authorizeRequest(session.sessionToken, requestOptions)
+        .then((value) => {
+          callback({
+            Authorization: value.authorization,
+            SecurityToken: value.securityToken,
+          } as COS.GetAuthorizationCallbackParams);
+        })
+        .catch((error) => {
+          authorizationFailure =
+            error instanceof Error ? error : new Error('COS 上传授权失败');
+          callback('');
         });
-      })();
     },
   });
 
@@ -130,6 +142,7 @@ export const startMediaUpload = async (
     await cos.uploadFile({
       Bucket: session.bucket,
       Region: session.region,
+      StorageClass: session.storageClass,
       Key: session.objectKey,
       Body: file,
       SliceSize: 16 * 1024 * 1024,
@@ -142,14 +155,15 @@ export const startMediaUpload = async (
         });
       },
     });
-    return await completeSession(session.sessionToken);
-  } catch (error) {
+  } catch {
+    if (authorizationFailure) {
+      throw authorizationFailure;
+    }
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       throw new Error('网络已断开，上传任务可在恢复网络后重试');
     }
-    if (error instanceof Error) {
-      throw error;
-    }
     throw new Error('COS 上传失败，请重试');
   }
+
+  return await completeSession(session.sessionToken);
 };

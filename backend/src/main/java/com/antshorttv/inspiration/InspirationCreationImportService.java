@@ -108,14 +108,18 @@ public class InspirationCreationImportService {
 
     private void updateThumbnail(InspirationCreationEntity entity, InspirationCreationMediaTransfer transfer) {
         try {
-            String path = transfer.mimeType().startsWith("video/")
+            boolean video = transfer.mimeType().startsWith("video/");
+            var display = video ? null : InspirationCreationMediaStorage.displayPlan(
+                transfer.storagePath(), transfer.mimeType()
+            );
+            String path = video
                 ? videoCovers.create(
                     transfer.storagePath(), InspirationCreationMediaStorage.coverOriginalPath(entity.getExternalId())
                 )
-                : InspirationCreationMediaStorage.thumbnailPath(entity.getExternalId());
+                : display.objectKey();
             entity.setThumbnailPath(path);
             entity.setThumbnailUrl(thumbnailUrl(entity.getId()));
-            entity.setThumbnailMimeType("image/webp");
+            entity.setThumbnailMimeType(video ? "image/jpeg" : display.mimeType());
             entity.setThumbnailFileSize(0L);
             entity.setThumbnailStatus("READY");
             entity.setThumbnailError(null);

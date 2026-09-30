@@ -31,22 +31,22 @@ The system SHALL assign every new durable object a normalized key without a lead
 - **THEN** the system assigns a tenant-scoped upload and durable key without fabricating a project identifier
 - **AND** another tenant cannot reference that key
 
-### Requirement: Browser uploads use constrained renewable STS sessions
-The system SHALL create authenticated upload sessions that return COS STS credentials valid for 60 minutes and constrained to the session's tenant/project upload prefix and required multipart actions. The frontend SHALL upload bytes directly to COS with `cos-js-sdk-v5` and SHALL be able to renew credentials during a long-running upload. The application SHALL NOT impose a business file-size ceiling, while COS platform limits and supported media validation remain enforceable.
+### Requirement: Browser uploads use constrained short-lived request signatures
+The system SHALL create authenticated upload sessions and SHALL authorize each COS request with a short-lived signature generated from the backend's CAM instance role. The signing endpoint SHALL require the current user to own a pending session, SHALL accept only the exact assigned object pathname and the methods, multipart query keys, and headers required for that upload, and SHALL never return a SecretId or SecretKey. The frontend SHALL upload bytes directly to COS with `cos-js-sdk-v5` and SHALL request fresh signatures throughout a long-running upload. The application SHALL NOT impose a business file-size ceiling, while COS platform limits and supported media validation remain enforceable.
 
 #### Scenario: Authorized user starts a browser upload
 - **WHEN** an authorized user requests an upload session for a supported media type
-- **THEN** the backend allocates a unique staging key and returns temporary credentials limited to that upload prefix
+- **THEN** the backend allocates a unique staging key and signs only validated requests for that exact object
 - **AND** the media bytes do not traverse the Spring upload endpoint
 
-#### Scenario: Upload outlives its initial credentials
-- **WHEN** a valid multipart upload is still running as its STS credentials approach expiration
-- **THEN** the frontend requests renewed credentials for the same authorized upload session
-- **AND** resumes the multipart upload without receiving permanent cloud credentials
+#### Scenario: Upload requires another COS request
+- **WHEN** a valid multipart upload initiates, uploads or lists a part, completes, aborts, or otherwise performs an allowed request for its assigned object
+- **THEN** the frontend requests a fresh short-lived authorization for the same upload session
+- **AND** continues the multipart upload without receiving cloud secret keys
 
-#### Scenario: Credential is used outside its prefix
-- **WHEN** a browser attempts to use an upload-session credential against another tenant, project, session, or disallowed COS action
-- **THEN** COS rejects the request under the CAM policy
+#### Scenario: Signing request escapes its assigned object
+- **WHEN** a browser requests authorization for another tenant, project, session, object pathname, dangerous header, query parameter, or disallowed COS action
+- **THEN** the backend rejects the signing request and returns no authorization
 
 ### Requirement: Upload completion is verified before publication
 The system SHALL accept a browser upload as complete only after an authorized completion request and a backend `HEAD Object` verification of the assigned key, actual length, ETag or checksum, and content type. Client-declared object metadata SHALL NOT by itself create a published material record.

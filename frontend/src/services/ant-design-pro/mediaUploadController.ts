@@ -48,6 +48,28 @@ export async function cancel4(
   });
 }
 
+/** 此处后端没有提供注释 POST /api/media-uploads/${param0}/authorization */
+export async function authorize(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.authorizeParams,
+  body: API.CosUploadAuthorizationRequest,
+  options?: { [key: string]: any }
+) {
+  const { sessionToken: param0, ...queryParams } = params;
+  return request<API.ApiResponseCosUploadAuthorization>(
+    `/api/media-uploads/${param0}/authorization`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 POST /api/media-uploads/${param0}/complete */
 export async function complete(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -57,23 +79,6 @@ export async function complete(
   const { sessionToken: param0, ...queryParams } = params;
   return request<API.ApiResponseVerifiedMediaUpload>(
     `/api/media-uploads/${param0}/complete`,
-    {
-      method: "POST",
-      params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
-}
-
-/** 此处后端没有提供注释 POST /api/media-uploads/${param0}/credentials */
-export async function renew(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.renewParams,
-  options?: { [key: string]: any }
-) {
-  const { sessionToken: param0, ...queryParams } = params;
-  return request<API.ApiResponseMediaUploadSession>(
-    `/api/media-uploads/${param0}/credentials`,
     {
       method: "POST",
       params: { ...queryParams },

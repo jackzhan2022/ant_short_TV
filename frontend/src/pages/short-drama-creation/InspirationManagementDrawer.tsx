@@ -264,7 +264,7 @@ const InspirationManagementDrawer = ({ open, onClose, onChanged }: Props) => {
                 <HolderOutlined className={styles.dragHandle} />
                 <img
                   alt={item.title || '灵感素材'}
-                  src={item.thumbnailUrl || item.url}
+                  src={item.thumbnailUrl || undefined}
                 />
                 <div className={styles.managementItemCopy}>
                   <strong>{item.title}</strong>

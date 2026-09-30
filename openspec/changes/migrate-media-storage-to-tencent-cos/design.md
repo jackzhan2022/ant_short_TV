@@ -12,10 +12,10 @@ Existing MinIO objects will not be copied or read by the new implementation. The
 
 - Make COS the only runtime object store for all new backend-generated and browser-uploaded media.
 - Keep media bytes off the application server's public 5 Mbps link wherever the producer can upload directly.
-- Keep buckets private and issue only authorization-scoped, time-bounded upload or delivery credentials.
+- Keep buckets private and issue only authorization-scoped, time-bounded upload request signatures or delivery grants.
 - Persist immutable object keys and rendition state instead of provider URLs.
 - Maximize CDN/browser cache reuse without allowing Type D authentication parameters to fragment the CDN cache.
-- Persist compressed WebP derivatives for all images and deterministic covers for videos through Cloud Infinite.
+- Persist one original-resolution `imageSlim` display derivative for every image and deterministic compressed covers for videos through Cloud Infinite.
 - Preserve tenant/project authorization, asynchronous task reliability, and actionable processing failures.
 
 **Non-Goals:**
@@ -40,8 +40,8 @@ New durable keys will follow this shape:
 
 ```text
 materials/{tenantId}/{projectId}/{assetType}/{yyyyMM}/{assetId}/{versionId}/original.ext
-materials/{tenantId}/{projectId}/{assetType}/{yyyyMM}/{assetId}/{versionId}/derived/display.webp
-materials/{tenantId}/{projectId}/{assetType}/{yyyyMM}/{assetId}/{versionId}/derived/cover.webp
+materials/{tenantId}/{projectId}/{assetType}/{yyyyMM}/{assetId}/{versionId}/derived/display.{jpg|png|gif}
+materials/{tenantId}/{projectId}/{assetType}/{yyyyMM}/{assetId}/{versionId}/derived/cover.{jpg|png}
 uploads/{tenantId}/{projectId}/{uploadSessionId}/source.ext
 ```
 
@@ -51,9 +51,9 @@ Unbound tenant-level decomposition uploads will use a tenant-scoped equivalent w
 
 Backend-generated media will stream to COS over same-region internal networking. Provider result downloads will be piped to multipart COS upload instead of materializing an entire video as `byte[]`.
 
-Browser uploads will use `cos-js-sdk-v5` and a server-created upload session. The backend will use its CAM role to obtain 60-minute STS credentials constrained to the session prefix and required multipart operations. The client can renew credentials during long uploads. There is no application file-size ceiling, but the server still validates ownership, supported media type, key prefix, declared metadata, and platform limits. Completion is accepted only after the backend performs `HEAD Object` and validates the actual key, length, ETag, and content type. Abandoned multipart uploads expire after three days and unconfirmed staging objects after seven days.
+Browser uploads will use `cos-js-sdk-v5` and a server-created upload session. For each COS request, the browser sends the SDK's method, pathname, query, and signable headers to the authenticated upload-session authorization endpoint. The backend verifies session ownership and state, requires the exact assigned object pathname, allows only the methods, multipart query keys, and headers needed by direct upload, and signs the request for a short interval with its CAM instance-role credentials. The response contains only the request authorization and the instance credential's security token; it never returns a SecretId or SecretKey. Long-running uploads obtain fresh per-request signatures without changing the upload session. There is no application file-size ceiling, but the server still validates ownership, supported media type, key prefix, declared metadata, and platform limits. Completion is accepted only after the backend performs `HEAD Object` and validates the actual key, length, ETag, and content type. Abandoned multipart uploads expire after three days and unconfirmed staging objects after seven days.
 
-Anonymous/public writes and permanent browser credentials were rejected. Keeping browser bytes behind Spring was rejected because it would saturate the 5 Mbps public link.
+Anonymous/public writes, permanent browser credentials, and returning the CVM role's temporary SecretId or SecretKey to the browser were rejected. A second assumable role was also rejected because the selected single-role CVM trust policy is service-managed. Keeping browser bytes behind Spring was rejected because it would saturate the 5 Mbps public link.
 
 ### Persist authorization periods and derive stable Type D URLs
 
@@ -69,17 +69,17 @@ Browser URLs use the private CDN contract. External AI providers receive a COS p
 
 ### Persist fixed Cloud Infinite image renditions
 
-Every accepted image original, including generated images, reference frames, style images, and video covers, will trigger one idempotent Cloud Infinite processing job that preserves the original and writes one fixed intelligent-compression WebP display rendition. List thumbnails and normal previews resolve to this same immutable object so COS, CDN, and browser caches do not retain duplicate representations. Quality is centrally configured and not controlled by arbitrary client query parameters.
+Every accepted image original, including generated images, reference frames, style images, and video covers, will trigger one idempotent Cloud Infinite processing job that preserves the original dimensions and writes one fixed `imageSlim` display rendition. JPEG, PNG, and GIF sources are compressed directly without format conversion. Sources not accepted by `imageSlim`, including WebP, are converted to PNG first so transparency is retained and are then compressed once. List thumbnails, detail views, and normal previews resolve only to this immutable display object; the original is available only through an explicit download action. A failed display rendition never falls back to showing the original.
 
 Processing inputs are restricted to original-key patterns and outputs use `derived/`, preventing recursive workflow triggers. Callback handling verifies the Tencent signature, correlates the job to one asset version, and is idempotent. A required rendition failure leaves that rendition failed/retryable and prevents domain flows that require it from publishing a falsely complete result.
 
-Persistent derivatives were selected over unrestricted real-time query processing because each fixed variant is processed once, has a stable cacheable key, and avoids unbounded parameter combinations. Destructively replacing originals was rejected because downloads, editing, and later reprocessing require source fidelity.
+Persistent derivatives were selected over unrestricted real-time query processing because each fixed variant is processed once, has a stable cacheable key, and avoids repeated processing charges or unbounded parameter combinations. Resizing and destructively replacing originals were rejected because the requested display derivative must retain source dimensions and downloads, editing, and later reprocessing require source fidelity.
 
 Async image jobs use `CreateMediaJobs` with `Tag=PicProcess`; Tencent selects the active picture-processing queue and returns its `QueueId`, so the application does not persist a configured queue ID. Each submission provides a task-specific JSON callback URL. Tencent's callback contract does not define a callback signature header, so callback authentication uses a per-job high-entropy bearer token whose hash is persisted with the job. Callback acceptance also requires an exact match on provider job ID, input object, output object, and opaque `UserData`; the token is single-purpose and terminal callbacks remain idempotent.
 
 ### Derive video covers deterministically
 
-AI-generated video reuses its bound first-frame image and persists a WebP cover rendition through Cloud Infinite. Episode compositions prefer the first storyboard frame. Uploaded, imported, or otherwise coverless videos use a persistent Cloud Infinite snapshot at one second, with a bounded fallback to the first decodable frame when the video is shorter. New flows will not use JCodec extraction or the synthetic `episodeFrame` cover.
+AI-generated video reuses its bound first-frame image and persists an `imageSlim` cover rendition through Cloud Infinite. Episode compositions prefer the first storyboard frame. Uploaded, imported, or otherwise coverless videos use a persistent Cloud Infinite snapshot at one second, with a bounded fallback to the first decodable frame when the video is shorter, followed by `imageSlim`. New flows will not use JCodec extraction or the synthetic `episodeFrame` cover.
 
 The existing `generateCover` option will be honored: when false, no optional cover job is submitted; flows whose domain contract requires a thumbnail still require one. Intelligent-cover analysis was rejected for phase one because it adds asynchronous cost and non-determinism.
 
@@ -92,7 +92,7 @@ New durable objects use intelligent tiering. CDN, CI, COS request, retrieval, an
 - [Historical MinIO media becomes unavailable at cutover] -> Treat this as an accepted breaking change and deliver historical migration separately.
 - [A seven-day bearer URL is shared] -> Authorize before issuance, never log full signed URLs, store only grant periods, and support targeted emergency object removal/purge.
 - [Browser cache retains media after logout] -> Accept for owner-only media under the cost-first policy; sensitive future media can use a shorter rendition-specific policy.
-- [No application upload-size ceiling permits costly uploads] -> Keep path-scoped STS, tenant usage accounting, concurrency controls, anomaly alerts, and platform-limit validation without rejecting by business size.
+- [No application upload-size ceiling permits costly uploads] -> Keep exact-path request signing, tenant usage accounting, concurrency controls, anomaly alerts, and platform-limit validation without rejecting by business size.
 - [Intelligent-tiered objects incur monitoring or retrieval charges] -> Track tier/retrieval cost and rely on CDN caching; change the configured storage class only after measured evidence.
 - [Cloud Infinite callback is delayed or duplicated] -> Persist job state, verify callbacks, make completion idempotent, and expose retryable processing status.
 - [Real-time CI parameters fragment cache or collide] -> Serve persisted fixed renditions; preserve processing parameters in cache keys for exceptional real-time use.
@@ -105,7 +105,7 @@ New durable objects use intelligent tiering. CDN, CI, COS request, retrieval, an
 1. Verify the shared pre-release bucket and CDN, CAM role and least-privilege policy, lifecycle rules, CORS, Cloud Infinite workflows/callbacks, CDN origin authorization, Type D keys, HTTPS, cache-key policy, browser/node TTLs, and video range-origin rules.
 2. Add schema for immutable rendition metadata, upload sessions, processing jobs, and persisted delivery-grant periods without rewriting historical rows.
 3. Introduce the COS-only storage facade implementation, internal streaming upload, metadata checks, model-access signing, and diagnostics while keeping existing API response shapes where possible.
-4. Add STS upload-session APIs and browser multipart upload; switch video decomposition and other browser uploads after end-to-end validation.
+4. Add upload-session request-signing APIs and browser multipart upload; switch video decomposition and other browser uploads after end-to-end validation.
 5. Add persistent Cloud Infinite image renditions and deterministic video-cover processing, then switch image/video consumers to rendition keys.
 6. Switch authorized browser delivery to stable Type D CDN URLs and validate cache reuse, range seeking, expiry, tamper rejection, and permission enforcement.
 7. Remove MinIO configuration, SDK usage, local runtime branches, and server-side thumbnail/cover generation from the migrated flows.

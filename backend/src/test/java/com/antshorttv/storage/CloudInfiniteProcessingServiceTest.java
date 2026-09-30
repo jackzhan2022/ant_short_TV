@@ -24,6 +24,7 @@ class CloudInfiniteProcessingServiceTest {
     private InMemoryJobStore jobs;
     private InMemoryMediaObjectStore media;
     private CloudInfiniteProcessingService service;
+    private final ObjectStorageKeyFactory keys = new ObjectStorageKeyFactory();
 
     @BeforeEach
     void setUp() {
@@ -41,17 +42,24 @@ class CloudInfiniteProcessingServiceTest {
         when(detail.getQueueId()).thenReturn("queue-1");
         when(response.getJobsDetail()).thenReturn(detail);
         when(cos.createPicProcessJob(any())).thenReturn(response);
+        MediaObjectRegistry registry = new MediaObjectRegistry(media, keys);
         service = new CloudInfiniteProcessingService(
-            cos, properties, new ObjectStorageKeyFactory(), jobs, media
+            cos,
+            properties,
+            keys,
+            jobs,
+            media,
+            registry,
+            new ImageDisplayRenditionPlanner(keys)
         );
     }
 
     @Test
     void submitsEachOutputOperationOnlyOnce() {
-        SubmitMediaProcessingJob command = command();
+        SubmitImageDisplayJob command = command("image/png");
 
-        SubmittedMediaProcessingJob first = service.submit(command);
-        SubmittedMediaProcessingJob second = service.submit(command);
+        SubmittedMediaProcessingJob first = service.submitImageDisplay(command);
+        SubmittedMediaProcessingJob second = service.submitImageDisplay(command);
 
         assertThat(second.providerJobId()).isEqualTo(first.providerJobId()).isEqualTo("job-1");
         verify(cos, times(1)).createPicProcessJob(any());
@@ -61,7 +69,10 @@ class CloudInfiniteProcessingServiceTest {
         verify(cos).createPicProcessJob(request.capture());
         assertThat(request.getValue().getTag()).isEqualTo("PicProcess");
         assertThat(request.getValue().getInput().getObject()).isEqualTo(command.inputKey());
-        assertThat(request.getValue().getOperation().getOutput().getObject()).isEqualTo(command.outputKey());
+        assertThat(request.getValue().getOperation().getOutput().getObject())
+            .isEqualTo("materials/11/22/images/202609/42/v1/derived/display.png");
+        assertThat(request.getValue().getOperation().getPicProcess().getProcessRule())
+            .isEqualTo("imageSlim");
         assertThat(request.getValue().getCallBack()).startsWith(
             "https://app.example/api/media-processing/callbacks/tencent-ci/"
         );
@@ -69,15 +80,22 @@ class CloudInfiniteProcessingServiceTest {
 
     @Test
     void authenticatesCorrelatesAndIdempotentlyCompletesCallback() {
-        service.submit(command());
+        service.submitImageDisplay(command("image/png"));
         ArgumentCaptor<MediaJobsRequest> request = ArgumentCaptor.forClass(MediaJobsRequest.class);
         verify(cos).createPicProcessJob(request.capture());
         String token = request.getValue().getCallBack().substring(
             request.getValue().getCallBack().lastIndexOf('/') + 1
         );
         TencentCiTaskCallback callback = TencentCiTaskCallback.success(
-            "job-1", command().inputKey(), command().outputKey(), "asset-42-display",
-            321L, 1200, 800, "etag-derived", "WEBP"
+            "job-1",
+            command("image/png").inputKey(),
+            "materials/11/22/images/202609/42/v1/derived/display.png",
+            "asset-42-display",
+            321L,
+            1200,
+            800,
+            "etag-derived",
+            "PNG"
         );
 
         assertThatThrownBy(() -> service.handleCallback("wrong-token", callback))
@@ -90,15 +108,89 @@ class CloudInfiniteProcessingServiceTest {
         assertThat(media.size).isEqualTo(321L);
         assertThat(media.width).isEqualTo(1200);
         assertThat(media.height).isEqualTo(800);
+        assertThat(media.mimeType).isEqualTo("image/png");
     }
 
-    private SubmitMediaProcessingJob command() {
-        return new SubmitMediaProcessingJob(
-            11L, 22L, 99L, "DISPLAY_WEBP",
+    @Test
+    void appliesFailedCallbackOnlyOnce() {
+        service.submitImageDisplay(command("image/png"));
+        String token = callbackToken();
+        TencentCiTaskCallback callback = failedCallback("ImageSlimFailed", "imageSlim failed");
+
+        service.handleCallback(token, callback);
+        service.handleCallback(token, callback);
+
+        assertThat(jobs.current.status).isEqualTo("FAILED");
+        assertThat(jobs.current.errorCode).isEqualTo("ImageSlimFailed");
+        assertThat(media.failedCalls).isEqualTo(1);
+        assertThat(media.readyCalls).isZero();
+    }
+
+    @Test
+    void keepsFailedJobTerminalWhenSuccessCallbackArrivesLater() {
+        service.submitImageDisplay(command("image/png"));
+        String token = callbackToken();
+
+        service.handleCallback(token, failedCallback("ImageSlimFailed", "imageSlim failed"));
+        service.handleCallback(token, TencentCiTaskCallback.success(
+            "job-1",
+            command("image/png").inputKey(),
+            "materials/11/22/images/202609/42/v1/derived/display.png",
+            "asset-42-display",
+            321L,
+            1200,
+            800,
+            "etag-derived",
+            "PNG"
+        ));
+
+        assertThat(jobs.current.status).isEqualTo("FAILED");
+        assertThat(media.failedCalls).isEqualTo(1);
+        assertThat(media.readyCalls).isZero();
+    }
+
+    @Test
+    void convertsUnsupportedImageToPngBeforeImageSlim() {
+        service.submitImageDisplay(command("image/webp"));
+
+        ArgumentCaptor<MediaJobsRequest> request = ArgumentCaptor.forClass(MediaJobsRequest.class);
+        verify(cos).createPicProcessJob(request.capture());
+        assertThat(request.getValue().getOperation().getOutput().getObject())
+            .isEqualTo("materials/11/22/images/202609/42/v1/derived/display.png");
+        assertThat(request.getValue().getOperation().getPicProcess().getProcessRule())
+            .isEqualTo("imageMogr2/format/png|imageSlim");
+    }
+
+    private SubmitImageDisplayJob command(String sourceMimeType) {
+        return new SubmitImageDisplayJob(
+            new MediaObjectIdentity(11L, 22L, "images", 42L, "v1"),
             "materials/11/22/images/202609/42/v1/original.png",
-            "materials/11/22/images/202609/42/v1/derived/display.webp",
-            "imageMogr2/format/webp/quality/80", "asset-42-display"
+            sourceMimeType,
+            "INTELLIGENT_TIERING",
+            "asset-42-display"
         );
+    }
+
+    private String callbackToken() {
+        ArgumentCaptor<MediaJobsRequest> request = ArgumentCaptor.forClass(MediaJobsRequest.class);
+        verify(cos).createPicProcessJob(request.capture());
+        String callback = request.getValue().getCallBack();
+        return callback.substring(callback.lastIndexOf('/') + 1);
+    }
+
+    private TencentCiTaskCallback failedCallback(String code, String message) {
+        return new TencentCiTaskCallback("TaskFinish", List.of(new TencentCiJobDetail(
+            code,
+            message,
+            "job-1",
+            "Failed",
+            new TencentCiInput(command("image/png").inputKey()),
+            new TencentCiOperation(
+                new TencentCiOutput("materials/11/22/images/202609/42/v1/derived/display.png"),
+                "asset-42-display",
+                null
+            )
+        )));
     }
 
     private static final class InMemoryJobStore extends MediaProcessingJobStore {
@@ -121,16 +213,29 @@ class CloudInfiniteProcessingServiceTest {
 
     private static final class InMemoryMediaObjectStore extends MediaObjectStore {
         int readyCalls;
+        int failedCalls;
         long size;
         int width;
         int height;
+        String mimeType;
+        long nextId = 1;
+        MediaObjectEntity current;
 
+        @Override MediaObjectEntity find(MediaObjectIdentity identity, String renditionType) {
+            return current != null && current.identity().equals(identity)
+                && current.renditionType.equals(renditionType) ? current : null;
+        }
+        @Override void insert(MediaObjectEntity entity) {
+            entity.id = nextId++;
+            current = entity;
+        }
         @Override void ready(Long id, long size, String eTag, String mimeType, int width, int height) {
             readyCalls++;
             this.size = size;
+            this.mimeType = mimeType;
             this.width = width;
             this.height = height;
         }
-        @Override void failed(Long id, String message) { }
+        @Override void failed(Long id, String message) { failedCalls++; }
     }
 }

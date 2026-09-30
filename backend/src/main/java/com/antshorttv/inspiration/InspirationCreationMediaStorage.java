@@ -3,6 +3,9 @@ package com.antshorttv.inspiration;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.ImageDisplayRenditionPlan;
+import com.antshorttv.storage.ImageDisplayRenditionPlanner;
+import com.antshorttv.storage.ObjectStorageKeyFactory;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -108,8 +111,9 @@ public class InspirationCreationMediaStorage {
         return "inspiration/creations/%s/original.%s".formatted(externalId, extension(mediaUrl, mimeType));
     }
 
-    static String thumbnailPath(String externalId) {
-        return "inspiration/creations/%s/derived/display.webp".formatted(externalId);
+    static ImageDisplayRenditionPlan displayPlan(String originalPath, String mimeType) {
+        return new ImageDisplayRenditionPlanner(new ObjectStorageKeyFactory())
+            .plan(originalPath, mimeType);
     }
 
     static String coverOriginalPath(String externalId) {

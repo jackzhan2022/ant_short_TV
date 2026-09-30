@@ -45,6 +45,27 @@ public class ObjectStorageKeyFactory {
         );
     }
 
+    public String verifiedUploadOriginal(
+        Long tenantId,
+        Long projectId,
+        String sessionId,
+        LocalDate date,
+        String extension
+    ) {
+        String prefix = projectId == null
+            ? "materials/%d/uploads".formatted(requirePositive(tenantId, "tenantId"))
+            : "materials/%d/%d/uploads".formatted(
+                requirePositive(tenantId, "tenantId"),
+                requirePositive(projectId, "projectId")
+            );
+        return "%s/%s/%s/v1/original.%s".formatted(
+            prefix,
+            require(date, "date").format(MONTH),
+            segment(sessionId, "sessionId"),
+            extension(extension)
+        );
+    }
+
     public String rendition(String originalKey, String rendition, String extension) {
         String normalized = objectKey(originalKey);
         int separator = normalized.lastIndexOf('/');

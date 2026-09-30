@@ -71,9 +71,7 @@ object-storage:
   cdn-type-d-key: ${OBJECT_STORAGE_CDN_TYPE_D_KEY:}
   cdn-authorization-seconds: ${OBJECT_STORAGE_CDN_AUTHORIZATION_SECONDS:604800}
   video-renewal-threshold-seconds: ${OBJECT_STORAGE_VIDEO_RENEWAL_THRESHOLD_SECONDS:7200}
-  sts-duration-seconds: ${OBJECT_STORAGE_STS_DURATION_SECONDS:3600}
-  sts-name-prefix: ${OBJECT_STORAGE_STS_NAME_PREFIX:antv-upload}
-  image-webp-quality: ${OBJECT_STORAGE_IMAGE_WEBP_QUALITY:80}
+  upload-signature-seconds: ${OBJECT_STORAGE_UPLOAD_SIGNATURE_SECONDS:300}
   ci-callback-url: ${OBJECT_STORAGE_CI_CALLBACK_URL:}
 
 commercial:

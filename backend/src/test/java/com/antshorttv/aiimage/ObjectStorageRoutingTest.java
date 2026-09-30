@@ -22,7 +22,7 @@ import org.springframework.core.io.Resource;
 class ObjectStorageRoutingTest {
 
     @Test
-    void generatedImageDetectsOriginalFormatAndUsesPersistentWebpRenditions() throws Exception {
+    void generatedImageDetectsOriginalFormatAndUsesPersistentImageSlimRendition() throws Exception {
         ObjectStorageService objectStorageService = mock(ObjectStorageService.class);
         AiImageStorageService storageService = new AiImageStorageService(objectStorageService, new com.antshorttv.storage.ObjectStorageKeyFactory());
         AiImageTaskEntity task = imageTask();
@@ -35,7 +35,7 @@ class ObjectStorageRoutingTest {
 
         assertThat(stored.mimeType()).isEqualTo("image/jpeg");
         assertThat(stored.storagePath()).endsWith("/original.jpg");
-        assertThat(stored.displayPath()).endsWith("/derived/display.webp");
+        assertThat(stored.displayPath()).endsWith("/derived/display.jpg");
         assertThat(stored.thumbnailPath()).isEqualTo(stored.displayPath());
         verify(objectStorageService).upload(eq(stored.storagePath()), org.mockito.ArgumentMatchers.any(byte[].class), eq("image/jpeg"));
     }

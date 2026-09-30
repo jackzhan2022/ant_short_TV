@@ -51,13 +51,14 @@ public class MediaUploadController {
         )));
     }
 
-    @PostMapping("/{sessionToken}/credentials")
-    public ApiResponse<MediaUploadSession> renew(
+    @PostMapping("/{sessionToken}/authorization")
+    public ApiResponse<CosUploadAuthorization> authorize(
         @PathVariable String sessionToken,
+        @Valid @RequestBody CosUploadAuthorizationRequest body,
         HttpServletRequest request
     ) {
         TenantContext context = member(request);
-        return ApiResponse.success(service.renew(context.userId(), sessionToken));
+        return ApiResponse.success(service.authorize(context.userId(), sessionToken, body));
     }
 
     @PostMapping("/{sessionToken}/complete")

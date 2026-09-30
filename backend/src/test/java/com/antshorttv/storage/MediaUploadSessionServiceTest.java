@@ -3,9 +3,11 @@ package com.antshorttv.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -16,52 +18,55 @@ import org.junit.jupiter.api.Test;
 class MediaUploadSessionServiceTest {
 
     @Test
-    void createsTenantScopedSessionAndReturnsTemporaryCredentials() {
+    void createsTenantScopedSessionWithoutReturningCloudCredentials() {
         InMemoryStore store = new InMemoryStore();
-        TemporaryCosCredentials credentials = new TemporaryCosCredentials(
-            "tmp-id", "tmp-key", "token", 1_700_003_600L, "request-1"
-        );
-        MediaUploadSessionService service = service(store, credentials);
+        MediaUploadSessionService service = service(store, mock(CosUploadRequestAuthorizer.class));
 
         MediaUploadSession session = service.create(
             new CreateMediaUploadSession(11L, null, 33L, "episode.mp4", "video/mp4", null)
         );
 
         assertThat(session.objectKey()).startsWith("uploads/11/").endsWith("/source.mp4");
-        assertThat(session.credentials()).isEqualTo(credentials);
+        assertThat(session).hasFieldOrPropertyWithValue("storageClass", "INTELLIGENT_TIERING");
         assertThat(store.current.status).isEqualTo("PENDING");
     }
 
     @Test
     void completesOnlyAfterHeadMetadataMatchesSession() {
         InMemoryStore store = new InMemoryStore();
-        TemporaryCosCredentials credentials = new TemporaryCosCredentials(
-            "tmp-id", "tmp-key", "token", 1_700_003_600L, "request-1"
-        );
         ObjectStorageService storage = mock(ObjectStorageService.class);
-        MediaUploadSessionService service = service(store, credentials, storage);
+        MediaUploadSessionService service = service(
+            store, mock(CosUploadRequestAuthorizer.class), storage
+        );
         MediaUploadSession created = service.create(
             new CreateMediaUploadSession(11L, 22L, 33L, "image.png", "image/png", 3L)
         );
         when(storage.metadata(created.objectKey())).thenReturn(
             new StoredObject(created.objectKey(), 3, "image/png", "etag-1", "INTELLIGENT_TIERING")
         );
+        when(storage.promoteVerifiedUpload(any(StoredObject.class), anyString()))
+            .thenAnswer(invocation -> new StoredObject(
+                invocation.getArgument(1), 3, "image/png", "etag-1", "INTELLIGENT_TIERING"
+            ));
 
         VerifiedMediaUpload completed = service.complete(33L, created.sessionToken());
 
-        assertThat(completed.objectKey()).isEqualTo(created.objectKey());
+        assertThat(completed.objectKey())
+            .isEqualTo("materials/11/22/uploads/202311/" + created.sessionToken()
+                + "/v1/original.png");
+        assertThat(completed.objectKey()).doesNotStartWith("uploads/");
         assertThat(completed.eTag()).isEqualTo("etag-1");
         assertThat(store.current.status).isEqualTo("COMPLETED");
+        assertThat(store.current.objectKey).isEqualTo(completed.objectKey());
     }
 
     @Test
     void rejectsCompletionForAnotherUserOrMismatchedSize() {
         InMemoryStore store = new InMemoryStore();
-        TemporaryCosCredentials credentials = new TemporaryCosCredentials(
-            "tmp-id", "tmp-key", "token", 1_700_003_600L, "request-1"
-        );
         ObjectStorageService storage = mock(ObjectStorageService.class);
-        MediaUploadSessionService service = service(store, credentials, storage);
+        MediaUploadSessionService service = service(
+            store, mock(CosUploadRequestAuthorizer.class), storage
+        );
         MediaUploadSession created = service.create(
             new CreateMediaUploadSession(11L, null, 33L, "image.png", "image/png", 3L)
         );
@@ -79,17 +84,20 @@ class MediaUploadSessionServiceTest {
     @Test
     void rejectsCompletedUploadFromAnotherTenant() {
         InMemoryStore store = new InMemoryStore();
-        TemporaryCosCredentials credentials = new TemporaryCosCredentials(
-            "tmp-id", "tmp-key", "token", 1_700_003_600L, "request-1"
-        );
         ObjectStorageService storage = mock(ObjectStorageService.class);
-        MediaUploadSessionService service = service(store, credentials, storage);
+        MediaUploadSessionService service = service(
+            store, mock(CosUploadRequestAuthorizer.class), storage
+        );
         MediaUploadSession created = service.create(
             new CreateMediaUploadSession(11L, null, 33L, "image.png", "image/png", 3L)
         );
         when(storage.metadata(created.objectKey())).thenReturn(
             new StoredObject(created.objectKey(), 3, "image/png", "etag-1", "INTELLIGENT_TIERING")
         );
+        when(storage.promoteVerifiedUpload(any(StoredObject.class), anyString()))
+            .thenAnswer(invocation -> new StoredObject(
+                invocation.getArgument(1), 3, "image/png", "etag-1", "INTELLIGENT_TIERING"
+            ));
         service.complete(33L, created.sessionToken());
 
         assertThatThrownBy(() -> service.requireCompleted(33L, 12L, created.sessionToken()))
@@ -97,13 +105,59 @@ class MediaUploadSessionServiceTest {
             .hasMessageContaining("上传会话不存在");
     }
 
-    private MediaUploadSessionService service(InMemoryStore store, TemporaryCosCredentials credentials) {
-        return service(store, credentials, mock(ObjectStorageService.class));
+    @Test
+    void rejectsCompletionWhenCosDidNotUseConfiguredStorageClass() {
+        InMemoryStore store = new InMemoryStore();
+        ObjectStorageService storage = mock(ObjectStorageService.class);
+        MediaUploadSessionService service = service(
+            store, mock(CosUploadRequestAuthorizer.class), storage
+        );
+        MediaUploadSession created = service.create(
+            new CreateMediaUploadSession(11L, null, 33L, "image.png", "image/png", 3L)
+        );
+        when(storage.metadata(created.objectKey())).thenReturn(
+            new StoredObject(created.objectKey(), 3, "image/png", "etag-1", "STANDARD")
+        );
+
+        assertThatThrownBy(() -> service.complete(33L, created.sessionToken()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("存储类型");
+    }
+
+    @Test
+    void authorizesOnlyTheOwnedPendingSessionObject() {
+        InMemoryStore store = new InMemoryStore();
+        CosUploadRequestAuthorizer authorizer = mock(CosUploadRequestAuthorizer.class);
+        MediaUploadSessionService service = service(store, authorizer);
+        MediaUploadSession created = service.create(
+            new CreateMediaUploadSession(11L, null, 33L, "image.png", "image/png", 3L)
+        );
+        CosUploadAuthorizationRequest request = new CosUploadAuthorizationRequest(
+            "PUT", "/" + created.objectKey(), Map.of(), Map.of("host", "cos.example")
+        );
+        CosUploadAuthorization expected = new CosUploadAuthorization(
+            "authorization", "security-token", 1_700_000_300L
+        );
+        when(authorizer.authorize(created.objectKey(), request)).thenReturn(expected);
+
+        assertThat(service.authorize(33L, created.sessionToken(), request)).isEqualTo(expected);
+        verify(authorizer).authorize(created.objectKey(), request);
+
+        assertThatThrownBy(() -> service.authorize(44L, created.sessionToken(), request))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("上传会话不存在");
     }
 
     private MediaUploadSessionService service(
         InMemoryStore store,
-        TemporaryCosCredentials credentials,
+        CosUploadRequestAuthorizer authorizer
+    ) {
+        return service(store, authorizer, mock(ObjectStorageService.class));
+    }
+
+    private MediaUploadSessionService service(
+        InMemoryStore store,
+        CosUploadRequestAuthorizer authorizer,
         ObjectStorageService storage
     ) {
         Instant now = Instant.ofEpochSecond(1_700_000_000L);
@@ -112,13 +166,7 @@ class MediaUploadSessionServiceTest {
         properties.setRegion("ap-guangzhou");
         return new MediaUploadSessionService(
             store,
-            new TemporaryCosCredentialIssuer() {
-                @Override
-                public TemporaryCosCredentials issue(String name, String policy, long durationSeconds) {
-                    return credentials;
-                }
-            },
-            new CosUploadPolicyFactory(properties, new ObjectMapper()),
+            authorizer,
             new ObjectStorageKeyFactory(),
             storage,
             properties,

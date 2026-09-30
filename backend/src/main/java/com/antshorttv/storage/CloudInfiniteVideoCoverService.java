@@ -46,7 +46,7 @@ public class CloudInfiniteVideoCoverService {
                 bytes = snapshot(videoKey, "0");
             }
             storage.upload(keys.objectKey(coverOriginalKey), bytes, "image/jpeg");
-            return keys.rendition(coverOriginalKey, "display", "webp");
+            return keys.rendition(coverOriginalKey, "display", "jpg");
         } catch (Exception exception) {
             throw new BusinessException(
                 ErrorCode.VALIDATION_ERROR,

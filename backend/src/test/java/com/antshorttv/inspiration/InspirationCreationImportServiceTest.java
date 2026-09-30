@@ -86,7 +86,7 @@ class InspirationCreationImportServiceTest {
         assertThat(entity.getUrl()).isEqualTo("/api/inspiration-creations/%d/file".formatted(entity.getId()));
         assertThat(entity.getThumbnailStatus()).isEqualTo("READY");
         assertThat(entity.getThumbnailPath())
-            .isEqualTo("inspiration/creations/842344185310472160/derived/display.webp");
+            .isEqualTo("inspiration/creations/842344185310472160/derived/display.png");
         assertThat(entity.getThumbnailUrl()).isEqualTo("/api/inspiration-creations/%d/thumbnail".formatted(entity.getId()));
         assertThat(entity.getDetailJson()).contains("\"url\":\"/api/inspiration-creations/%d/file\"".formatted(entity.getId()));
         assertThat(entity.getDetailJson()).doesNotContain("127.0.0.1");

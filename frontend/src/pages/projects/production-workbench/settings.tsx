@@ -1411,10 +1411,7 @@ const ProductionWorkbenchSettings = () => {
                                       }}
                                     >
                                       <StableImage
-                                        src={
-                                          variant.currentImageThumbnailUrl ||
-                                          variant.currentImageUrl
-                                        }
+                                        src={variant.currentImageThumbnailUrl}
                                         alt={`${variant.name}缩略图`}
                                         fallback={
                                           <AssetImagePlaceholder compact />
@@ -1560,15 +1557,7 @@ const ProductionWorkbenchSettings = () => {
                             }}
                           >
                             <StableImage
-                              src={
-                                selectedVariant.currentImageUrl ||
-                                selectedVariant.currentImageThumbnailUrl
-                              }
-                              previewSrc={
-                                selectedVariant.currentImageUrl
-                                  ? selectedVariant.currentImageThumbnailUrl
-                                  : undefined
-                              }
+                              src={selectedVariant.currentImageThumbnailUrl}
                               alt={`${selectedVariant.name}预览图`}
                               fallback={<AssetImagePlaceholder />}
                               loading="eager"
@@ -1730,9 +1719,9 @@ const ProductionWorkbenchSettings = () => {
                               background: 'var(--app-color-fill-secondary)',
                             }}
                           >
-                            {generationVariant.currentImageUrl ? (
+                            {generationVariant.currentImageThumbnailUrl ? (
                               <img
-                                src={generationVariant.currentImageUrl}
+                                src={generationVariant.currentImageThumbnailUrl}
                                 alt={`${generationVariant.name}当前图`}
                                 style={{
                                   maxWidth: '100%',
@@ -1758,9 +1747,13 @@ const ProductionWorkbenchSettings = () => {
                           >
                             {visualAsset.type === 'CHARACTER' &&
                             !generationVariant.primary &&
-                            visualAsset.item.visual?.resolvedImageUrl ? (
+                            visualAsset.item.visual?.primaryVariant
+                              ?.currentImageThumbnailUrl ? (
                               <img
-                                src={visualAsset.item.visual.resolvedImageUrl}
+                                src={
+                                  visualAsset.item.visual.primaryVariant
+                                    .currentImageThumbnailUrl
+                                }
                                 aria-label={`${generationVariant.name}引用图`}
                                 alt="主形象引用图"
                                 style={{

@@ -14,6 +14,14 @@ record SubmitMediaProcessingJob(
     String correlationData
 ) { }
 
+record SubmitImageDisplayJob(
+    MediaObjectIdentity identity,
+    String inputKey,
+    String sourceMimeType,
+    String storageClass,
+    String correlationData
+) { }
+
 record SubmittedMediaProcessingJob(String providerJobId, String status, String outputKey) { }
 
 record TencentCiTaskCallback(

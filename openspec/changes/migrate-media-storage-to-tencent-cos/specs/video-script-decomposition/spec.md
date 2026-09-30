@@ -55,7 +55,7 @@ The frontend SHALL distinguish browser connectivity failures, upload-session API
 - **THEN** the frontend pauses or reports the upload as recoverable and displays an offline connection message
 
 #### Scenario: Temporary credential cannot be renewed
-- **WHEN** an upload outlives its current STS credentials and the backend renewal request fails
+- **WHEN** an upload requests another short-lived COS authorization and the backend signing request fails
 - **THEN** the frontend reports a credential-renewal failure without exposing credential values
 - **AND** preserves the multipart upload identifier for a safe retry when possible
 

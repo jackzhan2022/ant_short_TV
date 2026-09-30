@@ -47,7 +47,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class AiImageExecutionHandler extends AiExecutionHandler {
     private static final Pattern INTERNAL_RESULT_DOWNLOAD = Pattern.compile(
-        "^/api/projects/(\\d+)/ai-image-results/(\\d+)/download$");
+        "^/api/projects/(\\d+)/ai-image-results/(\\d+)/(?:download|display|thumbnail)$");
     private final AiImageTaskMapper taskMapper;
     private final AiImageResultMapper resultMapper;
     private final AiImageStorageService storageService;

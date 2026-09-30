@@ -1,11 +1,27 @@
 package com.antshorttv.storage;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 @Mapper
-interface MediaObjectMapper {
+interface MediaObjectMapper extends BaseMapper<MediaObjectEntity> {
+    @Select("""
+        select * from media_object
+         where tenant_id = #{identity.tenantId}
+           and asset_type = #{identity.assetType}
+           and asset_id = #{identity.assetId}
+           and version_id = #{identity.versionId}
+           and rendition_type = #{renditionType}
+         limit 1 for update
+        """)
+    MediaObjectEntity findForUpdate(
+        @Param("identity") MediaObjectIdentity identity,
+        @Param("renditionType") String renditionType
+    );
+
     @Update("""
         update media_object
            set file_size = #{size}, etag = #{eTag}, mime_type = #{mimeType},

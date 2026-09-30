@@ -27,6 +27,30 @@ class ObjectStoragePropertiesTest {
         properties = validProperties();
         properties.setCdnTypeDKey("");
         assertThatThrownBy(properties::validate).isInstanceOf(IllegalStateException.class);
+
+        properties = validProperties();
+        properties.setStorageClass(" ");
+        assertThatThrownBy(properties::validate).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void acceptsUploadSignatureDurationBoundaries() {
+        ObjectStorageProperties properties = validProperties();
+        properties.setUploadSignatureSeconds(60);
+        assertThatCode(properties::validate).doesNotThrowAnyException();
+
+        properties.setUploadSignatureSeconds(900);
+        assertThatCode(properties::validate).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsUploadSignatureDurationOutsideAllowedRange() {
+        ObjectStorageProperties properties = validProperties();
+        properties.setUploadSignatureSeconds(59);
+        assertThatThrownBy(properties::validate).isInstanceOf(IllegalStateException.class);
+
+        properties.setUploadSignatureSeconds(901);
+        assertThatThrownBy(properties::validate).isInstanceOf(IllegalStateException.class);
     }
 
     private ObjectStorageProperties validProperties() {

@@ -27,18 +27,40 @@ class AiImageDeliveryServiceTest {
         when(permissions.require(11L, 22L, "AI_IMAGE_TASK:VIEW"))
             .thenReturn(new TenantContext(33L, 11L, 55L, "MEMBER"));
         when(grants.issue(any())).thenReturn(
-            new DeliveryGrant("https://antvcdn.aixmax.cn/display.webp?sign=x&t=y", Instant.now())
+            new DeliveryGrant("https://antvcdn.aixmax.cn/display.png?sign=x&t=y", Instant.now())
         );
         AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants);
 
         DeliveryGrant delivered = service.issue(22L, 44L, ImageRendition.DISPLAY);
 
-        assertThat(delivered.url()).contains("display.webp");
+        assertThat(delivered.url()).contains("display.png");
         ArgumentCaptor<DeliveryGrantRequest> request = ArgumentCaptor.forClass(DeliveryGrantRequest.class);
         verify(grants).issue(request.capture());
         assertThat(request.getValue().userId()).isEqualTo(33L);
         assertThat(request.getValue().objectKey()).isEqualTo(result.getDisplayPath());
         assertThat(request.getValue().renditionType()).isEqualTo("DISPLAY");
+    }
+
+    @Test
+    void resolvesCompatibilityThumbnailToTheDisplayRendition() {
+        AiImageResultMapper mapper = mock(AiImageResultMapper.class);
+        ProjectPermissionGuard permissions = mock(ProjectPermissionGuard.class);
+        MediaDeliveryGrantService grants = mock(MediaDeliveryGrantService.class);
+        AiImageResultEntity result = result();
+        when(mapper.selectById(44L)).thenReturn(result);
+        when(permissions.require(11L, 22L, "AI_IMAGE_TASK:VIEW"))
+            .thenReturn(new TenantContext(33L, 11L, 55L, "MEMBER"));
+        when(grants.issue(any())).thenReturn(
+            new DeliveryGrant("https://antvcdn.aixmax.cn/display.png?sign=x&t=y", Instant.now())
+        );
+        AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants);
+
+        service.issue(22L, 44L, ImageRendition.THUMBNAIL);
+
+        ArgumentCaptor<DeliveryGrantRequest> request = ArgumentCaptor.forClass(DeliveryGrantRequest.class);
+        verify(grants).issue(request.capture());
+        assertThat(request.getValue().objectKey()).isEqualTo(result.getDisplayPath());
+        assertThat(request.getValue().renditionType()).isEqualTo("THUMBNAIL");
     }
 
     private AiImageResultEntity result() {
@@ -47,8 +69,8 @@ class AiImageDeliveryServiceTest {
         value.setTenantId(11L);
         value.setProjectId(22L);
         value.setStoragePath("materials/11/22/images/44/original.png");
-        value.setDisplayPath("materials/11/22/images/44/derived/display.webp");
-        value.setThumbnailPath("materials/11/22/images/44/derived/thumbnail.webp");
+        value.setDisplayPath("materials/11/22/images/44/derived/display.png");
+        value.setThumbnailPath("materials/11/22/images/44/derived/legacy-thumbnail.png");
         value.setStatus("ACTIVE");
         return value;
     }

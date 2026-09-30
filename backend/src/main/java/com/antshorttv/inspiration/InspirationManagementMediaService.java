@@ -3,6 +3,7 @@ package com.antshorttv.inspiration;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.storage.CloudInfiniteVideoCoverService;
+import com.antshorttv.storage.ImageDisplayRenditionPlan;
 import com.antshorttv.storage.VerifiedMediaUpload;
 import java.util.Locale;
 import org.springframework.stereotype.Service;
@@ -42,12 +43,15 @@ public class InspirationManagementMediaService {
     ) {
         String extension = "image/png".equals(mimeType) ? "png" : "jpg";
         String originalPath = base(externalId) + "/original." + extension;
-        String thumbnailPath = InspirationCreationMediaStorage.thumbnailPath(externalId);
+        ImageDisplayRenditionPlan display = InspirationCreationMediaStorage.displayPlan(
+            originalPath, mimeType
+        );
+        String thumbnailPath = display.objectKey();
         try {
             storage.copyVerifiedUpload(upload.objectKey(), originalPath, upload.size(), mimeType);
             ManagedInspirationMedia media = new ManagedInspirationMedia(
                 "IMAGE", mimeType, upload.size(), originalPath,
-                thumbnailPath, "image/webp", 0L
+                thumbnailPath, display.mimeType(), 0L
             );
             storage.delete(upload.objectKey());
             return media;
@@ -72,7 +76,7 @@ public class InspirationManagementMediaService {
             String thumbnailPath = covers.create(originalPath, coverOriginalPath);
             ManagedInspirationMedia media = new ManagedInspirationMedia(
                 "VIDEO", mimeType, upload.size(), originalPath,
-                thumbnailPath, "image/webp", 0L
+                thumbnailPath, "image/jpeg", 0L
             );
             storage.delete(upload.objectKey());
             return media;

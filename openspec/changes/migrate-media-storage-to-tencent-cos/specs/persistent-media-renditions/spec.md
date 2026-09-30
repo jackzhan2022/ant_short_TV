@@ -1,13 +1,22 @@
 ## ADDED Requirements
 
-### Requirement: Every stored image has persistent WebP renditions
-The system SHALL preserve each accepted image original and submit one idempotent Tencent Cloud Infinite processing task that stores one intelligent-compression display WebP. Thumbnail and normal-preview roles SHALL resolve to this same immutable object. Fixed processing parameters SHALL be server-controlled and outputs SHALL use an immutable `derived/` namespace that cannot retrigger the original-processing workflow.
+### Requirement: Every stored image has one persistent extreme-compression display rendition
+The system SHALL preserve each accepted image original and submit one idempotent Tencent Cloud Infinite processing task that stores one original-resolution `imageSlim` display rendition. JPEG, PNG, and GIF sources SHALL be compressed directly; sources unsupported by `imageSlim` SHALL be converted to PNG before compression. Thumbnail, detail, and normal-preview roles SHALL resolve only to this immutable object. Fixed processing parameters SHALL be server-controlled and outputs SHALL use an immutable `derived/` namespace that cannot retrigger the original-processing workflow.
 
 #### Scenario: Image original is accepted
 - **WHEN** a generated, uploaded, imported, reference, style, or cover image becomes a durable original
-- **THEN** the system records its original metadata and submits the fixed persistent WebP jobs once
+- **THEN** the system records its original metadata and submits the fixed persistent display job once
 - **AND** records the resulting display object key and metadata when processing succeeds
 - **AND** resolves any compatibility thumbnail field to the same display object key
+
+#### Scenario: Unsupported source format is accepted
+- **WHEN** a decodable image such as WebP is accepted but `imageSlim` does not support its source format
+- **THEN** Cloud Infinite converts it to PNG without resizing and then applies `imageSlim`
+- **AND** the immutable original remains available for explicit download
+
+#### Scenario: Display rendition is unavailable
+- **WHEN** the display rendition is pending or failed
+- **THEN** image list, detail, and preview consumers do not fall back to rendering the original
 
 #### Scenario: Derived output matches the workflow trigger
 - **WHEN** Cloud Infinite writes an object below the asset version's `derived/` namespace
@@ -30,15 +39,15 @@ The system SHALL persist each processing job identity, input version, requested 
 - **THEN** the system rejects it without publishing a rendition
 
 ### Requirement: Video covers follow a deterministic source policy
-The system SHALL create one persistent WebP cover per video version when its domain requires or requests a cover. AI-generated video SHALL reuse its bound first-frame image; episode composition SHALL prefer the first storyboard frame; other coverless video SHALL use a Cloud Infinite snapshot at one second with a bounded first-decodable-frame fallback for shorter media.
+The system SHALL create one persistent `imageSlim` cover per video version when its domain requires or requests a cover. AI-generated video SHALL reuse its bound first-frame image; episode composition SHALL prefer the first storyboard frame; other coverless video SHALL use a Cloud Infinite snapshot at one second with a bounded first-decodable-frame fallback for shorter media.
 
 #### Scenario: AI video has a bound first frame
 - **WHEN** an AI-generated video result is persisted with its authorized first-frame image
-- **THEN** the system uses that image as the cover source and creates the persistent WebP cover without decoding the video
+- **THEN** the system uses that image as the cover source and creates the persistent `imageSlim` cover without decoding the video
 
 #### Scenario: Uploaded video has no cover image
 - **WHEN** an uploaded or imported video requires a cover and has no suitable bound image
-- **THEN** the system submits a persistent Cloud Infinite snapshot job and records its WebP cover output
+- **THEN** the system submits a persistent Cloud Infinite snapshot job, applies `imageSlim`, and records its cover output
 
 #### Scenario: Episode composition disables optional cover generation
 - **WHEN** an episode composition request explicitly sets `generateCover` to false and no domain contract requires a thumbnail

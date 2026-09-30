@@ -26,6 +26,8 @@ public class CloudInfiniteProcessingService {
     private final ObjectStorageKeyFactory keys;
     private final MediaProcessingJobStore jobs;
     private final MediaObjectStore mediaObjects;
+    private final MediaObjectRegistry mediaObjectRegistry;
+    private final ImageDisplayRenditionPlanner imageRenditions;
     private final SecureRandom random = new SecureRandom();
 
     public CloudInfiniteProcessingService(
@@ -33,13 +35,45 @@ public class CloudInfiniteProcessingService {
         ObjectStorageProperties properties,
         ObjectStorageKeyFactory keys,
         MediaProcessingJobStore jobs,
-        MediaObjectStore mediaObjects
+        MediaObjectStore mediaObjects,
+        MediaObjectRegistry mediaObjectRegistry,
+        ImageDisplayRenditionPlanner imageRenditions
     ) {
         this.cos = cos;
         this.properties = properties;
         this.keys = keys;
         this.jobs = jobs;
         this.mediaObjects = mediaObjects;
+        this.mediaObjectRegistry = mediaObjectRegistry;
+        this.imageRenditions = imageRenditions;
+    }
+
+    @Transactional
+    public SubmittedMediaProcessingJob submitImageDisplay(SubmitImageDisplayJob command) {
+        if (command == null || command.identity() == null || blank(command.inputKey())
+            || blank(command.sourceMimeType()) || blank(command.storageClass())
+            || blank(command.correlationData())) {
+            throw new IllegalArgumentException("万象图片展示任务参数不完整。");
+        }
+        String inputKey = keys.objectKey(command.inputKey());
+        ImageDisplayRenditionPlan plan = imageRenditions.plan(inputKey, command.sourceMimeType());
+        RegisteredMediaObject rendition = mediaObjectRegistry.registerPendingRendition(
+            command.identity(),
+            "DISPLAY_IMAGE_SLIM",
+            plan.objectKey(),
+            plan.mimeType(),
+            command.storageClass()
+        );
+        return submit(new SubmitMediaProcessingJob(
+            command.identity().tenantId(),
+            command.identity().projectId(),
+            rendition.id(),
+            "DISPLAY_IMAGE_SLIM",
+            inputKey,
+            plan.objectKey(),
+            plan.processRule(),
+            command.correlationData()
+        ));
     }
 
     @Transactional
@@ -89,7 +123,7 @@ public class CloudInfiniteProcessingService {
     public void handleCallback(String token, TencentCiTaskCallback callback) {
         MediaProcessingJobEntity entity = jobs.findByTokenHash(hash(token));
         if (entity == null) throw new IllegalArgumentException("万象回调令牌无效。");
-        if ("SUCCEEDED".equals(entity.status)) return;
+        if (TERMINAL.contains(entity.status)) return;
         TencentCiJobDetail detail = single(callback);
         if (!same(entity.providerJobId, detail.jobId())
             || detail.input() == null || !same(entity.inputKey, detail.input().object())
@@ -200,7 +234,8 @@ public class CloudInfiniteProcessingService {
         return "Running".equalsIgnoreCase(state) ? "RUNNING" : "SUBMITTED";
     }
     private String mimeType(String format) {
-        return "image/" + (format == null ? "webp" : format.toLowerCase());
+        if (blank(format)) throw new IllegalArgumentException("万象成功回调缺少图片格式。");
+        return "image/" + ("jpg".equalsIgnoreCase(format) ? "jpeg" : format.toLowerCase());
     }
     private boolean same(String left, String right) { return left != null && left.equals(right); }
     private static boolean blank(String value) { return value == null || value.isBlank(); }
