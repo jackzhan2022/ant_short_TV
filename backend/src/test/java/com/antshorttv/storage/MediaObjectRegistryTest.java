@@ -150,6 +150,16 @@ class MediaObjectRegistryTest {
         }
 
         @Override
+        void retire(MediaObjectIdentity identity) {
+            objects.values().stream()
+                .filter(entity -> entity.identity().equals(identity))
+                .forEach(entity -> {
+                    entity.status = "RETIRED";
+                    entity.errorMessage = "Business result discarded";
+                });
+        }
+
+        @Override
         void ready(Long id, long size, String eTag, String mimeType, int width, int height) {
         }
 

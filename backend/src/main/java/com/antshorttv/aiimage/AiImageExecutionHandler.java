@@ -56,6 +56,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
     private final AiImageResultMapper resultMapper;
     private final AiImageStorageService storageService;
     private final ImageDisplayRenditionService imageRenditions;
+    private final AiImageRenditionPublicationService renditionPublication;
     private final AiInvocationService invocationService;
     private final AiExecutionTaskMapper executionTaskMapper;
     private final AiExecutionAttemptMapper attemptMapper;
@@ -70,6 +71,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         AiImageResultMapper resultMapper,
         AiImageStorageService storageService,
         ImageDisplayRenditionService imageRenditions,
+        AiImageRenditionPublicationService renditionPublication,
         AiInvocationService invocationService,
         AiExecutionTaskMapper executionTaskMapper,
         AiExecutionAttemptMapper attemptMapper,
@@ -83,6 +85,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         this.resultMapper = resultMapper;
         this.storageService = storageService;
         this.imageRenditions = imageRenditions;
+        this.renditionPublication = renditionPublication;
         this.invocationService = invocationService;
         this.executionTaskMapper = executionTaskMapper;
         this.attemptMapper = attemptMapper;
@@ -313,14 +316,6 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         taskMapper.updateById(task);
     }
 
-    private void markDomainSucceeded(AiImageTaskEntity task, Long callLogId) {
-        task.setStatus(AiImageTaskStatus.SUCCESS.name());
-        task.setAiCallLogId(callLogId);
-        task.setCompletedAt(LocalDateTime.now());
-        task.setUpdatedAt(task.getCompletedAt());
-        taskMapper.updateById(task);
-    }
-
     private void markDomainSettling(AiImageTaskEntity task, Long callLogId) {
         task.setStatus(AiImageTaskStatus.SETTLING.name());
         task.setAiCallLogId(callLogId);
@@ -405,22 +400,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         if (waiting) {
             throw new AiExecutionDeferredException("等待 AI 图片展示版本完成处理。");
         }
-        for (AiImageResultEntity result : results) {
-            if (!AiImageResultStatus.ACTIVE.name().equals(result.getStatus())) {
-                result.setStatus(AiImageResultStatus.ACTIVE.name());
-                result.setUpdatedAt(LocalDateTime.now());
-                resultMapper.updateById(result);
-            }
-        }
-        requireActiveClaim(context);
-        AiImageResultEntity first = results.get(0);
-        if ("VISUAL_VARIANT".equals(task.getTargetType())) {
-            boolean published = assetVisualVariantService.generationSucceededIfClaimActive(
-                task.getTenantId(), task.getProjectId(), task.getTargetId(), task.getId(),
-                first.getId(), first.getImageUrl(), context.task().id, context.claim().claimToken());
-            if (!published) throw new AiExecutionClaimLostException(context.task().id);
-        }
-        markDomainSucceeded(task, task.getAiCallLogId());
+        renditionPublication.publish(context, task, results);
         return new AiExecutionHandlerResult("AI_IMAGE_TASK", task.getId());
     }
 
@@ -499,6 +479,8 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
 
     private void discardUnpublishedResults(AiImageTaskEntity task, java.util.List<Long> resultIds) {
         for (Long resultId : resultIds) {
+            AiImageResultEntity result = resultMapper.selectById(resultId);
+            if (result != null) imageRenditions.retire(mediaIdentity(result));
             if ("VISUAL_VARIANT".equals(task.getTargetType())) {
                 assetVisualVariantService.discardGeneratedResult(
                     task.getTenantId(), task.getProjectId(), task.getTargetId(), resultId);

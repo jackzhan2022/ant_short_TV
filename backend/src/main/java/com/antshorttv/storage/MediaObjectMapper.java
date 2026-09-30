@@ -31,6 +31,18 @@ interface MediaObjectMapper extends BaseMapper<MediaObjectEntity> {
 
     @Update("""
         update media_object
+           set status = 'RETIRED', error_message = 'Business result discarded',
+               updated_at = current_timestamp
+         where tenant_id = #{identity.tenantId}
+           and asset_type = #{identity.assetType}
+           and asset_id = #{identity.assetId}
+           and version_id = #{identity.versionId}
+           and status <> 'RETIRED'
+        """)
+    int retire(@Param("identity") MediaObjectIdentity identity);
+
+    @Update("""
+        update media_object
            set file_size = #{size}, etag = #{eTag}, mime_type = #{mimeType},
                width = #{width}, height = #{height}, status = 'READY',
                error_message = null, updated_at = current_timestamp

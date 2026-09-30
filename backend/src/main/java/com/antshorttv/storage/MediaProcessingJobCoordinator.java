@@ -9,7 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MediaProcessingJobCoordinator {
-    private static final Set<String> TERMINAL = Set.of("SUCCEEDED", "FAILED");
+    private static final Set<String> TERMINAL = Set.of("SUCCEEDED", "FAILED", "CANCELED");
     private static final Set<String> IMAGE_FORMATS = Set.of("jpg", "jpeg", "png", "gif");
     private static final long STALE_SUBMISSION_MINUTES = 5;
     private final MediaProcessingJobStore jobs;
@@ -50,6 +50,8 @@ public class MediaProcessingJobCoordinator {
         }
 
         MediaProcessingJobEntity entity = existing == null ? new MediaProcessingJobEntity() : existing;
+        String effectiveTokenHash = existing == null
+            ? callbackTokenHash : existing.callbackTokenHash;
         entity.tenantId = submission.tenantId();
         entity.projectId = submission.projectId();
         entity.mediaObjectId = submission.mediaObjectId();
@@ -58,7 +60,7 @@ public class MediaProcessingJobCoordinator {
         entity.operation = submission.operation();
         entity.inputKey = submission.inputKey();
         entity.outputKey = submission.outputKey();
-        entity.callbackTokenHash = callbackTokenHash;
+        entity.callbackTokenHash = effectiveTokenHash;
         entity.correlationData = submission.correlationData();
         entity.status = "SUBMITTING";
         entity.attemptNo = existing == null || existing.attemptNo == null ? 1 : existing.attemptNo + 1;
@@ -69,7 +71,7 @@ public class MediaProcessingJobCoordinator {
         entity.createdAt = existing == null ? now : existing.createdAt;
         entity.updatedAt = now;
         if (existing == null) jobs.insert(entity); else jobs.update(entity);
-        return new PreparedMediaProcessingJob(submission, callbackTokenHash, true, response(entity));
+        return new PreparedMediaProcessingJob(submission, effectiveTokenHash, true, response(entity));
     }
 
     @Transactional
@@ -81,10 +83,10 @@ public class MediaProcessingJobCoordinator {
             throw new IllegalStateException("万象图片处理任务未返回 JobId。");
         }
         MediaProcessingJobEntity entity = current(prepared);
+        if (TERMINAL.contains(entity.status)) return response(entity);
         if (!blank(entity.providerJobId) && !same(entity.providerJobId, detail.getJobId())) {
             throw new IllegalArgumentException("万象提交结果与处理任务不匹配。");
         }
-        if (TERMINAL.contains(entity.status)) return response(entity);
         LocalDateTime now = LocalDateTime.now();
         entity.providerJobId = detail.getJobId();
         entity.queueId = detail.getQueueId();
@@ -141,6 +143,22 @@ public class MediaProcessingJobCoordinator {
         }
         entity.updatedAt = now;
         jobs.update(entity);
+    }
+
+    @Transactional
+    public void retireImage(MediaObjectIdentity identity) {
+        RegisteredMediaObject display = mediaObjectRegistry.find(identity, "DISPLAY_IMAGE_SLIM");
+        MediaProcessingJobEntity job = display == null
+            ? null : jobs.find(display.objectKey(), "DISPLAY_IMAGE_SLIM");
+        mediaObjectRegistry.retire(identity);
+        if (job == null || "CANCELED".equals(job.status)) return;
+        LocalDateTime now = LocalDateTime.now();
+        job.status = "CANCELED";
+        job.errorCode = "BUSINESS_RESULT_DISCARDED";
+        job.errorMessage = "Business result discarded";
+        job.completedAt = now;
+        job.updatedAt = now;
+        jobs.update(job);
     }
 
     private MediaProcessingJobEntity current(PreparedMediaProcessingJob prepared) {

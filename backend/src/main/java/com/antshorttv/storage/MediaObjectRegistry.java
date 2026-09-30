@@ -72,6 +72,12 @@ public class MediaObjectRegistry {
         );
     }
 
+    @Transactional
+    public void retire(MediaObjectIdentity identity) {
+        if (identity == null) throw new IllegalArgumentException("媒体对象身份不能为空。");
+        store.retire(identity);
+    }
+
     private RegisteredMediaObject register(
         MediaObjectIdentity identity,
         String renditionType,

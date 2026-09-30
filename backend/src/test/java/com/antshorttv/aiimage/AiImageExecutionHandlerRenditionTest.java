@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.inOrder;
 
 import com.antshorttv.accounting.AiUsageAccountingService;
 import com.antshorttv.accounting.AiExecutionCostSummary;
@@ -42,6 +43,7 @@ import java.util.Map;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 class AiImageExecutionHandlerRenditionTest {
 
@@ -128,6 +130,9 @@ class AiImageExecutionHandlerRenditionTest {
         when(fixture.variants.generationSucceededIfClaimActive(
             11L, 22L, 77L, 33L, 44L, result.getImageUrl(), 99L, "claim-1"
         )).thenReturn(true);
+        when(fixture.executions.lockActiveClaim(99L, "claim-1")).thenReturn(fixture.execution);
+        when(fixture.results.activateForPublication(33L, 99L)).thenReturn(1);
+        when(fixture.tasks.updateById(fixture.task)).thenReturn(1);
 
         AiExecutionHandlerResult completed = fixture.handler.execute(fixture.context());
 
@@ -135,7 +140,7 @@ class AiImageExecutionHandlerRenditionTest {
         assertThat(result.getStatus()).isEqualTo(AiImageResultStatus.ACTIVE.name());
         assertThat(fixture.task.getStatus()).isEqualTo(AiImageTaskStatus.SUCCESS.name());
         assertThat(fixture.task.getCompletedAt()).isNotNull();
-        verify(fixture.results).updateById(result);
+        verify(fixture.results).activateForPublication(33L, 99L);
         verify(fixture.variants).generationSucceededIfClaimActive(
             11L, 22L, 77L, 33L, 44L, result.getImageUrl(), 99L, "claim-1"
         );
@@ -212,6 +217,7 @@ class AiImageExecutionHandlerRenditionTest {
         fixture.task.setImageCount(2);
         AiImageResultEntity partial = fixture.result(AiImageResultStatus.PROCESSING.name());
         when(fixture.results.selectByTask(33L)).thenReturn(List.of(partial));
+        when(fixture.results.selectById(44L)).thenReturn(partial);
         java.util.concurrent.atomic.AtomicLong nextId = new java.util.concurrent.atomic.AtomicLong(45L);
         doAnswer(invocation -> {
             ((AiImageResultEntity) invocation.getArgument(0)).setId(nextId.getAndIncrement());
@@ -235,7 +241,9 @@ class AiImageExecutionHandlerRenditionTest {
         assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
             .isInstanceOf(AiExecutionDeferredException.class);
 
-        verify(fixture.results).deleteById(44L);
+        InOrder cleanup = inOrder(fixture.renditions, fixture.results);
+        cleanup.verify(fixture.renditions).retire(fixture.identity(partial));
+        cleanup.verify(fixture.results).deleteById(44L);
         verify(fixture.invocations).invokeImage(any());
         verify(fixture.storage, times(2)).storeGenerated(any(), anyLong(), anyInt(), anyString());
         assertThat(fixture.task.getStatus()).isEqualTo("RENDERING");
@@ -334,6 +342,8 @@ class AiImageExecutionHandlerRenditionTest {
         private final AiPointReservationMapper reservations = mock(AiPointReservationMapper.class);
         private final AiPointSettlementService settlements = mock(AiPointSettlementService.class);
         private final AssetVisualVariantService variants = mock(AssetVisualVariantService.class);
+        private final AiImageRenditionPublicationService publication =
+            new AiImageRenditionPublicationService(tasks, results, executions, variants);
         private final AiImageTaskEntity task = task();
         private final AiExecutionTaskEntity execution = execution();
         private final AiImageExecutionHandler handler;
@@ -342,8 +352,8 @@ class AiImageExecutionHandlerRenditionTest {
             when(tasks.selectById(33L)).thenReturn(task);
             when(executions.selectById(99L)).thenReturn(execution);
             handler = new AiImageExecutionHandler(
-                tasks, results, storage, renditions, invocations, executions, attempts, accounting,
-                reservations, settlements, new ObjectMapper(), variants
+                tasks, results, storage, renditions, publication, invocations, executions, attempts,
+                accounting, reservations, settlements, new ObjectMapper(), variants
             );
         }
 

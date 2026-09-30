@@ -10,9 +10,10 @@ import com.qcloud.cos.model.ciModel.job.MediaJobsRequest;
 import com.qcloud.cos.model.ciModel.job.MediaPicProcessTemplateObject;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -22,7 +23,6 @@ public class CloudInfiniteProcessingService {
     private final ObjectStorageKeyFactory keys;
     private final MediaProcessingJobCoordinator coordinator;
     private final ImageDisplayRenditionPlanner imageRenditions;
-    private final SecureRandom random = new SecureRandom();
 
     public CloudInfiniteProcessingService(
         COS cos,
@@ -50,7 +50,7 @@ public class CloudInfiniteProcessingService {
             command.identity(), inputKey, command.sourceMimeType(), command.storageClass(),
             command.correlationData()
         );
-        String token = token();
+        String token = token(plan.objectKey(), "DISPLAY_IMAGE_SLIM");
         PreparedMediaProcessingJob prepared = coordinator.prepareImageDisplay(
             normalized, plan, hash(token)
         );
@@ -69,6 +69,10 @@ public class CloudInfiniteProcessingService {
 
     public void handleCallback(String token, TencentCiTaskCallback callback) {
         coordinator.handleCallback(hash(token), callback);
+    }
+
+    public void retireImage(MediaObjectIdentity identity) {
+        coordinator.retireImage(identity);
     }
 
     private MediaJobObject submitToTencent(SubmitMediaProcessingJob command, String token) {
@@ -103,10 +107,20 @@ public class CloudInfiniteProcessingService {
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
-    private String token() {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    private String token(String outputKey, String operation) {
+        String secret = properties.getCdnTypeDKey();
+        if (blank(secret)) throw new IllegalStateException("object-storage.cdn-type-d-key 未配置。");
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] value = mac.doFinal(
+                ("tencent-ci-callback\n" + operation + "\n" + outputKey)
+                    .getBytes(StandardCharsets.UTF_8)
+            );
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法生成万象回调令牌。", exception);
+        }
     }
 
     static String hash(String value) {

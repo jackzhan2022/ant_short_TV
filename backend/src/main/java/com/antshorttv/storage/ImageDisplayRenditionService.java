@@ -54,4 +54,8 @@ public class ImageDisplayRenditionService {
         ));
         return new RegisteredImageDisplay(original.objectKey(), job.outputKey(), job.status());
     }
+
+    public void retire(MediaObjectIdentity identity) {
+        processing.retireImage(identity);
+    }
 }

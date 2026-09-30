@@ -13,6 +13,7 @@ class MyBatisMediaObjectStore extends MediaObjectStore {
     }
     @Override void insert(MediaObjectEntity entity) { mapper.insert(entity); }
     @Override boolean retryFailed(Long id) { return mapper.retryFailed(id) == 1; }
+    @Override void retire(MediaObjectIdentity identity) { mapper.retire(identity); }
     @Override void ready(Long id, long size, String eTag, String mimeType, int width, int height) {
         mapper.markReady(id, size, eTag, mimeType, width, height);
     }

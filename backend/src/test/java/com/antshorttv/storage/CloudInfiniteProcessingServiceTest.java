@@ -28,6 +28,7 @@ class CloudInfiniteProcessingServiceTest {
     private COS cos;
     private InMemoryJobStore jobs;
     private InMemoryMediaObjectStore media;
+    private MediaProcessingJobCoordinator coordinator;
     private CloudInfiniteProcessingService service;
     private final ObjectStorageKeyFactory keys = new ObjectStorageKeyFactory();
 
@@ -39,6 +40,7 @@ class CloudInfiniteProcessingServiceTest {
         ObjectStorageProperties properties = new ObjectStorageProperties();
         properties.setBucket("antv-1418200553");
         properties.setRegion("ap-guangzhou");
+        properties.setCdnTypeDKey("test-key");
         properties.setCiCallbackUrl("https://app.example/api/media-processing/callbacks/tencent-ci");
         MediaJobResponse response = mock(MediaJobResponse.class);
         MediaJobObject detail = mock(MediaJobObject.class);
@@ -48,7 +50,7 @@ class CloudInfiniteProcessingServiceTest {
         when(response.getJobsDetail()).thenReturn(detail);
         when(cos.createPicProcessJob(any())).thenReturn(response);
         MediaObjectRegistry registry = new MediaObjectRegistry(media, keys);
-        MediaProcessingJobCoordinator coordinator = new MediaProcessingJobCoordinator(
+        coordinator = new MediaProcessingJobCoordinator(
             jobs, media, registry
         );
         service = new CloudInfiniteProcessingService(
@@ -288,7 +290,77 @@ class CloudInfiniteProcessingServiceTest {
         service.submitImageDisplay(command("image/png"));
 
         assertThat(jobs.current.attemptNo).isEqualTo(2);
-        verify(cos, times(2)).createPicProcessJob(any());
+        ArgumentCaptor<MediaJobsRequest> requests = ArgumentCaptor.forClass(MediaJobsRequest.class);
+        verify(cos, times(2)).createPicProcessJob(requests.capture());
+        assertThat(requests.getAllValues().get(1).getCallBack())
+            .isEqualTo(requests.getAllValues().get(0).getCallBack());
+    }
+
+    @Test
+    void oldCallbackWinsDuringStaleReplacementFinalize() {
+        service.submitImageDisplay(command("image/png"));
+        String oldToken = callbackToken();
+        jobs.current.status = "SUBMITTING";
+        jobs.current.providerJobId = null;
+        jobs.current.updatedAt = LocalDateTime.now().minusMinutes(6);
+        when(cos.createPicProcessJob(any())).thenAnswer(invocation -> {
+            service.handleCallback(oldToken, TencentCiTaskCallback.success(
+                "job-1", command("image/png").inputKey(),
+                "materials/11/22/images/202609/42/v1/derived/display.png",
+                "asset-42-display", 321L, 1200, 800, "etag-old", "PNG"
+            ));
+            return submittedResponse("job-2");
+        });
+
+        SubmittedMediaProcessingJob submitted = service.submitImageDisplay(command("image/png"));
+
+        assertThat(submitted.status()).isEqualTo("SUCCEEDED");
+        assertThat(jobs.current.providerJobId).isEqualTo("job-1");
+        assertThat(jobs.current.errorCode).isNull();
+        assertThat(media.current.status).isEqualTo("READY");
+    }
+
+    @Test
+    void oldCallbackWinsWhenStaleReplacementSubmissionThrows() {
+        service.submitImageDisplay(command("image/png"));
+        String oldToken = callbackToken();
+        jobs.current.status = "SUBMITTING";
+        jobs.current.providerJobId = null;
+        jobs.current.updatedAt = LocalDateTime.now().minusMinutes(6);
+        when(cos.createPicProcessJob(any())).thenAnswer(invocation -> {
+            service.handleCallback(oldToken, TencentCiTaskCallback.success(
+                "job-1", command("image/png").inputKey(),
+                "materials/11/22/images/202609/42/v1/derived/display.png",
+                "asset-42-display", 321L, 1200, 800, "etag-old", "PNG"
+            ));
+            throw new IllegalStateException("replacement failed");
+        });
+
+        assertThatThrownBy(() -> service.submitImageDisplay(command("image/png")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("replacement failed");
+
+        assertThat(jobs.current.status).isEqualTo("SUCCEEDED");
+        assertThat(jobs.current.providerJobId).isEqualTo("job-1");
+        assertThat(jobs.current.errorCode).isNull();
+        assertThat(media.current.status).isEqualTo("READY");
+    }
+
+    @Test
+    void lateCallbackCannotReviveRetiredMediaGraph() {
+        service.submitImageDisplay(command("image/png"));
+        String token = callbackToken();
+
+        coordinator.retireImage(command("image/png").identity());
+        service.handleCallback(token, TencentCiTaskCallback.success(
+            "job-1", command("image/png").inputKey(),
+            "materials/11/22/images/202609/42/v1/derived/display.png",
+            "asset-42-display", 321L, 1200, 800, "etag-late", "PNG"
+        ));
+
+        assertThat(jobs.current.status).isEqualTo("CANCELED");
+        assertThat(media.current.status).isEqualTo("RETIRED");
+        assertThat(media.readyCalls).isZero();
     }
 
     private MediaJobResponse submittedResponse(String jobId) {
@@ -379,6 +451,12 @@ class CloudInfiniteProcessingServiceTest {
             current.status = "PENDING";
             current.errorMessage = null;
             return true;
+        }
+        @Override void retire(MediaObjectIdentity identity) {
+            if (current != null && current.identity().equals(identity)) {
+                current.status = "RETIRED";
+                current.errorMessage = "Business result discarded";
+            }
         }
         @Override void ready(Long id, long size, String eTag, String mimeType, int width, int height) {
             readyCalls++;
