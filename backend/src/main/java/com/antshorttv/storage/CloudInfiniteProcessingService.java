@@ -11,22 +11,16 @@ import com.qcloud.cos.model.ciModel.job.MediaPicProcessTemplateObject;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
-import java.util.Set;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CloudInfiniteProcessingService {
-    private static final Set<String> TERMINAL = Set.of("SUCCEEDED", "FAILED");
     private final COS cos;
     private final ObjectStorageProperties properties;
     private final ObjectStorageKeyFactory keys;
-    private final MediaProcessingJobStore jobs;
-    private final MediaObjectStore mediaObjects;
-    private final MediaObjectRegistry mediaObjectRegistry;
+    private final MediaProcessingJobCoordinator coordinator;
     private final ImageDisplayRenditionPlanner imageRenditions;
     private final SecureRandom random = new SecureRandom();
 
@@ -34,21 +28,16 @@ public class CloudInfiniteProcessingService {
         COS cos,
         ObjectStorageProperties properties,
         ObjectStorageKeyFactory keys,
-        MediaProcessingJobStore jobs,
-        MediaObjectStore mediaObjects,
-        MediaObjectRegistry mediaObjectRegistry,
+        MediaProcessingJobCoordinator coordinator,
         ImageDisplayRenditionPlanner imageRenditions
     ) {
         this.cos = cos;
         this.properties = properties;
         this.keys = keys;
-        this.jobs = jobs;
-        this.mediaObjects = mediaObjects;
-        this.mediaObjectRegistry = mediaObjectRegistry;
+        this.coordinator = coordinator;
         this.imageRenditions = imageRenditions;
     }
 
-    @Transactional
     public SubmittedMediaProcessingJob submitImageDisplay(SubmitImageDisplayJob command) {
         if (command == null || command.identity() == null || blank(command.inputKey())
             || blank(command.sourceMimeType()) || blank(command.storageClass())
@@ -57,120 +46,38 @@ public class CloudInfiniteProcessingService {
         }
         String inputKey = keys.objectKey(command.inputKey());
         ImageDisplayRenditionPlan plan = imageRenditions.plan(inputKey, command.sourceMimeType());
-        RegisteredMediaObject rendition = mediaObjectRegistry.registerPendingRendition(
-            command.identity(),
-            "DISPLAY_IMAGE_SLIM",
-            plan.objectKey(),
-            plan.mimeType(),
-            command.storageClass()
-        );
-        return submit(new SubmitMediaProcessingJob(
-            command.identity().tenantId(),
-            command.identity().projectId(),
-            rendition.id(),
-            "DISPLAY_IMAGE_SLIM",
-            inputKey,
-            plan.objectKey(),
-            plan.processRule(),
+        SubmitImageDisplayJob normalized = new SubmitImageDisplayJob(
+            command.identity(), inputKey, command.sourceMimeType(), command.storageClass(),
             command.correlationData()
-        ));
-    }
-
-    @Transactional
-    public SubmittedMediaProcessingJob submit(SubmitMediaProcessingJob command) {
-        validate(command);
-        String inputKey = keys.objectKey(command.inputKey());
-        String outputKey = keys.objectKey(command.outputKey());
-        MediaProcessingJobEntity existing = jobs.find(outputKey, command.operation());
-        if (existing != null && !"FAILED".equals(existing.status)) {
-            return response(existing);
-        }
-
+        );
         String token = token();
-        LocalDateTime now = LocalDateTime.now();
-        MediaProcessingJobEntity entity = existing == null ? new MediaProcessingJobEntity() : existing;
-        entity.tenantId = command.tenantId();
-        entity.projectId = command.projectId();
-        entity.mediaObjectId = command.mediaObjectId();
-        entity.operation = command.operation();
-        entity.inputKey = inputKey;
-        entity.outputKey = outputKey;
-        entity.callbackTokenHash = hash(token);
-        entity.correlationData = command.correlationData();
-        entity.status = "PENDING";
-        entity.attemptNo = existing == null || existing.attemptNo == null ? 1 : existing.attemptNo + 1;
-        entity.errorCode = null;
-        entity.errorMessage = null;
-        entity.completedAt = null;
-        entity.createdAt = existing == null ? now : existing.createdAt;
-        entity.updatedAt = now;
-        if (existing == null) jobs.insert(entity); else jobs.update(entity);
+        PreparedMediaProcessingJob prepared = coordinator.prepareImageDisplay(
+            normalized, plan, hash(token)
+        );
+        if (!prepared.shouldSubmit()) return prepared.current();
 
-        MediaJobObject detail = submitToTencent(command, inputKey, outputKey, token);
-        if (detail == null || detail.getJobId() == null || detail.getJobId().isBlank()) {
-            throw new IllegalStateException("万象图片处理任务未返回 JobId。");
+        try {
+            MediaJobObject detail = submitToTencent(prepared.command(), token);
+            return coordinator.finalizeSubmission(prepared, detail);
+        } catch (RuntimeException exception) {
+            coordinator.failSubmission(
+                prepared, SensitiveValueRedactor.redact(exception.getMessage())
+            );
+            throw exception;
         }
-        entity.providerJobId = detail.getJobId();
-        entity.queueId = detail.getQueueId();
-        entity.status = normalizeSubmittedState(detail.getState());
-        entity.submittedAt = now;
-        entity.updatedAt = now;
-        jobs.update(entity);
-        return response(entity);
     }
 
-    @Transactional
     public void handleCallback(String token, TencentCiTaskCallback callback) {
-        MediaProcessingJobEntity entity = jobs.findByTokenHash(hash(token));
-        if (entity == null) throw new IllegalArgumentException("万象回调令牌无效。");
-        if (TERMINAL.contains(entity.status)) return;
-        TencentCiJobDetail detail = single(callback);
-        if (!same(entity.providerJobId, detail.jobId())
-            || detail.input() == null || !same(entity.inputKey, detail.input().object())
-            || detail.operation() == null || detail.operation().output() == null
-            || !same(entity.outputKey, detail.operation().output().object())
-            || !same(entity.correlationData, detail.operation().userData())) {
-            throw new IllegalArgumentException("万象回调与处理任务不匹配。");
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        if ("Success".equalsIgnoreCase(detail.state()) && "Success".equalsIgnoreCase(detail.code())) {
-            TencentCiProcessResult result = detail.operation().picProcessResult() == null
-                ? null : detail.operation().picProcessResult().processResult();
-            if (!valid(result)) {
-                failed(
-                    entity,
-                    "INVALID_RESULT_METADATA",
-                    "万象成功回调图片元数据不完整或格式无效。",
-                    now
-                );
-            } else {
-                entity.status = "SUCCEEDED";
-                entity.completedAt = now;
-                mediaObjects.ready(
-                    entity.mediaObjectId, result.size(), result.eTag(), mimeType(result.format()),
-                    result.width(), result.height()
-                );
-            }
-        } else {
-            failed(entity, detail.code(), detail.message(), now);
-        }
-        entity.updatedAt = now;
-        jobs.update(entity);
+        coordinator.handleCallback(hash(token), callback);
     }
 
-    private MediaJobObject submitToTencent(
-        SubmitMediaProcessingJob command,
-        String inputKey,
-        String outputKey,
-        String token
-    ) {
+    private MediaJobObject submitToTencent(SubmitMediaProcessingJob command, String token) {
         MediaInputObject input = new MediaInputObject();
-        input.setObject(inputKey);
+        input.setObject(command.inputKey());
         MediaOutputObject output = new MediaOutputObject();
         output.setBucket(properties.getBucket());
         output.setRegion(properties.getRegion());
-        output.setObject(outputKey);
+        output.setObject(command.outputKey());
         MediaPicProcessTemplateObject process = new MediaPicProcessTemplateObject();
         process.setIsPicInfo("true");
         process.setProcessRule(command.processRule());
@@ -188,25 +95,6 @@ public class CloudInfiniteProcessingService {
         request.setCallBackType("Url");
         MediaJobResponse response = cos.createPicProcessJob(request);
         return response == null ? null : response.getJobsDetail();
-    }
-
-    private void validate(SubmitMediaProcessingJob command) {
-        if (command == null || command.tenantId() == null || command.mediaObjectId() == null
-            || blank(command.operation()) || blank(command.inputKey()) || blank(command.outputKey())
-            || blank(command.processRule()) || blank(command.correlationData())) {
-            throw new IllegalArgumentException("万象处理任务参数不完整。");
-        }
-        if (command.inputKey().contains("/derived/") || !command.outputKey().contains("/derived/")) {
-            throw new IllegalArgumentException("万象处理仅允许从原图生成固定派生对象。");
-        }
-    }
-
-    private TencentCiJobDetail single(TencentCiTaskCallback callback) {
-        if (callback == null || !"TaskFinish".equals(callback.eventName())
-            || callback.jobsDetail() == null || callback.jobsDetail().size() != 1) {
-            throw new IllegalArgumentException("万象回调内容不合法。");
-        }
-        return callback.jobsDetail().get(0);
     }
 
     private String callbackBase() {
@@ -231,38 +119,7 @@ public class CloudInfiniteProcessingService {
         }
     }
 
-    private SubmittedMediaProcessingJob response(MediaProcessingJobEntity entity) {
-        return new SubmittedMediaProcessingJob(entity.providerJobId, entity.status, entity.outputKey);
+    private static boolean blank(String value) {
+        return value == null || value.isBlank();
     }
-    private String normalizeSubmittedState(String state) {
-        return "Running".equalsIgnoreCase(state) ? "RUNNING" : "SUBMITTED";
-    }
-    private String mimeType(String format) {
-        return switch (format.toLowerCase(java.util.Locale.ROOT)) {
-            case "jpg", "jpeg" -> "image/jpeg";
-            case "png" -> "image/png";
-            case "gif" -> "image/gif";
-            default -> throw new IllegalArgumentException("万象成功回调图片格式无效。");
-        };
-    }
-    private boolean valid(TencentCiProcessResult result) {
-        return result != null && result.size() > 0 && result.width() > 0 && result.height() > 0
-            && !blank(result.eTag()) && !blank(result.format())
-            && Set.of("jpg", "jpeg", "png", "gif")
-                .contains(result.format().toLowerCase(java.util.Locale.ROOT));
-    }
-    private void failed(
-        MediaProcessingJobEntity entity,
-        String code,
-        String message,
-        LocalDateTime now
-    ) {
-        entity.status = "FAILED";
-        entity.errorCode = code;
-        entity.errorMessage = message;
-        entity.completedAt = now;
-        mediaObjects.failed(entity.mediaObjectId, message);
-    }
-    private boolean same(String left, String right) { return left != null && left.equals(right); }
-    private static boolean blank(String value) { return value == null || value.isBlank(); }
 }

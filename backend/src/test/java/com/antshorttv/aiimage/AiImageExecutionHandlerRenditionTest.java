@@ -3,11 +3,15 @@ package com.antshorttv.aiimage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 import com.antshorttv.accounting.AiUsageAccountingService;
 import com.antshorttv.accounting.AiExecutionCostSummary;
@@ -17,6 +21,7 @@ import com.antshorttv.ai.AiImageResponse;
 import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiInvocationService;
 import com.antshorttv.execution.AiExecutionAttemptMapper;
+import com.antshorttv.execution.AiExecutionAttemptEntity;
 import com.antshorttv.execution.AiExecutionClaim;
 import com.antshorttv.execution.AiExecutionContext;
 import com.antshorttv.execution.AiExecutionDeferredException;
@@ -35,6 +40,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class AiImageExecutionHandlerRenditionTest {
@@ -89,12 +95,12 @@ class AiImageExecutionHandlerRenditionTest {
         when(fixture.reservations.selectByExecutionId(99L)).thenReturn(reservation);
         when(fixture.settlements.finalizeOutcome(
             any(), any(), any(), any(), any(), any()
-        )).thenReturn(reservation);
+        )).thenReturn(fixture.settledReservation());
 
         assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
             .isInstanceOf(AiExecutionDeferredException.class);
 
-        assertThat(fixture.task.getStatus()).isEqualTo(AiImageTaskStatus.RUNNING.name());
+        assertThat(fixture.task.getStatus()).isEqualTo("RENDERING");
         assertThat(fixture.task.getCompletedAt()).isNull();
         verify(fixture.results).updateById(org.mockito.ArgumentMatchers.argThat((AiImageResultEntity result) ->
             AiImageResultStatus.PROCESSING.name().equals(result.getStatus())
@@ -107,6 +113,7 @@ class AiImageExecutionHandlerRenditionTest {
     @Test
     void publishesGeneratedResultOnlyAfterCallbackMadeDisplayReady() {
         Fixture fixture = new Fixture();
+        fixture.task.setStatus("RENDERING");
         AiImageResultEntity result = fixture.result(AiImageResultStatus.PROCESSING.name());
         when(fixture.results.selectByTask(33L)).thenReturn(List.of(result));
         when(fixture.renditions.display(fixture.identity(result))).thenReturn(
@@ -138,6 +145,7 @@ class AiImageExecutionHandlerRenditionTest {
     @Test
     void keepsPendingDisplayUnpublishedAndDefersCompletion() {
         Fixture fixture = new Fixture();
+        fixture.task.setStatus("RENDERING");
         AiImageResultEntity result = fixture.result(AiImageResultStatus.PROCESSING.name());
         when(fixture.results.selectByTask(33L)).thenReturn(List.of(result));
         when(fixture.renditions.display(fixture.identity(result))).thenReturn(
@@ -154,7 +162,7 @@ class AiImageExecutionHandlerRenditionTest {
             .isInstanceOf(AiExecutionDeferredException.class);
 
         assertThat(result.getStatus()).isEqualTo(AiImageResultStatus.PROCESSING.name());
-        assertThat(fixture.task.getStatus()).isEqualTo(AiImageTaskStatus.RUNNING.name());
+        assertThat(fixture.task.getStatus()).isEqualTo("RENDERING");
         verify(fixture.variants, never()).generationSucceededIfClaimActive(
             any(), any(), any(), any(), any(), any(), any(), any()
         );
@@ -163,6 +171,7 @@ class AiImageExecutionHandlerRenditionTest {
     @Test
     void retriesFailedDisplayWithoutReinvokingProviderAndDefersCompletion() {
         Fixture fixture = new Fixture();
+        fixture.task.setStatus("RENDERING");
         AiImageResultEntity result = fixture.result(AiImageResultStatus.PROCESSING.name());
         when(fixture.results.selectByTask(33L)).thenReturn(List.of(result));
         when(fixture.renditions.display(fixture.identity(result))).thenReturn(
@@ -184,7 +193,6 @@ class AiImageExecutionHandlerRenditionTest {
             .isInstanceOf(AiExecutionDeferredException.class);
 
         assertThat(result.getStatus()).isEqualTo(AiImageResultStatus.PROCESSING.name());
-        verify(fixture.results).updateById(result);
         verify(fixture.renditions).retryFailedDisplay(
             fixture.identity(result), "ai-image-result:44"
         );
@@ -196,6 +204,122 @@ class AiImageExecutionHandlerRenditionTest {
         );
         verify(fixture.invocations, never()).invokeImage(any());
         verify(fixture.storage, never()).resource(result);
+    }
+
+    @Test
+    void partialTwoImageResultSetIsDiscardedAndProviderStorageRestarts() {
+        Fixture fixture = new Fixture();
+        fixture.task.setImageCount(2);
+        AiImageResultEntity partial = fixture.result(AiImageResultStatus.PROCESSING.name());
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of(partial));
+        java.util.concurrent.atomic.AtomicLong nextId = new java.util.concurrent.atomic.AtomicLong(45L);
+        doAnswer(invocation -> {
+            ((AiImageResultEntity) invocation.getArgument(0)).setId(nextId.getAndIncrement());
+            return 1;
+        }).when(fixture.results).insert(any(AiImageResultEntity.class));
+        when(fixture.invocations.invokeImage(any())).thenReturn(fixture.providerResult(List.of(
+            "data:image/png;base64,b25l", "data:image/png;base64,dHdv"
+        )));
+        when(fixture.storage.storeGenerated(any(), anyLong(), anyInt(), anyString())).thenAnswer(invocation -> {
+            Long resultId = invocation.getArgument(1);
+            String original = "materials/11/22/images/202609/" + resultId + "/result/original.png";
+            return new StoredImage(
+                original,
+                original.replace("/original.png", "/derived/display.png"),
+                original.replace("/original.png", "/derived/display.png"),
+                "image/png", 800, 400, 321L
+            );
+        });
+        fixture.settlementSucceeds();
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
+            .isInstanceOf(AiExecutionDeferredException.class);
+
+        verify(fixture.results).deleteById(44L);
+        verify(fixture.invocations).invokeImage(any());
+        verify(fixture.storage, times(2)).storeGenerated(any(), anyLong(), anyInt(), anyString());
+        assertThat(fixture.task.getStatus()).isEqualTo("RENDERING");
+        verify(fixture.variants, never()).generationSucceededIfClaimActive(
+            any(), any(), any(), any(), any(), any(), any(), any()
+        );
+    }
+
+    @Test
+    void settlementFailureResumesWithoutReinvokingProvider() {
+        Fixture fixture = new Fixture();
+        AtomicReference<AiImageResultEntity> created = new AtomicReference<>();
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of()).thenAnswer(
+            invocation -> List.of(created.get())
+        );
+        doAnswer(invocation -> {
+            AiImageResultEntity result = invocation.getArgument(0);
+            result.setId(44L);
+            created.set(result);
+            return 1;
+        }).when(fixture.results).insert(any(AiImageResultEntity.class));
+        when(fixture.invocations.invokeImage(any())).thenReturn(fixture.providerResult(List.of(
+            "data:image/png;base64,b25l"
+        )));
+        when(fixture.storage.storeGenerated(any(), anyLong(), anyInt(), anyString())).thenReturn(new StoredImage(
+            "materials/11/22/images/202609/44/result/original.png",
+            "materials/11/22/images/202609/44/result/derived/display.png",
+            "materials/11/22/images/202609/44/result/derived/display.png",
+            "image/png", 800, 400, 321L
+        ));
+        AiPointReservationEntity reservation = fixture.reservation();
+        when(fixture.accounting.priceExecution(any(), any())).thenReturn(
+            new AiExecutionCostSummary(99L, AiUsageCostStatus.PRICED, Map.of())
+        );
+        when(fixture.reservations.selectByExecutionId(99L)).thenReturn(reservation);
+        when(fixture.settlements.finalizeOutcome(any(), any(), any(), any(), any(), any()))
+            .thenThrow(new IllegalStateException("settlement unavailable"))
+            .thenReturn(fixture.settledReservation());
+        AiExecutionAttemptEntity providerAttempt = new AiExecutionAttemptEntity();
+        providerAttempt.id = 100L;
+        providerAttempt.aiCallLogId = 900L;
+        providerAttempt.modelId = 8L;
+        when(fixture.attempts.selectByExecutionId(99L)).thenReturn(List.of(providerAttempt));
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("settlement unavailable");
+        assertThat(fixture.task.getStatus()).isEqualTo("SETTLING");
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
+            .isInstanceOf(AiExecutionDeferredException.class);
+        assertThat(fixture.task.getStatus()).isEqualTo("RENDERING");
+        verify(fixture.invocations, times(1)).invokeImage(any());
+    }
+
+    @Test
+    void readyAndPendingRenditionsLeaveAllResultsNonActive() {
+        Fixture fixture = new Fixture();
+        fixture.task.setImageCount(2);
+        fixture.task.setStatus("RENDERING");
+        AiImageResultEntity ready = fixture.result(AiImageResultStatus.PROCESSING.name());
+        AiImageResultEntity pending = fixture.result(AiImageResultStatus.PROCESSING.name());
+        pending.setId(45L);
+        pending.setStoragePath(ready.getStoragePath().replace("/44/", "/45/"));
+        pending.setDisplayPath(ready.getDisplayPath().replace("/44/", "/45/"));
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of(ready, pending));
+        when(fixture.renditions.display(fixture.identity(ready))).thenReturn(
+            new RegisteredMediaObject(72L, fixture.identity(ready), "DISPLAY_IMAGE_SLIM",
+                ready.getDisplayPath(), "READY")
+        );
+        when(fixture.renditions.display(fixture.identity(pending))).thenReturn(
+            new RegisteredMediaObject(73L, fixture.identity(pending), "DISPLAY_IMAGE_SLIM",
+                pending.getDisplayPath(), "PENDING")
+        );
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
+            .isInstanceOf(AiExecutionDeferredException.class);
+
+        assertThat(ready.getStatus()).isEqualTo(AiImageResultStatus.PROCESSING.name());
+        assertThat(pending.getStatus()).isEqualTo(AiImageResultStatus.PROCESSING.name());
+        verify(fixture.results, never()).updateById(any(AiImageResultEntity.class));
+        verify(fixture.variants, never()).generationSucceededIfClaimActive(
+            any(), any(), any(), any(), any(), any(), any(), any()
+        );
     }
 
     private static final class Fixture {
@@ -230,6 +354,41 @@ class AiImageExecutionHandlerRenditionTest {
             );
         }
 
+        private AiInvocationResult<AiImageResponse> providerResult(List<String> imageUrls) {
+            return AiInvocationResult.success(
+                AiCapability.IMAGE, "CHARACTER",
+                new AiImageResponse(imageUrls, "provider-1", 25L, Map.of()),
+                null, 900L, "provider-1", 8L, 7L, "provider",
+                null, null, null, 25L
+            );
+        }
+
+        private AiPointReservationEntity reservation() {
+            AiPointReservationEntity reservation = new AiPointReservationEntity();
+            reservation.id = 501L;
+            reservation.status = "RESERVED";
+            reservation.reservedPoints = BigDecimal.ONE;
+            reservation.settledPoints = BigDecimal.ONE;
+            reservation.releasedPoints = BigDecimal.ZERO;
+            return reservation;
+        }
+
+        private AiPointReservationEntity settledReservation() {
+            AiPointReservationEntity reservation = reservation();
+            reservation.status = "SETTLED";
+            return reservation;
+        }
+
+        private void settlementSucceeds() {
+            AiPointReservationEntity reservation = reservation();
+            when(accounting.priceExecution(any(), any())).thenReturn(
+                new AiExecutionCostSummary(99L, AiUsageCostStatus.PRICED, Map.of())
+            );
+            when(reservations.selectByExecutionId(99L)).thenReturn(reservation);
+            when(settlements.finalizeOutcome(any(), any(), any(), any(), any(), any()))
+                .thenReturn(settledReservation());
+        }
+
         private AiImageResultEntity result(String status) {
             AiImageResultEntity result = new AiImageResultEntity();
             result.setId(44L);
@@ -246,6 +405,10 @@ class AiImageExecutionHandlerRenditionTest {
             result.setDisplayPath(
                 "materials/11/22/images/202609/44/result-44/derived/display.jpg"
             );
+            result.setMimeType("image/jpeg");
+            result.setFileSize(321L);
+            result.setWidth(800);
+            result.setHeight(400);
             result.setStatus(status);
             return result;
         }
@@ -264,6 +427,11 @@ class AiImageExecutionHandlerRenditionTest {
             task.setProjectId(22L);
             task.setTargetType("VISUAL_VARIANT");
             task.setTargetId(77L);
+            task.setTaskType("CHARACTER");
+            task.setPrompt("portrait");
+            task.setAspectRatio("1:1");
+            task.setQuality("STANDARD");
+            task.setModelId(8L);
             task.setImageCount(1);
             task.setExecutionId(99L);
             task.setAiCallLogId(900L);

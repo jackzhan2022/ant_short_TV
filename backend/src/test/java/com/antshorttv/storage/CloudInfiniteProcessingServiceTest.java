@@ -15,6 +15,7 @@ import com.qcloud.cos.model.ciModel.job.MediaJobsRequest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -47,13 +48,14 @@ class CloudInfiniteProcessingServiceTest {
         when(response.getJobsDetail()).thenReturn(detail);
         when(cos.createPicProcessJob(any())).thenReturn(response);
         MediaObjectRegistry registry = new MediaObjectRegistry(media, keys);
+        MediaProcessingJobCoordinator coordinator = new MediaProcessingJobCoordinator(
+            jobs, media, registry
+        );
         service = new CloudInfiniteProcessingService(
             cos,
             properties,
             keys,
-            jobs,
-            media,
-            registry,
+            coordinator,
             new ImageDisplayRenditionPlanner(keys)
         );
     }
@@ -223,6 +225,80 @@ class CloudInfiniteProcessingServiceTest {
             .isEqualTo("materials/11/22/images/202609/42/v1/derived/display.png");
         assertThat(request.getValue().getOperation().getPicProcess().getProcessRule())
             .isEqualTo("imageMogr2/format/png|imageSlim");
+    }
+
+    @Test
+    void acceptsCorrelatedCallbackBeforeProviderSubmissionFinalizes() {
+        when(cos.createPicProcessJob(any())).thenAnswer(invocation -> {
+            MediaJobsRequest request = invocation.getArgument(0);
+            String token = request.getCallBack().substring(request.getCallBack().lastIndexOf('/') + 1);
+            service.handleCallback(token, TencentCiTaskCallback.success(
+                "job-1",
+                command("image/png").inputKey(),
+                "materials/11/22/images/202609/42/v1/derived/display.png",
+                "asset-42-display",
+                321L, 1200, 800, "etag-derived", "PNG"
+            ));
+            return submittedResponse("job-1");
+        });
+
+        SubmittedMediaProcessingJob submitted = service.submitImageDisplay(command("image/png"));
+
+        assertThat(submitted.status()).isEqualTo("SUCCEEDED");
+        assertThat(jobs.current.providerJobId).isEqualTo("job-1");
+        assertThat(media.current.status).isEqualTo("READY");
+    }
+
+    @Test
+    void providerFinalizeDoesNotOverwriteEarlyTerminalFailure() {
+        when(cos.createPicProcessJob(any())).thenAnswer(invocation -> {
+            MediaJobsRequest request = invocation.getArgument(0);
+            String token = request.getCallBack().substring(request.getCallBack().lastIndexOf('/') + 1);
+            service.handleCallback(token, failedCallback("ImageSlimFailed", "imageSlim failed"));
+            return submittedResponse("job-1");
+        });
+
+        SubmittedMediaProcessingJob submitted = service.submitImageDisplay(command("image/png"));
+
+        assertThat(submitted.status()).isEqualTo("FAILED");
+        assertThat(jobs.current.errorCode).isEqualTo("ImageSlimFailed");
+        assertThat(media.current.status).isEqualTo("FAILED");
+    }
+
+    @Test
+    void submissionFailurePersistsRetryableJobAndRenditionFailure() {
+        when(cos.createPicProcessJob(any())).thenThrow(new IllegalStateException("cos unavailable"));
+
+        assertThatThrownBy(() -> service.submitImageDisplay(command("image/png")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("cos unavailable");
+
+        assertThat(jobs.current.status).isEqualTo("FAILED");
+        assertThat(jobs.current.errorCode).isEqualTo("SUBMIT_FAILED");
+        assertThat(media.current.status).isEqualTo("FAILED");
+    }
+
+    @Test
+    void staleSubmittingJobStartsANewAttempt() {
+        service.submitImageDisplay(command("image/png"));
+        jobs.current.status = "SUBMITTING";
+        jobs.current.providerJobId = null;
+        jobs.current.updatedAt = LocalDateTime.now().minusMinutes(6);
+
+        service.submitImageDisplay(command("image/png"));
+
+        assertThat(jobs.current.attemptNo).isEqualTo(2);
+        verify(cos, times(2)).createPicProcessJob(any());
+    }
+
+    private MediaJobResponse submittedResponse(String jobId) {
+        MediaJobResponse response = mock(MediaJobResponse.class);
+        MediaJobObject detail = mock(MediaJobObject.class);
+        when(detail.getJobId()).thenReturn(jobId);
+        when(detail.getState()).thenReturn("Submitted");
+        when(detail.getQueueId()).thenReturn("queue-1");
+        when(response.getJobsDetail()).thenReturn(detail);
+        return response;
     }
 
     private SubmitImageDisplayJob command(String sourceMimeType) {

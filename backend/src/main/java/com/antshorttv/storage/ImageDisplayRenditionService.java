@@ -1,7 +1,6 @@
 package com.antshorttv.storage;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ImageDisplayRenditionService {
@@ -16,7 +15,6 @@ public class ImageDisplayRenditionService {
         this.processing = processing;
     }
 
-    @Transactional
     public RegisteredImageDisplay registerOriginalAndSubmit(
         MediaObjectIdentity identity,
         StoredObject original,
@@ -35,12 +33,10 @@ public class ImageDisplayRenditionService {
         return new RegisteredImageDisplay(original.key(), job.outputKey(), job.status());
     }
 
-    @Transactional
     public RegisteredMediaObject display(MediaObjectIdentity identity) {
         return registry.find(identity, "DISPLAY_IMAGE_SLIM");
     }
 
-    @Transactional
     public RegisteredImageDisplay retryFailedDisplay(
         MediaObjectIdentity identity,
         String correlationData

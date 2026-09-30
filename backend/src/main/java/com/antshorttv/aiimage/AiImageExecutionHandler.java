@@ -116,10 +116,27 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         AiExecutionTaskEntity execution = context.task();
         AiImageTaskEntity task = taskMapper.selectById(execution.businessId);
         List<AiImageResultEntity> existingResults = resultMapper.selectByTask(task.getId());
-        if (!existingResults.isEmpty()) {
+        if (AiImageTaskStatus.RENDERING.name().equals(task.getStatus())) {
+            requireCompleteResultSet(task, existingResults);
             return reconcileRenditions(context, task, existingResults);
         }
+        if (AiImageTaskStatus.SETTLING.name().equals(task.getStatus())) {
+            requireCompleteResultSet(task, existingResults);
+            return settleAndAwaitRenditions(context, task, providerCompletion(context, task));
+        }
+        if (!existingResults.isEmpty()) {
+            if (!completeResultSet(task, existingResults)) {
+                discardUnpublishedResults(
+                    task, existingResults.stream().map(AiImageResultEntity::getId).toList()
+                );
+            } else {
+                ProviderCompletion provider = providerCompletion(context, task);
+                markDomainSettling(task, provider.aiCallLogId());
+                return settleAndAwaitRenditions(context, task, provider);
+            }
+        }
         java.util.List<Long> createdResultIds = new java.util.ArrayList<>();
+        boolean providerPhaseComplete = false;
         markDomainRunning(task);
         try {
             AiInvocationResult<AiImageResponse> result = invocationService.invokeImage(
@@ -133,12 +150,14 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
                 String imageUrl = imageCount >= index ? response.imageUrls().get(index - 1) : null;
                 createResult(context, task, index, imageUrl, createdResultIds);
             }
-            recordUsageAndSettle(context, task, result, task.getImageCount());
             requireActiveClaim(context);
-            markDomainAwaitingRenditions(task, result.aiCallLogId());
-            throw new AiExecutionDeferredException("等待 AI 图片展示版本完成处理。");
+            markDomainSettling(task, result.aiCallLogId());
+            providerPhaseComplete = true;
+            return settleAndAwaitRenditions(context, task, new ProviderCompletion(
+                context.claim().attemptId(), result.aiCallLogId(), result.resolvedModelId()
+            ));
         } catch (AiExecutionClaimLostException exception) {
-            discardUnpublishedResults(task, createdResultIds);
+            if (!providerPhaseComplete) discardUnpublishedResults(task, createdResultIds);
             throw exception;
         } catch (AiGatewayException exception) {
             boolean owner = markDomainFailedIfClaimActive(
@@ -221,21 +240,21 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
     private void recordUsageAndSettle(
         AiExecutionContext context,
         AiImageTaskEntity task,
-        AiInvocationResult<AiImageResponse> result,
+        ProviderCompletion provider,
         int imageCount
     ) {
         LocalDateTime observedAt = LocalDateTime.now();
         AiUsageContext usageContext = new AiUsageContext(
             context.task().tenantId,
             context.task().id,
-            context.claim().attemptId(),
-            result.aiCallLogId(),
-            result.resolvedModelId()
+            provider.attemptId(),
+            provider.aiCallLogId(),
+            provider.modelId()
         );
-        usageAccountingService.record(AiUsageCommand.requestDerived(
+        usageAccountingService.recordIfAbsent(AiUsageCommand.requestDerived(
             usageContext, AiUsageMetric.CALL, "1", Map.of(), observedAt
         ));
-        usageAccountingService.record(AiUsageCommand.resultMeasured(
+        usageAccountingService.recordIfAbsent(AiUsageCommand.resultMeasured(
             usageContext, AiUsageMetric.IMAGE, String.valueOf(imageCount), imageDimensions(task), observedAt
         ));
         AiExecutionCostSummary cost = usageAccountingService.priceExecution(
@@ -252,10 +271,13 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
                 AiUsageMetric.CALL, BigDecimal.ONE,
                 AiUsageMetric.IMAGE, BigDecimal.valueOf(imageCount)
             ),
-            context.claim().attemptId(),
-            result.aiCallLogId(),
+            provider.attemptId(),
+            provider.aiCallLogId(),
             "execution:%d:v%d:success".formatted(context.task().id, context.task().executionVersion)
         );
+        if (!"SETTLED".equals(settled.status)) {
+            throw new IllegalStateException("AI 图片积分结算尚未完成。");
+        }
         updateSettlementSummary(context.task().id, settled);
     }
 
@@ -299,10 +321,66 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         taskMapper.updateById(task);
     }
 
-    private void markDomainAwaitingRenditions(AiImageTaskEntity task, Long callLogId) {
+    private void markDomainSettling(AiImageTaskEntity task, Long callLogId) {
+        task.setStatus(AiImageTaskStatus.SETTLING.name());
         task.setAiCallLogId(callLogId);
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);
+    }
+
+    private void markDomainRendering(AiImageTaskEntity task) {
+        task.setStatus(AiImageTaskStatus.RENDERING.name());
+        task.setUpdatedAt(LocalDateTime.now());
+        taskMapper.updateById(task);
+    }
+
+    private AiExecutionHandlerResult settleAndAwaitRenditions(
+        AiExecutionContext context,
+        AiImageTaskEntity task,
+        ProviderCompletion provider
+    ) {
+        recordUsageAndSettle(context, task, provider, task.getImageCount());
+        requireActiveClaim(context);
+        markDomainRendering(task);
+        throw new AiExecutionDeferredException("等待 AI 图片展示版本完成处理。");
+    }
+
+    private ProviderCompletion providerCompletion(
+        AiExecutionContext context,
+        AiImageTaskEntity task
+    ) {
+        return attemptMapper.selectByExecutionId(context.task().id).stream()
+            .filter(attempt -> attempt.aiCallLogId != null)
+            .filter(attempt -> task.getAiCallLogId() == null
+                || task.getAiCallLogId().equals(attempt.aiCallLogId))
+            .max(java.util.Comparator.comparingInt(attempt -> attempt.attemptNo == null ? 0 : attempt.attemptNo))
+            .map(attempt -> new ProviderCompletion(
+                attempt.id,
+                attempt.aiCallLogId,
+                attempt.modelId == null ? task.getModelId() : attempt.modelId
+            ))
+            .orElseThrow(() -> new IllegalStateException("AI 图片提供方完成记录不存在。"));
+    }
+
+    private boolean completeResultSet(
+        AiImageTaskEntity task,
+        List<AiImageResultEntity> results
+    ) {
+        return task.getImageCount() != null && results.size() == task.getImageCount()
+            && results.stream().allMatch(result -> result.getStoragePath() != null
+                && !result.getStoragePath().isBlank()
+                && result.getDisplayPath() != null && !result.getDisplayPath().isBlank()
+                && result.getMimeType() != null && !result.getMimeType().isBlank()
+                && result.getFileSize() != null && result.getFileSize() > 0);
+    }
+
+    private void requireCompleteResultSet(
+        AiImageTaskEntity task,
+        List<AiImageResultEntity> results
+    ) {
+        if (!completeResultSet(task, results)) {
+            throw new IllegalStateException("AI 图片结果集合不完整，不能完成展示版本发布。");
+        }
     }
 
     private AiExecutionHandlerResult reconcileRenditions(
@@ -310,20 +388,24 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         AiImageTaskEntity task,
         List<AiImageResultEntity> results
     ) {
+        boolean waiting = false;
         for (AiImageResultEntity result : results) {
             RegisteredMediaObject display = imageRenditions.display(mediaIdentity(result));
             if (display != null && "FAILED".equals(display.status())) {
                 imageRenditions.retryFailedDisplay(
                     mediaIdentity(result), "ai-image-result:" + result.getId()
                 );
-                result.setStatus(AiImageResultStatus.PROCESSING.name());
-                result.setUpdatedAt(LocalDateTime.now());
-                resultMapper.updateById(result);
-                throw new AiExecutionDeferredException("AI 图片展示版本正在重试。");
+                waiting = true;
+                continue;
             }
             if (display == null || !"READY".equals(display.status())) {
-                throw new AiExecutionDeferredException("等待 AI 图片展示版本完成处理。");
+                waiting = true;
             }
+        }
+        if (waiting) {
+            throw new AiExecutionDeferredException("等待 AI 图片展示版本完成处理。");
+        }
+        for (AiImageResultEntity result : results) {
             if (!AiImageResultStatus.ACTIVE.name().equals(result.getStatus())) {
                 result.setStatus(AiImageResultStatus.ACTIVE.name());
                 result.setUpdatedAt(LocalDateTime.now());
@@ -450,5 +532,8 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             "aspectRatio", task.getAspectRatio(),
             "quality", task.getQuality()
         )));
+    }
+
+    private record ProviderCompletion(Long attemptId, Long aiCallLogId, Long modelId) {
     }
 }
