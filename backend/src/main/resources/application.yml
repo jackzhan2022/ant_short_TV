@@ -69,6 +69,7 @@ object-storage:
   storage-class: ${OBJECT_STORAGE_CLASS:INTELLIGENT_TIERING}
   cdn-domain: ${OBJECT_STORAGE_CDN_DOMAIN:https://antvcdn.aixmax.cn}
   cdn-type-d-key: ${OBJECT_STORAGE_CDN_TYPE_D_KEY:}
+  cdn-type-d-expiry-seconds: ${OBJECT_STORAGE_CDN_TYPE_D_EXPIRY_SECONDS:604800}
   cdn-authorization-seconds: ${OBJECT_STORAGE_CDN_AUTHORIZATION_SECONDS:604800}
   video-renewal-threshold-seconds: ${OBJECT_STORAGE_VIDEO_RENEWAL_THRESHOLD_SECONDS:7200}
   upload-signature-seconds: ${OBJECT_STORAGE_UPLOAD_SIGNATURE_SECONDS:300}

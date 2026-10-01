@@ -61,7 +61,7 @@ public class ObjectStorageService {
     @PostConstruct
     public void initialize() {
         properties.validate();
-        cdnSigner = new CdnTypeDSigner(properties.getCdnDomain(), properties.getCdnTypeDKey());
+        cdnSigner = new CdnTypeDSigner(properties.getCdnDomain(), properties.getCdnTypeDKey(), properties.getCdnTypeDExpirySeconds());
     }
 
     public void upload(String storagePath, byte[] bytes, String contentType) {
@@ -273,7 +273,7 @@ public class ObjectStorageService {
     private CdnTypeDSigner cdnSigner() {
         if (cdnSigner == null) {
             properties.validate();
-            cdnSigner = new CdnTypeDSigner(properties.getCdnDomain(), properties.getCdnTypeDKey());
+            cdnSigner = new CdnTypeDSigner(properties.getCdnDomain(), properties.getCdnTypeDKey(), properties.getCdnTypeDExpirySeconds());
         }
         return cdnSigner;
     }

@@ -16,7 +16,7 @@ class CdnTypeDSignerTest {
 
         assertThat(url).isEqualTo(
             "https://antvcdn.aixmax.cn/materials/11/22/video.mp4"
-                + "?sign=22d16097bf5f5928deaa90af014189a3&t=6553f100"
+                + "?sign=4802332b5a3a367afdc58a515b971eb3bf5f506897c9d71ace681ebbab6f6674&t=654ab680"
         );
     }
 
@@ -28,5 +28,17 @@ class CdnTypeDSignerTest {
             .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> signer.sign("materials/../secret", Instant.now()))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void derivesTimestampFromConfiguredCdnLifetime() {
+        CdnTypeDSigner signer = new CdnTypeDSigner("https://antvcdn.aixmax.cn", "test-key", 3600);
+        Instant expiresAt = Instant.ofEpochSecond(1_700_000_000L);
+
+        String url = signer.sign("materials/11/22/video.mp4", expiresAt);
+
+        String timestamp = url.substring(url.lastIndexOf("&t=") + 3);
+        assertThat(Long.parseLong(timestamp, 16) + 3600).isEqualTo(expiresAt.getEpochSecond());
+        assertThat(signer.sign("materials/11/22/video.mp4", expiresAt)).isEqualTo(url);
     }
 }

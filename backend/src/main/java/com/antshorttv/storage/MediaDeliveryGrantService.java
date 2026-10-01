@@ -26,7 +26,7 @@ public class MediaDeliveryGrantService {
         this.store = store;
         this.properties = properties;
         this.clock = clock;
-        this.signer = new CdnTypeDSigner(properties.getCdnDomain(), properties.getCdnTypeDKey());
+        this.signer = new CdnTypeDSigner(properties.getCdnDomain(), properties.getCdnTypeDKey(), properties.getCdnTypeDExpirySeconds());
     }
 
     @Transactional
