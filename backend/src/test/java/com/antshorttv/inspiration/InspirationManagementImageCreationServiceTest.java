@@ -55,7 +55,7 @@ class InspirationManagementImageCreationServiceTest {
                 "image/png", null, "PENDING"
             )
         );
-        when(mapper.updateById(any(InspirationCreationEntity.class))).thenReturn(1);
+        when(mapper.attachMediaIfActive(any(InspirationCreationEntity.class))).thenReturn(1);
 
         InspirationCreationEntity result = service.create(
             "manual-stable", upload, request, "PUBLISHED", 10
@@ -89,9 +89,9 @@ class InspirationManagementImageCreationServiceTest {
                 "image/png", null, "PENDING"
             )
         );
-        when(mapper.updateById(any(InspirationCreationEntity.class)))
-            .thenThrow(new IllegalStateException("database unavailable"))
-            .thenReturn(1);
+        when(mapper.attachMediaIfActive(any(InspirationCreationEntity.class)))
+            .thenThrow(new IllegalStateException("database unavailable"));
+        when(mapper.updateById(any(InspirationCreationEntity.class))).thenReturn(1);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.create(
             "manual-failed", upload, request, "PUBLISHED", 10
@@ -100,7 +100,7 @@ class InspirationManagementImageCreationServiceTest {
         verify(renditions).retire(new MediaObjectIdentity(
             0L, null, "INSPIRATION_CREATION", 45L, "manual-failed"
         ));
-        verify(mapper, org.mockito.Mockito.times(2))
+        verify(mapper, org.mockito.Mockito.times(1))
             .updateById(any(InspirationCreationEntity.class));
     }
 

@@ -84,6 +84,23 @@ class InspirationImageLifecycleMapperTest {
         assertThat(mapper.selectById(later.getId()).getImportStatus()).isEqualTo("IMPORTED");
     }
 
+    @Test
+    void videoCoverRequiresAttachedOriginalAndPositiveVerifiedDisplayMetadata() {
+        InspirationCreationEntity video = insert("PROCESSING", "PENDING", "", null, 123L);
+        video.setCreationType("VIDEO");
+        video.setMimeType("video/mp4");
+        mapper.updateById(video);
+        assertThat(mapper.markImageRenditionReady(video.getId(), "cover/derived/display.jpg", "image/jpeg", 45L)).isZero();
+        video.setStoragePath("materials/0/inspiration_creation/202610/44/video/original.mp4");
+        video.setThumbnailPath("cover/derived/display.jpg");
+        mapper.updateById(video);
+
+        assertThat(mapper.selectImageRenditionCandidates(20)).extracting(InspirationCreationEntity::getId)
+            .contains(video.getId());
+        assertThat(mapper.markImageRenditionReady(video.getId(), "cover/derived/display.jpg", "image/jpeg", 45L)).isEqualTo(1);
+        assertThat(mapper.selectImportedById(video.getId()).getThumbnailFileSize()).isEqualTo(45L);
+    }
+
     private void ready(InspirationCreationEntity entity) {
         when(renditions.displayDetails(InspirationImageRenditionReconciler.identity(entity)))
             .thenReturn(new RegisteredMediaDetails(72L, InspirationImageRenditionReconciler.identity(entity),

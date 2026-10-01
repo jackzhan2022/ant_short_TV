@@ -45,21 +45,13 @@ class ObjectStorageServiceCosTest {
 
         ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(cos).putObject(request.capture());
-        verify(cos).getObjectMetadata(
-            "antv-1418200553",
-            "materials/11/22/images/202609/33/v1/derived/display.png"
-        );
+        verify(cos, org.mockito.Mockito.never()).getObjectMetadata(any(), any());
         assertThat(request.getValue().getKey()).isEqualTo("materials/11/22/images/202609/33/v1/original.png");
         assertThat(request.getValue().getMetadata().getContentLength()).isEqualTo(3);
         assertThat(request.getValue().getMetadata().getContentType()).isEqualTo("image/png");
         assertThat(request.getValue().getStorageClass()).isEqualTo("Intelligent_Tiering");
         assertThat(stored.eTag()).isEqualTo("etag-1");
-        assertThat(request.getValue().getPicOperations().getRules())
-            .extracting(rule -> rule.getFileId())
-            .containsExactly("materials/11/22/images/202609/33/v1/derived/display.png");
-        assertThat(request.getValue().getPicOperations().getRules())
-            .extracting(rule -> rule.getRule())
-            .containsExactly("imageSlim");
+        assertThat(request.getValue().getPicOperations()).isNull();
     }
 
     @Test
@@ -85,6 +77,7 @@ class ObjectStorageServiceCosTest {
         verify(cos).putObject(request.capture());
         verify(cos).getObjectMetadata("antv-1418200553", key);
         assertThat(request.getValue().getPicOperations()).isNull();
+        assertThat(request.getValue().getCustomRequestHeaders()).containsEntry("x-cos-forbid-overwrite", "true");
         assertThat(stored).isEqualTo(new StoredObject(
             key, 3L, "image/jpeg", "head-etag", "INTELLIGENT_TIERING"
         ));
@@ -123,7 +116,7 @@ class ObjectStorageServiceCosTest {
     }
 
     @Test
-    void convertsWebpToPngBeforeApplyingImageSlim() {
+    void ordinaryWebpWriteStoresOnlyTheRequestedOriginal() {
         COS cos = mock(COS.class);
         when(cos.putObject(any(PutObjectRequest.class))).thenReturn(new PutObjectResult());
         ObjectStorageService service = service(cos);
@@ -137,12 +130,8 @@ class ObjectStorageServiceCosTest {
 
         ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(cos).putObject(request.capture());
-        assertThat(request.getValue().getPicOperations().getRules())
-            .extracting(rule -> rule.getFileId(), rule -> rule.getRule())
-            .containsExactly(org.assertj.core.groups.Tuple.tuple(
-                "materials/11/22/images/202609/33/v1/derived/display.png",
-                "imageMogr2/format/png|imageSlim"
-            ));
+        assertThat(request.getValue().getPicOperations()).isNull();
+        verify(cos, org.mockito.Mockito.never()).getObjectMetadata(any(), any());
     }
 
     @Test
@@ -246,7 +235,7 @@ class ObjectStorageServiceCosTest {
         properties.setCdnDomain("https://antvcdn.aixmax.cn");
         properties.setCdnTypeDKey("test-key");
         return new ObjectStorageService(
-            properties, cos, new ObjectStorageKeyFactory(), metrics(), planner()
+            properties, cos, new ObjectStorageKeyFactory(), metrics()
         );
     }
 
@@ -257,7 +246,7 @@ class ObjectStorageServiceCosTest {
         properties.setCdnDomain("https://antvcdn.aixmax.cn");
         properties.setCdnTypeDKey("test-key");
         return new ObjectStorageService(
-            properties, cos, transfers, new ObjectStorageKeyFactory(), metrics(), planner()
+            properties, cos, transfers, new ObjectStorageKeyFactory(), metrics()
         );
     }
 
@@ -328,11 +317,33 @@ class ObjectStorageServiceCosTest {
         verify(objects, org.mockito.Mockito.never()).delete(sourceKey);
     }
 
+    @Test
+    void inspirationVideoCopiesRealCompletedSessionOriginalWithEtagConstraint() throws Exception {
+        COS cos = mock(COS.class);
+        ObjectStorageService objects = org.mockito.Mockito.spy(service(cos));
+        String sourceKey = "materials/11/uploads/202610/video-session/v1/original.mp4";
+        String targetKey = new ObjectStorageKeyFactory().tenantOriginal(0L, "inspiration_creation", 44L, "video-44", java.time.LocalDate.now(), "mp4");
+        StoredObject source = new StoredObject(sourceKey, 123L, "video/mp4", "source-etag", "INTELLIGENT_TIERING");
+        org.mockito.Mockito.doReturn(source).when(objects).metadata(sourceKey);
+        org.mockito.Mockito.doReturn(new StoredObject(targetKey, 123L, "video/mp4", "target-etag", "INTELLIGENT_TIERING"))
+            .when(objects).metadata(targetKey);
+        com.antshorttv.inspiration.InspirationCreationMediaStorage storage = new com.antshorttv.inspiration.InspirationCreationMediaStorage(
+            objects, new ObjectStorageKeyFactory(), mock(ImageDisplayRenditionService.class));
+
+        org.assertj.core.api.Assertions.assertThatCode(() -> storage.storeUploadedVideo(44L, "video-44",
+            new VerifiedMediaUpload("video-session", sourceKey, "video/mp4", 123L, "source-etag")))
+            .doesNotThrowAnyException();
+
+        ArgumentCaptor<CopyObjectRequest> copy = ArgumentCaptor.forClass(CopyObjectRequest.class);
+        verify(cos).copyObject(copy.capture());
+        assertThat(copy.getValue().getSourceKey()).isEqualTo(sourceKey);
+        assertThat(copy.getValue().getDestinationKey()).isEqualTo(targetKey);
+        assertThat(copy.getValue().getMatchingETagConstraints()).containsExactly("source-etag");
+        verify(objects, org.mockito.Mockito.never()).delete(sourceKey);
+    }
+
     private CosStorageMetrics metrics() {
         return new CosStorageMetrics(new SimpleMeterRegistry());
     }
 
-    private ImageDisplayRenditionPlanner planner() {
-        return new ImageDisplayRenditionPlanner(new ObjectStorageKeyFactory());
-    }
 }

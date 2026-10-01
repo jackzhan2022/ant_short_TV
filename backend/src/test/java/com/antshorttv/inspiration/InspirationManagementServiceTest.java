@@ -158,6 +158,19 @@ class InspirationManagementServiceTest {
         org.mockito.Mockito.verifyNoInteractions(objects);
     }
 
+    @Test
+    void deletesFailedVideoBeforeAnyOriginalWasAccepted() {
+        InspirationCreationEntity video = insert("No original", "VIDEO", "UNPUBLISHED", 10);
+        video.setStoragePath("");
+        video.setImportStatus("FAILED");
+        video.setThumbnailStatus("FAILED");
+        mapper.updateById(video);
+
+        service.delete(video.getId());
+
+        assertThat(mapper.selectById(video.getId()).getDeletedAt()).isNotNull();
+    }
+
     private InspirationCreationEntity failedImage() {
         InspirationCreationEntity image = insert("Retry", "IMAGE", "UNPUBLISHED", 10);
         image.setImportStatus("FAILED");

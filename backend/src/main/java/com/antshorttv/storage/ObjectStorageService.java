@@ -11,7 +11,6 @@ import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.model.PutObjectRequest;
 import com.qcloud.cos.model.PutObjectResult;
 import com.qcloud.cos.model.StorageClass;
-import com.qcloud.cos.model.ciModel.persistence.PicOperations;
 import com.qcloud.cos.transfer.TransferManager;
 import jakarta.annotation.PostConstruct;
 import java.io.ByteArrayInputStream;
@@ -20,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Date;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
@@ -34,17 +32,15 @@ public class ObjectStorageService {
     private final TransferManager transfers;
     private final ObjectStorageKeyFactory keys;
     private final CosStorageMetrics metrics;
-    private final ImageDisplayRenditionPlanner imageRenditions;
     private CdnTypeDSigner cdnSigner;
 
     public ObjectStorageService(
         ObjectStorageProperties properties,
         COS cos,
         ObjectStorageKeyFactory keys,
-        CosStorageMetrics metrics,
-        ImageDisplayRenditionPlanner imageRenditions
+        CosStorageMetrics metrics
     ) {
-        this(properties, cos, null, keys, metrics, imageRenditions);
+        this(properties, cos, null, keys, metrics);
     }
 
     @Autowired
@@ -53,15 +49,13 @@ public class ObjectStorageService {
         COS cos,
         TransferManager transfers,
         ObjectStorageKeyFactory keys,
-        CosStorageMetrics metrics,
-        ImageDisplayRenditionPlanner imageRenditions
+        CosStorageMetrics metrics
     ) {
         this.properties = properties;
         this.cos = cos;
         this.transfers = transfers;
         this.keys = keys;
         this.metrics = metrics;
-        this.imageRenditions = imageRenditions;
     }
 
     @PostConstruct
@@ -96,7 +90,7 @@ public class ObjectStorageService {
         long size,
         String contentType
     ) {
-        uploadObject(storagePath, input, size, contentType, false);
+        uploadObject(storagePath, input, size, contentType);
         return verifyOriginal(storagePath, size, contentType);
     }
 
@@ -138,15 +132,14 @@ public class ObjectStorageService {
     }
 
     public StoredObject upload(String storagePath, InputStream input, long size, String contentType) {
-        return uploadObject(storagePath, input, size, contentType, true);
+        return uploadObject(storagePath, input, size, contentType);
     }
 
     private StoredObject uploadObject(
         String storagePath,
         InputStream input,
         long size,
-        String contentType,
-        boolean createSynchronousRendition
+        String contentType
     ) {
         try {
             String key = keys.objectKey(storagePath);
@@ -156,14 +149,12 @@ public class ObjectStorageService {
                 ? "application/octet-stream" : contentType);
             PutObjectRequest request = new PutObjectRequest(properties.getBucket(), key, input, metadata);
             request.setStorageClass(StorageClass.fromValue(properties.getStorageClass()));
-            ImageDisplayRenditionPlan rendition = createSynchronousRendition
-                && isImageOriginal(key, metadata.getContentType())
-                ? imageRenditions.plan(key, metadata.getContentType()) : null;
-            if (rendition != null) request.setPicOperations(imageOperations(rendition));
+            if (isImmutableOriginalKey(key)) {
+                request.putCustomRequestHeader("x-cos-forbid-overwrite", "true");
+            }
             PutObjectResult result = metrics.record(
                 "PUT_OBJECT", "upload", size, () -> cos.putObject(request)
             );
-            if (rendition != null) waitForRendition(rendition.objectKey());
             return new StoredObject(key, size, metadata.getContentType(), result.getETag(), properties.getStorageClass());
         } catch (Exception exception) {
             throw storageFailure("对象存储上传失败", exception);
@@ -181,14 +172,10 @@ public class ObjectStorageService {
                 PutObjectRequest request = new PutObjectRequest(properties.getBucket(), key, file.toFile());
                 request.setMetadata(metadata);
                 request.setStorageClass(StorageClass.fromValue(properties.getStorageClass()));
-                ImageDisplayRenditionPlan rendition = isImageOriginal(key, metadata.getContentType())
-                    ? imageRenditions.plan(key, metadata.getContentType()) : null;
-                if (rendition != null) request.setPicOperations(imageOperations(rendition));
                 metrics.record("MULTIPART_UPLOAD", "upload", Files.size(file), () -> {
                     transfers.upload(request).waitForUploadResult();
                     return null;
                 });
-                if (rendition != null) waitForRendition(rendition.objectKey());
                 return;
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
@@ -291,24 +278,6 @@ public class ObjectStorageService {
         return cdnSigner;
     }
 
-    private boolean isImageOriginal(String key, String contentType) {
-        int separator = key.lastIndexOf('/');
-        String fileName = separator < 0 ? key : key.substring(separator + 1);
-        return contentType.startsWith("image/") && fileName.startsWith("original.")
-            && !key.contains("/derived/");
-    }
-
-    private PicOperations imageOperations(ImageDisplayRenditionPlan plan) {
-        PicOperations operations = new PicOperations();
-        operations.setIsPicInfo(1);
-        PicOperations.Rule display = new PicOperations.Rule();
-        display.setBucket(properties.getBucket());
-        display.setFileId(plan.objectKey());
-        display.setRule(plan.processRule());
-        operations.setRules(List.of(display));
-        return operations;
-    }
-
     public StoredObject promoteVerifiedUpload(StoredObject source, String targetPath) {
         if (source == null || source.key() == null || source.eTag() == null
             || source.eTag().isBlank()) {
@@ -370,29 +339,6 @@ public class ObjectStorageService {
         }
     }
 
-    private void waitForRendition(String renditionKey) throws Exception {
-        Exception lastFailure = null;
-        for (int attempt = 0; attempt < 30; attempt++) {
-            try {
-                metrics.record(
-                    "HEAD_OBJECT", null, 0L,
-                    () -> cos.getObjectMetadata(properties.getBucket(), renditionKey)
-                );
-                return;
-            } catch (Exception exception) {
-                lastFailure = exception;
-                if (attempt < 29) {
-                    metrics.retry("HEAD_OBJECT");
-                    Thread.sleep(200);
-                }
-            }
-        }
-        throw new IllegalStateException(
-            "万象压缩图在限定时间内未就绪。",
-            lastFailure
-        );
-    }
-
     private StoredObject verifyOriginal(String storagePath, long size, String contentType) {
         StoredObject verified = metadata(storagePath);
         if (verified.size() != size
@@ -401,6 +347,11 @@ public class ObjectStorageService {
             throw new IllegalStateException("原始对象元数据校验失败。");
         }
         return verified;
+    }
+
+    static boolean isImmutableOriginalKey(String key) {
+        return key != null && key.startsWith("materials/") && !key.contains("/derived/")
+            && key.matches(".*/original\\.[^/]+");
     }
 
     private BusinessException storageFailure(String message, Exception exception) {

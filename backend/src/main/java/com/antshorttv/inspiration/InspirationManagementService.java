@@ -70,7 +70,7 @@ public class InspirationManagementService {
         return new InspirationManagementPageResponse(records, total == null ? 0 : total, current, size);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public InspirationManagementItemResponse create(
         Long userId,
         Long tenantId,
@@ -82,49 +82,9 @@ public class InspirationManagementService {
         VerifiedMediaUpload upload = uploadSessions.requireCompleted(
             userId, tenantId, request.uploadSessionToken()
         );
-        if (mediaService.isImage(upload)) {
-            return response(imageCreation.create(
-                externalId, upload, request, publishStatus, nextSortOrder()
-            ));
-        }
-        ManagedInspirationMedia media = mediaService.store(externalId, upload);
-        try {
-            LocalDateTime now = LocalDateTime.now();
-            InspirationCreationEntity entity = new InspirationCreationEntity();
-            entity.setExternalId(externalId);
-            entity.setCreationType(media.creationType());
-            entity.setTaskType("MANUAL_UPLOAD");
-            entity.setTitle(request.title().trim());
-            entity.setAuthorName("管理员");
-            entity.setUrl("");
-            entity.setStoragePath(media.storagePath());
-            entity.setMimeType(media.mimeType());
-            entity.setFileSize(media.fileSize());
-            entity.setThumbnailPath(media.thumbnailPath());
-            entity.setThumbnailUrl("");
-            entity.setThumbnailMimeType(media.thumbnailMimeType());
-            entity.setThumbnailFileSize(media.thumbnailFileSize());
-            entity.setThumbnailStatus(media.thumbnailStatus());
-            entity.setPromptText(request.promptText().trim());
-            entity.setTagsJson(writeTags(request.tags()));
-            entity.setPublishStatus(publishStatus);
-            entity.setSourceType("MANUAL");
-            entity.setImportStatus(InspirationCreationImportStatus.IMPORTED.name());
-            entity.setSortOrder(nextSortOrder());
-            entity.setSourceCreatedAt(now);
-            entity.setSourceUpdatedAt(now);
-            entity.setCreatedAt(now);
-            entity.setUpdatedAt(now);
-            mapper.insert(entity);
-            entity.setUrl("/api/inspiration-creations/%d/file".formatted(entity.getId()));
-            entity.setThumbnailUrl("/api/inspiration-creations/%d/thumbnail".formatted(entity.getId()));
-            mapper.updateById(entity);
-            return response(entity);
-        } catch (RuntimeException exception) {
-            mediaStorage.delete(media.storagePath());
-            mediaStorage.delete(media.thumbnailPath());
-            throw exception;
-        }
+        return response(imageCreation.create(
+            externalId, upload, request, publishStatus, nextSortOrder()
+        ));
     }
 
     @Transactional
@@ -146,6 +106,19 @@ public class InspirationManagementService {
     ) {
         InspirationCreationEntity entity = requireManaged(id);
         String status = normalizePublishStatus(request.publishStatus());
+        if ("PUBLISHED".equals(status) && "VIDEO".equals(entity.getCreationType())
+            && "FAILED".equals(entity.getImportStatus())) {
+            ManagedInspirationMedia media = mediaService.storeVideoCover(entity);
+            entity.setThumbnailPath(media.thumbnailPath());
+            entity.setThumbnailMimeType(media.thumbnailMimeType());
+            entity.setThumbnailFileSize(null);
+            entity.setThumbnailStatus("PENDING");
+            entity.setThumbnailUrl("/api/inspiration-creations/%d/thumbnail".formatted(id));
+            entity.setImportStatus("PROCESSING");
+            if (mapper.attachMediaIfActive(entity) != 1) {
+                throw new IllegalStateException("Inspiration video cover retry could not be persisted.");
+            }
+        }
         if ("PUBLISHED".equals(status) && "IMAGE".equals(entity.getCreationType())
             && "FAILED".equals(entity.getImportStatus())) {
             RegisteredImageDisplay retried = imageRenditions.retryFailedDisplay(
@@ -196,11 +169,15 @@ public class InspirationManagementService {
         entity.setDeletedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         mapper.updateById(entity);
-        if ("IMAGE".equals(entity.getCreationType())) {
+        if (Set.of("IMAGE", "VIDEO").contains(entity.getCreationType())) {
             imageRenditions.retire(InspirationImageRenditionReconciler.identity(entity));
         }
         mediaStorage.delete(entity.getStoragePath());
         mediaStorage.delete(entity.getThumbnailPath());
+        if ("VIDEO".equals(entity.getCreationType())
+            && entity.getStoragePath() != null && !entity.getStoragePath().isBlank()) {
+            mediaStorage.delete(InspirationCreationMediaStorage.coverOriginalPath(entity.getStoragePath()));
+        }
     }
 
     private LambdaQueryWrapper<InspirationCreationEntity> managementQuery(

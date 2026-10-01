@@ -587,7 +587,8 @@ public class AiVideoTaskService {
         String firstFrameUrl = references.stream()
             .filter(item -> "IMAGE".equals(item.reference().mediaType()))
             .findFirst()
-            .map(VideoTaskReferenceResolver.ResolvedReference::providerUrl)
+            .map(VideoTaskReferenceResolver.ResolvedReference::browserDisplayUrl)
+            .filter(value -> value != null && !value.isBlank())
             .orElseThrow(() -> new BusinessException(
                 ErrorCode.AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED, "请至少绑定一张参考图片。"));
 

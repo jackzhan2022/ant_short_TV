@@ -41,19 +41,24 @@ class InspirationManagementImageCreationService {
         );
         mapper.insert(entity);
         try {
-            ManagedInspirationMedia media = mediaService.storeImage(
-                entity.getId(), externalId, upload
-            );
+            boolean video = "VIDEO".equals(entity.getCreationType());
+            ManagedInspirationMedia media = video
+                ? mediaService.storeVideoOriginal(entity.getId(), externalId, upload)
+                : mediaService.storeImage(entity.getId(), externalId, upload);
             applyMedia(entity, media);
-            if (mapper.updateById(entity) != 1) {
-                throw new IllegalStateException("灵感图片处理状态写入失败。");
+            attach(entity);
+            if (video) {
+                applyMedia(entity, mediaService.storeVideoCover(entity));
+                attach(entity);
             }
             return entity;
         } catch (RuntimeException exception) {
-            try {
-                imageRenditions.retire(InspirationImageRenditionReconciler.identity(entity));
-            } catch (RuntimeException retireFailure) {
-                exception.addSuppressed(retireFailure);
+            if ("IMAGE".equals(entity.getCreationType())) {
+                try {
+                    imageRenditions.retire(InspirationImageRenditionReconciler.identity(entity));
+                } catch (RuntimeException retireFailure) {
+                    exception.addSuppressed(retireFailure);
+                }
             }
             failHidden(entity, exception);
             throw exception;
@@ -70,7 +75,7 @@ class InspirationManagementImageCreationService {
         LocalDateTime now = LocalDateTime.now();
         InspirationCreationEntity entity = new InspirationCreationEntity();
         entity.setExternalId(externalId);
-        entity.setCreationType("IMAGE");
+        entity.setCreationType("video/mp4".equalsIgnoreCase(upload.contentType()) ? "VIDEO" : "IMAGE");
         entity.setTaskType("MANUAL_UPLOAD");
         entity.setTitle(request.title().trim());
         entity.setAuthorName("管理员");
@@ -107,6 +112,12 @@ class InspirationManagementImageCreationService {
             "/api/inspiration-creations/%d/thumbnail".formatted(entity.getId())
         );
         entity.setUpdatedAt(LocalDateTime.now());
+    }
+
+    private void attach(InspirationCreationEntity entity) {
+        if (mapper.attachMediaIfActive(entity) != 1) {
+            throw new IllegalStateException("灵感素材处理状态写入失败。");
+        }
     }
 
     private void failHidden(InspirationCreationEntity entity, RuntimeException exception) {

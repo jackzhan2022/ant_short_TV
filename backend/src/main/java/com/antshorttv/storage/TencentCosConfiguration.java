@@ -12,6 +12,11 @@ import com.qcloud.cos.http.HttpProtocol;
 import com.qcloud.cos.region.Region;
 import com.qcloud.cos.transfer.TransferManager;
 import com.qcloud.cos.transfer.TransferManagerConfiguration;
+import com.qcloud.cos.internal.CosServiceRequest;
+import com.qcloud.cos.model.PutObjectRequest;
+import com.qcloud.cos.model.CompleteMultipartUploadRequest;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import com.tencentcloudapi.common.Credential;
 import com.tencentcloudapi.common.provider.DefaultCredentialsProvider;
 import org.springframework.context.annotation.Bean;
@@ -50,12 +55,31 @@ public class TencentCosConfiguration {
 
     @Bean(destroyMethod = "shutdownNow")
     public TransferManager cosTransferManager(COS cos) {
-        TransferManager manager = new TransferManager(cos);
+        TransferManager manager = new TransferManager(immutableOriginalWrites(cos));
         TransferManagerConfiguration configuration = new TransferManagerConfiguration();
         configuration.setMultipartUploadThreshold(16L * 1024 * 1024);
         configuration.setMinimumUploadPartSize(16L * 1024 * 1024);
         manager.setConfiguration(configuration);
         return manager;
+    }
+
+    private COS immutableOriginalWrites(COS delegate) {
+        // TransferManager drops PUT headers when constructing its multipart completion request.
+        return (COS) Proxy.newProxyInstance(COS.class.getClassLoader(), new Class<?>[] { COS.class },
+            (proxy, method, arguments) -> {
+                if (arguments != null && arguments.length > 0) {
+                    String key = arguments[0] instanceof PutObjectRequest put ? put.getKey()
+                        : arguments[0] instanceof CompleteMultipartUploadRequest complete ? complete.getKey() : null;
+                    if (ObjectStorageService.isImmutableOriginalKey(key)) {
+                        ((CosServiceRequest) arguments[0]).putCustomRequestHeader("x-cos-forbid-overwrite", "true");
+                    }
+                }
+                try {
+                    return method.invoke(delegate, arguments);
+                } catch (InvocationTargetException exception) {
+                    throw exception.getCause();
+                }
+            });
     }
 
     static final class TencentCloudCredentialsAdapter implements COSCredentialsProvider {

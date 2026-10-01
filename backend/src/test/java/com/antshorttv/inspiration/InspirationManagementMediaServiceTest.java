@@ -81,23 +81,31 @@ class InspirationManagementMediaServiceTest {
     }
 
     @Test
-    void storesVideoAndCleansUpWhenThumbnailFails() {
+    void preservesAcceptedVideoWhenAsyncCoverSubmissionFails() {
         VerifiedMediaUpload video = upload("video/mp4", "source.mp4", 2048L);
-        doThrow(new IllegalArgumentException("无法生成视频封面"))
-            .when(covers).create(any(), any());
+        org.mockito.Mockito.when(storage.storeUploadedVideo(44L, "manual-video", video))
+            .thenReturn(new InspirationCreationMediaTransfer("materials/0/inspiration_creation/202610/44/manual-video/original.mp4",
+                "video/mp4", 2048L, null, null, "PENDING"));
+        ManagedInspirationMedia original = service.storeVideoOriginal(44L, "manual-video", video);
+        InspirationCreationEntity entity = new InspirationCreationEntity();
+        entity.setId(44L);
+        entity.setExternalId("manual-video");
+        entity.setStoragePath(original.storagePath());
+        entity.setMimeType("video/mp4");
+        entity.setFileSize(2048L);
+        doThrow(new IllegalArgumentException("Cover unavailable")).when(covers).create(any(), any(), any());
 
-        assertThatThrownBy(() -> service.store("manual-video", video))
-            .hasMessageContaining("视频缩略图生成失败");
+        assertThatThrownBy(() -> service.storeVideoCover(entity)).hasMessageContaining("Cover unavailable");
 
-        verify(storage).delete("inspiration/creations/manual-video/original.mp4");
-        verify(storage).delete("inspiration/creations/manual-video/cover/original.jpg");
-        verify(storage, never()).delete(video.objectKey());
+        assertThat(original.thumbnailStatus()).isEqualTo("PENDING");
+        assertThat(original.thumbnailFileSize()).isNull();
+        verify(storage, never()).delete(any());
     }
 
     @Test
     void rejectsUnsupportedMediaType() {
-        assertThatThrownBy(() -> service.store(
-            "manual-text", upload("text/plain", "source.txt", 5L)
+        assertThatThrownBy(() -> service.storeVideoOriginal(
+            44L, "manual-text", upload("text/plain", "source.txt", 5L)
         )).hasMessageContaining("仅支持");
     }
 

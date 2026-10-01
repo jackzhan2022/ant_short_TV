@@ -42,6 +42,9 @@ class InspirationCreationImportServiceTest {
     @MockBean
     private ImageDisplayRenditionService imageRenditions;
 
+    @MockBean
+    private com.antshorttv.storage.CloudInfiniteVideoCoverService covers;
+
     @Test
     void importsListAndDetailWithLocalMediaOnly() throws Exception {
         mapper.delete(null);
@@ -138,6 +141,14 @@ class InspirationCreationImportServiceTest {
     @Test
     void upsertsDuplicateExternalIdAndIsolatesItemFailures() throws Exception {
         mapper.delete(null);
+        when(objectStorageService.uploadOriginal(any(String.class), any(java.nio.file.Path.class), eq("video/mp4")))
+            .thenAnswer(call -> new StoredObject(call.getArgument(0), 11L, "video/mp4", "video-etag", "INTELLIGENT_TIERING"));
+        when(objectStorageService.metadata(any())).thenAnswer(call ->
+            new StoredObject(call.getArgument(0), 11L, "video/mp4", "video-etag", "INTELLIGENT_TIERING"));
+        when(covers.create(any(), any(), any())).thenAnswer(call -> {
+            String original = call.getArgument(2);
+            return new RegisteredImageDisplay(original, original.replace("/original.jpg", "/derived/display.jpg"), "SUBMITTED");
+        });
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/creations", exchange -> {
             String base = "http://127.0.0.1:%d".formatted(server.getAddress().getPort());
@@ -193,8 +204,8 @@ class InspirationCreationImportServiceTest {
         assertThat(mapper.selectCount(null)).isEqualTo(2);
         InspirationCreationEntity imported = mapper.selectByExternalId("valid-creation");
         InspirationCreationEntity failed = mapper.selectByExternalId("missing-media");
-        assertThat(imported.getImportStatus()).isEqualTo(InspirationCreationImportStatus.IMPORTED.name());
-        assertThat(imported.getThumbnailStatus()).isEqualTo("FAILED");
+        assertThat(imported.getImportStatus()).isEqualTo(InspirationCreationImportStatus.PROCESSING.name());
+        assertThat(imported.getThumbnailStatus()).isEqualTo("PENDING");
         assertThat(imported.getMimeType()).isEqualTo("video/mp4");
         assertThat(imported.getTitle()).isEqualTo("详情标题");
         assertThat(failed.getImportStatus()).isEqualTo(InspirationCreationImportStatus.FAILED.name());
@@ -224,9 +235,9 @@ class InspirationCreationImportServiceTest {
         AtomicReference<byte[]> uploaded = new AtomicReference<>();
         doAnswer(invocation -> {
             uploaded.set(Files.readAllBytes(invocation.getArgument(1)));
-            return null;
-        }).when(objectStorageService).uploadFile(
-            eq("inspiration/creations/abc-123/original.mp4"),
+            return new StoredObject(invocation.getArgument(0), 11L, "video/mp4", "video-etag", "INTELLIGENT_TIERING");
+        }).when(objectStorageService).uploadOriginal(
+            org.mockito.ArgumentMatchers.contains("/44/abc-123/original.mp4"),
             any(java.nio.file.Path.class),
             eq("video/mp4")
         );
@@ -243,15 +254,15 @@ class InspirationCreationImportServiceTest {
                 "http://127.0.0.1:%d/source.mp4".formatted(server.getAddress().getPort())
             );
 
-            assertThat(transfer.storagePath()).isEqualTo("inspiration/creations/abc-123/original.mp4");
+            assertThat(transfer.storagePath()).startsWith("materials/0/inspiration_creation/").endsWith("/44/abc-123/original.mp4");
             assertThat(transfer.mimeType()).isEqualTo("video/mp4");
             assertThat(transfer.fileSize()).isEqualTo(11L);
         } finally {
             server.stop(0);
         }
 
-        verify(objectStorageService).uploadFile(
-            eq("inspiration/creations/abc-123/original.mp4"),
+        verify(objectStorageService).uploadOriginal(
+            org.mockito.ArgumentMatchers.contains("/44/abc-123/original.mp4"),
             any(java.nio.file.Path.class),
             eq("video/mp4")
         );

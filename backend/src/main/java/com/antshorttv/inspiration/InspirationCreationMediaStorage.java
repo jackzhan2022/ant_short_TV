@@ -50,8 +50,6 @@ public class InspirationCreationMediaStorage {
         String externalId,
         String mediaUrl
     ) {
-        InspirationCreationMediaTransfer existing = reuseRegisteredImage(assetId, externalId);
-        if (existing != null) return existing;
         if (mediaUrl == null || mediaUrl.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "媒体URL不能为空。");
         }
@@ -65,21 +63,24 @@ public class InspirationCreationMediaStorage {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR, "媒体下载失败：" + response.statusCode());
             }
             String mimeType = contentType(response, mediaUrl);
-            String storagePath = storagePath(externalId, mediaUrl, mimeType);
             temporary = Files.createTempFile("inspiration-import-", ".media");
             try (InputStream input = response.body()) {
                 Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
             }
-            long fileSize = Files.size(temporary);
             if (mimeType.startsWith("image/")) {
                 if (assetId == null) {
                     throw new IllegalArgumentException("灵感图片必须先持久化业务记录。");
                 }
                 return storeDownloadedImage(assetId, externalId, temporary, mimeType);
             }
-            objectStorageService.uploadFile(storagePath, temporary, mimeType);
+            if (assetId == null || !"video/mp4".equalsIgnoreCase(mimeType)) {
+                throw new IllegalArgumentException("灵感素材必须先持久化且使用支持的媒体类型。");
+            }
+            StoredObject original = objectStorageService.uploadOriginal(
+                originalPath(assetId, externalId, "mp4"), temporary, mimeType
+            );
             return new InspirationCreationMediaTransfer(
-                storagePath, mimeType, fileSize, null, null, null
+                original.key(), original.contentType(), original.size(), null, null, "PENDING"
             );
         } catch (BusinessException exception) {
             throw exception;
@@ -94,6 +95,43 @@ public class InspirationCreationMediaStorage {
                 }
             }
         }
+    }
+
+    InspirationCreationMediaTransfer reuseRegisteredMedia(InspirationCreationEntity entity) {
+        if (entity == null) return null;
+        if (!"VIDEO".equals(entity.getCreationType())) {
+            return reuseRegisteredImage(entity.getId(), entity.getExternalId());
+        }
+        if (entity.getStoragePath() == null || entity.getStoragePath().isBlank()) return null;
+        if (!entity.getStoragePath().startsWith("materials/")) {
+            throw new IllegalStateException("历史视频素材不可用，请创建新的素材版本。");
+        }
+        StoredObject original = objectStorageService.metadata(entity.getStoragePath());
+        if (original == null || !entity.getStoragePath().equals(original.key())
+            || original.size() <= 0 || !"video/mp4".equalsIgnoreCase(original.contentType())
+            || entity.getFileSize() == null || original.size() != entity.getFileSize()) {
+            throw new IllegalStateException("已接受的视频原图元数据不一致。");
+        }
+        return new InspirationCreationMediaTransfer(
+            original.key(), original.contentType(), original.size(), null, null, "PENDING"
+        );
+    }
+
+    public InspirationCreationMediaTransfer storeUploadedVideo(
+        Long assetId, String externalId, VerifiedMediaUpload upload
+    ) {
+        StoredObject source = objectStorageService.metadata(upload.objectKey());
+        if (source == null || !upload.objectKey().equals(source.key())
+            || source.size() != upload.size() || !same(source.contentType(), "video/mp4")
+            || !same(source.contentType(), upload.contentType()) || !same(source.eTag(), upload.eTag())) {
+            throw new IllegalStateException("COS 视频元数据与已完成上传会话不一致。");
+        }
+        StoredObject original = objectStorageService.copyCompletedUploadOriginal(
+            source, originalPath(assetId, externalId, "mp4")
+        );
+        return new InspirationCreationMediaTransfer(
+            original.key(), original.contentType(), original.size(), null, null, "PENDING"
+        );
     }
 
     InspirationCreationMediaTransfer reuseRegisteredImage(Long assetId, String externalId) {
@@ -178,29 +216,11 @@ public class InspirationCreationMediaStorage {
     }
 
     public void uploadOriginal(String storagePath, byte[] bytes, String mimeType) {
-        objectStorageService.upload(storagePath, bytes, mimeType);
+        objectStorageService.uploadOriginal(storagePath, bytes, mimeType);
     }
 
     public void uploadOriginalFile(String storagePath, Path file, String mimeType) {
-        objectStorageService.uploadFile(storagePath, file, mimeType);
-    }
-
-    public void copyVerifiedUpload(
-        String sourcePath,
-        String targetPath,
-        long size,
-        String mimeType
-    ) {
-        try (InputStream input = objectStorageService.resource(sourcePath).getInputStream()) {
-            objectStorageService.upload(targetPath, input, size, mimeType);
-        } catch (BusinessException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            throw new BusinessException(
-                ErrorCode.VALIDATION_ERROR,
-                "COS 暂存素材固化失败：" + exception.getMessage()
-            );
-        }
+        objectStorageService.uploadOriginal(storagePath, file, mimeType);
     }
 
     public void delete(String storagePath) {
@@ -220,8 +240,9 @@ public class InspirationCreationMediaStorage {
             .plan(originalPath, mimeType);
     }
 
-    static String coverOriginalPath(String externalId) {
-        return "inspiration/creations/%s/cover/original.jpg".formatted(externalId);
+    static String coverOriginalPath(String videoOriginalPath) {
+        int separator = videoOriginalPath.lastIndexOf('/');
+        return videoOriginalPath.substring(0, separator) + "/cover/original.jpg";
     }
 
     private InspirationCreationMediaTransfer storeDownloadedImage(
@@ -278,13 +299,17 @@ public class InspirationCreationMediaStorage {
         String externalId,
         String mimeType
     ) {
+        return originalPath(assetId, externalId, imageExtension(mimeType));
+    }
+
+    private String originalPath(Long assetId, String externalId, String extension) {
         return keys.tenantOriginal(
             0L,
             "inspiration_creation",
             assetId,
             externalId,
             LocalDate.now(),
-            imageExtension(mimeType)
+            extension
         );
     }
 
