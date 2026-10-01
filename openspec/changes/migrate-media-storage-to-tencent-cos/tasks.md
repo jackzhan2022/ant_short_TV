@@ -6,7 +6,7 @@
 - [x] 1.4 Verify `antvcdn.aixmax.cn` CNAME, HTTPS, private-origin authorization, Type D authentication, 30-day node caching, seven-day browser caching, `sign,t` cache-key exclusion, processing-parameter retention, disabled auto-refresh, and coalesced origin requests.
 - [x] 1.5 Configure video-only range origin rules and prove a private test video returns valid `206 Partial Content` responses without full-object origin transfer.
 - [x] 1.6 Configure Cloud Infinite original-only image and video workflows, persistent `derived/` outputs, authenticated callback routing, and recursion exclusions.
-- [ ] 1.7 Create COS, CDN, Cloud Infinite, retrieval, request-count, storage, and application public-bandwidth budgets and alert thresholds.
+- [x] 1.7 Create COS, CDN, Cloud Infinite, retrieval, request-count, storage, and application public-bandwidth budgets and alert thresholds.
 
 ## 2. Dependencies, Configuration, And Schema
 
@@ -71,7 +71,7 @@
 - [x] 8.2 Add frontend tests for multipart progress, per-request authorization, offline/COS/completion errors, resume behavior, and use of thumbnail/display/video delivery URLs.
 - [x] 8.3 Run backend tests and build, frontend tests, `npm run lint`, `npx antd lint ./src`, and the repository's required type/build checks.
 - [x] 8.4 Run pre-release integration checks against the shared empty production bucket for backend internal upload, browser direct upload, object metadata, intelligent tiering, lifecycle targeting, Cloud Infinite outputs, and CDN delivery.
-- [ ] 8.5 Verify correct, expired, and tampered Type D URLs; unauthorized resource requests; seven-day stable URL reuse; browser cache behavior; and CDN HIT reuse across changed signatures.
+- [x] 8.5 Verify correct, expired, and tampered Type D URLs; unauthorized resource requests; seven-day stable URL reuse; browser cache behavior; and CDN HIT reuse across changed signatures.
 - [x] 8.6 Verify video range seeking, no full-object origin transfer for partial playback, no application-server media proxying, and acceptable public-bandwidth usage under concurrent uploads and playback.
 - [ ] 8.7 Verify cost telemetry for COS requests/storage/retrieval, CDN origin/downstream transfer, Cloud Infinite processing, abandoned uploads, and alert delivery.
 - [x] 8.8 Perform a release and rollback drill documenting that rollback restores MinIO-era behavior for old data while COS-only objects created after cutover remain unavailable to the old release.
