@@ -82,7 +82,7 @@ describe('media upload client', () => {
     finishUpload?.(sdkError('RequestTimeout'), undefined as never);
     await expect(handle.attempt).rejects.toThrow('COS 上传失败，请重试');
 
-    const failedResumedAttempt = handle.resume();
+    const failedResumedAttempt = handle.retry();
     expect(restartTask).toHaveBeenCalledTimes(1);
     expect(restartTask).toHaveBeenCalledWith('task-1');
     finishUpload?.(sdkError('RequestTimeout'), undefined as never);
@@ -528,7 +528,7 @@ describe('media upload client', () => {
     await expect(handle.attempt).rejects.toThrow(
       '上传文件大小与会话声明不一致',
     );
-    await expect(handle.retryCompletion()).resolves.toEqual(verifiedUpload());
+    await expect(handle.retry()).resolves.toEqual(verifiedUpload());
     expect(uploadFile).toHaveBeenCalledTimes(1);
     expect(restartTask).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledTimes(3);
@@ -578,6 +578,29 @@ describe('media upload client', () => {
     expect(cancelTask).toHaveBeenCalledWith('task-1');
     expect(success).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a completion-only retry without letting a late response succeed', async () => {
+    let finish!: CosUploadCallback;
+    let complete!: (value: unknown) => void;
+    const delayed = new Promise((resolve) => { complete = resolve; });
+    vi.mocked(request)
+      .mockResolvedValueOnce({ success: true, data: session() })
+      .mockResolvedValueOnce({ success: false, errorMessage: '确认暂时失败' })
+      .mockReturnValueOnce(delayed as never);
+    const handle = await startMediaUpload(new File(['video'], 'episode.mp4', { type: 'video/mp4' }), {
+      clientFactory: () => ({
+        uploadFile: (params, callback) => { params.onTaskReady?.('task-1'); finish = callback; },
+        pauseTask: vi.fn(), restartTask: vi.fn(), cancelTask: vi.fn(),
+      }),
+    });
+    finish(null, uploadResult);
+    await expect(handle.attempt).rejects.toThrow('确认暂时失败');
+    const retry = handle.retry();
+    const observed = expect(retry).rejects.toThrow('上传已取消');
+    handle.cancel();
+    complete({ success: true, data: verifiedUpload() });
+    await observed;
   });
 
   it('pauses and cancels the retained task without completing it', async () => {

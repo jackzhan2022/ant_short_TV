@@ -2,7 +2,10 @@ export { createProject } from '@/services/account-team/project';
 
 import { request } from '@umijs/max';
 import type { ApiResponse } from '@/services/account-team/types';
-import { startMediaUpload } from '@/services/mediaUpload';
+import {
+  startMediaUpload,
+  type MediaUploadRecovery,
+} from '@/services/mediaUpload';
 
 export { queryTenantMembers } from '@/services/account-team/member';
 export { queryStyleLibrary } from '../style-library/service';
@@ -49,15 +52,19 @@ export const queryManagedInspirations = (params: Record<string, unknown>) =>
     { params },
   );
 
-export const createManagedInspiration = async (values: {
-  file: File;
-  title: string;
-  promptText: string;
-  tags: string[];
-  publishStatus: string;
-}) => {
-  const upload = await startMediaUpload(values.file);
-  const uploaded = await upload.attempt;
+export const createManagedInspiration = async (
+  values: {
+    file: File;
+    title: string;
+    promptText: string;
+    tags: string[];
+    publishStatus: string;
+  },
+  recovery: MediaUploadRecovery = {},
+) => {
+  const upload = recovery.handle || (await startMediaUpload(values.file));
+  recovery.onHandle?.(upload);
+  const uploaded = await (recovery.handle ? upload.retry() : upload.attempt);
   return request<ApiResponse<ManagedInspiration>>(
     '/api/platform/inspiration-creations',
     {

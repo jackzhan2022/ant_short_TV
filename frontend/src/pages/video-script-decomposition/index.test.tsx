@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import VideoScriptDecompositionPage, {
   buildCopyAllScreenplays,
@@ -15,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   queryScreenplays: vi.fn(),
   retry: vi.fn(),
   writeText: vi.fn(),
+  upload: vi.fn(),
+  uploadProps: undefined as any,
 }));
 
 vi.mock('@ant-design/icons', () => ({
@@ -40,8 +48,13 @@ vi.mock('antd', () => ({
       },
     }),
   },
-  Button: ({ children, disabled, onClick }: any) => (
-    <button disabled={disabled} type="button" onClick={onClick}>
+  Button: ({ children, disabled, onClick, 'aria-label': label }: any) => (
+    <button
+      aria-label={label}
+      disabled={disabled}
+      type="button"
+      onClick={onClick}
+    >
       {children}
     </button>
   ),
@@ -100,7 +113,10 @@ vi.mock('antd', () => ({
   },
   Upload: {
     LIST_IGNORE: 'LIST_IGNORE',
-    Dragger: ({ children }: any) => <div>{children}</div>,
+    Dragger: (props: any) => {
+      mocks.uploadProps = props;
+      return <div>{props.children}</div>;
+    },
   },
 }));
 
@@ -148,7 +164,7 @@ vi.mock('./service', () => ({
   queryVideoDecompositionBatchScreenplays: mocks.queryScreenplays,
   queryVideoUnderstandingModels: mocks.queryModels,
   retryVideoDecompositionEpisode: mocks.retry,
-  uploadEpisodeVideo: vi.fn(),
+  uploadEpisodeVideo: mocks.upload,
 }));
 
 const screenplayBatch = {
@@ -234,6 +250,50 @@ describe('VideoScriptDecompositionPage', () => {
     mocks.writeText.mockResolvedValue(undefined);
   });
 
+  it('retries a failed file with its retained upload handle', async () => {
+    const file = new File(['video'], 'episode.mp4', { type: 'video/mp4' });
+    Object.assign(file, { uid: 'file-1' });
+    const handle = { cancel: vi.fn() };
+    mocks.upload
+      .mockImplementationOnce(async (_file, _progress, recovery) => {
+        recovery?.onHandle?.(handle);
+        throw new Error('上传已断开');
+      })
+      .mockResolvedValue({
+        data: {
+          storagePath: 'materials/video.mp4',
+          uploadSessionToken: 'session-1',
+        },
+      });
+    const view = render(<VideoScriptDecompositionPage />);
+    await act(async () => {
+      await mocks.uploadProps.customRequest({
+        file,
+        onError: vi.fn(),
+        onSuccess: vi.fn(),
+      });
+      mocks.uploadProps.onChange({
+        fileList: [
+          {
+            uid: 'file-1',
+            name: file.name,
+            originFileObj: file,
+            status: 'error',
+          },
+        ],
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: '重试上传' }));
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(2));
+    expect(mocks.upload.mock.calls[1][2].handle).toBe(handle);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: '重试上传' }),
+      ).not.toBeInTheDocument(),
+    );
+    view.unmount();
+  });
+
   it('removes the former top workflow and opens ordered read-only screenplays', async () => {
     render(<VideoScriptDecompositionPage />);
     expect(screen.queryByText(/审核草稿/)).not.toBeInTheDocument();
@@ -315,9 +375,13 @@ describe('VideoScriptDecompositionPage', () => {
       processingEpisodes: 1,
     };
     mocks.queryBatches
-      .mockResolvedValueOnce({ data: [{ ...runningBatch, id: 9, episodes: [] }] })
+      .mockResolvedValueOnce({
+        data: [{ ...runningBatch, id: 9, episodes: [] }],
+      })
       .mockResolvedValue({
-        data: [{ ...screenplayBatch, id: 9, status: 'SUCCEEDED', episodes: [] }],
+        data: [
+          { ...screenplayBatch, id: 9, status: 'SUCCEEDED', episodes: [] },
+        ],
       });
     mocks.queryScreenplays
       .mockResolvedValueOnce({ data: runningBatch })
@@ -350,7 +414,9 @@ describe('VideoScriptDecompositionPage', () => {
       processingEpisodes: 1,
     };
     mocks.queryBatches
-      .mockResolvedValueOnce({ data: [{ ...screenplayBatch, id: 9, episodes: [] }] })
+      .mockResolvedValueOnce({
+        data: [{ ...screenplayBatch, id: 9, episodes: [] }],
+      })
       .mockResolvedValueOnce({
         data: [{ ...refreshedBatch, id: 9, episodes: [] }],
       });
@@ -385,10 +451,14 @@ describe('VideoScriptDecompositionPage', () => {
       .mockResolvedValueOnce({ data: running })
       .mockResolvedValue({ data: { ...screenplayBatch, status: 'SUCCEEDED' } });
     mocks.queryBatches
-      .mockResolvedValueOnce({ data: [{ ...screenplayBatch, id: 9, episodes: [] }] })
+      .mockResolvedValueOnce({
+        data: [{ ...screenplayBatch, id: 9, episodes: [] }],
+      })
       .mockResolvedValueOnce({ data: [{ ...running, id: 9, episodes: [] }] })
       .mockResolvedValue({
-        data: [{ ...screenplayBatch, id: 9, status: 'SUCCEEDED', episodes: [] }],
+        data: [
+          { ...screenplayBatch, id: 9, status: 'SUCCEEDED', episodes: [] },
+        ],
       });
 
     const view = render(<VideoScriptDecompositionPage />);

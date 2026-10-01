@@ -61,6 +61,7 @@ describe('video decomposition service', () => {
       resume: vi.fn().mockResolvedValue(uploaded),
       cancel: vi.fn(),
       retryCompletion: vi.fn().mockResolvedValue(uploaded),
+      retry: vi.fn().mockResolvedValue(uploaded),
     };
     vi.mocked(startMediaUpload).mockResolvedValue(handle);
     const file = new File([new Uint8Array([1, 2, 3])], 'episode.mp4', {
@@ -82,5 +83,34 @@ describe('video decomposition service', () => {
       '/api/video-script-decomposition/uploads',
       expect.anything(),
     );
+  });
+
+  it('resumes the retained episode upload instead of creating another session', async () => {
+    const file = new File(['video'], 'episode.mp4', { type: 'video/mp4' });
+    const attempt = Promise.reject(new Error('COS 上传失败'));
+    void attempt.catch(() => undefined);
+    const uploaded = {
+      sessionToken: 'session-1',
+      objectKey: 'materials/11/uploads/session-1/v1/original.mp4',
+      contentType: 'video/mp4',
+      size: file.size,
+      eTag: 'etag-1',
+    };
+    const handle = {
+      attempt,
+      retry: vi.fn().mockResolvedValue(uploaded),
+    } as unknown as MediaUploadHandle;
+    vi.mocked(startMediaUpload).mockResolvedValue(handle);
+    const retained = vi.fn();
+
+    await expect(
+      uploadEpisodeVideo(file, undefined, { onHandle: retained }),
+    ).rejects.toThrow('COS 上传失败');
+    expect(retained).toHaveBeenCalledWith(handle);
+    const response = await uploadEpisodeVideo(file, undefined, { handle });
+
+    expect(startMediaUpload).toHaveBeenCalledTimes(1);
+    expect(handle.retry).toHaveBeenCalledTimes(1);
+    expect(response.data.uploadSessionToken).toBe('session-1');
   });
 });

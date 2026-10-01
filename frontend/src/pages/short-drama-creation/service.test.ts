@@ -44,6 +44,7 @@ describe('inspiration management uploads', () => {
       resume: vi.fn().mockResolvedValue(uploaded),
       cancel: vi.fn(),
       retryCompletion: vi.fn().mockResolvedValue(uploaded),
+      retry: vi.fn().mockResolvedValue(uploaded),
     };
     vi.mocked(startMediaUpload).mockResolvedValue(handle);
     vi.mocked(request).mockResolvedValue({ success: true, data: { id: 1 } });
@@ -73,6 +74,48 @@ describe('inspiration management uploads', () => {
           publishStatus: 'UNPUBLISHED',
         },
       },
+    );
+  });
+
+  it('retains the handle after an upload failure and retries the same session', async () => {
+    const file = new File(['image'], 'cover.png', { type: 'image/png' });
+    const firstAttempt = Promise.reject(new Error('网络已断开'));
+    void firstAttempt.catch(() => undefined);
+    const uploaded = {
+      sessionToken: 'session-1',
+      objectKey: 'materials/11/uploads/session-1/v1/original.png',
+      contentType: 'image/png',
+      size: file.size,
+      eTag: 'etag-1',
+    };
+    const handle = {
+      attempt: firstAttempt,
+      retry: vi.fn().mockResolvedValue(uploaded),
+    } as unknown as MediaUploadHandle;
+    vi.mocked(startMediaUpload).mockResolvedValue(handle);
+    vi.mocked(request).mockResolvedValue({ success: true, data: { id: 1 } });
+    const retained = vi.fn();
+    const values = {
+      file,
+      title: '灵感',
+      tags: [],
+      promptText: '提示词',
+      publishStatus: 'UNPUBLISHED',
+    };
+
+    await expect(
+      createManagedInspiration(values, { onHandle: retained }),
+    ).rejects.toThrow('网络已断开');
+    expect(retained).toHaveBeenCalledWith(handle);
+    await createManagedInspiration(values, { handle });
+
+    expect(startMediaUpload).toHaveBeenCalledTimes(1);
+    expect(handle.retry).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(
+      '/api/platform/inspiration-creations',
+      expect.objectContaining({
+        data: expect.objectContaining({ uploadSessionToken: 'session-1' }),
+      }),
     );
   });
 });

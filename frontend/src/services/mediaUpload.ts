@@ -42,6 +42,12 @@ export type MediaUploadHandle = {
   resume: () => Promise<VerifiedMediaUpload>;
   cancel: () => void;
   retryCompletion: () => Promise<VerifiedMediaUpload>;
+  retry: () => Promise<VerifiedMediaUpload>;
+};
+
+export type MediaUploadRecovery = {
+  handle?: MediaUploadHandle;
+  onHandle?: (handle: MediaUploadHandle) => void;
 };
 
 export type UploadControls = Pick<
@@ -326,8 +332,20 @@ export const startMediaUpload = async (
       if (!cosUploadSucceeded) {
         return Promise.reject(new Error('COS 上传尚未完成'));
       }
-      return completion();
+      if (completedUpload) return Promise.resolve(completedUpload);
+      currentAttempt = createUploadAttempt();
+      const retryAttempt = currentAttempt;
+      pendingAttempts.push(retryAttempt);
+      void completion().then((uploaded) => {
+        pendingAttempts = pendingAttempts.filter((attempt) => attempt !== retryAttempt);
+        retryAttempt.resolve(uploaded);
+      }, (error) => {
+        pendingAttempts = pendingAttempts.filter((attempt) => attempt !== retryAttempt);
+        retryAttempt.reject(error);
+      });
+      return retryAttempt.promise;
     },
+    retry: () => cosUploadSucceeded ? handle.retryCompletion() : handle.resume(),
   };
 
   try {

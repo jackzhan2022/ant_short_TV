@@ -1,5 +1,8 @@
 import { request } from '@umijs/max';
-import { startMediaUpload } from '@/services/mediaUpload';
+import {
+  startMediaUpload,
+  type MediaUploadRecovery,
+} from '@/services/mediaUpload';
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -124,11 +127,15 @@ export const queryVideoUnderstandingModels = async () =>
 export const uploadEpisodeVideo = async (
   file: File,
   onProgress?: (percent: number) => void,
+  recovery: MediaUploadRecovery = {},
 ): Promise<ApiResponse<VideoDecompositionUpload>> => {
-  const upload = await startMediaUpload(file, {
-    onProgress: (progress) => onProgress?.(progress.percent * 100),
-  });
-  const uploaded = await upload.attempt;
+  const upload =
+    recovery.handle ||
+    (await startMediaUpload(file, {
+      onProgress: (progress) => onProgress?.(progress.percent * 100),
+    }));
+  recovery.onHandle?.(upload);
+  const uploaded = await (recovery.handle ? upload.retry() : upload.attempt);
   return {
     success: true,
     data: {
