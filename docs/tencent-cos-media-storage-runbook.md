@@ -32,7 +32,7 @@ Do not change the old MinIO-backed release's bucket separately. Back up its comp
 
 ## Required CAM Scope
 
-Attach the `AntvBackendCosRole` instance role to the backend. It needs object read/write/metadata and multipart operations plus Cloud Infinite processing operations. The current pre-release deployment uses the managed COS and CI full-access policies for operational simplicity; replace them with bucket-scoped policies after readiness verification. Do not place permanent SecretId or SecretKey values in application configuration.
+Attach the `AntvBackendCosRole` instance role to the backend. It needs object read/write/metadata and multipart operations plus Cloud Infinite processing operations. Actual CAM inspection on 2026-10-01 found only `QcloudCOSDataFullControl`, `QcloudCOSFullAccess`, and `QcloudCOSBucketConfigRead`; the previously documented `QcloudCIFullAccess` association does not exist. Real CI requests return `401 AccessDenied`. Obtain explicit approval before adding CI access, then verify queue discovery and job submission from the CVM. Tighten to bucket-scoped policies after readiness verification. Do not place permanent SecretId or SecretKey values in application configuration.
 
 The browser never receives a SecretId or SecretKey. It requests a short-lived signature for each COS upload request. The backend signs only the pending session's exact object pathname and the required put, multipart initiate/upload/list/complete/abort, and head requests after validating query keys and headers.
 
@@ -45,7 +45,9 @@ The browser never receives a SecretId or SecretKey. It requests a short-lived si
 - Keep versioning, cross-region replication, and global acceleration disabled.
 - Allow CORS only from deployed frontend origins and expose ETag-related headers required by the COS browser SDK.
 
-The 2026-10-01 preflight for `https://antv.aixmax.cn` and requested method `PUT` was denied with `403 AccessForbidden` and a COS `CORSResponse` whitelist error, including when no custom requested headers were supplied. Task `1.3` remains blocked on accepting the real frontend origin and required methods. Inspect existing rules and preserve unrelated allowlists; do not make the bucket public or allow every origin as a workaround.
+The initial 2026-10-01 preflight for `https://antv.aixmax.cn` and requested method `PUT` was denied with `403 AccessForbidden` and a COS `CORSResponse` whitelist error, including when no custom requested headers were supplied. The correction below resolved that probe, but task `1.3` remains open for its other required checks. Inspect existing rules and preserve unrelated allowlists; do not make the bucket public or allow every origin as a workaround.
+
+After the approved correction, `antv-direct-upload` permits that exact origin and GET/HEAD/PUT/POST/DELETE, required SDK headers including `x-cos-*`, and exposes ETag, request ID, CRC64, and storage class. PUT preflight with the actual upload headers returns `200`. Intelligent tiering and the three-day multipart/seven-day `uploads/` staging rules are enabled. This is partial environment readiness, not a successful upload/processing/delivery integration test; failed-intermediate cleanup and other task `1.3` checks remain open.
 
 Read-only Windows reproduction (the object need not exist; this creates no object):
 
@@ -70,6 +72,8 @@ All new generated, uploaded, imported, reference/storyboard, style, and cover im
 
 `CreateMediaJobs` selects the active picture-processing queue automatically; use `DescribePicProcessQueues` for readiness checks rather than configuring a queue ID in the application. The application submits fixed original inputs and immutable `derived/` outputs. Do not add duplicate bucket-trigger processing; derived paths must never retrigger a workflow. Real queue permissions, outputs, and callback delivery remain release checks.
 
+For this design, keep access-time automatic compression disabled and enable `imageSlim` API usage. Separately enable the asynchronous picture queue under COS bucket **Tasks And Workflows > Queues And Callbacks**. The COS console currently shows `queue-pic-process-1` and the media queues in use; an earlier CI view showed no queues. A real CVM-role API call is authoritative: `PicBucketUnBinded` indicated missing queue activation; the current `401 AccessDenied` instead indicates missing role access. Do not keep toggling compression or create duplicate workflows to work around that denial.
+
 Each job supplies its own JSON callback URL containing a domain-separated HMAC-SHA256 bearer token derived from the Type D key, operation, and output key. Persist only its hash and validate the callback's job ID, input key, output key, and `UserData` correlation before changing state. Terminal callbacks are idempotent; process restarts and submission retries reuse the same token. Drain or cancel/requeue nonterminal jobs from earlier random-token implementations before rollout. Do not rotate the Type D key with active jobs without a controlled recovery plan.
 
 Coverless uploaded/imported videos use a verified one-second JPEG snapshot with bounded zero-second fallback, followed by the normal display job. AI videos and episode compositions reuse a ready bound first-frame display instead of decoding the video. `generateCover=false` suppresses optional cover work. There is no synchronous `PicOperations`, rendition HEAD polling, intelligent-cover analysis, or unconditional transcoding in these paths.
@@ -87,3 +91,11 @@ Verify correct, expired, and tampered Type D URLs; browser request-signature ren
 Service checks must use endpoints actually exposed by the candidate. The old release returns `404` for `/actuator/health`; verify `antv.service` state, `/v3/api-docs` (`200`), and protected `/api/currentUser` (`401` without credentials) instead of declaring startup failed from that `404` alone. These checks prove service availability, not the COS upload/processing/delivery workflow.
 
 The affected backend suites and frontend suite/build have recorded passing results, but OpenSpec task `8.3` remains open because full backend controller tests have a pre-existing registration-fixture mismatch (`123456` versus random SMS verification codes). Tasks `8.4` through `8.9` require real integration, caching, range/cost, release/rollback, and readiness evidence; do not close them from unit-test or key-deployment results.
+
+## Cost Evidence After Cutover
+
+The owner retained persistent compressed display objects. Tencent's published image-processing price is `0.1 CNY / 1,000` successful `imageSlim` operations; use the actual account bill/resource-package deductions as authoritative, not this list price or application job counts alone. Download-time processing repeats charges when requests actually reach CI, whereas direct access to a stored compressed object without processing parameters adds no further compression operation. Browser/CDN cache hits do not reach CI.
+
+Record daily accepted originals, successful display jobs and retries, billable CI compression operations, COS original/derivative bytes and requests, CDN downstream/origin bytes and hit ratio, and application public-egress bytes. Separate the tiny smoke-test sample from normal traffic and allow for delayed usage/billing data. Check CDN cache-key exclusion for only `sign,t`, seven-day browser and 30-day node freshness, and coalesced origin requests before using these numbers to compare designs. Cost alarms and real traffic evidence remain open; do not infer them from an empty bill or a passing preflight.
+
+Official billing reference: https://cloud.tencent.com/document/product/460/58117

@@ -1,7 +1,7 @@
 ## 1. Tencent Cloud Environment Readiness
 
 - [ ] 1.1 Configure both pre-release production and deployed test profiles to use private bucket `antv-1418200553` and CDN domain `antvcdn.aixmax.cn`, and record the post-launch follow-up to separate test resources.
-- [x] 1.2 Attach the `AntvBackendCosRole` CVM instance role with COS and Cloud Infinite access in production, retaining least-privilege policy tightening as a post-readiness follow-up.
+- [ ] 1.2 Attach the `AntvBackendCosRole` CVM instance role with COS and Cloud Infinite access in production, retaining least-privilege policy tightening as a post-readiness follow-up.
 - [ ] 1.3 Configure intelligent tiering, three-day incomplete-multipart cleanup, seven-day unconfirmed-upload cleanup, 14-day failed-intermediate cleanup, CORS allowlists, disabled versioning, and disabled cross-region/global acceleration.
 - [ ] 1.4 Verify `antvcdn.aixmax.cn` CNAME, HTTPS, private-origin authorization, Type D authentication, 30-day node caching, seven-day browser caching, `sign,t` cache-key exclusion, processing-parameter retention, disabled auto-refresh, and coalesced origin requests.
 - [ ] 1.5 Configure video-only range origin rules and prove a private test video returns valid `206 Partial Content` responses without full-object origin transfer.
