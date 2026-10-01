@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antshorttv.execution.AiExecutionClaim;
+import com.antshorttv.execution.AiExecutionClaimLostException;
 import com.antshorttv.execution.AiExecutionContext;
 import com.antshorttv.execution.AiExecutionStatus;
 import com.antshorttv.execution.AiExecutionTaskEntity;
@@ -17,6 +18,31 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AiImageRenditionPublicationServiceTest {
+
+    @Test
+    void canceledExecutionClaimCannotActivateProcessingResults() {
+        AiImageTaskMapper tasks = mock(AiImageTaskMapper.class);
+        AiImageResultMapper results = mock(AiImageResultMapper.class);
+        AiExecutionTaskMapper executions = mock(AiExecutionTaskMapper.class);
+        AssetVisualVariantService variants = mock(AssetVisualVariantService.class);
+        AiImageRenditionPublicationService service = new AiImageRenditionPublicationService(
+            tasks, results, executions, variants
+        );
+        AiImageTaskEntity task = task();
+        AiExecutionContext context = context();
+        context.task().status = AiExecutionStatus.CANCELED.name();
+        context.task().claimToken = null;
+        List<AiImageResultEntity> processing = List.of(result(44L), result(45L));
+
+        assertThatThrownBy(() -> service.publish(context, task, processing))
+            .isInstanceOf(AiExecutionClaimLostException.class);
+
+        assertThat(processing).extracting(AiImageResultEntity::getStatus)
+            .containsExactly("PROCESSING", "PROCESSING");
+        verify(results, never()).activateForPublication(33L, 99L);
+        verify(tasks, never()).updateById(task);
+        org.mockito.Mockito.verifyNoInteractions(variants);
+    }
 
     @Test
     void activationCountMismatchPublishesNeitherPrefixNorDomainState() {

@@ -346,4 +346,63 @@ class ObjectStorageServiceCosTest {
         return new CosStorageMetrics(new SimpleMeterRegistry());
     }
 
+    @Test
+    void reusesMatchingMultipartCopyAfterAnImmutableTargetConflict() throws Exception {
+        CopyReplayFixture fixture = new CopyReplayFixture("source-parts-3", "123456789", "123456789");
+
+        StoredObject result = fixture.service.promoteVerifiedUpload(fixture.source, fixture.targetKey);
+
+        assertThat(result.key()).isEqualTo(fixture.targetKey);
+        assertThat(result.eTag()).isEqualTo("target-parts-7");
+        verify(fixture.cos, org.mockito.Mockito.never()).putObject(any(PutObjectRequest.class));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"checksum", "source-etag", "missing-checksum"})
+    void rejectsExistingCopyWhenContentEvidenceDoesNotMatch(String mismatch) throws Exception {
+        CopyReplayFixture fixture = new CopyReplayFixture(
+            "source-etag".equals(mismatch) ? "changed-parts-3" : "source-parts-3",
+            "missing-checksum".equals(mismatch) ? null : "123456789",
+            "checksum".equals(mismatch) ? "987654321" : "123456789"
+        );
+
+        assertThatThrownBy(() -> fixture.service.promoteVerifiedUpload(fixture.source, fixture.targetKey))
+            .isInstanceOf(BusinessException.class);
+    }
+
+    private final class CopyReplayFixture {
+        private final COS cos = mock(COS.class);
+        private final String targetKey = "materials/11/uploads/202610/session-replay/v1/original.mp4";
+        private final StoredObject source = new StoredObject(
+            "uploads/11/session-replay/source.mp4", 5_000_000_001L, "video/mp4",
+            "source-parts-3", "INTELLIGENT_TIERING"
+        );
+        private final ObjectStorageService service;
+
+        private CopyReplayFixture(String actualSourceEtag, String sourceChecksum, String targetChecksum) throws Exception {
+            TransferManager transfers = mock(TransferManager.class);
+            Copy copy = mock(Copy.class);
+            when(transfers.copy(any(CopyObjectRequest.class))).thenReturn(copy);
+            com.qcloud.cos.exception.CosServiceException conflict = new com.qcloud.cos.exception.CosServiceException("already exists");
+            conflict.setStatusCode(409);
+            conflict.setErrorCode("ObjectAlreadyExists");
+            when(copy.waitForCopyResult()).thenThrow(conflict);
+            when(cos.getObjectMetadata("antv-1418200553", source.key()))
+                .thenReturn(metadata(actualSourceEtag, sourceChecksum));
+            when(cos.getObjectMetadata("antv-1418200553", targetKey))
+                .thenReturn(metadata("target-parts-7", targetChecksum));
+            service = service(cos, transfers);
+        }
+
+        private ObjectMetadata metadata(String etag, String checksum) {
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentLength(source.size());
+            metadata.setContentType(source.contentType());
+            metadata.setETag(etag);
+            metadata.setHeader("x-cos-storage-class", "INTELLIGENT_TIERING");
+            if (checksum != null) metadata.setHeader("x-cos-hash-crc64ecma", checksum);
+            return metadata;
+        }
+    }
+
 }

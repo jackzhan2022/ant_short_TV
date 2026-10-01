@@ -51,7 +51,7 @@ record AiImageTaskResponse(
             entity.getSeed(),
             entity.getExecutionId(),
             null,
-            entity.getStatus(),
+            AiImageTaskStatus.publicStatus(entity.getStatus()),
             entity.getErrorMessage(),
             entity.getStartedAt(),
             entity.getCompletedAt(),

@@ -313,6 +313,9 @@ public class ObjectStorageService {
         );
         request.setStorageClass(StorageClass.fromValue(properties.getStorageClass()));
         request.withMatchingETagConstraint(source.eTag());
+        if (isImmutableOriginalKey(targetKey)) {
+            request.putCustomRequestHeader("x-cos-forbid-overwrite", "true");
+        }
         try {
             metrics.record("COPY_OBJECT", operation, source.size(), () -> {
                 if (transfers == null) {
@@ -335,7 +338,42 @@ public class ObjectStorageService {
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
+            if (isImmutableOriginalKey(targetKey) && isCopyConflict(exception)) {
+                StoredObject existing = verifiedExistingCopy(source, targetKey);
+                if (existing != null) return existing;
+            }
             throw storageFailure("上传对象固化失败", exception);
+        }
+    }
+
+    private boolean isCopyConflict(Throwable exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof CosServiceException service && service.getStatusCode() == 409) return true;
+        }
+        return false;
+    }
+
+    private StoredObject verifiedExistingCopy(StoredObject source, String targetKey) {
+        try {
+            ObjectMetadata currentSource = metrics.record("HEAD_OBJECT", "copy_replay", 0L,
+                () -> cos.getObjectMetadata(properties.getBucket(), source.key()));
+            ObjectMetadata target = metrics.record("HEAD_OBJECT", "copy_replay", 0L,
+                () -> cos.getObjectMetadata(properties.getBucket(), targetKey));
+            boolean sameContent = same(currentSource.getETag(), target.getETag())
+                || currentSource.getCrc64Ecma() != null && !currentSource.getCrc64Ecma().isBlank()
+                    && currentSource.getCrc64Ecma().equals(target.getCrc64Ecma());
+            if (!same(source.eTag(), currentSource.getETag()) || !sameContent
+                || source.size() != currentSource.getContentLength() || source.size() != target.getContentLength()
+                || !same(source.contentType(), currentSource.getContentType())
+                || !same(source.contentType(), target.getContentType())
+                || !same(properties.getStorageClass(), target.getStorageClass())
+                || target.getETag() == null || target.getETag().isBlank()) {
+                return null;
+            }
+            return new StoredObject(targetKey, target.getContentLength(), target.getContentType(),
+                target.getETag(), target.getStorageClass());
+        } catch (Exception unavailable) {
+            return null;
         }
     }
 

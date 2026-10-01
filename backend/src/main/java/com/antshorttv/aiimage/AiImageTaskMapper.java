@@ -34,7 +34,12 @@ public interface AiImageTaskMapper extends BaseMapper<AiImageTaskEntity> {
             wrapper.eq(AiImageTaskEntity::getTaskType, taskType);
         }
         if (status != null && !status.isBlank()) {
-            wrapper.eq(AiImageTaskEntity::getStatus, status);
+            if (AiImageTaskStatus.RUNNING.name().equals(status)) {
+                wrapper.in(AiImageTaskEntity::getStatus, AiImageTaskStatus.RUNNING.name(),
+                    AiImageTaskStatus.SETTLING.name(), AiImageTaskStatus.RENDERING.name());
+            } else {
+                wrapper.eq(AiImageTaskEntity::getStatus, status);
+            }
         }
         return selectList(wrapper.orderByDesc(AiImageTaskEntity::getCreatedAt));
     }

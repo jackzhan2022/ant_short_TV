@@ -279,7 +279,7 @@ public class AiImageTaskService {
         if (taskId == null) return;
         AiImageTaskEntity previous = taskMapper.selectById(taskId);
         if (previous == null || previous.getExecutionId() == null
-            || !List.of(AiImageTaskStatus.PENDING.name(), AiImageTaskStatus.RUNNING.name()).contains(previous.getStatus())) {
+            || !AiImageTaskStatus.isInProgress(previous.getStatus())) {
             return;
         }
         AiExecutionTaskEntity execution = executionService.requireTask(previous.getExecutionId());
@@ -300,7 +300,7 @@ public class AiImageTaskService {
     public AiImageTaskResponse cancel(Long tenantId, Long projectId, Long taskId, HttpServletRequest servletRequest) {
         TenantContext context = requireProject(tenantId, projectId);
         AiImageTaskEntity task = requireTask(tenantId, projectId, taskId);
-        if (!List.of(AiImageTaskStatus.PENDING.name(), AiImageTaskStatus.RUNNING.name()).contains(task.getStatus())) {
+        if (!AiImageTaskStatus.isInProgress(task.getStatus())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前任务状态不可取消。");
         }
         AiExecutionTaskEntity execution = executionService.requireTask(task.getExecutionId());
