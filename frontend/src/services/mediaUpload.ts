@@ -138,6 +138,8 @@ type UploadAttempt = {
   settled: boolean;
 };
 
+type UploadControlOperation = 'pause' | 'resume' | 'cancel';
+
 const createUploadAttempt = (): UploadAttempt => {
   let resolvePromise!: (value: VerifiedMediaUpload) => void;
   let rejectPromise!: (reason: Error) => void;
@@ -145,6 +147,8 @@ const createUploadAttempt = (): UploadAttempt => {
     resolvePromise = resolve;
     rejectPromise = reject;
   });
+  // onTaskReady controls can reject before startMediaUpload returns the handle.
+  void promise.catch(() => undefined);
   const attempt: UploadAttempt = {
     promise,
     resolve: (value) => {
@@ -177,6 +181,8 @@ export const startMediaUpload = async (
   let completedUpload: VerifiedMediaUpload | undefined;
   let cosUploadSucceeded = false;
   let canceled = false;
+  let uploadFileExecuting = false;
+  let queuedControls: UploadControlOperation[] = [];
   const factory = options.clientFactory || defaultClientFactory;
   const cos = factory({
     ChunkSize: 16 * 1024 * 1024,
@@ -235,6 +241,39 @@ export const startMediaUpload = async (
     }
   };
 
+  const applyControl = (operation: UploadControlOperation) => {
+    if (!taskId) {
+      return;
+    }
+    if (operation === 'pause') {
+      cos.pauseTask(taskId);
+    } else if (operation === 'resume') {
+      cos.restartTask(taskId);
+    } else {
+      cos.cancelTask(taskId);
+    }
+  };
+
+  const applyOrQueueControl = (operation: UploadControlOperation) => {
+    if (uploadFileExecuting) {
+      queuedControls.push(operation);
+      return;
+    }
+    applyControl(operation);
+  };
+
+  const replayQueuedControls = () => {
+    const controls = queuedControls;
+    queuedControls = [];
+    if (controls.includes('cancel')) {
+      applyControl('cancel');
+      return;
+    }
+    for (const operation of controls) {
+      applyControl(operation);
+    }
+  };
+
   const handle: MediaUploadHandle = {
     session,
     sessionToken: session.sessionToken,
@@ -247,7 +286,7 @@ export const startMediaUpload = async (
     },
     pause: () => {
       if (taskId && !canceled && !completedUpload) {
-        cos.pauseTask(taskId);
+        applyOrQueueControl('pause');
       }
     },
     resume: () => {
@@ -264,7 +303,7 @@ export const startMediaUpload = async (
       currentAttempt = createUploadAttempt();
       pendingAttempts.push(currentAttempt);
       try {
-        cos.restartTask(taskId);
+        applyOrQueueControl('resume');
       } catch {
         rejectPendingAttempts(normalizedCosFailure());
       }
@@ -276,7 +315,7 @@ export const startMediaUpload = async (
       }
       canceled = true;
       if (taskId) {
-        cos.cancelTask(taskId);
+        applyOrQueueControl('cancel');
       }
       rejectPendingAttempts(new Error('上传已取消'));
     },
@@ -292,6 +331,7 @@ export const startMediaUpload = async (
   };
 
   try {
+    uploadFileExecuting = true;
     cos.uploadFile(
       {
         Bucket: session.bucket,
@@ -335,7 +375,11 @@ export const startMediaUpload = async (
         );
       },
     );
+    uploadFileExecuting = false;
+    replayQueuedControls();
   } catch {
+    uploadFileExecuting = false;
+    queuedControls = [];
     rejectPendingAttempts(normalizedCosFailure());
   }
 

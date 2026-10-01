@@ -5,6 +5,7 @@ import {
   startMediaUpload,
   type CosClientFactory,
   type MediaUploadSession,
+  type VerifiedMediaUpload,
 } from './mediaUpload';
 
 vi.mock('@umijs/max', () => ({ request: vi.fn() }));
@@ -191,6 +192,116 @@ describe('media upload client', () => {
     );
     expect(progress).toHaveBeenCalled();
     expect(result.eTag).toBe('etag-1');
+  });
+
+  it('replays an immediate pause after the SDK task is registered', async () => {
+    vi.mocked(request).mockResolvedValueOnce({ success: true, data: session() });
+    let registered = false;
+    const appliedControls: string[] = [];
+    const factory: CosClientFactory = () => ({
+      uploadFile: (params) => {
+        params.onTaskReady?.('task-1');
+        registered = true;
+      },
+      pauseTask: (taskId) => {
+        if (registered) {
+          appliedControls.push(`pause:${taskId}`);
+        }
+      },
+      restartTask: vi.fn(),
+      cancelTask: vi.fn(),
+    });
+
+    await startMediaUpload(
+      new File([new Uint8Array([1])], 'episode.mp4', { type: 'video/mp4' }),
+      {
+        clientFactory: factory,
+        onControls: (controls) => controls.pause(),
+      },
+    );
+
+    expect(appliedControls).toEqual(['pause:task-1']);
+  });
+
+  it('replays an immediate resume on the same registered SDK task', async () => {
+    vi.mocked(request)
+      .mockResolvedValueOnce({ success: true, data: session() })
+      .mockResolvedValueOnce({ success: true, data: verifiedUpload() });
+    let registered = false;
+    let finishUpload: CosUploadCallback | undefined;
+    let resumedAttempt: Promise<VerifiedMediaUpload> | undefined;
+    const appliedControls: string[] = [];
+    const uploadFile = vi.fn((params, callback: CosUploadCallback) => {
+      finishUpload = callback;
+      params.onTaskReady?.('task-1');
+      registered = true;
+    });
+    const factory: CosClientFactory = () => ({
+      uploadFile,
+      pauseTask: vi.fn(),
+      restartTask: (taskId) => {
+        if (registered) {
+          appliedControls.push(`resume:${taskId}`);
+          finishUpload?.(null, uploadResult);
+        }
+      },
+      cancelTask: vi.fn(),
+    });
+
+    const handle = await startMediaUpload(
+      new File([new Uint8Array([1])], 'episode.mp4', { type: 'video/mp4' }),
+      {
+        clientFactory: factory,
+        onControls: (controls) => {
+          resumedAttempt = controls.resume();
+        },
+      },
+    );
+
+    expect(appliedControls).toEqual(['resume:task-1']);
+    await expect(handle.attempt).resolves.toEqual(verifiedUpload());
+    await expect(resumedAttempt).resolves.toEqual(verifiedUpload());
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets immediate cancellation dominate queued pause and resume controls', async () => {
+    vi.mocked(request).mockResolvedValueOnce({ success: true, data: session() });
+    let registered = false;
+    let resumedAttempt: Promise<VerifiedMediaUpload> | undefined;
+    const appliedControls: string[] = [];
+    const applyWhenRegistered = (operation: string, taskId: string) => {
+      if (registered) {
+        appliedControls.push(`${operation}:${taskId}`);
+      }
+    };
+    const factory: CosClientFactory = () => ({
+      uploadFile: (params) => {
+        params.onTaskReady?.('task-1');
+        registered = true;
+      },
+      pauseTask: (taskId) => applyWhenRegistered('pause', taskId),
+      restartTask: (taskId) => applyWhenRegistered('resume', taskId),
+      cancelTask: (taskId) => applyWhenRegistered('cancel', taskId),
+    });
+
+    const handle = await startMediaUpload(
+      new File([new Uint8Array([1])], 'episode.mp4', { type: 'video/mp4' }),
+      {
+        clientFactory: factory,
+        onControls: (controls) => {
+          controls.pause();
+          resumedAttempt = controls.resume();
+          void resumedAttempt.catch(() => undefined);
+          controls.cancel();
+        },
+      },
+    );
+
+    expect(appliedControls).toEqual(['cancel:task-1']);
+    await expect(handle.attempt).rejects.toThrow('上传已取消');
+    await expect(resumedAttempt).rejects.toThrow('上传已取消');
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it('requests a fresh authorization for every COS operation', async () => {
