@@ -1,6 +1,6 @@
 # Tencent COS Media Migration Handoff
 
-Last updated: 2026-10-01
+Last updated: 2026-10-02
 
 ## 1. Handoff Status
 
@@ -9,11 +9,11 @@ Last updated: 2026-10-01
 - Branch: `codex/migrate-media-storage-to-tencent-cos`
 - Remote: `origin/codex/migrate-media-storage-to-tencent-cos`
 - OpenSpec change: `migrate-media-storage-to-tencent-cos`
-- OpenSpec progress: `41/55` (task `1.2` reopened after verifying missing CI access)
-- Latest implementation commit: `c358a20` (`fix(storage): preserve processing and upload recovery`)
-- Implementation commits through `c358a20` are local; they have not been pushed or deployed.
+- OpenSpec progress: `42/55` (task `1.2` complete after role-authenticated CI verification)
+- Latest implementation commit: `c14a7d3` (`fix(storage): match Tencent CDN SHA256 Type D authentication`)
+- Implementation commits through `c14a7d3` are pushed and deployed. The active release is `/opt/antv/releases/20261001-c14a7d3-cdn`.
 
-All new image-ingestion paths now use persisted asynchronous `imageSlim` jobs and publish only ready display renditions. Upload recovery is wired through the actual frontend callers. OpenSpec task `6.3` is complete. This is still not a production-ready release: cloud readiness, real integration, cache/range/cost evidence, release/rollback, and the full backend test baseline remain open.
+All new image-ingestion paths use persisted asynchronous `imageSlim` jobs and publish only ready display renditions. The user's actual inspiration image (record `51`) now verifies browser direct upload, a persistent compressed display, authenticated callback recovery, and CDN delivery. This is still not a fully production-ready release: remaining cloud readiness, native post-fix callbacks, video/range/cost evidence, rollback, and the full backend test baseline remain open.
 
 ## 2. Confirmed Product Contract
 
@@ -43,37 +43,33 @@ Completed in the console:
 
 - The bucket and CVM are in the same Tencent Cloud account.
 - The CVM instance role `AntvBackendCosRole` is attached.
-- The role actually has `QcloudCOSDataFullControl`, `QcloudCOSFullAccess`, and `QcloudCOSBucketConfigRead`. The earlier claim that `QcloudCIFullAccess` was attached was incorrect. The CAM role detail page and real CI requests confirm the missing CI access; task `1.2` is reopened.
+- The role has `QcloudCOSDataFullControl`, `QcloudCOSFullAccess`, `QcloudCOSBucketConfigRead`, and now `QcloudCIFullAccess`. The user approved the CI association; actual CVM-role queue access and image-job processing succeed. Task `1.2` is complete; least-privilege tightening remains a follow-up.
 - Permanent `SecretId`/`SecretKey`, `GetFederationToken`, and `AssumeRole` are not part of the selected design.
 
-Server state verified on 2026-10-01:
+Server and cloud state, including read-only rechecks on 2026-10-02:
 
 - SSH alias `antv-prod` authenticates successfully and passwordless `sudo` works. The dedicated deployment key named in the general runbook is absent; an existing configured identity provides access.
-- The user's ignored `D:\信计软件项目\ant_short_TV\backend\env` contains one nonempty Type D key. Only that key was atomically copied into `/opt/antv/shared/env`, preserving other variables, ownership, and permissions; local/remote value hashes matched without printing the value.
-- Recoverable environment backup: `/opt/antv/shared/env.cos-key.20261001T104015Z.bak`.
-- The existing `antv.service` was restarted after the key update. It remains `active/running`, with `ExecMainStatus=0`, `NRestarts=0`, `/v3/api-docs` returning `200`, and protected `/api/currentUser` returning `401` without authentication.
-- The active release is still `/opt/antv/releases/20260929111242-168aee7-storyboard-hotfix`. No COS branch backend or frontend artifact has been uploaded or switched. `/actuator/health` is not exposed by this old release; its `404` is not a startup failure.
-- Read-only preflight found legacy `OBJECT_STORAGE_BUCKET=ant-short-tv` and an explicitly empty `OBJECT_STORAGE_REGION` in both the server environment and the user's local `backend/env`. The server callback URL is correct, but its CDN-domain/storage-class overrides are absent. An empty region overrides the new application's default and fails configuration validation. Do not change the old release's bucket in isolation; switch the COS configuration together with the approved release and preserve the previous environment for rollback.
-- DNS resolves `antvcdn.aixmax.cn` to `antvcdn.aixmax.cn.cdn.dnsv1.com`. This alone does not prove CDN authentication, caching, or range configuration.
-- The initial COS CORS preflight failed. After the user approved cloud configuration changes, the `antv-direct-upload` rule was added for `https://antv.aixmax.cn`, with GET/HEAD/PUT/POST/DELETE, required SDK headers, ETag/CRC64/request-ID exposure, and 600-second preflight caching. PUT preflight with the actual upload headers now returns `200`; no object was created by the probes.
+- The Type D key was copied from the user's ignored local `backend/env` without displaying it; the value was preserved through cutover. The earlier key-only backup is `/opt/antv/shared/env.cos-key.20261001T104015Z.bak`.
+- `/opt/antv/current` resolves to `/opt/antv/releases/20261001-c14a7d3-cdn`. `antv.service` is `active/running`, with `ExecMainStatus=0`, `NRestarts=0`, and `/v3/api-docs` returning `200`.
+- Server `/opt/antv/shared/env` now specifies `antv-1418200553`, `ap-guangzhou`, `INTELLIGENT_TIERING`, `https://antvcdn.aixmax.cn`, and the callback URL above. The main checkout's ignored `backend/env` still has the legacy bucket and empty region; do not overwrite unrelated user settings. Task `1.1` remains open until both deployed profiles are verified.
+- DNS resolves `antvcdn.aixmax.cn` to `antvcdn.aixmax.cn.cdn.dnsv1.com`. Actual signed-object HTTPS delivery, expiry rejection, and cache reuse now succeed; this does not prove all CDN settings or video range behavior.
+- The approved `antv-direct-upload` CORS rule allows `https://antv.aixmax.cn`, GET/HEAD/PUT/POST/DELETE, required SDK headers, ETag/CRC64/request-ID exposure, and 600-second preflight caching. PUT preflight with actual upload headers returns `200`; the user's image upload also completed. Full multipart renewal/resume coverage remains open.
 - Intelligent tiering is enabled with a 30-day transition. Lifecycle rules now abort incomplete multipart uploads after three days and expire only `uploads/` staging objects after seven days. Versioning is `Off`, and no replication configuration exists. Failed-intermediate cleanup, global acceleration, full browser-upload behavior, and alarms remain unverified.
-- The user approved retaining the persistent-rendition design after comparing costs. `imageSlim` API usage is enabled and access-time automatic compression remains disabled. The COS console now shows the picture queue `queue-pic-process-1` and media queues in use; an earlier CI view showed no queues. Use a real role-authenticated API call rather than an earlier UI observation to prove current readiness.
-- CI requests initially returned `PicBucketUnBinded`; after queue activation they return `401 AccessDenied`. The remaining blocker is the CVM role's missing CI policy, not another image-compression design change. Do not broaden CAM access without explicit confirmation.
-- The unsigned CDN HTTPS root probe reaches the CDN and returns `403`; it is not a signed-object authentication or cache test.
-- The release filesystem has approximately 16 GiB available.
-- Both matched artifacts are staged under `/tmp/20261001-89efbfc-cos/`, with local/remote SHA-256 matches. Backend SHA-256 is recorded below; frontend archive SHA-256 is `0BA6EF0C6C0100AA819330509593DDE8A0B3FFAA0FC986B777B7D002D7CB2D8C`. The attempted branch push failed because GitHub port 443 was unreachable; the verified commit remains local and has not been published upstream.
-- Pre-cutover backups are under `/opt/antv/backups/20261001-89efbfc-cos/`: `env.before`, `database.sql.gz`, and `shared-files.tar.gz` (workflow Skills and review exports), plus previous CORS/lifecycle settings. The dump's 247,727,591 uncompressed bytes and gzip integrity were verified; the shared archive is readable. This snapshot predates the eventual release switch and must not be treated as a snapshot of later writes.
-- Read-only Flyway validation against the complete SQL and Java migrations passed for 125 migrations. The database remains at `V122`; COS migrations have not run. The checked execution/analysis/review/decomposition task categories had zero active work during preflight.
+- `imageSlim` API usage and picture/media queues are enabled; access-time automatic compression remains disabled. Earlier `PicBucketUnBinded` and `401 AccessDenied` blockers were resolved by activation and the approved CI role policy. Do not create duplicate bucket-trigger workflows.
+- The user added exact CDN Referer origin `antv.aixmax.cn`, preserving `aixmax.cn` and SHA256 Type D authentication. App-origin signed GETs return `200`; expired and tampered signatures return `403`.
+- Backend artifact SHA-256 is recorded below; the unchanged frontend archive SHA-256 is `0BA6EF0C6C0100AA819330509593DDE8A0B3FFAA0FC986B777B7D002D7CB2D8C`. Current diagnostic classes are under `/tmp/20261001-c14a7d3-cdn/`.
+- Retained releases include `/opt/antv/releases/20261001-80f1b40-callback`, `/opt/antv/releases/20261001-89efbfc-cos`, and the original MinIO release `/opt/antv/releases/20260929111242-168aee7-storyboard-hotfix`.
+- Pre-cutover backups are under `/opt/antv/backups/20261001-89efbfc-cos/`: `env.before`, `env.cutover.before`, `env.scheduler.before`, `database.sql.gz`, and `shared-files.tar.gz` (workflow Skills and review exports), plus previous CORS/lifecycle settings. The dump's 247,727,591 uncompressed bytes and gzip integrity were verified; the shared archive is readable. These snapshots predate later user writes; do not restore them blindly.
+- Flyway `V123` through `V127` are applied successfully; the database is at `V127`. The checked execution/analysis/review/decomposition categories have zero active work on the latest read-only check.
+- The default single scheduler thread was occupied by subscription grant processing, delaying publication even after media became ready. The approved release now runs with literal shared-env property `spring.task.scheduling.pool.size=4`; publication reconciled successfully after restart. A possible overdue-period loop in `CommercialSubscriptionGrantService` is a separate billing follow-up, not fixed by this storage change.
 
-Still required before production integration testing:
+Remaining environment and acceptance checks:
 
-- Apply the COS runtime configuration in the storage runbook together with the release switch, retaining the configured Type D key. Verify both deployed profiles; task `1.1` remains open.
-- Obtain approval for the missing CI role policy, associate it, and prove the actual CVM role can query queues and submit jobs before release.
-- Verify every required CORS method/header through the actual browser workflow; the formal site's PUT preflight alone does not close task `1.3`.
+- Verify both deployed profiles and every required multipart CORS method/header through actual browser upload, renewal, and resume; tasks `1.1` and `1.3` remain open.
 - Complete and verify failed-intermediate cleanup after 14 days without targeting durable originals or ready derivatives.
 - Verify versioning, cross-region replication, and global acceleration remain disabled.
-- Verify CDN HTTPS, private-origin authorization, Type D authentication, cache-key exclusion for only `sign,t`, 30-day node caching, 7-day browser caching, disabled auto-refresh, and coalesced origin requests.
-- Verify the active Cloud Infinite picture queue and real authenticated callback routing. Application-submitted jobs already supply fixed original inputs and `derived/` outputs; do not add a duplicate bucket-trigger workflow.
+- Complete CDN private-origin/configuration inspection, cache-key exclusion for only `sign,t`, 30-day node caching, disabled auto-refresh, and coalesced origin requests. Actual browser `Cache-Control` is currently `max-age=259200` (three days), not the required seven days.
+- Verify a newly submitted post-fix job receives a native authenticated callback without replay, plus the video snapshot/display chain. The existing image was recovered by replaying its verified successful provider result; no second compression job was submitted.
 - Configure video-only range origin and prove a private video returns valid `206 Partial Content` responses.
 - Configure cost and usage alarms for COS, CDN, Cloud Infinite, retrieval, requests, storage, and application public bandwidth.
 
@@ -105,6 +101,7 @@ Still required before production integration testing:
 
 - Added immutable media-object/rendition metadata and seven-day delivery-grant persistence.
 - Added deterministic Type D CDN URL derivation and separate COS presigned URLs for external AI providers.
+- Real CDN compatibility fix `c14a7d3` signs `SHA256(key + path + hexadecimal_timestamp)`. Tencent expires URLs at `t + configured lifetime`, so `t` is the persisted grant expiry minus `OBJECT_STORAGE_CDN_TYPE_D_EXPIRY_SECONDS` (default `604800`), not the expiry itself. This setting must match the console; grant duration is configured separately.
 - Style-library delivery now also persists seven-day grants, retaining the existing public-access policy: guest subject `0`, authenticated subject the actual user ID.
 - Multimodal video separates the browser display reference from the provider's original-image access URL.
 - Updated frontend consumers to prefer display/thumbnail/cover delivery URLs rather than durable provider URLs.
@@ -121,6 +118,7 @@ Still required before production integration testing:
 - Production storage no longer uses synchronous `PicOperations` or rendition HEAD polling.
 - Internal AI-image phases `SETTLING` and `RENDERING` are exposed as `RUNNING`; running filters, cancellation, and superseding cover both phases. Transactional, claim-guarded publication can resume after an already committed domain publication.
 - Callback bearer tokens are stable, domain-separated HMAC-SHA256 values derived from the Type D key and operation/output key. Only their hashes are stored; retries after process restart use the same token.
+- Real callback fix `80f1b40` accepts single-object or array `JobsDetail`. A valid correlated image success always HEAD-verifies output bytes, MIME type, and ETag, including when Tencent's `ProcessResult.Etag` is empty. If CI wrote STANDARD, an ETag-conditional server-side self-copy aligns the output with intelligent tiering and verifies unchanged content. Token/correlation checks precede COS I/O; duplicate terminal callbacks do not repeat verification or processing.
 
 ## 5. Verification Evidence
 
@@ -138,6 +136,12 @@ Tests run: 37 across 6 classes; Failures: 0, Errors: 0, Skipped: 0
 
 Final storage/copy/upload-session regressions
 Tests run: 27 across 3 classes; Failures: 0, Errors: 0, Skipped: 0
+
+Real callback regressions (80f1b40)
+Tests run: 28 across 4 classes; Failures: 0, Errors: 0, Skipped: 0
+
+Real Type D regressions (c14a7d3)
+Tests run: 30 across 4 classes; Failures: 0, Errors: 0, Skipped: 0
 
 mvn -DskipTests package (after c358a20)
 BUILD SUCCESS; compiled 711 main and 283 test sources
@@ -158,8 +162,30 @@ git diff --check
 Exit 0
 ```
 
-Built backend candidate: `backend/target/ant-short-tv-backend-0.1.0-SNAPSHOT.jar`.
-SHA-256: `DB0C6BF2BA9D2888594322EAEC46798550D5DE92BA0F7B2AE7518C176C138646`.
+The callback and Type D fixes each passed backend packaging, frontend lint/type checking, and antd lint before deployment. No frontend source changed in those fixes.
+
+Deployed backend: `/opt/antv/current/backend/ant-short-tv-backend-0.1.0-SNAPSHOT.jar`.
+SHA-256: `47EFC9E4DFC653F64BB8CBF8B62100C8A2907D793B748E378EA0A9753407B751` (rechecked on the server on 2026-10-02).
+
+### Real user-image acceptance evidence (2026-10-02)
+
+The user's image titled `好看的你`, `inspiration_creation.id=51`, is not the generated smoke-test fixture. Preserve its objects, metadata, and publication status.
+
+| Evidence | Observed result |
+| --- | --- |
+| Original | PNG, `2,351,331` bytes, `852 x 1846`, intelligent tiering |
+| Persistent display | `798,037` bytes, `852 x 1846`, intelligent tiering; approximately 66% fewer bytes |
+| Business state | `IMPORTED / READY / PUBLISHED` |
+| Processing | Job `1`, `SUCCEEDED`, attempt `1`; total display-job count `1` |
+| Valid / repeat / changed-signature CDN GET | `200 / Cache Hit`, content length `798037` |
+| Expired / tampered signature | `403` |
+| Browser cache | `max-age=259200`; seven-day target remains unmet |
+| Browser rendering | Image complete, natural dimensions `852 x 1846` in authenticated management view |
+| Application thumbnail endpoint | `302`, application response body `0` bytes; media delivered by CDN |
+
+Tencent completed the one compression at `2026-10-01T20:54:25+0800`. Its initial callbacks failed before `80f1b40`; recovery validated raw provider XML correlation and the stored token hash, then replayed the same authenticated success twice (both `200`). There was no direct database READY mutation and no new compression submission. Native callback acceptance for a new post-fix job still needs separate evidence. CDN reads did not increase job count or attempts; actual billable CI usage and traffic costs remain to be reconciled with Tencent billing.
+
+The SDK's generic picture-job response incorrectly reports the input as `ap-guangzhou`; raw authenticated XML from `/pic_jobs/` confirms the real input matches. Do not weaken production correlation checks based on that SDK parsing issue.
 
 Full backend `mvn test` is currently blocked by a known branch-baseline authentication test mismatch:
 
@@ -172,11 +198,11 @@ Full backend `mvn test` is currently blocked by a known branch-baseline authenti
 
 ## 6. Known Blocking Gaps
 
-### P0: Real cloud readiness and release approval
+### P0: Remaining real-cloud readiness
 
-Tasks `1.1` through `1.7` and `8.4` through `8.9` require real environment evidence. Deploying the Type D key did not deploy the migration. Obtain explicit approval before switching the production release, running Flyway, and making historical MinIO-only media unavailable. Keep the existing release and its matching environment for rollback.
+The user approved the COS configuration/release switch, Flyway, historical MinIO-only media becoming unavailable, CI role access, and the exact application Referer. Deployment and one real-image flow are verified. Tasks `1.1`, `1.3` through `1.7`, and `8.4` through `8.9` remain open for their unverified portions; do not turn partial image evidence into full release readiness.
 
-The user has approved the release switch and accepted the historical-media breakage, but the switch is currently withheld because task `1.2` lacks real CI access. The active release and legacy bucket/region environment are unchanged. Adding CI access to the role needs separate confirmation because it broadens security-sensitive cloud permissions.
+In particular, browser caching is three rather than seven days, native post-fix callbacks and video covers/ranges are not yet accepted, cost alerts/bills are not verified, and the rollback drill has not been performed. Keep the prior releases and matching environments recoverable.
 
 ### P0: Existing applied migration and callback compatibility
 
@@ -190,12 +216,12 @@ Task `8.3` remains open for the registration fixture mismatch described above. D
 
 ## 7. Recommended Continuation Order
 
-1. Verify runtime configuration, cloud readiness, migration history, and callback compatibility without changing the running old release.
-2. Obtain approval for the coordinated COS configuration/release switch and accepted historical-media breakage; back up the database, shared environment, and workflow Skill files together.
-3. Publish the verified commit and deploy matched frontend/backend artifacts through the versioned-release procedure. Preserve the previous release and its matching environment.
-4. Execute browser upload, backend internal upload, image/cover callback, CDN authentication/cache, video range, and cost checks in dedicated smoke-test resources. Record evidence per OpenSpec item.
-5. Perform the rollback drill and document COS-only objects being unavailable to the old release. Mark production readiness only after these checks pass.
-6. Repair or explicitly accept the existing registration-test baseline before closing `8.3`; do not repeat already passed full suites for documentation-only changes.
+1. Preserve the verified user image and current release; do not replay its callback or resubmit compression again.
+2. Complete cache configuration and both-profile readiness, then verify a new native image callback and the video snapshot/display chain in explicitly scoped smoke-test resources.
+3. Validate backend internal streaming/multipart upload, browser renewal/resume, video ranges and origin bytes, lifecycle targeting, and concurrent public-bandwidth usage. Record evidence per OpenSpec item.
+4. Reconcile compression operations, cache hit ratio, COS/CDN traffic, and actual bills; configure and exercise cost alerts before revisiting the persistent-rendition design.
+5. Obtain a suitable maintenance window for a rollback drill; take a fresh snapshot first so later user writes are not lost. Record COS-only object limitations under the old release.
+6. Repair or explicitly accept the registration-test baseline before closing `8.3`. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Avoid repeating full suites for documentation-only changes.
 
 ## 8. Commands to Resume
 
@@ -227,4 +253,4 @@ git diff --check
 
 - Never commit the Type D key, CAM credentials, security tokens, COS authorization headers, callback bearer tokens, or complete signed URLs.
 - The callback URL base is configuration; each processing job appends its stable, single-purpose HMAC bearer token, and only the token hash is stored. Never log the full callback URL.
-- Broad COS access is currently attached. The proposed initial-readiness CI managed policy still requires confirmation and association. Tightening to least privilege remains a follow-up and must not remove the exact upload, copy, metadata, CI job, callback-output, and delivery operations used by the application.
+- Broad COS and approved CI access are attached. Tightening to least privilege remains a follow-up and must not remove the exact upload, copy, metadata, CI job, callback-output, and delivery operations used by the application.
