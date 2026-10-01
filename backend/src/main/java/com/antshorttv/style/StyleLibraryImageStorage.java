@@ -2,8 +2,11 @@ package com.antshorttv.style;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.security.CurrentPrincipal;
+import com.antshorttv.storage.DeliveryGrantRequest;
 import com.antshorttv.storage.ImageDisplayRenditionPlanner;
 import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.MediaDeliveryGrantService;
 import com.antshorttv.storage.MediaObjectIdentity;
 import com.antshorttv.storage.ObjectStorageKeyFactory;
 import com.antshorttv.storage.ObjectStorageService;
@@ -28,25 +31,33 @@ public class StyleLibraryImageStorage {
     private final ObjectStorageKeyFactory keys;
     private final ImageDisplayRenditionService imageRenditions;
     private final StyleLibraryMapper styleLibraryMapper;
+    private final CurrentPrincipal currentPrincipal;
+    private final MediaDeliveryGrantService deliveryGrants;
 
     public StyleLibraryImageStorage(
         ObjectStorageService objectStorageService,
         ObjectStorageKeyFactory keys,
         ImageDisplayRenditionService imageRenditions,
-        StyleLibraryMapper styleLibraryMapper
+        StyleLibraryMapper styleLibraryMapper,
+        CurrentPrincipal currentPrincipal,
+        MediaDeliveryGrantService deliveryGrants
     ) {
         this.objectStorageService = objectStorageService;
         this.keys = keys;
         this.imageRenditions = imageRenditions;
         this.styleLibraryMapper = styleLibraryMapper;
+        this.currentPrincipal = currentPrincipal;
+        this.deliveryGrants = deliveryGrants;
     }
 
     public String deliveryUrl(StyleLibraryEntity style) {
-        if (style == null || style.getStoragePath() == null || style.getStoragePath().isBlank()) {
+        if (style == null || !Boolean.TRUE.equals(style.getIsPublic())
+            || style.getStoragePath() == null || style.getStoragePath().isBlank()) {
             throw unavailable();
         }
+        MediaObjectIdentity identity = identity(style);
         if (!historical(style.getStoragePath())) {
-            RegisteredMediaDetails display = imageRenditions.displayDetails(identity(style));
+            RegisteredMediaDetails display = imageRenditions.displayDetails(identity);
             if (display == null || !"READY".equals(display.status()) || display.fileSize() <= 0
                 || display.mimeType() == null
                 || !Set.of("image/jpeg", "image/png", "image/gif").contains(display.mimeType())
@@ -54,7 +65,12 @@ public class StyleLibraryImageStorage {
                 throw unavailable();
             }
         }
-        return objectStorageService.publicUrl(style.getStoragePath());
+        // Subject 0 is reserved for anonymous access to styles already authorized as public.
+        Long subjectId = currentPrincipal.get().map(user -> user.userId()).orElse(0L);
+        return deliveryGrants.issue(new DeliveryGrantRequest(
+            identity.tenantId(), identity.projectId(), subjectId, identity.assetType(),
+            identity.assetId(), identity.versionId(), "DISPLAY", style.getStoragePath(), false
+        )).url();
     }
 
     public StoredStyleImage transfer(String externalId, String sourceImageUrl) {

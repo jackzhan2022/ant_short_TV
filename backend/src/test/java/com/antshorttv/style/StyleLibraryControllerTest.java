@@ -19,8 +19,6 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.mockito.Mockito.when;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 class StyleLibraryControllerTest {
@@ -53,12 +51,6 @@ class StyleLibraryControllerTest {
 
     @Test
     void redirectsPublicStyleImageToPrivateCdn() throws Exception {
-        when(objectStorageService.publicUrl(
-            "style-library/public/864621266010645040/cover-compressed.jpg"
-        )).thenReturn(
-            "https://antvcdn.aixmax.cn/style-library/public/864621266010645040/cover-compressed.jpg?t=1&sign=x"
-        );
-
         mockMvc.perform(get("/api/style-library/images/864621266010645040"))
             .andExpect(status().isFound())
             .andExpect(header().string(
