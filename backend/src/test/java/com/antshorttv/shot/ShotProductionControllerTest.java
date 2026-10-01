@@ -17,8 +17,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.antshorttv.user.UserEntity;
 import com.antshorttv.user.UserMapper;
 import com.jayway.jsonpath.JsonPath;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -33,7 +35,7 @@ import org.springframework.test.annotation.DirtiesContext;
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-class ShotProductionControllerTest {
+class ShotProductionControllerTest extends com.antshorttv.support.RegistrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -150,7 +152,7 @@ class ShotProductionControllerTest {
             String.class,
             composeResultId
         );
-        assert Files.exists(Path.of("target/test-shot-storage", storagePath.substring(1)));
+        org.assertj.core.api.Assertions.assertThat(storedObjectBytes(storagePath)).isNotEmpty();
     }
 
     @Test
@@ -210,8 +212,9 @@ class ShotProductionControllerTest {
             .andExpect(jsonPath("$.errorMessage", containsString("请先生成或上传分镜视频")));
     }
 
-    @Test
-    void updatesSubtitleTimelineAndExportsSrt() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void updatesSubtitleTimelineAndExportsSrt(boolean selected) throws Exception {
         String token = registerUser("13800017004", "Subtitle Editor");
         Long tenantId = createTenant(token, "字幕编辑团队");
         Long ownerId = userIdByMobile("13800017004");
@@ -254,6 +257,15 @@ class ShotProductionControllerTest {
             .andExpect(status().isOk())
             .andReturn();
         Long subtitleId = readLong(subtitleCreate, "$.data.id");
+        String originalSrtUrl = JsonPath.read(subtitleCreate.getResponse().getContentAsString(), "$.data.srtUrl");
+        byte[] originalSrt = storedObjectBytes(originalSrtUrl);
+        if (selected) {
+            mockMvc.perform(put("/api/projects/%d/storyboard-subtitles/%d/selected".formatted(projectId, subtitleId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.selected", is(true)));
+        }
 
         MvcResult updated = mockMvc.perform(put("/api/projects/%d/storyboard-subtitles/%d".formatted(projectId, subtitleId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -273,7 +285,22 @@ class ShotProductionControllerTest {
             .andReturn();
 
         String srtUrl = JsonPath.read(updated.getResponse().getContentAsString(), "$.data.srtUrl");
-        String srtContent = Files.readString(Path.of("target/test-shot-storage", stripQuery(srtUrl).substring(1)));
+        org.assertj.core.api.Assertions.assertThat(srtUrl).isNotEqualTo(originalSrtUrl);
+        org.assertj.core.api.Assertions.assertThat(storedObjectBytes(originalSrtUrl)).isEqualTo(originalSrt);
+        String currentSrtKey = jdbc.queryForObject(
+            "select srt_url from storyboard_subtitle where id = ?", String.class, subtitleId);
+        if (selected) {
+            org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                "select current_subtitle_url from storyboard where id = ?", String.class, storyboardId))
+                .isEqualTo(currentSrtKey);
+            org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                "select current_subtitle_id from storyboard where id = ?", Long.class, storyboardId))
+                .isEqualTo(subtitleId);
+        } else {
+            org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                "select current_subtitle_id from storyboard where id = ?", Long.class, storyboardId)).isNull();
+        }
+        String srtContent = new String(storedObjectBytes(srtUrl), StandardCharsets.UTF_8);
         assert srtContent.contains("00:00:01,500 --> 00:00:03,250");
         assert srtContent.contains("字幕编辑后的示例。");
     }
@@ -524,9 +551,9 @@ class ShotProductionControllerTest {
             String.class,
             versionId
         );
-        assert Files.exists(Path.of("target/test-shot-storage", stripQuery(storagePath).substring(1)));
+        org.assertj.core.api.Assertions.assertThat(storedObjectBytes(storagePath)).isNotEmpty();
 
-        mockMvc.perform(get(storagePath))
+        mockMvc.perform(get("/" + storagePath))
             .andExpect(status().isUnauthorized());
     }
 
@@ -595,7 +622,8 @@ class ShotProductionControllerTest {
             .andExpect(jsonPath("$.data.videoVersion.current", is(true)));
     }
 
-    private Long createStoryboard(Long tenantId, Long projectId, Long createdBy) {
+    private Long createStoryboard(Long tenantId, Long projectId, Long createdBy) throws Exception {
+        String firstFrame = storeStoryboardFrame(tenantId, projectId, 1);
         jdbc.update("""
             insert into storyboard
               (tenant_id, project_id, episode_no, shot_no, shot_type, visual_description,
@@ -604,8 +632,8 @@ class ShotProductionControllerTest {
             values
               (?, ?, 1, 1, 'MEDIUM', '雨夜中女主站在豪宅门口', '女主',
                '缓慢推门', '你终于来了。', '豪宅门口', 5, '雨夜豪宅首帧', '镜头推近女主',
-               'https://cdn.example.com/first-frame.jpg', 9001, '/materials/1/1/videos/mock.mp4', 'READY', ?, now(), now())
-            """, tenantId, projectId, createdBy);
+               ?, 9001, '/materials/1/1/videos/mock.mp4', 'READY', ?, now(), now())
+            """, tenantId, projectId, firstFrame, createdBy);
         return jdbc.queryForObject("select max(id) from storyboard where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
     }
 
@@ -634,7 +662,8 @@ class ShotProductionControllerTest {
         int durationSeconds,
         int width,
         int height
-    ) {
+    ) throws Exception {
+        String firstFrame = storeStoryboardFrame(tenantId, projectId, shotNo);
         jdbc.update("""
             insert into storyboard
               (tenant_id, project_id, episode_no, shot_no, shot_type, visual_description,
@@ -644,9 +673,9 @@ class ShotProductionControllerTest {
             values
               (?, ?, ?, ?, 'MEDIUM', '单镜头画面', '女主',
                '继续推进', '下一句对白', '宴会厅', ?, '首帧', '视频提示词',
-               'https://cdn.example.com/first-frame.jpg', ?, ?, ?,
+               ?, ?, ?, ?,
                ?, 'READY', ?, now(), now())
-            """, tenantId, projectId, episodeNo, shotNo, durationSeconds, shotResultId, videoUrl, shotResultId, videoUrl, createdBy);
+            """, tenantId, projectId, episodeNo, shotNo, durationSeconds, firstFrame, shotResultId, videoUrl, shotResultId, videoUrl, createdBy);
         Long storyboardId = jdbc.queryForObject("select max(id) from storyboard where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
         jdbc.update("""
             insert into shot_compose_result
@@ -669,6 +698,15 @@ class ShotProductionControllerTest {
             storyboardId
         );
         return storyboardId;
+    }
+
+    private String storeStoryboardFrame(Long tenantId, Long projectId, int shotNo) throws Exception {
+        String key = "materials/%d/%d/images/202610/%d/seed-first-frame/original.png"
+            .formatted(tenantId, projectId, shotNo);
+        ByteArrayOutputStream image = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", image);
+        putStoredObject(key, image.toByteArray(), "image/png");
+        return "/" + key;
     }
 
     private Long insertPendingVoiceTask(
@@ -730,8 +768,8 @@ class ShotProductionControllerTest {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"%s","password":"Password123"}
-                    """.formatted(mobile, nickname)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"%s","password":"Password123"}
+                    """.formatted(mobile, registrationVerificationCode(mockMvc, mobile), nickname)))
             .andExpect(status().isOk())
             .andReturn();
         return com.antshorttv.support.SessionTestSupport.sessionCredential(result);
@@ -776,8 +814,4 @@ class ShotProductionControllerTest {
         return "Bearer " + token;
     }
 
-    private String stripQuery(String value) {
-        int index = value.indexOf('?');
-        return index < 0 ? value : value.substring(0, index);
-    }
 }

@@ -19,7 +19,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class PlatformTenantControllerTest {
+class PlatformTenantControllerTest extends com.antshorttv.support.RegistrationTestSupport {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcTemplate jdbc;
@@ -104,8 +104,8 @@ class PlatformTenantControllerTest {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"%s","password":"Password123"}
-                    """.formatted(mobile, nickname)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"%s","password":"Password123"}
+                    """.formatted(mobile, registrationVerificationCode(mockMvc, mobile), nickname)))
             .andExpect(status().isOk())
             .andReturn();
         Number userId = com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.data.user.id");

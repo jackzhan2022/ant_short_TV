@@ -292,13 +292,14 @@ public class ShotProductionService {
         subtitle.subtitleType = request.subtitleType().trim();
         subtitle.content = writeJsonContent(text, segments);
         subtitle.styleConfig = writeJson(request.styleConfig() == null ? Map.of("fontSize", "MEDIUM", "position", "BOTTOM") : request.styleConfig());
-        subtitle.srtUrl = subtitleStoragePath(tenantId, projectId, subtitle.id);
+        subtitle.srtUrl = "";
         subtitle.isSelected = false;
         subtitle.status = ShotResultStatus.ACTIVE.name();
         subtitle.createdBy = context.userId();
         subtitle.createdAt = now;
         subtitle.updatedAt = now;
         subtitleMapper.insert(subtitle);
+        subtitle.srtUrl = subtitleStoragePath(tenantId, projectId, subtitle.id);
         subtitle.srtUrl = writeSubtitleFile(tenantId, projectId, subtitle.id, segments, subtitle.srtUrl);
         subtitleMapper.updateById(subtitle);
         recordOperation(context, "CREATE_STORYBOARD_SUBTITLE", subtitle.id, servletRequest);
@@ -320,9 +321,19 @@ public class ShotProductionService {
         if (request.styleConfig() != null) {
             subtitle.styleConfig = writeJson(request.styleConfig());
         }
-        subtitle.srtUrl = writeSubtitleFile(tenantId, projectId, subtitle.id, segments, subtitle.srtUrl);
+        subtitle.srtUrl = writeSubtitleFile(
+            tenantId, projectId, subtitle.id, segments, subtitleStoragePath(tenantId, projectId, subtitle.id));
         subtitle.updatedAt = LocalDateTime.now();
         subtitleMapper.updateById(subtitle);
+        if (subtitle.id.equals(storyboard.currentSubtitleId)) {
+            storyboardMapper.update(null, new UpdateWrapper<StoryboardEntity>()
+                .set("current_subtitle_url", subtitle.srtUrl)
+                .set("updated_at", subtitle.updatedAt)
+                .eq("id", storyboard.id)
+                .eq("tenant_id", tenantId)
+                .eq("project_id", projectId)
+                .eq("current_subtitle_id", subtitle.id));
+        }
         recordOperation(context, "UPDATE_STORYBOARD_SUBTITLE", subtitle.id, servletRequest);
         return subtitleResponse(subtitle);
     }

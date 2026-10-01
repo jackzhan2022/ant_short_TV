@@ -309,12 +309,10 @@ public class VideoDecompositionService {
     private void validateVideos(TenantContext context, List<VideoUploadMetadataRequest> videos) {
         for (VideoUploadMetadataRequest video : videos) {
             String storagePath = video.storagePath().trim();
-            if (!storagePath.startsWith("uploads/%d/".formatted(context.tenantId())) || storagePath.contains("..")) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频文件必须属于当前租户的拆剧素材。");
-            }
             VerifiedMediaUpload verified;
             try {
-                verified = uploadSessionService.requireCompleted(context.userId(), video.uploadSessionToken());
+                verified = uploadSessionService.requireCompleted(
+                    context.userId(), context.tenantId(), video.uploadSessionToken());
             } catch (IllegalArgumentException exception) {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR, exception.getMessage());
             }

@@ -7,7 +7,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
+import com.qcloud.cos.auth.BasicSessionCredentials;
+import com.qcloud.cos.auth.COSCredentialsProvider;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -146,6 +149,37 @@ class MediaUploadSessionServiceTest {
         assertThatThrownBy(() -> service.authorize(44L, created.sessionToken(), request))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("上传会话不存在");
+    }
+
+    @Test
+    void authorizesSdkMultipartLookupOnlyForTheOwnedPendingSession() {
+        InMemoryStore store = new InMemoryStore();
+        COSCredentialsProvider credentials = mock(COSCredentialsProvider.class);
+        when(credentials.getCredentials()).thenReturn(
+            new BasicSessionCredentials("instance-id", "instance-key", "instance-token")
+        );
+        CosUploadRequestAuthorizer authorizer = new CosUploadRequestAuthorizer(
+            credentials, new ObjectStorageProperties(),
+            Clock.fixed(Instant.ofEpochSecond(1_700_000_000L), ZoneOffset.UTC)
+        );
+        MediaUploadSessionService service = service(store, authorizer);
+        MediaUploadSession created = service.create(
+            new CreateMediaUploadSession(11L, null, 33L, "multipart.mp4", "video/mp4", 35_403_873L)
+        );
+        CosUploadAuthorizationRequest request = new CosUploadAuthorizationRequest(
+            "GET", "/", Map.of("uploads", "", "prefix", created.objectKey()),
+            Map.of("Host", "antv-1418200553.cos.ap-guangzhou.myqcloud.com")
+        );
+
+        assertThat(assertDoesNotThrow(() -> service.authorize(33L, created.sessionToken(), request)).authorization())
+            .contains("q-url-param-list=prefix;uploads");
+        assertThatThrownBy(() -> service.authorize(44L, created.sessionToken(), request))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("上传会话不存在");
+
+        service.cancel(33L, created.sessionToken());
+
+        assertThatThrownBy(() -> service.authorize(33L, created.sessionToken(), request))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("不可签名");
     }
 
     private MediaUploadSessionService service(

@@ -25,6 +25,9 @@ public class CosUploadRequestAuthorizer {
     private static final Set<String> LIST_PART_QUERY = Set.of(
         "uploadId", "encoding-type", "max-parts", "part-number-marker"
     );
+    private static final Set<String> LIST_UPLOAD_QUERY = Set.of(
+        "uploads", "prefix", "encoding-type", "max-uploads", "key-marker", "upload-id-marker"
+    );
 
     private final COSCredentialsProvider credentialsProvider;
     private final ObjectStorageProperties properties;
@@ -81,8 +84,7 @@ public class CosUploadRequestAuthorizer {
         CosUploadAuthorizationRequest request
     ) {
         if (expectedObjectKey == null || expectedObjectKey.isBlank() || request == null
-            || request.method() == null || request.pathname() == null
-            || !("/" + expectedObjectKey).equals(request.pathname())) {
+            || request.method() == null || request.pathname() == null) {
             throw new IllegalArgumentException("COS 上传签名请求路径不合法。");
         }
         HttpMethodName method;
@@ -92,7 +94,13 @@ public class CosUploadRequestAuthorizer {
             throw new IllegalArgumentException("COS 上传签名请求方法不合法。", exception);
         }
         Map<String, String> query = safe(request.query());
-        if (!validOperation(method, query)) {
+        // The SDK looks up resumable uploads at the bucket root before initiating multipart upload.
+        boolean multipartLookup = method == HttpMethodName.GET && "/".equals(request.pathname())
+            && validMultipartLookup(expectedObjectKey, query);
+        if (!("/" + expectedObjectKey).equals(request.pathname()) && !multipartLookup) {
+            throw new IllegalArgumentException("COS 上传签名请求路径不合法。");
+        }
+        if (!multipartLookup && !validOperation(method, query)) {
             throw new IllegalArgumentException("COS 上传签名请求操作不合法。");
         }
         Map<String, String> headers = normalizedHeaders(request.headers());
@@ -116,6 +124,12 @@ public class CosUploadRequestAuthorizer {
             }
         }
         return method;
+    }
+
+    private boolean validMultipartLookup(String expectedObjectKey, Map<String, String> query) {
+        return "".equals(query.get("uploads")) && expectedObjectKey.equals(query.get("prefix"))
+            && LIST_UPLOAD_QUERY.containsAll(query.keySet())
+            && (!query.containsKey("key-marker") || expectedObjectKey.equals(query.get("key-marker")));
     }
 
     private boolean createsObject(HttpMethodName method, Map<String, String> query) {

@@ -18,7 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class ProductionTaskControllerTest {
+class ProductionTaskControllerTest extends com.antshorttv.support.RegistrationTestSupport {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired com.antshorttv.rbac.RbacService rbac;
@@ -399,7 +399,7 @@ class ProductionTaskControllerTest {
 
     private String register(String mobile) throws Exception {
         return SessionTestSupport.sessionCredential(mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
-            .content("{\"mobile\":\""+mobile+"\",\"nickname\":\"Task tester\",\"verificationCode\":\"123456\",\"password\":\"Password123\"}"))
+            .content("{\"mobile\":\""+mobile+"\",\"nickname\":\"Task tester\",\"verificationCode\":\""+registrationVerificationCode(mvc, mobile)+"\",\"password\":\"Password123\"}"))
             .andExpect(status().isOk()).andReturn());
     }
     private long user(String mobile) { return jdbc.queryForObject("select id from app_user where mobile=?",Long.class,mobile); }

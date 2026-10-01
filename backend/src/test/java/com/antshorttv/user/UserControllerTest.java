@@ -15,7 +15,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class UserControllerTest {
+class UserControllerTest extends com.antshorttv.support.RegistrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -25,8 +25,8 @@ class UserControllerTest {
         MvcResult registration = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"13800001001","verificationCode":"123456","nickname":"Retired API User","password":"Password123"}
-                    """))
+                    {"mobile":"13800001001","verificationCode":"%s","nickname":"Retired API User","password":"Password123"}
+                    """.formatted(registrationVerificationCode(mockMvc, "13800001001"))))
             .andExpect(status().isOk())
             .andReturn();
         Cookie session = registration.getResponse().getCookie("ANT_SHORT_SESSION");

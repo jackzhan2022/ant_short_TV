@@ -18,7 +18,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class CommercialControllerPermissionTest {
+class CommercialControllerPermissionTest extends com.antshorttv.support.RegistrationTestSupport {
     @Autowired MockMvc mockMvc;
 
     @Test
@@ -72,7 +72,7 @@ class CommercialControllerPermissionTest {
 
     private Cookie register(String mobile, String nickname) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
-            .content("{\"mobile\":\"" + mobile + "\",\"verificationCode\":\"123456\",\"nickname\":\"" + nickname + "\",\"password\":\"Password123\"}"))
+            .content("{\"mobile\":\"" + mobile + "\",\"verificationCode\":\"" + registrationVerificationCode(mockMvc, mobile) + "\",\"nickname\":\"" + nickname + "\",\"password\":\"Password123\"}"))
             .andExpect(status().isOk()).andReturn();
         return result.getResponse().getCookie("ANT_SHORT_SESSION");
     }

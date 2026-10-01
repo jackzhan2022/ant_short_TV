@@ -3,6 +3,7 @@ package com.antshorttv.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import com.qcloud.cos.auth.BasicCOSCredentials;
 import com.qcloud.cos.auth.BasicSessionCredentials;
@@ -62,6 +63,82 @@ class CosUploadRequestAuthorizerTest {
         );
 
         assertThat(value.authorization()).contains("x-cos-sdk-retry");
+    }
+
+    @Test
+    void signsTheCosSdkMultipartLookupForExactlyTheSessionObject() {
+        CosUploadAuthorization value = assertDoesNotThrow(() -> authorizer(sessionCredentials()).authorize(
+            OBJECT_KEY,
+            new CosUploadAuthorizationRequest(
+                "GET", "/", Map.of("uploads", "", "prefix", OBJECT_KEY),
+                Map.of("Host", UPLOAD_HOST)
+            )
+        ));
+
+        assertThat(value.authorization()).contains("q-url-param-list=prefix;uploads");
+        assertThat(value.securityToken()).isEqualTo("instance-token");
+    }
+
+    @Test
+    void signsMultipartLookupPaginationWithinTheExactSessionPrefix() {
+        CosUploadAuthorization value = assertDoesNotThrow(() -> authorizer(sessionCredentials()).authorize(
+            OBJECT_KEY,
+            new CosUploadAuthorizationRequest(
+                "GET", "/", Map.of(
+                    "uploads", "", "prefix", OBJECT_KEY,
+                    "key-marker", OBJECT_KEY, "upload-id-marker", "upload-1",
+                    "max-uploads", "1000", "encoding-type", "url"
+                ),
+                Map.of("Host", UPLOAD_HOST)
+            )
+        ));
+
+        assertThat(value.authorization())
+            .contains("q-url-param-list=encoding-type;key-marker;max-uploads;prefix;upload-id-marker;uploads");
+    }
+
+    @Test
+    void rejectsMultipartLookupsWithoutTheExactOwnedObjectPrefix() {
+        CosUploadRequestAuthorizer authorizer = authorizer(sessionCredentials());
+        List<Map<String, String>> queries = List.of(
+            Map.of("uploads", ""),
+            Map.of("uploads", "", "prefix", ""),
+            Map.of("uploads", "", "prefix", "uploads/11/"),
+            Map.of("uploads", "", "prefix", "uploads/11/session-2/source.mp4"),
+            Map.of("uploads", "", "prefix", OBJECT_KEY + "/other")
+        );
+
+        for (Map<String, String> query : queries) {
+            assertThatThrownBy(() -> authorizer.authorize(
+                OBJECT_KEY,
+                new CosUploadAuthorizationRequest("GET", "/", query, Map.of("Host", UPLOAD_HOST))
+            )).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void rejectsMultipartLookupMethodPathQueryAndMarkerChanges() {
+        CosUploadRequestAuthorizer authorizer = authorizer(sessionCredentials());
+        Map<String, String> query = Map.of("uploads", "", "prefix", OBJECT_KEY);
+        Map<String, String> headers = Map.of("Host", UPLOAD_HOST);
+        List<CosUploadAuthorizationRequest> requests = List.of(
+            new CosUploadAuthorizationRequest("POST", "/", query, headers),
+            new CosUploadAuthorizationRequest("PUT", "/", query, headers),
+            new CosUploadAuthorizationRequest("DELETE", "/", query, headers),
+            new CosUploadAuthorizationRequest("GET", "/" + OBJECT_KEY, query, headers),
+            new CosUploadAuthorizationRequest("GET", "/other/", query, headers),
+            new CosUploadAuthorizationRequest("GET", "/", Map.of(
+                "uploads", "", "prefix", OBJECT_KEY, "acl", "public-read"
+            ), headers),
+            new CosUploadAuthorizationRequest("GET", "/", Map.of(
+                "uploads", "", "prefix", OBJECT_KEY, "key-marker", "uploads/12/other/source.mp4"
+            ), headers)
+        );
+
+        for (CosUploadAuthorizationRequest request : requests) {
+            assertThatThrownBy(() -> authorizer.authorize(OBJECT_KEY, request))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     @Test
