@@ -36,7 +36,7 @@ class StyleLibraryServiceTest {
         assertThat(styles.get(0).externalId()).isEqualTo("864621266010645040");
         assertThat(styles.get(0).category()).isEqualTo("3D风格");
         assertThat(styles.get(0).storagePath())
-            .isEqualTo("platform/style-library/864621266010645040/source/derived/display.png");
+            .isEqualTo("style-library/public/864621266010645040/cover-compressed.jpg");
         assertThat(styles.get(0).imageUrl())
             .isEqualTo("/api/style-library/images/864621266010645040");
     }

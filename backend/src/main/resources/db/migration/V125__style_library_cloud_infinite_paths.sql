@@ -1,2 +1,2 @@
-update style_library
-   set storage_path = concat('platform/style-library/', external_id, '/source/derived/display.webp');
+-- Intentionally no-op. Historical style-library objects remain at their existing
+-- storage paths because this release does not backfill or verify derived objects.
