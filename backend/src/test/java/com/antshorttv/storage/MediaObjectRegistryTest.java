@@ -69,6 +69,46 @@ class MediaObjectRegistryTest {
     }
 
     @Test
+    void exposesVerifiedRenditionMetadataForDomainReconciliation() {
+        String outputKey = "materials/11/22/images/202609/44/result-44/derived/display.png";
+        registry.registerPendingRendition(
+            identity, "DISPLAY_IMAGE_SLIM", outputKey, "image/png", "INTELLIGENT_TIERING"
+        );
+        store.current.fileSize = 987L;
+        store.current.mimeType = "image/png";
+        store.current.status = "READY";
+
+        RegisteredMediaDetails details = registry.details(identity, "DISPLAY_IMAGE_SLIM");
+
+        assertThat(details.objectKey()).isEqualTo(outputKey);
+        assertThat(details.mimeType()).isEqualTo("image/png");
+        assertThat(details.fileSize()).isEqualTo(987L);
+        assertThat(details.status()).isEqualTo("READY");
+        assertThat(details.errorMessage()).isNull();
+    }
+
+    @Test
+    void acceptsPlatformOwnedMediaIdentityWithTenantZero() {
+        MediaObjectIdentity platformIdentity = new MediaObjectIdentity(
+            0L, null, "INSPIRATION_CREATION", 44L, "external-44"
+        );
+
+        registry.registerOriginal(
+            platformIdentity,
+            new StoredObject(
+                "materials/0/inspiration_creation/202610/44/external-44/original.png",
+                3L, "image/png", "etag", "INTELLIGENT_TIERING"
+            ),
+            null,
+            12,
+            8
+        );
+
+        assertThat(store.current.tenantId).isZero();
+        assertThat(store.current.projectId).isNull();
+    }
+
+    @Test
     void returnsExistingRegistrationForTheSameImmutableObject() {
         StoredObject original = new StoredObject(
             "materials/11/22/images/202609/44/result-44/original.png",

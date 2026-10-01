@@ -9,6 +9,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.MediaObjectIdentity;
+import com.antshorttv.storage.RegisteredImageDisplay;
+import com.antshorttv.storage.StoredObject;
 import com.sun.net.httpserver.HttpServer;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -35,10 +39,28 @@ class InspirationCreationImportServiceTest {
     @MockBean
     private ObjectStorageService objectStorageService;
 
+    @MockBean
+    private ImageDisplayRenditionService imageRenditions;
+
     @Test
     void importsListAndDetailWithLocalMediaOnly() throws Exception {
         mapper.delete(null);
         byte[] sourcePng = png();
+        when(objectStorageService.uploadOriginal(
+            any(String.class), any(java.nio.file.Path.class), eq("image/png")
+        )).thenAnswer(invocation -> new StoredObject(
+            invocation.getArgument(0), sourcePng.length, "image/png", "etag-original",
+            "INTELLIGENT_TIERING"
+        ));
+        when(imageRenditions.registerOriginalAndSubmit(
+            any(MediaObjectIdentity.class), any(StoredObject.class), eq(12), eq(8), any(String.class)
+        )).thenAnswer(invocation -> {
+            StoredObject original = invocation.getArgument(1);
+            return new RegisteredImageDisplay(
+                original.key(), original.key().replace("/original.png", "/derived/display.png"),
+                "SUBMITTED"
+            );
+        });
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/creations", exchange -> {
             String base = "http://127.0.0.1:%d".formatted(server.getAddress().getPort());
@@ -80,22 +102,36 @@ class InspirationCreationImportServiceTest {
         }
 
         InspirationCreationEntity entity = mapper.selectByExternalId("842344185310472160");
-        assertThat(entity.getImportStatus()).isEqualTo(InspirationCreationImportStatus.IMPORTED.name());
+        assertThat(entity.getImportStatus()).isEqualTo(InspirationCreationImportStatus.PROCESSING.name());
         assertThat(entity.getAuthorName()).isEqualTo("管理员");
-        assertThat(entity.getStoragePath()).isEqualTo("inspiration/creations/842344185310472160/original.png");
+        assertThat(entity.getStoragePath())
+            .contains("/" + entity.getId() + "/842344185310472160/original.png");
         assertThat(entity.getUrl()).isEqualTo("/api/inspiration-creations/%d/file".formatted(entity.getId()));
-        assertThat(entity.getThumbnailStatus()).isEqualTo("READY");
+        assertThat(entity.getThumbnailStatus()).isEqualTo("PENDING");
         assertThat(entity.getThumbnailPath())
-            .isEqualTo("inspiration/creations/842344185310472160/derived/display.png");
+            .contains("/" + entity.getId() + "/842344185310472160/derived/display.png");
+        assertThat(entity.getThumbnailMimeType()).isEqualTo("image/png");
+        assertThat(entity.getThumbnailFileSize()).isNull();
         assertThat(entity.getThumbnailUrl()).isEqualTo("/api/inspiration-creations/%d/thumbnail".formatted(entity.getId()));
         assertThat(entity.getDetailJson()).contains("\"url\":\"/api/inspiration-creations/%d/file\"".formatted(entity.getId()));
         assertThat(entity.getDetailJson()).doesNotContain("127.0.0.1");
         assertThat(entity.getDetailJson()).contains("保留文本");
 
-        verify(objectStorageService).uploadFile(
-            eq("inspiration/creations/842344185310472160/original.png"),
+        verify(objectStorageService).uploadOriginal(
+            org.mockito.ArgumentMatchers.contains(
+                "/" + entity.getId() + "/842344185310472160/original.png"
+            ),
             any(java.nio.file.Path.class),
             eq("image/png")
+        );
+        verify(imageRenditions).registerOriginalAndSubmit(
+            eq(new MediaObjectIdentity(
+                0L, null, "INSPIRATION_CREATION", entity.getId(), entity.getExternalId()
+            )),
+            any(StoredObject.class),
+            eq(12),
+            eq(8),
+            eq("inspiration-creation:" + entity.getId())
         );
     }
 
@@ -174,11 +210,11 @@ class InspirationCreationImportServiceTest {
     }
 
     @Test
-    void transfersMediaToObjectStorage() throws Exception {
+    void transfersVideoToObjectStorageWithoutChangingTheExistingFlow() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/source.png", exchange -> {
-            byte[] body = "image-bytes".getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "image/png");
+        server.createContext("/source.mp4", exchange -> {
+            byte[] body = "video-bytes".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "video/mp4");
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
             exchange.close();
@@ -190,31 +226,36 @@ class InspirationCreationImportServiceTest {
             uploaded.set(Files.readAllBytes(invocation.getArgument(1)));
             return null;
         }).when(objectStorageService).uploadFile(
-            eq("inspiration/creations/abc-123/original.png"),
+            eq("inspiration/creations/abc-123/original.mp4"),
             any(java.nio.file.Path.class),
-            eq("image/png")
+            eq("video/mp4")
         );
-        InspirationCreationMediaStorage storage = new InspirationCreationMediaStorage(objectStorageService);
+        InspirationCreationMediaStorage storage = new InspirationCreationMediaStorage(
+            objectStorageService,
+            new com.antshorttv.storage.ObjectStorageKeyFactory(),
+            mock(ImageDisplayRenditionService.class)
+        );
 
         try {
             InspirationCreationMediaTransfer transfer = storage.transfer(
+                44L,
                 "abc-123",
-                "http://127.0.0.1:%d/source.png".formatted(server.getAddress().getPort())
+                "http://127.0.0.1:%d/source.mp4".formatted(server.getAddress().getPort())
             );
 
-            assertThat(transfer.storagePath()).isEqualTo("inspiration/creations/abc-123/original.png");
-            assertThat(transfer.mimeType()).isEqualTo("image/png");
+            assertThat(transfer.storagePath()).isEqualTo("inspiration/creations/abc-123/original.mp4");
+            assertThat(transfer.mimeType()).isEqualTo("video/mp4");
             assertThat(transfer.fileSize()).isEqualTo(11L);
         } finally {
             server.stop(0);
         }
 
         verify(objectStorageService).uploadFile(
-            eq("inspiration/creations/abc-123/original.png"),
+            eq("inspiration/creations/abc-123/original.mp4"),
             any(java.nio.file.Path.class),
-            eq("image/png")
+            eq("video/mp4")
         );
-        assertThat(uploaded.get()).containsExactly("image-bytes".getBytes());
+        assertThat(uploaded.get()).containsExactly("video-bytes".getBytes());
     }
 
     private byte[] png() throws Exception {

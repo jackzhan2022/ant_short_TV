@@ -68,6 +68,9 @@ class InspirationCreationControllerTest {
         mapper.updateById(first);
         InspirationCreationEntity failed = creation("external-2", "FAILED", 1);
         mapper.insert(failed);
+        InspirationCreationEntity processing = creation("external-processing", "PROCESSING", 0);
+        processing.setThumbnailStatus("PENDING");
+        mapper.insert(processing);
         InspirationCreationEntity unpublished = creation("external-unpublished", "IMPORTED", 2);
         unpublished.setPublishStatus("UNPUBLISHED");
         mapper.insert(unpublished);
@@ -173,6 +176,42 @@ class InspirationCreationControllerTest {
             .andExpect(header().string(
                 HttpHeaders.LOCATION,
                 startsWith("https://antvcdn.aixmax.cn/inspiration/creations/external-thumbnail/thumbnail.jpg")
+            ));
+    }
+
+    @Test
+    void pendingAndFailedImagesStayHiddenUntilReadyDisplayIsPublished() throws Exception {
+        InspirationCreationEntity pending = creation("pending-image", "PROCESSING", 1);
+        pending.setThumbnailStatus("PENDING");
+        pending.setThumbnailPath("materials/0/inspiration_creation/pending/derived/display.png");
+        mapper.insert(pending);
+        InspirationCreationEntity failed = creation("failed-image", "FAILED", 2);
+        failed.setThumbnailStatus("FAILED");
+        failed.setThumbnailPath("materials/0/inspiration_creation/failed/derived/display.png");
+        mapper.insert(failed);
+
+        mockMvc.perform(get("/api/inspiration-creations").cookie(sessionCookie))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.records", hasSize(0)));
+        mockMvc.perform(get("/api/inspiration-creations/{id}", pending.getId()).cookie(sessionCookie))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/inspiration-creations/{id}/thumbnail", failed.getId())
+                .cookie(sessionCookie))
+            .andExpect(status().isNotFound());
+
+        pending.setImportStatus("IMPORTED");
+        pending.setThumbnailStatus("READY");
+        pending.setThumbnailMimeType("image/png");
+        pending.setThumbnailFileSize(987L);
+        pending.setThumbnailUrl("/api/inspiration-creations/%d/thumbnail".formatted(pending.getId()));
+        mapper.updateById(pending);
+
+        mockMvc.perform(get("/api/inspiration-creations/{id}/thumbnail", pending.getId())
+                .cookie(sessionCookie))
+            .andExpect(status().isFound())
+            .andExpect(header().string(
+                HttpHeaders.LOCATION,
+                startsWith("https://antvcdn.aixmax.cn/materials/0/inspiration_creation/pending/derived/display.png")
             ));
     }
 

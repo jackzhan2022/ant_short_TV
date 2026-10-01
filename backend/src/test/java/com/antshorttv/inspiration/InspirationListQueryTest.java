@@ -52,6 +52,7 @@ class InspirationListQueryTest {
         InspirationManagementService service = new InspirationManagementService(
             mapper,
             mock(InspirationManagementMediaService.class),
+            mock(InspirationManagementImageCreationService.class),
             mock(InspirationCreationMediaStorage.class),
             mock(com.antshorttv.storage.MediaUploadSessionService.class),
             new ObjectMapper()

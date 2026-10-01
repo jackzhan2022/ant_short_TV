@@ -28,22 +28,32 @@ class InspirationManagementMediaServiceTest {
     @Test
     void storesValidatedImageAndThumbnail() {
         VerifiedMediaUpload upload = upload("image/jpeg", "source.jpg", 1024L);
-        ManagedInspirationMedia media = service.store("manual-1", upload);
+        org.mockito.Mockito.when(storage.storeUploadedImage(44L, "manual-1", upload))
+            .thenReturn(new InspirationCreationMediaTransfer(
+                "materials/0/inspiration_creation/202610/44/manual-1/original.jpg",
+                "image/jpeg", 1024L,
+                "materials/0/inspiration_creation/202610/44/manual-1/derived/display.jpg",
+                "image/jpeg", "PENDING"
+            ));
+        ManagedInspirationMedia media = service.storeImage(44L, "manual-1", upload);
 
         assertThat(media.creationType()).isEqualTo("IMAGE");
         assertThat(media.storagePath()).endsWith("original.jpg");
         assertThat(media.thumbnailPath()).endsWith("derived/display.jpg");
-        verify(storage).copyVerifiedUpload(
-            upload.objectKey(), media.storagePath(), upload.size(), upload.contentType()
-        );
-        verify(storage).delete(upload.objectKey());
+        assertThat(media.thumbnailStatus()).isEqualTo("PENDING");
+        assertThat(media.thumbnailFileSize()).isNull();
+        verify(storage).storeUploadedImage(44L, "manual-1", upload);
     }
 
     @Test
     void acceptsImageWithoutApplicationSizeCeiling() {
-        ManagedInspirationMedia media = service.store(
-            "manual-large", upload("image/jpeg", "source.jpg", 10_000_000_000L)
-        );
+        VerifiedMediaUpload upload = upload("image/jpeg", "source.jpg", 10_000_000_000L);
+        org.mockito.Mockito.when(storage.storeUploadedImage(45L, "manual-large", upload))
+            .thenReturn(new InspirationCreationMediaTransfer(
+                "materials/0/inspiration_creation/202610/45/manual-large/original.jpg",
+                "image/jpeg", upload.size(), "display.jpg", "image/jpeg", "PENDING"
+            ));
+        ManagedInspirationMedia media = service.storeImage(45L, "manual-large", upload);
 
         assertThat(media.fileSize()).isEqualTo(10_000_000_000L);
     }
@@ -54,18 +64,20 @@ class InspirationManagementMediaServiceTest {
             "session-1", "uploads/11/session-1/source.png", "image/png", 2048L, "etag-1"
         );
 
-        ManagedInspirationMedia media = service.store("manual-cos", upload);
+        org.mockito.Mockito.when(storage.storeUploadedImage(46L, "manual-cos", upload))
+            .thenReturn(new InspirationCreationMediaTransfer(
+                "materials/0/inspiration_creation/202610/46/manual-cos/original.png",
+                "image/png", 2048L,
+                "materials/0/inspiration_creation/202610/46/manual-cos/derived/display.png",
+                "image/png", "PENDING"
+            ));
+        ManagedInspirationMedia media = service.storeImage(46L, "manual-cos", upload);
 
-        assertThat(media.storagePath()).isEqualTo("inspiration/creations/manual-cos/original.png");
+        assertThat(media.storagePath()).endsWith("/46/manual-cos/original.png");
         assertThat(media.thumbnailPath()).isEqualTo(
-            "inspiration/creations/manual-cos/derived/display.png"
+            "materials/0/inspiration_creation/202610/46/manual-cos/derived/display.png"
         );
-        verify(storage).copyVerifiedUpload(
-            "uploads/11/session-1/source.png",
-            "inspiration/creations/manual-cos/original.png",
-            2048L,
-            "image/png"
-        );
+        verify(storage).storeUploadedImage(46L, "manual-cos", upload);
     }
 
     @Test

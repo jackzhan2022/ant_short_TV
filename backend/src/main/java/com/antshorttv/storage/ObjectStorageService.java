@@ -82,14 +82,54 @@ public class ObjectStorageService {
 
     public StoredObject uploadOriginal(String storagePath, byte[] bytes, String contentType) {
         try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
-            uploadObject(storagePath, input, bytes.length, contentType, false);
-            StoredObject verified = metadata(storagePath);
-            if (verified.size() != bytes.length
-                || !same(verified.contentType(), contentType)
-                || !same(verified.storageClass(), properties.getStorageClass())) {
-                throw new IllegalStateException("原始对象元数据校验失败。");
+            return uploadOriginal(storagePath, input, bytes.length, contentType);
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw storageFailure("原始对象上传失败", exception);
+        }
+    }
+
+    public StoredObject uploadOriginal(
+        String storagePath,
+        InputStream input,
+        long size,
+        String contentType
+    ) {
+        uploadObject(storagePath, input, size, contentType, false);
+        return verifyOriginal(storagePath, size, contentType);
+    }
+
+    public StoredObject uploadOriginal(String storagePath, Path file, String contentType) {
+        if (transfers == null) {
+            try (InputStream input = Files.newInputStream(file)) {
+                return uploadOriginal(storagePath, input, Files.size(file), contentType);
+            } catch (BusinessException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw storageFailure("原始对象上传失败", exception);
             }
-            return verified;
+        }
+        try {
+            long size = Files.size(file);
+            String key = keys.objectKey(storagePath);
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentLength(size);
+            metadata.setContentType(contentType == null || contentType.isBlank()
+                ? "application/octet-stream" : contentType);
+            PutObjectRequest request = new PutObjectRequest(
+                properties.getBucket(), key, file.toFile()
+            );
+            request.setMetadata(metadata);
+            request.setStorageClass(StorageClass.fromValue(properties.getStorageClass()));
+            metrics.record("MULTIPART_UPLOAD", "upload_original", size, () -> {
+                transfers.upload(request).waitForUploadResult();
+                return null;
+            });
+            return verifyOriginal(key, size, metadata.getContentType());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw storageFailure("原始对象上传被中断", exception);
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -332,6 +372,16 @@ public class ObjectStorageService {
             "万象压缩图在限定时间内未就绪。",
             lastFailure
         );
+    }
+
+    private StoredObject verifyOriginal(String storagePath, long size, String contentType) {
+        StoredObject verified = metadata(storagePath);
+        if (verified.size() != size
+            || !same(verified.contentType(), contentType)
+            || !same(verified.storageClass(), properties.getStorageClass())) {
+            throw new IllegalStateException("原始对象元数据校验失败。");
+        }
+        return verified;
     }
 
     private BusinessException storageFailure(String message, Exception exception) {

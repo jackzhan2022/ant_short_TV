@@ -91,6 +91,38 @@ class ObjectStorageServiceCosTest {
     }
 
     @Test
+    void uploadsOriginalPathWithoutSynchronousProcessingAndReturnsHeadMetadata() throws Exception {
+        COS cos = mock(COS.class);
+        TransferManager transfers = mock(TransferManager.class);
+        Upload upload = mock(Upload.class);
+        when(transfers.upload(any(PutObjectRequest.class))).thenReturn(upload);
+        when(upload.waitForUploadResult()).thenReturn(new UploadResult());
+        String key = "materials/0/inspiration_creation/202610/44/external-44/original.png";
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentLength(3);
+        metadata.setContentType("image/png");
+        metadata.setETag("head-etag");
+        metadata.setHeader("x-cos-storage-class", "INTELLIGENT_TIERING");
+        when(cos.getObjectMetadata("antv-1418200553", key)).thenReturn(metadata);
+        Path file = Files.createTempFile("verified-original-", ".png");
+        Files.write(file, new byte[] {1, 2, 3});
+        try {
+            ObjectStorageService service = service(cos, transfers);
+
+            StoredObject stored = service.uploadOriginal(key, file, "image/png");
+
+            ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+            verify(transfers).upload(request.capture());
+            assertThat(request.getValue().getPicOperations()).isNull();
+            assertThat(stored).isEqualTo(new StoredObject(
+                key, 3L, "image/png", "head-etag", "INTELLIGENT_TIERING"
+            ));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
     void convertsWebpToPngBeforeApplyingImageSlim() {
         COS cos = mock(COS.class);
         when(cos.putObject(any(PutObjectRequest.class))).thenReturn(new PutObjectResult());

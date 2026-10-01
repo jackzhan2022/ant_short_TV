@@ -66,6 +66,27 @@ public class ObjectStorageKeyFactory {
         );
     }
 
+    public String tenantOriginal(
+        Long tenantId,
+        String assetType,
+        Long assetId,
+        String versionId,
+        LocalDate date,
+        String extension
+    ) {
+        if (tenantId == null || tenantId < 0) {
+            throw new IllegalArgumentException("tenantId 不能小于 0。");
+        }
+        return "materials/%d/%s/%s/%d/%s/original.%s".formatted(
+            tenantId,
+            segment(assetType, "assetType"),
+            require(date, "date").format(MONTH),
+            requirePositive(assetId, "assetId"),
+            segment(versionId, "versionId"),
+            extension(extension)
+        );
+    }
+
     public String rendition(String originalKey, String rendition, String extension) {
         String normalized = objectKey(originalKey);
         int separator = normalized.lastIndexOf('/');

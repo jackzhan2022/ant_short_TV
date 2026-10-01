@@ -3,6 +3,7 @@ package com.antshorttv.inspiration;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.storage.CloudInfiniteVideoCoverService;
+import com.antshorttv.storage.ImageDisplayRenditionService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,6 +32,7 @@ public class InspirationCreationImportService {
     private final InspirationCreationMediaStorage mediaStorage;
     private final ObjectMapper objectMapper;
     private final CloudInfiniteVideoCoverService videoCovers;
+    private final ImageDisplayRenditionService imageRenditions;
     private final HttpClient httpClient = HttpClient.newBuilder()
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build();
@@ -39,12 +41,14 @@ public class InspirationCreationImportService {
         InspirationCreationMapper mapper,
         InspirationCreationMediaStorage mediaStorage,
         ObjectMapper objectMapper,
-        CloudInfiniteVideoCoverService videoCovers
+        CloudInfiniteVideoCoverService videoCovers,
+        ImageDisplayRenditionService imageRenditions
     ) {
         this.mapper = mapper;
         this.mediaStorage = mediaStorage;
         this.objectMapper = objectMapper;
         this.videoCovers = videoCovers;
+        this.imageRenditions = imageRenditions;
     }
 
     public List<InspirationCreationEntity> importFrom(InspirationCreationImportRequest request) {
@@ -73,8 +77,6 @@ public class InspirationCreationImportService {
         JsonNode detailRoot = getJson(detailUrl(request, externalId), request.headers());
         JsonNode detail = payload(detailRoot);
         String mediaUrl = firstNonBlank(text(item, "url", "mediaUrl", "imageUrl", "videoUrl"), mediaUrl(detail));
-        InspirationCreationMediaTransfer transfer = mediaStorage.transfer(externalId, mediaUrl);
-
         InspirationCreationEntity entity = mapper.selectByExternalId(externalId);
         LocalDateTime now = LocalDateTime.now();
         if (entity == null) {
@@ -85,11 +87,29 @@ public class InspirationCreationImportService {
             entity.setStoragePath("");
             fillFrom(item, detail, entity, sortOrder);
             entity.setAuthorName(ADMIN_AUTHOR);
-            entity.setImportStatus(InspirationCreationImportStatus.IMPORTED.name());
+            entity.setImportStatus(InspirationCreationImportStatus.PROCESSING.name());
+            entity.setThumbnailStatus("PENDING");
+            entity.setPublishStatus("PUBLISHED");
+            entity.setSourceType("IMPORTED");
             entity.setUpdatedAt(now);
             mapper.insert(entity);
+        } else {
+            fillFrom(item, detail, entity, sortOrder);
+            entity.setAuthorName(ADMIN_AUTHOR);
+            entity.setImportStatus(InspirationCreationImportStatus.PROCESSING.name());
+            entity.setImportError(null);
+            if ("IMAGE".equals(entity.getCreationType())) {
+                entity.setThumbnailStatus("PENDING");
+                entity.setThumbnailError(null);
+                entity.setThumbnailFileSize(null);
+            }
+            entity.setUpdatedAt(now);
+            mapper.updateById(entity);
         }
 
+        InspirationCreationMediaTransfer transfer = mediaStorage.transfer(
+            entity.getId(), externalId, mediaUrl
+        );
         String localUrl = localUrl(entity.getId());
         fillFrom(item, detail, entity, sortOrder);
         entity.setAuthorName(ADMIN_AUTHOR);
@@ -97,29 +117,48 @@ public class InspirationCreationImportService {
         entity.setStoragePath(transfer.storagePath());
         entity.setMimeType(transfer.mimeType());
         entity.setFileSize(transfer.fileSize());
-        updateThumbnail(entity, transfer);
+        if (transfer.mimeType().startsWith("image/")) {
+            entity.setCreationType("IMAGE");
+        } else if (transfer.mimeType().startsWith("video/")) {
+            entity.setCreationType("VIDEO");
+        }
+        if (transfer.mimeType().startsWith("image/")) {
+            entity.setThumbnailPath(transfer.displayPath());
+            entity.setThumbnailUrl(thumbnailUrl(entity.getId()));
+            entity.setThumbnailMimeType(transfer.displayMimeType());
+            entity.setThumbnailFileSize(null);
+            entity.setThumbnailStatus("PENDING");
+            entity.setThumbnailError(null);
+        } else {
+            updateThumbnail(entity, transfer);
+        }
         entity.setDetailJson(writeJson(sanitize(detail.deepCopy(), localUrl)));
-        entity.setImportStatus(InspirationCreationImportStatus.IMPORTED.name());
+        entity.setImportStatus(transfer.mimeType().startsWith("image/")
+            ? InspirationCreationImportStatus.PROCESSING.name()
+            : InspirationCreationImportStatus.IMPORTED.name());
         entity.setImportError(null);
         entity.setUpdatedAt(now);
-        mapper.updateById(entity);
+        try {
+            if (mapper.updateById(entity) != 1) {
+                throw new IllegalStateException("灵感导入处理状态写入失败。");
+            }
+        } catch (RuntimeException exception) {
+            if (transfer.mimeType().startsWith("image/")) {
+                imageRenditions.retire(InspirationImageRenditionReconciler.identity(entity));
+            }
+            throw exception;
+        }
         return entity;
     }
 
     private void updateThumbnail(InspirationCreationEntity entity, InspirationCreationMediaTransfer transfer) {
         try {
-            boolean video = transfer.mimeType().startsWith("video/");
-            var display = video ? null : InspirationCreationMediaStorage.displayPlan(
-                transfer.storagePath(), transfer.mimeType()
+            String path = videoCovers.create(
+                transfer.storagePath(), InspirationCreationMediaStorage.coverOriginalPath(entity.getExternalId())
             );
-            String path = video
-                ? videoCovers.create(
-                    transfer.storagePath(), InspirationCreationMediaStorage.coverOriginalPath(entity.getExternalId())
-                )
-                : display.objectKey();
             entity.setThumbnailPath(path);
             entity.setThumbnailUrl(thumbnailUrl(entity.getId()));
-            entity.setThumbnailMimeType(video ? "image/jpeg" : display.mimeType());
+            entity.setThumbnailMimeType("image/jpeg");
             entity.setThumbnailFileSize(0L);
             entity.setThumbnailStatus("READY");
             entity.setThumbnailError(null);
@@ -147,6 +186,10 @@ public class InspirationCreationImportService {
         entity.setStoragePath("");
         entity.setImportStatus(InspirationCreationImportStatus.FAILED.name());
         entity.setImportError(error);
+        if ("IMAGE".equals(entity.getCreationType())) {
+            entity.setThumbnailStatus("FAILED");
+            entity.setThumbnailError(error);
+        }
         entity.setUpdatedAt(now);
         if (entity.getId() == null) {
             mapper.insert(entity);

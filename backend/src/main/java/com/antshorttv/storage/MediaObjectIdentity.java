@@ -8,7 +8,7 @@ public record MediaObjectIdentity(
     String versionId
 ) {
     public MediaObjectIdentity {
-        if (tenantId == null || tenantId <= 0 || assetId == null || assetId <= 0
+        if (tenantId == null || tenantId < 0 || assetId == null || assetId <= 0
             || projectId != null && projectId <= 0 || blank(assetType) || blank(versionId)) {
             throw new IllegalArgumentException("媒体对象身份不完整。");
         }

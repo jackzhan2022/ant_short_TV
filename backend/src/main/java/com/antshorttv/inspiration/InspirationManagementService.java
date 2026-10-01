@@ -22,6 +22,7 @@ public class InspirationManagementService {
 
     private final InspirationCreationMapper mapper;
     private final InspirationManagementMediaService mediaService;
+    private final InspirationManagementImageCreationService imageCreation;
     private final InspirationCreationMediaStorage mediaStorage;
     private final MediaUploadSessionService uploadSessions;
     private final ObjectMapper objectMapper;
@@ -29,12 +30,14 @@ public class InspirationManagementService {
     public InspirationManagementService(
         InspirationCreationMapper mapper,
         InspirationManagementMediaService mediaService,
+        InspirationManagementImageCreationService imageCreation,
         InspirationCreationMediaStorage mediaStorage,
         MediaUploadSessionService uploadSessions,
         ObjectMapper objectMapper
     ) {
         this.mapper = mapper;
         this.mediaService = mediaService;
+        this.imageCreation = imageCreation;
         this.mediaStorage = mediaStorage;
         this.uploadSessions = uploadSessions;
         this.objectMapper = objectMapper;
@@ -73,6 +76,11 @@ public class InspirationManagementService {
         VerifiedMediaUpload upload = uploadSessions.requireCompleted(
             userId, tenantId, request.uploadSessionToken()
         );
+        if (mediaService.isImage(upload)) {
+            return response(imageCreation.create(
+                externalId, upload, request, publishStatus, nextSortOrder()
+            ));
+        }
         ManagedInspirationMedia media = mediaService.store(externalId, upload);
         try {
             LocalDateTime now = LocalDateTime.now();
@@ -90,7 +98,7 @@ public class InspirationManagementService {
             entity.setThumbnailUrl("");
             entity.setThumbnailMimeType(media.thumbnailMimeType());
             entity.setThumbnailFileSize(media.thumbnailFileSize());
-            entity.setThumbnailStatus("READY");
+            entity.setThumbnailStatus(media.thumbnailStatus());
             entity.setPromptText(request.promptText().trim());
             entity.setTagsJson(writeTags(request.tags()));
             entity.setPublishStatus(publishStatus);

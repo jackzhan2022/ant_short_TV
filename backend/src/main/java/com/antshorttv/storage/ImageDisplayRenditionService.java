@@ -37,6 +37,10 @@ public class ImageDisplayRenditionService {
         return registry.find(identity, "DISPLAY_IMAGE_SLIM");
     }
 
+    public RegisteredMediaDetails displayDetails(MediaObjectIdentity identity) {
+        return registry.details(identity, "DISPLAY_IMAGE_SLIM");
+    }
+
     public RegisteredImageDisplay retryFailedDisplay(
         MediaObjectIdentity identity,
         String correlationData

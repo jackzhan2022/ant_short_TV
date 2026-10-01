@@ -75,6 +75,24 @@ class ImageDisplayRenditionServiceTest {
     }
 
     @Test
+    void exposesVerifiedDisplayDetailsForDomainReconciliation() {
+        MediaObjectRegistry registry = mock(MediaObjectRegistry.class);
+        CloudInfiniteProcessingService processing = mock(CloudInfiniteProcessingService.class);
+        ImageDisplayRenditionService service = new ImageDisplayRenditionService(registry, processing);
+        MediaObjectIdentity identity = new MediaObjectIdentity(
+            0L, null, "INSPIRATION_CREATION", 44L, "external-44"
+        );
+        RegisteredMediaDetails ready = new RegisteredMediaDetails(
+            72L, identity, "DISPLAY_IMAGE_SLIM",
+            "materials/0/inspiration_creation/202610/44/external-44/derived/display.png",
+            "image/png", 987L, "READY", null
+        );
+        when(registry.details(identity, "DISPLAY_IMAGE_SLIM")).thenReturn(ready);
+
+        assertThat(service.displayDetails(identity)).isEqualTo(ready);
+    }
+
+    @Test
     void retriesFailedDisplayFromTheRegisteredOriginal() {
         MediaObjectRegistry registry = mock(MediaObjectRegistry.class);
         CloudInfiniteProcessingService processing = mock(CloudInfiniteProcessingService.class);

@@ -3,7 +3,6 @@ package com.antshorttv.inspiration;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.storage.CloudInfiniteVideoCoverService;
-import com.antshorttv.storage.ImageDisplayRenditionPlan;
 import com.antshorttv.storage.VerifiedMediaUpload;
 import java.util.Locale;
 import org.springframework.stereotype.Service;
@@ -27,41 +26,33 @@ public class InspirationManagementMediaService {
         }
         String mimeType = upload.contentType() == null
             ? "" : upload.contentType().toLowerCase(Locale.ROOT);
-        if (mimeType.equals("image/jpeg") || mimeType.equals("image/png")) {
-            return storeImage(externalId, upload, mimeType);
-        }
         if (mimeType.equals("video/mp4")) {
             return storeVideo(externalId, upload, mimeType);
         }
         throw validation("仅支持 JPEG、PNG 图片或 MP4 视频。");
     }
 
-    private ManagedInspirationMedia storeImage(
+    public boolean isImage(VerifiedMediaUpload upload) {
+        String mimeType = upload == null || upload.contentType() == null
+            ? "" : upload.contentType().toLowerCase(Locale.ROOT);
+        return mimeType.equals("image/jpeg") || mimeType.equals("image/png");
+    }
+
+    public ManagedInspirationMedia storeImage(
+        Long assetId,
         String externalId,
-        VerifiedMediaUpload upload,
-        String mimeType
+        VerifiedMediaUpload upload
     ) {
-        String extension = "image/png".equals(mimeType) ? "png" : "jpg";
-        String originalPath = base(externalId) + "/original." + extension;
-        ImageDisplayRenditionPlan display = InspirationCreationMediaStorage.displayPlan(
-            originalPath, mimeType
-        );
-        String thumbnailPath = display.objectKey();
-        try {
-            storage.copyVerifiedUpload(upload.objectKey(), originalPath, upload.size(), mimeType);
-            ManagedInspirationMedia media = new ManagedInspirationMedia(
-                "IMAGE", mimeType, upload.size(), originalPath,
-                thumbnailPath, display.mimeType(), 0L
-            );
-            storage.delete(upload.objectKey());
-            return media;
-        } catch (BusinessException exception) {
-            cleanup(originalPath, thumbnailPath);
-            throw exception;
-        } catch (Exception exception) {
-            cleanup(originalPath, thumbnailPath);
-            throw validation("图片上传失败：" + exception.getMessage());
+        if (!isImage(upload)) {
+            throw validation("仅支持 JPEG、PNG 图片。");
         }
+        InspirationCreationMediaTransfer transfer = storage.storeUploadedImage(
+            assetId, externalId, upload
+        );
+        return new ManagedInspirationMedia(
+            "IMAGE", transfer.mimeType(), transfer.fileSize(), transfer.storagePath(),
+            transfer.displayPath(), transfer.displayMimeType(), null, "PENDING"
+        );
     }
 
     private ManagedInspirationMedia storeVideo(
@@ -76,7 +67,7 @@ public class InspirationManagementMediaService {
             String thumbnailPath = covers.create(originalPath, coverOriginalPath);
             ManagedInspirationMedia media = new ManagedInspirationMedia(
                 "VIDEO", mimeType, upload.size(), originalPath,
-                thumbnailPath, "image/jpeg", 0L
+                thumbnailPath, "image/jpeg", 0L, "READY"
             );
             storage.delete(upload.objectKey());
             return media;
@@ -107,6 +98,7 @@ record ManagedInspirationMedia(
     String storagePath,
     String thumbnailPath,
     String thumbnailMimeType,
-    long thumbnailFileSize
+    Long thumbnailFileSize,
+    String thumbnailStatus
 ) {
 }

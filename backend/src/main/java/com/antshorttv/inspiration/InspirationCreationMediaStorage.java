@@ -4,8 +4,14 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.storage.ObjectStorageService;
 import com.antshorttv.storage.ImageDisplayRenditionPlan;
+import com.antshorttv.storage.ImageDisplayRenditionService;
 import com.antshorttv.storage.ImageDisplayRenditionPlanner;
+import com.antshorttv.storage.MediaObjectIdentity;
 import com.antshorttv.storage.ObjectStorageKeyFactory;
+import com.antshorttv.storage.RegisteredImageDisplay;
+import com.antshorttv.storage.StoredObject;
+import com.antshorttv.storage.VerifiedMediaUpload;
+import java.awt.image.BufferedImage;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -14,21 +20,35 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
+import javax.imageio.ImageIO;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
 @Service
 public class InspirationCreationMediaStorage {
     private final ObjectStorageService objectStorageService;
+    private final ObjectStorageKeyFactory keys;
+    private final ImageDisplayRenditionService imageRenditions;
     private final HttpClient httpClient = HttpClient.newBuilder()
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build();
 
-    public InspirationCreationMediaStorage(ObjectStorageService objectStorageService) {
+    public InspirationCreationMediaStorage(
+        ObjectStorageService objectStorageService,
+        ObjectStorageKeyFactory keys,
+        ImageDisplayRenditionService imageRenditions
+    ) {
         this.objectStorageService = objectStorageService;
+        this.keys = keys;
+        this.imageRenditions = imageRenditions;
     }
 
-    public InspirationCreationMediaTransfer transfer(String externalId, String mediaUrl) {
+    public InspirationCreationMediaTransfer transfer(
+        Long assetId,
+        String externalId,
+        String mediaUrl
+    ) {
         if (mediaUrl == null || mediaUrl.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "媒体URL不能为空。");
         }
@@ -48,8 +68,16 @@ public class InspirationCreationMediaStorage {
                 Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
             }
             long fileSize = Files.size(temporary);
+            if (mimeType.startsWith("image/")) {
+                if (assetId == null) {
+                    throw new IllegalArgumentException("灵感图片必须先持久化业务记录。");
+                }
+                return storeDownloadedImage(assetId, externalId, temporary, mimeType);
+            }
             objectStorageService.uploadFile(storagePath, temporary, mimeType);
-            return new InspirationCreationMediaTransfer(storagePath, mimeType, fileSize);
+            return new InspirationCreationMediaTransfer(
+                storagePath, mimeType, fileSize, null, null, null
+            );
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -62,6 +90,42 @@ public class InspirationCreationMediaStorage {
                     // The operating system will eventually clean up an orphaned temporary file.
                 }
             }
+        }
+    }
+
+    public InspirationCreationMediaTransfer storeUploadedImage(
+        Long assetId,
+        String externalId,
+        VerifiedMediaUpload upload
+    ) {
+        try {
+            ImageDimensions dimensions;
+            try (InputStream input = objectStorageService.resource(upload.objectKey()).getInputStream()) {
+                dimensions = dimensions(input);
+            }
+            StoredObject source = objectStorageService.metadata(upload.objectKey());
+            if (source.size() != upload.size()
+                || !same(source.contentType(), upload.contentType())
+                || upload.eTag() != null && !upload.eTag().isBlank()
+                    && !same(source.eTag(), upload.eTag())) {
+                throw new IllegalStateException("COS 暂存图片元数据与上传会话不一致。");
+            }
+            String originalPath = imageOriginalPath(
+                assetId, externalId, upload.contentType()
+            );
+            StoredObject original = objectStorageService.promoteVerifiedUpload(source, originalPath);
+            InspirationCreationMediaTransfer transfer = registerImage(
+                assetId, externalId, original, dimensions
+            );
+            objectStorageService.delete(upload.objectKey());
+            return transfer;
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException(
+                ErrorCode.VALIDATION_ERROR,
+                "图片上传失败：" + exception.getMessage()
+            );
         }
     }
 
@@ -120,6 +184,102 @@ public class InspirationCreationMediaStorage {
         return "inspiration/creations/%s/cover/original.jpg".formatted(externalId);
     }
 
+    private InspirationCreationMediaTransfer storeDownloadedImage(
+        Long assetId,
+        String externalId,
+        Path file,
+        String mimeType
+    ) throws Exception {
+        ImageDimensions dimensions = dimensions(file);
+        String originalPath = imageOriginalPath(assetId, externalId, mimeType);
+        StoredObject original = objectStorageService.uploadOriginal(originalPath, file, mimeType);
+        return registerImage(assetId, externalId, original, dimensions);
+    }
+
+    private InspirationCreationMediaTransfer registerImage(
+        Long assetId,
+        String externalId,
+        StoredObject original,
+        ImageDimensions dimensions
+    ) {
+        MediaObjectIdentity identity = new MediaObjectIdentity(
+            0L, null, "INSPIRATION_CREATION", assetId, externalId
+        );
+        try {
+            RegisteredImageDisplay display = imageRenditions.registerOriginalAndSubmit(
+                identity,
+                original,
+                dimensions.width(),
+                dimensions.height(),
+                "inspiration-creation:" + assetId
+            );
+            ImageDisplayRenditionPlan expected = displayPlan(
+                original.key(), original.contentType()
+            );
+            if (!expected.objectKey().equals(display.displayKey())) {
+                throw new IllegalStateException("万象展示图输出路径与预期不一致。");
+            }
+            return new InspirationCreationMediaTransfer(
+                original.key(), original.contentType(), original.size(),
+                display.displayKey(), expected.mimeType(), "PENDING"
+            );
+        } catch (RuntimeException exception) {
+            try {
+                imageRenditions.retire(identity);
+            } catch (RuntimeException retireFailure) {
+                exception.addSuppressed(retireFailure);
+            }
+            throw exception;
+        }
+    }
+
+    private String imageOriginalPath(
+        Long assetId,
+        String externalId,
+        String mimeType
+    ) {
+        return keys.tenantOriginal(
+            0L,
+            "inspiration_creation",
+            assetId,
+            externalId,
+            LocalDate.now(),
+            imageExtension(mimeType)
+        );
+    }
+
+    private String imageExtension(String mimeType) {
+        if (mimeType == null || !mimeType.toLowerCase().startsWith("image/")) {
+            throw new IllegalArgumentException("灵感图片 MIME 类型不合法。");
+        }
+        String subtype = mimeType.substring("image/".length()).toLowerCase();
+        if ("jpeg".equals(subtype) || "jpg".equals(subtype)) return "jpg";
+        int suffix = subtype.indexOf('+');
+        String extension = suffix < 0 ? subtype : subtype.substring(0, suffix);
+        if (!extension.matches("[a-z0-9]{2,5}")) {
+            throw new IllegalArgumentException("灵感图片 MIME 类型不受支持。");
+        }
+        return extension;
+    }
+
+    private ImageDimensions dimensions(Path file) throws Exception {
+        try (InputStream input = Files.newInputStream(file)) {
+            return dimensions(input);
+        }
+    }
+
+    private ImageDimensions dimensions(InputStream input) throws Exception {
+        BufferedImage image = ImageIO.read(input);
+        if (image == null || image.getWidth() <= 0 || image.getHeight() <= 0) {
+            throw new IllegalArgumentException("图片格式无法解析。");
+        }
+        return new ImageDimensions(image.getWidth(), image.getHeight());
+    }
+
+    private boolean same(String left, String right) {
+        return left != null && right != null && left.equalsIgnoreCase(right);
+    }
+
     static String contentType(String storagePath, String storedMimeType) {
         if (storedMimeType != null && !storedMimeType.isBlank()) {
             return storedMimeType;
@@ -176,6 +336,12 @@ public class InspirationCreationMediaStorage {
 record InspirationCreationMediaTransfer(
     String storagePath,
     String mimeType,
-    Long fileSize
+    Long fileSize,
+    String displayPath,
+    String displayMimeType,
+    String displayStatus
 ) {
+}
+
+record ImageDimensions(int width, int height) {
 }
