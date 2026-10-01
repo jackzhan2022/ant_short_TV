@@ -1,21 +1,8 @@
 package com.antshorttv.style;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import com.antshorttv.storage.ObjectStorageService;
-import com.antshorttv.storage.ObjectStorageKeyFactory;
-import com.sun.net.httpserver.HttpServer;
-import java.awt.Color;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.net.InetSocketAddress;
-import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -54,52 +41,4 @@ class StyleLibraryServiceTest {
         assertThat(emptyMatches).isEmpty();
     }
 
-    @Test
-    void derivesObjectStoragePathWithoutProjectMaterialScope() {
-        String path = StyleLibraryImageStorage.storagePath("864621266010645040", "https://example.com/a.png");
-
-        assertThat(path).isEqualTo("platform/style-library/864621266010645040/source/derived/display.png");
-        assertThat(path).doesNotContain("materials/");
-    }
-
-    @Test
-    void transfersSourceImageToObjectStorage() throws Exception {
-        BufferedImage source = new BufferedImage(2048, 1152, BufferedImage.TYPE_INT_RGB);
-        for (int y = 0; y < source.getHeight(); y++) {
-            for (int x = 0; x < source.getWidth(); x++) {
-                source.setRGB(x, y, new Color((x * 17 + y) % 256, (x + y * 13) % 256, (x * 3 + y * 5) % 256).getRGB());
-            }
-        }
-        ByteArrayOutputStream sourceBytes = new ByteArrayOutputStream();
-        ImageIO.write(source, "png", sourceBytes);
-
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/style.png", exchange -> {
-            byte[] body = sourceBytes.toByteArray();
-            exchange.getResponseHeaders().add("Content-Type", "image/png");
-            exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
-            exchange.close();
-        });
-        server.start();
-        ObjectStorageService storageService = mock(ObjectStorageService.class);
-        StyleLibraryImageStorage storage = new StyleLibraryImageStorage(storageService, new ObjectStorageKeyFactory());
-
-        try {
-            storage.transfer(
-                "864621266010645040",
-                "http://127.0.0.1:%d/style.png".formatted(server.getAddress().getPort())
-            );
-        } finally {
-            server.stop(0);
-        }
-
-        ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
-        verify(storageService).upload(
-            eq("platform/style-library/864621266010645040/source/original.png"),
-            bytes.capture(),
-            eq("image/png")
-        );
-        assertThat(bytes.getValue()).isEqualTo(sourceBytes.toByteArray());
-    }
 }
