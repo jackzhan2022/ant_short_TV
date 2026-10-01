@@ -423,6 +423,52 @@ describe('media upload client', () => {
     expect(request).toHaveBeenCalledTimes(3);
   });
 
+  it('cancels an attempt while backend completion is in flight', async () => {
+    let resolveCompletion!: (response: {
+      success: boolean;
+      data: ReturnType<typeof verifiedUpload>;
+    }) => void;
+    const completionResponse = new Promise<{
+      success: boolean;
+      data: ReturnType<typeof verifiedUpload>;
+    }>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    vi.mocked(request)
+      .mockResolvedValueOnce({ success: true, data: session() })
+      .mockReturnValueOnce(completionResponse as never);
+    let finishUpload: CosUploadCallback | undefined;
+    const cancelTask = vi.fn();
+    const factory: CosClientFactory = () => ({
+      uploadFile: (params, callback) => {
+        finishUpload = callback;
+        params.onTaskReady?.('task-1');
+      },
+      pauseTask: vi.fn(),
+      restartTask: vi.fn(),
+      cancelTask,
+    });
+    const handle = await startMediaUpload(
+      new File([new Uint8Array([1])], 'episode.mp4', { type: 'video/mp4' }),
+      { clientFactory: factory },
+    );
+    const attempt = handle.attempt;
+    const success = vi.fn();
+    void attempt.then(success, () => undefined);
+    const canceledAttempt = expect(attempt).rejects.toThrow('上传已取消');
+
+    finishUpload?.(null, uploadResult);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    handle.cancel();
+    resolveCompletion({ success: true, data: verifiedUpload() });
+
+    await canceledAttempt;
+    await Promise.resolve();
+    expect(cancelTask).toHaveBeenCalledWith('task-1');
+    expect(success).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
   it('pauses and cancels the retained task without completing it', async () => {
     vi.mocked(request).mockResolvedValueOnce({ success: true, data: session() });
     let finishUpload: CosUploadCallback | undefined;

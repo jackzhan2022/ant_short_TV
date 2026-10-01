@@ -319,14 +319,15 @@ export const startMediaUpload = async (
         }
         cosUploadSucceeded = true;
         const completingAttempts = pendingAttempts;
-        pendingAttempts = [];
         void completion().then(
           (uploaded) => {
+            pendingAttempts = [];
             for (const attempt of completingAttempts) {
               attempt.resolve(uploaded);
             }
           },
           (completionError) => {
+            pendingAttempts = [];
             for (const attempt of completingAttempts) {
               attempt.reject(completionError);
             }
