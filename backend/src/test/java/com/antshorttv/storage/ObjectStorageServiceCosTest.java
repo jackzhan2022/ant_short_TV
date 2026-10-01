@@ -297,6 +297,37 @@ class ObjectStorageServiceCosTest {
         assertThat(promoted.eTag()).isEqualTo("etag-1");
     }
 
+    @Test
+    void inspirationCopiesCompletedUploadOriginalWithEtagConstraintAndRetainsSessionObject() throws Exception {
+        COS cos = mock(COS.class);
+        ObjectStorageService objects = org.mockito.Mockito.spy(service(cos));
+        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(12, 8, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", output);
+        byte[] bytes = output.toByteArray();
+        String sourceKey = "materials/11/uploads/202609/session-1/v1/original.png";
+        String targetKey = new ObjectStorageKeyFactory().tenantOriginal(0L, "inspiration_creation", 44L, "external-44", java.time.LocalDate.now(), "png");
+        StoredObject source = new StoredObject(sourceKey, bytes.length, "image/png", "source-etag", "INTELLIGENT_TIERING");
+        org.mockito.Mockito.doReturn(new org.springframework.core.io.ByteArrayResource(bytes)).when(objects).resource(sourceKey);
+        org.mockito.Mockito.doReturn(source).when(objects).metadata(sourceKey);
+        org.mockito.Mockito.doReturn(new StoredObject(targetKey, bytes.length, "image/png", "target-etag", "INTELLIGENT_TIERING"))
+            .when(objects).metadata(targetKey);
+        ImageDisplayRenditionService renditions = mock(ImageDisplayRenditionService.class);
+        when(renditions.registerOriginalAndSubmit(any(), any(), org.mockito.ArgumentMatchers.eq(12), org.mockito.ArgumentMatchers.eq(8), any()))
+            .thenReturn(new RegisteredImageDisplay(targetKey, targetKey.replace("/original.png", "/derived/display.png"), "SUBMITTED"));
+        com.antshorttv.inspiration.InspirationCreationMediaStorage storage = new com.antshorttv.inspiration.InspirationCreationMediaStorage(objects, new ObjectStorageKeyFactory(), renditions);
+
+        org.assertj.core.api.Assertions.assertThatCode(() -> storage.storeUploadedImage(44L, "external-44",
+            new VerifiedMediaUpload("session-1", sourceKey, "image/png", bytes.length, "source-etag")))
+            .doesNotThrowAnyException();
+
+        ArgumentCaptor<CopyObjectRequest> copy = ArgumentCaptor.forClass(CopyObjectRequest.class);
+        verify(cos).copyObject(copy.capture());
+        assertThat(copy.getValue().getSourceKey()).isEqualTo(sourceKey);
+        assertThat(copy.getValue().getDestinationKey()).isEqualTo(targetKey);
+        assertThat(copy.getValue().getMatchingETagConstraints()).containsExactly("source-etag");
+        verify(objects, org.mockito.Mockito.never()).delete(sourceKey);
+    }
+
     private CosStorageMetrics metrics() {
         return new CosStorageMetrics(new SimpleMeterRegistry());
     }

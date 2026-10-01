@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.antshorttv.common.BusinessException;
+import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.ObjectStorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -11,12 +13,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 @SpringBootTest
 class InspirationManagementServiceTest {
     @Autowired private InspirationManagementService service;
     @Autowired private InspirationCreationMapper mapper;
     @Autowired private ObjectMapper objectMapper;
+    @MockBean private ImageDisplayRenditionService renditions;
+    @MockBean private ObjectStorageService objects;
 
     @BeforeEach
     void setUp() {
@@ -68,6 +73,101 @@ class InspirationManagementServiceTest {
 
         assertThat(mapper.selectById(first.getId()).getSortOrder()).isEqualTo(10);
         assertThat(mapper.selectById(second.getId()).getSortOrder()).isEqualTo(20);
+    }
+
+    @Test
+    void deletingImageRetiresGraphBeforePhysicalCleanupAndRemainsHidden() {
+        InspirationCreationEntity image = insert("Retire", "IMAGE", "PUBLISHED", 10);
+        image.setThumbnailPath("inspiration/creations/manual/derived/display.jpg");
+        mapper.updateById(image);
+
+        service.delete(image.getId());
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(renditions, objects);
+        order.verify(renditions).retire(InspirationImageRenditionReconciler.identity(image));
+        order.verify(objects).delete(image.getStoragePath());
+        order.verify(objects).delete(image.getThumbnailPath());
+        assertThat(mapper.selectImportedById(image.getId())).isNull();
+        assertThatThrownBy(() -> service.delete(image.getId())).isInstanceOf(BusinessException.class);
+        org.mockito.Mockito.verify(renditions, org.mockito.Mockito.times(1))
+            .retire(InspirationImageRenditionReconciler.identity(image));
+    }
+
+    @Test
+    void publishingFailedImageExplicitlyRetriesDisplayAndKeepsOriginal() {
+        InspirationCreationEntity image = failedImage();
+        org.mockito.Mockito.when(renditions.retryFailedDisplay(
+            InspirationImageRenditionReconciler.identity(image), "inspiration-creation:" + image.getId()))
+            .thenAnswer(invocation -> {
+                assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isFalse();
+                return new com.antshorttv.storage.RegisteredImageDisplay(
+                    image.getStoragePath(), image.getThumbnailPath(), "SUBMITTED");
+            });
+
+        service.updatePublishStatus(image.getId(), new InspirationPublishStatusRequest("PUBLISHED"));
+
+        InspirationCreationEntity retried = mapper.selectById(image.getId());
+        assertThat(retried.getImportStatus()).isEqualTo("PROCESSING");
+        assertThat(retried.getThumbnailStatus()).isEqualTo("PENDING");
+        assertThat(retried.getImportError()).isNull();
+        assertThat(retried.getThumbnailError()).isNull();
+        assertThat(retried.getStoragePath()).isEqualTo(image.getStoragePath());
+        assertThat(retried.getFileSize()).isEqualTo(image.getFileSize());
+        assertThat(retried.getExternalId()).isEqualTo(image.getExternalId());
+        assertThat(mapper.selectImportedById(image.getId())).isNull();
+        org.mockito.Mockito.verifyNoInteractions(objects);
+    }
+
+    @Test
+    void publishingReadyImageKeepsRenditionWithoutAnotherJob() {
+        InspirationCreationEntity image = insert("Ready", "IMAGE", "UNPUBLISHED", 10);
+        image.setFileSize(123L);
+        image.setThumbnailStatus("READY");
+        image.setThumbnailPath("inspiration/creations/manual/derived/display.jpg");
+        image.setThumbnailFileSize(45L);
+        mapper.updateById(image);
+
+        service.updatePublishStatus(image.getId(), new InspirationPublishStatusRequest("PUBLISHED"));
+
+        InspirationCreationEntity ready = mapper.selectById(image.getId());
+        assertThat(ready.getImportStatus()).isEqualTo("IMPORTED");
+        assertThat(ready.getThumbnailStatus()).isEqualTo("READY");
+        assertThat(ready.getThumbnailFileSize()).isEqualTo(45L);
+        assertThat(ready.getStoragePath()).isEqualTo(image.getStoragePath());
+        org.mockito.Mockito.verifyNoInteractions(renditions, objects);
+    }
+
+    @Test
+    void failedExplicitRetryLeavesImageHiddenAndOriginalIntact() {
+        InspirationCreationEntity image = failedImage();
+        org.mockito.Mockito.when(renditions.retryFailedDisplay(
+            InspirationImageRenditionReconciler.identity(image), "inspiration-creation:" + image.getId()))
+            .thenThrow(new IllegalStateException("Submission unavailable"));
+
+        assertThatThrownBy(() -> service.updatePublishStatus(image.getId(),
+            new InspirationPublishStatusRequest("PUBLISHED")))
+            .isInstanceOf(IllegalStateException.class);
+
+        InspirationCreationEntity failed = mapper.selectById(image.getId());
+        assertThat(failed.getImportStatus()).isEqualTo("FAILED");
+        assertThat(failed.getThumbnailStatus()).isEqualTo("FAILED");
+        assertThat(failed.getStoragePath()).isEqualTo(image.getStoragePath());
+        assertThat(failed.getPublishStatus()).isEqualTo("UNPUBLISHED");
+        assertThat(mapper.selectImportedById(image.getId())).isNull();
+        org.mockito.Mockito.verifyNoInteractions(objects);
+    }
+
+    private InspirationCreationEntity failedImage() {
+        InspirationCreationEntity image = insert("Retry", "IMAGE", "UNPUBLISHED", 10);
+        image.setImportStatus("FAILED");
+        image.setImportError("Prior processing failure");
+        image.setFileSize(123L);
+        image.setThumbnailPath("inspiration/creations/manual/derived/display.jpg");
+        image.setThumbnailStatus("FAILED");
+        image.setThumbnailError("Prior processing failure");
+        mapper.updateById(image);
+        return image;
     }
 
     private InspirationCreationEntity insert(String title, String type, String publishStatus, int sortOrder) {

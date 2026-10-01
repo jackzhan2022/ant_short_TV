@@ -9,6 +9,7 @@ import com.antshorttv.storage.ImageDisplayRenditionPlanner;
 import com.antshorttv.storage.MediaObjectIdentity;
 import com.antshorttv.storage.ObjectStorageKeyFactory;
 import com.antshorttv.storage.RegisteredImageDisplay;
+import com.antshorttv.storage.RegisteredMediaDetails;
 import com.antshorttv.storage.StoredObject;
 import com.antshorttv.storage.VerifiedMediaUpload;
 import java.awt.image.BufferedImage;
@@ -49,6 +50,8 @@ public class InspirationCreationMediaStorage {
         String externalId,
         String mediaUrl
     ) {
+        InspirationCreationMediaTransfer existing = reuseRegisteredImage(assetId, externalId);
+        if (existing != null) return existing;
         if (mediaUrl == null || mediaUrl.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "媒体URL不能为空。");
         }
@@ -93,6 +96,44 @@ public class InspirationCreationMediaStorage {
         }
     }
 
+    InspirationCreationMediaTransfer reuseRegisteredImage(Long assetId, String externalId) {
+        if (assetId == null) return null;
+        MediaObjectIdentity identity = new MediaObjectIdentity(
+            0L, null, "INSPIRATION_CREATION", assetId, externalId
+        );
+        RegisteredMediaDetails original = imageRenditions.originalDetails(identity);
+        if (original == null) return null;
+        if (!"READY".equals(original.status()) || original.fileSize() <= 0
+            || original.objectKey() == null || original.objectKey().isBlank()
+            || original.mimeType() == null || !original.mimeType().startsWith("image/")) {
+            throw new IllegalStateException("Registered inspiration original is not ready.");
+        }
+        ImageDisplayRenditionPlan expected = displayPlan(original.objectKey(), original.mimeType());
+        RegisteredMediaDetails display = imageRenditions.displayDetails(identity);
+        if (display == null || "FAILED".equals(display.status())) {
+            RegisteredImageDisplay retried = imageRenditions.retryFailedDisplay(
+                identity, "inspiration-creation:" + assetId
+            );
+            if (!expected.objectKey().equals(retried.displayKey())) {
+                throw new IllegalStateException("Registered inspiration display key is inconsistent.");
+            }
+            display = imageRenditions.displayDetails(identity);
+        }
+        if (display == null || !expected.objectKey().equals(display.objectKey())) {
+            throw new IllegalStateException("Registered inspiration display key is inconsistent.");
+        }
+        boolean ready = "READY".equals(display.status()) && display.fileSize() > 0
+            && expected.mimeType().equals(display.mimeType());
+        if (!ready && !"PENDING".equals(display.status()) && !"SUBMITTED".equals(display.status())) {
+            throw new IllegalStateException("Registered inspiration display is not available.");
+        }
+        return new InspirationCreationMediaTransfer(
+            original.objectKey(), original.mimeType(), original.fileSize(),
+            display.objectKey(), expected.mimeType(), ready ? "READY" : "PENDING",
+            ready ? display.fileSize() : null
+        );
+    }
+
     public InspirationCreationMediaTransfer storeUploadedImage(
         Long assetId,
         String externalId,
@@ -113,11 +154,10 @@ public class InspirationCreationMediaStorage {
             String originalPath = imageOriginalPath(
                 assetId, externalId, upload.contentType()
             );
-            StoredObject original = objectStorageService.promoteVerifiedUpload(source, originalPath);
+            StoredObject original = objectStorageService.copyCompletedUploadOriginal(source, originalPath);
             InspirationCreationMediaTransfer transfer = registerImage(
                 assetId, externalId, original, dimensions
             );
-            objectStorageService.delete(upload.objectKey());
             return transfer;
         } catch (BusinessException exception) {
             throw exception;
@@ -339,8 +379,15 @@ record InspirationCreationMediaTransfer(
     Long fileSize,
     String displayPath,
     String displayMimeType,
-    String displayStatus
+    String displayStatus,
+    Long displayFileSize
 ) {
+    InspirationCreationMediaTransfer(
+        String storagePath, String mimeType, Long fileSize, String displayPath,
+        String displayMimeType, String displayStatus
+    ) {
+        this(storagePath, mimeType, fileSize, displayPath, displayMimeType, displayStatus, null);
+    }
 }
 
 record ImageDimensions(int width, int height) {

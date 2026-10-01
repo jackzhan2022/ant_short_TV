@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,7 +32,7 @@ class InspirationCreationMediaStorageImageTest {
         );
         byte[] bytes = png(12, 8);
         VerifiedMediaUpload upload = new VerifiedMediaUpload(
-            "session-1", "uploads/11/session-1/source.png", "image/png", bytes.length,
+            "session-1", "materials/11/uploads/202609/session-1/v1/original.png", "image/png", bytes.length,
             "etag-source"
         );
         StoredObject source = new StoredObject(
@@ -39,7 +40,7 @@ class InspirationCreationMediaStorageImageTest {
         );
         when(objects.metadata(upload.objectKey())).thenReturn(source);
         when(objects.resource(upload.objectKey())).thenReturn(new ByteArrayResource(bytes));
-        when(objects.promoteVerifiedUpload(eq(source), any(String.class))).thenAnswer(invocation ->
+        when(objects.copyCompletedUploadOriginal(eq(source), any(String.class))).thenAnswer(invocation ->
             new StoredObject(
                 invocation.getArgument(1), bytes.length, "image/png", "etag-final",
                 "INTELLIGENT_TIERING"
@@ -75,6 +76,7 @@ class InspirationCreationMediaStorageImageTest {
             eq(8),
             eq("inspiration-creation:44")
         );
+        verify(objects, never()).delete(upload.objectKey());
     }
 
     private byte[] png(int width, int height) throws Exception {

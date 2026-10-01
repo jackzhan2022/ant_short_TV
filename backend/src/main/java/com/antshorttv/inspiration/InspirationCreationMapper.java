@@ -36,13 +36,19 @@ public interface InspirationCreationMapper extends BaseMapper<InspirationCreatio
     }
 
     default List<InspirationCreationEntity> selectImageRenditionCandidates(int limit) {
+        return selectImageRenditionCandidatesAfter(0L, limit);
+    }
+
+    default List<InspirationCreationEntity> selectImageRenditionCandidatesAfter(long afterId, int limit) {
         int bounded = Math.max(1, Math.min(limit, 100));
         return selectList(new LambdaQueryWrapper<InspirationCreationEntity>()
             .eq(InspirationCreationEntity::getCreationType, "IMAGE")
-            .eq(InspirationCreationEntity::getImportStatus,
-                InspirationCreationImportStatus.PROCESSING.name())
-            .eq(InspirationCreationEntity::getThumbnailStatus, "PENDING")
+            .and(query -> query.eq(InspirationCreationEntity::getImportStatus, "PROCESSING")
+                .eq(InspirationCreationEntity::getThumbnailStatus, "PENDING")
+                .or(failed -> failed.eq(InspirationCreationEntity::getImportStatus, "FAILED")
+                    .eq(InspirationCreationEntity::getThumbnailStatus, "FAILED")))
             .isNull(InspirationCreationEntity::getDeletedAt)
+            .gt(InspirationCreationEntity::getId, afterId)
             .orderByAsc(InspirationCreationEntity::getId)
             .last("limit " + bounded));
     }
@@ -54,7 +60,11 @@ public interface InspirationCreationMapper extends BaseMapper<InspirationCreatio
                thumbnail_error = null, import_status = 'IMPORTED', import_error = null,
                updated_at = current_timestamp
          where id = #{id} and creation_type = 'IMAGE'
-           and import_status = 'PROCESSING' and thumbnail_status = 'PENDING'
+           and import_status in ('PROCESSING', 'FAILED')
+           and thumbnail_status in ('PENDING', 'FAILED')
+           and storage_path is not null and trim(storage_path) <> '' and file_size > 0
+           and thumbnail_path is not null and trim(thumbnail_path) <> ''
+           and thumbnail_path = #{path}
            and deleted_at is null
         """)
     int markImageRenditionReady(
@@ -63,6 +73,36 @@ public interface InspirationCreationMapper extends BaseMapper<InspirationCreatio
         @Param("mimeType") String mimeType,
         @Param("fileSize") long fileSize
     );
+
+    @Update("""
+        update inspiration_creation
+           set thumbnail_status = 'PENDING', thumbnail_error = null,
+               import_status = 'PROCESSING', import_error = null,
+               updated_at = current_timestamp
+         where id = #{id} and creation_type = 'IMAGE'
+           and import_status = 'FAILED' and thumbnail_status = 'FAILED'
+           and storage_path is not null and trim(storage_path) <> '' and file_size > 0
+           and thumbnail_path is not null and trim(thumbnail_path) <> ''
+           and thumbnail_path = #{path} and deleted_at is null
+        """)
+    int markImageRenditionPending(@Param("id") Long id, @Param("path") String path);
+
+    @Update("""
+        update inspiration_creation
+           set import_error = null, thumbnail_error = null
+         where id = #{id} and creation_type = 'IMAGE' and deleted_at is null
+           and thumbnail_path = #{path}
+           and ((import_status = 'PROCESSING' and thumbnail_status = 'PENDING')
+             or (import_status = 'IMPORTED' and thumbnail_status = 'READY'))
+        """)
+    int clearImageRenditionErrors(@Param("id") Long id, @Param("path") String path);
+
+    @Update("""
+        update inspiration_creation
+           set publish_status = #{status}, updated_at = current_timestamp
+         where id = #{id} and deleted_at is null
+        """)
+    int updatePublishStatusIfActive(@Param("id") Long id, @Param("status") String status);
 
     @Update("""
         update inspiration_creation

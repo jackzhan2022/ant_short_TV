@@ -2,7 +2,9 @@ package com.antshorttv.inspiration;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.storage.ImageDisplayRenditionService;
 import com.antshorttv.storage.MediaUploadSessionService;
+import com.antshorttv.storage.RegisteredImageDisplay;
 import com.antshorttv.storage.VerifiedMediaUpload;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -13,6 +15,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -25,6 +28,7 @@ public class InspirationManagementService {
     private final InspirationManagementImageCreationService imageCreation;
     private final InspirationCreationMediaStorage mediaStorage;
     private final MediaUploadSessionService uploadSessions;
+    private final ImageDisplayRenditionService imageRenditions;
     private final ObjectMapper objectMapper;
 
     public InspirationManagementService(
@@ -33,6 +37,7 @@ public class InspirationManagementService {
         InspirationManagementImageCreationService imageCreation,
         InspirationCreationMediaStorage mediaStorage,
         MediaUploadSessionService uploadSessions,
+        ImageDisplayRenditionService imageRenditions,
         ObjectMapper objectMapper
     ) {
         this.mapper = mapper;
@@ -40,6 +45,7 @@ public class InspirationManagementService {
         this.imageCreation = imageCreation;
         this.mediaStorage = mediaStorage;
         this.uploadSessions = uploadSessions;
+        this.imageRenditions = imageRenditions;
         this.objectMapper = objectMapper;
     }
 
@@ -133,16 +139,30 @@ public class InspirationManagementService {
         return response(entity);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public InspirationManagementItemResponse updatePublishStatus(
         Long id,
         InspirationPublishStatusRequest request
     ) {
         InspirationCreationEntity entity = requireManaged(id);
-        entity.setPublishStatus(normalizePublishStatus(request.publishStatus()));
-        entity.setUpdatedAt(LocalDateTime.now());
-        mapper.updateById(entity);
-        return response(entity);
+        String status = normalizePublishStatus(request.publishStatus());
+        if ("PUBLISHED".equals(status) && "IMAGE".equals(entity.getCreationType())
+            && "FAILED".equals(entity.getImportStatus())) {
+            RegisteredImageDisplay retried = imageRenditions.retryFailedDisplay(
+                InspirationImageRenditionReconciler.identity(entity), "inspiration-creation:" + id
+            );
+            if (mapper.markImageRenditionPending(id, retried.displayKey()) != 1) {
+                InspirationCreationEntity current = requireManaged(id);
+                if (!"IMPORTED".equals(current.getImportStatus())
+                    || !"READY".equals(current.getThumbnailStatus())) {
+                    throw new IllegalStateException("Inspiration display retry could not be persisted.");
+                }
+            }
+        }
+        if (mapper.updatePublishStatusIfActive(id, status) != 1) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "灵感内容不存在。");
+        }
+        return response(requireManaged(id));
     }
 
     @Transactional
@@ -176,6 +196,9 @@ public class InspirationManagementService {
         entity.setDeletedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         mapper.updateById(entity);
+        if ("IMAGE".equals(entity.getCreationType())) {
+            imageRenditions.retire(InspirationImageRenditionReconciler.identity(entity));
+        }
         mediaStorage.delete(entity.getStoragePath());
         mediaStorage.delete(entity.getThumbnailPath());
     }

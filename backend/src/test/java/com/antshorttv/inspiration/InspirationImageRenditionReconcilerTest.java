@@ -33,7 +33,7 @@ class InspirationImageRenditionReconcilerTest {
         identity = new MediaObjectIdentity(
             0L, null, "INSPIRATION_CREATION", 44L, "external-44"
         );
-        when(mapper.selectImageRenditionCandidates(20)).thenReturn(List.of(entity));
+        when(mapper.selectImageRenditionCandidatesAfter(0L, 20)).thenReturn(List.of(entity));
     }
 
     @Test

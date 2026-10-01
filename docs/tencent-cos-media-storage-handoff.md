@@ -73,6 +73,8 @@ Still required before production integration testing:
 - Completion verifies staging object length, ETag, MIME type, and storage class with `HEAD Object`.
 - A verified staging object is copied server-side to an immutable `materials/.../v1/original.ext` key with an ETag precondition. The business session stores only the final key. A still-valid old upload signature can therefore overwrite only an unreferenced staging object.
 - The staging source is intentionally left for lifecycle cleanup so a database transaction failure does not destroy retryability.
+- Inspiration image creation copies the completed `materials/{tenant}[/project]/uploads/{month}/{session}/v1/original.ext` with an ETag precondition and retains that session object for retries. Reference-aware lifecycle cleanup may remove an unused completed session original after its seven-day session expiry; generic `uploads/` cleanup must never remove accepted business originals.
+- Publishing a failed inspiration image explicitly retries its display job from the registered original. The image stays hidden until the verified rendition reaches `READY`; scheduler ticks only reconcile persisted state and never submit retries.
 
 ### Delivery and media metadata
 

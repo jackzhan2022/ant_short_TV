@@ -320,13 +320,32 @@ public class ObjectStorageService {
             || !targetKey.startsWith("materials/")) {
             throw new IllegalArgumentException("上传对象固化路径不合法。");
         }
+        return copyVerifiedObject(source, targetKey, "promote_upload");
+    }
+
+    public StoredObject copyCompletedUploadOriginal(StoredObject source, String targetPath) {
+        if (source == null || source.key() == null || source.eTag() == null
+            || source.eTag().isBlank()) {
+            throw new IllegalArgumentException("Completed upload object metadata is incomplete.");
+        }
+        String sourceKey = keys.objectKey(source.key());
+        String targetKey = keys.objectKey(targetPath);
+        if (!sourceKey.matches("materials/[0-9]+(?:/[0-9]+)?/uploads/[0-9]{6}/[^/]+/v1/original\\.[^/]+")
+            || !targetKey.startsWith("materials/") || !targetKey.matches(".*/original\\.[^/]+")
+            || sourceKey.equals(targetKey)) {
+            throw new IllegalArgumentException("Completed upload copy paths are invalid.");
+        }
+        return copyVerifiedObject(source, targetKey, "copy_completed_upload");
+    }
+
+    private StoredObject copyVerifiedObject(StoredObject source, String targetKey, String operation) {
         CopyObjectRequest request = new CopyObjectRequest(
-            properties.getBucket(), sourceKey, properties.getBucket(), targetKey
+            properties.getBucket(), keys.objectKey(source.key()), properties.getBucket(), targetKey
         );
         request.setStorageClass(StorageClass.fromValue(properties.getStorageClass()));
         request.withMatchingETagConstraint(source.eTag());
         try {
-            metrics.record("COPY_OBJECT", "promote_upload", source.size(), () -> {
+            metrics.record("COPY_OBJECT", operation, source.size(), () -> {
                 if (transfers == null) {
                     cos.copyObject(request);
                 } else {

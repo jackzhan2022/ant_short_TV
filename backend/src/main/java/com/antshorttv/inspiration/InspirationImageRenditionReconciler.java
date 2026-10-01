@@ -3,6 +3,7 @@ package com.antshorttv.inspiration;
 import com.antshorttv.storage.ImageDisplayRenditionService;
 import com.antshorttv.storage.MediaObjectIdentity;
 import com.antshorttv.storage.RegisteredMediaDetails;
+import java.util.List;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -12,6 +13,7 @@ public class InspirationImageRenditionReconciler {
 
     private final InspirationCreationMapper mapper;
     private final ImageDisplayRenditionService renditions;
+    private long afterId;
 
     public InspirationImageRenditionReconciler(
         InspirationCreationMapper mapper,
@@ -26,9 +28,15 @@ public class InspirationImageRenditionReconciler {
         reconcilePending(DEFAULT_BATCH_SIZE);
     }
 
-    public int reconcilePending(int limit) {
+    public synchronized int reconcilePending(int limit) {
+        List<InspirationCreationEntity> candidates = mapper.selectImageRenditionCandidatesAfter(afterId, limit);
+        if (candidates.isEmpty() && afterId != 0L) {
+            afterId = 0L;
+            candidates = mapper.selectImageRenditionCandidatesAfter(afterId, limit);
+        }
         int reconciled = 0;
-        for (InspirationCreationEntity entity : mapper.selectImageRenditionCandidates(limit)) {
+        for (InspirationCreationEntity entity : candidates) {
+            afterId = entity.getId();
             RegisteredMediaDetails display = renditions.displayDetails(identity(entity));
             if (display == null) continue;
             if ("READY".equals(display.status())) {
@@ -41,6 +49,8 @@ public class InspirationImageRenditionReconciler {
                 reconciled += mapper.markImageRenditionFailed(
                     entity.getId(), error(display.errorMessage())
                 );
+            } else if ("PENDING".equals(display.status()) || "SUBMITTED".equals(display.status())) {
+                reconciled += mapper.markImageRenditionPending(entity.getId(), display.objectKey());
             }
         }
         return reconciled;
