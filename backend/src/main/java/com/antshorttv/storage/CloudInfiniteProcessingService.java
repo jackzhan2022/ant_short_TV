@@ -108,7 +108,7 @@ public class CloudInfiniteProcessingService {
         );
         return new TencentCiTaskCallback(callback.eventName(), List.of(new TencentCiJobDetail(
             detail.code(), detail.message(), detail.jobId(), detail.state(), detail.input(),
-            new TencentCiOperation(operation.output(), operation.userData(), new TencentCiPicProcessResult(verified))
+            new TencentCiOperation(operation.output(), operation.userData(), List.of(new TencentCiPicProcessResult(verified)))
         )));
     }
 

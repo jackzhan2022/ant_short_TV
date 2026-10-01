@@ -40,7 +40,7 @@ record TencentCiTaskCallback(
             new TencentCiInput(input),
             new TencentCiOperation(
                 new TencentCiOutput(output), userData,
-                new TencentCiPicProcessResult(new TencentCiProcessResult(size, width, height, eTag, format))
+                List.of(new TencentCiPicProcessResult(new TencentCiProcessResult(size, width, height, eTag, format)))
             )
         )));
     }
@@ -58,8 +58,20 @@ record TencentCiInput(@JsonProperty("Object") String object) { }
 record TencentCiOperation(
     @JsonProperty("Output") TencentCiOutput output,
     @JsonProperty("UserData") String userData,
-    @JsonProperty("PicProcessResult") TencentCiPicProcessResult picProcessResult
-) { }
+    @JsonProperty("PicProcessResult")
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    List<TencentCiPicProcessResult> picProcessResults
+) {
+    TencentCiOperation {
+        if (picProcessResults != null && picProcessResults.size() != 1) {
+            throw new IllegalArgumentException("A picture callback must contain exactly one process result.");
+        }
+    }
+
+    TencentCiPicProcessResult picProcessResult() {
+        return picProcessResults == null ? null : picProcessResults.get(0);
+    }
+}
 record TencentCiOutput(@JsonProperty("Object") String object) { }
 record TencentCiPicProcessResult(
     @JsonProperty("ProcessResult") TencentCiProcessResult processResult
