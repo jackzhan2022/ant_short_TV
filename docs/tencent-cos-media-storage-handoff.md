@@ -12,7 +12,7 @@ Last updated: 2026-09-30
 - OpenSpec progress: `42/55`
 - Starting commit before this handoff commit: `edc404c`
 
-This branch is a continuation point, not a production-ready release. The storage, upload-signing, CDN-delivery, and rendition foundations are present, but the asynchronous `imageSlim` workflow is not yet connected to every real image-ingestion path. Several OpenSpec items currently marked complete must be re-audited after that integration is finished.
+This branch is a continuation point, not a production-ready release. The storage, upload-signing, CDN-delivery, and rendition foundations are present. AI-generated image results now use the persisted asynchronous `imageSlim` workflow and publish only after callback-confirmed readiness, but the workflow is not yet connected to every real image-ingestion path. Several OpenSpec items currently marked complete must be re-audited after the remaining integration is finished.
 
 ## 2. Confirmed Product Contract
 
@@ -86,6 +86,7 @@ Still required before production integration testing:
 - Added `ImageDisplayRenditionPlanner`, `MediaObjectRegistry`, processing-job persistence, callback token hashing, and callback correlation checks.
 - Added fixed `imageSlim` rules and `imageMogr2/format/png|imageSlim` for unsupported formats.
 - Terminal callback handling is now idempotent for both `SUCCEEDED` and `FAILED`; a later opposite terminal callback cannot rewrite the result.
+- AI-generated image results register their verified original, submit the persisted display job, and defer task and saved-variant publication until callback-confirmed rendition readiness.
 
 ## 5. Verification Evidence
 
@@ -127,14 +128,13 @@ Full backend `mvn test` is currently blocked by a known branch-baseline authenti
 
 ## 6. Known Blocking Gaps
 
-### P0: Connect persistent `imageSlim` jobs to real write paths
+### P0: Connect persistent `imageSlim` jobs to the remaining write paths
 
-`CloudInfiniteProcessingService.submitImageDisplay` and `MediaObjectRegistry.registerOriginal` currently have no production callers; code search finds only their definitions and tests. Real writes still use synchronous COS `PicOperations` in `ObjectStorageService`, and some domain services infer derived keys immediately.
+The AI-generated image result path now calls `ImageDisplayRenditionService.registerOriginalAndSubmit`, which registers the verified original, submits the persisted processing job, and gates publication on authenticated callback completion. OpenSpec task `6.3` remains incomplete because the browser-managed and other domain ingestion sources below are not all routed through that workflow; some still use synchronous COS `PicOperations` or infer derived keys immediately.
 
-The next implementation must register the verified original, create a pending display rendition, persist the processing job, wait for authenticated callback completion, and publish only after the rendition is ready. Cover these sources explicitly:
+The remaining integrations must register the verified original, create a pending display rendition, persist the processing job, wait for authenticated callback completion, and publish only after the rendition is ready. Cover these sources explicitly:
 
-- Browser-uploaded images
-- AI-generated images and saved variants
+- Browser-managed inspiration uploads
 - Imported inspiration images
 - Style-library images
 - Reference/storyboard images
@@ -146,32 +146,20 @@ Do not mark a rendition ready with `fileSize=0`, guessed metadata, or a guessed 
 
 `startMediaUpload` creates the session internally and exposes pause/resume only after COS provides a task ID. On rejection, normal callers lose the session/task handle and a retry creates a new session. Refactor the public contract so callers can retain the upload session and COS task ID and invoke `restartTask` for the same object. Add a failing interruption/recovery test before implementation.
 
-### P0: Remove the unsafe historical-path migration
-
-`V127__image_slim_display_paths.sql` currently rewrites every `style_library.storage_path` to a `derived/display.*` path without creating or verifying the corresponding COS object. This would point historical rows at missing data and contradict the no-historical-backfill scope.
-
-Replace it with a safe migration that preserves existing historical paths. Only a separate verified backfill may update a row after the actual derived object exists. Update all schema snapshot/rehearsal tests accordingly.
-
-### P1: Correct the runbook output extension
-
-`docs/tencent-cos-media-storage-runbook.md` still states that every image writes `display.webp`. The approved contract preserves JPEG/PNG/GIF output where supported and uses PNG after unsupported-format conversion. Remove the hard-coded WebP statement.
-
 ### P1: Re-audit OpenSpec completion markers
 
-Tasks `6.1` through `6.4` and their downstream domain-integration tasks are marked complete, but the production-call search above proves the asynchronous persisted-job path is not wired end to end. Re-open any checkbox whose acceptance criteria are not demonstrably satisfied after the integration changes.
+Task `6.4` is now backed by the callback-gated AI-generated image path, while task `6.3` remains incomplete for the remaining sources above. Re-audit downstream domain-integration checkboxes independently; the completed AI path does not prove that every ingestion domain is wired end to end.
 
 ## 7. Recommended Continuation Order
 
-1. Write red tests for original registration, pending rendition state, job persistence, and callback-gated publication in one representative image flow.
-2. Implement one end-to-end asynchronous path and extract only the shared orchestration needed by the other image sources.
-3. Extend the same contract to every source listed in section 6, with focused tests per domain.
+1. Write red tests for original registration, pending rendition state, job persistence, and callback-gated publication in one remaining image source.
+2. Route that source through the existing persisted rendition orchestration, extracting only shared behavior required by another source.
+3. Extend the same contract to every remaining source listed in section 6, with focused tests per domain.
 4. Write a real frontend interruption/recovery test, then preserve and expose session/task state across a failed upload attempt.
-5. Neutralize `V127__image_slim_display_paths.sql` and update migration snapshot tests.
-6. Correct the runbook extension language.
-7. Regenerate OpenAPI only with `npm run openapi`; never edit `frontend/src/services/ant-design-pro/` manually.
-8. Run focused backend tests, frontend tests, lint, antd lint, frontend build, `mvn -DskipTests clean package`, and `git diff --check`.
-9. Address or formally separate the existing registration-verification test baseline before running and claiming a clean full backend suite.
-10. Finish Tencent Cloud console tasks and then execute OpenSpec integration, cache, range, cost, and rollback checks `8.4` through `8.9`.
+5. Regenerate OpenAPI only with `npm run openapi`; never edit `frontend/src/services/ant-design-pro/` manually.
+6. Run focused backend tests, frontend tests, lint, antd lint, frontend build, `mvn -DskipTests clean package`, and `git diff --check`.
+7. Address or formally separate the existing registration-verification test baseline before running and claiming a clean full backend suite.
+8. Finish Tencent Cloud console tasks and then execute OpenSpec integration, cache, range, cost, and rollback checks `8.4` through `8.9`.
 
 ## 8. Commands to Resume
 
