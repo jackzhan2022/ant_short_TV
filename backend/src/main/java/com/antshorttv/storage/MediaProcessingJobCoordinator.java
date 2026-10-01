@@ -108,19 +108,25 @@ public class MediaProcessingJobCoordinator {
     }
 
     @Transactional
+    public boolean requiresOutputVerification(String tokenHash, TencentCiTaskCallback callback) {
+        MediaProcessingJobEntity entity = jobs.findByTokenHash(tokenHash);
+        if (entity == null) throw new IllegalArgumentException("万象回调令牌无效。");
+        if (TERMINAL.contains(entity.status)) return false;
+        TencentCiJobDetail detail = single(callback);
+        correlate(entity, detail);
+        TencentCiProcessResult result = detail.operation().picProcessResult() == null
+            ? null : detail.operation().picProcessResult().processResult();
+        return "Success".equalsIgnoreCase(detail.state()) && "Success".equalsIgnoreCase(detail.code())
+            && validImageMetadata(result);
+    }
+
+    @Transactional
     public void handleCallback(String tokenHash, TencentCiTaskCallback callback) {
         MediaProcessingJobEntity entity = jobs.findByTokenHash(tokenHash);
         if (entity == null) throw new IllegalArgumentException("万象回调令牌无效。");
         if (TERMINAL.contains(entity.status)) return;
         TencentCiJobDetail detail = single(callback);
-        if (blank(detail.jobId())
-            || !blank(entity.providerJobId) && !same(entity.providerJobId, detail.jobId())
-            || detail.input() == null || !same(entity.inputKey, detail.input().object())
-            || detail.operation() == null || detail.operation().output() == null
-            || !same(entity.outputKey, detail.operation().output().object())
-            || !same(entity.correlationData, detail.operation().userData())) {
-            throw new IllegalArgumentException("万象回调与处理任务不匹配。");
-        }
+        correlate(entity, detail);
         if (blank(entity.providerJobId)) entity.providerJobId = detail.jobId();
 
         LocalDateTime now = LocalDateTime.now();
@@ -143,6 +149,17 @@ public class MediaProcessingJobCoordinator {
         }
         entity.updatedAt = now;
         jobs.update(entity);
+    }
+
+    private void correlate(MediaProcessingJobEntity entity, TencentCiJobDetail detail) {
+        if (blank(detail.jobId())
+            || !blank(entity.providerJobId) && !same(entity.providerJobId, detail.jobId())
+            || detail.input() == null || !same(entity.inputKey, detail.input().object())
+            || detail.operation() == null || detail.operation().output() == null
+            || !same(entity.outputKey, detail.operation().output().object())
+            || !same(entity.correlationData, detail.operation().userData())) {
+            throw new IllegalArgumentException("万象回调与处理任务不匹配。");
+        }
     }
 
     @Transactional
@@ -187,8 +204,12 @@ public class MediaProcessingJobCoordinator {
     }
 
     private boolean valid(TencentCiProcessResult result) {
+        return validImageMetadata(result) && !blank(result.eTag());
+    }
+
+    private boolean validImageMetadata(TencentCiProcessResult result) {
         return result != null && result.size() > 0 && result.width() > 0 && result.height() > 0
-            && !blank(result.eTag()) && !blank(result.format())
+            && !blank(result.format())
             && IMAGE_FORMATS.contains(result.format().toLowerCase(Locale.ROOT));
     }
 

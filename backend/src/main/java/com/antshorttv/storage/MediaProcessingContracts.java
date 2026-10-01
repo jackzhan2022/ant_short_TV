@@ -1,6 +1,7 @@
 package com.antshorttv.storage;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import java.util.List;
 
 record SubmitMediaProcessingJob(
@@ -26,7 +27,9 @@ record SubmittedMediaProcessingJob(String providerJobId, String status, String o
 
 record TencentCiTaskCallback(
     @JsonProperty("EventName") String eventName,
-    @JsonProperty("JobsDetail") List<TencentCiJobDetail> jobsDetail
+    @JsonProperty("JobsDetail")
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    List<TencentCiJobDetail> jobsDetail
 ) {
     static TencentCiTaskCallback success(
         String jobId, String input, String output, String userData,

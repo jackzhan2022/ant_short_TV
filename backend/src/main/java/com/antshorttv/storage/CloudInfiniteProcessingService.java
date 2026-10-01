@@ -1,6 +1,9 @@
 package com.antshorttv.storage;
 
 import com.qcloud.cos.COS;
+import com.qcloud.cos.model.CopyObjectRequest;
+import com.qcloud.cos.model.ObjectMetadata;
+import com.qcloud.cos.model.StorageClass;
 import com.qcloud.cos.model.ciModel.common.MediaInputObject;
 import com.qcloud.cos.model.ciModel.common.MediaOutputObject;
 import com.qcloud.cos.model.ciModel.job.MediaJobObject;
@@ -12,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Service;
@@ -68,7 +72,51 @@ public class CloudInfiniteProcessingService {
     }
 
     public void handleCallback(String token, TencentCiTaskCallback callback) {
-        coordinator.handleCallback(hash(token), callback);
+        String tokenHash = hash(token);
+        if (coordinator.requiresOutputVerification(tokenHash, callback)) {
+            callback = verifyOutput(callback);
+        }
+        coordinator.handleCallback(tokenHash, callback);
+    }
+
+    private TencentCiTaskCallback verifyOutput(TencentCiTaskCallback callback) {
+        TencentCiJobDetail detail = callback.jobsDetail().get(0);
+        TencentCiOperation operation = detail.operation();
+        TencentCiProcessResult result = operation.picProcessResult().processResult();
+        String key = keys.objectKey(operation.output().object());
+        String mimeType = "jpg".equalsIgnoreCase(result.format()) || "jpeg".equalsIgnoreCase(result.format())
+            ? "image/jpeg" : "image/" + result.format().toLowerCase(java.util.Locale.ROOT);
+        ObjectMetadata metadata = cos.getObjectMetadata(properties.getBucket(), key);
+        verifyMetadata(metadata, result.size(), mimeType);
+        String eTag = metadata.getETag();
+        if (!blank(result.eTag()) && !eTag.equals(result.eTag())) {
+            throw new IllegalStateException("万象回调 ETag 与派生对象不匹配。");
+        }
+        if (!properties.getStorageClass().equals(metadata.getStorageClass())) {
+            CopyObjectRequest copy = new CopyObjectRequest(properties.getBucket(), key, properties.getBucket(), key);
+            copy.setMatchingETagConstraints(List.of(eTag));
+            copy.setStorageClass(StorageClass.fromValue(properties.getStorageClass()));
+            cos.copyObject(copy);
+            metadata = cos.getObjectMetadata(properties.getBucket(), key);
+            verifyMetadata(metadata, result.size(), mimeType);
+            if (!eTag.equals(metadata.getETag()) || !properties.getStorageClass().equals(metadata.getStorageClass())) {
+                throw new IllegalStateException("万象派生对象存储类型或内容校验失败。");
+            }
+        }
+        TencentCiProcessResult verified = new TencentCiProcessResult(
+            result.size(), result.width(), result.height(), metadata.getETag(), result.format()
+        );
+        return new TencentCiTaskCallback(callback.eventName(), List.of(new TencentCiJobDetail(
+            detail.code(), detail.message(), detail.jobId(), detail.state(), detail.input(),
+            new TencentCiOperation(operation.output(), operation.userData(), new TencentCiPicProcessResult(verified))
+        )));
+    }
+
+    private void verifyMetadata(ObjectMetadata metadata, long size, String mimeType) {
+        if (metadata == null || metadata.getContentLength() != size || blank(metadata.getETag())
+            || !mimeType.equalsIgnoreCase(metadata.getContentType())) {
+            throw new IllegalStateException("万象派生对象元数据校验失败。");
+        }
     }
 
     public void retireImage(MediaObjectIdentity identity) {

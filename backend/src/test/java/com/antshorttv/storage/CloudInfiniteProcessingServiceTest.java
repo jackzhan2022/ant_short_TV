@@ -3,12 +3,16 @@ package com.antshorttv.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.qcloud.cos.COS;
+import com.qcloud.cos.model.ObjectMetadata;
+import com.qcloud.cos.model.CopyObjectRequest;
+import com.qcloud.cos.model.StorageClass;
 import com.qcloud.cos.model.ciModel.job.MediaJobObject;
 import com.qcloud.cos.model.ciModel.job.MediaJobResponse;
 import com.qcloud.cos.model.ciModel.job.MediaJobsRequest;
@@ -49,6 +53,7 @@ class CloudInfiniteProcessingServiceTest {
         when(detail.getQueueId()).thenReturn("queue-1");
         when(response.getJobsDetail()).thenReturn(detail);
         when(cos.createPicProcessJob(any())).thenReturn(response);
+        when(cos.getObjectMetadata(anyString(), anyString())).thenReturn(outputMetadata("INTELLIGENT_TIERING"));
         MediaObjectRegistry registry = new MediaObjectRegistry(media, keys);
         coordinator = new MediaProcessingJobCoordinator(
             jobs, media, registry
@@ -137,6 +142,92 @@ class CloudInfiniteProcessingServiceTest {
     }
 
     @Test
+    void verifiesSuccessfulOutputWhenTencentOmitsItsEtag() {
+        service.submitImageDisplay(command("image/png"));
+        String token = callbackToken();
+        String output = "materials/11/22/images/202609/42/v1/derived/display.png";
+        ObjectMetadata metadata = outputMetadata("INTELLIGENT_TIERING");
+        when(cos.getObjectMetadata("antv-1418200553", output)).thenReturn(metadata);
+        TencentCiTaskCallback callback = TencentCiTaskCallback.success(
+            "job-1", command("image/png").inputKey(), output,
+            "asset-42-display", 321L, 1200, 800, "", "PNG"
+        );
+
+        service.handleCallback(token, callback);
+        service.handleCallback(token, callback);
+
+        assertThat(jobs.current.status).isEqualTo("SUCCEEDED");
+        assertThat(media.current.status).isEqualTo("READY");
+        assertThat(media.current.etag).isEqualTo("etag-derived");
+        assertThat(media.readyCalls).isEqualTo(1);
+        verify(cos, times(1)).getObjectMetadata("antv-1418200553", output);
+        verify(cos, times(1)).createPicProcessJob(any());
+    }
+
+    @Test
+    void promotesVerifiedStandardOutputWithoutReprocessingImage() {
+        service.submitImageDisplay(command("image/png"));
+        String output = "materials/11/22/images/202609/42/v1/derived/display.png";
+        when(cos.getObjectMetadata("antv-1418200553", output))
+            .thenReturn(outputMetadata(null), outputMetadata("INTELLIGENT_TIERING"));
+
+        service.handleCallback(callbackToken(), TencentCiTaskCallback.success(
+            "job-1", command("image/png").inputKey(), output,
+            "asset-42-display", 321L, 1200, 800, "", "PNG"
+        ));
+
+        assertThat(jobs.current.status).isEqualTo("SUCCEEDED");
+        ArgumentCaptor<CopyObjectRequest> copy = ArgumentCaptor.forClass(CopyObjectRequest.class);
+        verify(cos).copyObject(copy.capture());
+        assertThat(copy.getValue().getSourceKey()).isEqualTo(output);
+        assertThat(copy.getValue().getDestinationKey()).isEqualTo(output);
+        assertThat(copy.getValue().getMatchingETagConstraints()).containsExactly("etag-derived");
+        assertThat(copy.getValue().getStorageClass()).isEqualTo(StorageClass.fromValue("INTELLIGENT_TIERING").toString());
+        verify(cos, times(1)).createPicProcessJob(any());
+    }
+
+    @Test
+    void verifiesOutputStorageClassEvenWhenCallbackIncludesEtag() {
+        service.submitImageDisplay(command("image/png"));
+        String output = "materials/11/22/images/202609/42/v1/derived/display.png";
+        when(cos.getObjectMetadata("antv-1418200553", output))
+            .thenReturn(outputMetadata(null), outputMetadata("INTELLIGENT_TIERING"));
+
+        service.handleCallback(callbackToken(), TencentCiTaskCallback.success(
+            "job-1", command("image/png").inputKey(), output,
+            "asset-42-display", 321L, 1200, 800, "etag-derived", "PNG"
+        ));
+
+        assertThat(media.current.status).isEqualTo("READY");
+        verify(cos).copyObject(any(CopyObjectRequest.class));
+    }
+
+    @Test
+    void rejectsCallbackEtagThatDoesNotMatchTheStoredOutput() {
+        service.submitImageDisplay(command("image/png"));
+        String output = "materials/11/22/images/202609/42/v1/derived/display.png";
+        when(cos.getObjectMetadata("antv-1418200553", output))
+            .thenReturn(outputMetadata("INTELLIGENT_TIERING"));
+
+        assertThatThrownBy(() -> service.handleCallback(callbackToken(), TencentCiTaskCallback.success(
+            "job-1", command("image/png").inputKey(), output,
+            "asset-42-display", 321L, 1200, 800, "wrong-etag", "PNG"
+        ))).isInstanceOf(IllegalStateException.class);
+
+        assertThat(jobs.current.status).isEqualTo("SUBMITTED");
+        assertThat(media.readyCalls).isZero();
+    }
+
+    private ObjectMetadata outputMetadata(String storageClass) {
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentLength(321L);
+        metadata.setContentType("image/png");
+        metadata.setHeader("ETag", "etag-derived");
+        if (storageClass != null) metadata.setHeader("x-cos-storage-class", storageClass);
+        return metadata;
+    }
+
+    @Test
     void resubmitsFailedJobAndReturnsRenditionToPending() {
         SubmitImageDisplayJob command = command("image/png");
         service.submitImageDisplay(command);
@@ -189,7 +280,6 @@ class CloudInfiniteProcessingServiceTest {
             Arguments.of(0L, 1200, 800, "etag-derived", "PNG"),
             Arguments.of(321L, 0, 800, "etag-derived", "PNG"),
             Arguments.of(321L, 1200, 0, "etag-derived", "PNG"),
-            Arguments.of(321L, 1200, 800, " ", "PNG"),
             Arguments.of(321L, 1200, 800, "etag-derived", "BMP")
         );
     }
@@ -303,6 +393,9 @@ class CloudInfiniteProcessingServiceTest {
         jobs.current.status = "SUBMITTING";
         jobs.current.providerJobId = null;
         jobs.current.updatedAt = LocalDateTime.now().minusMinutes(6);
+        ObjectMetadata oldOutput = outputMetadata("INTELLIGENT_TIERING");
+        oldOutput.setHeader("ETag", "etag-old");
+        when(cos.getObjectMetadata(anyString(), anyString())).thenReturn(oldOutput);
         when(cos.createPicProcessJob(any())).thenAnswer(invocation -> {
             service.handleCallback(oldToken, TencentCiTaskCallback.success(
                 "job-1", command("image/png").inputKey(),
@@ -327,6 +420,9 @@ class CloudInfiniteProcessingServiceTest {
         jobs.current.status = "SUBMITTING";
         jobs.current.providerJobId = null;
         jobs.current.updatedAt = LocalDateTime.now().minusMinutes(6);
+        ObjectMetadata oldOutput = outputMetadata("INTELLIGENT_TIERING");
+        oldOutput.setHeader("ETag", "etag-old");
+        when(cos.getObjectMetadata(anyString(), anyString())).thenReturn(oldOutput);
         when(cos.createPicProcessJob(any())).thenAnswer(invocation -> {
             service.handleCallback(oldToken, TencentCiTaskCallback.success(
                 "job-1", command("image/png").inputKey(),
@@ -464,6 +560,7 @@ class CloudInfiniteProcessingServiceTest {
         @Override void ready(Long id, long size, String eTag, String mimeType, int width, int height) {
             readyCalls++;
             current.status = "READY";
+            current.etag = eTag;
             this.size = size;
             this.mimeType = mimeType;
             this.width = width;
