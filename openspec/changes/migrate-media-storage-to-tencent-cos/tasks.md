@@ -1,11 +1,11 @@
 ## 1. Tencent Cloud Environment Readiness
 
-- [ ] 1.1 Configure both pre-release production and deployed test profiles to use private bucket `antv-1418200553` and CDN domain `antvcdn.aixmax.cn`, and record the post-launch follow-up to separate test resources.
+- [x] 1.1 Verify the owner-approved shared pre-release production deployment used for real-cloud testing uses private bucket `antv-1418200553` and CDN domain `antvcdn.aixmax.cn`, and record the post-launch follow-up to separate test resources; no second test deployment is required before launch.
 - [x] 1.2 Attach the `AntvBackendCosRole` CVM instance role with COS and Cloud Infinite access in production, retaining least-privilege policy tightening as a post-readiness follow-up.
-- [ ] 1.3 Configure intelligent tiering, three-day incomplete-multipart cleanup, seven-day unconfirmed-upload cleanup, 14-day failed-intermediate cleanup, CORS allowlists, disabled versioning, and disabled cross-region/global acceleration.
-- [ ] 1.4 Verify `antvcdn.aixmax.cn` CNAME, HTTPS, private-origin authorization, Type D authentication, 30-day node caching, seven-day browser caching, `sign,t` cache-key exclusion, processing-parameter retention, disabled auto-refresh, and coalesced origin requests.
-- [ ] 1.5 Configure video-only range origin rules and prove a private test video returns valid `206 Partial Content` responses without full-object origin transfer.
-- [ ] 1.6 Configure Cloud Infinite original-only image and video workflows, persistent `derived/` outputs, authenticated callback routing, and recursion exclusions.
+- [x] 1.3 Configure intelligent tiering, three-day incomplete-multipart cleanup, seven-day unconfirmed-upload cleanup, 14-day failed-intermediate cleanup, CORS allowlists, disabled versioning, and disabled cross-region/global acceleration.
+- [x] 1.4 Verify `antvcdn.aixmax.cn` CNAME, HTTPS, private-origin authorization, Type D authentication, 30-day node caching, seven-day browser caching, `sign,t` cache-key exclusion, processing-parameter retention, disabled auto-refresh, and coalesced origin requests.
+- [x] 1.5 Configure video-only range origin rules and prove a private test video returns valid `206 Partial Content` responses without full-object origin transfer.
+- [x] 1.6 Configure Cloud Infinite original-only image and video workflows, persistent `derived/` outputs, authenticated callback routing, and recursion exclusions.
 - [ ] 1.7 Create COS, CDN, Cloud Infinite, retrieval, request-count, storage, and application public-bandwidth budgets and alert thresholds.
 
 ## 2. Dependencies, Configuration, And Schema
@@ -28,7 +28,7 @@
 ## 4. Browser Multipart Uploads And Request Signing
 
 - [x] 4.1 Implement authenticated upload-session create, per-request authorization, completion, cancellation, and status APIs for project and tenant-level media without returning cloud secret keys.
-- [x] 4.2 Validate the exact assigned object pathname and required multipart methods, query keys, and signable headers before generating a short-lived request signature with the CVM role.
+- [x] 4.2 Validate exact object operations and the SDK's GET bucket-root multipart lookup limited to the assigned object key prefix, plus required methods, query keys, and signable headers before generating a short-lived request signature with the CVM role.
 - [x] 4.3 Verify completed uploads with `HEAD Object`, reject inconsistent key/size/ETag content type evidence, and publish no business record before verification succeeds.
 - [x] 4.4 Implement a frontend COS multipart client with progress, pause/resume where supported, per-request authorization renewal, offline recovery, normalized errors, and no application file-size ceiling.
 - [x] 4.5 Replace video-decomposition Spring byte uploads with tenant/project upload sessions and verified completion metadata.
@@ -69,10 +69,10 @@
 
 - [x] 8.1 Add backend tests for key ownership, request-signing scope, absence of cloud secret keys, upload completion verification, grant concurrency, Type D signing, expiry/renewal, model URLs, and callback idempotency.
 - [x] 8.2 Add frontend tests for multipart progress, per-request authorization, offline/COS/completion errors, resume behavior, and use of thumbnail/display/video delivery URLs.
-- [ ] 8.3 Run backend tests and build, frontend tests, `npm run lint`, `npx antd lint ./src`, and the repository's required type/build checks.
-- [ ] 8.4 Run pre-release integration checks against the shared empty production bucket for backend internal upload, browser direct upload, object metadata, intelligent tiering, lifecycle targeting, Cloud Infinite outputs, and CDN delivery.
+- [x] 8.3 Run backend tests and build, frontend tests, `npm run lint`, `npx antd lint ./src`, and the repository's required type/build checks.
+- [x] 8.4 Run pre-release integration checks against the shared empty production bucket for backend internal upload, browser direct upload, object metadata, intelligent tiering, lifecycle targeting, Cloud Infinite outputs, and CDN delivery.
 - [ ] 8.5 Verify correct, expired, and tampered Type D URLs; unauthorized resource requests; seven-day stable URL reuse; browser cache behavior; and CDN HIT reuse across changed signatures.
-- [ ] 8.6 Verify video range seeking, no full-object origin transfer for partial playback, no application-server media proxying, and acceptable public-bandwidth usage under concurrent uploads and playback.
+- [x] 8.6 Verify video range seeking, no full-object origin transfer for partial playback, no application-server media proxying, and acceptable public-bandwidth usage under concurrent uploads and playback.
 - [ ] 8.7 Verify cost telemetry for COS requests/storage/retrieval, CDN origin/downstream transfer, Cloud Infinite processing, abandoned uploads, and alert delivery.
-- [ ] 8.8 Perform a release and rollback drill documenting that rollback restores MinIO-era behavior for old data while COS-only objects created after cutover remain unavailable to the old release.
-- [ ] 8.9 Record production readiness evidence, known breaking behavior, the post-launch test bucket/CDN separation follow-up, and the separate follow-up required for historical MinIO migration.
+- [x] 8.8 Perform a release and rollback drill documenting that rollback restores MinIO-era behavior for old data while COS-only objects created after cutover remain unavailable to the old release.
+- [x] 8.9 Record production readiness evidence, known breaking behavior, the post-launch test bucket/CDN separation follow-up, and the separate follow-up required for historical MinIO migration.

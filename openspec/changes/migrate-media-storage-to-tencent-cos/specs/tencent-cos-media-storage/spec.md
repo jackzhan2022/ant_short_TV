@@ -32,7 +32,7 @@ The system SHALL assign every new durable object a normalized key without a lead
 - **AND** another tenant cannot reference that key
 
 ### Requirement: Browser uploads use constrained short-lived request signatures
-The system SHALL create authenticated upload sessions and SHALL authorize each COS request with a short-lived signature generated from the backend's CAM instance role. The signing endpoint SHALL require the current user to own a pending session, SHALL accept only the exact assigned object pathname and the methods, multipart query keys, and headers required for that upload, and SHALL never return a SecretId or SecretKey. The frontend SHALL upload bytes directly to COS with `cos-js-sdk-v5` and SHALL request fresh signatures throughout a long-running upload. The application SHALL NOT impose a business file-size ceiling, while COS platform limits and supported media validation remain enforceable.
+The system SHALL create authenticated upload sessions and SHALL authorize each COS request with a short-lived signature generated from the backend's CAM instance role. The signing endpoint SHALL require the current user to own a pending session and SHALL accept only exact assigned object operations or the SDK's bucket-root `GET /` multipart lookup with `uploads` empty and `prefix` equal to that exact assigned key. Lookup pagination SHALL NOT escape that key, all query values SHALL be signed, and general bucket object listing SHALL remain disallowed. The endpoint SHALL restrict methods, query keys, and headers required for that upload and SHALL never return a SecretId or SecretKey. The frontend SHALL upload bytes directly to COS with `cos-js-sdk-v5` and SHALL request fresh signatures throughout a long-running upload. The application SHALL NOT impose a business file-size ceiling, while COS platform limits and supported media validation remain enforceable.
 
 #### Scenario: Authorized user starts a browser upload
 - **WHEN** an authorized user requests an upload session for a supported media type
@@ -43,6 +43,11 @@ The system SHALL create authenticated upload sessions and SHALL authorize each C
 - **WHEN** a valid multipart upload initiates, uploads or lists a part, completes, aborts, or otherwise performs an allowed request for its assigned object
 - **THEN** the frontend requests a fresh short-lived authorization for the same upload session
 - **AND** continues the multipart upload without receiving cloud secret keys
+
+#### Scenario: SDK discovers resumable multipart uploads
+- **WHEN** the SDK requests bucket-root `GET /` with empty `uploads` and an exact assigned-key `prefix` for a pending owned session
+- **THEN** the backend signs only the strictly allowed lookup query and headers, retaining exact-key pagination and configured-host validation
+- **AND** rejects an absent, shortened, changed, or cross-session prefix without returning authorization
 
 #### Scenario: Signing request escapes its assigned object
 - **WHEN** a browser requests authorization for another tenant, project, session, object pathname, dangerous header, query parameter, or disallowed COS action
@@ -72,7 +77,7 @@ The COS environment SHALL remove incomplete multipart uploads after three days, 
 - **THEN** temporary-object lifecycle rules do not delete it
 
 ### Requirement: Pre-release deployments exercise the production COS path
-Before public launch, production and deployed test environments SHALL use private bucket `antv-1418200553` and CDN domain `antvcdn.aixmax.cn` so release testing exercises the exact production storage and delivery path. Unit tests SHALL use mocks or fakes. Separating the deployed test bucket and CDN SHALL remain an operational follow-up before tests could affect live customer media.
+Before public launch, the owner-approved production deployment used for real-cloud integration testing SHALL use private bucket `antv-1418200553` and CDN domain `antvcdn.aixmax.cn` so release testing exercises the exact production storage and delivery path. A second deployed test environment SHALL NOT be required while the owner uses this shared pre-release deployment; any additional deployed test environment SHALL use the same private contract. Unit tests SHALL use mocks or fakes. Separating deployed test resources SHALL remain an operational follow-up before tests could affect live customer media after public launch.
 
 #### Scenario: Automated unit test exercises storage behavior
 - **WHEN** a unit or slice test runs object-storage behavior
@@ -82,6 +87,11 @@ Before public launch, production and deployed test environments SHALL use privat
 - **WHEN** the test deployment initializes before public launch
 - **THEN** it resolves `antv-1418200553` and `antvcdn.aixmax.cn`
 - **AND** exercises the same private storage, CDN authentication, caching, and rendition path as production
+
+#### Scenario: Owner uses the unpublished production deployment for acceptance
+- **WHEN** the owner confirms that the application has not launched publicly and requests testing directly on the production deployment
+- **THEN** real-cloud acceptance uses that deployment and its private COS/CDN resources without provisioning a second instance
+- **AND** dedicated unpublished smoke resources remain distinguishable from user media
 
 #### Scenario: Product has launched publicly
 - **WHEN** deployed tests could create, replace, or delete live customer media

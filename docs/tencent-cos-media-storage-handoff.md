@@ -9,11 +9,11 @@ Last updated: 2026-10-02
 - Branch: `codex/migrate-media-storage-to-tencent-cos`
 - Remote: `origin/codex/migrate-media-storage-to-tencent-cos`
 - OpenSpec change: `migrate-media-storage-to-tencent-cos`
-- OpenSpec progress: `42/55` (task `1.2` complete after role-authenticated CI verification)
-- Latest implementation commit: `8c62da7` (`fix(storage): accept native CI picture result arrays`)
-- Implementation commits through `8c62da7` are pushed and deployed. The active release is `/opt/antv/releases/20261002-8c62da7-native-callback`.
+- OpenSpec progress: `52/55`; only `1.7`, `8.5`, and `8.7` remain open for cost alerts/billing and actual browser cache-transfer evidence.
+- Latest implementation commit: `5010894` (`fix(storage): complete multipart and immutable media cleanup contracts`).
+- Implementation commits through `5010894` are pushed and deployed. The active release is `/opt/antv/releases/20261002-5010894-readiness`.
 
-All new image-ingestion paths use persisted asynchronous `imageSlim` jobs and publish only ready display renditions. The user's actual inspiration image (record `51`) verifies browser direct upload, a persistent compressed display, authenticated callback recovery, and CDN delivery. A new unpublished smoke image (record `55`) now verifies native post-fix callback acceptance without replay; actual CDN responses also have seven-day browser cache headers. This is still not a fully production-ready release: remaining cloud readiness, video/range/cost evidence, rollback, and the full backend test baseline remain open.
+All new image-ingestion paths use persisted asynchronous `imageSlim` jobs and publish only ready display renditions. User records `51` and `56` remain unchanged. Native callbacks, real 35-MB browser multipart uploads, backend internal uploads, failed-output cleanup, video ranges, bounded concurrent application egress, and real rollback are accepted. This is not a fully completed OpenSpec release: cost alerts/billing and actual browser cache-transfer evidence remain open.
 
 ## 2. Confirmed Product Contract
 
@@ -50,27 +50,28 @@ Server and cloud state, including read-only rechecks on 2026-10-02:
 
 - SSH alias `antv-prod` authenticates successfully and passwordless `sudo` works. The dedicated deployment key named in the general runbook is absent; an existing configured identity provides access.
 - The Type D key was copied from the user's ignored local `backend/env` without displaying it; the value was preserved through cutover. The earlier key-only backup is `/opt/antv/shared/env.cos-key.20261001T104015Z.bak`.
-- `/opt/antv/current` resolves to `/opt/antv/releases/20261002-8c62da7-native-callback`. `antv.service` is `active/running`, with `ExecMainStatus=0`, `NRestarts=0`, and `/v3/api-docs` returning `200`.
-- Server `/opt/antv/shared/env` now specifies `antv-1418200553`, `ap-guangzhou`, `INTELLIGENT_TIERING`, `https://antvcdn.aixmax.cn`, and the callback URL above. The main checkout's ignored `backend/env` still has the legacy bucket and empty region; do not overwrite unrelated user settings. Task `1.1` remains open until both deployed profiles are verified.
+- `/opt/antv/current` resolves to `/opt/antv/releases/20261002-5010894-readiness`. `antv.service` is `active/running`, with `ExecMainStatus=0`, `NRestarts=0`, and `/v3/api-docs` returning `200`. The readiness deployment automatically restores the previous COS release on failure; it completed successfully.
+- Server `/opt/antv/shared/env` specifies `antv-1418200553`, `ap-guangzhou`, `INTELLIGENT_TIERING`, `https://antvcdn.aixmax.cn`, and the callback URL above. The owner explicitly confirmed real-cloud acceptance should use this unpublished production deployment, not a second test instance. Task `1.1` is complete under that approved scope. The main checkout's ignored `backend/env` still has the legacy bucket and empty region; do not overwrite unrelated user settings.
 - DNS resolves `antvcdn.aixmax.cn` to `antvcdn.aixmax.cn.cdn.dnsv1.com`. Actual signed-object HTTPS delivery, expiry rejection, and cache reuse now succeed; this does not prove all CDN settings or video range behavior.
 - The approved `antv-direct-upload` CORS rule allows `https://antv.aixmax.cn`, GET/HEAD/PUT/POST/DELETE, required SDK headers, ETag/CRC64/request-ID exposure, and 600-second preflight caching. PUT preflight with actual upload headers returns `200`; the user's image upload also completed. Full multipart renewal/resume coverage remains open.
-- Intelligent tiering is enabled with a 30-day transition. Lifecycle rules now abort incomplete multipart uploads after three days and expire only `uploads/` staging objects after seven days. Versioning is `Off`, and no replication configuration exists. Failed-intermediate cleanup, global acceleration, full browser-upload behavior, and alarms remain unverified.
+- Intelligent tiering is enabled with a 30-day transition. Lifecycle rules abort incomplete multipart uploads after three days and expire only `uploads/` staging objects after seven days. Versioning is `Off`, no replication configuration exists, and console readback confirms global acceleration is off. The deployed transactional cleaner removes only correlated FAILED display outputs after 14 days, never registered READY originals. Its actual synthetic-object acceptance is recorded below; task `1.3` is complete. Alarms remain pending.
 - `imageSlim` API usage and picture/media queues are enabled; access-time automatic compression remains disabled. Earlier `PicBucketUnBinded` and `401 AccessDenied` blockers were resolved by activation and the approved CI role policy. Do not create duplicate bucket-trigger workflows.
 - The user added exact CDN Referer origin `antv.aixmax.cn`, preserving `aixmax.cn` and SHA256 Type D authentication. App-origin signed GETs return `200`; expired and tampered signatures return `403`.
-- Backend artifact SHA-256 is recorded below; the unchanged frontend archive SHA-256 is `0BA6EF0C6C0100AA819330509593DDE8A0B3FFAA0FC986B777B7D002D7CB2D8C`. Current diagnostic classes are under `/tmp/20261002-8c62da7-native-callback/`.
+- COS domain/transfer console confirms private-origin and CDN authentication on, HTTPS configured, CDN cache auto-refresh not configured, and global acceleration off. Existing CDN adaptive WebP is enabled; no setting was changed during this inspection. Include its potential representation-processing usage in cost accounting instead of equating application imageSlim-job counts with the whole account bill.
+- Actual CVM-role workflow listing reports authoritative `TotalCount=0`; the SDK returned one empty list placeholder, not a configured workflow. After the new multipart/concurrency checks, nine provider picture jobs have succeeded on attempt 1; job `8` is a deliberately synthetic FAILED cleanup fixture with no provider job. No input contains `/derived/`, all outputs are derived, and native image/video-cover callbacks have succeeded. Tasks `1.4` and `1.6` are accepted without adding duplicate bucket triggers. The acceleration API diagnostic returns UNKNOWN, so do not substitute it for the console's verified off state.
+- Backend artifact SHA-256 is recorded below; the unchanged frontend archive SHA-256 is `0BA6EF0C6C0100AA819330509593DDE8A0B3FFAA0FC986B777B7D002D7CB2D8C`. Current diagnostic classes and unpacked release dependencies are under `/tmp/20261002-5010894-readiness/`.
 - Retained releases include `/opt/antv/releases/20261001-c14a7d3-cdn`, `/opt/antv/releases/20261001-80f1b40-callback`, `/opt/antv/releases/20261001-89efbfc-cos`, and the original MinIO release `/opt/antv/releases/20260929111242-168aee7-storyboard-hotfix`.
 - Pre-cutover backups are under `/opt/antv/backups/20261001-89efbfc-cos/`: `env.before`, `env.cutover.before`, `env.scheduler.before`, `database.sql.gz`, and `shared-files.tar.gz` (workflow Skills and review exports), plus previous CORS/lifecycle settings. The dump's 247,727,591 uncompressed bytes and gzip integrity were verified; the shared archive is readable. These snapshots predate later user writes; do not restore them blindly.
-- Flyway `V123` through `V127` are applied successfully; the database is at `V127`. The checked execution/analysis/review/decomposition categories have zero active work on the latest read-only check.
+- Flyway `V123` through `V128` are applied successfully; the database is at `V128`. V128 adds only per-attempt failed-output cleanup markers. The checked execution/analysis/review/decomposition categories have zero active work on the latest read-only check.
 - The default single scheduler thread was occupied by subscription grant processing, delaying publication even after media became ready. The approved release now runs with literal shared-env property `spring.task.scheduling.pool.size=4`; publication reconciled successfully after restart. A possible overdue-period loop in `CommercialSubscriptionGrantService` is a separate billing follow-up, not fixed by this storage change.
 
 Remaining environment and acceptance checks:
 
-- Verify both deployed profiles and every required multipart CORS method/header through actual browser upload, renewal, and resume; tasks `1.1` and `1.3` remain open.
-- Complete and verify failed-intermediate cleanup after 14 days without targeting durable originals or ready derivatives.
-- Verify versioning, cross-region replication, and global acceleration remain disabled.
-- Complete CDN private-origin/configuration inspection, cache-key exclusion for only `sign,t`, node-cache behavior, disabled auto-refresh, and coalesced origin requests. The console's all-files node rule is 30 days. The existing media-extension browser rule was corrected from three to seven days; actual responses now have `Cache-Control: max-age=604800`. Full browser cache reuse and seven-day grant acceptance still need evidence.
-- Verify the video snapshot/display chain. Native image callback acceptance is now proved by record `55`; the existing user image was previously recovered by replay, without a second compression job.
-- Configure video-only range origin and prove a private video returns valid `206 Partial Content` responses.
+- Browser records `57` through `59` now verify actual 35,403,873-byte multipart uploads, multipart ETags, completion HEAD verification, intelligent tiering, native cover callbacks, and unpublished domain state. Session `7` was retained across the earlier failure and succeeded after deployment. Per-request authorization is exercised; a browser upload lasting beyond the 300-second signature period has not been separately load-tested.
+- Failed-output cleanup and cloud lifecycle targeting are accepted; preserve the synthetic fixture's retained original and audit marker.
+- Configuration inspection is accepted: exact `sign,t` exclusion preserves other parameters, node rule 30 days, browser media rule seven days, disabled auto-refresh and enabled coalescing. Actual responses have `max-age=604800`. Full browser cache reuse and seven-day grant acceptance still need evidence for `8.5`.
+- The video snapshot/display chain and native image callback are accepted through records `55`/`56`; the original user image was previously recovered by replay, without a second compression job.
+- Video-only range origin and cold-large-video transfer are accepted; see provider-origin telemetry below. Bounded concurrent egress is accepted, not a long-term capacity benchmark.
 - Configure cost and usage alarms for COS, CDN, Cloud Infinite, retrieval, requests, storage, and application public bandwidth.
 
 ## 4. Implemented Foundation
@@ -86,7 +87,7 @@ Remaining environment and acceptance checks:
 ### Browser direct upload
 
 - Added authenticated upload sessions and per-request COS authorization for `cos-js-sdk-v5`.
-- The backend signs only the assigned object pathname, allowed method, allowed query keys, and allowed signable headers.
+- The backend signs exact assigned object operations, allowed methods/query keys/headers, and the SDK's narrowly constrained bucket-root multipart lookup with an exact assigned-key prefix. General object listing and broadened prefixes remain forbidden.
 - The signer now requires the exact configured bucket host: `${bucket}.cos.${region}.myqcloud.com`.
 - Create-object requests require the configured `INTELLIGENT_TIERING` storage class, and completion verifies the actual storage class returned by COS.
 - Completion verifies staging object length, ETag, MIME type, and storage class with `HEAD Object`.
@@ -121,9 +122,17 @@ Remaining environment and acceptance checks:
 - Real callback fix `80f1b40` accepts single-object or array `JobsDetail`. A valid correlated image success always HEAD-verifies output bytes, MIME type, and ETag, including when Tencent's `ProcessResult.Etag` is empty. If CI wrote STANDARD, an ETag-conditional server-side self-copy aligns the output with intelligent tiering and verifies unchanged content. Token/correlation checks precede COS I/O; duplicate terminal callbacks do not repeat verification or processing.
 - Native callback fix `8c62da7` also accepts single-object or one-element-array `Operation.PicProcessResult`. Real native callbacks use arrays at both levels; the earlier replay used an object for the nested result. Empty or multiple result arrays are rejected during binding rather than selecting an arbitrary output. No global Jackson/security settings were relaxed.
 
+### Readiness safeguards (`5010894`)
+
+- Allow the SDK's exact-key bucket-root multipart lookup; 22 signing tests preserve method/query/header/host/ownership/expiry restrictions.
+- Decomposition validates completed tenant-owned upload sessions instead of rejecting their promoted immutable key with an obsolete staging-prefix check.
+- Subtitle creation allocates its row ID before constructing its immutable key; updates use new UUID keys and preserve prior bytes and unrelated storyboard bindings.
+- Failed-display cleanup holds the job row lock across delete and per-attempt marker persistence, uses READ_COMMITTED metadata reads to avoid retry lock inversion, and scans hourly in bounded batches with a finite upper ID to prevent starvation. It accepts the real AI producer's distinct logical/physical version identities. The focused cleanup suite has 53 tests; related combined coverage has 78 tests.
+- Registration fixtures request verification and capture the real mock SMS code. Offline media fixtures use fake COS/CAM/CI and authenticated callbacks, not real cloud calls or direct READY overrides. Production authentication and billing behavior are unchanged.
+
 ## 5. Verification Evidence
 
-Recorded verification from the implementation runs (not a claim that the full backend suite passes):
+Recorded verification from the implementation runs. Backend acceptance combines the completed full-cohort run with corrected migration-inventory reruns; it is not a single green full-run exit:
 
 ```text
 Combined affected backend suite after async video-cover integration
@@ -168,10 +177,12 @@ git diff --check
 Exit 0
 ```
 
+The fresh full backend run executed 1,370 tests, initially with only five stale V128 migration-inventory assertions failing. Four corrected classes reran 7 tests successfully. An independent aggregation of the current XML reports for the full run's 281 unique classes confirms 1,370 testcase nodes, zero failures/errors, one intentional live-AI skip, and no missing reports. The mixed JUnit/ArchUnit class produces 282 reporting groups. Ignore older reports outside that cohort. Verification helper: ignored `.temp/cos-release/verify-backend-results.ps1`; rerun evidence: `backend/target/migration-head-regression-green.log`. Backend packaging succeeded before deployment; frontend 404 tests, lint/type checks, antd lint and build passed with only the existing warnings. Task `8.3` is complete.
+
 The callback and Type D fixes, including `8c62da7`, passed backend packaging, frontend lint/type checking, and antd lint before deployment. No frontend source changed in those fixes.
 
 Deployed backend: `/opt/antv/current/backend/ant-short-tv-backend-0.1.0-SNAPSHOT.jar`.
-SHA-256: `72951B3ECCE64CB6F3D221B9079A899E520C35B672165F92D6259BB55B3E93CC` (verified during deployment on 2026-10-02).
+SHA-256: `337E11F541720423C4C131189409CD95BBDCF3766FD821132AE1829117C9F60E` (verified during deployment on 2026-10-02).
 
 ### Real user-image acceptance evidence (2026-10-02)
 
@@ -201,22 +212,45 @@ Valid/repeated/changed-signature GETs for the new display return `200 / Cache Hi
 
 During diagnosis, records `52` through `54` were created unpublished and their initial callbacks failed on the old nested-result DTO. Treat them as smoke-test records, not user media, and keep them unpublished; do not count their old failures as failures of the accepted new job. Temporary ingress/proxy diagnostics were stopped, the original Nginx site configuration was restored and byte-compared with its backup, and the diagnostic include was moved out of the active configuration. No diagnostic listener remains required.
 
-Full backend `mvn test` is currently blocked by a known branch-baseline authentication test mismatch:
+### User Video Acceptance (2026-10-02)
 
-- 1,169 tests ran before the run was stopped.
-- 146 failures appeared across 25 controller/integration test classes.
-- All observed failures expected HTTP 200 but received HTTP 400.
-- Those tests still hard-code registration verification code `123456`, while the existing authentication implementation now generates random SMS verification codes.
-- This COS branch did not modify that authentication behavior. Do not mark OpenSpec task `8.3` complete until the baseline suite is repaired or a project owner explicitly accepts a documented exception.
-- `AiImageTaskControllerTest` separately reproduced 19 baseline failures. Focused storage/rendition tests passing is not evidence that this full-suite issue is resolved.
+The user uploaded record `56`, `COS 视频验收 20261002`. Its MP4 is `404,184` bytes, intelligent tiering. Tencent synchronous `getSnapshot` at one second (bounded zero-second fallback) supplied a persistent JPEG cover original of `56,600` bytes, `1280 x 720`; asynchronous picture job `6` produced its `38,998`-byte display, same dimensions and intelligent tiering. Job `6` succeeded on attempt `1`, with a native callback `200` at `01:16:28 +0800`. Business state is `IMPORTED / READY / PUBLISHED`; the agent did not change the user's publication state.
+
+The browser loaded, played, and sought this `2.733333`-second video at `1280 x 720`, readyState `4`, no media error. File and thumbnail authorization routes each returned `302`, body `0` bytes. Five 1-KiB head/repeat/middle/changed-signature/tail requests each returned `206`, exact `Content-Range` and 1024 received bytes. First request was MISS; subsequent ones were HIT; every response had `max-age=604800`. Console readback confirms coalesced origin requests enabled and range origin globally disabled except `mp4,m4v,mov,webm`. The additional large-origin/concurrency evidence below completes `1.5` and `8.6`. Screenshot: ignored `.temp/cos-release/video-playback-verified-20261002.jpg`.
+
+### Backend Internal Upload Acceptance (2026-10-02)
+
+Using the deployed storage facade, its real CAM credential provider, production transfer-manager configuration and same-region internal endpoint, an ignored diagnostic fixture of `35,403,873` bytes was uploaded by both streaming and multipart paths. Both HEAD-verifications matched bytes, `video/mp4`, intelligent tiering and nonempty ETag; the multipart result had a multipart ETag. The internal-endpoint gauge was `1.0`. These are private, nonbusiness acceptance originals under `materials/0/cos_acceptance/202610/991001/`, not user media or application publication. No source video was buffered as one application byte array. This does not establish public-CDN cold-origin or concurrency egress behavior.
+
+### Large Video, Multipart, Cleanup And Concurrency (2026-10-02)
+
+Cold CDN ranges against a 35,403,873-byte private original at `04:32:05 +0800` returned exact 1-KiB `206` responses: first MISS, then middle/repeat/changed-signature HIT. After reloading the COS monitoring page, the exported provider CSV reports only `13.46 KB` of CDN-origin transfer in the `04:35` interval, not a full 35-MB origin fetch. Decimal units apply; monitoring is delayed usage telemetry, not a bill. File: `antv-1418200553-traffic-20261002045245.csv`, SHA-256 `a6cae9eb9caf8361de04c997655ea8f2d0e91f967c1373d63b873291b716f628`, retained in Downloads. The earlier `03:30` interval reports `70.82 MB` internal uploads and zero public uploads, reconciling the two backend test uploads. Task `1.5` is complete.
+
+On deployed `5010894`, retained browser session `7` created unpublished record `57`, `COS 分片验收 20261002`, at `05:16:41 +0800`. Its original HEAD matches `35,403,873` bytes, MP4 and intelligent tiering; completed session evidence has a multipart ETag. The one-second snapshot original is `67,378` bytes, `1280 x 720`; native picture job `7` compressed it to `31,657` bytes, same dimensions, attempt `1`. The native callback returned `200` at `05:16:46 +0800`, automatically reaching `IMPORTED / READY / UNPUBLISHED`. No callback replay or publication change was performed. Screenshot: ignored `.temp/cos-release/browser-multipart-success-20261002.jpg`.
+
+The minimal Spring/MyBatis acceptance helper registers only storage, transaction and cleanup beans, not business schedulers. It created a separate synthetic READY original and 15-day-old FAILED display/job under `materials/0/cos_acceptance/202610/991002/`. Calling the real proxied cleanup returned true, the repeated call false, persisted one attempt marker for job `8`, removed only the failed display, and HEAD-confirmed identical original size/ETag. No user media was deleted. The FAILED row and retained original remain auditable. Tasks `1.3` and `8.4` are complete.
+
+Two browser uploads started together at `05:28:41 +0800` and completed as sessions `8`/`9`, creating unpublished records `58`/`59`; both original HEADs and multipart ETags match the 35,403,873-byte fixture. Cover jobs `9`/`10` each succeeded on attempt 1. During the overlapping uploads, eight CDN workers made 32 exact 256-KiB `206` requests, transferring `8,388,608` bytes; a prior bounded warm-up run transferred the same amount. A 35-second outbound `eth0` capture filtered IPv4 TCP source port 443 and saved only 54-byte headers: 61 packets, 19,769 original frame bytes, zero kernel drops, average `0.00452 Mbps`, peak one-second `0.09250 Mbps`. Observed packets span `05:28:24` to `05:28:49 +0800`, covering the uploads' overlap but not the last five seconds of the second completion. This proves low application HTTPS egress during the bounded concurrent sample, not whole-account bandwidth, every final response, or future capacity. Nginx shows only 200 control-plane responses of 296-879 body bytes for create/authorization/completion, never video bodies. Task `8.6` is complete with this explicitly bounded evidence. Ignored pcap and read-only analyzer: `.temp/cos-release/concurrent-egress.pcap` and `analyze-egress.mjs`; neither captures HTTP bodies or credentials.
+
+Anonymous current-user, published video-file and user-image-thumbnail requests return `401`. Existing image/video grants remain revision `1`, with unchanged created/updated timestamps and exactly seven-day expiry periods despite repeated authorized access. Expired/tampered CDN URLs return `403`, and changed signatures HIT. Task `8.5` stays open because this does not independently prove an actual browser repeat used memory/disk cache without another CDN body transfer; the current browser automation exposes no network-transfer timing.
+
+### Real Rollback Drill (2026-10-02)
+
+The owner explicitly approved a 20-minute maintenance window and testing on the unpublished production deployment. A fresh verified snapshot is `/opt/antv/backups/20261002-rollback-drill/`: database gzip contains `247,754,578` uncompressed bytes (`49,715,943` compressed), plus current environment and shared-file backup. This is distinct from the older cutover snapshot.
+
+The actual service switched to `/opt/antv/releases/20260929111242-168aee7-storyboard-hotfix`; only bucket/region were restored to their verified legacy settings, retaining all unrelated current environment values. The authenticated browser loaded eight MinIO thumbnails (`1` through `8`) with nonzero natural dimensions. A separate read-only probe using that exact old release's storage classes and verified legacy environment read record `1`, but rejected new COS-only records `51` and `56` with `BusinessException`. This probe establishes the old storage boundary; it is not an old-release HTTP status claim.
+
+The script restored `/opt/antv/releases/20261002-8c62da7-native-callback` and byte-identical current environment on exit; startup API returned `200`, service is active/running, ExecMainStatus `0`, NRestarts `0`. Record `56` remained `IMPORTED / READY / PUBLISHED`, its original/cover objects remained present, and job `6` stayed attempt `1`. No database snapshot was restored and no COS object was deleted. Task `8.8` is complete. Old-image browser proof: ignored `.temp/cos-release/rollback-minio-20261002.jpg`.
+
+The earlier registration-fixture baseline failure is resolved in tests only. The old interrupted 1,169-test/146-failure run and separate 19-failure AI-image run are historical diagnosis, not current verification. The full-cohort plus corrected inventory rerun evidence above is authoritative.
 
 ## 6. Known Blocking Gaps
 
 ### P0: Remaining real-cloud readiness
 
-The user approved the COS configuration/release switch, Flyway, historical MinIO-only media becoming unavailable, CI role access, and the exact application Referer. Deployment and one real-image flow are verified. Tasks `1.1`, `1.3` through `1.7`, and `8.4` through `8.9` remain open for their unverified portions; do not turn partial image evidence into full release readiness.
+The user approved the COS configuration/release switch, Flyway, historical MinIO-only media becoming unavailable, CI role access, the exact application Referer, shared pre-release acceptance on production, and the completed real rollback drill. Only tasks `1.7`, `8.5`, and `8.7` remain open. Keep previous releases and matching environments recoverable; the single approved rollback window has already been used and must not be repeated without a new window.
 
-Seven-day browser headers and native post-fix image callbacks are accepted. Full cache/grant behavior, video covers/ranges, cost alerts/bills, and the rollback drill remain open. Keep the prior releases and matching environments recoverable.
+Cost alert defaults are awaiting owner confirmation: 100 CNY/month for COS/CDN/CI, notification only to the current Tencent main account, no automatic shutdown/new recipients, and 4 Mbps CVM bandwidth alert. Do not create or test notification policies without confirming these settings. Provider usage/billing, retrieval/request/storage costs and actual alert delivery still need reconciliation. Actual browser memory/disk-cache body reuse also needs a network-transfer observation; seven-day headers and stable grant rows alone are insufficient.
 
 ### P0: Existing applied migration and callback compatibility
 
@@ -224,18 +258,18 @@ Seven-day browser headers and native post-fix image callbacks are accepted. Full
 
 If an earlier COS build persisted random-token nonterminal jobs, drain them under that build or cancel and requeue them through a controlled recovery procedure before rollout. Their stored hashes cannot reconstruct a bearer token for HMAC-based resubmission. Preserve the Type D key while jobs are active; key rotation requires the same drain/requeue planning and also invalidates existing CDN signatures.
 
-### P1: Full backend test baseline
+### P1: Residual Test Coverage
 
-Task `8.3` remains open for the registration fixture mismatch described above. Do not silently change production authentication to accommodate stale tests or report the affected suite as the full suite.
+The backend test baseline is repaired without production authentication changes. Report its full-cohort plus focused-rerun provenance accurately. Native browser uploads crossing the 300-second signature expiry and longer sustained concurrency remain follow-up coverage, not claims made by the short acceptance sample.
 
 ## 7. Recommended Continuation Order
 
 1. Preserve the verified user image and current release; do not replay its callback or resubmit compression again.
-2. Let the user operate a dedicated unpublished MP4 upload in inspiration management, then verify its native snapshot/display callback chain. Complete both-profile readiness and remaining cache configuration separately.
-3. Validate backend internal streaming/multipart upload, browser renewal/resume, video ranges and origin bytes, lifecycle targeting, and concurrent public-bandwidth usage. Record evidence per OpenSpec item.
-4. Reconcile compression operations, cache hit ratio, COS/CDN traffic, and actual bills; configure and exercise cost alerts before revisiting the persistent-rendition design.
-5. Obtain a suitable maintenance window for a rollback drill; take a fresh snapshot first so later user writes are not lost. Record COS-only object limitations under the old release.
-6. Repair or explicitly accept the registration-test baseline before closing `8.3`. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Avoid repeating full suites for documentation-only changes.
+2. Confirm the cost alert amounts, recipients and 4-Mbps bandwidth threshold, then configure and verify notification delivery without shutdown actions.
+3. Capture actual browser memory/disk-cache reuse for the unchanged signed image, preserving CDN authentication and the user's media.
+4. Reconcile successful processing operations, adaptive-WebP usage, cache hit ratio, COS/CDN traffic, requests/storage/retrieval and actual bills before closing `1.7`/`8.7` or revisiting the persistent-rendition design.
+5. Retain the completed rollback evidence and all matching snapshots/releases; never restore old database contents over later writes. Split test resources before public customers make shared acceptance unsafe.
+6. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Avoid repeating full suites for documentation-only changes. Do not merge/archive or report 55/55 while the three readiness items remain open.
 
 ## 8. Commands to Resume
 
