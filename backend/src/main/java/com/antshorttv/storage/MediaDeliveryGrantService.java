@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
@@ -32,7 +33,8 @@ public class MediaDeliveryGrantService {
     @Transactional
     public DeliveryGrant issue(DeliveryGrantRequest request) {
         validate(request);
-        Instant now = clock.instant();
+        // Match DATETIME's second precision so the first URL survives database round-tripping.
+        Instant now = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         String hash = objectKeyHash(request.objectKey());
         MediaDeliveryGrantEntity entity = store.find(request.userId(), hash);
         if (entity == null) {
