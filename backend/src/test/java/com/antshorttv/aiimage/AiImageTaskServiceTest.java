@@ -48,6 +48,37 @@ import org.springframework.mock.web.MockHttpServletRequest;
 class AiImageTaskServiceTest {
 
     @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"   ", "水彩插画"})
+    void batchCreationFreezesProjectStyleUnlessExplicitlyOverridden(String requestedStyle) {
+        Fixture fixture = new Fixture("SUCCESS");
+        fixture.project.visualStyle = "3D风格-定格动画";
+        AiModelEntity model = new AiModelEntity();
+        model.setId(8L);
+        model.setName("image-test");
+        AiProviderEntity provider = new AiProviderEntity();
+        provider.setCode("mock");
+        when(fixture.router.route(8L, "IMAGE")).thenReturn(new AiModelRoute(model, provider, null, null));
+        when(fixture.variants.prepareGeneration(11L, 22L, 77L))
+            .thenReturn(new AssetVisualVariantService.GenerationInput("portrait", List.of()));
+        when(fixture.tasks.insert(any(AiImageTaskEntity.class))).thenAnswer(invocation -> {
+            invocation.<AiImageTaskEntity>getArgument(0).setId(34L);
+            return 1;
+        });
+        AiExecutionTaskEntity execution = new AiExecutionTaskEntity();
+        execution.id = 200L;
+        when(fixture.executions.createWithReservation(any(), any(), any())).thenReturn(execution);
+
+        AiImageTaskResponse response = fixture.service.createForBatch(11L, 22L, 66L,
+            new CreateAiImageTaskRequest("CHARACTER", "VISUAL_VARIANT", 77L, 8L,
+                "portrait", null, List.of(), "16:9", 1, requestedStyle, null, null),
+            "style-batch-test", "style-batch-test");
+
+        assertThat(response.style()).isEqualTo(requestedStyle == null || requestedStyle.isBlank()
+            ? "3D风格-定格动画" : requestedStyle);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"PENDING", "RUNNING", "SETTLING", "RENDERING"})
     void cancelsInProgressTaskWithoutReopeningSettledAccounting(String phase) {
         Fixture fixture = new Fixture(phase);
@@ -64,6 +95,7 @@ class AiImageTaskServiceTest {
     @ValueSource(strings = {"PENDING", "RUNNING", "SETTLING", "RENDERING"})
     void regenerationSupersedesInProgressVariantWithoutReopeningSettledAccounting(String phase) {
         Fixture fixture = new Fixture(phase);
+        fixture.project.visualStyle = "3D风格-定格动画";
         AiModelEntity model = new AiModelEntity();
         model.setId(8L);
         model.setName("image-test");
@@ -85,6 +117,7 @@ class AiImageTaskServiceTest {
 
         assertThat(response.id()).isEqualTo(34L);
         assertThat(response.status()).isEqualTo("PENDING");
+        assertThat(response.style()).isEqualTo("3D风格-定格动画");
         assertThat(fixture.task.getStatus()).isEqualTo("CANCELED");
         verify(fixture.tasks).updateById(fixture.task);
         fixture.assertCanceledWithSettledAccounting();
@@ -112,6 +145,7 @@ class AiImageTaskServiceTest {
         private final AssetVisualVariantService variants = mock(AssetVisualVariantService.class);
         private final MockHttpServletRequest request = new MockHttpServletRequest();
         private final AiImageTaskEntity task = new AiImageTaskEntity();
+        private final ProjectEntity project = new ProjectEntity();
         private final AiPointReservationEntity reservation = new AiPointReservationEntity();
         private final AiImageTaskService service;
 
@@ -144,7 +178,7 @@ class AiImageTaskServiceTest {
             task.setExecutionId(99L);
             task.setStatus(phase);
             when(tenants.requireActiveMember(11L)).thenReturn(new TenantContext(66L, 11L, 88L, "OWNER"));
-            when(projects.selectByTenantIdAndId(11L, 22L)).thenReturn(new ProjectEntity());
+            when(projects.selectByTenantIdAndId(11L, 22L)).thenReturn(project);
             when(tasks.selectOne(any())).thenReturn(task);
             when(tasks.selectById(33L)).thenReturn(task);
             when(results.selectActiveByTask(anyLong())).thenReturn(List.of());

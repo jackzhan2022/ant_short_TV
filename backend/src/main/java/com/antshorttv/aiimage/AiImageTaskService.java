@@ -217,7 +217,7 @@ public class AiImageTaskService {
             ? resolveReferenceImages(tenantId, projectId, request) : variantInput.referenceImages()));
         task.setAspectRatio(request.aspectRatio().trim());
         task.setImageCount(request.imageCount());
-        task.setStyle(blankToNull(request.style()));
+        task.setStyle(resolveStyle(tenantId, projectId, request.style()));
         task.setQuality(blankToNull(request.quality()) == null ? "STANDARD" : request.quality().trim());
         task.setSeed(blankToNull(request.seed()));
         task.setStatus(AiImageTaskStatus.PENDING.name());
@@ -286,7 +286,7 @@ public class AiImageTaskService {
         task.setReferenceImages(source.getReferenceImages());
         task.setAspectRatio(source.getAspectRatio());
         task.setImageCount(source.getImageCount());
-        task.setStyle(source.getStyle());
+        task.setStyle(resolveStyle(tenantId, projectId, source.getStyle()));
         task.setQuality(source.getQuality());
         task.setSeed(source.getSeed());
         task.setStatus(AiImageTaskStatus.PENDING.name());
@@ -565,6 +565,13 @@ public class AiImageTaskService {
             : requestedModelId;
         AiModelRoute route = aiModelRouter.route(modelId, "IMAGE");
         return new ResolvedImageModel(route.model().getId(), route.provider().getCode(), route.model().getName());
+    }
+
+    private String resolveStyle(Long tenantId, Long projectId, String requestedStyle) {
+        String explicit = blankToNull(requestedStyle);
+        if (explicit != null) return explicit;
+        ProjectEntity project = projectMapper.selectByTenantIdAndId(tenantId, projectId);
+        return project == null ? null : blankToNull(project.visualStyle);
     }
 
     void validateBatchModel(Long tenantId, Long projectId, Long requestedModelId) {

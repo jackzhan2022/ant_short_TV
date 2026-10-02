@@ -14,6 +14,16 @@ class AiImageTaskMapperTest {
     @Autowired private AiImageTaskMapper mapper;
 
     @Test
+    void storesFullLengthProjectStyleWithoutTruncation() {
+        AiImageTaskEntity task = insert(11L, 22L, "CHARACTER", "PENDING");
+        String projectStyle = "定格动画".repeat(30);
+        task.setStyle(projectStyle);
+        mapper.updateById(task);
+
+        assertThat(mapper.selectById(task.getId()).getStyle()).isEqualTo(projectStyle);
+    }
+
+    @Test
     void runningFilterIncludesInternalProcessingPhasesWithinProjectAndTaskType() {
         AiImageTaskEntity running = insert(11L, 22L, "CHARACTER", "RUNNING");
         AiImageTaskEntity settling = insert(11L, 22L, "CHARACTER", "SETTLING");

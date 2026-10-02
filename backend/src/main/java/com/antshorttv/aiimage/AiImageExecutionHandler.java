@@ -181,6 +181,8 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
 
     private AiInvocationRequest invocationRequest(AiExecutionContext context, AiImageTaskEntity task) {
         AiExecutionTaskEntity execution = context.task();
+        String prompt = task.getStyle() == null || task.getStyle().isBlank()
+            ? task.getPrompt() : "画面风格：" + task.getStyle().trim() + "\n\n" + task.getPrompt();
         return AiInvocationRequest.image()
             .tenantId(execution.tenantId)
             .userId(execution.userId)
@@ -196,10 +198,10 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             .idempotencyKey("execution:%d:v%d:%s".formatted(
                 execution.id, execution.executionVersion, context.claim().phase()))
             .imageRequest(new AiImageRequest(
-                task.getPrompt(), task.getNegativePrompt(), null, task.getAspectRatio(),
+                prompt, task.getNegativePrompt(), null, task.getAspectRatio(),
                 task.getImageCount(), resolveReferenceImages(task)
             ))
-            .requestSummary(task.getPrompt())
+            .requestSummary(prompt)
             .build();
     }
 

@@ -330,6 +330,7 @@ class AiImageExecutionHandlerRenditionTest {
     @Test
     void settlementFailureResumesWithoutReinvokingProvider() {
         Fixture fixture = new Fixture();
+        fixture.task.setStyle("3D风格-定格动画");
         AtomicReference<AiImageResultEntity> created = new AtomicReference<>();
         when(fixture.results.selectByTask(33L)).thenReturn(List.of()).thenAnswer(
             invocation -> List.of(created.get())
@@ -371,7 +372,11 @@ class AiImageExecutionHandlerRenditionTest {
         assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
             .isInstanceOf(AiExecutionDeferredException.class);
         assertThat(fixture.task.getStatus()).isEqualTo("RENDERING");
-        verify(fixture.invocations, times(1)).invokeImage(any());
+        var request = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(fixture.invocations, times(1)).invokeImage(request.capture());
+        assertThat(request.getValue().imageRequest().prompt())
+            .isEqualTo("画面风格：3D风格-定格动画\n\n" + fixture.task.getPrompt());
+        assertThat(request.getValue().requestSummary()).isEqualTo(request.getValue().imageRequest().prompt());
     }
 
     @Test
