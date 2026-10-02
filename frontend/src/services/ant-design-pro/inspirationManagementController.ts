@@ -27,9 +27,7 @@ export async function list10(
 
 /** 此处后端没有提供注释 POST /api/platform/inspiration-creations */
 export async function create8(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.create8Params,
-  body: {},
+  body: API.InspirationCreateUploadRequest,
   options?: { [key: string]: any }
 ) {
   return request<API.ApiResponseInspirationManagementItemResponse>(
@@ -38,11 +36,6 @@ export async function create8(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-      },
-      params: {
-        // publishStatus has a default value: UNPUBLISHED
-        publishStatus: "UNPUBLISHED",
-        ...params,
       },
       data: body,
       ...(options || {}),

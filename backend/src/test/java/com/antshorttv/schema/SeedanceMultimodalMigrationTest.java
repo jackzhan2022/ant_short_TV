@@ -18,7 +18,7 @@ class SeedanceMultimodalMigrationTest {
         migrate(dataSource, null);
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
-        assertThat(latestVersion(jdbc)).isEqualTo("119");
+        assertThat(latestVersion(jdbc)).isEqualTo("128");
         assertThat(jdbc.queryForObject("""
             select count(*) from ai_model
              where code in ('SEEDANCE_2_0_MINI', 'SEEDANCE_2_0_FAST',
@@ -160,7 +160,7 @@ class SeedanceMultimodalMigrationTest {
 
         migrate(dataSource, null);
 
-        assertThat(latestVersion(jdbc)).isEqualTo("119");
+        assertThat(latestVersion(jdbc)).isEqualTo("128");
         modelIds.forEach((code, id) -> assertThat(modelId(jdbc, code)).isEqualTo(id));
         assertThat(jdbc.queryForMap("""
             select tenant_id, project_id, storyboard_id, provider_code, model, prompt,

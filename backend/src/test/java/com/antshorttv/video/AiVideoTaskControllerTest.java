@@ -20,8 +20,6 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,13 +34,12 @@ import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest(properties = {
     "ai.video.max-concurrent-per-tenant=1",
-    "ai.video.storage-root=target/test-video-storage",
     "ai.video.task-timeout-minutes=20",
     "app.public-base-url=https://app.example"
 })
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-class AiVideoTaskControllerTest {
+class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -233,7 +230,7 @@ class AiVideoTaskControllerTest {
             String.class,
             taskId
         );
-        assert Files.exists(Path.of("target/test-video-storage", storagePath.substring(1)));
+        assertThat(storedObjectBytes(storagePath)).isNotEmpty();
     }
 
     @Test
@@ -1051,8 +1048,8 @@ class AiVideoTaskControllerTest {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"%s","password":"Password123"}
-                    """.formatted(mobile, nickname)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"%s","password":"Password123"}
+                    """.formatted(mobile, registrationVerificationCode(mockMvc, mobile), nickname)))
             .andExpect(status().isOk())
             .andReturn();
         return com.antshorttv.support.SessionTestSupport.sessionCredential(result);

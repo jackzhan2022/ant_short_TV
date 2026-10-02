@@ -48,6 +48,7 @@
     "antd-style": "^4.1.0",
     "china-division": "^2.7.0",
     "clsx": "^2.1.1",
+    "cos-js-sdk-v5": "^1.10.1",
     "d3": "^7.9.0",
     "dayjs": "^1.11.21",
     "highlight.js": "^11.11.1",

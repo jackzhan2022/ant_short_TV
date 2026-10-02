@@ -229,6 +229,7 @@ declare namespace API {
     startedAt?: string;
     completedAt?: string;
     createdAt?: string;
+    referenceDiagnostics?: JsonNode;
     results?: AiVideoResultResponse[];
   };
 
@@ -422,6 +423,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseCosUploadAuthorization = {
+    success?: boolean;
+    data?: CosUploadAuthorization;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseEpisodeComposeTaskResponse = {
     success?: boolean;
     data?: EpisodeComposeTaskResponse;
@@ -460,13 +468,6 @@ declare namespace API {
   type ApiResponseInspirationManagementPageResponse = {
     success?: boolean;
     data?: InspirationManagementPageResponse;
-    errorCode?: string;
-    errorMessage?: string;
-  };
-
-  type ApiResponseInspirationThumbnailBackfillResult = {
-    success?: boolean;
-    data?: InspirationThumbnailBackfillResult;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -681,6 +682,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseListStoryboardAssetReferenceResponse = {
+    success?: boolean;
+    data?: StoryboardAssetReferenceResponse[];
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseListStoryboardSubtitleResponse = {
     success?: boolean;
     data?: StoryboardSubtitleResponse[];
@@ -765,9 +773,23 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseMapStringInteger = {
+    success?: boolean;
+    data?: Record<string, any>;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseMapStringObject = {
     success?: boolean;
     data?: Record<string, any>;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
+  type ApiResponseMediaUploadSession = {
+    success?: boolean;
+    data?: MediaUploadSession;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -1010,6 +1032,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseStoryboardAssetReferenceBackfillResult = {
+    success?: boolean;
+    data?: StoryboardAssetReferenceBackfillResult;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseStoryboardBatchResponse = {
     success?: boolean;
     data?: StoryboardBatchResponse;
@@ -1080,6 +1109,13 @@ declare namespace API {
     errorMessage?: string;
   };
 
+  type ApiResponseVerifiedMediaUpload = {
+    success?: boolean;
+    data?: VerifiedMediaUpload;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+
   type ApiResponseVideoDecompositionBatchResponse = {
     success?: boolean;
     data?: VideoDecompositionBatchResponse;
@@ -1104,13 +1140,6 @@ declare namespace API {
   type ApiResponseVideoDecompositionEpisodeResponse = {
     success?: boolean;
     data?: VideoDecompositionEpisodeResponse;
-    errorCode?: string;
-    errorMessage?: string;
-  };
-
-  type ApiResponseVideoDecompositionUploadResponse = {
-    success?: boolean;
-    data?: VideoDecompositionUploadResponse;
     errorCode?: string;
     errorMessage?: string;
   };
@@ -1258,6 +1287,10 @@ declare namespace API {
     nextAction?: string;
   };
 
+  type authorizeParams = {
+    sessionToken: string;
+  };
+
   type AuthSessionResponse = {
     user?: UserProfileResponse;
     tenants?: TenantSummaryResponse[];
@@ -1339,6 +1372,10 @@ declare namespace API {
     hitRate?: number;
   };
 
+  type callbackParams = {
+    token: string;
+  };
+
   type cancel1Params = {
     tenantId: number;
     executionId: number;
@@ -1351,6 +1388,10 @@ declare namespace API {
 
   type cancel3Params = {
     id: number;
+  };
+
+  type cancel4Params = {
+    sessionToken: string;
   };
 
   type cancelComposeTaskParams = {
@@ -1533,6 +1574,10 @@ declare namespace API {
     entitlements?: CommercialEntitlementInput[];
   };
 
+  type completeParams = {
+    sessionToken: string;
+  };
+
   type composeTaskParams = {
     projectId: number;
     taskId: number;
@@ -1604,6 +1649,19 @@ declare namespace API {
     targetCode: string;
   };
 
+  type CosUploadAuthorization = {
+    authorization?: string;
+    securityToken?: string;
+    expiresAt?: number;
+  };
+
+  type CosUploadAuthorizationRequest = {
+    method: string;
+    pathname: string;
+    query?: Record<string, any>;
+    headers?: Record<string, any>;
+  };
+
   type create2Params = {
     tenantId: number;
   };
@@ -1622,13 +1680,6 @@ declare namespace API {
 
   type create7Params = {
     projectId: number;
-  };
-
-  type create8Params = {
-    title: string;
-    promptText: string;
-    tags?: string[];
-    publishStatus?: string;
   };
 
   type CreateAgentRequest = {
@@ -1709,6 +1760,13 @@ declare namespace API {
 
   type CreateInvitationRequest = {
     mobile: string;
+  };
+
+  type CreateMediaUploadRequest = {
+    projectId?: number;
+    fileName: string;
+    contentType: string;
+    fileSize?: number;
   };
 
   type CreateProjectRequest = {
@@ -2026,6 +2084,11 @@ declare namespace API {
     id: number;
   };
 
+  type displayResultParams = {
+    projectId: number;
+    resultId: number;
+  };
+
   type downloadComposeResultParams = {
     projectId: number;
     resultId: number;
@@ -2291,6 +2354,14 @@ declare namespace API {
     mainProjectId?: number;
   };
 
+  type InspirationCreateUploadRequest = {
+    uploadSessionToken: string;
+    title: string;
+    tags?: string[];
+    promptText: string;
+    publishStatus?: string;
+  };
+
   type InspirationCreationDetailResponse = {
     id?: number;
     externalId?: string;
@@ -2370,11 +2441,6 @@ declare namespace API {
 
   type InspirationReorderRequest = {
     orderedIds?: number[];
-  };
-
-  type InspirationThumbnailBackfillResult = {
-    processed?: number;
-    failed?: number;
   };
 
   type JsonNode = true;
@@ -2479,6 +2545,16 @@ declare namespace API {
   type LoginByMobileRequest = {
     mobile: string;
     password: string;
+  };
+
+  type MediaUploadSession = {
+    sessionToken?: string;
+    bucket?: string;
+    region?: string;
+    storageClass?: string;
+    objectKey?: string;
+    status?: string;
+    expiresAt?: string;
   };
 
   type memberRolesParams = {
@@ -2994,7 +3070,6 @@ declare namespace API {
   type readParams = {
     tenantId: number;
     projectId: number;
-    token?: string;
   };
 
   type reanalyzeParams = {
@@ -3095,6 +3170,15 @@ declare namespace API {
 
   type RenameEpisodeVideoVersionRequest = {
     versionName: string;
+  };
+
+  type replaceStoryboardAssetReferencesParams = {
+    projectId: number;
+    storyboardId: number;
+  };
+
+  type ReplaceStoryboardAssetReferencesRequest = {
+    references: StoryboardAssetReferenceCommand[];
   };
 
   type resultsParams = {
@@ -3719,6 +3803,49 @@ declare namespace API {
     results?: ShotComposeResultResponse[];
   };
 
+  type statusParams = {
+    sessionToken: string;
+  };
+
+  type StoryboardAssetReferenceBackfillResult = {
+    processed?: number;
+    resolved?: number;
+    pending?: number;
+    unresolved?: number;
+    skipped?: number;
+    failed?: number;
+  };
+
+  type StoryboardAssetReferenceCommand = {
+    assetType: string;
+    assetId?: number;
+    variantId?: number;
+    referenceRole: string;
+    sortOrder: number;
+    sourceName?: string;
+  };
+
+  type StoryboardAssetReferenceResponse = {
+    id?: number;
+    assetType?: string;
+    assetId?: number;
+    assetName?: string;
+    variantId?: number;
+    variantName?: string;
+    imageUrl?: string;
+    referenceRole?: string;
+    sortOrder?: number;
+    resolutionStatus?: string;
+    sourceType?: string;
+    sourceName?: string;
+    lockedByUser?: boolean;
+  };
+
+  type storyboardAssetReferencesParams = {
+    projectId: number;
+    storyboardId: number;
+  };
+
   type StoryboardBatchItemResponse = {
     id?: number;
     episodeId?: number;
@@ -3758,6 +3885,7 @@ declare namespace API {
 
   type StoryboardBreakdownRequest = {
     episodeId: number;
+    overwriteMaterials?: boolean;
   };
 
   type StoryboardResponse = {
@@ -3770,6 +3898,7 @@ declare namespace API {
     visualDescription?: string;
     characters?: string;
     scene?: string;
+    props?: string;
     dialogue?: string;
     durationSeconds?: number;
     shotPlan?: JsonNode;
@@ -3782,6 +3911,7 @@ declare namespace API {
     firstFrameUrl?: string;
     currentVideoResultId?: number;
     currentVideoUrl?: string;
+    assetReferences?: StoryboardAssetReferenceResponse[];
   };
 
   type StoryboardSubtitleResponse = {
@@ -3950,6 +4080,46 @@ declare namespace API {
     status?: string;
     memberType?: string;
     memberId?: number;
+  };
+
+  type TencentCiInput = {
+    Object?: string;
+  };
+
+  type TencentCiJobDetail = {
+    Code?: string;
+    Message?: string;
+    JobId?: string;
+    State?: string;
+    Input?: TencentCiInput;
+    Operation?: TencentCiOperation;
+  };
+
+  type TencentCiOperation = {
+    Output?: TencentCiOutput;
+    UserData?: string;
+    PicProcessResult?: TencentCiPicProcessResult;
+  };
+
+  type TencentCiOutput = {
+    Object?: string;
+  };
+
+  type TencentCiPicProcessResult = {
+    ProcessResult?: TencentCiProcessResult;
+  };
+
+  type TencentCiProcessResult = {
+    Size?: number;
+    Width?: number;
+    Height?: number;
+    Etag?: string;
+    Format?: string;
+  };
+
+  type TencentCiTaskCallback = {
+    EventName?: string;
+    JobsDetail?: TencentCiJobDetail[];
   };
 
   type testProviderParams = {
@@ -4336,6 +4506,14 @@ declare namespace API {
     usable?: boolean;
   };
 
+  type VerifiedMediaUpload = {
+    sessionToken?: string;
+    objectKey?: string;
+    contentType?: string;
+    size?: number;
+    eTag?: string;
+  };
+
   type versionHistoryParams = {
     projectId: number;
     versionId: number;
@@ -4430,17 +4608,10 @@ declare namespace API {
     formatVersion?: string;
   };
 
-  type VideoDecompositionUploadResponse = {
-    fileName?: string;
-    storagePath?: string;
-    mimeType?: string;
-    fileSize?: number;
-    durationSeconds?: number;
-  };
-
   type VideoUploadMetadataRequest = {
     fileName: string;
     storagePath: string;
+    uploadSessionToken: string;
     mimeType?: string;
     fileSize: number;
     durationSeconds?: number;

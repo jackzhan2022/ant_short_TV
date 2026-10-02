@@ -3,86 +3,115 @@ package com.antshorttv.inspiration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import javax.imageio.ImageIO;
+import com.antshorttv.storage.CloudInfiniteVideoCoverService;
+import com.antshorttv.storage.VerifiedMediaUpload;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockMultipartFile;
 
 class InspirationManagementMediaServiceTest {
     private InspirationCreationMediaStorage storage;
-    private InspirationThumbnailProcessor thumbnails;
+    private CloudInfiniteVideoCoverService covers;
     private InspirationManagementMediaService service;
 
     @BeforeEach
     void setUp() {
         storage = mock(InspirationCreationMediaStorage.class);
-        thumbnails = mock(InspirationThumbnailProcessor.class);
-        service = new InspirationManagementMediaService(storage, thumbnails);
+        covers = mock(CloudInfiniteVideoCoverService.class);
+        service = new InspirationManagementMediaService(storage, covers);
     }
 
     @Test
-    void storesValidatedImageAndThumbnail() throws Exception {
-        byte[] image = image(1200, 800);
-        when(thumbnails.fromImage(image, "image/jpeg"))
-            .thenReturn(new InspirationThumbnail("thumb".getBytes(), "image/jpeg"));
-
-        ManagedInspirationMedia media = service.store("manual-1", new MockMultipartFile(
-            "file", "cover.jpg", "image/jpeg", image
-        ));
+    void storesValidatedImageAndThumbnail() {
+        VerifiedMediaUpload upload = upload("image/jpeg", "source.jpg", 1024L);
+        org.mockito.Mockito.when(storage.storeUploadedImage(44L, "manual-1", upload))
+            .thenReturn(new InspirationCreationMediaTransfer(
+                "materials/0/inspiration_creation/202610/44/manual-1/original.jpg",
+                "image/jpeg", 1024L,
+                "materials/0/inspiration_creation/202610/44/manual-1/derived/display.jpg",
+                "image/jpeg", "PENDING"
+            ));
+        ManagedInspirationMedia media = service.storeImage(44L, "manual-1", upload);
 
         assertThat(media.creationType()).isEqualTo("IMAGE");
         assertThat(media.storagePath()).endsWith("original.jpg");
-        assertThat(media.thumbnailPath()).endsWith("thumbnail.jpg");
-        verify(storage).uploadOriginal(media.storagePath(), image, "image/jpeg");
-        verify(storage).uploadThumbnail(eq(media.thumbnailPath()), any(InspirationThumbnail.class));
+        assertThat(media.thumbnailPath()).endsWith("derived/display.jpg");
+        assertThat(media.thumbnailStatus()).isEqualTo("PENDING");
+        assertThat(media.thumbnailFileSize()).isNull();
+        verify(storage).storeUploadedImage(44L, "manual-1", upload);
     }
 
     @Test
-    void rejectsOversizedOrOverdimensionedImages() throws Exception {
-        assertThatThrownBy(() -> service.store("manual-large", new MockMultipartFile(
-            "file", "large.jpg", "image/jpeg", new byte[1_572_865]
-        ))).hasMessageContaining("1.5MB");
+    void acceptsImageWithoutApplicationSizeCeiling() {
+        VerifiedMediaUpload upload = upload("image/jpeg", "source.jpg", 10_000_000_000L);
+        org.mockito.Mockito.when(storage.storeUploadedImage(45L, "manual-large", upload))
+            .thenReturn(new InspirationCreationMediaTransfer(
+                "materials/0/inspiration_creation/202610/45/manual-large/original.jpg",
+                "image/jpeg", upload.size(), "display.jpg", "image/jpeg", "PENDING"
+            ));
+        ManagedInspirationMedia media = service.storeImage(45L, "manual-large", upload);
 
-        byte[] wide = image(1921, 20);
-        assertThatThrownBy(() -> service.store("manual-wide", new MockMultipartFile(
-            "file", "wide.jpg", "image/jpeg", wide
-        ))).hasMessageContaining("1920");
+        assertThat(media.fileSize()).isEqualTo(10_000_000_000L);
     }
 
     @Test
-    void storesVideoAndCleansUpWhenThumbnailFails() {
-        MockMultipartFile video = new MockMultipartFile(
-            "file", "clip.mp4", "video/mp4", "fake-video".getBytes()
+    void storesVerifiedCosImageWithoutBrowserBytesPassingThroughSpring() {
+        VerifiedMediaUpload upload = new VerifiedMediaUpload(
+            "session-1", "uploads/11/session-1/source.png", "image/png", 2048L, "etag-1"
         );
-        doThrow(new IllegalArgumentException("无法提取视频首帧"))
-            .when(thumbnails).fromVideo(any());
 
-        assertThatThrownBy(() -> service.store("manual-video", video))
-            .hasMessageContaining("视频缩略图生成失败");
+        org.mockito.Mockito.when(storage.storeUploadedImage(46L, "manual-cos", upload))
+            .thenReturn(new InspirationCreationMediaTransfer(
+                "materials/0/inspiration_creation/202610/46/manual-cos/original.png",
+                "image/png", 2048L,
+                "materials/0/inspiration_creation/202610/46/manual-cos/derived/display.png",
+                "image/png", "PENDING"
+            ));
+        ManagedInspirationMedia media = service.storeImage(46L, "manual-cos", upload);
 
-        verify(storage).delete("inspiration/creations/manual-video/original.mp4");
-        verify(storage).delete("inspiration/creations/manual-video/thumbnail.jpg");
+        assertThat(media.storagePath()).endsWith("/46/manual-cos/original.png");
+        assertThat(media.thumbnailPath()).isEqualTo(
+            "materials/0/inspiration_creation/202610/46/manual-cos/derived/display.png"
+        );
+        verify(storage).storeUploadedImage(46L, "manual-cos", upload);
+    }
+
+    @Test
+    void preservesAcceptedVideoWhenAsyncCoverSubmissionFails() {
+        VerifiedMediaUpload video = upload("video/mp4", "source.mp4", 2048L);
+        org.mockito.Mockito.when(storage.storeUploadedVideo(44L, "manual-video", video))
+            .thenReturn(new InspirationCreationMediaTransfer("materials/0/inspiration_creation/202610/44/manual-video/original.mp4",
+                "video/mp4", 2048L, null, null, "PENDING"));
+        ManagedInspirationMedia original = service.storeVideoOriginal(44L, "manual-video", video);
+        InspirationCreationEntity entity = new InspirationCreationEntity();
+        entity.setId(44L);
+        entity.setExternalId("manual-video");
+        entity.setStoragePath(original.storagePath());
+        entity.setMimeType("video/mp4");
+        entity.setFileSize(2048L);
+        doThrow(new IllegalArgumentException("Cover unavailable")).when(covers).create(any(), any(), any());
+
+        assertThatThrownBy(() -> service.storeVideoCover(entity)).hasMessageContaining("Cover unavailable");
+
+        assertThat(original.thumbnailStatus()).isEqualTo("PENDING");
+        assertThat(original.thumbnailFileSize()).isNull();
+        verify(storage, never()).delete(any());
     }
 
     @Test
     void rejectsUnsupportedMediaType() {
-        assertThatThrownBy(() -> service.store("manual-text", new MockMultipartFile(
-            "file", "notes.txt", "text/plain", "hello".getBytes()
-        ))).hasMessageContaining("仅支持");
+        assertThatThrownBy(() -> service.storeVideoOriginal(
+            44L, "manual-text", upload("text/plain", "source.txt", 5L)
+        )).hasMessageContaining("仅支持");
     }
 
-    private byte[] image(int width, int height) throws Exception {
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        ImageIO.write(image, "jpg", output);
-        return output.toByteArray();
+    private VerifiedMediaUpload upload(String contentType, String fileName, long size) {
+        return new VerifiedMediaUpload(
+            "session-1", "uploads/11/session-1/" + fileName, contentType, size, "etag-1"
+        );
     }
 }

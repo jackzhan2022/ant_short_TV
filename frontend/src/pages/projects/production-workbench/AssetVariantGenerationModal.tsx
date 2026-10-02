@@ -66,9 +66,9 @@ export default function AssetVariantGenerationModal({
                 background: 'var(--app-color-fill-secondary)',
               }}
             >
-              {variant.currentImageUrl ? (
+              {variant.currentImageThumbnailUrl ? (
                 <img
-                  src={variant.currentImageUrl}
+                  src={variant.currentImageThumbnailUrl}
                   alt={`${variant.name}当前图`}
                   style={{ maxWidth: '100%', maxHeight: 340, objectFit: 'contain' }}
                 />

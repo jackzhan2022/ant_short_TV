@@ -35,7 +35,8 @@ class InspirationListQueryTest {
             mapper,
             mock(InspirationCreationMediaStorage.class),
             new ObjectMapper(),
-            mock(CurrentPrincipal.class)
+            mock(CurrentPrincipal.class),
+            mock(com.antshorttv.storage.MediaDeliveryGrantService.class)
         );
 
         service.list(1, 8);
@@ -51,7 +52,10 @@ class InspirationListQueryTest {
         InspirationManagementService service = new InspirationManagementService(
             mapper,
             mock(InspirationManagementMediaService.class),
+            mock(InspirationManagementImageCreationService.class),
             mock(InspirationCreationMediaStorage.class),
+            mock(com.antshorttv.storage.MediaUploadSessionService.class),
+            mock(com.antshorttv.storage.ImageDisplayRenditionService.class),
             new ObjectMapper()
         );
 

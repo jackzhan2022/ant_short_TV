@@ -780,7 +780,7 @@ const ShortDramaCreationPage = () => {
               ) : (
                 <img
                   alt={selectedInspiration.title || '灵感素材'}
-                  src={selectedInspiration.url}
+                  src={selectedInspiration.thumbnailUrl}
                 />
               )}
             </div>
@@ -794,7 +794,7 @@ const ShortDramaCreationPage = () => {
                 ) : (
                   <img
                     alt={selectedInspiration.title || '灵感缩略图'}
-                    src={selectedInspiration.url}
+                    src={selectedInspiration.thumbnailUrl}
                   />
                 )}
               </div>

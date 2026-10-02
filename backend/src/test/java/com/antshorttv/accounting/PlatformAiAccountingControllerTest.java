@@ -24,7 +24,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class PlatformAiAccountingControllerTest {
+class PlatformAiAccountingControllerTest extends com.antshorttv.support.RegistrationTestSupport {
     private static final AtomicInteger MOBILE_SEQUENCE = new AtomicInteger(17100);
 
     @Autowired
@@ -155,8 +155,8 @@ class PlatformAiAccountingControllerTest {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"Accounting Operator","password":"Password123"}
-                    """.formatted(mobile)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"Accounting Operator","password":"Password123"}
+                    """.formatted(mobile, registrationVerificationCode(mockMvc, mobile))))
             .andExpect(status().isOk())
             .andReturn();
         Number userId = JsonPath.read(result.getResponse().getContentAsString(), "$.data.user.id");

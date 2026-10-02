@@ -20,12 +20,8 @@ import {
   Tag,
   Upload,
 } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
-import {
-  type CompressedImage,
-  compressImage,
-  formatFileSize,
-} from './imageCompression';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MediaUploadHandle } from '@/services/mediaUpload';
 import styles from './index.module.css';
 import {
   createManagedInspiration,
@@ -53,7 +49,8 @@ const InspirationManagementDrawer = ({ open, onClose, onChanged }: Props) => {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<ManagedInspiration>();
   const [file, setFile] = useState<File>();
-  const [compression, setCompression] = useState<CompressedImage>();
+  const uploadHandle = useRef<MediaUploadHandle | undefined>(undefined);
+  const selectedFile = useRef<File | undefined>(undefined);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<string>();
   const [mediaType, setMediaType] = useState<string>();
@@ -81,25 +78,39 @@ const InspirationManagementDrawer = ({ open, onClose, onChanged }: Props) => {
     if (open) void load();
   }, [load, open]);
 
+  const clearUpload = () => {
+    selectedFile.current = undefined;
+    uploadHandle.current?.cancel();
+    uploadHandle.current = undefined;
+  };
+
+  useEffect(() => {
+    if (!open) {
+      clearUpload();
+      setFile(undefined);
+    }
+  }, [open]);
+
+  useEffect(
+    () => () => {
+      selectedFile.current = undefined;
+      uploadHandle.current?.cancel();
+    },
+    [],
+  );
+
   const resetEditor = () => {
+    clearUpload();
     setEditing(undefined);
     setFile(undefined);
-    setCompression(undefined);
     form.resetFields();
   };
-  const chooseFile = async (next: File) => {
-    setCompression(undefined);
-    if (next.type.startsWith('image/')) {
-      try {
-        const result = await compressImage(next);
-        setFile(result.file);
-        setCompression(result);
-      } catch (error) {
-        setFile(undefined);
-        message.error((error as Error).message);
-      }
-    } else if (next.type === 'video/mp4') setFile(next);
-    else message.error('仅支持 JPG、PNG 图片或 MP4 视频');
+  const chooseFile = (next: File) => {
+    if (['image/jpeg', 'image/png', 'video/mp4'].includes(next.type)) {
+      clearUpload();
+      selectedFile.current = next;
+      setFile(next);
+    } else message.error('仅支持 JPG、PNG 图片或 MP4 视频');
     return false;
   };
   const submit = async (values: FormValues) => {
@@ -116,19 +127,30 @@ const InspirationManagementDrawer = ({ open, onClose, onChanged }: Props) => {
           promptText: values.promptText,
         });
       else if (file)
-        await createManagedInspiration({
-          file,
-          title: values.title,
-          tags: values.tags || [],
-          promptText: values.promptText,
-          publishStatus: values.published ? 'PUBLISHED' : 'UNPUBLISHED',
-        });
+        await createManagedInspiration(
+          {
+            file,
+            title: values.title,
+            tags: values.tags || [],
+            promptText: values.promptText,
+            publishStatus: values.published ? 'PUBLISHED' : 'UNPUBLISHED',
+          },
+          {
+            handle: uploadHandle.current,
+            onHandle: (handle) => {
+              if (selectedFile.current === file) uploadHandle.current = handle;
+              else handle.cancel();
+            },
+          },
+        );
       message.success(editing ? '内容已更新' : '内容已添加');
       resetEditor();
       await load();
       onChanged();
-    } catch {
-      message.error('保存失败，请检查后重试');
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : '保存失败，请检查后重试',
+      );
     } finally {
       setSaving(false);
     }
@@ -206,16 +228,14 @@ const InspirationManagementDrawer = ({ open, onClose, onChanged }: Props) => {
               }}
               maxCount={1}
               showUploadList={Boolean(file)}
+              onRemove={() => {
+                clearUpload();
+                setFile(undefined);
+                return true;
+              }}
             >
               <Button icon={<UploadOutlined />}>上传图片或视频</Button>
             </Upload>
-            {compression && (
-              <div className={styles.compressionInfo}>
-                压缩前 {formatFileSize(compression.originalBytes)}，压缩后{' '}
-                {formatFileSize(compression.compressedBytes)} ·{' '}
-                {compression.width}×{compression.height}
-              </div>
-            )}
           </Form.Item>
         )}
         <Form.Item
@@ -264,7 +284,7 @@ const InspirationManagementDrawer = ({ open, onClose, onChanged }: Props) => {
                 <HolderOutlined className={styles.dragHandle} />
                 <img
                   alt={item.title || '灵感素材'}
-                  src={item.thumbnailUrl || item.url}
+                  src={item.thumbnailUrl || undefined}
                 />
                 <div className={styles.managementItemCopy}>
                   <strong>{item.title}</strong>

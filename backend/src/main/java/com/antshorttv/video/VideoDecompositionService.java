@@ -15,26 +15,20 @@ import com.antshorttv.script.ScriptVersionEntity;
 import com.antshorttv.script.ScriptVersionMapper;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
-import com.antshorttv.storage.ObjectStorageService;
+import com.antshorttv.storage.MediaUploadSessionService;
+import com.antshorttv.storage.VerifiedMediaUpload;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class VideoDecompositionService {
-    private static final long MAX_FILE_SIZE = 1024L * 1024L * 1024L;
     private static final BigDecimal MAX_DURATION_SECONDS = BigDecimal.valueOf(1800);
     private static final List<String> SUPPORTED_MIME_TYPES = List.of("video/mp4", "video/quicktime", "video/x-msvideo");
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".mp4", ".mov", ".avi");
@@ -48,12 +42,11 @@ public class VideoDecompositionService {
     private final VideoDecompositionScriptResultRepository resultRepository;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
-    private final ObjectStorageService objectStorageService;
+    private final MediaUploadSessionService uploadSessionService;
     private final AiExecutionService executionService;
     private final AiExecutionTaskMapper executionTaskMapper;
     private final PromptTemplateRenderer promptTemplateRenderer;
     private final ObjectMapper objectMapper;
-    private final Path storageRoot;
 
     public VideoDecompositionService(
         TenantContextResolver tenantContextResolver,
@@ -65,12 +58,11 @@ public class VideoDecompositionService {
         VideoDecompositionScriptResultRepository resultRepository,
         ScriptMapper scriptMapper,
         ScriptVersionMapper scriptVersionMapper,
-        ObjectStorageService objectStorageService,
+        MediaUploadSessionService uploadSessionService,
         AiExecutionService executionService,
         AiExecutionTaskMapper executionTaskMapper,
         PromptTemplateRenderer promptTemplateRenderer,
-        ObjectMapper objectMapper,
-        @Value("${ai.video.storage-root:storage}") String storageRoot
+        ObjectMapper objectMapper
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.projectPermissionGuard = projectPermissionGuard;
@@ -81,47 +73,11 @@ public class VideoDecompositionService {
         this.resultRepository = resultRepository;
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
-        this.objectStorageService = objectStorageService;
+        this.uploadSessionService = uploadSessionService;
         this.executionService = executionService;
         this.executionTaskMapper = executionTaskMapper;
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.objectMapper = objectMapper;
-        this.storageRoot = Path.of(storageRoot).toAbsolutePath().normalize();
-    }
-
-    public VideoDecompositionUploadResponse upload(Long tenantId, MultipartFile file) {
-        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        if (file == null || file.isEmpty()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择视频文件。");
-        }
-        String fileName = file.getOriginalFilename() == null ? "episode.mp4" : file.getOriginalFilename().trim();
-        String mimeType = file.getContentType();
-        validateVideoFile(fileName, mimeType, file.getSize(), null);
-        String extension = extension(fileName);
-        String day = LocalDateTime.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String storagePath = "/materials/%d/video-decomposition/%s/%s%s".formatted(
-            tenantId,
-            day,
-            UUID.randomUUID(),
-            extension
-        );
-        try {
-            if (objectStorageService.enabled()) {
-                objectStorageService.upload(storagePath, file.getBytes(), mimeType);
-            } else {
-                Path target = storageRoot.resolve(storagePath.substring(1)).normalize();
-                if (!target.startsWith(storageRoot)) {
-                    throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频存储路径不合法。");
-                }
-                Files.createDirectories(target.getParent());
-                file.transferTo(target);
-            }
-        } catch (BusinessException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频上传失败：" + exception.getMessage());
-        }
-        return new VideoDecompositionUploadResponse(fileName, storagePath, mimeType, file.getSize(), null);
     }
 
     public List<VideoDecompositionBatchResponse> list(Long tenantId, Long projectId) {
@@ -152,7 +108,7 @@ public class VideoDecompositionService {
     @Transactional
     public VideoDecompositionBatchResponse create(Long tenantId, CreateVideoDecompositionBatchRequest request, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
-        validateVideos(tenantId, request.videos());
+        validateVideos(context, request.videos());
 
         LocalDateTime now = LocalDateTime.now();
         VideoDecompositionBatchEntity batch = new VideoDecompositionBatchEntity();
@@ -350,11 +306,19 @@ public class VideoDecompositionService {
         return VideoDecompositionEpisodeResponse.from(episode);
     }
 
-    private void validateVideos(Long tenantId, List<VideoUploadMetadataRequest> videos) {
+    private void validateVideos(TenantContext context, List<VideoUploadMetadataRequest> videos) {
         for (VideoUploadMetadataRequest video : videos) {
             String storagePath = video.storagePath().trim();
-            if (!storagePath.startsWith("/materials/%d/video-decomposition/".formatted(tenantId)) || storagePath.contains("..")) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频文件必须属于当前租户的拆剧素材。");
+            VerifiedMediaUpload verified;
+            try {
+                verified = uploadSessionService.requireCompleted(
+                    context.userId(), context.tenantId(), video.uploadSessionToken());
+            } catch (IllegalArgumentException exception) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, exception.getMessage());
+            }
+            if (!storagePath.equals(verified.objectKey()) || !video.fileSize().equals(verified.size())
+                || (video.mimeType() != null && !video.mimeType().equalsIgnoreCase(verified.contentType()))) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频上传校验信息不一致。");
             }
             validateVideoFile(video.fileName(), video.mimeType(), video.fileSize(), video.durationSeconds());
         }
@@ -363,9 +327,6 @@ public class VideoDecompositionService {
     private void validateVideoFile(String fileName, String mimeType, Long fileSize, BigDecimal durationSeconds) {
         if (fileSize == null || fileSize < 1) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频文件不能为空。");
-        }
-        if (fileSize > MAX_FILE_SIZE) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频文件不能超过 1GB。");
         }
         if (durationSeconds != null && durationSeconds.compareTo(MAX_DURATION_SECONDS) > 0) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "视频时长不能超过 30 分钟。");

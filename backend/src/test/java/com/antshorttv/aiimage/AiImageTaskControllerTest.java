@@ -9,7 +9,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,7 +45,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class AiImageTaskControllerTest {
+class AiImageTaskControllerTest extends com.antshorttv.support.RegistrationTestSupport {
     private static HttpServer responsesServer;
 
     @BeforeAll
@@ -615,7 +614,7 @@ class AiImageTaskControllerTest {
         Long resultId = readLong(completed, "$.data.results[0].id");
         String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
         String thumbnailUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].thumbnailUrl");
-        assertThat(imageUrl).contains("/download").doesNotContain("data:image");
+        assertThat(imageUrl).contains("/display").doesNotContain("data:image");
         assertThat(thumbnailUrl).contains("/thumbnail").doesNotContain("data:image");
 
         mockMvc.perform(get("/api/projects/%d/ai-image-tasks".formatted(projectId))
@@ -628,24 +627,28 @@ class AiImageTaskControllerTest {
         mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/download".formatted(projectId, resultId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
-            .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.IMAGE_PNG));
+            .andExpect(status().isFound())
+            .andExpect(result -> assertThat(result.getResponse().getHeader("Location"))
+                .startsWith("https://antvcdn.aixmax.cn/materials/").contains("/original.png?sign="));
 
         mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId, resultId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
-            .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.IMAGE_PNG));
+            .andExpect(status().isFound())
+            .andExpect(result -> assertThat(result.getResponse().getHeader("Location"))
+                .startsWith("https://antvcdn.aixmax.cn/materials/").contains("/derived/display.png?sign="));
 
         mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/download".formatted(projectId, resultId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
-            .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.IMAGE_PNG));
+            .andExpect(status().isFound())
+            .andExpect(result -> assertThat(result.getResponse().getHeader("Location"))
+                .startsWith("https://antvcdn.aixmax.cn/materials/").contains("/original.png?sign="));
 
         mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId, resultId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
-            .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.IMAGE_PNG));
+            .andExpect(status().isFound())
+            .andExpect(result -> assertThat(result.getResponse().getHeader("Location"))
+                .startsWith("https://antvcdn.aixmax.cn/materials/").contains("/derived/display.png?sign="));
 
         String unauthorizedToken = registerUser("13800014021", "Unauthorized Image Reader");
         mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(projectId, resultId))
@@ -741,11 +744,33 @@ class AiImageTaskControllerTest {
                 .andReturn();
 
             Long taskId = readLong(created, "$.data.id");
+            MvcResult rendering = waitForTaskStatus(token, tenantId, projectId, taskId, "RENDERING");
+            assertThat((java.util.List<?>) JsonPath.read(
+                rendering.getResponse().getContentAsString(), "$.data.results")).isEmpty();
+            Long processingResultId = jdbcTemplate.queryForObject(
+                "select id from ai_image_result where task_id = ? and status = 'PROCESSING'",
+                Long.class, taskId);
+            mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/display".formatted(projectId, processingResultId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId))
+                .andExpect(status().isNotFound());
+            assertThat(jdbcTemplate.queryForObject("""
+                select status from media_object
+                 where asset_type = 'AI_IMAGE_RESULT' and asset_id = ? and rendition_type = 'DISPLAY_IMAGE_SLIM'
+                """, String.class, processingResultId)).isEqualTo("PENDING");
+
             MvcResult completed = waitForTaskSuccess(token, tenantId, projectId, taskId);
+            assertThat(jdbcTemplate.queryForObject("""
+                select status from media_object
+                 where asset_type = 'AI_IMAGE_RESULT' and asset_id = ? and rendition_type = 'DISPLAY_IMAGE_SLIM'
+                """, String.class, processingResultId)).isEqualTo("READY");
+            assertThat(jdbcTemplate.queryForObject(
+                "select status from ai_image_result where id = ?", String.class, processingResultId))
+                .isEqualTo("ACTIVE");
 
             String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
             String thumbnailUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].thumbnailUrl");
-            org.assertj.core.api.Assertions.assertThat(imageUrl).contains("/download").doesNotContain("data:image");
+            org.assertj.core.api.Assertions.assertThat(imageUrl).contains("/display").doesNotContain("data:image");
             org.assertj.core.api.Assertions.assertThat(thumbnailUrl).contains("/thumbnail").doesNotContain("data:image");
             Long executionId = readLong(completed, "$.data.executionId");
             Long callLogExecutionId = jdbcTemplate.queryForObject("""
@@ -951,14 +976,17 @@ class AiImageTaskControllerTest {
 
     private MvcResult waitForTaskStatus(String token, Long tenantId, Long projectId, Long taskId, String expectedStatus) throws Exception {
         MvcResult last = null;
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < ("SUCCESS".equals(expectedStatus) ? 400 : 20); i++) {
             executionDispatcher.dispatchOnce();
+            if ("SUCCESS".equals(expectedStatus)) completePendingImageJobs(mockMvc);
             last = mockMvc.perform(get("/api/projects/%d/ai-image-tasks/%d".formatted(projectId, taskId))
                     .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId))
                 .andExpect(status().isOk())
                 .andReturn();
-            String status = JsonPath.read(last.getResponse().getContentAsString(), "$.data.status");
+            String status = "RENDERING".equals(expectedStatus)
+                ? jdbcTemplate.queryForObject("select status from ai_image_task where id = ?", String.class, taskId)
+                : JsonPath.read(last.getResponse().getContentAsString(), "$.data.status");
             if (expectedStatus.equals(status)) {
                 return last;
             }
@@ -1127,7 +1155,11 @@ class AiImageTaskControllerTest {
              where item.batch_id = ? and item.stage = 'DEPENDENT'
             """, batchId);
         assertThat(dependent.get("TASK_ID")).isNotNull();
-        assertThat(String.valueOf(dependent.get("REFERENCE_IMAGES"))).contains("download");
+        Long primaryResultId = jdbcTemplate.queryForObject(
+            "select id from ai_image_result where task_id = ? and status = 'ACTIVE'",
+            Long.class, primaryTaskId);
+        assertThat(String.valueOf(dependent.get("REFERENCE_IMAGES"))).contains(
+            "/api/projects/%d/ai-image-results/%d/display".formatted(projectId, primaryResultId));
     }
 
     private void createImageService(String token, Long tenantId) throws Exception {
@@ -1236,8 +1268,8 @@ class AiImageTaskControllerTest {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"%s","password":"Password123"}
-                    """.formatted(mobile, nickname)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"%s","password":"Password123"}
+                    """.formatted(mobile, registrationVerificationCode(mockMvc, mobile), nickname)))
             .andExpect(status().isOk())
             .andReturn();
         return com.antshorttv.support.SessionTestSupport.sessionCredential(result);

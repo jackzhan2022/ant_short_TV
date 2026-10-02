@@ -16,33 +16,32 @@ The system MUST expose inspiration management capabilities only to users holding
 - **THEN** the system rejects the request as forbidden
 
 ### Requirement: Administrator can upload image inspiration content
-The system SHALL allow an administrator to create inspiration content by uploading an image together with a title, zero or more category tags, a complete prompt, an initial publication status, and a sort position.
+The system SHALL allow an administrator to create inspiration content by uploading a supported image directly to a scoped COS upload session together with a title, zero or more category tags, a complete prompt, an initial publication status, and a sort position. The application SHALL impose no business file-size ceiling, SHALL preserve the original, and SHALL require one persistent original-resolution Cloud Infinite `imageSlim` display rendition before publishing the record. Thumbnail, detail, and preview roles SHALL share only that object.
 
 #### Scenario: Valid image is uploaded
-- **WHEN** an administrator selects a supported image
-- **THEN** the frontend compresses it proportionally to a longest edge of at most 1920 pixels and a target size of at most 1.5MB
-- **AND** the frontend shows the original and compressed file sizes
-- **AND** the backend validates the decoded image constraints before storing the compressed image as the original gallery media
+- **WHEN** an administrator selects a supported image and completes its assigned COS upload session
+- **THEN** the backend verifies the object and decoded media metadata without proxying its bytes through Spring
+- **AND** Cloud Infinite persists the configured `imageSlim` display rendition
+- **AND** the management record is created only after required media operations succeed
 
-#### Scenario: Image cannot meet upload constraints
-- **WHEN** the browser cannot decode or compress the image within the required dimension and size limits
-- **THEN** the frontend prevents submission
-- **AND** it preserves the entered metadata and prompts the administrator to choose another file
+#### Scenario: Image cannot be decoded or processed
+- **WHEN** the uploaded object is not a supported decodable image or its required conversion or `imageSlim` processing fails
+- **THEN** the system prevents publication, preserves entered metadata where possible, and reports an actionable media-processing error
 
 ### Requirement: Administrator can upload video inspiration content
-The system SHALL allow an administrator to create inspiration content by uploading a supported video together with its metadata and SHALL generate a stored thumbnail from that video.
+The system SHALL allow an administrator to create inspiration content by uploading a supported video directly to a scoped COS upload session together with its metadata and SHALL create a persistent `imageSlim` cover through Cloud Infinite. The application SHALL impose no business file-size ceiling.
 
 #### Scenario: Valid video is uploaded
-- **WHEN** an administrator submits a supported video within the configured upload limit
-- **THEN** the system stores the original video in platform object storage
-- **AND** extracts and stores a bounded representative-frame thumbnail
-- **AND** creates the inspiration record only after both media operations succeed
+- **WHEN** an administrator completes a supported video upload session
+- **THEN** the backend verifies and records the original COS object
+- **AND** Cloud Infinite persists a bounded deterministic cover from the one-second snapshot or first decodable-frame fallback
+- **AND** the inspiration record is created only after both required media operations succeed
 
 #### Scenario: Video thumbnail generation fails
-- **WHEN** the video is stored but its thumbnail cannot be generated
+- **WHEN** the video is stored but its required Cloud Infinite cover cannot be generated
 - **THEN** the system does not create a managed inspiration record
-- **AND** removes objects created by the failed request where possible
-- **AND** returns an actionable upload failure
+- **AND** records or removes objects created by the failed workflow according to the temporary-object lifecycle
+- **AND** returns an actionable retryable processing failure
 
 ### Requirement: Managed content includes prompt and presentation metadata
 The system SHALL persist each managed inspiration record with a title, category tags, complete prompt text, media type, source type, publication status, and sort order.

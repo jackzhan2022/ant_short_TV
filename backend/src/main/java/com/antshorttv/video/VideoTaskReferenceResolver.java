@@ -60,7 +60,8 @@ public class VideoTaskReferenceResolver {
             intNumber(row.get("width")),
             intNumber(row.get("height")),
             decimal(row.get("duration_seconds")),
-            decimal(row.get("fps"))
+            decimal(row.get("fps")),
+            rawUrl
         );
     }
 
@@ -173,7 +174,16 @@ public class VideoTaskReferenceResolver {
         Integer width,
         Integer height,
         BigDecimal durationSeconds,
-        BigDecimal fps
+        BigDecimal fps,
+        String browserDisplayUrl
     ) {
+        public ResolvedReference(
+            StoryboardPromptCompiler.Reference reference, String displayName,
+            String objectStoragePath, String providerUrl, String format, Long fileSize,
+            Integer width, Integer height, BigDecimal durationSeconds, BigDecimal fps
+        ) {
+            this(reference, displayName, objectStoragePath, providerUrl, format,
+                fileSize, width, height, durationSeconds, fps, null);
+        }
     }
 }

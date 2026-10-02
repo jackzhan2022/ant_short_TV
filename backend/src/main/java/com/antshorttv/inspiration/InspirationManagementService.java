@@ -2,6 +2,10 @@ package com.antshorttv.inspiration;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.MediaUploadSessionService;
+import com.antshorttv.storage.RegisteredImageDisplay;
+import com.antshorttv.storage.VerifiedMediaUpload;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,8 +15,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class InspirationManagementService {
@@ -21,18 +25,27 @@ public class InspirationManagementService {
 
     private final InspirationCreationMapper mapper;
     private final InspirationManagementMediaService mediaService;
+    private final InspirationManagementImageCreationService imageCreation;
     private final InspirationCreationMediaStorage mediaStorage;
+    private final MediaUploadSessionService uploadSessions;
+    private final ImageDisplayRenditionService imageRenditions;
     private final ObjectMapper objectMapper;
 
     public InspirationManagementService(
         InspirationCreationMapper mapper,
         InspirationManagementMediaService mediaService,
+        InspirationManagementImageCreationService imageCreation,
         InspirationCreationMediaStorage mediaStorage,
+        MediaUploadSessionService uploadSessions,
+        ImageDisplayRenditionService imageRenditions,
         ObjectMapper objectMapper
     ) {
         this.mapper = mapper;
         this.mediaService = mediaService;
+        this.imageCreation = imageCreation;
         this.mediaStorage = mediaStorage;
+        this.uploadSessions = uploadSessions;
+        this.imageRenditions = imageRenditions;
         this.objectMapper = objectMapper;
     }
 
@@ -57,49 +70,21 @@ public class InspirationManagementService {
         return new InspirationManagementPageResponse(records, total == null ? 0 : total, current, size);
     }
 
-    @Transactional
-    public InspirationManagementItemResponse create(MultipartFile file, InspirationCreateMetadata request) {
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public InspirationManagementItemResponse create(
+        Long userId,
+        Long tenantId,
+        InspirationCreateUploadRequest request
+    ) {
         validateMetadata(request.title(), request.promptText());
         String publishStatus = normalizePublishStatus(request.publishStatus());
         String externalId = "manual-" + UUID.randomUUID();
-        ManagedInspirationMedia media = mediaService.store(externalId, file);
-        try {
-            LocalDateTime now = LocalDateTime.now();
-            InspirationCreationEntity entity = new InspirationCreationEntity();
-            entity.setExternalId(externalId);
-            entity.setCreationType(media.creationType());
-            entity.setTaskType("MANUAL_UPLOAD");
-            entity.setTitle(request.title().trim());
-            entity.setAuthorName("管理员");
-            entity.setUrl("");
-            entity.setStoragePath(media.storagePath());
-            entity.setMimeType(media.mimeType());
-            entity.setFileSize(media.fileSize());
-            entity.setThumbnailPath(media.thumbnailPath());
-            entity.setThumbnailUrl("");
-            entity.setThumbnailMimeType(media.thumbnailMimeType());
-            entity.setThumbnailFileSize(media.thumbnailFileSize());
-            entity.setThumbnailStatus("READY");
-            entity.setPromptText(request.promptText().trim());
-            entity.setTagsJson(writeTags(request.tags()));
-            entity.setPublishStatus(publishStatus);
-            entity.setSourceType("MANUAL");
-            entity.setImportStatus(InspirationCreationImportStatus.IMPORTED.name());
-            entity.setSortOrder(nextSortOrder());
-            entity.setSourceCreatedAt(now);
-            entity.setSourceUpdatedAt(now);
-            entity.setCreatedAt(now);
-            entity.setUpdatedAt(now);
-            mapper.insert(entity);
-            entity.setUrl("/api/inspiration-creations/%d/file".formatted(entity.getId()));
-            entity.setThumbnailUrl("/api/inspiration-creations/%d/thumbnail".formatted(entity.getId()));
-            mapper.updateById(entity);
-            return response(entity);
-        } catch (RuntimeException exception) {
-            mediaStorage.delete(media.storagePath());
-            mediaStorage.delete(media.thumbnailPath());
-            throw exception;
-        }
+        VerifiedMediaUpload upload = uploadSessions.requireCompleted(
+            userId, tenantId, request.uploadSessionToken()
+        );
+        return response(imageCreation.create(
+            externalId, upload, request, publishStatus, nextSortOrder()
+        ));
     }
 
     @Transactional
@@ -114,16 +99,43 @@ public class InspirationManagementService {
         return response(entity);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public InspirationManagementItemResponse updatePublishStatus(
         Long id,
         InspirationPublishStatusRequest request
     ) {
         InspirationCreationEntity entity = requireManaged(id);
-        entity.setPublishStatus(normalizePublishStatus(request.publishStatus()));
-        entity.setUpdatedAt(LocalDateTime.now());
-        mapper.updateById(entity);
-        return response(entity);
+        String status = normalizePublishStatus(request.publishStatus());
+        if ("PUBLISHED".equals(status) && "VIDEO".equals(entity.getCreationType())
+            && "FAILED".equals(entity.getImportStatus())) {
+            ManagedInspirationMedia media = mediaService.storeVideoCover(entity);
+            entity.setThumbnailPath(media.thumbnailPath());
+            entity.setThumbnailMimeType(media.thumbnailMimeType());
+            entity.setThumbnailFileSize(null);
+            entity.setThumbnailStatus("PENDING");
+            entity.setThumbnailUrl("/api/inspiration-creations/%d/thumbnail".formatted(id));
+            entity.setImportStatus("PROCESSING");
+            if (mapper.attachMediaIfActive(entity) != 1) {
+                throw new IllegalStateException("Inspiration video cover retry could not be persisted.");
+            }
+        }
+        if ("PUBLISHED".equals(status) && "IMAGE".equals(entity.getCreationType())
+            && "FAILED".equals(entity.getImportStatus())) {
+            RegisteredImageDisplay retried = imageRenditions.retryFailedDisplay(
+                InspirationImageRenditionReconciler.identity(entity), "inspiration-creation:" + id
+            );
+            if (mapper.markImageRenditionPending(id, retried.displayKey()) != 1) {
+                InspirationCreationEntity current = requireManaged(id);
+                if (!"IMPORTED".equals(current.getImportStatus())
+                    || !"READY".equals(current.getThumbnailStatus())) {
+                    throw new IllegalStateException("Inspiration display retry could not be persisted.");
+                }
+            }
+        }
+        if (mapper.updatePublishStatusIfActive(id, status) != 1) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "灵感内容不存在。");
+        }
+        return response(requireManaged(id));
     }
 
     @Transactional
@@ -157,8 +169,15 @@ public class InspirationManagementService {
         entity.setDeletedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         mapper.updateById(entity);
+        if (Set.of("IMAGE", "VIDEO").contains(entity.getCreationType())) {
+            imageRenditions.retire(InspirationImageRenditionReconciler.identity(entity));
+        }
         mediaStorage.delete(entity.getStoragePath());
         mediaStorage.delete(entity.getThumbnailPath());
+        if ("VIDEO".equals(entity.getCreationType())
+            && entity.getStoragePath() != null && !entity.getStoragePath().isBlank()) {
+            mediaStorage.delete(InspirationCreationMediaStorage.coverOriginalPath(entity.getStoragePath()));
+        }
     }
 
     private LambdaQueryWrapper<InspirationCreationEntity> managementQuery(

@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/video-script-decomposition")
@@ -38,14 +37,6 @@ public class VideoDecompositionController {
         HttpServletRequest request
     ) {
         return ApiResponse.success(service.create(tenantId(request), body, request));
-    }
-
-    @PostMapping("/uploads")
-    public ApiResponse<VideoDecompositionUploadResponse> upload(
-        @RequestParam("file") MultipartFile file,
-        HttpServletRequest request
-    ) {
-        return ApiResponse.success(service.upload(tenantId(request), file));
     }
 
     @GetMapping("/batches/{batchId}")

@@ -25,11 +25,13 @@ import * as aiExecutionController from "./aiExecutionController";
 import * as scriptContentController from "./scriptContentController";
 import * as assetImageBatchController from "./assetImageBatchController";
 import * as aiVideoTaskController from "./aiVideoTaskController";
-import * as inspirationThumbnailBackfillController from "./inspirationThumbnailBackfillController";
+import * as storyboardAssetReferenceBackfillController from "./storyboardAssetReferenceBackfillController";
 import * as platformCommercialPackageController from "./platformCommercialPackageController";
 import * as platformCommercialOrderController from "./platformCommercialOrderController";
 import * as workflowAgentRunController from "./workflowAgentRunController";
 import * as platformAiAccountingController from "./platformAiAccountingController";
+import * as mediaUploadController from "./mediaUploadController";
+import * as mediaProcessingCallbackController from "./mediaProcessingCallbackController";
 import * as wechatPaymentNotificationController from "./wechatPaymentNotificationController";
 import * as authController from "./authController";
 import * as materialFileController from "./materialFileController";
@@ -66,11 +68,13 @@ export default {
   scriptContentController,
   assetImageBatchController,
   aiVideoTaskController,
-  inspirationThumbnailBackfillController,
+  storyboardAssetReferenceBackfillController,
   platformCommercialPackageController,
   platformCommercialOrderController,
   workflowAgentRunController,
   platformAiAccountingController,
+  mediaUploadController,
+  mediaProcessingCallbackController,
   wechatPaymentNotificationController,
   authController,
   materialFileController,

@@ -563,14 +563,13 @@ describe('ProductionWorkbenchSettings', () => {
     const dailyPreview = mainPreview.querySelector<HTMLImageElement>(
       'img[src="/daily-thumb.png"]',
     );
-    expect(dailyOriginal).toHaveAttribute('src', '/daily.png');
+    expect(dailyOriginal).toHaveAttribute('src', '/daily-thumb.png');
     expect(dailyOriginal).toHaveStyle({ opacity: '0' });
     expect(dailyPreview).not.toBeNull();
     fireEvent.load(dailyPreview as HTMLImageElement);
     await waitFor(() => expect(dailyPreview).toHaveStyle({ opacity: '1' }));
     fireEvent.load(dailyOriginal);
     await waitFor(() => expect(dailyOriginal).toHaveStyle({ opacity: '1' }));
-    expect(dailyPreview).toHaveStyle({ opacity: '0' });
     expect(
       screen.getByRole('button', { name: '选择日常形象' }),
     ).toBeInTheDocument();
@@ -582,14 +581,13 @@ describe('ProductionWorkbenchSettings', () => {
     const weddingPreview = mainPreview.querySelector<HTMLImageElement>(
       'img[src="/wedding-thumb.png"]',
     );
-    expect(weddingOriginal).toHaveAttribute('src', '/wedding.png');
+    expect(weddingOriginal).toHaveAttribute('src', '/wedding-thumb.png');
     expect(weddingOriginal).toHaveStyle({ opacity: '0' });
     expect(weddingPreview).not.toBeNull();
     fireEvent.load(weddingPreview as HTMLImageElement);
     await waitFor(() => expect(weddingPreview).toHaveStyle({ opacity: '1' }));
     fireEvent.load(weddingOriginal);
     await waitFor(() => expect(weddingOriginal).toHaveStyle({ opacity: '1' }));
-    expect(weddingPreview).toHaveStyle({ opacity: '0' });
     expect(screen.getAllByText('婚礼礼服').length).toBeGreaterThan(0);
     expect(screen.getByText('生成超时')).toBeInTheDocument();
     expect(screen.getByLabelText('婚礼礼服主预览生成状态')).toHaveTextContent(
@@ -828,7 +826,7 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: '重新生成婚礼礼服' }));
     expect(screen.getByLabelText('婚礼礼服引用图')).toHaveAttribute(
       'src',
-      '/daily.png',
+      '/daily-thumb.png',
     );
     await screen.findByRole('option', { name: 'GPT Image 2' });
     fireEvent.change(screen.getByLabelText('图片模型'), {

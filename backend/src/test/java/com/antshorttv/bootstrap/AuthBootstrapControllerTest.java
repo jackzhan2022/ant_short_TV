@@ -21,7 +21,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class AuthBootstrapControllerTest {
+class AuthBootstrapControllerTest extends com.antshorttv.support.RegistrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -100,8 +100,8 @@ class AuthBootstrapControllerTest {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"Bootstrap User","password":"Password123"}
-                    """.formatted(mobile)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"Bootstrap User","password":"Password123"}
+                    """.formatted(mobile, registrationVerificationCode(mockMvc, mobile))))
             .andExpect(status().isOk())
             .andReturn();
         Number userId = com.jayway.jsonpath.JsonPath.read(

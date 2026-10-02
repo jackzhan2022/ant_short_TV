@@ -2,15 +2,21 @@ package com.antshorttv.video;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.script.StoryboardPromptCompiler;
+import com.antshorttv.storage.ObjectStorageService;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,8 +32,17 @@ class VideoTaskReferenceResolverTest {
     @Autowired
     private VideoTaskReferenceResolver resolver;
 
+    @Autowired private AiVideoTaskService videoTasks;
+    @Autowired private AiVideoTaskMapper videoTaskMapper;
+    @Autowired private SeedanceArkVideoProviderAdapter seedance;
+
+    @MockBean
+    private ObjectStorageService objectStorageService;
+
     @BeforeEach
     void seedReferences() {
+        when(objectStorageService.modelAccessUrl(anyString(), any(Duration.class)))
+            .thenAnswer(invocation -> "https://cos.example/" + invocation.getArgument(0, String.class));
         jdbc.update("""
             insert into ai_image_result
               (id, tenant_id, project_id, task_id, target_type, target_id, image_url,
@@ -76,7 +91,7 @@ class VideoTaskReferenceResolverTest {
             .containsExactly("png", 720, 1280, 1000L);
         assertThat(resolved.get(1).durationSeconds()).isEqualByComparingTo("5.5");
         assertThat(resolved.get(2).format()).isEqualTo("mp3");
-        assertThat(resolved).allSatisfy(item -> assertThat(item.providerUrl()).startsWith("https://app.example/materials/"));
+        assertThat(resolved).allSatisfy(item -> assertThat(item.providerUrl()).startsWith("https://cos.example/materials/"));
     }
 
     @Test
@@ -93,6 +108,66 @@ class VideoTaskReferenceResolverTest {
         assertThatThrownBy(() -> resolver.resolve(TENANT_ID, PROJECT_ID, List.of(
             reference("IMAGE", 1, "reference_image", "ASSET_VISUAL_VARIANT", 99998L, "图片1"))))
             .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void multimodalPosterPersistsDisplayIdentityWhileProviderUsesOriginalGrant() {
+        String original = "materials/97001/97002/images/202610/97101/result-97101/original.png";
+        String browserDisplay = "/api/projects/97002/ai-image-results/97101/file";
+        String providerOriginal = "https://cos.example/" + original + "?sign=original-only";
+        jdbc.update("update ai_image_result set storage_path = ?, image_url = ? where id = 97101", original, browserDisplay);
+        when(objectStorageService.modelAccessUrl(org.mockito.ArgumentMatchers.eq(original), any(Duration.class)))
+            .thenReturn(providerOriginal);
+        com.antshorttv.ai.AiModelEntity model = new com.antshorttv.ai.AiModelEntity();
+        model.setId(99L);
+        model.setConfigJson(jdbc.queryForObject("select config_json from ai_model where code = 'SEEDANCE_2_0_MINI'", String.class));
+        com.antshorttv.project.ProjectEntity project = new com.antshorttv.project.ProjectEntity();
+        project.aspectRatio = "9:16";
+        project.videoResolution = "720p";
+        com.antshorttv.script.StoryboardEntity storyboard = new com.antshorttv.script.StoryboardEntity();
+        storyboard.id = 97401L;
+        storyboard.tenantId = TENANT_ID;
+        storyboard.projectId = PROJECT_ID;
+        storyboard.promptDocumentJson = """
+            {"version":2,"nodes":[{"type":"text","text":"Frame "},
+              {"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT",
+               "sourceId":97111,"assetType":"CHARACTER","assetId":97112,"variantId":97111,"displayName":"Frame"}]}
+            """;
+        Object serviceTarget = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(videoTasks);
+        Object prepared = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+            serviceTarget, "prepareSeedanceRequest", project, storyboard,
+            new com.antshorttv.ai.AiModelRoute(model, null, null, null),
+            new CreateAiVideoTaskRequest(storyboard.id, 99L, "Prompt", null, null, null, null, null,
+                5, "9:16", "720p", true, false, null, null, null));
+        AiVideoTaskEntity task = new AiVideoTaskEntity();
+        task.tenantId = TENANT_ID;
+        task.projectId = PROJECT_ID;
+        task.storyboardId = storyboard.id;
+        task.modelId = 99L;
+        task.providerCode = "VOLCENGINE_ARK";
+        task.model = "endpoint-test";
+        task.prompt = "Prompt";
+        task.compiledPrompt = "Prompt";
+        task.firstFrameUrl = org.springframework.test.util.ReflectionTestUtils.invokeMethod(prepared, "firstFrameUrl");
+        task.requestSnapshotJson = org.springframework.test.util.ReflectionTestUtils.invokeMethod(prepared, "snapshotJson");
+        task.durationSeconds = 5;
+        task.aspectRatio = "9:16";
+        task.resolution = "720p";
+        task.status = "GENERATING";
+        task.createdBy = 1L;
+        task.createdAt = java.time.LocalDateTime.now();
+        task.updatedAt = task.createdAt;
+        videoTaskMapper.insert(task);
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(serviceTarget, "createGeneratedResult", task,
+            new AiVideoProviderAdapter.VideoResult("SUCCEEDED", null, null));
+
+        assertThat(jdbc.queryForObject("select first_frame_url from ai_video_task where id = ?", String.class, task.id))
+            .isEqualTo(browserDisplay);
+        assertThat(jdbc.queryForObject("select cover_url from ai_video_result where task_id = ?", String.class, task.id))
+            .isEqualTo(browserDisplay);
+        Object content = org.springframework.test.util.ReflectionTestUtils.invokeMethod(seedance, "content", task);
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(content).toString())
+            .contains(providerOriginal);
     }
 
     private StoryboardPromptCompiler.Reference reference(

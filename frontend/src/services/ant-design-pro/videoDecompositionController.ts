@@ -154,18 +154,3 @@ export async function retry(
     }
   );
 }
-
-/** 此处后端没有提供注释 POST /api/video-script-decomposition/uploads */
-export async function upload(body: {}, options?: { [key: string]: any }) {
-  return request<API.ApiResponseVideoDecompositionUploadResponse>(
-    "/api/video-script-decomposition/uploads",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      data: body,
-      ...(options || {}),
-    }
-  );
-}

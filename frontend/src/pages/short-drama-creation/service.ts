@@ -2,6 +2,10 @@ export { createProject } from '@/services/account-team/project';
 
 import { request } from '@umijs/max';
 import type { ApiResponse } from '@/services/account-team/types';
+import {
+  startMediaUpload,
+  type MediaUploadRecovery,
+} from '@/services/mediaUpload';
 
 export { queryTenantMembers } from '@/services/account-team/member';
 export { queryStyleLibrary } from '../style-library/service';
@@ -48,24 +52,31 @@ export const queryManagedInspirations = (params: Record<string, unknown>) =>
     { params },
   );
 
-export const createManagedInspiration = (values: {
-  file: File;
-  title: string;
-  promptText: string;
-  tags: string[];
-  publishStatus: string;
-}) => {
-  const data = new FormData();
-  data.append('file', values.file);
-  data.append('title', values.title);
-  data.append('promptText', values.promptText);
-  values.tags.forEach((tag) => {
-    data.append('tags', tag);
-  });
-  data.append('publishStatus', values.publishStatus);
+export const createManagedInspiration = async (
+  values: {
+    file: File;
+    title: string;
+    promptText: string;
+    tags: string[];
+    publishStatus: string;
+  },
+  recovery: MediaUploadRecovery = {},
+) => {
+  const upload = recovery.handle || (await startMediaUpload(values.file));
+  recovery.onHandle?.(upload);
+  const uploaded = await (recovery.handle ? upload.retry() : upload.attempt);
   return request<ApiResponse<ManagedInspiration>>(
     '/api/platform/inspiration-creations',
-    { method: 'POST', data },
+    {
+      method: 'POST',
+      data: {
+        uploadSessionToken: uploaded.sessionToken,
+        title: values.title,
+        tags: values.tags,
+        promptText: values.promptText,
+        publishStatus: values.publishStatus,
+      },
+    },
   );
 };
 

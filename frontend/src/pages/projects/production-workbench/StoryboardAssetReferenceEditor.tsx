@@ -65,8 +65,7 @@ export const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) =
     ? variantsFor(assets, reference.assetId)
       .find((candidate) => candidate.id === reference.variantId)
     : defaultVariant(asset);
-  return variant?.currentImageThumbnailUrl || variant?.currentImageUrl
-    || reference.imageUrl
+  return variant?.currentImageThumbnailUrl
     || asset?.mainImageThumbnailUrl || undefined;
 };
 
@@ -266,7 +265,7 @@ function SortableAssetCard({
             sourceName: reference.sourceName || asset?.name,
             variantId: variant?.id || null,
             variantName: variant?.name,
-            imageUrl: variant?.currentImageThumbnailUrl || variant?.currentImageUrl,
+            imageUrl: variant?.currentImageThumbnailUrl,
             resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
             sourceType: 'MANUAL',
             lockedByUser: true,
@@ -331,7 +330,7 @@ export default function StoryboardAssetReferenceEditor({
       assetName: asset.name,
       variantId: variant?.id,
       variantName: variant?.name,
-      imageUrl: variant?.currentImageThumbnailUrl || variant?.currentImageUrl,
+      imageUrl: variant?.currentImageThumbnailUrl,
       referenceRole: assetType === 'SCENE' ? 'MAIN' : 'VISIBLE',
       sortOrder: 0,
       resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',

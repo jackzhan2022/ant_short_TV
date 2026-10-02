@@ -3,13 +3,13 @@ package com.antshorttv.inspiration;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.security.CurrentPrincipal;
+import com.antshorttv.storage.DeliveryGrant;
+import com.antshorttv.storage.DeliveryGrantRequest;
+import com.antshorttv.storage.MediaDeliveryGrantService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-import org.springframework.core.io.Resource;
-import org.springframework.http.CacheControl;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -20,17 +20,20 @@ public class InspirationCreationService {
     private final InspirationCreationMediaStorage mediaStorage;
     private final ObjectMapper objectMapper;
     private final CurrentPrincipal currentPrincipal;
+    private final MediaDeliveryGrantService deliveryGrants;
 
     public InspirationCreationService(
         InspirationCreationMapper mapper,
         InspirationCreationMediaStorage mediaStorage,
         ObjectMapper objectMapper,
-        CurrentPrincipal currentPrincipal
+        CurrentPrincipal currentPrincipal,
+        MediaDeliveryGrantService deliveryGrants
     ) {
         this.mapper = mapper;
         this.mediaStorage = mediaStorage;
         this.objectMapper = objectMapper;
         this.currentPrincipal = currentPrincipal;
+        this.deliveryGrants = deliveryGrants;
     }
 
     public InspirationCreationPageResponse list(Integer page, Integer pageSize) {
@@ -56,33 +59,36 @@ public class InspirationCreationService {
         return InspirationCreationDetailResponse.from(entity, tags(entity), detailJson(entity));
     }
 
-    public Resource file(Long id) {
-        currentPrincipal.require();
-        return mediaStorage.resource(requireImported(id));
-    }
-
-    public Resource thumbnail(Long id) {
-        currentPrincipal.require();
-        return mediaStorage.thumbnailResource(requireReadyThumbnail(id));
-    }
-
-    public String contentType(Long id) {
-        currentPrincipal.require();
+    public DeliveryGrant file(Long id) {
         InspirationCreationEntity entity = requireImported(id);
-        return InspirationCreationMediaStorage.contentType(entity.getStoragePath(), entity.getMimeType());
+        return grant(entity, entity.getStoragePath(), "ORIGINAL", "VIDEO".equals(entity.getCreationType()));
     }
 
-    public String thumbnailContentType(Long id) {
-        currentPrincipal.require();
+    public DeliveryGrant thumbnail(Long id) {
         InspirationCreationEntity entity = requireReadyThumbnail(id);
-        return InspirationCreationMediaStorage.contentType(
-            entity.getThumbnailPath(),
-            entity.getThumbnailMimeType()
-        );
+        return grant(entity, entity.getThumbnailPath(), "THUMBNAIL", false);
     }
 
-    public CacheControl mediaCacheControl() {
-        return CacheControl.maxAge(1, TimeUnit.DAYS).cachePrivate();
+    private DeliveryGrant grant(
+        InspirationCreationEntity entity,
+        String objectKey,
+        String renditionType,
+        boolean video
+    ) {
+        Long userId = currentPrincipal.require().userId();
+        String versionId = entity.getExternalId() == null
+            ? "inspiration-" + entity.getId() : entity.getExternalId();
+        return deliveryGrants.issue(new DeliveryGrantRequest(
+            0L,
+            null,
+            userId,
+            "INSPIRATION_CREATION",
+            entity.getId(),
+            versionId,
+            renditionType,
+            objectKey,
+            video
+        ));
     }
 
     private InspirationCreationEntity requireImported(Long id) {

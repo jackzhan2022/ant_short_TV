@@ -689,14 +689,14 @@ describe('ProductionWorkbench script page', () => {
     const asset = {
       id: 1,
       visual: {
-        variants: [{ id: 11, primary: true, usable: true, currentImageUrl: '/new.png' }],
+        variants: [{ id: 11, primary: true, usable: true, currentImageUrl: '/new.png', currentImageThumbnailUrl: '/new-display.png' }],
       },
     } as any;
 
     expect(sortableIdFor(draft, 'CHARACTER', 0)).toBe(
       sortableIdFor(persisted, 'CHARACTER', 2),
     );
-    expect(imageFor(draft, [asset])).toBe('/new.png');
+    expect(imageFor(draft, [asset])).toBe('/new-display.png');
   });
 
   it('preserves draft card keys when saved references are reordered by asset type', () => {
@@ -982,14 +982,14 @@ describe('ProductionWorkbench script page', () => {
         variantCount: 2,
         primaryVariant: { id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
           prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'COMPLETED',
-          currentImageUrl: '/serena-primary.png', primary: true, usable: true },
+          currentImageUrl: '/serena-primary.png', currentImageThumbnailUrl: '/serena-primary-display.png', primary: true, usable: true },
         variants: [
           { id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
             prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'COMPLETED',
-            currentImageUrl: '/serena-primary.png', primary: true, usable: true },
+            currentImageUrl: '/serena-primary.png', currentImageThumbnailUrl: '/serena-primary-display.png', primary: true, usable: true },
           { id: 12, assetType: 'CHARACTER', assetId: 1, name: '晚宴礼服',
             prompt: '白色晚宴礼服', sourceType: 'USER', generationStatus: 'NOT_STARTED',
-            currentImageUrl: '/old-dress.png', primary: false, usable: false },
+            currentImageUrl: '/old-dress.png', currentImageThumbnailUrl: '/old-dress-display.png', primary: false, usable: false },
         ],
         generationSummary: {}, episodeBindings: [], resolvedImageUrl: '/serena-primary.png',
       },
@@ -1025,7 +1025,8 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
 
     fireEvent.click(await screen.findByRole('button', { name: '生成分镜1角色1资产图' }));
-    expect(screen.getByLabelText('晚宴礼服引用图')).toHaveAttribute('src', '/serena-primary.png');
+    expect(screen.getByLabelText('晚宴礼服引用图')).toHaveAttribute('src', '/serena-primary-display.png');
+    expect(screen.getByAltText('晚宴礼服当前图')).toHaveAttribute('src', '/old-dress-display.png');
     fireEvent.change(screen.getByLabelText('晚宴礼服生成提示词'), {
       target: { value: '白色晚宴礼服，电影感' },
     });
@@ -1050,7 +1051,7 @@ describe('ProductionWorkbench script page', () => {
       ...character.visual,
       variants: character.visual.variants.map((variant) =>
         variant.id === 12
-          ? { ...variant, currentImageUrl: '/new-dress.png', usable: true }
+          ? { ...variant, currentImageUrl: '/new-dress.png', currentImageThumbnailUrl: '/new-dress-display.png', usable: true }
           : variant),
     } });
     await act(async () => {
@@ -1060,7 +1061,7 @@ describe('ProductionWorkbench script page', () => {
       expect(screen.queryByRole('status', { name: '分镜1角色1资产图生成中' })).not.toBeInTheDocument();
       expect(screen.getAllByAltText('Serena参考图')).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ src: expect.stringContaining('/new-dress.png') }),
+          expect.objectContaining({ src: expect.stringContaining('/new-dress-display.png') }),
         ]),
       );
     });
@@ -1120,9 +1121,9 @@ describe('ProductionWorkbench script page', () => {
     mocks.queryAssetVisualWorkspace.mockResolvedValueOnce({ data: {
       ...character.visual,
       primaryVariant: { ...generatingVariant, generationStatus: 'COMPLETED',
-        currentImageUrl: '/serena-completed.png', usable: true },
+        currentImageUrl: '/serena-completed.png', currentImageThumbnailUrl: '/serena-completed-display.png', usable: true },
       variants: [{ ...generatingVariant, generationStatus: 'COMPLETED',
-        currentImageUrl: '/serena-completed.png', usable: true }],
+        currentImageUrl: '/serena-completed.png', currentImageThumbnailUrl: '/serena-completed-display.png', usable: true }],
       generationSummary: { COMPLETED: 1 }, resolvedImageUrl: '/serena-completed.png',
     } });
 
@@ -1139,7 +1140,7 @@ describe('ProductionWorkbench script page', () => {
       })).not.toBeInTheDocument();
       expect(screen.getAllByAltText('Serena参考图')).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ src: expect.stringContaining('/serena-completed.png') }),
+          expect.objectContaining({ src: expect.stringContaining('/serena-completed-display.png') }),
         ]),
       );
     });
@@ -1331,7 +1332,7 @@ describe('ProductionWorkbench script page', () => {
   it('uses a newly selected first-frame result without reloading the storyboard page', async () => {
     setupWorkspaceResponse({
       storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头提示', promptDocument: { version: 2, nodes: [{ type: 'text', text: '镜头提示' }] }, firstFrameUrl: null }],
-      imageTasks: [{ id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', results: [{ id: 811, selected: true, status: 'ACTIVE', imageUrl: '/first-frame.png' }] }],
+      imageTasks: [{ id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', results: [{ id: 811, selected: true, status: 'ACTIVE', imageUrl: '/first-frame.png', thumbnailUrl: '/first-frame-thumb.png' }] }],
     });
     render(<ProductionWorkbench />);
     fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
@@ -1347,7 +1348,7 @@ describe('ProductionWorkbench script page', () => {
       storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头提示', firstFrameUrl: null }],
       imageTasks: [
         { id: 802, targetType: 'STORYBOARD', targetId: 301, status: 'PENDING', createdAt: '2026-09-24', results: [] },
-        { id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', createdAt: '2026-09-23', results: [{ id: 811, selected: false, status: 'ACTIVE', imageUrl: '/first-frame.png' }] },
+        { id: 801, targetType: 'STORYBOARD', targetId: 301, status: 'SUCCESS', createdAt: '2026-09-23', results: [{ id: 811, selected: false, status: 'ACTIVE', imageUrl: '/first-frame.png', thumbnailUrl: '/first-frame-thumb.png' }] },
       ],
     });
     mocks.selectAiImageResult.mockResolvedValue({ data: { id: 811, selected: true, status: 'ACTIVE', targetId: 301, imageUrl: '/first-frame.png' } });

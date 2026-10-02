@@ -19,7 +19,7 @@ import java.nio.charset.StandardCharsets;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class SecurityBoundaryIntegrationTest {
+class SecurityBoundaryIntegrationTest extends com.antshorttv.support.RegistrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -29,8 +29,8 @@ class SecurityBoundaryIntegrationTest {
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"13800000101","verificationCode":"123456","nickname":"Public User","password":"Password123"}
-                    """))
+                    {"mobile":"13800000101","verificationCode":"%s","nickname":"Public User","password":"Password123"}
+                    """.formatted(registrationVerificationCode(mockMvc, "13800000101"))))
             .andExpect(status().isOk());
     }
 
@@ -59,8 +59,8 @@ class SecurityBoundaryIntegrationTest {
         MvcResult registration = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"13800000102","verificationCode":"123456","nickname":"CSRF User","password":"Password123"}
-                    """))
+                    {"mobile":"13800000102","verificationCode":"%s","nickname":"CSRF User","password":"Password123"}
+                    """.formatted(registrationVerificationCode(mockMvc, "13800000102"))))
             .andExpect(status().isOk())
             .andReturn();
         Cookie session = registration.getResponse().getCookie("ANT_SHORT_SESSION");

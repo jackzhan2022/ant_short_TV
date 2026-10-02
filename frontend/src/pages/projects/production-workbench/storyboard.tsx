@@ -138,6 +138,7 @@ type ReferenceGenerationTarget = {
   assetId: number;
   variant: VisualVariant;
   primaryImageUrl?: string | null;
+  primaryImageThumbnailUrl?: string | null;
   generationKey: string;
 };
 type ClientKeyedStoryboardAssetReference = StoryboardAssetReference & {
@@ -176,7 +177,7 @@ const getTaskImage = (
       successStatuses.includes(result.status),
     ) ||
     tasks[0]?.results[0];
-  return selectedResult?.thumbnailUrl || selectedResult?.imageUrl || undefined;
+  return selectedResult?.thumbnailUrl || undefined;
 };
 
 const getPlaceholderBackground = (key: string) => {
@@ -570,7 +571,7 @@ const avatarRail = (names: string[], assets: CharacterAsset[], imageTasks: AiIma
   <div style={{ display: 'flex', width: 58, overflow: 'hidden' }}>
     {names.slice(0, 4).map((name, index) => {
       const asset = assets.find((item) => item.name === name);
-      const image = asset?.visual?.resolvedImageUrl || asset?.visual?.primaryVariant?.currentImageThumbnailUrl
+      const image = asset?.visual?.primaryVariant?.currentImageThumbnailUrl
         || asset?.mainImageThumbnailUrl || thumbnailFor(imageTasks, 'CHARACTER', asset?.id);
       return (
         <span
@@ -848,14 +849,14 @@ const StoryboardCard = ({
           (variant) => variant.id === preferredBinding.variantId,
         )
       : undefined;
-    if (preferredVariant?.usable && preferredVariant.currentImageUrl) {
+    if (preferredVariant?.usable && preferredVariant.currentImageThumbnailUrl) {
       return {
-        url: preferredVariant.currentImageUrl,
+        url: preferredVariant.currentImageThumbnailUrl,
         source: 'EPISODE_PREFERRED',
       };
     }
     return {
-      url: visual?.resolvedImageUrl || asset?.mainImageThumbnailUrl,
+      url: visual?.primaryVariant?.currentImageThumbnailUrl || asset?.mainImageThumbnailUrl,
       source: visual?.resolvedImageSource || (asset?.mainImageThumbnailUrl ? 'LEGACY_FALLBACK' : undefined),
     };
   };
@@ -888,7 +889,7 @@ const StoryboardCard = ({
     .filter((task) => task.targetType === 'STORYBOARD' && task.targetId === item.id)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
     .flatMap((task) => task.results || [])
-    .find((result) => !result.selected && result.status === 'ACTIVE' && result.imageUrl);
+    .find((result) => !result.selected && result.status === 'ACTIVE' && result.thumbnailUrl);
   const videoTask = videoTasks
     .filter((task) => task.storyboardId === item.id)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
@@ -1031,7 +1032,7 @@ const StoryboardCard = ({
           {unselectedFirstFrame ? (
             <Flex align="center" gap={8} style={{ marginTop: 10 }}>
               <div style={{ width: 42, height: 42, flex: 'none', overflow: 'hidden' }}>
-                <PreviewPoster src={unselectedFirstFrame.thumbnailUrl || unselectedFirstFrame.imageUrl} title="待选首帧" />
+                <PreviewPoster src={unselectedFirstFrame.thumbnailUrl ?? undefined} title="待选首帧" />
               </div>
               <Button
                 size="small"
@@ -2715,6 +2716,8 @@ const ProductionWorkbenchStoryboard = () => {
         assetId: reference.assetId,
         variant,
         primaryImageUrl: visual?.resolvedImageUrl,
+        primaryImageThumbnailUrl: visual?.primaryVariant?.currentImageThumbnailUrl
+          || visual?.variants.find((item) => item.primary)?.currentImageThumbnailUrl,
         generationKey,
       });
       setReferenceGenerationSubmitting(false);
@@ -3179,7 +3182,7 @@ const ProductionWorkbenchStoryboard = () => {
           open={Boolean(referenceGenerationTarget)}
           variant={referenceGenerationTarget?.variant}
           assetType={referenceGenerationTarget?.assetType}
-          primaryImageUrl={referenceGenerationTarget?.primaryImageUrl}
+          primaryImageUrl={referenceGenerationTarget?.primaryImageThumbnailUrl}
           imageModels={imageModels}
           values={referenceGenerationValues}
           submitting={referenceGenerationSubmitting}

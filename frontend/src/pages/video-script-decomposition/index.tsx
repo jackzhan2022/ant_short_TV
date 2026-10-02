@@ -28,7 +28,8 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MediaUploadHandle } from '@/services/mediaUpload';
 import { statusText } from '@/utils/fieldDictionary';
 import type {
   VideoDecompositionBatch,
@@ -53,7 +54,9 @@ type EpisodeUpload = {
   size: number;
   mimeType?: string;
   status: 'READY';
+  uploadStatus?: UploadFile['status'];
   storagePath?: string;
+  uploadSessionToken?: string;
 };
 
 const MAX_VIDEO_SIZE = 1024 * 1024 * 1024;
@@ -109,8 +112,11 @@ const normalizeEpisodes = (files: UploadFile[]): EpisodeUpload[] =>
     size: file.size ?? 0,
     mimeType: file.type,
     status: 'READY',
+    uploadStatus: file.status,
     storagePath: (file.response as VideoDecompositionUpload | undefined)
       ?.storagePath,
+    uploadSessionToken: (file.response as VideoDecompositionUpload | undefined)
+      ?.uploadSessionToken,
   }));
 
 const statusColor = (status: string) => {
@@ -123,6 +129,8 @@ const statusColor = (status: string) => {
 const VideoScriptDecompositionPage = () => {
   const { message } = App.useApp();
   const [files, setFiles] = useState<UploadFile[]>([]);
+  const uploadHandles = useRef(new Map<string, MediaUploadHandle>());
+  const activeUploads = useRef(new Set<string>());
   const [batchName, setBatchName] = useState(
     buildDefaultVideoDecompositionBatchName,
   );
@@ -136,6 +144,80 @@ const VideoScriptDecompositionPage = () => {
   const [screenplaysLoading, setScreenplaysLoading] = useState(false);
   const [retryingEpisodeId, setRetryingEpisodeId] = useState<number>();
   const episodes = useMemo(() => normalizeEpisodes(files), [files]);
+
+  useEffect(() => {
+    const handles = uploadHandles.current;
+    const active = activeUploads.current;
+    return () => {
+      active.clear();
+      for (const handle of handles.values()) handle.cancel();
+      handles.clear();
+    };
+  }, []);
+
+  const removeUpload = (uid: string) => {
+    activeUploads.current.delete(uid);
+    uploadHandles.current.get(uid)?.cancel();
+    uploadHandles.current.delete(uid);
+    setFiles((current) => current.filter((file) => file.uid !== uid));
+  };
+
+  const uploadRecovery = (uid: string) => ({
+    handle: uploadHandles.current.get(uid),
+    onHandle: (handle: MediaUploadHandle) => {
+      if (activeUploads.current.has(uid))
+        uploadHandles.current.set(uid, handle);
+      else handle.cancel();
+    },
+  });
+
+  const updateUploadProgress = (uid: string, percent: number) => {
+    setFiles((current) =>
+      current.map((file) => (file.uid === uid ? { ...file, percent } : file)),
+    );
+  };
+
+  const retryUpload = async (uid: string) => {
+    const file = files.find((item) => item.uid === uid);
+    if (!file?.originFileObj || file.status !== 'error') return;
+    activeUploads.current.add(uid);
+    setFiles((current) =>
+      current.map((item) =>
+        item.uid === uid
+          ? { ...item, status: 'uploading', error: undefined }
+          : item,
+      ),
+    );
+    try {
+      const response = await uploadEpisodeVideo(
+        file.originFileObj,
+        (percent) => updateUploadProgress(uid, percent),
+        uploadRecovery(uid),
+      );
+      if (activeUploads.current.has(uid)) {
+        setFiles((current) =>
+          current.map((item) =>
+            item.uid === uid
+              ? {
+                  ...item,
+                  status: 'done',
+                  percent: 100,
+                  response: response.data,
+                }
+              : item,
+          ),
+        );
+      }
+    } catch (error) {
+      if (activeUploads.current.has(uid)) {
+        setFiles((current) =>
+          current.map((item) =>
+            item.uid === uid ? { ...item, status: 'error', error } : item,
+          ),
+        );
+      }
+    }
+  };
 
   const loadBatches = useCallback(async () => {
     const response = await queryVideoDecompositionBatches();
@@ -205,27 +287,39 @@ const VideoScriptDecompositionPage = () => {
     multiple: true,
     fileList: files,
     beforeUpload: (file) => {
-      if (file.size > MAX_VIDEO_SIZE) {
-        message.error(`${file.name} 超过 1GB，不能加入拆剧批次`);
-        return Upload.LIST_IGNORE;
-      }
       if (file.type && !SUPPORTED_VIDEO_TYPES.includes(file.type)) {
         message.error(`${file.name} 暂不支持该视频格式`);
         return Upload.LIST_IGNORE;
       }
       return true;
     },
-    customRequest: async (options) => {
-      try {
-        const response = await uploadEpisodeVideo(options.file as File);
-        options.onSuccess?.(response.data);
-      } catch (error) {
-        options.onError?.(error as Error);
-      }
+    customRequest: (options) => {
+      const file = options.file as File & { uid: string };
+      const uid = file.uid;
+      activeUploads.current.add(uid);
+      void uploadEpisodeVideo(
+        file,
+        (percent) => {
+          updateUploadProgress(uid, percent);
+          options.onProgress?.({ percent });
+        },
+        uploadRecovery(uid),
+      ).then(
+        (response) => {
+          if (activeUploads.current.has(uid))
+            options.onSuccess?.(response.data);
+        },
+        (error) => {
+          if (activeUploads.current.has(uid)) options.onError?.(error as Error);
+        },
+      );
+      return { abort: () => removeUpload(uid) };
     },
     onChange: ({ fileList }) => setFiles(fileList),
-    onRemove: (file) =>
-      setFiles((current) => current.filter((item) => item.uid !== file.uid)),
+    onRemove: (file) => {
+      removeUpload(file.uid);
+      return true;
+    },
   };
 
   const retryEpisode = async (episode: VideoDecompositionEpisode) => {
@@ -305,6 +399,14 @@ const VideoScriptDecompositionPage = () => {
               valueType: 'option',
               render: (_, record) => (
                 <Space>
+                  {record.uploadStatus === 'error' && (
+                    <Button
+                      aria-label="重试上传"
+                      title="重试上传"
+                      icon={<ReloadOutlined />}
+                      onClick={() => void retryUpload(record.uid)}
+                    />
+                  )}
                   <Button
                     aria-label="上移"
                     icon={<ArrowUpOutlined />}
@@ -321,11 +423,7 @@ const VideoScriptDecompositionPage = () => {
                     aria-label="删除"
                     danger
                     icon={<DeleteOutlined />}
-                    onClick={() =>
-                      setFiles((current) =>
-                        current.filter((file) => file.uid !== record.uid),
-                      )
-                    }
+                    onClick={() => removeUpload(record.uid)}
                   />
                 </Space>
               ),
@@ -349,12 +447,15 @@ const VideoScriptDecompositionPage = () => {
                     videos: episodes.map((episode) => ({
                       fileName: episode.fileName,
                       storagePath: episode.storagePath || '',
+                      uploadSessionToken: episode.uploadSessionToken || '',
                       mimeType: episode.mimeType,
                       fileSize: episode.size,
                     })),
                   });
                   message.success('剧本生成批次已创建');
                   setFiles([]);
+                  uploadHandles.current.clear();
+                  activeUploads.current.clear();
                   await loadBatches();
                 } catch (error) {
                   message.error(

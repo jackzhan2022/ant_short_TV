@@ -1,0 +1,2 @@
+-- Intentionally no-op. Historical style-library objects remain at their existing
+-- storage paths because this release does not backfill or verify derived objects.

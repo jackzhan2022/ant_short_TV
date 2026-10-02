@@ -1,7 +1,18 @@
 package com.antshorttv.inspiration;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 import java.util.List;
+
+record InspirationCreateUploadRequest(
+    @NotBlank String uploadSessionToken,
+    @NotBlank @Size(max = 200) String title,
+    List<String> tags,
+    @NotBlank @Size(max = 10000) String promptText,
+    String publishStatus
+) {
+}
 
 record InspirationCreateMetadata(
     String title,

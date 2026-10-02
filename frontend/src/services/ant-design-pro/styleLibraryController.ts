@@ -27,7 +27,7 @@ export async function image(
   options?: { [key: string]: any }
 ) {
   const { externalId: param0, ...queryParams } = params;
-  return request<string>(`/api/style-library/images/${param0}`, {
+  return request<any>(`/api/style-library/images/${param0}`, {
     method: "GET",
     params: { ...queryParams },
     ...(options || {}),

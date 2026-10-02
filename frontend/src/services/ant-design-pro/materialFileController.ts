@@ -9,11 +9,9 @@ export async function read(
   options?: { [key: string]: any }
 ) {
   const { tenantId: param0, projectId: param1, ...queryParams } = params;
-  return request<string>(`/materials/${param0}/${param1}/**`, {
+  return request<any>(`/materials/${param0}/${param1}/**`, {
     method: "GET",
-    params: {
-      ...queryParams,
-    },
+    params: { ...queryParams },
     ...(options || {}),
   });
 }

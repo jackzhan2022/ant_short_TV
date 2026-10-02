@@ -31,7 +31,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class VideoDecompositionControllerTest {
+class VideoDecompositionControllerTest extends com.antshorttv.support.RegistrationTestSupport {
     @Autowired
     private MockMvc mockMvc;
 
@@ -45,7 +45,7 @@ class VideoDecompositionControllerTest {
     private AiExecutionService aiExecutionService;
 
     @Test
-    void uploadsVideoWithoutProjectId() throws Exception {
+    void uploadsVideoWithoutProjectIdThroughVerifiedSession() throws Exception {
         String mobile = uniqueMobile();
         String token = registerUser(mobile, "Decomposition Uploader");
         Long tenantId = createTenant(token, "独立拆剧团队");
@@ -59,10 +59,12 @@ class VideoDecompositionControllerTest {
                 ))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.storagePath", org.hamcrest.Matchers.startsWith(
-                "/materials/%d/video-decomposition/".formatted(tenantId)
-            )));
+            .andExpect(status().isNotFound());
+        MvcResult uploaded = completeMediaUpload(
+            mockMvc, token, tenantId, "episode-1.mp4", "video/mp4", "video bytes".getBytes());
+        org.assertj.core.api.Assertions.assertThat((String) JsonPath.read(
+            uploaded.getResponse().getContentAsString(), "$.data.objectKey"))
+            .startsWith("materials/%d/uploads/".formatted(tenantId)).endsWith("/v1/original.mp4");
     }
 
     @Test
@@ -75,6 +77,11 @@ class VideoDecompositionControllerTest {
             jdbc, 10L, "CALL", BigDecimal.ONE, BigDecimal.ONE);
         fundPointAccount(tenantId);
 
+        MvcResult secondVideo = completeMediaUpload(
+            mockMvc, token, tenantId, "episode-b.mp4", "video/mp4", new byte[2048]);
+        MvcResult firstVideo = completeMediaUpload(
+            mockMvc, token, tenantId, "episode-a.mp4", "video/mp4", new byte[4096]);
+
         MvcResult result = mockMvc.perform(post("/api/video-script-decomposition/batches")
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
@@ -86,21 +93,27 @@ class VideoDecompositionControllerTest {
                       "videos":[
                         {
                           "fileName":"episode-b.mp4",
-                          "storagePath":"/materials/%d/video-decomposition/20260823/episode-b.mp4",
+                          "storagePath":"%s",
+                          "uploadSessionToken":"%s",
                           "mimeType":"video/mp4",
                           "fileSize":2048,
                           "durationSeconds":96.5
                         },
                         {
                           "fileName":"episode-a.mp4",
-                          "storagePath":"/materials/%d/video-decomposition/20260823/episode-a.mp4",
+                          "storagePath":"%s",
+                          "uploadSessionToken":"%s",
                           "mimeType":"video/mp4",
                           "fileSize":4096,
                           "durationSeconds":88
                         }
                       ]
                     }
-                    """.formatted(tenantId, tenantId)))
+                    """.formatted(
+                        JsonPath.read(secondVideo.getResponse().getContentAsString(), "$.data.objectKey"),
+                        JsonPath.read(secondVideo.getResponse().getContentAsString(), "$.data.sessionToken"),
+                        JsonPath.read(firstVideo.getResponse().getContentAsString(), "$.data.objectKey"),
+                        JsonPath.read(firstVideo.getResponse().getContentAsString(), "$.data.sessionToken"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.projectId").doesNotExist())
             .andExpect(jsonPath("$.data.totalEpisodes", is(2)))
@@ -144,6 +157,55 @@ class VideoDecompositionControllerTest {
              where execution.business_type = 'VIDEO_DECOMPOSITION_EPISODE'
                and execution.business_id in (?, ?)
             """, Integer.class, firstEpisodeId, secondEpisodeId)).isZero();
+    }
+
+    @Test
+    void rejectsCompletedUploadFromAnotherTenantForSameUser() throws Exception {
+        String token = registerUser(uniqueMobile(), "Cross Tenant Uploader");
+        Long sourceTenant = createTenant(token, "Upload Source Tenant");
+        Long destinationTenant = createTenant(token, "Upload Destination Tenant");
+        MvcResult uploaded = completeMediaUpload(
+            mockMvc, token, sourceTenant, "episode.mp4", "video/mp4", new byte[128]);
+        mockMvc.perform(post("/api/video-script-decomposition/batches")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", destinationTenant).contentType(MediaType.APPLICATION_JSON)
+                .content(batchWithUpload(uploaded, null)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+            "select count(*) from video_decomposition_batch where tenant_id = ?",
+            Integer.class, destinationTenant)).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"path", "size", "mime"})
+    void rejectsCompletedUploadMetadataMismatch(String mismatch) throws Exception {
+        String token = registerUser(uniqueMobile(), "Upload Metadata Validator");
+        Long tenantId = createTenant(token, "Upload Metadata Tenant");
+        MvcResult uploaded = completeMediaUpload(
+            mockMvc, token, tenantId, "episode.mp4", "video/mp4", new byte[128]);
+        mockMvc.perform(post("/api/video-script-decomposition/batches")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content(batchWithUpload(uploaded, mismatch)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+            "select count(*) from video_decomposition_batch where tenant_id = ?",
+            Integer.class, tenantId)).isZero();
+    }
+
+    private String batchWithUpload(MvcResult upload, String mismatch) throws Exception {
+        String path = JsonPath.read(upload.getResponse().getContentAsString(), "$.data.objectKey");
+        String sessionToken = JsonPath.read(upload.getResponse().getContentAsString(), "$.data.sessionToken");
+        Number size = JsonPath.read(upload.getResponse().getContentAsString(), "$.data.size");
+        return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(Map.of(
+            "name", "Verified Upload Batch",
+            "videos", java.util.List.of(Map.of(
+                "fileName", "episode.mp4", "uploadSessionToken", sessionToken,
+                "storagePath", "path".equals(mismatch) ? path + ".other" : path,
+                "fileSize", "size".equals(mismatch) ? size.longValue() + 1 : size.longValue(),
+                "mimeType", "mime".equals(mismatch) ? "video/quicktime" : "video/mp4"))));
     }
 
     @Test
@@ -281,6 +343,8 @@ class VideoDecompositionControllerTest {
             jdbc, 10L, "CALL", BigDecimal.ONE, BigDecimal.ONE);
         fundPointAccount(tenantId);
         Long ownerId = userIdByMobile(mobile);
+        MvcResult uploaded = completeMediaUpload(
+            mockMvc, token, tenantId, "retry.mp4", "video/mp4", new byte[2048]);
         MvcResult created = mockMvc.perform(post("/api/video-script-decomposition/batches")
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
@@ -288,10 +352,13 @@ class VideoDecompositionControllerTest {
                 .content("""
                     {"name":"技术重试","modelId":10,"videos":[{
                       "fileName":"retry.mp4",
-                      "storagePath":"/materials/%d/video-decomposition/retry.mp4",
+                      "storagePath":"%s",
+                      "uploadSessionToken":"%s",
                       "mimeType":"video/mp4","fileSize":2048
                     }]}
-                    """.formatted(tenantId)))
+                    """.formatted(
+                        JsonPath.read(uploaded.getResponse().getContentAsString(), "$.data.objectKey"),
+                        JsonPath.read(uploaded.getResponse().getContentAsString(), "$.data.sessionToken"))))
             .andExpect(status().isOk())
             .andReturn();
         Long episodeId = readLong(created, "$.data.episodes[0].id");
@@ -482,8 +549,8 @@ class VideoDecompositionControllerTest {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"mobile":"%s","verificationCode":"123456","nickname":"%s","password":"Password123"}
-                    """.formatted(mobile, nickname)))
+                    {"mobile":"%s","verificationCode":"%s","nickname":"%s","password":"Password123"}
+                    """.formatted(mobile, registrationVerificationCode(mockMvc, mobile), nickname)))
             .andExpect(status().isOk())
             .andReturn();
         return com.antshorttv.support.SessionTestSupport.sessionCredential(result);

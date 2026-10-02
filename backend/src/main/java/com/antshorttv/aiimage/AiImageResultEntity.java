@@ -18,6 +18,7 @@ public class AiImageResultEntity {
     private String imageUrl;
     private String storagePath;
     private String mimeType;
+    private String displayPath;
     private String thumbnailUrl;
     private String thumbnailPath;
     private Integer width;
@@ -49,6 +50,8 @@ public class AiImageResultEntity {
     public void setStoragePath(String storagePath) { this.storagePath = storagePath; }
     public String getMimeType() { return mimeType; }
     public void setMimeType(String mimeType) { this.mimeType = mimeType; }
+    public String getDisplayPath() { return displayPath; }
+    public void setDisplayPath(String displayPath) { this.displayPath = displayPath; }
     public String getThumbnailUrl() { return thumbnailUrl; }
     public void setThumbnailUrl(String thumbnailUrl) { this.thumbnailUrl = thumbnailUrl; }
     public String getThumbnailPath() { return thumbnailPath; }

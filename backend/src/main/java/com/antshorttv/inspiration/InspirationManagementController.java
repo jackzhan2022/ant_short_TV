@@ -1,7 +1,12 @@
 package com.antshorttv.inspiration;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.platform.RequirePlatformPermission;
+import com.antshorttv.security.TenantContext;
+import com.antshorttv.security.TenantContextResolver;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,18 +16,21 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/platform/inspiration-creations")
 public class InspirationManagementController {
     private static final String MANAGE_PERMISSION = "PLATFORM_INSPIRATION_MANAGE";
     private final InspirationManagementService service;
+    private final TenantContextResolver tenants;
 
-    public InspirationManagementController(InspirationManagementService service) {
+    public InspirationManagementController(
+        InspirationManagementService service,
+        TenantContextResolver tenants
+    ) {
         this.service = service;
+        this.tenants = tenants;
     }
 
     @GetMapping
@@ -40,16 +48,12 @@ public class InspirationManagementController {
     @PostMapping
     @RequirePlatformPermission(MANAGE_PERMISSION)
     public ApiResponse<InspirationManagementItemResponse> create(
-        @RequestPart("file") MultipartFile file,
-        @RequestParam String title,
-        @RequestParam String promptText,
-        @RequestParam(required = false) List<String> tags,
-        @RequestParam(defaultValue = "UNPUBLISHED") String publishStatus
+        @Valid @RequestBody InspirationCreateUploadRequest body,
+        HttpServletRequest request
     ) {
-        return ApiResponse.success(service.create(
-            file,
-            new InspirationCreateMetadata(title, tags, promptText, publishStatus)
-        ));
+        Long tenantId = TenantRequestSupport.tenantId(request);
+        TenantContext context = tenants.requireActiveMember(tenantId);
+        return ApiResponse.success(service.create(context.userId(), tenantId, body));
     }
 
     @PutMapping("/{id}")

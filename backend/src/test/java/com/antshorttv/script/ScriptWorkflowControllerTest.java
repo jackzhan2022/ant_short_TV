@@ -34,7 +34,7 @@ import org.springframework.test.annotation.DirtiesContext;
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-class ScriptWorkflowControllerTest {
+class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

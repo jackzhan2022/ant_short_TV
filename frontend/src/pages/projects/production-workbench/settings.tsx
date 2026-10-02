@@ -1412,10 +1412,7 @@ const ProductionWorkbenchSettings = () => {
                                       }}
                                     >
                                       <StableImage
-                                        src={
-                                          variant.currentImageThumbnailUrl ||
-                                          variant.currentImageUrl
-                                        }
+                                        src={variant.currentImageThumbnailUrl}
                                         alt={`${variant.name}缩略图`}
                                         fallback={
                                           <AssetImagePlaceholder compact />
@@ -1561,15 +1558,7 @@ const ProductionWorkbenchSettings = () => {
                             }}
                           >
                             <StableImage
-                              src={
-                                selectedVariant.currentImageUrl ||
-                                selectedVariant.currentImageThumbnailUrl
-                              }
-                              previewSrc={
-                                selectedVariant.currentImageUrl
-                                  ? selectedVariant.currentImageThumbnailUrl
-                                  : undefined
-                              }
+                              src={selectedVariant.currentImageThumbnailUrl}
                               alt={`${selectedVariant.name}预览图`}
                               fallback={<AssetImagePlaceholder />}
                               loading="eager"
@@ -1709,7 +1698,7 @@ const ProductionWorkbenchSettings = () => {
                     open={Boolean(generationVariant)}
                     variant={generationVariant}
                     assetType={visualAsset.type}
-                    primaryImageUrl={visualAsset.item.visual?.resolvedImageUrl}
+                    primaryImageUrl={visualAsset.item.visual?.primaryVariant?.currentImageThumbnailUrl}
                     imageModels={imageModels}
                     values={{
                       prompt: generationPrompt,

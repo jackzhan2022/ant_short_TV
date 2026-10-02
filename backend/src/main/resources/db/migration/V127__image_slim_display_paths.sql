@@ -1,0 +1,2 @@
+-- Intentionally no-op. A derived display key is published only after its COS
+-- object is created and verified; schema migration performs no historical backfill.

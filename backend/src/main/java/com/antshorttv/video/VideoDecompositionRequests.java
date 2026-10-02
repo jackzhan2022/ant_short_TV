@@ -21,6 +21,7 @@ record CreateVideoDecompositionBatchRequest(
 record VideoUploadMetadataRequest(
     @NotBlank @Size(max = 500) String fileName,
     @NotBlank @Size(max = 1000) String storagePath,
+    @NotBlank @Size(max = 64) String uploadSessionToken,
     @Size(max = 128) String mimeType,
     @NotNull @Min(1) Long fileSize,
     @DecimalMin("0.1") BigDecimal durationSeconds

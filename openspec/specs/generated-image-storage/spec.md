@@ -2,46 +2,47 @@
 
 ## Purpose
 Persist generated image originals and list-ready thumbnail renditions without storing provider Base64 data in result URL fields.
-
 ## Requirements
-
 ### Requirement: Generated images are persisted as paired object-storage resources
-The system SHALL persist every newly completed generated image as an original object and a proportional PNG thumbnail object in object storage before completing its image result. The thumbnail's longest edge SHALL not exceed 512 pixels, and the system SHALL retain the original dimensions, size, MIME type, and storage path.
+The system SHALL persist every newly completed generated image as an immutable original in COS and SHALL submit one persistent Cloud Infinite job for an original-resolution `imageSlim` display rendition before publishing a completed result. Sources unsupported by `imageSlim` SHALL be converted to PNG before compression. Thumbnail, detail, and normal-preview roles SHALL share only this display object. The system SHALL retain original dimensions, size, MIME type, object key, ETag or checksum, and rendition processing state.
 
 #### Scenario: Generated image is stored successfully
 - **WHEN** an image-generation provider returns a decodable image result
-- **THEN** the system stores both the original and its PNG thumbnail in object storage and completes the result with original metadata
+- **THEN** the system stores the original in COS and creates the required persistent `imageSlim` display rendition without resizing
+- **AND** completes the result with original and rendition metadata only after required processing succeeds
 
 #### Scenario: Thumbnail storage fails
-- **WHEN** the original is decoded but its thumbnail cannot be created or stored
+- **WHEN** the original is stored but Cloud Infinite cannot create or persist the required thumbnail
 - **THEN** the system SHALL not publish a completed image result with only an original resource
+- **AND** records retryable rendition diagnostics
 
 ### Requirement: Image result URLs select the intended rendition
-The system SHALL return a short authenticated original-image URL and thumbnail URL for every newly completed generated result. Browser-native requests to these URLs SHALL authorize from the authenticated session and persisted result ownership without requiring a custom tenant header. Image list consumers SHALL use the thumbnail URL, while original preview and download consumers SHALL use the original URL.
+The system SHALL return a permission-checked Type D CDN URL for the compressed display object of every newly completed generated result and SHALL expose the original only through an explicit download action. Image lists, detail views, and normal preview consumers SHALL use the same display object and SHALL NOT render the original as an image source. Signed URLs SHALL not be persisted as resource identities or contain embedded Base64 image data.
 
 #### Scenario: List loads a completed generated result
 - **WHEN** an authorized client retrieves a completed generated image task or result list
-- **THEN** the response includes a thumbnail URL that does not contain embedded Base64 image data
+- **THEN** the response includes an authorized `imageSlim` display URL that does not contain embedded Base64 image data
 
 #### Scenario: Gallery renders a generated result
 - **WHEN** the visual gallery renders a completed generated image result
-- **THEN** its list tile requests the thumbnail URL and its large preview requests the original-image URL
+- **THEN** its list tile, detail view, and normal large preview request the same `imageSlim` display object
+- **AND** none of those image elements use the original URL as a fallback
 
-#### Scenario: User previews or downloads a generated result
-- **WHEN** an authenticated authorized browser requests the original resource without an `X-Tenant-Id` header
-- **THEN** the system derives the authorization scope from the active result and streams the original object with its detected image media type
+#### Scenario: User downloads a generated result
+- **WHEN** an authenticated authorized browser explicitly downloads the original image without an `X-Tenant-Id` header
+- **THEN** the system derives tenant/project scope from the active result, verifies project view permission, and returns authorized CDN access to the original object
 
 ### Requirement: Thumbnail resource is authorized and streamable
-The system SHALL provide an authenticated project-scoped endpoint that streams the generated result thumbnail as `image/png`. The endpoint SHALL derive tenant scope from an active result belonging to the requested project and SHALL enforce project view permission before accessing object storage.
+The system SHALL preserve the project-scoped thumbnail resource contract while resolving it to the persistent `imageSlim` display object through authorized CDN delivery instead of streaming bytes through the application server. The endpoint SHALL derive tenant scope from an active result belonging to the requested project and SHALL enforce project view permission before creating or returning a delivery grant.
 
 #### Scenario: Authorized thumbnail request without custom tenant header
 - **WHEN** an authenticated project member requests the thumbnail for a completed generated result in that project without an `X-Tenant-Id` header
-- **THEN** the system streams the stored thumbnail as `image/png`
+- **THEN** the system returns or redirects to the authorized `imageSlim` display CDN URL
 
 #### Scenario: Unauthorized thumbnail request
 - **WHEN** a caller without access to the result project requests its thumbnail
-- **THEN** the system rejects the request without exposing the object-storage resource
+- **THEN** the system rejects the request without exposing an object key or signed CDN URL
 
 #### Scenario: Result does not belong to path project
 - **WHEN** an authenticated caller requests an image result under a different project identifier
-- **THEN** the system returns a not-found response without exposing or reading the object-storage resource
+- **THEN** the system returns a not-found response without accessing the COS object or creating a delivery grant

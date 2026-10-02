@@ -18,10 +18,11 @@ describe('AssetVariantGenerationModal', () => {
           sourceType: 'USER',
           generationStatus: 'NOT_STARTED',
           currentImageUrl: '/variant.png',
+          currentImageThumbnailUrl: '/variant-display.png',
           primary: false,
           usable: false,
         }}
-        primaryImageUrl="/primary.png"
+        primaryImageUrl="/primary-display.png"
         imageModels={[{ id: 7, name: '图片模型A' }]}
         values={{
           prompt: '原提示词',
@@ -38,11 +39,11 @@ describe('AssetVariantGenerationModal', () => {
 
     expect(screen.getByRole('img', { name: '婚礼礼服当前图' })).toHaveAttribute(
       'src',
-      '/variant.png',
+      '/variant-display.png',
     );
     expect(screen.getByRole('img', { name: '婚礼礼服引用图' })).toHaveAttribute(
       'src',
-      '/primary.png',
+      '/primary-display.png',
     );
     fireEvent.change(screen.getByLabelText('婚礼礼服生成提示词'), {
       target: { value: '新提示词' },
@@ -89,5 +90,33 @@ describe('AssetVariantGenerationModal', () => {
     );
 
     expect(screen.getByText('场景生成')).toBeInTheDocument();
+  });
+
+  it('does not render the original when its display rendition is unavailable', () => {
+    render(
+      <AssetVariantGenerationModal
+        open
+        variant={{
+          id: 22,
+          assetType: 'SCENE',
+          assetId: 2,
+          name: 'Original-only',
+          sourceType: 'USER',
+          generationStatus: 'GENERATING',
+          currentImageUrl: '/original-only.png',
+          primary: true,
+          usable: false,
+        }}
+        imageModels={[]}
+        values={{ prompt: '', aspectRatio: '16:9', imageCount: 1 }}
+        submitting={false}
+        onChange={vi.fn()}
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('img', { name: 'Original-only当前图' })).not.toBeInTheDocument();
+    expect(screen.getByText('暂无当前图')).toBeInTheDocument();
   });
 });

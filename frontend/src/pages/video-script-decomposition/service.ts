@@ -1,4 +1,8 @@
 import { request } from '@umijs/max';
+import {
+  startMediaUpload,
+  type MediaUploadRecovery,
+} from '@/services/mediaUpload';
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -10,6 +14,7 @@ export type ApiResponse<T> = {
 export type VideoDecompositionUpload = {
   fileName: string;
   storagePath: string;
+  uploadSessionToken: string;
   mimeType?: string;
   fileSize: number;
   durationSeconds?: number | null;
@@ -119,16 +124,29 @@ export const queryVideoUnderstandingModels = async () =>
     '/api/platform/ai/models',
   );
 
-export const uploadEpisodeVideo = async (file: File) => {
-  const data = new FormData();
-  data.append('file', file);
-  return request<ApiResponse<VideoDecompositionUpload>>(
-    '/api/video-script-decomposition/uploads',
-    {
-      method: 'POST',
-      data,
+export const uploadEpisodeVideo = async (
+  file: File,
+  onProgress?: (percent: number) => void,
+  recovery: MediaUploadRecovery = {},
+): Promise<ApiResponse<VideoDecompositionUpload>> => {
+  const upload =
+    recovery.handle ||
+    (await startMediaUpload(file, {
+      onProgress: (progress) => onProgress?.(progress.percent * 100),
+    }));
+  recovery.onHandle?.(upload);
+  const uploaded = await (recovery.handle ? upload.retry() : upload.attempt);
+  return {
+    success: true,
+    data: {
+      fileName: file.name,
+      storagePath: uploaded.objectKey,
+      uploadSessionToken: uploaded.sessionToken,
+      mimeType: uploaded.contentType,
+      fileSize: uploaded.size,
+      durationSeconds: null,
     },
-  );
+  };
 };
 
 export const createVideoDecompositionBatch = async (

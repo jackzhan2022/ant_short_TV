@@ -13,6 +13,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
@@ -96,19 +98,20 @@ public class AiVideoProviderAdapter {
         );
     }
 
-    public byte[] download(String externalVideoUrl) throws Exception {
+    public long downloadTo(String externalVideoUrl, Path target) throws Exception {
         URI uri = URI.create(externalVideoUrl);
         if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
             throw new IllegalStateException("外部视频地址不可下载。");
         }
-        HttpResponse<byte[]> response = httpClient.send(
+        HttpResponse<Path> response = httpClient.send(
             HttpRequest.newBuilder(uri).GET().build(),
-            HttpResponse.BodyHandlers.ofByteArray()
+            HttpResponse.BodyHandlers.ofFile(target)
         );
-        if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body().length == 0) {
+        long size = Files.size(target);
+        if (response.statusCode() < 200 || response.statusCode() >= 300 || size == 0) {
             throw new IllegalStateException("视频下载失败，HTTP " + response.statusCode());
         }
-        return response.body();
+        return size;
     }
 
     private JsonNode sendJson(
