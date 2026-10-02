@@ -9,11 +9,11 @@ Last updated: 2026-10-02
 - Branch: `codex/migrate-media-storage-to-tencent-cos`
 - Remote: `origin/codex/migrate-media-storage-to-tencent-cos`
 - OpenSpec change: `migrate-media-storage-to-tencent-cos`
-- OpenSpec progress: `54/55`; only `8.7` remains open for usage/billing/notification-delivery acceptance.
+- OpenSpec progress: `55/55`; the owner confirmed manual test-notification receipt and explicitly accepted the final gate on 2026-10-02. Apply is complete; this change is not yet archived or merged.
 - Latest implementation commit: `5010894` (`fix(storage): complete multipart and immutable media cleanup contracts`).
 - Implementation commits through `5010894` are pushed and deployed. The active release is `/opt/antv/releases/20261002-5010894-readiness`.
 
-All new image-ingestion paths use persisted asynchronous `imageSlim` jobs and publish only ready display renditions. User records `51` and `56` remain unchanged. Native callbacks, real 35-MB browser multipart uploads, backend internal uploads, failed-output cleanup, video ranges, bounded concurrent application egress, actual browser disk-cache reuse, alert configuration, and real rollback are accepted. This is not a fully completed OpenSpec release: usage/billing reconciliation and notification delivery remain open.
+All new image-ingestion paths use persisted asynchronous `imageSlim` jobs and publish only ready display renditions. User records `51` and `56` remain unchanged. Native callbacks, real 35-MB browser multipart uploads, backend internal uploads, failed-output cleanup, video ranges, bounded concurrent application egress, actual browser disk-cache reuse, alert configuration, and real rollback are accepted. The owner manually tested notification delivery, confirmed receipt, and accepted the last OpenSpec gate. Delayed final billing reconciliation and the residual checks below remain operational follow-ups, not claims that every eventual charge or notification channel has been observed.
 
 ## 2. Confirmed Product Contract
 
@@ -54,7 +54,7 @@ Server and cloud state, including read-only rechecks on 2026-10-02:
 - Server `/opt/antv/shared/env` specifies `antv-1418200553`, `ap-guangzhou`, `INTELLIGENT_TIERING`, `https://antvcdn.aixmax.cn`, and the callback URL above. The owner explicitly confirmed real-cloud acceptance should use this unpublished production deployment, not a second test instance. Task `1.1` is complete under that approved scope. The main checkout's ignored `backend/env` still has the legacy bucket and empty region; do not overwrite unrelated user settings.
 - DNS resolves `antvcdn.aixmax.cn` to `antvcdn.aixmax.cn.cdn.dnsv1.com`. Actual signed-object HTTPS delivery, expiry rejection, and cache reuse now succeed; this does not prove all CDN settings or video range behavior.
 - The approved `antv-direct-upload` CORS rule allows `https://antv.aixmax.cn`, GET/HEAD/PUT/POST/DELETE, required SDK headers, ETag/CRC64/request-ID exposure, and 600-second preflight caching. PUT preflight with actual upload headers returns `200`; the user's image upload also completed. Full multipart renewal/resume coverage remains open.
-- Intelligent tiering is enabled with a 30-day transition. Lifecycle rules abort incomplete multipart uploads after three days and expire only `uploads/` staging objects after seven days. Versioning is `Off`, no replication configuration exists, and console readback confirms global acceleration is off. The deployed transactional cleaner removes only correlated FAILED display outputs after 14 days, never registered READY originals. Its actual synthetic-object acceptance is recorded below; task `1.3` is complete. Alarm configuration is accepted; notification delivery remains pending.
+- Intelligent tiering is enabled with a 30-day transition. Lifecycle rules abort incomplete multipart uploads after three days and expire only `uploads/` staging objects after seven days. Versioning is `Off`, no replication configuration exists, and console readback confirms global acceleration is off. The deployed transactional cleaner removes only correlated FAILED display outputs after 14 days, never registered READY originals. Its actual synthetic-object acceptance is recorded below; task `1.3` is complete. Alarm configuration and owner-confirmed manual notification acceptance are complete.
 - `imageSlim` API usage and picture/media queues are enabled; access-time automatic compression remains disabled. Earlier `PicBucketUnBinded` and `401 AccessDenied` blockers were resolved by activation and the approved CI role policy. Do not create duplicate bucket-trigger workflows.
 - The user added exact CDN Referer origin `antv.aixmax.cn`, preserving `aixmax.cn` and SHA256 Type D authentication. App-origin signed GETs return `200`; expired and tampered signatures return `403`.
 - COS domain/transfer console confirms private-origin and CDN authentication on, HTTPS configured, CDN cache auto-refresh not configured, and global acceleration off. Existing CDN adaptive WebP is enabled; no setting was changed during this inspection. Include its potential representation-processing usage in cost accounting instead of equating application imageSlim-job counts with the whole account bill.
@@ -65,14 +65,14 @@ Server and cloud state, including read-only rechecks on 2026-10-02:
 - Flyway `V123` through `V128` are applied successfully; the database is at `V128`. V128 adds only per-attempt failed-output cleanup markers. The checked execution/analysis/review/decomposition categories have zero active work on the latest read-only check.
 - The default single scheduler thread was occupied by subscription grant processing, delaying publication even after media became ready. The approved release now runs with literal shared-env property `spring.task.scheduling.pool.size=4`; publication reconciled successfully after restart. A possible overdue-period loop in `CommercialSubscriptionGrantService` is a separate billing follow-up, not fixed by this storage change.
 
-Remaining environment and acceptance checks:
+Accepted Environment And Operational Follow-ups:
 
 - Browser records `57` through `59` now verify actual 35,403,873-byte multipart uploads, multipart ETags, completion HEAD verification, intelligent tiering, native cover callbacks, and unpublished domain state. Session `7` was retained across the earlier failure and succeeded after deployment. Per-request authorization is exercised; a browser upload lasting beyond the 300-second signature period has not been separately load-tested.
 - Failed-output cleanup and cloud lifecycle targeting are accepted; preserve the synthetic fixture's retained original and audit marker.
 - Configuration inspection is accepted: exact `sign,t` exclusion preserves other parameters, node rule 30 days, browser media rule seven days, disabled auto-refresh and enabled coalescing. Actual responses have `max-age=604800`; unchanged seven-day grant rows and the owner's Chrome disk-cache screenshot complete `8.5`.
 - The video snapshot/display chain and native image callback are accepted through records `55`/`56`; the original user image was previously recovered by replay, without a second compression job.
 - Video-only range origin and cold-large-video transfer are accepted; see provider-origin telemetry below. Bounded concurrent egress is accepted, not a long-term capacity benchmark.
-- Complete usage/billing reconciliation and notification-delivery acceptance for the saved combined media-cost budget and single-instance public-bandwidth alert.
+- Preserve owner-confirmed manual notification acceptance for the saved media-cost/bandwidth configuration; reconcile delayed provider billing as it becomes available.
 
 ## 4. Implemented Foundation
 
@@ -246,11 +246,11 @@ The script restored `/opt/antv/releases/20261002-8c62da7-native-callback` and by
 
 The earlier registration-fixture baseline failure is resolved in tests only. The old interrupted 1,169-test/146-failure run and separate 19-failure AI-image run are historical diagnosis, not current verification. The full-cohort plus corrected inventory rerun evidence above is authoritative.
 
-## 6. Known Blocking Gaps
+## 6. Acceptance And Follow-ups
 
-### P0: Remaining real-cloud readiness
+### Accepted Real-cloud Readiness
 
-The user approved the COS configuration/release switch, Flyway, historical MinIO-only media becoming unavailable, CI role access, the exact application Referer, shared pre-release acceptance on production, the completed real rollback drill, and the media/bandwidth alert settings below. Only task `8.7` remains open. Keep previous releases and matching environments recoverable; the single approved rollback window has already been used and must not be repeated without a new window.
+The user approved the COS configuration/release switch, Flyway, historical MinIO-only media becoming unavailable, CI role access, the exact application Referer, shared pre-release acceptance on production, the completed real rollback drill, and the media/bandwidth alert settings below. All 55 OpenSpec tasks are complete after the owner-confirmed final acceptance below. Keep previous releases and matching environments recoverable; the single approved rollback window has already been used and must not be repeated without a new window.
 
 The owner confirmed a combined 100-CNY monthly budget for COS/CDN/CI and a 4-Mbps CVM outbound alert, only notifying the current Tencent main account without shutdown/new recipients. Budget `ANTV-Media-COS-CDN-CI-Monthly` is saved and active from 2026-10 continuously: only product codes `p_ci`, `p_cos`, `p_cdn`, expense-bill total cost (including request/storage/retrieval/processing/traffic fees and resource-package purchases), one actual-cost threshold exceeding 100 CNY. It covers these products account-wide, not only one bucket. The sole receiver is the existing main account; channels are email, SMS and site inbox, all days, 08:00-22:00 Asia/Shanghai. No automatic action is configured.
 
@@ -258,7 +258,9 @@ CVM policy `ANTV-CVM-Public-Egress-4Mbps`, ID `policy-mshkaobq`, is saved and en
 
 Current product/component cost analysis shows 1.10 CNY in October entirely for a previously purchased `picture compression resource package, 100,000 operations`; it is not the direct metered cost of nine accepted application jobs. The existing package was purchased at `2026-10-01 20:15:47 +0800` and its exact deduction detail reports `imageSlim`, coefficient `1:1`, usage `1.00` operation / deduction `1.00` operation through yesterday, consistent with the user's provider job finishing on October 1. The rounded summary `0.00% / 0.00 ten-thousand operations` must not be read as no processing. Today's other accepted jobs and account-wide adaptive-WebP/read activity still need provider usage reconciliation; CI overview showed 196 picture reads and 257.88 KB CDN-origin bytes account-wide, across two buckets, not only ANTV processing. No package purchase, refund or renewal setting was changed.
 
-COS/CDN current postpaid entries are not yet billed; historic displayed 0.00 values and CI estimated 0.00 must not be treated as free actual usage. The console explicitly excludes unbilled postpaid usage and completes the previous month's data after 12:00 on the second day. Provider usage, package deductions, retrieval/request/storage costs and actual notification delivery still need reconciliation for `8.7`. Existing notification template `notice-dor0k4ew` has exactly one main-account receiver and now two associated policies; list/detail readback provides no built-in user-notification test action. No test notification has been sent and no alert delivery has been claimed. Actual browser disk-cache reuse is now accepted independently above.
+At the last console inspection, current COS/CDN postpaid entries were not yet billed; historic displayed 0.00 values and CI estimated 0.00 must not be treated as free actual usage. The console explicitly excludes unbilled postpaid usage and completes the previous month's data after 12:00 on the second day. Continue reconciling delayed provider usage, package deductions and request/storage/retrieval charges as an operational follow-up. Existing notification template `notice-dor0k4ew` has exactly one main-account receiver and two associated policies at the recorded inspection; list/detail readback provides no built-in user-notification test action. Actual browser disk-cache reuse is independently accepted above.
+
+The owner chose to run manual notification tests, subsequently reported receiving the test notification, and explicitly confirmed that this acceptance passed on 2026-10-02. Combined with the recorded provider usage/package/traffic observations and saved alert configuration, this closes task `8.7` by owner acceptance. The owner did not enumerate the notification category or delivery channel; do not invent separate budget/CVM, email/SMS or platform delivery-status evidence. The agent did not send the test, change production thresholds, create saturation traffic, or remove user-created test configuration. Cleanup of temporary TEST configurations was not independently inspected; the owner should stop/remove them while retaining the official 100-CNY media budget and 4-Mbps policy. No unbilled amount is represented as a verified zero cost.
 
 ### P0: Existing applied migration and callback compatibility
 
@@ -273,11 +275,11 @@ The backend test baseline is repaired without production authentication changes.
 ## 7. Recommended Continuation Order
 
 1. Preserve the verified user image and current release; do not replay its callback or resubmit compression again.
-2. Verify notification delivery for the saved owner-only budget/bandwidth settings, without lowering production thresholds, increasing traffic to trigger an alarm, or adding shutdown actions.
+2. Preserve the owner's manual notification receipt/acceptance; confirm temporary TEST configuration cleanup without changing official thresholds or adding shutdown actions.
 3. Preserve the accepted browser disk-cache screenshot and stable grant evidence; do not repeat user-assisted cache checks or resubmit image processing.
-4. Reconcile successful processing operations, adaptive-WebP usage, package deductions, cache hit ratio, COS/CDN traffic, requests/storage/retrieval and actual bills before closing `8.7` or revisiting the persistent-rendition design.
+4. Continue reconciling successful processing operations, adaptive-WebP usage, package deductions, cache hit ratio, COS/CDN traffic, requests/storage/retrieval and delayed actual bills before revisiting the persistent-rendition design.
 5. Retain the completed rollback evidence and all matching snapshots/releases; never restore old database contents over later writes. Split test resources before public customers make shared acceptance unsafe.
-6. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Avoid repeating full suites for documentation-only changes. Do not merge/archive or report 55/55 while the final usage/billing/notification-delivery task remains open.
+6. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Avoid repeating full suites for documentation-only changes. Apply is complete at 55/55; archive/merge is a separate action and has not been performed.
 
 ## 8. Commands to Resume
 

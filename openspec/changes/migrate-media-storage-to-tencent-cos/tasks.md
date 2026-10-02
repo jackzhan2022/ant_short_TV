@@ -73,6 +73,8 @@
 - [x] 8.4 Run pre-release integration checks against the shared empty production bucket for backend internal upload, browser direct upload, object metadata, intelligent tiering, lifecycle targeting, Cloud Infinite outputs, and CDN delivery.
 - [x] 8.5 Verify correct, expired, and tampered Type D URLs; unauthorized resource requests; seven-day stable URL reuse; browser cache behavior; and CDN HIT reuse across changed signatures.
 - [x] 8.6 Verify video range seeking, no full-object origin transfer for partial playback, no application-server media proxying, and acceptable public-bandwidth usage under concurrent uploads and playback.
-- [ ] 8.7 Verify cost telemetry for COS requests/storage/retrieval, CDN origin/downstream transfer, Cloud Infinite processing, abandoned uploads, and alert delivery.
+- [x] 8.7 Verify cost telemetry for COS requests/storage/retrieval, CDN origin/downstream transfer, Cloud Infinite processing, abandoned uploads, and alert delivery.
 - [x] 8.8 Perform a release and rollback drill documenting that rollback restores MinIO-era behavior for old data while COS-only objects created after cutover remain unavailable to the old release.
 - [x] 8.9 Record production readiness evidence, known breaking behavior, the post-launch test bucket/CDN separation follow-up, and the separate follow-up required for historical MinIO migration.
+
+Task 8.7 was closed on 2026-10-02 with the recorded provider usage/package/traffic evidence and the owner's manual test-notification receipt and explicit acceptance. Delayed postpaid billing reconciliation remains an operational follow-up; this does not claim every notification channel or both alert categories were independently observed.
