@@ -65,23 +65,23 @@ public class StoryboardAssetReferenceRepository {
         arguments.addAll(storyboardIds);
         List<Map.Entry<Long, StoryboardAssetReferenceResponse>> rows = jdbc.query("""
             select reference.storyboard_id,reference.id,reference.asset_type,reference.asset_id,
-                   coalesce(character.name,scene.name,prop.name) asset_name,
-                   reference.variant_id,variant.name variant_name,variant.current_image_url,
+                   coalesce(character_row.name,scene_row.name,prop_row.name) asset_name,
+                   reference.variant_id,variant_row.name variant_name,variant_row.current_image_url,
                    reference.reference_role,reference.sort_order,reference.resolution_status,
                    reference.source_type,reference.source_name,reference.locked_by_user
               from storyboard_asset_reference reference
-              left join character_asset character on reference.asset_type='CHARACTER'
-                and character.id=reference.asset_id and character.tenant_id=reference.tenant_id
-                and character.project_id=reference.project_id and character.deleted_at is null
-              left join scene_asset scene on reference.asset_type='SCENE'
-                and scene.id=reference.asset_id and scene.tenant_id=reference.tenant_id
-                and scene.project_id=reference.project_id and scene.deleted_at is null
-              left join prop_asset prop on reference.asset_type='PROP'
-                and prop.id=reference.asset_id and prop.tenant_id=reference.tenant_id
-                and prop.project_id=reference.project_id and prop.deleted_at is null
-              left join asset_visual_variant variant on variant.id=reference.variant_id
-                and variant.tenant_id=reference.tenant_id and variant.project_id=reference.project_id
-                and variant.deleted_at is null
+              left join character_asset character_row on reference.asset_type='CHARACTER'
+                and character_row.id=reference.asset_id and character_row.tenant_id=reference.tenant_id
+                and character_row.project_id=reference.project_id and character_row.deleted_at is null
+              left join scene_asset scene_row on reference.asset_type='SCENE'
+                and scene_row.id=reference.asset_id and scene_row.tenant_id=reference.tenant_id
+                and scene_row.project_id=reference.project_id and scene_row.deleted_at is null
+              left join prop_asset prop_row on reference.asset_type='PROP'
+                and prop_row.id=reference.asset_id and prop_row.tenant_id=reference.tenant_id
+                and prop_row.project_id=reference.project_id and prop_row.deleted_at is null
+              left join asset_visual_variant variant_row on variant_row.id=reference.variant_id
+                and variant_row.tenant_id=reference.tenant_id and variant_row.project_id=reference.project_id
+                and variant_row.deleted_at is null
              where reference.tenant_id=? and reference.project_id=? and reference.retired_at is null
                and reference.storyboard_id in (%s)
              order by case reference.asset_type

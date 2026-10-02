@@ -30,6 +30,7 @@ import {
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import AssetImagePlaceholder from './AssetImagePlaceholder';
+import AssetVariantGenerationModal from './AssetVariantGenerationModal';
 import {
   type ProjectModelOption,
   queryProjectAiConfig,
@@ -1693,168 +1694,32 @@ const ProductionWorkbenchSettings = () => {
                       )}
                     </div>
                   </Modal>
-                  <Modal
-                    title="角色生成"
+                  <AssetVariantGenerationModal
                     open={Boolean(generationVariant)}
-                    width={860}
-                    footer={null}
+                    variant={generationVariant}
+                    assetType={visualAsset.type}
+                    primaryImageUrl={visualAsset.item.visual?.primaryVariant?.currentImageThumbnailUrl}
+                    imageModels={imageModels}
+                    values={{
+                      prompt: generationPrompt,
+                      modelId: generationModelId,
+                      aspectRatio: generationAspectRatio,
+                      imageCount: generationImageCount,
+                    }}
+                    submitting={generationSubmitting}
+                    onChange={(values) => {
+                      if (values.prompt !== undefined) setGenerationPrompt(values.prompt);
+                      if ('modelId' in values) setGenerationModelId(values.modelId);
+                      if (values.aspectRatio !== undefined) {
+                        setGenerationAspectRatio(values.aspectRatio);
+                      }
+                      if (values.imageCount !== undefined) {
+                        setGenerationImageCount(values.imageCount);
+                      }
+                    }}
                     onCancel={() => setGenerationVariantId(undefined)}
-                  >
-                    {generationVariant ? (
-                      <div style={{ display: 'grid', gap: 18 }}>
-                        <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '1fr 1fr',
-                            gap: 14,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: 'grid',
-                              placeItems: 'center',
-                              minHeight: 260,
-                              overflow: 'hidden',
-                              borderRadius: 10,
-                              background: 'var(--app-color-fill-secondary)',
-                            }}
-                          >
-                            {generationVariant.currentImageThumbnailUrl ? (
-                              <img
-                                src={generationVariant.currentImageThumbnailUrl}
-                                alt={`${generationVariant.name}当前图`}
-                                style={{
-                                  maxWidth: '100%',
-                                  maxHeight: 340,
-                                  objectFit: 'contain',
-                                }}
-                              />
-                            ) : (
-                              <Typography.Text type="secondary">
-                                暂无当前图
-                              </Typography.Text>
-                            )}
-                          </div>
-                          <div
-                            style={{
-                              display: 'grid',
-                              placeItems: 'center',
-                              minHeight: 260,
-                              overflow: 'hidden',
-                              borderRadius: 10,
-                              background: 'var(--app-color-fill-secondary)',
-                            }}
-                          >
-                            {visualAsset.type === 'CHARACTER' &&
-                            !generationVariant.primary &&
-                            visualAsset.item.visual?.primaryVariant
-                              ?.currentImageThumbnailUrl ? (
-                              <img
-                                src={
-                                  visualAsset.item.visual.primaryVariant
-                                    .currentImageThumbnailUrl
-                                }
-                                aria-label={`${generationVariant.name}引用图`}
-                                alt="主形象引用图"
-                                style={{
-                                  maxWidth: '100%',
-                                  maxHeight: 340,
-                                  objectFit: 'contain',
-                                }}
-                              />
-                            ) : (
-                              <Typography.Text type="secondary">
-                                主形象无需引用图
-                              </Typography.Text>
-                            )}
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            padding: 16,
-                            border: '1px solid var(--app-color-primary)',
-                            borderRadius: 12,
-                          }}
-                        >
-                          <Typography.Text strong>
-                            {generationVariant.name} · 视觉生成任务
-                          </Typography.Text>
-                          <Input.TextArea
-                            aria-label={`${generationVariant.name}生成提示词`}
-                            value={generationPrompt}
-                            onChange={(event) =>
-                              setGenerationPrompt(event.target.value)
-                            }
-                            autoSize={{ minRows: 6, maxRows: 10 }}
-                            style={{ marginTop: 12 }}
-                          />
-                          <Flex gap={8} style={{ marginTop: 12 }}>
-                            <select
-                              aria-label="图片模型"
-                              value={generationModelId ?? ''}
-                              onChange={(event) =>
-                                setGenerationModelId(
-                                  event.target.value
-                                    ? Number(event.target.value)
-                                    : undefined,
-                                )
-                              }
-                            >
-                              <option value="">使用项目默认模型</option>
-                              {imageModels.map((model) => (
-                                <option key={model.id} value={model.id}>
-                                  {model.name}
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              aria-label="画面比例"
-                              value={generationAspectRatio}
-                              onChange={(event) =>
-                                setGenerationAspectRatio(event.target.value)
-                              }
-                            >
-                              <option value="3:4">3:4</option>
-                              <option value="1:1">1:1</option>
-                              <option value="16:9">16:9</option>
-                            </select>
-                            <select
-                              aria-label="生成数量"
-                              value={generationImageCount}
-                              onChange={(event) =>
-                                setGenerationImageCount(
-                                  Number(event.target.value),
-                                )
-                              }
-                            >
-                              <option value={1}>1 张</option>
-                              <option value={2}>2 张</option>
-                              <option value={4}>4 张</option>
-                            </select>
-                            <Typography.Text type="secondary">
-                              积分按所选模型实时结算
-                            </Typography.Text>
-                          </Flex>
-                          <Flex justify="end" gap={8} style={{ marginTop: 12 }}>
-                            <Button
-                              onClick={() => setGenerationVariantId(undefined)}
-                            >
-                              取消
-                            </Button>
-                            <Button
-                              type="primary"
-                              aria-label={`提交${generationVariant.name}生成`}
-                              loading={generationSubmitting}
-                              disabled={generationSubmitting}
-                              onClick={submitVariantGeneration}
-                            >
-                              生成图片
-                            </Button>
-                          </Flex>
-                        </div>
-                      </div>
-                    ) : null}
-                  </Modal>
+                    onSubmit={submitVariantGeneration}
+                  />
                 </>
               );
             })()

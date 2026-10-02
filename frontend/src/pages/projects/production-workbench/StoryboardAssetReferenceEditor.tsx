@@ -1,12 +1,29 @@
 import {
-  ArrowDownOutlined,
-  ArrowUpOutlined,
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  SortableContext,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
   AudioOutlined,
-  CloseOutlined,
+  DeleteOutlined,
+  HolderOutlined,
   PictureOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import { Button, Empty, Flex, Image, Select, Tag, Tooltip, Typography } from 'antd';
+import { Button, Cascader, Empty, Flex, Image, Spin, Tag, Tooltip, Typography } from 'antd';
+import type { CSSProperties } from 'react';
 import type {
   CharacterAsset,
   PropAsset,
@@ -17,6 +34,9 @@ import type {
 
 type Asset = CharacterAsset | SceneAsset | PropAsset;
 type AssetType = StoryboardAssetReference['assetType'];
+type ClientKeyedReference = StoryboardAssetReference & { clientKey?: string };
+
+let nextDraftReferenceKey = 0;
 
 const labels: Record<AssetType, string> = {
   CHARACTER: '角色',
@@ -24,15 +44,9 @@ const labels: Record<AssetType, string> = {
   PROP: '道具',
 };
 
-const roles: Record<AssetType, StoryboardAssetReference['referenceRole'][]> = {
-  CHARACTER: ['VISIBLE', 'SUPPORTING'],
-  SCENE: ['MAIN', 'SUPPORTING', 'TRANSITION'],
-  PROP: ['VISIBLE', 'SUPPORTING'],
-};
-
 const statusLabel = (status: StoryboardAssetReference['resolutionStatus']) => ({
   RESOLVED: '已就绪',
-  ASSET_PENDING: '待生成资产图',
+  ASSET_PENDING: '待生成',
   UNRESOLVED: '待确认',
 }[status]);
 
@@ -45,10 +59,12 @@ const statusColor = (status: StoryboardAssetReference['resolutionStatus']) => ({
 const variantsFor = (assets: Asset[], assetId?: number | null) =>
   assets.find((asset) => asset.id === assetId)?.visual?.variants || [];
 
-const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) => {
+export const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) => {
   const asset = assets.find((candidate) => candidate.id === reference.assetId);
-  const variant = variantsFor(assets, reference.assetId)
-    .find((candidate) => candidate.id === reference.variantId);
+  const variant = reference.variantId != null
+    ? variantsFor(assets, reference.assetId)
+      .find((candidate) => candidate.id === reference.variantId)
+    : defaultVariant(asset);
   return variant?.currentImageThumbnailUrl
     || asset?.mainImageThumbnailUrl || undefined;
 };
@@ -66,7 +82,202 @@ const normalize = (references: StoryboardAssetReference[]) => {
   }));
 };
 
+export const reorderReferencesWithinType = (
+  references: StoryboardAssetReference[],
+  assetType: AssetType,
+  sourceIndex: number,
+  destinationIndex: number,
+) => {
+  const sameType = references.filter((reference) => reference.assetType === assetType);
+  if (
+    sourceIndex < 0
+    || destinationIndex < 0
+    || sourceIndex >= sameType.length
+    || destinationIndex >= sameType.length
+    || sourceIndex === destinationIndex
+  ) return references;
+
+  const reordered = [...sameType];
+  const [moved] = reordered.splice(sourceIndex, 1);
+  reordered.splice(destinationIndex, 0, moved);
+  let cursor = 0;
+  return normalize(references.map((reference) =>
+    reference.assetType === assetType ? reordered[cursor++] : reference));
+};
+
+const cascaderOptionsFor = (assets: Asset[]) => assets.map((asset) => {
+  const variants = variantsFor(assets, asset.id);
+  return {
+    label: asset.name,
+    value: asset.id,
+    ...(variants.length ? {
+      children: variants.map((variant) => ({ label: variant.name, value: variant.id })),
+    } : {}),
+  };
+});
+
+export const sortableIdFor = (
+  reference: StoryboardAssetReference,
+  assetType: AssetType,
+  rowIndex: number,
+) => {
+  const clientKey = (reference as ClientKeyedReference).clientKey;
+  return `${assetType}:${clientKey || reference.id || `draft-${reference.assetId ?? 'empty'}-${rowIndex}`}`;
+};
+
+function SortableAssetCard({
+  id,
+  storyboardNo,
+  assetType,
+  rowIndex,
+  reference,
+  assets,
+  onReplace,
+  onRemove,
+  onVoice,
+  onGenerateImage,
+  isGenerating,
+}: {
+  id: string;
+  storyboardNo: number;
+  assetType: AssetType;
+  rowIndex: number;
+  reference: StoryboardAssetReference;
+  assets: Asset[];
+  onReplace: (next: StoryboardAssetReference) => void;
+  onRemove: () => void;
+  onVoice: (name: string) => void;
+  onGenerateImage: () => void;
+  isGenerating: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const image = imageFor(reference, assets);
+  const asset = assets.find((candidate) => candidate.id === reference.assetId);
+  const variant = reference.variantId != null
+    ? variantsFor(assets, reference.assetId)
+      .find((candidate) => candidate.id === reference.variantId)
+    : defaultVariant(asset);
+  const generating = isGenerating || variant?.generationStatus === 'GENERATING';
+  const isResolved = reference.resolutionStatus === 'RESOLVED';
+  const cardStyle: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  const value = reference.assetId
+    ? [reference.assetId, ...(reference.variantId ? [reference.variantId] : [])]
+    : undefined;
+
+  return (
+    <li
+      ref={setNodeRef}
+      className={`storyboard-reference-card${isDragging ? ' is-dragging' : ''}`}
+      style={cardStyle}
+    >
+      <div className="storyboard-reference-thumb">
+        {image ? (
+          <Image
+            src={image}
+            alt={`${reference.assetName || reference.sourceName || labels[assetType]}参考图`}
+            width="100%"
+            height="100%"
+            preview={false}
+          />
+        ) : <PictureOutlined />}
+        {reference.resolutionStatus !== 'RESOLVED' ? (
+          <Tag className="storyboard-reference-status" color={statusColor(reference.resolutionStatus)}>
+            {statusLabel(reference.resolutionStatus)}
+          </Tag>
+        ) : null}
+        {generating ? (
+          <div
+            className="storyboard-reference-generating"
+            role="status"
+            aria-label={`分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}资产图生成中`}
+          >
+            <Spin size="small" />
+            <span>生成中</span>
+          </div>
+        ) : null}
+        <Tooltip title="拖拽排序">
+          <Button
+            {...attributes}
+            {...listeners}
+            className="storyboard-reference-drag-handle"
+            type="text"
+            size="small"
+            icon={<HolderOutlined />}
+            aria-label={`拖拽分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}排序`}
+          />
+        </Tooltip>
+        <div className="storyboard-reference-hover-actions">
+          {assetType === 'CHARACTER' ? (
+            <Tooltip title="生成语音">
+              <Button
+                type="text"
+                size="small"
+                icon={<AudioOutlined />}
+                aria-label={`分镜${storyboardNo}${reference.assetName || reference.sourceName || '角色'}生成语音`}
+                onClick={() => onVoice(reference.assetName || reference.sourceName || '')}
+              />
+            </Tooltip>
+          ) : null}
+          <Tooltip title={isResolved ? '重新生成资产图' : '生成资产图'}>
+            <Button
+              type="text"
+              size="small"
+              icon={<ReloadOutlined />}
+              disabled={!reference.assetId || generating}
+              aria-label={`${isResolved ? '重新生成' : '生成'}分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}资产图`}
+              onClick={onGenerateImage}
+            />
+          </Tooltip>
+          <Tooltip title="删除">
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              aria-label={`移除分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}`}
+              onClick={onRemove}
+            />
+          </Tooltip>
+        </div>
+      </div>
+      <Cascader
+        className="storyboard-reference-cascader"
+        aria-label={`分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}资产形态`}
+        options={cascaderOptionsFor(assets)}
+        placeholder={reference.sourceName || `选择${labels[assetType]}及形态`}
+        value={value}
+        allowClear={false}
+        changeOnSelect
+        showSearch
+        displayRender={(selectedLabels) => selectedLabels.join(' / ')}
+        onChange={(path) => {
+          const [selectedAssetId, selectedVariantId] = path.map(Number);
+          const asset = assets.find((candidate) => candidate.id === selectedAssetId);
+          const variant = variantsFor(assets, selectedAssetId)
+            .find((candidate) => candidate.id === selectedVariantId);
+          onReplace({
+            ...reference,
+            assetId: selectedAssetId,
+            assetName: asset?.name,
+            sourceName: reference.sourceName || asset?.name,
+            variantId: variant?.id || null,
+            variantName: variant?.name,
+            imageUrl: variant?.currentImageThumbnailUrl,
+            resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
+            sourceType: 'MANUAL',
+            lockedByUser: true,
+          });
+        }}
+      />
+    </li>
+  );
+}
+
 export default function StoryboardAssetReferenceEditor({
+  storyboardId,
   storyboardNo,
   references,
   characters,
@@ -75,7 +286,9 @@ export default function StoryboardAssetReferenceEditor({
   onChange,
   onVoice,
   onGenerateImage,
+  generatingReferenceKeys,
 }: {
+  storyboardId: number;
   storyboardNo: number;
   references: StoryboardAssetReference[];
   characters: CharacterAsset[];
@@ -83,8 +296,13 @@ export default function StoryboardAssetReferenceEditor({
   props: PropAsset[];
   onChange: (references: StoryboardAssetReference[]) => void;
   onVoice: (name: string) => void;
-  onGenerateImage: (reference: StoryboardAssetReference) => void;
+  onGenerateImage: (reference: StoryboardAssetReference, generationKey: string) => void;
+  generatingReferenceKeys: ReadonlySet<string>;
 }) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const assetsByType: Record<AssetType, Asset[]> = {
     CHARACTER: characters,
     SCENE: scenes,
@@ -97,18 +315,6 @@ export default function StoryboardAssetReferenceEditor({
   const remove = (target: StoryboardAssetReference) => {
     onChange(normalize(references.filter((reference) => reference !== target)));
   };
-  const move = (target: StoryboardAssetReference, offset: -1 | 1) => {
-    const sameType = references.filter((reference) => reference.assetType === target.assetType);
-    const source = sameType.indexOf(target);
-    const destination = source + offset;
-    if (source < 0 || destination < 0 || destination >= sameType.length) return;
-    const reordered = [...sameType];
-    [reordered[source], reordered[destination]] = [reordered[destination], reordered[source]];
-    let cursor = 0;
-    onChange(normalize(references.map((reference) =>
-      reference.assetType === target.assetType ? reordered[cursor++] : reference,
-    )));
-  };
   const add = (assetType: AssetType) => {
     const assets = assetsByType[assetType];
     const used = new Set(references
@@ -117,7 +323,8 @@ export default function StoryboardAssetReferenceEditor({
     const asset = assets.find((candidate) => !used.has(candidate.id));
     if (!asset) return;
     const variant = defaultVariant(asset);
-    onChange(normalize([...references, {
+    const nextReference: ClientKeyedReference = {
+      clientKey: `draft-${++nextDraftReferenceKey}`,
       assetType,
       assetId: asset.id,
       assetName: asset.name,
@@ -130,16 +337,27 @@ export default function StoryboardAssetReferenceEditor({
       sourceType: 'MANUAL',
       sourceName: asset.name,
       lockedByUser: true,
-    }]));
+    };
+    onChange(normalize([...references, nextReference]));
   };
+  const onDragEnd = (assetType: AssetType, rows: StoryboardAssetReference[]) =>
+    ({ active, over }: DragEndEvent) => {
+      if (!over || active.id === over.id) return;
+      const ids = rows.map((reference, rowIndex) => sortableIdFor(reference, assetType, rowIndex));
+      const sourceIndex = ids.indexOf(String(active.id));
+      const destinationIndex = ids.indexOf(String(over.id));
+      onChange(reorderReferencesWithinType(references, assetType, sourceIndex, destinationIndex));
+    };
 
   return (
     <div className="storyboard-reference-editor">
       {(['CHARACTER', 'SCENE', 'PROP'] as const).map((assetType) => {
         const assets = assetsByType[assetType];
         const rows = references.filter((reference) => reference.assetType === assetType);
+        const sortableIds = rows.map((reference, rowIndex) =>
+          sortableIdFor(reference, assetType, rowIndex));
         return (
-          <section className={`storyboard-reference-group storyboard-reference-${assetType.toLowerCase()}`} key={assetType}>
+          <section className="storyboard-reference-group" key={assetType}>
             <Flex align="center" justify="space-between">
               <Typography.Text strong>{labels[assetType]}</Typography.Text>
               <Tooltip title={`添加${labels[assetType]}`}>
@@ -153,101 +371,39 @@ export default function StoryboardAssetReferenceEditor({
                 />
               </Tooltip>
             </Flex>
-            {rows.length ? rows.map((reference, rowIndex) => {
-              const variants = variantsFor(assets, reference.assetId);
-              const image = imageFor(reference, assets);
-              return (
-                <div className={assetType === 'SCENE' ? 'storyboard-scene-reference' : 'storyboard-reference-row'}
-                  key={reference.id || `${assetType}-${rowIndex}-${reference.sourceName || ''}`}>
-                  <div className="storyboard-reference-thumb">
-                    {image ? <Image src={image} alt={`${reference.assetName || reference.sourceName || labels[assetType]}参考图`}
-                      width="100%" height="100%" preview={false} /> : <PictureOutlined />}
-                  </div>
-                  <div className="storyboard-reference-fields">
-                    <Select
-                      showSearch={{ optionFilterProp: 'label' }}
-                      aria-label={`分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}`}
-                      placeholder={reference.sourceName || `选择${labels[assetType]}`}
-                      value={reference.assetId || undefined}
-                      options={assets.map((asset) => ({ label: asset.name, value: asset.id }))}
-                      onChange={(assetId) => {
-                        const asset = assets.find((candidate) => candidate.id === assetId);
-                        const variant = defaultVariant(asset);
-                        replace(reference, {
-                          ...reference,
-                          assetId,
-                          assetName: asset?.name,
-                          sourceName: reference.sourceName || asset?.name,
-                          variantId: variant?.id,
-                          variantName: variant?.name,
-                          imageUrl: variant?.currentImageThumbnailUrl,
-                          resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
-                          sourceType: 'MANUAL',
-                          lockedByUser: true,
-                        });
-                      }}
-                    />
-                    <Select
-                      allowClear
-                      aria-label={`分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}视觉形态`}
-                      placeholder="视觉形态"
-                      value={reference.variantId || undefined}
-                      options={variants.map((variant) => ({ label: variant.name, value: variant.id }))}
-                      onChange={(variantId) => {
-                        const variant = variants.find((candidate) => candidate.id === variantId);
-                        replace(reference, {
-                          ...reference,
-                          variantId: variantId || null,
-                          variantName: variant?.name,
-                          imageUrl: variant?.currentImageThumbnailUrl,
-                          resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
-                        });
-                      }}
-                    />
-                    <Select
-                      aria-label={`分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}作用`}
-                      value={reference.referenceRole}
-                      options={roles[assetType].map((role) => ({ label: role, value: role }))}
-                      onChange={(referenceRole) => replace(reference, { ...reference, referenceRole })}
-                    />
-                    <Tag color={statusColor(reference.resolutionStatus)}>
-                      {statusLabel(reference.resolutionStatus)}
-                    </Tag>
-                  </div>
-                  <Flex className="storyboard-reference-actions" gap={2}>
-                    {assetType === 'CHARACTER' ? (
-                      <Tooltip title="生成语音">
-                        <Button type="text" size="small" icon={<AudioOutlined />}
-                          aria-label={`分镜${storyboardNo}${reference.assetName || reference.sourceName || '角色'}生成语音`}
-                          onClick={() => onVoice(reference.assetName || reference.sourceName || '')} />
-                      </Tooltip>
-                    ) : null}
-                    {reference.resolutionStatus === 'ASSET_PENDING' && reference.assetId ? (
-                      <Button size="small"
-                        aria-label={`生成分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}资产图`}
-                        onClick={() => onGenerateImage(reference)}>
-                        生成资产图
-                      </Button>
-                    ) : null}
-                    <Tooltip title="上移">
-                      <Button type="text" size="small" icon={<ArrowUpOutlined />}
-                        aria-label={`上移分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}`}
-                        disabled={rowIndex === 0} onClick={() => move(reference, -1)} />
-                    </Tooltip>
-                    <Tooltip title="下移">
-                      <Button type="text" size="small" icon={<ArrowDownOutlined />}
-                        aria-label={`下移分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}`}
-                        disabled={rowIndex === rows.length - 1} onClick={() => move(reference, 1)} />
-                    </Tooltip>
-                    <Tooltip title="移除">
-                      <Button type="text" size="small" danger icon={<CloseOutlined />}
-                        aria-label={`移除分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}`}
-                        onClick={() => remove(reference)} />
-                    </Tooltip>
-                  </Flex>
-                </div>
-              );
-            }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${labels[assetType]}`} />}
+            {rows.length ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={onDragEnd(assetType, rows)}
+              >
+                <SortableContext items={sortableIds} strategy={rectSortingStrategy}>
+                  <ul className="storyboard-reference-grid" aria-label={`分镜${storyboardNo}${labels[assetType]}资产`}>
+                    {rows.map((reference, rowIndex) => (
+                      <SortableAssetCard
+                        key={sortableIds[rowIndex]}
+                        id={sortableIds[rowIndex]}
+                        storyboardNo={storyboardNo}
+                        assetType={assetType}
+                        rowIndex={rowIndex}
+                        reference={reference}
+                        assets={assets}
+                        onReplace={(next) => replace(reference, next)}
+                        onRemove={() => remove(reference)}
+                        onVoice={onVoice}
+                        onGenerateImage={() => onGenerateImage(
+                          reference,
+                          `${storyboardId}:${sortableIds[rowIndex]}`,
+                        )}
+                        isGenerating={generatingReferenceKeys.has(
+                          `${storyboardId}:${sortableIds[rowIndex]}`,
+                        )}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+              </DndContext>
+            ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${labels[assetType]}`} />}
           </section>
         );
       })}

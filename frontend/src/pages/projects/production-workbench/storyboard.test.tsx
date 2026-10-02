@@ -1,6 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import ProductionWorkbench from './storyboard';
+import ProductionWorkbench, { preserveReferenceClientKeys } from './storyboard';
+import {
+  imageFor,
+  reorderReferencesWithinType,
+  sortableIdFor,
+} from './StoryboardAssetReferenceEditor';
 import type { ScriptEpisode } from './service';
 
 const mocks = vi.hoisted(() => ({
@@ -27,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   regenerateAiVideoTask: vi.fn(),
   replaceStoryboardAssetReferences: vi.fn(),
   createAssetImageBatch: vi.fn(),
+  updateVisualVariant: vi.fn(),
   createStoryboard: vi.fn(),
   updateStoryboard: vi.fn(),
   deleteStoryboard: vi.fn(),
@@ -105,6 +111,7 @@ vi.mock('./service', () => ({
   regenerateAiVideoTask: mocks.regenerateAiVideoTask,
   replaceStoryboardAssetReferences: mocks.replaceStoryboardAssetReferences,
   createAssetImageBatch: mocks.createAssetImageBatch,
+  updateVisualVariant: mocks.updateVisualVariant,
   createStoryboard: mocks.createStoryboard,
   updateStoryboard: mocks.updateStoryboard,
   deleteStoryboard: mocks.deleteStoryboard,
@@ -129,6 +136,7 @@ vi.mock('@ant-design/icons', () => ({
   CheckCircleOutlined: () => <span>check</span>,
   CloseOutlined: () => <span>close</span>,
   CopyOutlined: () => <span>copy</span>,
+  DeleteOutlined: () => <span>delete</span>,
   EditOutlined: () => <span>edit</span>,
   ExpandOutlined: () => <span>expand</span>,
   FileTextOutlined: () => <span>file</span>,
@@ -167,6 +175,47 @@ vi.mock('antd', () => ({
       {children}
     </button>
   ),
+  Cascader: ({
+    'aria-label': ariaLabel,
+    options = [],
+    value = [],
+    onChange,
+    allowClear: _allowClear,
+    className: _className,
+    displayRender: _displayRender,
+    placeholder: _placeholder,
+    showSearch: _showSearch,
+    changeOnSelect = false,
+    ...rest
+  }: any) => {
+    const flattened = options.flatMap((asset: any) => asset.children?.length
+      ? [
+          ...(changeOnSelect ? [{ label: asset.label, path: [asset.value] }] : []),
+          ...asset.children.map((variant: any) => ({
+          label: `${asset.label} / ${variant.label}`,
+          path: [asset.value, variant.value],
+          })),
+        ]
+      : [{ label: asset.label, path: [asset.value] }]);
+    return (
+      <select
+        aria-label={ariaLabel}
+        value={value.join(':')}
+        onChange={(event) => {
+          const selected = flattened.find((item: any) => item.path.join(':') === event.target.value);
+          onChange?.(selected?.path || []);
+        }}
+        {...rest}
+      >
+        <option value="">请选择</option>
+        {flattened.map((option: any) => (
+          <option key={option.path.join(':')} value={option.path.join(':')}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  },
   Empty: ({ description }: any) => <div>{description || '暂无数据'}</div>,
   Flex: ({ children }: any) => <div>{children}</div>,
   Image: ({ alt, src }: any) => <img alt={alt} src={src} />,
@@ -623,6 +672,60 @@ const setupWorkspaceResponse = (
 };
 
 describe('ProductionWorkbench script page', () => {
+  it('keeps draft card identity stable after persistence and resolves default variant images', () => {
+    const draft = {
+      clientKey: 'draft-local-1',
+      assetType: 'CHARACTER',
+      assetId: 1,
+      variantId: null,
+      imageUrl: '/old.png',
+      referenceRole: 'VISIBLE',
+      sortOrder: 0,
+      resolutionStatus: 'ASSET_PENDING',
+      sourceType: 'MANUAL',
+      lockedByUser: true,
+    } as any;
+    const persisted = { ...draft, id: 99 };
+    const asset = {
+      id: 1,
+      visual: {
+        variants: [{ id: 11, primary: true, usable: true, currentImageUrl: '/new.png', currentImageThumbnailUrl: '/new-display.png' }],
+      },
+    } as any;
+
+    expect(sortableIdFor(draft, 'CHARACTER', 0)).toBe(
+      sortableIdFor(persisted, 'CHARACTER', 2),
+    );
+    expect(imageFor(draft, [asset])).toBe('/new-display.png');
+  });
+
+  it('preserves draft card keys when saved references are reordered by asset type', () => {
+    const scene = {
+      id: 10, assetType: 'SCENE', assetId: 4, variantId: 40, sourceName: '夜景',
+      referenceRole: 'MAIN', sortOrder: 0, resolutionStatus: 'RESOLVED',
+      sourceType: 'MANUAL', lockedByUser: true,
+    } as any;
+    const character = {
+      clientKey: 'draft-character-1', assetType: 'CHARACTER', assetId: 2,
+      variantId: null, sourceName: 'Serena', referenceRole: 'VISIBLE', sortOrder: 0,
+      resolutionStatus: 'ASSET_PENDING', sourceType: 'MANUAL', lockedByUser: true,
+    } as any;
+    const savedCharacter = {
+      ...character,
+      id: 11,
+      variantId: 20,
+      clientKey: undefined,
+    };
+
+    const merged = preserveReferenceClientKeys(
+      [scene, character],
+      [savedCharacter, scene],
+    ) as any[];
+
+    expect(merged[0].clientKey).toBe('draft-character-1');
+    expect(merged[1].clientKey).toBeUndefined();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem('currentTenantId', '1');
@@ -681,7 +784,7 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getAllByRole('button', { name: '引用素材 停车场主形象' }).length).toBeGreaterThan(0);
   });
 
-  it('adds reorders and selects independent variants for multiple character references', async () => {
+  it('adds and selects independent asset variants through one cascader', async () => {
     const variants = (assetId: number) => ({
       variants: [
         { id: assetId * 10 + 1, assetId, name: `形态${assetId}-1`, primary: true, usable: true, currentImageUrl: `/${assetId}-1.png` },
@@ -713,22 +816,47 @@ describe('ProductionWorkbench script page', () => {
       1, 301, expect.arrayContaining([expect.objectContaining({ assetId: 13, variantId: 131 })]),
     ));
 
-    fireEvent.change(screen.getByLabelText('分镜1角色3视觉形态'), {
-      target: { value: '132' },
+    fireEvent.change(screen.getByLabelText('分镜1角色3资产形态'), {
+      target: { value: '13:132' },
     });
     await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenLastCalledWith(
       1, 301, expect.arrayContaining([expect.objectContaining({ assetId: 13, variantId: 132 })]),
     ));
 
-    fireEvent.click(screen.getByRole('button', { name: '上移分镜1角色3' }));
-    await waitFor(() => {
-      const references = mocks.replaceStoryboardAssetReferences.mock.calls.at(-1)?.[2];
-      expect(references.filter((reference: any) => reference.assetType === 'CHARACTER')
-        .map((reference: any) => reference.assetId)).toEqual([11, 13, 12]);
+    fireEvent.change(screen.getByLabelText('分镜1角色3资产形态'), {
+      target: { value: '13' },
     });
+    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenLastCalledWith(
+      1, 301, expect.arrayContaining([expect.objectContaining({ assetId: 13, variantId: null })]),
+    ));
+
+    expect(screen.getAllByRole('button', { name: /拖拽分镜1角色\d排序/ })).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /上移分镜1角色/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('分镜1角色1作用')).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: '分镜1角色资产' })).toBeInTheDocument();
   });
 
-  it('saves multiple scene roles and props through the focused endpoint', async () => {
+  it('releases a sticky storyboard after its active content reaches the scroll boundary', async () => {
+    render(<ProductionWorkbench />);
+    const prompt = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    const card = prompt.closest('.storyboard-card');
+
+    expect(card).not.toBeNull();
+    Object.defineProperties(prompt, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, writable: true, value: 600 },
+    });
+
+    fireEvent.wheel(prompt, { deltaY: 120 });
+    expect(card).toHaveClass('is-scroll-released');
+
+    prompt.scrollTop = 0;
+    fireEvent.wheel(prompt, { deltaY: -120 });
+    expect(card).not.toHaveClass('is-scroll-released');
+  });
+
+  it('keeps default roles while hiding role controls', async () => {
     setupWorkspaceResponse({
       scenes: [{ id: 21, name: '走廊' }, { id: 22, name: '卧室' }],
       props: [{ id: 31, name: '手机' }, { id: 32, name: '钥匙' }],
@@ -744,21 +872,87 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
 
     fireEvent.click(await screen.findByRole('button', { name: '添加分镜1场景' }));
+    await waitFor(() => expect(screen.getByLabelText('分镜1场景2资产形态')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: '添加分镜1道具' }));
     await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenCalled());
-    expect(screen.getByLabelText('分镜1场景2作用')).toBeInTheDocument();
-    expect(screen.getByLabelText('分镜1道具2')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('分镜1场景2作用'), {
-      target: { value: 'TRANSITION' },
-    });
-    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenLastCalledWith(
-      1, 302, expect.arrayContaining([expect.objectContaining({ assetId: 22, referenceRole: 'TRANSITION' })]),
-    ));
+    expect(screen.queryByLabelText(/作用/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('分镜1道具2资产形态')).toBeInTheDocument();
+    expect(mocks.replaceStoryboardAssetReferences).toHaveBeenCalledWith(
+      1,
+      302,
+      expect.arrayContaining([expect.objectContaining({ assetId: 22, referenceRole: 'MAIN' })]),
+    );
     fireEvent.click(screen.getByRole('button', { name: '移除分镜1道具1' }));
     await waitFor(() => {
       const references = mocks.replaceStoryboardAssetReferences.mock.calls.at(-1)?.[2];
       expect(references.filter((reference: any) => reference.assetType === 'PROP')).toHaveLength(1);
     });
+  });
+
+  it('reorders references only within the dragged asset group', () => {
+    const references: any[] = [
+      { id: 1, assetType: 'CHARACTER', assetId: 11, sortOrder: 0 },
+      { id: 2, assetType: 'SCENE', assetId: 21, sortOrder: 0 },
+      { id: 3, assetType: 'CHARACTER', assetId: 12, sortOrder: 1 },
+      { id: 4, assetType: 'PROP', assetId: 31, sortOrder: 0 },
+    ];
+
+    const reordered = reorderReferencesWithinType(references, 'CHARACTER', 1, 0);
+
+    expect(reordered.map((reference) => reference.assetId)).toEqual([12, 21, 11, 31]);
+    expect(reordered.filter((reference) => reference.assetType === 'CHARACTER')
+      .map((reference) => reference.sortOrder)).toEqual([0, 1]);
+  });
+
+  it('serializes reference saves and keeps the latest optimistic selection', async () => {
+    let resolveFirst!: (value: any) => void;
+    let resolveSecond!: (value: any) => void;
+    const firstSave = new Promise((resolve) => { resolveFirst = resolve; });
+    const secondSave = new Promise((resolve) => { resolveSecond = resolve; });
+    mocks.replaceStoryboardAssetReferences
+      .mockReturnValueOnce(firstSave)
+      .mockReturnValueOnce(secondSave);
+    setupWorkspaceResponse({
+      characters: [{
+        id: 1,
+        name: 'Serena',
+        visual: {
+          variants: [
+            { id: 11, assetId: 1, name: '正面', primary: true, usable: true },
+            { id: 12, assetId: 1, name: '侧面', primary: false, usable: true },
+            { id: 13, assetId: 1, name: '背面', primary: false, usable: true },
+          ],
+          episodeBindings: [],
+        },
+      }],
+      storyboards: [{
+        id: 307, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+        characters: 'Serena', scene: '', props: '', videoPrompt: '镜头',
+        assetReferences: [{ id: 1, assetType: 'CHARACTER', assetId: 1, assetName: 'Serena',
+          variantId: 11, variantName: '正面', referenceRole: 'VISIBLE', sortOrder: 0,
+          resolutionStatus: 'RESOLVED', sourceType: 'MANUAL', lockedByUser: true }],
+      }],
+    });
+    render(<ProductionWorkbench />);
+    const selector = await screen.findByLabelText('分镜1角色1资产形态');
+
+    fireEvent.change(selector, { target: { value: '1:12' } });
+    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('分镜1角色1资产形态'), {
+      target: { value: '1:13' },
+    });
+
+    expect(mocks.replaceStoryboardAssetReferences).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('分镜1角色1资产形态')).toHaveValue('1:13');
+
+    const firstReferences = mocks.replaceStoryboardAssetReferences.mock.calls[0][2];
+    await act(async () => resolveFirst({ data: firstReferences }));
+    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText('分镜1角色1资产形态')).toHaveValue('1:13');
+
+    const secondReferences = mocks.replaceStoryboardAssetReferences.mock.calls[1][2];
+    await act(async () => resolveSecond({ data: secondReferences }));
+    await waitFor(() => expect(screen.getByLabelText('分镜1角色1资产形态')).toHaveValue('1:13'));
   });
 
   it('rolls back only the affected card when focused reference saving fails', async () => {
@@ -771,40 +965,248 @@ describe('ProductionWorkbench script page', () => {
     }] });
     mocks.replaceStoryboardAssetReferences.mockRejectedValueOnce(new Error('save failed'));
     render(<ProductionWorkbench />);
-    await screen.findByLabelText('分镜1角色1');
+    await screen.findByLabelText('分镜1角色1资产形态');
     const pageCalls = mocks.queryStoryboardWorkspace.mock.calls.length;
 
     fireEvent.click(screen.getByRole('button', { name: '移除分镜1角色1' }));
 
-    await waitFor(() => expect(screen.getByLabelText('分镜1角色1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('分镜1角色1资产形态')).toBeInTheDocument());
     expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(pageCalls);
   });
 
-  it('confirms unresolved references and starts real asset image generation', async () => {
-    setupWorkspaceResponse({ storyboards: [{
-      id: 304, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
-      characters: 'Serena', scene: '停车场', props: '', videoPrompt: '镜头',
-      assetReferences: [
-        { id: 1, assetType: 'CHARACTER', assetId: null, sourceName: 'Serena',
-          referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'UNRESOLVED',
-          sourceType: 'AI', lockedByUser: false },
-        { id: 2, assetType: 'SCENE', assetId: 1, assetName: '停车场',
-          referenceRole: 'MAIN', sortOrder: 0, resolutionStatus: 'ASSET_PENDING',
-          sourceType: 'AI', lockedByUser: false },
-      ],
+  it('opens the shared variant generator and shows loading on the submitted thumbnail', async () => {
+    const character = {
+      id: 1, name: 'Serena', roleType: 'LEAD', gender: '女', ageRange: '成年',
+      identity: '女主角', personality: [], appearance: '黑色长发', prompt: '人物主体提示词',
+      visual: {
+        variantCount: 2,
+        primaryVariant: { id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
+          prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'COMPLETED',
+          currentImageUrl: '/serena-primary.png', currentImageThumbnailUrl: '/serena-primary-display.png', primary: true, usable: true },
+        variants: [
+          { id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
+            prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'COMPLETED',
+            currentImageUrl: '/serena-primary.png', currentImageThumbnailUrl: '/serena-primary-display.png', primary: true, usable: true },
+          { id: 12, assetType: 'CHARACTER', assetId: 1, name: '晚宴礼服',
+            prompt: '白色晚宴礼服', sourceType: 'USER', generationStatus: 'NOT_STARTED',
+            currentImageUrl: '/old-dress.png', currentImageThumbnailUrl: '/old-dress-display.png', primary: false, usable: false },
+        ],
+        generationSummary: {}, episodeBindings: [], resolvedImageUrl: '/serena-primary.png',
+      },
+    };
+    setupWorkspaceResponse({
+      characters: [character],
+      storyboards: [304, 305].map((id, index) => ({
+        id, shotNo: index + 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+        characters: 'Serena', scene: '', props: '', videoPrompt: '镜头',
+        assetReferences: [{ id: index + 1, assetType: 'CHARACTER', assetId: 1, assetName: 'Serena',
+          variantId: 12, variantName: '晚宴礼服', imageUrl: '/old-reference.png',
+          referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'ASSET_PENDING',
+          sourceType: 'MANUAL', lockedByUser: true }],
+      })),
+    });
+    mocks.queryProjectAiModels.mockResolvedValue({ data: {
+      textModels: [], imageModels: [{ id: 8, name: 'GPT Image 2' }], videoModels: [], audioModels: [],
+    } });
+    mocks.queryProjectAiConfig.mockResolvedValue({ data: { projectId: 1, imageModelId: 8 } });
+    mocks.createAiImageTask.mockResolvedValueOnce({ data: {
+      id: 1201, executionId: 7201, taskType: 'CHARACTER', targetType: 'VISUAL_VARIANT',
+      targetId: 12, status: 'PENDING', results: [],
+    } });
+    mocks.queryAssetVisualWorkspace.mockResolvedValue({ data: {
+      ...character.visual,
+      variants: character.visual.variants.map((variant) =>
+        variant.id === 12 ? { ...variant, generationStatus: 'GENERATING' } : variant),
+    } });
+    let resolvePoll!: (value: API.AiExecutionResponse) => void;
+    mocks.pollExecution.mockReturnValueOnce(new Promise((resolve) => {
+      resolvePoll = resolve;
+    }));
+    render(<ProductionWorkbench />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1角色1资产图' }));
+    expect(screen.getByLabelText('晚宴礼服引用图')).toHaveAttribute('src', '/serena-primary-display.png');
+    expect(screen.getByAltText('晚宴礼服当前图')).toHaveAttribute('src', '/old-dress-display.png');
+    fireEvent.change(screen.getByLabelText('晚宴礼服生成提示词'), {
+      target: { value: '白色晚宴礼服，电影感' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提交晚宴礼服生成' }));
+
+    await waitFor(() => {
+      expect(mocks.updateVisualVariant).toHaveBeenCalledWith(
+        1, 12, expect.objectContaining({ prompt: '白色晚宴礼服，电影感' }),
+      );
+      expect(mocks.createAiImageTask).toHaveBeenCalledWith(1, expect.objectContaining({
+        taskType: 'CHARACTER', targetType: 'VISUAL_VARIANT', targetId: 12,
+        modelId: 8, prompt: '白色晚宴礼服，电影感',
+        referenceImages: ['/serena-primary.png'], aspectRatio: '16:9', imageCount: 1,
+      }));
+      expect(screen.getByRole('status', { name: '分镜1角色1资产图生成中' })).toBeInTheDocument();
+      expect(screen.queryByRole('status', { name: '分镜2角色1资产图生成中' })).not.toBeInTheDocument();
+    });
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace)
+      .toHaveBeenCalledWith(1, 'CHARACTER', 1), { timeout: 2500 });
+
+    mocks.queryAssetVisualWorkspace.mockResolvedValueOnce({ data: {
+      ...character.visual,
+      variants: character.visual.variants.map((variant) =>
+        variant.id === 12
+          ? { ...variant, currentImageUrl: '/new-dress.png', currentImageThumbnailUrl: '/new-dress-display.png', usable: true }
+          : variant),
+    } });
+    await act(async () => {
+      resolvePoll({ id: 7201, status: 'SUCCEEDED' });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('status', { name: '分镜1角色1资产图生成中' })).not.toBeInTheDocument();
+      expect(screen.getAllByAltText('Serena参考图')).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ src: expect.stringContaining('/new-dress-display.png') }),
+        ]),
+      );
+    });
+  });
+
+  it('restores thumbnail loading from a generating visual variant after page reload', async () => {
+    const character = {
+      id: 1, name: 'Serena', roleType: 'LEAD', gender: '女', ageRange: '成年',
+      identity: '女主角', personality: [], appearance: '黑色长发', prompt: '人物主体提示词',
+      visual: {
+        variantCount: 1,
+        primaryVariant: { id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
+          prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'GENERATING',
+          primary: true, usable: false },
+        variants: [{ id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
+          prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'GENERATING',
+          primary: true, usable: false }],
+        generationSummary: { GENERATING: 1 }, episodeBindings: [], resolvedImageUrl: null,
+      },
+    };
+    setupWorkspaceResponse({ characters: [character], storyboards: [{
+      id: 308, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+      characters: 'Serena', scene: '', props: '', videoPrompt: '镜头',
+      assetReferences: [{ id: 1, assetType: 'CHARACTER', assetId: 1, assetName: 'Serena',
+        variantId: 11, variantName: '默认形态', referenceRole: 'VISIBLE', sortOrder: 0,
+        resolutionStatus: 'ASSET_PENDING', sourceType: 'MANUAL', lockedByUser: true }],
+    }] });
+
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByRole('status', {
+      name: '分镜1角色1资产图生成中',
+    })).toBeInTheDocument();
+  });
+
+  it('keeps refreshing a generating visual variant after page reload', async () => {
+    const generatingVariant = {
+      id: 11, assetType: 'CHARACTER' as const, assetId: 1, name: '默认形态',
+      prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'GENERATING',
+      primary: true, usable: false,
+    };
+    const character = {
+      id: 1, name: 'Serena', roleType: 'LEAD', gender: '女', ageRange: '成年',
+      identity: '女主角', personality: [], appearance: '黑色长发', prompt: '人物主体提示词',
+      visual: {
+        variantCount: 1, primaryVariant: generatingVariant, variants: [generatingVariant],
+        generationSummary: { GENERATING: 1 }, episodeBindings: [], resolvedImageUrl: null,
+      },
+    };
+    setupWorkspaceResponse({ characters: [character], storyboards: [{
+      id: 308, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+      characters: 'Serena', scene: '', props: '', videoPrompt: '镜头',
+      assetReferences: [{ id: 1, assetType: 'CHARACTER', assetId: 1, assetName: 'Serena',
+        variantId: 11, variantName: '默认形态', referenceRole: 'VISIBLE', sortOrder: 0,
+        resolutionStatus: 'ASSET_PENDING', sourceType: 'MANUAL', lockedByUser: true }],
+    }] });
+    mocks.queryAssetVisualWorkspace.mockResolvedValueOnce({ data: {
+      ...character.visual,
+      primaryVariant: { ...generatingVariant, generationStatus: 'COMPLETED',
+        currentImageUrl: '/serena-completed.png', currentImageThumbnailUrl: '/serena-completed-display.png', usable: true },
+      variants: [{ ...generatingVariant, generationStatus: 'COMPLETED',
+        currentImageUrl: '/serena-completed.png', currentImageThumbnailUrl: '/serena-completed-display.png', usable: true }],
+      generationSummary: { COMPLETED: 1 }, resolvedImageUrl: '/serena-completed.png',
+    } });
+
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByRole('status', {
+      name: '分镜1角色1资产图生成中',
+    })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace)
+      .toHaveBeenCalledWith(1, 'CHARACTER', 1), { timeout: 2500 });
+    await waitFor(() => {
+      expect(screen.queryByRole('status', {
+        name: '分镜1角色1资产图生成中',
+      })).not.toBeInTheDocument();
+      expect(screen.getAllByAltText('Serena参考图')).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ src: expect.stringContaining('/serena-completed-display.png') }),
+        ]),
+      );
+    });
+  });
+
+  it('does not fall back when the explicitly selected visual variant is stale', async () => {
+    const character = {
+      id: 1, name: 'Serena', roleType: 'LEAD', gender: '女', ageRange: '成年',
+      identity: '女主角', personality: [], appearance: '黑色长发', prompt: '人物主体提示词',
+      visual: {
+        variantCount: 1,
+        primaryVariant: { id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
+          prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'COMPLETED',
+          currentImageUrl: '/serena-primary.png', primary: true, usable: true },
+        variants: [{ id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
+          prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'COMPLETED',
+          currentImageUrl: '/serena-primary.png', primary: true, usable: true }],
+        generationSummary: {}, episodeBindings: [], resolvedImageUrl: '/serena-primary.png',
+      },
+    };
+    setupWorkspaceResponse({ characters: [character], storyboards: [{
+      id: 307, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+      characters: 'Serena', scene: '', props: '', videoPrompt: '镜头',
+      assetReferences: [{ id: 1, assetType: 'CHARACTER', assetId: 1, assetName: 'Serena',
+        variantId: 999, variantName: '已删除形态', referenceRole: 'VISIBLE', sortOrder: 0,
+        resolutionStatus: 'ASSET_PENDING', sourceType: 'MANUAL', lockedByUser: true }],
     }] });
     render(<ProductionWorkbench />);
 
-    expect(await screen.findByText('待确认')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('分镜1角色1'), { target: { value: '3' } });
-    await waitFor(() => expect(mocks.replaceStoryboardAssetReferences).toHaveBeenLastCalledWith(
-      1, 304, expect.arrayContaining([expect.objectContaining({ assetType: 'CHARACTER', assetId: 3 })]),
-    ));
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1角色1资产图' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '生成分镜1场景1资产图' }));
-    await waitFor(() => expect(mocks.createAssetImageBatch).toHaveBeenCalledWith(1, {
-      assetType: 'SCENE', assetIds: [1], mode: 'ALL', aspectRatio: '16:9', imageCount: 1,
-    }));
+    expect(screen.queryByLabelText('默认形态生成提示词')).not.toBeInTheDocument();
+    expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+  });
+
+  it('blocks a non-primary character variant when the primary image is missing', async () => {
+    const character = {
+      id: 1, name: 'Serena', roleType: 'LEAD', gender: '女', ageRange: '成年',
+      identity: '女主角', personality: [], appearance: '黑色长发', prompt: '人物主体提示词',
+      visual: {
+        variantCount: 2,
+        variants: [
+          { id: 11, assetType: 'CHARACTER', assetId: 1, name: '默认形态',
+            prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'NOT_STARTED',
+            primary: true, usable: false },
+          { id: 12, assetType: 'CHARACTER', assetId: 1, name: '晚宴礼服',
+            prompt: '白色晚宴礼服', sourceType: 'USER', generationStatus: 'NOT_STARTED',
+            primary: false, usable: false },
+        ],
+        generationSummary: {}, episodeBindings: [], resolvedImageUrl: null,
+      },
+    };
+    setupWorkspaceResponse({ characters: [character], storyboards: [{
+      id: 306, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 12,
+      characters: 'Serena', scene: '', props: '', videoPrompt: '镜头',
+      assetReferences: [{ id: 1, assetType: 'CHARACTER', assetId: 1, assetName: 'Serena',
+        variantId: 12, variantName: '晚宴礼服', referenceRole: 'VISIBLE', sortOrder: 0,
+        resolutionStatus: 'ASSET_PENDING', sourceType: 'MANUAL', lockedByUser: true }],
+    }] });
+    render(<ProductionWorkbench />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1角色1资产图' }));
+
+    expect(screen.queryByLabelText('晚宴礼服生成提示词')).not.toBeInTheDocument();
+    expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+    expect(mocks.createAssetImageBatch).not.toHaveBeenCalled();
   });
 
   it('shows model media limits and omitted provider references without removing bindings', async () => {
@@ -839,7 +1241,7 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByText('视频上限 1')).toBeInTheDocument();
     expect(screen.getByText('音频上限 1')).toBeInTheDocument();
     expect(screen.getByText('已省略 Serena：MODEL_COUNT_LIMIT')).toBeInTheDocument();
-    expect(screen.getByLabelText('分镜1角色1')).toBeInTheDocument();
+    expect(screen.getByLabelText('分镜1角色1资产形态')).toBeInTheDocument();
   });
 
   it('suggests one visible character and uses available asset thumbnails', async () => {

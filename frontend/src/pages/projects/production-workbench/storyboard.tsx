@@ -26,12 +26,22 @@ import {
   Tabs,
   Typography,
 } from 'antd';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type WheelEvent as ReactWheelEvent,
+} from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { queryProject } from '@/services/account-team/project';
 import type { Project } from '@/services/account-team/types';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import './storyboard.css';
+import AssetVariantGenerationModal, {
+  type AssetVariantGenerationValues,
+} from './AssetVariantGenerationModal';
 import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
 import {
   queryProjectAiConfig,
@@ -54,6 +64,7 @@ import type {
   StoryboardAssetReference,
   StoryboardPromptDocument,
   StoryboardPromptNode,
+  VisualVariant,
 } from './service';
 import {
   breakdownStoryboards,
@@ -63,7 +74,6 @@ import {
   createAiImageTask,
   createAiVoiceTask,
   createAiVideoTask,
-  createAssetImageBatch,
   createStoryboard,
   deleteStoryboard,
   queryAiImageTask,
@@ -79,6 +89,7 @@ import {
   regenerateAiImageTask,
   regenerateAiVideoTask,
   replaceStoryboardAssetReferences,
+  updateVisualVariant,
   updateStoryboard,
   bindAiVideoResultToStoryboard,
 } from './service';
@@ -112,8 +123,30 @@ type VoiceGenerationValues = {
   pitch: number;
   volume: number;
 };
+type StoryboardReferenceDisplayFields = Pick<StoryboardShot, 'characters' | 'scene'> & {
+  props: string;
+};
+type StoryboardReferenceSaveState = {
+  tail: Promise<void>;
+  latestVersion: number;
+  pendingCount: number;
+  confirmedReferences: StoryboardAssetReference[];
+  confirmedFields: StoryboardReferenceDisplayFields;
+};
+type ReferenceGenerationTarget = {
+  assetType: StoryboardAssetReference['assetType'];
+  assetId: number;
+  variant: VisualVariant;
+  primaryImageUrl?: string | null;
+  primaryImageThumbnailUrl?: string | null;
+  generationKey: string;
+};
+type ClientKeyedStoryboardAssetReference = StoryboardAssetReference & {
+  clientKey?: string;
+};
 
 const successStatuses = ['SUCCESS', 'SUCCEEDED'];
+const terminalImageTaskStatuses = new Set(['SUCCESS', 'FAILED', 'CANCELED']);
 const terminalStoryboardBatchStatuses = new Set([
   'SUCCEEDED',
   'SUCCEEDED_WITH_WARNING',
@@ -183,6 +216,46 @@ const getStoryboardPropNames = (storyboard: StoryboardShot) =>
 
 const getStoryboardProps = (storyboard: StoryboardShot) =>
   (storyboard as StoryboardWithProps).props || '';
+
+const getReferenceDisplayFields = (
+  references: StoryboardAssetReference[],
+): StoryboardReferenceDisplayFields => ({
+  characters: references
+    .filter((reference) => reference.assetType === 'CHARACTER')
+    .map((reference) => reference.assetName || reference.sourceName)
+    .filter(Boolean).join('、'),
+  scene: references
+    .filter((reference) => reference.assetType === 'SCENE')
+    .map((reference) => reference.assetName || reference.sourceName)
+    .filter(Boolean).join('、'),
+  props: references
+    .filter((reference) => reference.assetType === 'PROP')
+    .map((reference) => reference.assetName || reference.sourceName)
+    .filter(Boolean).join('、'),
+});
+
+const referencePersistenceIdentity = (reference: StoryboardAssetReference) => JSON.stringify([
+  reference.assetType,
+  reference.sortOrder,
+]);
+
+export const preserveReferenceClientKeys = (
+  submitted: StoryboardAssetReference[],
+  saved: StoryboardAssetReference[],
+) => {
+  const clientKeys = new Map<string, string[]>();
+  for (const reference of submitted) {
+    const clientKey = (reference as ClientKeyedStoryboardAssetReference).clientKey;
+    if (!clientKey) continue;
+    const identity = referencePersistenceIdentity(reference);
+    clientKeys.set(identity, [...(clientKeys.get(identity) || []), clientKey]);
+  }
+  return saved.map((reference) => {
+    const keys = clientKeys.get(referencePersistenceIdentity(reference));
+    const clientKey = keys?.shift();
+    return clientKey ? { ...reference, clientKey } : reference;
+  });
+};
 
 const firstByName = <T extends { name: string }>(items: T[], names: string[]) =>
   items.find((item) => names.includes(item.name));
@@ -419,6 +492,7 @@ const MaterialPromptEditor = ({
         tabIndex={0}
         aria-label={label}
         aria-multiline="true"
+        data-storyboard-scroll-region
         contentEditable
         suppressContentEditableWarning
         onInput={readDocument}
@@ -576,6 +650,7 @@ const StoryboardCard = ({
   onGenerateVoice,
   onReplaceReferences,
   onGenerateReferenceImage,
+  generatingReferenceKeys,
   onSaveScript,
   onUpdateStoryboard,
   onAddStoryboard,
@@ -618,7 +693,11 @@ const StoryboardCard = ({
     storyboard: StoryboardShot,
     references: StoryboardAssetReference[],
   ) => Promise<void>;
-  onGenerateReferenceImage: (reference: StoryboardAssetReference) => Promise<void>;
+  onGenerateReferenceImage: (
+    reference: StoryboardAssetReference,
+    generationKey: string,
+  ) => Promise<void>;
+  generatingReferenceKeys: ReadonlySet<string>;
   onSaveScript: (storyboard: StoryboardShot) => void;
   onUpdateStoryboard: (
     storyboard: StoryboardShot,
@@ -638,6 +717,7 @@ const StoryboardCard = ({
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [voiceSubmitting, setVoiceSubmitting] = useState(false);
   const [previewKey, setPreviewKey] = useState<'VIDEO' | 'FIRST_FRAME' | 'SCENE'>('VIDEO');
+  const [stickyReleased, setStickyReleased] = useState(false);
   const [voiceValues, setVoiceValues] = useState<VoiceGenerationValues>({
     voiceType: 'DIALOGUE',
     speakerName: dialogueSpeaker || shownCharacterNames[0] || '',
@@ -813,10 +893,29 @@ const StoryboardCard = ({
   const videoTask = videoTasks
     .filter((task) => task.storyboardId === item.id)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+  const handleWheelCapture = (event: ReactWheelEvent<HTMLElement>) => {
+    if (!event.deltaY) return;
+    const scrollRegion = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('[data-storyboard-scroll-region]')
+      : null;
+
+    if (!scrollRegion) {
+      setStickyReleased(event.deltaY > 0);
+      return;
+    }
+
+    const edgeTolerance = 1;
+    const atBottom = scrollRegion.scrollTop + scrollRegion.clientHeight
+      >= scrollRegion.scrollHeight - edgeTolerance;
+    const atTop = scrollRegion.scrollTop <= edgeTolerance;
+    if (event.deltaY > 0 && atBottom) setStickyReleased(true);
+    if (event.deltaY < 0 && atTop) setStickyReleased(false);
+  };
 
   return (
     <article
-      className="storyboard-card"
+      className={`storyboard-card${stickyReleased ? ' is-scroll-released' : ''}`}
+      onWheelCapture={handleWheelCapture}
       style={{
         border: '1px solid #e4e9f2',
         borderRadius: 12,
@@ -908,7 +1007,7 @@ const StoryboardCard = ({
           padding: '18px 20px 22px',
         }}
       >
-        <section>
+        <section data-storyboard-scroll-region>
           <Typography.Text strong style={{ fontSize: 15 }}>
             分镜信息
           </Typography.Text>
@@ -966,6 +1065,7 @@ const StoryboardCard = ({
 
           {item.assetReferences !== undefined ? (
             <StoryboardAssetReferenceEditor
+              storyboardId={item.id}
               storyboardNo={index + 1}
               references={item.assetReferences}
               characters={characters}
@@ -976,7 +1076,9 @@ const StoryboardCard = ({
                 setVoiceValues((previous) => ({ ...previous, speakerName }));
                 setVoiceModalOpen(true);
               }}
-              onGenerateImage={(reference) => void onGenerateReferenceImage(reference)}
+              onGenerateImage={(reference, generationKey) =>
+                void onGenerateReferenceImage(reference, generationKey)}
+              generatingReferenceKeys={generatingReferenceKeys}
             />
           ) : (<>
           <div style={{ marginTop: 22 }}>
@@ -1281,23 +1383,26 @@ const StoryboardCard = ({
         </section>
 
         <section
+          className="storyboard-preview-section"
           style={{
             position: 'relative',
-            minHeight: 500,
             background: '#f7f9fd',
             borderRadius: 10,
             overflow: 'hidden',
           }}
         >
           <div
+            className="storyboard-preview-stage"
             style={{
-              height: 490,
               background: '#2c333f',
               display: 'flex',
               justifyContent: 'center',
             }}
           >
-            <div style={{ width: 276, height: '100%', position: 'relative' }}>
+            <div
+              className="storyboard-preview-media"
+              style={{ position: 'relative' }}
+            >
               {previewKey === 'VIDEO' && video.videoUrl ? (
                 <video
                   aria-label={`分镜${index + 1}成片预览`}
@@ -1371,7 +1476,7 @@ const StoryboardCard = ({
             ))}
           </Flex>
           {video.resultId ? (
-            <Flex justify="center" style={{ paddingBottom: 12 }}>
+            <Flex className="storyboard-preview-binding" justify="center">
               {video.selected ? <Tag color="success">当前分镜视频</Tag> : (
                 <Button
                   size="small"
@@ -1466,16 +1571,35 @@ const ProductionWorkbenchStoryboard = () => {
   const [mutationRefreshFailed, setMutationRefreshFailed] = useState(false);
   const [project, setProject] = useState<Project>();
   const [videoModels, setVideoModels] = useState<ProjectModelOption[]>([]);
+  const [imageModels, setImageModels] = useState<ProjectModelOption[]>([]);
+  const [configuredImageModelId, setConfiguredImageModelId] = useState<number>();
   const [selectedModelId, setSelectedModelId] = useState<number>();
   const [videoSettings, setVideoSettings] = useState<
     Record<number, VideoGenerationSettings>
   >({});
   const [assetVisuals, setAssetVisuals] = useState<Record<string, AssetVisualWorkspace>>({});
+  const [referenceGenerationTarget, setReferenceGenerationTarget] =
+    useState<ReferenceGenerationTarget>();
+  const [referenceGenerationValues, setReferenceGenerationValues] =
+    useState<AssetVariantGenerationValues>({
+      prompt: '',
+      modelId: undefined,
+      aspectRatio: '16:9',
+      imageCount: 1,
+    });
+  const [referenceGenerationSubmitting, setReferenceGenerationSubmitting] = useState(false);
+  const [generatingReferenceKeys, setGeneratingReferenceKeys] =
+    useState<Set<string>>(() => new Set());
+  const [referenceVisualPollTargets, setReferenceVisualPollTargets] = useState<
+    Record<string, Pick<ReferenceGenerationTarget, 'assetType' | 'assetId'>>
+  >({});
   const requestedVisuals = useRef(new Set<string>());
   const visualProjectId = useRef(projectId);
+  const referenceGenerationRequestId = useRef(0);
   const [bindingVideoId, setBindingVideoId] = useState<number>();
   const [selectingFirstFrameId, setSelectingFirstFrameId] = useState<number>();
   const storyboardSaves = useRef<Record<number, Promise<unknown>>>({});
+  const referenceSaveStates = useRef(new Map<number, StoryboardReferenceSaveState>());
   const [drafts, setDrafts] = useState<StoryboardDraft>({});
   const [storyboardExecution, setStoryboardExecution] =
     useState<API.AiExecutionResponse>();
@@ -1498,6 +1622,11 @@ const ProductionWorkbenchStoryboard = () => {
     visualProjectId.current = projectId;
     requestedVisuals.current.clear();
     setAssetVisuals({});
+    referenceGenerationRequestId.current += 1;
+    setReferenceGenerationTarget(undefined);
+    setReferenceGenerationSubmitting(false);
+    setGeneratingReferenceKeys(new Set());
+    setReferenceVisualPollTargets({});
   }, [projectId]);
 
   useEffect(() => {
@@ -1542,6 +1671,8 @@ const ProductionWorkbenchStoryboard = () => {
         const models = modelResponse.data?.videoModels || [];
         setVideoModels(models);
         setSelectedModelId(configResponse.data?.videoModelId || models[0]?.id);
+        setImageModels(modelResponse.data?.imageModels || []);
+        setConfiguredImageModelId(configResponse.data?.imageModelId || undefined);
       }).catch(() => {
         if (active) message.error('视频模型加载失败');
       });
@@ -1649,6 +1780,66 @@ const ProductionWorkbenchStoryboard = () => {
   const props = useMemo(() => workspace.props.map((asset) => ({
     ...asset, visual: visualFor(`PROP:${asset.id}`, asset.visual),
   })), [workspace.props, assetVisuals]);
+  const generatingVisualTargets = useMemo(() => [
+    ...characters.map((asset) => ({ assetType: 'CHARACTER' as const, asset })),
+    ...scenes.map((asset) => ({ assetType: 'SCENE' as const, asset })),
+    ...props.map((asset) => ({ assetType: 'PROP' as const, asset })),
+  ].filter(({ asset }) => asset.visual?.variants.some(
+    (variant) => variant.generationStatus === 'GENERATING',
+  )), [characters, scenes, props]);
+  const visualPollTargets = useMemo(() => {
+    const targets = new Map<string, Pick<ReferenceGenerationTarget, 'assetType' | 'assetId'>>();
+    for (const { assetType, asset } of generatingVisualTargets) {
+      targets.set(`${assetType}:${asset.id}`, { assetType, assetId: asset.id });
+    }
+    for (const [key, target] of Object.entries(referenceVisualPollTargets)) {
+      targets.set(key, target);
+    }
+    return [...targets.entries()].map(([key, target]) => ({ key, ...target }));
+  }, [generatingVisualTargets, referenceVisualPollTargets]);
+
+  useEffect(() => {
+    if (!projectId || !visualPollTargets.length) return;
+    let active = true;
+    let timer: number | undefined;
+    const refreshGeneratingVisuals = async () => {
+      const results = await Promise.allSettled(visualPollTargets.map(async (target) => {
+        const response = await queryAssetVisualWorkspace(
+          projectId,
+          target.assetType,
+          target.assetId,
+        );
+        return { key: target.key, visual: response.data };
+      }));
+      if (!active || visualProjectId.current !== projectId) return;
+      const refreshed = results.flatMap((result) =>
+        result.status === 'fulfilled' && result.value.visual ? [result.value] : []);
+      if (refreshed.length) {
+        setAssetVisuals((previous) => ({
+          ...previous,
+          ...Object.fromEntries(refreshed.map(({ key, visual }) => [key, visual])),
+        }));
+        setReferenceVisualPollTargets((previous) => {
+          const next = { ...previous };
+          let changed = false;
+          for (const { key, visual } of refreshed) {
+            if (!visual.variants.some((variant) => variant.generationStatus === 'GENERATING')) {
+              delete next[key];
+              changed = changed || key in previous;
+            }
+          }
+          return changed ? next : previous;
+        });
+      }
+      if (active) timer = window.setTimeout(refreshGeneratingVisuals, 1500);
+    };
+    timer = window.setTimeout(refreshGeneratingVisuals, 1500);
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [projectId, visualPollTargets]);
+
   const selectedFirstFrame = (storyboardId: number) => imageTasks
     .filter((task) => task.targetType === 'STORYBOARD' && task.targetId === storyboardId
       && successStatuses.includes(task.status))
@@ -2388,20 +2579,7 @@ const ProductionWorkbenchStoryboard = () => {
     references: StoryboardAssetReference[],
   ) => {
     const previousReferences = storyboard.assetReferences || [];
-    const displayFields = {
-      characters: references
-        .filter((reference) => reference.assetType === 'CHARACTER')
-        .map((reference) => reference.assetName || reference.sourceName)
-        .filter(Boolean).join('、'),
-      scene: references
-        .filter((reference) => reference.assetType === 'SCENE')
-        .map((reference) => reference.assetName || reference.sourceName)
-        .filter(Boolean).join('、'),
-      props: references
-        .filter((reference) => reference.assetType === 'PROP')
-        .map((reference) => reference.assetName || reference.sourceName)
-        .filter(Boolean).join('、'),
-    };
+    const displayFields = getReferenceDisplayFields(references);
     const applyReferences = (next: StoryboardAssetReference[], fields = displayFields) => {
       setWorkspace((previous) => ({
         ...previous,
@@ -2411,44 +2589,259 @@ const ProductionWorkbenchStoryboard = () => {
       }));
     };
     applyReferences(references);
+    let saveState = referenceSaveStates.current.get(storyboard.id);
+    if (!saveState) {
+      saveState = {
+        tail: Promise.resolve(),
+        latestVersion: 0,
+        pendingCount: 0,
+        confirmedReferences: previousReferences,
+        confirmedFields: {
+          characters: storyboard.characters,
+          scene: storyboard.scene,
+          props: getStoryboardProps(storyboard),
+        },
+      };
+      referenceSaveStates.current.set(storyboard.id, saveState);
+    }
+    const currentSaveState = saveState;
+    const version = currentSaveState.latestVersion + 1;
+    currentSaveState.latestVersion = version;
+    currentSaveState.pendingCount += 1;
+    currentSaveState.tail = currentSaveState.tail.then(async () => {
+      try {
+        const response = await replaceStoryboardAssetReferences(
+          projectId,
+          storyboard.id,
+          references.map((reference) => ({
+            assetType: reference.assetType,
+            assetId: reference.assetId,
+            variantId: reference.variantId,
+            referenceRole: reference.referenceRole,
+            sortOrder: reference.sortOrder,
+            sourceName: reference.sourceName,
+          })),
+        );
+        const savedReferences = preserveReferenceClientKeys(
+          references,
+          response.data || references,
+        );
+        currentSaveState.confirmedReferences = savedReferences;
+        currentSaveState.confirmedFields = getReferenceDisplayFields(savedReferences);
+        if (version === currentSaveState.latestVersion) {
+          applyReferences(savedReferences, currentSaveState.confirmedFields);
+          message.success('素材引用已保存');
+        }
+      } catch {
+        if (version === currentSaveState.latestVersion) {
+          applyReferences(
+            currentSaveState.confirmedReferences,
+            currentSaveState.confirmedFields,
+          );
+          message.error('素材引用保存失败');
+        }
+      } finally {
+        currentSaveState.pendingCount -= 1;
+        if (
+          currentSaveState.pendingCount === 0
+          && referenceSaveStates.current.get(storyboard.id) === currentSaveState
+        ) {
+          referenceSaveStates.current.delete(storyboard.id);
+        }
+      }
+    });
+    await currentSaveState.tail;
+  };
+
+  const generateReferenceImage = async (
+    reference: StoryboardAssetReference,
+    generationKey: string,
+  ) => {
+    if (!reference.assetId) return;
+    const requestId = referenceGenerationRequestId.current + 1;
+    referenceGenerationRequestId.current = requestId;
+    const requestedProjectId = projectId;
+    const assets = reference.assetType === 'CHARACTER'
+      ? characters
+      : reference.assetType === 'SCENE'
+        ? scenes
+        : props;
+    const asset = assets.find((candidate) => candidate.id === reference.assetId);
+    if (!asset) {
+      message.error('该资产不存在');
+      return;
+    }
     try {
-      const response = await replaceStoryboardAssetReferences(
-        projectId,
-        storyboard.id,
-        references.map((reference) => ({
-          assetType: reference.assetType,
-          assetId: reference.assetId,
-          variantId: reference.variantId,
-          referenceRole: reference.referenceRole,
-          sortOrder: reference.sortOrder,
-          sourceName: reference.sourceName,
-        })),
-      );
-      applyReferences(response.data || references);
-      message.success('素材引用已保存');
-    } catch {
-      applyReferences(previousReferences, {
-        characters: storyboard.characters,
-        scene: storyboard.scene,
-        props: getStoryboardProps(storyboard),
+      let visual = asset.visual;
+      if (!visual?.variants.length) {
+        const response = await queryAssetVisualWorkspace(
+          projectId,
+          reference.assetType,
+          reference.assetId,
+        );
+        visual = response.data;
+        if (
+          referenceGenerationRequestId.current !== requestId
+          || visualProjectId.current !== requestedProjectId
+        ) return;
+        setAssetVisuals((previous) => ({
+          ...previous,
+          [`${reference.assetType}:${reference.assetId}`]: response.data,
+        }));
+      }
+      const variant = reference.variantId != null
+        ? visual?.variants.find((item) => item.id === reference.variantId)
+        : visual?.primaryVariant
+          || visual?.variants.find((item) => item.primary)
+          || visual?.variants.find((item) => item.usable)
+          || visual?.variants[0];
+      if (!variant) {
+        message.warning(
+          reference.variantId != null
+            ? '所选视觉形态已失效，请重新选择'
+            : '该资产暂无可生成的视觉形态',
+        );
+        return;
+      }
+      if (
+        reference.assetType === 'CHARACTER'
+        && !variant.primary
+        && !visual?.resolvedImageUrl
+      ) {
+        message.error('请先生成主体主图');
+        return;
+      }
+      setReferenceGenerationTarget({
+        assetType: reference.assetType,
+        assetId: reference.assetId,
+        variant,
+        primaryImageUrl: visual?.resolvedImageUrl,
+        primaryImageThumbnailUrl: visual?.primaryVariant?.currentImageThumbnailUrl
+          || visual?.variants.find((item) => item.primary)?.currentImageThumbnailUrl,
+        generationKey,
       });
-      message.error('素材引用保存失败');
+      setReferenceGenerationSubmitting(false);
+      setReferenceGenerationValues({
+        prompt: variant.prompt || '',
+        modelId: configuredImageModelId,
+        aspectRatio: project?.aspectRatio || '16:9',
+        imageCount: 1,
+      });
+    } catch {
+      if (
+        referenceGenerationRequestId.current === requestId
+        && visualProjectId.current === requestedProjectId
+      ) {
+        message.error('视觉形象加载失败');
+      }
     }
   };
 
-  const generateReferenceImage = async (reference: StoryboardAssetReference) => {
-    if (!reference.assetId) return;
+  const followReferenceVariantGeneration = async (
+    target: ReferenceGenerationTarget,
+    task: AiImageTask,
+  ) => {
     try {
-      await createAssetImageBatch(projectId, {
-        assetType: reference.assetType,
-        assetIds: [reference.assetId],
-        mode: 'ALL',
-        aspectRatio: project?.aspectRatio || '9:16',
-        imageCount: 1,
-      });
-      message.success('资产图任务已创建');
+      const tenantId = currentTenantId();
+      if (task.executionId && tenantId) {
+        await aiExecutionTaskService.poll(tenantId, task.executionId);
+      } else {
+        let currentTask = task;
+        while (!terminalImageTaskStatuses.has(currentTask.status)) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          if (visualProjectId.current !== projectId) return;
+          const response = await queryAiImageTask(projectId, currentTask.id);
+          if (!response.data) throw new Error('missing image task');
+          currentTask = response.data;
+        }
+      }
+      if (visualProjectId.current !== projectId) return;
+      const response = await queryAssetVisualWorkspace(
+        projectId,
+        target.assetType,
+        target.assetId,
+      );
+      if (visualProjectId.current !== projectId) return;
+      setAssetVisuals((previous) => ({
+        ...previous,
+        [`${target.assetType}:${target.assetId}`]: response.data,
+      }));
     } catch {
-      message.error('资产图任务创建失败');
+      if (visualProjectId.current === projectId) {
+        message.error('资产图状态刷新失败');
+      }
+    } finally {
+      if (visualProjectId.current === projectId) {
+        setGeneratingReferenceKeys((previous) => {
+          const next = new Set(previous);
+          next.delete(target.generationKey);
+          return next;
+        });
+      }
+    }
+  };
+
+  const submitReferenceVariantGeneration = async () => {
+    const target = referenceGenerationTarget;
+    if (!target) return;
+    const requestId = referenceGenerationRequestId.current;
+    const requestedProjectId = projectId;
+    const prompt = referenceGenerationValues.prompt;
+    if (!prompt.trim()) {
+      message.error(
+        target.variant.primary
+          ? '请先完成资产主体提示词后再生成图片。'
+          : '请先完成视觉形象提示词后再生成图片。',
+      );
+      return;
+    }
+    setReferenceGenerationSubmitting(true);
+    try {
+      if (prompt !== (target.variant.prompt || '')) {
+        await updateVisualVariant(projectId, target.variant.id, {
+          ...target.variant,
+          prompt,
+        });
+      }
+      const response = await createAiImageTask(projectId, {
+        taskType: target.assetType,
+        targetType: 'VISUAL_VARIANT',
+        targetId: target.variant.id,
+        modelId: referenceGenerationValues.modelId,
+        prompt,
+        referenceImages:
+          target.assetType === 'CHARACTER'
+          && !target.variant.primary
+          && target.primaryImageUrl
+            ? [target.primaryImageUrl]
+            : undefined,
+        aspectRatio: referenceGenerationValues.aspectRatio,
+        imageCount: referenceGenerationValues.imageCount,
+      });
+      if (!response.data) throw new Error('missing image task');
+      if (visualProjectId.current !== requestedProjectId) return;
+      const visualKey = `${target.assetType}:${target.assetId}`;
+      setReferenceVisualPollTargets((previous) => ({
+        ...previous,
+        [visualKey]: { assetType: target.assetType, assetId: target.assetId },
+      }));
+      setGeneratingReferenceKeys((previous) => new Set(previous).add(target.generationKey));
+      if (referenceGenerationRequestId.current === requestId) {
+        setReferenceGenerationTarget(undefined);
+      }
+      message.success('已提交生成');
+      void followReferenceVariantGeneration(target, response.data);
+    } catch {
+      if (visualProjectId.current === requestedProjectId) {
+        message.error('提交生成失败');
+      }
+    } finally {
+      if (
+        visualProjectId.current === requestedProjectId
+        && referenceGenerationRequestId.current === requestId
+      ) {
+        setReferenceGenerationSubmitting(false);
+      }
     }
   };
 
@@ -2750,6 +3143,7 @@ const ProductionWorkbenchStoryboard = () => {
                 onGenerateVoice={generateVoice}
                 onReplaceReferences={replaceStoryboardReferences}
                 onGenerateReferenceImage={generateReferenceImage}
+                generatingReferenceKeys={generatingReferenceKeys}
                 onSaveScript={saveStoryboardScript}
                 onUpdateStoryboard={saveStoryboardFields}
                 onAddStoryboard={addStoryboardAfter}
@@ -2784,6 +3178,25 @@ const ProductionWorkbenchStoryboard = () => {
             </Button>
           </Flex>
         ) : null}
+        <AssetVariantGenerationModal
+          open={Boolean(referenceGenerationTarget)}
+          variant={referenceGenerationTarget?.variant}
+          assetType={referenceGenerationTarget?.assetType}
+          primaryImageUrl={referenceGenerationTarget?.primaryImageThumbnailUrl}
+          imageModels={imageModels}
+          values={referenceGenerationValues}
+          submitting={referenceGenerationSubmitting}
+          onChange={(values) => setReferenceGenerationValues((previous) => ({
+            ...previous,
+            ...values,
+          }))}
+          onCancel={() => {
+            referenceGenerationRequestId.current += 1;
+            setReferenceGenerationTarget(undefined);
+            setReferenceGenerationSubmitting(false);
+          }}
+          onSubmit={() => void submitReferenceVariantGeneration()}
+        />
       </div>
     </div>
   );

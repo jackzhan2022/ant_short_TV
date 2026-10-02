@@ -16,6 +16,7 @@ export default defineConfig({
     include: [
       'src/**/*.{test,spec}.{ts,tsx}',
       'config/**/*.{test,spec}.{ts,tsx}',
+      'tests/**/*.{test,spec}.{ts,tsx}',
     ],
     // Exclude Umi integration tests that depend on @umijs/max test infrastructure
     // These require Umi's Jest runner and cannot be used with Vitest directly
