@@ -7,6 +7,7 @@ import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.http.HttpMethodName;
 import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.CopyObjectRequest;
+import com.qcloud.cos.model.GeneratePresignedUrlRequest;
 import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.model.PutObjectRequest;
 import com.qcloud.cos.model.PutObjectResult;
@@ -258,13 +259,20 @@ public class ObjectStorageService {
             throw new IllegalArgumentException("模型访问链接有效期必须大于 0。");
         }
         try {
-            return metrics.record("PRESIGN_GET", null, 0L, () -> cos.generatePresignedUrl(
-                    properties.getBucket(),
-                    keys.objectKey(storagePath),
-                    Date.from(Instant.now().plus(validFor)),
-                    HttpMethodName.GET
-                ).toString()
-            );
+            GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(
+                properties.getBucket(), keys.objectKey(storagePath), HttpMethodName.GET);
+            request.setExpiration(Date.from(Instant.now().plus(validFor)));
+            request.setSignPrefixMode(false);
+            // External model providers cannot reach the storage client's internal endpoint.
+            // Choose the public host before signing so the signed Host header also matches.
+            String publicHost = "%s.cos.%s.myqcloud.com".formatted(
+                properties.getBucket(), properties.getRegion());
+            request.putCustomRequestHeader("Host", publicHost);
+            return metrics.record("PRESIGN_GET", null, 0L, () -> {
+                // COS SDK 5.x builds the URL host from clientConfig even with a request endpoint override.
+                java.net.URI signed = cos.generatePresignedUrl(request, true).toURI();
+                return "https://" + publicHost + signed.getRawPath() + "?" + signed.getRawQuery();
+            });
         } catch (Exception exception) {
             throw storageFailure("对象访问链接生成失败", exception);
         }

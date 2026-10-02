@@ -3,6 +3,7 @@ package com.antshorttv.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -182,14 +183,51 @@ class ObjectStorageServiceCosTest {
     }
 
     @Test
+    void modelUrlUsesPublicHostEvenWhenStorageClientUsesInternalEndpoint() throws Exception {
+        ObjectStorageProperties properties = new ObjectStorageProperties();
+        com.qcloud.cos.ClientConfig config = TencentCosConfiguration.clientConfig(properties);
+        com.qcloud.cos.COSClient client = new com.qcloud.cos.COSClient(
+            new com.qcloud.cos.auth.BasicSessionCredentials("test-id", "test-secret", "test-token"), config);
+        try {
+            java.net.URI url = java.net.URI.create(service(client).modelAccessUrl(
+                "materials/11/reference image.png", Duration.ofMinutes(50)));
+            assertThat(url.getHost()).isEqualTo("antv-1418200553.cos.ap-guangzhou.myqcloud.com");
+            assertThat(url.getScheme()).isEqualTo("https");
+            assertThat(url.getPath()).isEqualTo("/materials/11/reference image.png");
+            assertThat(url.getQuery()).contains("q-signature=", "x-cos-security-token=test-token");
+            java.util.Map<String, String> query = java.util.Arrays.stream(url.getRawQuery().split("&"))
+                .map(part -> part.split("=", 2)).collect(java.util.stream.Collectors.toMap(
+                    part -> part[0], part -> java.net.URLDecoder.decode(part[1], java.nio.charset.StandardCharsets.UTF_8)));
+            String[] signTime = query.get("q-sign-time").split(";");
+            String expectedSignature = new com.qcloud.cos.auth.COSSigner().buildAuthorizationStr(
+                com.qcloud.cos.http.HttpMethodName.GET, url.getPath(),
+                java.util.Map.of("Host", url.getHost()), java.util.Map.of(),
+                new com.qcloud.cos.auth.BasicSessionCredentials("test-id", "test-secret", "test-token"),
+                new java.util.Date(Long.parseLong(signTime[0]) * 1000),
+                new java.util.Date(Long.parseLong(signTime[1]) * 1000), true);
+            assertThat(query.get("q-header-list")).isEqualTo("host");
+            assertThat(query.get("q-signature")).isEqualTo(expectedSignature.substring(
+                expectedSignature.indexOf("q-signature=") + "q-signature=".length()));
+            assertThat(config.getEndPointSuffix()).isEqualTo("cos-internal.ap-guangzhou.tencentcos.cn");
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    @Test
     void modelUrlUsesRequestedTaskWindow() throws Exception {
         COS cos = mock(COS.class);
-        when(cos.generatePresignedUrl(any(), any(), any(), any()))
-            .thenReturn(java.net.URI.create("https://cos.example/signed").toURL());
+        when(cos.generatePresignedUrl(any(com.qcloud.cos.model.GeneratePresignedUrlRequest.class), eq(true)))
+            .thenReturn(java.net.URI.create("https://cos.example/signed?q-signature=test").toURL());
         ObjectStorageService service = service(cos);
 
         assertThat(service.modelAccessUrl("materials/11/video.mp4", Duration.ofMinutes(50)))
-            .isEqualTo("https://cos.example/signed");
+            .isEqualTo("https://antv-1418200553.cos.ap-guangzhou.myqcloud.com/signed?q-signature=test");
+        ArgumentCaptor<com.qcloud.cos.model.GeneratePresignedUrlRequest> request =
+            ArgumentCaptor.forClass(com.qcloud.cos.model.GeneratePresignedUrlRequest.class);
+        verify(cos).generatePresignedUrl(request.capture(), eq(true));
+        assertThat(request.getValue().getExpiration().toInstant())
+            .isBetween(java.time.Instant.now().plusSeconds(2990), java.time.Instant.now().plusSeconds(3010));
     }
 
     @Test
