@@ -328,11 +328,13 @@ export async function visualVariants(
     elementId: param2,
     ...queryParams
   } = params;
-  return request<API.ApiResponseListVariantResponse>(
+  return request<API.ApiResponseMediaPageVariantResponse>(
     `/api/projects/${param0}/script-elements/${param1}/${param2}/visual-variants`,
     {
       method: "GET",
-      params: { ...queryParams },
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );
@@ -381,7 +383,9 @@ export async function assetVisualWorkspace(
     `/api/projects/${param0}/script-elements/${param1}/${param2}/visual-workspace`,
     {
       method: "GET",
-      params: { ...queryParams },
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );

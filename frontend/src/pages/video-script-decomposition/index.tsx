@@ -137,6 +137,10 @@ const VideoScriptDecompositionPage = () => {
   const [modelId, setModelId] = useState<number>();
   const [models, setModels] = useState<VideoUnderstandingModel[]>([]);
   const [batches, setBatches] = useState<VideoDecompositionBatch[]>([]);
+  const [batchPage, setBatchPage] = useState(1);
+  const [batchPageSize, setBatchPageSize] = useState(20);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const batchRequestId = useRef(0);
   const [creating, setCreating] = useState(false);
   const [openBatchId, setOpenBatchId] = useState<number>();
   const [screenplays, setScreenplays] =
@@ -219,10 +223,13 @@ const VideoScriptDecompositionPage = () => {
     }
   };
 
-  const loadBatches = useCallback(async () => {
-    const response = await queryVideoDecompositionBatches();
-    setBatches(response.data ?? []);
-  }, []);
+  const loadBatches = useCallback(async (signal?: AbortSignal) => {
+    const requestId = ++batchRequestId.current;
+    const response = await queryVideoDecompositionBatches(undefined, { current: batchPage, pageSize: batchPageSize }, signal);
+    if (signal?.aborted || requestId !== batchRequestId.current) return;
+    setBatches(response.data.data);
+    setBatchTotal(response.data.total);
+  }, [batchPage, batchPageSize]);
 
   const loadScreenplays = useCallback(async (batchId: number) => {
     setScreenplaysLoading(true);
@@ -240,7 +247,12 @@ const VideoScriptDecompositionPage = () => {
   }, [loadBatches, loadScreenplays, openBatchId]);
 
   useEffect(() => {
-    void loadBatches().catch(() => undefined);
+    const controller = new AbortController();
+    void loadBatches(controller.signal).catch(() => undefined);
+    return () => controller.abort();
+  }, [loadBatches]);
+
+  useEffect(() => {
     void queryVideoUnderstandingModels()
       .then((response) => {
         const available = (response.data ?? []).filter(
@@ -256,7 +268,7 @@ const VideoScriptDecompositionPage = () => {
         );
       })
       .catch(() => undefined);
-  }, [loadBatches]);
+  }, []);
 
   useEffect(() => {
     if (
@@ -528,7 +540,8 @@ const VideoScriptDecompositionPage = () => {
               ),
             },
           ]}
-          pagination={{ pageSize: 5 }}
+          pagination={{ current: batchPage, pageSize: batchPageSize, total: batchTotal,
+            onChange: (current, size) => { setBatchPage(current); setBatchPageSize(size); } }}
         />
 
         <Drawer

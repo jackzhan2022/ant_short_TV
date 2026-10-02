@@ -2,6 +2,7 @@ package com.antshorttv.project;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.common.MediaPage;
 import com.antshorttv.member.MemberStatus;
 import com.antshorttv.member.TenantMemberEntity;
 import com.antshorttv.member.TenantMemberMapper;
@@ -149,6 +150,7 @@ public class ProjectService {
     private final TenantContextResolver tenantContextResolver;
     private final OperationLogService operationLogService;
     private final ProjectAccessResolver projectAccessResolver;
+    private final ProjectCoverImageService coverImages;
 
     public ProjectService(
         ProjectMapper projectMapper,
@@ -165,7 +167,8 @@ public class ProjectService {
         RbacPermissionService rbacPermissionService,
         TenantContextResolver tenantContextResolver,
         OperationLogService operationLogService,
-        ProjectAccessResolver projectAccessResolver
+        ProjectAccessResolver projectAccessResolver,
+        ProjectCoverImageService coverImages
     ) {
         this.projectMapper = projectMapper;
         this.projectMemberMapper = projectMemberMapper;
@@ -182,13 +185,15 @@ public class ProjectService {
         this.tenantContextResolver = tenantContextResolver;
         this.operationLogService = operationLogService;
         this.projectAccessResolver = projectAccessResolver;
+        this.coverImages = coverImages;
     }
 
-    public List<ProjectResponse> list(Long tenantId) {
-        List<ProjectAccessContext> accesses = projectAccessResolver.accessibleProjectContexts(tenantId);
+    public MediaPage<ProjectResponse> list(Long tenantId, Integer current, Integer pageSize, String keyword) {
+        MediaPage<ProjectAccessContext> page = projectAccessResolver.accessibleProjectPage(tenantId, current, pageSize, keyword);
+        List<ProjectAccessContext> accesses = page.data();
         List<ProjectEntity> projects = accesses.stream().map(ProjectAccessContext::project).toList();
         if (projects.isEmpty()) {
-            return List.of();
+            return new MediaPage<>(List.of(), page.current(), page.pageSize(), page.total());
         }
         Map<Long, UserEntity> owners = userMapper.selectBatchIds(
             projects.stream().map(project -> project.ownerId).filter(java.util.Objects::nonNull).distinct().toList()
@@ -197,7 +202,7 @@ public class ProjectService {
             tenantId,
             projects.stream().map(project -> project.id).toList()
         ).stream().collect(Collectors.groupingBy(member -> member.projectId, Collectors.counting()));
-        return accesses
+        List<ProjectResponse> data = accesses
             .stream()
             .map(access -> toProjectResponse(
                 access.project(),
@@ -206,6 +211,7 @@ public class ProjectService {
                 memberCounts.getOrDefault(access.project().id, 0L)
             ))
             .toList();
+        return new MediaPage<>(data, page.current(), page.pageSize(), page.total());
     }
 
     @Transactional
@@ -223,7 +229,7 @@ public class ProjectService {
         project.name = validateName(request.name());
         project.code = code;
         project.description = request.description();
-        project.coverUrl = request.coverUrl();
+        coverImages.assign(project, request.coverUrl());
         project.coverSource = request.coverSource();
         project.ownerId = request.ownerId();
         project.status = ProjectStatus.NOT_STARTED.name();
@@ -294,10 +300,17 @@ public class ProjectService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProject(tenantId, id);
         validateWritable(project);
+        String previousCover = project.coverUrl;
         project.name = validateName(request.name());
         project.description = request.description();
-        project.coverUrl = request.coverUrl();
-        project.coverSource = request.coverSource();
+        if (Boolean.TRUE.equals(request.clearCover())) {
+            coverImages.assign(project, null);
+            project.coverSource = null;
+        } else if (request.coverUrl() != null) {
+            coverImages.assign(project, ProjectCoverImageService.source(project, request.coverUrl()));
+            if (project.coverUrl == null) project.coverSource = null;
+            else if (request.coverSource() != null) project.coverSource = request.coverSource();
+        }
         project.startDate = request.startDate();
         project.endDate = request.endDate();
         project.aspectRatio = request.aspectRatio();
@@ -315,6 +328,10 @@ public class ProjectService {
         project.initialScriptContent = request.initialScriptContent();
         project.updatedAt = LocalDateTime.now();
         projectMapper.updateById(project);
+        if (Boolean.TRUE.equals(request.clearCover()) || !java.util.Objects.equals(previousCover, project.coverUrl))
+            projectMapper.replaceCover(project);
+        else if (request.coverUrl() != null && request.coverSource() != null)
+            projectMapper.updateCoverLabel(id, tenantId, request.coverSource());
         recordProjectLog(tenantId, id, context.userId(), "PROJECT_UPDATE", "PROJECT", id, null, project.name, servletRequest);
         return toProjectResponse(project, tenantId);
     }
@@ -751,8 +768,9 @@ public class ProjectService {
             project.name,
             project.code,
             project.description,
-            project.coverUrl,
+            ProjectCoverImageService.url(project),
             project.coverSource,
+            ProjectCoverImageService.summaryStatus(project),
             project.ownerId,
             owner == null ? null : owner.getNickname(),
             project.status,

@@ -22,7 +22,8 @@ import {
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
-import { Button, Cascader, Empty, Flex, Image, Spin, Tag, Tooltip, Typography } from 'antd';
+import { Button, Cascader, Empty, Flex, Spin, Tag, Tooltip, Typography } from 'antd';
+import LazyMediaImage from '@/components/LazyMediaImage';
 import type { CSSProperties } from 'react';
 import type {
   CharacterAsset,
@@ -56,8 +57,11 @@ const statusColor = (status: StoryboardAssetReference['resolutionStatus']) => ({
   UNRESOLVED: 'error',
 }[status]);
 
-const variantsFor = (assets: Asset[], assetId?: number | null) =>
-  assets.find((asset) => asset.id === assetId)?.visual?.variants || [];
+const variantsFor = (assets: Asset[], assetId?: number | null) => {
+  const visual = assets.find((asset) => asset.id === assetId)?.visual;
+  return [...new Map([visual?.primaryVariant, visual?.selectedVariant, ...(visual?.variants || [])]
+    .filter((variant): variant is VisualVariant => Boolean(variant)).map((variant) => [variant.id, variant])).values()];
+};
 
 export const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) => {
   const asset = assets.find((candidate) => candidate.id === reference.assetId);
@@ -66,7 +70,7 @@ export const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) =
       .find((candidate) => candidate.id === reference.variantId)
     : defaultVariant(asset);
   return variant?.currentImageThumbnailUrl
-    || asset?.mainImageThumbnailUrl || undefined;
+    || reference.imageThumbnailUrl || asset?.mainImageThumbnailUrl || undefined;
 };
 
 const defaultVariant = (asset?: Asset): VisualVariant | undefined =>
@@ -137,6 +141,7 @@ function SortableAssetCard({
   onVoice,
   onGenerateImage,
   isGenerating,
+  onLoadVariants,
 }: {
   id: string;
   storyboardNo: number;
@@ -149,6 +154,10 @@ function SortableAssetCard({
   onVoice: (name: string) => void;
   onGenerateImage: () => void;
   isGenerating: boolean;
+  onLoadVariants?: (
+    assetType: AssetType, assetId: number, selectedVariantId?: number | null,
+    current?: number, pageSize?: number,
+  ) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const image = imageFor(reference, assets);
@@ -175,7 +184,7 @@ function SortableAssetCard({
     >
       <div className="storyboard-reference-thumb">
         {image ? (
-          <Image
+          <LazyMediaImage
             src={image}
             alt={`${reference.assetName || reference.sourceName || labels[assetType]}参考图`}
             width="100%"
@@ -252,9 +261,15 @@ function SortableAssetCard({
         allowClear={false}
         changeOnSelect
         showSearch
+        onOpenChange={(open) => {
+          if (open && reference.assetId) {
+            void onLoadVariants?.(assetType, reference.assetId, reference.variantId);
+          }
+        }}
         displayRender={(selectedLabels) => selectedLabels.join(' / ')}
         onChange={(path) => {
           const [selectedAssetId, selectedVariantId] = path.map(Number);
+          void onLoadVariants?.(assetType, selectedAssetId, selectedVariantId);
           const asset = assets.find((candidate) => candidate.id === selectedAssetId);
           const variant = variantsFor(assets, selectedAssetId)
             .find((candidate) => candidate.id === selectedVariantId);
@@ -272,6 +287,22 @@ function SortableAssetCard({
           });
         }}
       />
+      {(asset?.visual?.current || 1) * (asset?.visual?.pageSize || 20)
+        < (asset?.visual?.total || asset?.visual?.variantCount || 0) ? (
+          <Button
+            type="link"
+            size="small"
+            onClick={() => reference.assetId && void onLoadVariants?.(
+              assetType,
+              reference.assetId,
+              reference.variantId,
+              (asset?.visual?.current || 1) + 1,
+              asset?.visual?.pageSize || 20,
+            )}
+          >
+            加载更多{labels[assetType]}形态
+          </Button>
+        ) : null}
     </li>
   );
 }
@@ -287,6 +318,7 @@ export default function StoryboardAssetReferenceEditor({
   onVoice,
   onGenerateImage,
   generatingReferenceKeys,
+  onLoadVariants,
 }: {
   storyboardId: number;
   storyboardNo: number;
@@ -298,6 +330,10 @@ export default function StoryboardAssetReferenceEditor({
   onVoice: (name: string) => void;
   onGenerateImage: (reference: StoryboardAssetReference, generationKey: string) => void;
   generatingReferenceKeys: ReadonlySet<string>;
+  onLoadVariants?: (
+    assetType: AssetType, assetId: number, selectedVariantId?: number | null,
+    current?: number, pageSize?: number,
+  ) => Promise<void>;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -388,6 +424,7 @@ export default function StoryboardAssetReferenceEditor({
                         rowIndex={rowIndex}
                         reference={reference}
                         assets={assets}
+                        onLoadVariants={onLoadVariants}
                         onReplace={(next) => replace(reference, next)}
                         onRemove={() => remove(reference)}
                         onVoice={onVoice}

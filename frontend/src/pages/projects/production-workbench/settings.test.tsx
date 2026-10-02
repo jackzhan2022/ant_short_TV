@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchSettings from './settings';
 
 const mocks = vi.hoisted(() => ({
@@ -148,6 +148,11 @@ vi.mock('antd', () => ({
         确认
       </button>
     </span>
+  ),
+  Pagination: ({ current, onChange }: any) => (
+    <button className="ant-pagination-next" type="button" onClick={() => onChange(current + 1, 20)}>
+      下一页
+    </button>
   ),
   Empty: ({ children, description }: any) => (
     <div>
@@ -318,7 +323,15 @@ const workspace = {
 };
 
 describe('ProductionWorkbenchSettings', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe() {
+        this.callback([{ isIntersecting: true }] as IntersectionObserverEntry[], this as unknown as IntersectionObserver);
+      }
+      disconnect() {}
+    });
     sessionStorage.clear();
     vi.clearAllMocks();
     workspace.characters[0].visual.variants[0].prompt = '6岁男孩，写实都市风格';
@@ -473,7 +486,7 @@ describe('ProductionWorkbenchSettings', () => {
     render(<ProductionWorkbenchSettings />);
 
     const thumbnail = await screen.findByAltText('斌斌当前视觉形象');
-    expect(thumbnail).toHaveAttribute('src', '/daily-thumb.png');
+    await waitFor(() => expect(thumbnail).toHaveAttribute('src', '/daily-thumb.png'));
     expect(thumbnail).toHaveAttribute('loading', 'lazy');
     expect(thumbnail).toHaveStyle({ opacity: '0' });
     expect(screen.getByLabelText('斌斌当前视觉形象加载中')).toBeInTheDocument();
@@ -623,6 +636,7 @@ describe('ProductionWorkbenchSettings', () => {
         1,
         'CHARACTER',
         1,
+        expect.objectContaining({ current: 1, pageSize: 20 }),
       );
       expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(2);
       expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
@@ -653,6 +667,30 @@ describe('ProductionWorkbenchSettings', () => {
     await waitFor(() => {
       expect(mocks.deleteVisualVariant).toHaveBeenCalledWith(1, 12);
     });
+  });
+
+  it('pages visual candidates while keeping a selected variant outside the page', async () => {
+    const primary = workspace.characters[0].visual.variants[0];
+    const selected = { ...workspace.characters[0].visual.variants[1], id: 99, name: '历史礼服' };
+    mocks.queryAssetVisualWorkspace.mockImplementation((_projectId, _type, _assetId, params = {}) =>
+      Promise.resolve({ data: {
+        ...workspace.characters[0].visual,
+        variants: params.current === 2 ? [{ ...selected, id: 25, name: '第25形象' }] : [primary],
+        primaryVariant: primary,
+        selectedVariant: selected,
+        current: params.current || 1,
+        pageSize: 20,
+        total: 25,
+      } }));
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '管理斌斌视觉形象' }));
+    expect(await screen.findByRole('button', { name: '选择历史礼服' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenLastCalledWith(
+      1, 'CHARACTER', 1,
+      expect.objectContaining({ current: 2, pageSize: 20, selectedVariantId: 99 }),
+    ));
+    expect(screen.getByRole('button', { name: '选择历史礼服' })).toBeInTheDocument();
   });
 
   it('selects assets only within the active tab and disables generation without a selection', async () => {

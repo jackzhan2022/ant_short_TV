@@ -1,11 +1,18 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import StableImage from './StableImage';
 
 describe('StableImage', () => {
   const decode = vi.fn<() => Promise<void>>();
 
   beforeEach(() => {
+    vi.stubGlobal('IntersectionObserver', undefined);
     decode.mockReset();
     decode.mockResolvedValue(undefined);
     Object.defineProperty(HTMLImageElement.prototype, 'decode', {
@@ -51,7 +58,7 @@ describe('StableImage', () => {
     expect(screen.getByLabelText('角色图加载中')).toBeInTheDocument();
   });
 
-  it('keeps a decoded preview visible until the target is decoded', async () => {
+  it('loads only the compressed preview when one is available', async () => {
     const { container } = render(
       <StableImage
         src="/original.png"
@@ -64,16 +71,44 @@ describe('StableImage', () => {
     const preview = container.querySelector<HTMLImageElement>(
       'img[src="/thumbnail.png"]',
     );
-    expect(preview).not.toBeNull();
-
-    fireEvent.load(preview as HTMLImageElement);
-    await waitFor(() => expect(preview).toHaveStyle({ opacity: '1' }));
-    expect(target).toHaveStyle({ opacity: '0' });
-    expect(screen.queryByLabelText('角色图加载中')).not.toBeInTheDocument();
-
+    expect(preview).toBe(target);
+    expect(container.querySelector('img[src="/original.png"]')).toBeNull();
     fireEvent.load(target);
     await waitFor(() => expect(target).toHaveStyle({ opacity: '1' }));
-    expect(preview).toHaveStyle({ opacity: '0' });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('does not assign a source until the image enters the viewport margin', () => {
+    let callback: IntersectionObserverCallback | undefined;
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'IntersectionObserver',
+      vi.fn(function (
+        this: any,
+        next: IntersectionObserverCallback,
+        options: IntersectionObserverInit,
+      ) {
+        callback = next;
+        expect(options.rootMargin).toBe('200px');
+        this.observe = vi.fn();
+        this.disconnect = disconnect;
+      }),
+    );
+    const view = render(<StableImage src="/thumbnail.png" alt="延迟角色" />);
+    expect(screen.getByAltText('延迟角色')).not.toHaveAttribute('src');
+    act(() =>
+      callback?.(
+        [{ isIntersecting: true }] as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      ),
+    );
+    expect(screen.getByAltText('延迟角色')).toHaveAttribute(
+      'src',
+      '/thumbnail.png',
+    );
+    view.unmount();
+    expect(disconnect).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('uses the fallback when the URL is missing or fails', () => {
@@ -88,5 +123,14 @@ describe('StableImage', () => {
 
     expect(screen.getByText('角')).toBeInTheDocument();
     expect(screen.queryByLabelText('角色图加载中')).not.toBeInTheDocument();
+  });
+
+  it('reveals a loaded image even when the optional decode API rejects', async () => {
+    decode.mockRejectedValueOnce(new Error('Decode unavailable'));
+    render(<StableImage src="/thumbnail.png" alt="解码图" />);
+    fireEvent.load(screen.getByAltText('解码图'));
+    await waitFor(() =>
+      expect(screen.getByAltText('解码图')).toHaveStyle({ opacity: '1' }),
+    );
   });
 });

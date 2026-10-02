@@ -2,6 +2,7 @@ import { request } from '@umijs/max';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   queryVideoDecompositionBatchScreenplays,
+  queryVideoDecompositionBatches,
   retryVideoDecompositionEpisode,
   uploadEpisodeVideo,
 } from './service';
@@ -18,6 +19,14 @@ describe('video decomposition service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(request).mockResolvedValue({ success: true, data: {} });
+  });
+
+  it('passes server paging and cancellation for batch browsing', async () => {
+    const controller = new AbortController();
+    await queryVideoDecompositionBatches(undefined, { current: 2, pageSize: 20 }, controller.signal);
+    expect(request).toHaveBeenCalledWith('/api/video-script-decomposition/batches', {
+      params: { projectId: undefined, current: 2, pageSize: 20 }, signal: controller.signal,
+    });
   });
 
   it('loads the ordered per-episode screenplay view without a merge mutation', async () => {

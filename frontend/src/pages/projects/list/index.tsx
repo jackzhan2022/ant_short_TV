@@ -13,8 +13,9 @@ import {
   ProFormTextArea,
 } from '@ant-design/pro-components';
 import { history, useAccess } from '@umijs/max';
-import { App, Button, Empty, Tag } from 'antd';
-import { useEffect, useState } from 'react';
+import { App, Button, Empty, Pagination, Tag } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import ProjectCoverImage from '@/components/ProjectCoverImage';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import type {
@@ -141,7 +142,9 @@ const ProjectCard = ({
       >
         <div className={styles.coverFrame}>
           {project.coverUrl ? (
-            <img
+            <ProjectCoverImage
+              native
+              status={project.coverStatus}
               className={styles.cover}
               src={project.coverUrl}
               alt={`${project.name}封面`}
@@ -222,6 +225,10 @@ const ProjectList = () => {
   const [members, setMembers] = useState<TenantMember[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
+  const [current, setCurrent] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const projectRequestId = useRef(0);
 
   const loadOptions = async () => {
     const memberResponse = tenantId
@@ -230,19 +237,32 @@ const ProjectList = () => {
     setMembers(memberResponse.data as TenantMember[]);
   };
 
-  const loadProjects = async () => {
+  const loadProjects = async (signal?: AbortSignal) => {
+    const requestId = ++projectRequestId.current;
     setLoading(true);
     try {
-      const response = await queryProjects();
-      setProjects(response.data);
+      const response = await queryProjects({ current, pageSize }, signal);
+      if (signal?.aborted || requestId !== projectRequestId.current) return;
+      setProjects(response.data.data);
+      setTotal(response.data.total);
     } finally {
-      setLoading(false);
+      if (requestId === projectRequestId.current && !signal?.aborted) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (tenantId) loadProjects();
+    setCurrent(1);
+    setProjects([]);
+    setTotal(0);
   }, [tenantId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (tenantId) void loadProjects(controller.signal).catch(() => {
+      if (!controller.signal.aborted) setProjects([]);
+    });
+    return () => controller.abort();
+  }, [tenantId, current, pageSize]);
 
   if (!tenantId) {
     return (
@@ -257,7 +277,7 @@ const ProjectList = () => {
       <div className={styles.toolbar}>
         <div>
           <h1 className={styles.title}>项目列表</h1>
-          <span className={styles.count}>共 {projects.length} 个项目</span>
+          <span className={styles.count}>共 {total} 个项目</span>
         </div>
         {access.canCreateProject && (
           <Button
@@ -278,7 +298,7 @@ const ProjectList = () => {
               key={project.id}
               project={project}
               members={members}
-              onDone={loadProjects}
+              onDone={() => void loadProjects()}
               onEditOpen={() => {
                 void loadOptions();
               }}
@@ -288,6 +308,17 @@ const ProjectList = () => {
       ) : (
         <Empty description="暂无项目" />
       )}
+      <Pagination
+        align="end"
+        current={current}
+        pageSize={pageSize}
+        total={total}
+        hideOnSinglePage
+        disabled={loading}
+        showSizeChanger
+        onChange={(page, size) => { setCurrent(page); setPageSize(size); }}
+        style={{ marginTop: 20 }}
+      />
     </PageContainer>
   );
 };

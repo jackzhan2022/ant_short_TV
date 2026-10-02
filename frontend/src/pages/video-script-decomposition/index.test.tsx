@@ -160,7 +160,11 @@ vi.mock('@ant-design/pro-components', () => ({
 
 vi.mock('./service', () => ({
   createVideoDecompositionBatch: vi.fn(),
-  queryVideoDecompositionBatches: mocks.queryBatches,
+  queryVideoDecompositionBatches: async (...args: unknown[]) => {
+    const response = await mocks.queryBatches(...args);
+    return { ...response, data: Array.isArray(response.data)
+      ? { data: response.data, current: 1, pageSize: 20, total: response.data.length } : response.data };
+  },
   queryVideoDecompositionBatchScreenplays: mocks.queryScreenplays,
   queryVideoUnderstandingModels: mocks.queryModels,
   retryVideoDecompositionEpisode: mocks.retry,

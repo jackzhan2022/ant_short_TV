@@ -166,18 +166,20 @@ const ProductionWorkbench = () => {
   }
 
   return (
-    <div style={{ minHeight: activeStep === 'storyboard' ? 0 : '100vh', height: activeStep === 'storyboard' ? '100dvh' : undefined, overflow: activeStep === 'storyboard' ? 'hidden' : undefined, background: 'var(--app-color-bg-layout)' }}>
+    <div style={{ minHeight: activeStep === 'storyboard' ? 0 : '100vh', height: activeStep === 'storyboard' ? 'calc(100dvh - 32px)' : undefined, display: activeStep === 'storyboard' ? 'grid' : undefined, gridTemplateRows: activeStep === 'storyboard' ? 'auto minmax(0, 1fr)' : undefined, overflow: activeStep === 'storyboard' ? 'hidden' : undefined, background: 'var(--app-color-bg-layout)' }}>
       <header
         style={{
-          height: 68,
+          minHeight: 68,
           boxSizing: 'border-box',
           overflowX: activeStep === 'storyboard' ? 'auto' : undefined,
           background: 'var(--app-color-bg-container)',
           borderBottom: '1px solid var(--app-color-border)',
           display: 'flex',
+          flexWrap: 'wrap',
+          gap: 12,
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 16px',
+          padding: '8px 16px',
         }}
       >
         <Flex align="center" gap={12}>
@@ -242,7 +244,7 @@ const ProductionWorkbench = () => {
           </div>
         </Flex>
 
-        <Flex align="center" gap={0} style={{ transform: 'translateX(-20px)' }}>
+        <Flex align="center" gap={0} style={{ flex: '0 0 auto', maxWidth: '100%', overflowX: 'auto' }}>
           {topSteps.map((step, index) => {
             const active = step.key === activeStep;
             return (
@@ -313,7 +315,7 @@ const ProductionWorkbench = () => {
           minWidth: activeStep === 'storyboard' ? 0 : 1100,
           boxSizing: 'border-box',
           padding: activeStep === 'storyboard' ? 0 : '0 0 72px',
-          height: activeStep === 'storyboard' ? 'calc(100dvh - 100px)' : undefined,
+          height: activeStep === 'storyboard' ? '100%' : undefined,
           minHeight: activeStep === 'storyboard' ? 0 : 'calc(100vh - 100px)',
         }}
       >

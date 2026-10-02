@@ -21,9 +21,9 @@ export async function list12(
 }
 
 /** 此处后端没有提供注释 GET /api/platform/commercial/orders/${param0} */
-export async function detail10(
+export async function detail11(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail10Params,
+  params: API.detail11Params,
   options?: { [key: string]: any }
 ) {
   const { orderId: param0, ...queryParams } = params;

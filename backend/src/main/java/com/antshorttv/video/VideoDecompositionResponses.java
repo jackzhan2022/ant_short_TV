@@ -22,6 +22,17 @@ record VideoDecompositionBatchResponse(
     LocalDateTime updatedAt,
     List<VideoDecompositionEpisodeResponse> episodes
 ) {
+    static VideoDecompositionBatchResponse summary(VideoDecompositionBatchEntity batch, VideoDecompositionBatchStatistics statistics) {
+        int total = statistics == null ? 0 : statistics.total;
+        int succeeded = statistics == null ? 0 : statistics.succeeded;
+        int failed = statistics == null ? 0 : statistics.failed;
+        int processing = statistics == null ? 0 : statistics.processing;
+        return new VideoDecompositionBatchResponse(batch.getId(), batch.getTenantId(), batch.getProjectId(), batch.getName(),
+            batch.getModelId(), batch.getStatus(), batch.getTotalEpisodes(), batch.getCompletedEpisodes(), batch.getFailedEpisodes(),
+            succeeded, processing, total - succeeded - failed - processing,
+            total == 0 ? 0 : (int) (statistics.progressSum / total), batch.getCreatedAt(), batch.getUpdatedAt(), List.of());
+    }
+
     static VideoDecompositionBatchResponse from(
         VideoDecompositionBatchEntity batch,
         List<VideoDecompositionEpisodeEntity> episodes
@@ -132,6 +143,15 @@ record VideoDecompositionEpisodeDetailResponse(
     String normalizedJson,
     List<VideoDecompositionAttemptResponse> attempts
 ) {
+}
+
+class VideoDecompositionBatchStatistics {
+    public Long batchId;
+    public int total;
+    public int succeeded;
+    public int failed;
+    public int processing;
+    public long progressSum;
 }
 
 record VideoDecompositionBatchScreenplaysResponse(

@@ -23,6 +23,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MediaUploadHandle } from '@/services/mediaUpload';
 import styles from './index.module.css';
+import LazyInspirationThumbnail from './LazyInspirationThumbnail';
 import {
   createManagedInspiration,
   deleteManagedInspiration,
@@ -282,7 +283,7 @@ const InspirationManagementDrawer = ({ open, onClose, onChanged }: Props) => {
                 onDrop={() => void move(item.id)}
               >
                 <HolderOutlined className={styles.dragHandle} />
-                <img
+                <LazyInspirationThumbnail
                   alt={item.title || '灵感素材'}
                   src={item.thumbnailUrl || undefined}
                 />

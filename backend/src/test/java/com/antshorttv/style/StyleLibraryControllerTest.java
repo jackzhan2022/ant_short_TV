@@ -33,20 +33,22 @@ class StyleLibraryControllerTest {
     void queriesPublicStylesWithFilters() throws Exception {
         mockMvc.perform(get("/api/style-library"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(139)))
-            .andExpect(jsonPath("$.data[0].externalId", is("864621266010645040")))
-            .andExpect(jsonPath("$.data[0].imageUrl", is("/api/style-library/images/864621266010645040")))
-            .andExpect(jsonPath("$.data[0].sourceImageUrl").doesNotExist());
+            .andExpect(jsonPath("$.data.total", is(139)))
+            .andExpect(jsonPath("$.data.data", hasSize(20)))
+            .andExpect(jsonPath("$.data.data[0].externalId", is("864621266010645040")))
+            .andExpect(jsonPath("$.data.data[0].imageUrl", is("/api/style-library/images/864621266010645040")))
+            .andExpect(jsonPath("$.data.data[0].sourceImageUrl").doesNotExist());
 
         mockMvc.perform(get("/api/style-library").param("category", "3D风格"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(29)))
-            .andExpect(jsonPath("$.data[*].category", everyItem(is("3D风格"))));
+            .andExpect(jsonPath("$.data.total", is(29)))
+            .andExpect(jsonPath("$.data.data", hasSize(20)))
+            .andExpect(jsonPath("$.data.data[*].category", everyItem(is("3D风格"))));
 
         mockMvc.perform(get("/api/style-library").param("keyword", "赛博朋克"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", not(hasSize(0))))
-            .andExpect(jsonPath("$.data[0].name", startsWith("2D风格-赛博朋克")));
+            .andExpect(jsonPath("$.data.data", not(hasSize(0))))
+            .andExpect(jsonPath("$.data.data[0].name", startsWith("2D风格-赛博朋克")));
     }
 
     @Test

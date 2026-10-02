@@ -5,6 +5,7 @@ import {
   Flex,
   Image,
   Input,
+  Pagination,
   Segmented,
   Space,
   Spin,
@@ -12,34 +13,54 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { queryStyleLibrary, type PublicStyle } from './service';
-
-const categoryOptions = [
-  '全部',
-  '3D风格',
-  '2D风格',
-  '真人风格',
-  '漫剧风格',
-  '未分组',
-  '传统艺术',
-  '漫画风格',
-  '数字艺术',
-  '写实风格',
-].map((value) => ({ label: value, value }));
+import LazyMediaImage from '@/components/LazyMediaImage';
+import {
+  type PublicStyle,
+  queryStyleCategories,
+  queryStyleLibrary,
+} from './service';
 
 const StyleLibraryPage = () => {
   const [styles, setStyles] = useState<PublicStyle[]>([]);
   const [category, setCategory] = useState('全部');
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [current, setCurrent] = useState(1);
+  const [pageSize, setPageSize] = useState(24);
+  const [total, setTotal] = useState(0);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    void queryStyleCategories()
+      .then((response) => {
+        if (alive) setCategories(response.data || []);
+      })
+      .catch(() => {
+        if (alive) setCategories([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    queryStyleLibrary({ category, keyword })
+    setLoadError('');
+    queryStyleLibrary({ category, keyword, current, pageSize })
       .then((response) => {
         if (alive) {
-          setStyles(response.data ?? []);
+          setStyles(response.data.data ?? []);
+          setTotal(response.data.total);
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setStyles([]);
+          setTotal(0);
+          setLoadError('风格加载失败，请重试');
         }
       })
       .finally(() => {
@@ -50,7 +71,7 @@ const StyleLibraryPage = () => {
     return () => {
       alive = false;
     };
-  }, [category, keyword]);
+  }, [category, keyword, current, pageSize]);
 
   const grid = useMemo(
     () => ({
@@ -70,15 +91,24 @@ const StyleLibraryPage = () => {
           </Typography.Title>
           <Space wrap size="middle">
             <Segmented
-              options={categoryOptions}
+              options={['全部', ...categories].map((value) => ({
+                label: value,
+                value,
+              }))}
               value={category}
-              onChange={(value) => setCategory(String(value))}
+              onChange={(value) => {
+                setCategory(String(value));
+                setCurrent(1);
+              }}
             />
             <Input.Search
               allowClear
               placeholder="搜索风格名称或描述"
               style={{ width: 280 }}
-              onSearch={(value) => setKeyword(value.trim())}
+              onSearch={(value) => {
+                setKeyword(value.trim());
+                setCurrent(1);
+              }}
             />
           </Space>
         </Flex>
@@ -91,7 +121,7 @@ const StyleLibraryPage = () => {
                     key={style.externalId}
                     hoverable
                     cover={
-                      <Image
+                      <LazyMediaImage
                         alt={style.name}
                         src={style.imageUrl}
                         height={140}
@@ -125,9 +155,20 @@ const StyleLibraryPage = () => {
               </div>
             </Image.PreviewGroup>
           ) : (
-            <Empty description="没有匹配的公共风格" />
+            <Empty description={loadError || '没有匹配的公共风格'} />
           )}
         </Spin>
+        <Pagination
+          current={current}
+          pageSize={pageSize}
+          total={total}
+          showSizeChanger
+          pageSizeOptions={[24, 48, 96]}
+          onChange={(page, size) => {
+            setCurrent(size === pageSize ? page : 1);
+            setPageSize(size);
+          }}
+        />
       </Flex>
     </PageContainer>
   );

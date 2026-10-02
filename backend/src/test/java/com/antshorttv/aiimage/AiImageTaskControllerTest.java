@@ -163,17 +163,17 @@ class AiImageTaskControllerTest extends com.antshorttv.support.RegistrationTestS
         Long storyboardId = jdbcTemplate.queryForObject(
             "select id from storyboard where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
 
-        createImageTask(token, tenantId, projectId, "episode-reference-create", """
+        MvcResult referenceTask = createImageTask(token, tenantId, projectId, "episode-reference-create", """
             {"taskType":"STORYBOARD_FIRST_FRAME","targetType":"STORYBOARD","targetId":%d,
              "prompt":"宴会首帧","aspectRatio":"16:9","imageCount":1}
-            """.formatted(storyboardId))
-            .getResponse();
-        mockMvc.perform(get("/api/projects/%d/ai-image-tasks".formatted(projectId))
+            """.formatted(storyboardId));
+        Long referenceTaskId = readLong(referenceTask, "$.data.id");
+        mockMvc.perform(get("/api/projects/%d/ai-image-tasks/%d".formatted(projectId, referenceTaskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[0].referenceImages[0]", is("/dress.png")))
-            .andExpect(jsonPath("$.data[0].referenceImages[1]", is("/hall.png")));
+            .andExpect(jsonPath("$.data.referenceImages[0]", is("/dress.png")))
+            .andExpect(jsonPath("$.data.referenceImages[1]", is("/hall.png")));
     }
 
     @Test
@@ -621,8 +621,8 @@ class AiImageTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(1)))
-            .andExpect(jsonPath("$.data[0].id", is(taskId.intValue())));
+            .andExpect(jsonPath("$.data.data", hasSize(1)))
+            .andExpect(jsonPath("$.data.data[0].id", is(taskId.intValue())));
 
         mockMvc.perform(get("/api/projects/%d/ai-image-results/%d/download".formatted(projectId, resultId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))

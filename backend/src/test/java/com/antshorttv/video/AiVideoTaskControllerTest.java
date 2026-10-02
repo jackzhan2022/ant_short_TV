@@ -222,8 +222,9 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                 .header("X-Tenant-Id", tenantId)
                 .param("status", "SUCCEEDED"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(1)))
-            .andExpect(jsonPath("$.data[0].id", is(taskId.intValue())));
+            .andExpect(jsonPath("$.data.total", is(1)))
+            .andExpect(jsonPath("$.data.data", hasSize(1)))
+            .andExpect(jsonPath("$.data.data[0].id", is(taskId.intValue())));
 
         String storagePath = jdbc.queryForObject(
             "select storage_path from ai_video_result where task_id = ?",

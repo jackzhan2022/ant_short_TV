@@ -1,6 +1,7 @@
 package com.antshorttv.style;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.MediaPage;
 import java.net.URI;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -21,11 +22,23 @@ public class StyleLibraryController {
     }
 
     @GetMapping
-    public ApiResponse<List<StyleLibraryResponse>> list(
+    public ApiResponse<MediaPage<StyleLibraryResponse>> list(
         @RequestParam(required = false) String category,
-        @RequestParam(required = false) String keyword
+        @RequestParam(required = false) String keyword,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize
     ) {
-        return ApiResponse.success(styleLibraryService.list(category, keyword));
+        return ApiResponse.success(styleLibraryService.list(category, keyword, current, pageSize));
+    }
+
+    @GetMapping("/categories")
+    public ApiResponse<List<String>> categories() {
+        return ApiResponse.success(styleLibraryService.categories());
+    }
+
+    @GetMapping("/{styleId}")
+    public ApiResponse<StyleLibraryResponse> detail(@PathVariable Long styleId) {
+        return ApiResponse.success(styleLibraryService.detail(styleId));
     }
 
     @GetMapping("/images/{externalId}")

@@ -16,6 +16,7 @@ import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.common.MediaPage;
 import com.antshorttv.project.ProjectEntity;
 import com.antshorttv.project.ProjectMapper;
 import com.antshorttv.project.ProjectAccessResolver;
@@ -587,10 +588,16 @@ public class ScriptWorkflowService {
     }
 
     public AssetVisualWorkspace assetVisualWorkspace(Long tenantId, Long projectId, String assetType, Long assetId) {
+        return assetVisualWorkspace(tenantId, projectId, assetType, assetId, null, null, null);
+    }
+
+    public AssetVisualWorkspace assetVisualWorkspace(Long tenantId, Long projectId, String assetType, Long assetId,
+        Integer current, Integer pageSize, Long selectedVariantId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectAccessContext access = requireProjectAccessContext(context, projectId);
         requirePermission(access, "ELEMENT:VIEW");
-        return buildAssetVisualWorkspace(tenantId, projectId, normalizeElementType(assetType), assetId);
+        return buildAssetVisualWorkspace(tenantId, projectId, normalizeElementType(assetType), assetId,
+            current, pageSize, selectedVariantId);
     }
 
     public StoryboardWorkspacePageResponse storyboardWorkspace(Long tenantId, Long projectId, Integer episodeNo,
@@ -1135,13 +1142,13 @@ public class ScriptWorkflowService {
 
 
 
-    public List<AssetVisualVariantService.VariantResponse> visualVariants(
-        Long tenantId, Long projectId, String assetType, Long assetId
+    public MediaPage<AssetVisualVariantService.VariantResponse> visualVariants(
+        Long tenantId, Long projectId, String assetType, Long assetId, Integer current, Integer pageSize
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:VIEW", projectId);
-        return assetVisualVariantService.list(tenantId, projectId, assetType, assetId);
+        return assetVisualVariantService.page(tenantId, projectId, assetType, assetId, current, pageSize);
     }
 
     public AssetVisualVariantService.VariantResponse createVisualVariant(
@@ -1506,21 +1513,27 @@ public class ScriptWorkflowService {
 
 
     private AssetVisualWorkspace buildAssetVisualWorkspace(
-        Long tenantId, Long projectId, String assetType, Long assetId
+        Long tenantId, Long projectId, String assetType, Long assetId, Integer current, Integer pageSize, Long selectedVariantId
     ) {
-        List<AssetVisualVariantService.VariantResponse> variants =
-            assetVisualVariantService.list(tenantId, projectId, assetType, assetId);
-        AssetVisualVariantService.VariantResponse primary = variants.stream()
-            .filter(AssetVisualVariantService.VariantResponse::primary).findFirst().orElse(null);
-        Map<String, Long> generationSummary = variants.stream().collect(java.util.stream.Collectors.groupingBy(
-            AssetVisualVariantService.VariantResponse::generationStatus,
-            java.util.LinkedHashMap::new,
-            java.util.stream.Collectors.counting()));
+        MediaPage<AssetVisualVariantService.VariantResponse> page =
+            assetVisualVariantService.page(tenantId, projectId, assetType, assetId, current, pageSize);
+        AssetVisualVariantService.VariantResponse primary =
+            assetVisualVariantService.primaryVariant(tenantId, projectId, assetType, assetId);
+        Map<String, Long> generationSummary =
+            assetVisualVariantService.generationSummary(tenantId, projectId, assetType, assetId);
         EpisodeAwareVisualResolver.ResolvedVisual resolved =
             episodeAwareVisualResolver.resolve(tenantId, projectId, assetType, assetId, null);
-        return new AssetVisualWorkspace(variants.size(), primary, variants, generationSummary,
-            assetVisualBindingService.list(tenantId, projectId, assetType, assetId),
-            resolved.imageUrl(), resolved.source());
+        AssetVisualVariantService.VariantResponse selected =
+            assetVisualVariantService.selectedVariant(tenantId, projectId, assetType, assetId, selectedVariantId, resolved);
+        java.util.Set<Long> relevantIds = page.data().stream().map(AssetVisualVariantService.VariantResponse::id)
+            .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        if (primary != null) relevantIds.add(primary.id());
+        if (selected != null) relevantIds.add(selected.id());
+        return new AssetVisualWorkspace(Math.toIntExact(page.total()), primary, selected, page.data(),
+            page.current(), page.pageSize(), page.total(), generationSummary,
+            assetVisualVariantService.relevantEpisodeBindings(tenantId, projectId, assetType, assetId, relevantIds),
+            resolved.imageUrl(), resolved.source(),
+            assetVisualVariantService.resolvedImageThumbnailUrl(tenantId, projectId, resolved.imageResultId()));
     }
 
 
@@ -1588,7 +1601,7 @@ public class ScriptWorkflowService {
                    image_prompt, video_prompt, first_frame_url, current_video_result_id, current_video_url
               from storyboard where tenant_id = ? and project_id = ? and episode_no = ? and deleted_at is null
              order by shot_no, id limit ? offset ?
-            """, (rs, rowNum) -> new StoryboardResponse(rs.getLong("id"), rs.getInt("shot_no"),
+            """, (rs, rowNum) -> new StoryboardResponse(rs.getLong("id"), projectId, rs.getInt("shot_no"),
                 rs.getInt("storyboard_no"), rs.getObject("episode_id", Long.class), rs.getInt("episode_no"),
                 rs.getString("shot_type"), rs.getString("visual_description"), rs.getString("characters"),
                 rs.getString("scene"), rs.getString("props"), rs.getString("dialogue"),

@@ -86,6 +86,50 @@ it('loads mine without fetching every row detail and hides team scope for member
   expect(mocks.detail).not.toHaveBeenCalled();
   expect(mocks.list.mock.calls[0][1].scope).toBe('mine');
 });
+it('keeps task result video resources absent until play and releases them on drawer close', async () => {
+  mocks.detail.mockResolvedValue({
+    taskKey: 'REVIEW:1',
+    title: '视频任务',
+    childCounts: { total: 0 },
+    allowedActions: [],
+    statusGroup: 'SUCCEEDED',
+  });
+  mocks.content.mockResolvedValue({
+    schemaVersion: 1,
+    taskKey: 'REVIEW:1',
+    contentRevision: '1',
+    sections: [
+      {
+        key: 'videos',
+        title: '视频结果',
+        kind: 'VIDEO',
+        availability: 'AVAILABLE',
+        fields: [],
+        items: [
+          {
+            id: 1,
+            url: '/api/video-results/1/file',
+            thumbnailUrl: '/cover.png',
+            downloadUrl: '/api/video-results/1/download-file',
+          },
+        ],
+        hasMore: false,
+      },
+    ],
+  });
+  const view = render(<Tasks />);
+  fireEvent.click(await screen.findByText('审核任务一'));
+  await screen.findByText('视频结果');
+  expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute(
+    'href', '/api/video-results/1/download-file',
+  );
+  expect(view.baseElement.querySelector('video,source')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '播放视频结果 1' }));
+  const video = view.baseElement.querySelector('video');
+  expect(video).toHaveAttribute('src', '/api/video-results/1/file');
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(video).not.toHaveAttribute('src');
+});
 it('loads just the selected detail and persists selection', async () => {
   mocks.detail.mockResolvedValue({
     taskKey: 'REVIEW:1',

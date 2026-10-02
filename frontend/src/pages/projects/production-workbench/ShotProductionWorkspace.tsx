@@ -16,6 +16,7 @@ import {
 } from '@ant-design/pro-components';
 import { App, Button, Empty, Popconfirm, Space, Tabs, Tag } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import ClickToPlayVideo, { stopActiveVideo } from '@/components/ClickToPlayVideo';
 import {
   cancelAiVoiceTask,
   cancelShotComposeTask,
@@ -35,6 +36,7 @@ import {
   queryStoryboardWorkspace,
   queryShotComposeTasks,
   queryStoryboardSubtitles,
+  queryStoryboardSubtitle,
   saveAiVoiceResultAsMaterial,
   saveShotComposeResultAsMaterial,
   selectStoryboardSubtitle,
@@ -94,7 +96,10 @@ const subtitleStatusColor: Record<string, string> = {
 const emptyCaptionSrc = 'data:text/vtt,WEBVTT';
 
 const buildTaskParams = (params: Record<string, unknown>) => {
-  const next: { status?: string; storyboardId?: number } = {};
+  const next: { status?: string; storyboardId?: number; current: number; pageSize: number } = {
+    current: Number(params.current) || 1,
+    pageSize: Number(params.pageSize) || 20,
+  };
   if (params.status) {
     next.status = String(params.status);
   }
@@ -138,22 +143,45 @@ const SubtitleEditor = ({
   onDone: () => Promise<void>;
 }) => {
   const { message } = App.useApp();
-  const segment = firstSegment(subtitle);
+  const [detail, setDetail] = useState<StoryboardSubtitle>();
+  const [loading, setLoading] = useState(false);
+  const requestRef = useRef<AbortController | undefined>(undefined);
+  const segment = detail ? firstSegment(detail) : undefined;
+  useEffect(() => {
+    setDetail(undefined);
+    setLoading(false);
+    return () => requestRef.current?.abort();
+  }, [projectId, subtitle.id]);
+
+  const openEditor = async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(true);
+    try {
+      const response = await queryStoryboardSubtitle(projectId, subtitle.id, controller.signal);
+      if (!controller.signal.aborted) setDetail(response.data);
+    } catch {
+      if (!controller.signal.aborted) message.error('字幕详情加载失败');
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  };
 
   return (
+    <>
+    <Button type="link" icon={<EditOutlined />} loading={loading} onClick={() => void openEditor()}>编辑</Button>
+    {detail &&
     <ModalForm<UpdateStoryboardSubtitleValues>
       title="编辑字幕"
-      trigger={
-        <Button type="link" icon={<EditOutlined />}>
-          编辑
-        </Button>
-      }
+      open
+      onOpenChange={(open) => { if (!open) { requestRef.current?.abort(); setDetail(undefined); } }}
       modalProps={{ destroyOnHidden: true }}
       initialValues={{
-        textContent: subtitle.textContent,
-        startTime: segment.startTime,
-        endTime: segment.endTime,
-        styleConfig: parseSubtitleStyle(subtitle.styleConfig),
+        textContent: detail.textContent,
+        startTime: segment?.startTime,
+        endTime: segment?.endTime,
+        styleConfig: parseSubtitleStyle(detail.styleConfig),
       }}
       onFinish={async (values) => {
         await updateStoryboardSubtitle(projectId, subtitle.id, values);
@@ -202,6 +230,8 @@ const SubtitleEditor = ({
         ]}
       />
     </ModalForm>
+    }
+    </>
   );
 };
 
@@ -237,7 +267,9 @@ const ShotProductionWorkspace = ({
   };
 
   useEffect(() => {
+    stopActiveVideo();
     loadStoryboards();
+    return stopActiveVideo;
   }, [projectId]);
 
   const reloadTasks = async () => {
@@ -437,14 +469,12 @@ const ShotProductionWorkspace = ({
             <Space vertical>
               {record.results.map((result) => (
                 <Space key={result.id}>
-                  <video
+                  <ClickToPlayVideo
                     src={result.videoUrl}
                     poster={result.coverUrl || undefined}
-                    controls
+                    alt={`单镜头 ${result.id}`}
                     style={{ width: 160, background: '#000' }}
-                  >
-                    <track kind="captions" label="字幕" src={emptyCaptionSrc} />
-                  </video>
+                  />
                   {result.selected && <Tag color="green">当前单镜头</Tag>}
                   {result.materialId && <Tag color="blue">已入素材库</Tag>}
                   <Button
@@ -805,6 +835,8 @@ const ShotProductionWorkspace = ({
     >
       {storyboards.length ? (
         <Tabs
+          onChange={() => stopActiveVideo()}
+          destroyOnHidden
           items={[
             {
               key: 'voice',
@@ -820,7 +852,7 @@ const ShotProductionWorkspace = ({
                       projectId,
                       buildTaskParams(params),
                     );
-                    return { data: response.data, success: response.success };
+                    return { data: response.data.data, total: response.data.total, success: response.success };
                   }}
                 />
               ),
@@ -839,7 +871,7 @@ const ShotProductionWorkspace = ({
                       projectId,
                       buildTaskParams(params),
                     );
-                    return { data: response.data, success: response.success };
+                    return { data: response.data.data, total: response.data.total, success: response.success };
                   }}
                 />
               ),
@@ -852,13 +884,14 @@ const ShotProductionWorkspace = ({
                   actionRef={composeActionRef}
                   rowKey="id"
                   columns={composeColumns}
+                  onChange={() => stopActiveVideo()}
                   scroll={{ x: 1400 }}
                   request={async (params) => {
                     const response = await queryShotComposeTasks(
                       projectId,
                       buildTaskParams(params),
                     );
-                    return { data: response.data, success: response.success };
+                    return { data: response.data.data, total: response.data.total, success: response.success };
                   }}
                 />
               ),

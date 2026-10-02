@@ -1,6 +1,7 @@
 package com.antshorttv.project;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.rbac.RequirePermission;
 import com.antshorttv.rbac.RequireProjectPermission;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -26,8 +28,11 @@ public class ProjectController {
     }
 
     @GetMapping
-    public ApiResponse<List<ProjectResponse>> list(HttpServletRequest request) {
-        return ApiResponse.success(projectService.list(tenantId(request)));
+    public ApiResponse<MediaPage<ProjectResponse>> list(HttpServletRequest request,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
+        @RequestParam(required = false) String keyword) {
+        return ApiResponse.success(projectService.list(tenantId(request), current, pageSize, keyword));
     }
 
     @PostMapping

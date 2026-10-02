@@ -8,7 +8,7 @@ export async function list(
   params: API.listParams,
   options?: { [key: string]: any }
 ) {
-  return request<API.ApiResponseListVideoDecompositionBatchResponse>(
+  return request<API.ApiResponseMediaPageVideoDecompositionBatchResponse>(
     "/api/video-script-decomposition/batches",
     {
       method: "GET",

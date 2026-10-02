@@ -2,6 +2,25 @@
 /* eslint-disable */
 import { request } from "@umijs/max";
 
+/** 此处后端没有提供注释 GET /api/projects/${param0}/ai-video-results */
+export async function candidateResults(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.candidateResultsParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseMediaPageAiVideoResultResponse>(
+    `/api/projects/${param0}/ai-video-results`,
+    {
+      method: "GET",
+      params: {
+        ...queryParams,
+      },
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 DELETE /api/projects/${param0}/ai-video-results/${param1} */
 export async function deleteResult(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -77,7 +96,7 @@ export async function list7(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseListAiVideoTaskResponse>(
+  return request<API.ApiResponseMediaPageAiVideoTaskResponse>(
     `/api/projects/${param0}/ai-video-tasks`,
     {
       method: "GET",
@@ -112,9 +131,9 @@ export async function create6(
 }
 
 /** 此处后端没有提供注释 GET /api/projects/${param0}/ai-video-tasks/${param1} */
-export async function detail6(
+export async function detail7(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail6Params,
+  params: API.detail7Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;
@@ -203,11 +222,13 @@ export async function results(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;
-  return request<API.ApiResponseListAiVideoResultResponse>(
+  return request<API.ApiResponseMediaPageAiVideoResultResponse>(
     `/api/projects/${param0}/ai-video-tasks/${param1}/results`,
     {
       method: "GET",
-      params: { ...queryParams },
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );

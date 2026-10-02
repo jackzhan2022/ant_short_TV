@@ -498,6 +498,7 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             """, tenantId, projectId, characterId);
         Long imageResultId = jdbcTemplate.queryForObject(
             "select id from ai_image_result where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
+        jdbcTemplate.update("update ai_image_result set display_path='materials/fixture/derived/display.png' where id=?", imageResultId);
         jdbcTemplate.update("update character_asset set main_image_result_id = ? where id = ?",
             imageResultId, characterId);
         jdbcTemplate.update("""
@@ -548,7 +549,8 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.variantCount", is(1)))
             .andExpect(jsonPath("$.data.variants[0].currentImageUrl", is("/images/original.png")))
-            .andExpect(jsonPath("$.data.variants[0].currentImageThumbnailUrl", is("/images/thumbnail.png")));
+            .andExpect(jsonPath("$.data.variants[0].currentImageThumbnailUrl",
+                is("/api/projects/" + projectId + "/ai-image-results/" + imageResultId + "/thumbnail")));
         mockMvc.perform(get("/api/projects/%d/storyboard-workspace?episodeNo=1&current=1&pageSize=2".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
@@ -606,6 +608,84 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", ownerTenantId))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void pagesVisualCandidatesAndKeepsCurrentAndPrimaryReferencesIndependent() throws Exception {
+        String token = registerUser("13800013037", "Visual Paging Owner");
+        Long tenantId = createTenant(token, "Visual Paging Team");
+        Long ownerId = userIdByMobile("13800013037");
+        Long projectId = createProject(token, tenantId, ownerId, "Visual Paging", "VISUAL_PAGING");
+        jdbcTemplate.update("""
+            insert into character_asset (tenant_id,project_id,name,role_type,prompt,status,created_by,created_at,updated_at)
+            values (?,?,'Paged Character','LEAD','canonical input','CONFIRMED',?,now(),now())
+            """, tenantId, projectId, ownerId);
+        Long assetId = jdbcTemplate.queryForObject("select id from character_asset where project_id=?", Long.class, projectId);
+        List<Long> variantIds = new java.util.ArrayList<>();
+        List<Long> resultIds = new java.util.ArrayList<>();
+        for (int index = 0; index < 27; index++) {
+            jdbcTemplate.update("""
+                insert into ai_image_result (tenant_id,project_id,task_id,target_type,target_id,image_url,
+                    display_path,is_selected,status,created_at,updated_at)
+                values (?,?,1,'VISUAL_VARIANT',?,'/original.png',?,false,'ACTIVE',now(),now())
+                """, tenantId, projectId, assetId, "materials/" + tenantId + "/" + projectId + "/fixture/derived/image-" + index + ".png");
+            Long resultId = jdbcTemplate.queryForObject("select max(id) from ai_image_result where project_id=?", Long.class, projectId);
+            resultIds.add(resultId);
+            String imageUrl = index == 24 ? "data:image/png;base64,private_fixture_bytes"
+                : "/api/projects/" + projectId + "/ai-image-results/" + resultId + "/download";
+            jdbcTemplate.update("""
+                insert into asset_visual_variant (tenant_id,project_id,asset_type,asset_id,name,prompt,source_type,
+                    generation_status,current_image_result_id,current_image_url,is_primary,created_by,created_at,updated_at,content_json)
+                values (?,?,'CHARACTER',?,?,'delta input','MANUAL',?,?,?,?,?,now(),now(),?)
+                """, tenantId, projectId, assetId, "Variant " + index,
+                index == 0 ? "GENERATING" : "COMPLETED", resultId, imageUrl, index == 0, ownerId,
+                "{\"private_snapshot\":\"" + "history".repeat(1000) + "\"}");
+            variantIds.add(jdbcTemplate.queryForObject("select max(id) from asset_visual_variant where project_id=?", Long.class, projectId));
+        }
+        String currentUrl = "/api/projects/" + projectId + "/ai-image-results/" + resultIds.get(26) + "/download";
+        jdbcTemplate.update("update character_asset set main_image_result_id=?,main_image_url=? where id=?",
+            resultIds.get(26), currentUrl, assetId);
+        String base = "/api/projects/" + projectId + "/script-elements/CHARACTER/" + assetId;
+        mockMvc.perform(get(base + "/visual-variants?current=2&pageSize=20")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.data", hasSize(7)))
+            .andExpect(jsonPath("$.data.current", is(2))).andExpect(jsonPath("$.data.pageSize", is(20)))
+            .andExpect(jsonPath("$.data.total", is(27)));
+        MvcResult first = mockMvc.perform(get(base + "/visual-workspace")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.variants", hasSize(20)))
+            .andExpect(jsonPath("$.data.variantCount", is(27))).andExpect(jsonPath("$.data.total", is(27)))
+            .andExpect(jsonPath("$.data.primaryVariant.id", is(variantIds.get(0).intValue())))
+            .andExpect(jsonPath("$.data.selectedVariant.id", is(variantIds.get(26).intValue())))
+            .andExpect(jsonPath("$.data.generationSummary.COMPLETED", is(26)))
+            .andExpect(jsonPath("$.data.generationSummary.GENERATING", is(1)))
+            .andExpect(jsonPath("$.data.resolvedImageUrl", is(currentUrl)))
+            .andExpect(jsonPath("$.data.resolvedImageThumbnailUrl",
+                is("/api/projects/" + projectId + "/ai-image-results/" + resultIds.get(26) + "/thumbnail")))
+            .andReturn();
+        List<Integer> firstIds = JsonPath.read(first.getResponse().getContentAsString(), "$.data.variants[*].id");
+        assertThat(firstIds).doesNotContain(variantIds.get(26).intValue());
+        MvcResult second = mockMvc.perform(get(base + "/visual-workspace?current=2&pageSize=20&selectedVariantId=" + variantIds.get(1))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.variants", hasSize(7)))
+            .andExpect(jsonPath("$.data.primaryVariant.id", is(variantIds.get(0).intValue())))
+            .andExpect(jsonPath("$.data.selectedVariant.id", is(variantIds.get(1).intValue())))
+            .andReturn();
+        assertThat(second.getResponse().getContentAsString()).doesNotContain("data:image", "private_snapshot");
+        assertThat(jdbcTemplate.queryForObject("select current_image_url from asset_visual_variant where id=?", String.class,
+            variantIds.get(24))).isEqualTo("data:image/png;base64,private_fixture_bytes");
+        mockMvc.perform(get(base + "/visual-variants?pageSize=999")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.pageSize", is(100)))
+            .andExpect(jsonPath("$.data.total", is(27)));
+        mockMvc.perform(get(base + "/visual-workspace?selectedVariantId=999999999")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isNotFound());
+        String other = registerUser("13800013038", "Other Visual Owner");
+        Long otherTenant = createTenant(other, "Other Visual Team");
+        mockMvc.perform(get(base + "/visual-variants")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(other)).header("X-Tenant-Id", otherTenant))
+            .andExpect(status().isForbidden());
     }
 
     @Test

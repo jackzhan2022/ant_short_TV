@@ -7,6 +7,10 @@ import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import java.util.Set;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import com.antshorttv.common.MediaPage;
+import com.antshorttv.common.PageBounds;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -86,6 +90,44 @@ public class ProjectAccessResolver {
             ? projectMapper.selectByTenantId(tenantId)
             : projectMapper.selectAccessibleByMember(tenantId, tenant.userId());
         return projects.stream().map(project -> requireView(tenant, project, permissions)).toList();
+    }
+
+    public MediaPage<ProjectAccessContext> accessibleProjectPage(Long tenantId, Integer current,
+        Integer pageSize, String keyword) {
+        TenantContext tenant = tenantContextResolver.requireActiveMember(tenantId);
+        Set<String> permissions = permissionService.permissionCodes(tenant);
+        boolean wide = permissions.contains("PROJECT:VIEW_ALL");
+        PageBounds bounds = PageBounds.of(current, pageSize);
+        String search = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        long total = projectMapper.countVisible(tenantId, tenant.userId(), wide, search);
+        List<ProjectEntity> projects = projectMapper.selectVisiblePage(tenantId, tenant.userId(), wide, search, bounds);
+        if (projects.isEmpty()) return new MediaPage<>(List.of(), bounds.current(), bounds.pageSize(), total);
+        Map<Long, List<ProjectBrowsePermission>> rows = wide ? Map.of() : projectMapper.selectBrowsePermissions(
+            tenantId, tenant.userId(), projects.stream().map(project -> project.id).toList())
+            .stream().collect(Collectors.groupingBy(row -> row.projectId));
+        List<ProjectAccessContext> contexts = projects.stream().map(project -> {
+            if (wide) return context(tenant, project, ProjectAccessSource.TENANT_WIDE, null, null, permissions);
+            List<ProjectBrowsePermission> entries = rows.getOrDefault(project.id, List.of());
+            Set<String> codes = entries.stream().map(row -> row.permissionCode).collect(Collectors.toSet());
+            if (!codes.contains("PROJECT:VIEW")) return null;
+            ProjectBrowsePermission row = entries.get(0);
+            ProjectMemberEntity member = new ProjectMemberEntity();
+            member.id = row.memberId;
+            member.roleId = row.roleId;
+            member.projectId = project.id;
+            member.tenantId = tenantId;
+            member.userId = tenant.userId();
+            member.status = "ACTIVE";
+            ProjectRoleEntity role = new ProjectRoleEntity();
+            role.id = row.roleId;
+            role.code = row.roleCode;
+            role.name = row.roleName;
+            role.projectId = project.id;
+            role.tenantId = tenantId;
+            role.status = "ACTIVE";
+            return context(tenant, project, ProjectAccessSource.PROJECT_MEMBER, member, role, codes);
+        }).filter(java.util.Objects::nonNull).toList();
+        return new MediaPage<>(contexts, bounds.current(), bounds.pageSize(), total);
     }
 
     private ProjectAccessContext context(

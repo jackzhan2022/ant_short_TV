@@ -6,6 +6,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { useParams } from '@umijs/max';
+import ProjectCoverImage, { type ProjectCoverStatus } from '@/components/ProjectCoverImage';
 import {
   Alert,
   App,
@@ -48,6 +49,7 @@ type EpisodeBlock = {
 type ProjectLite = {
   tenantId?: number;
   coverUrl?: string | null;
+  coverStatus?: ProjectCoverStatus;
   aspectRatio?: string | null;
   fileFormat?: string | null;
   scriptType?: string | null;
@@ -886,7 +888,9 @@ const ProductionWorkbenchScript = () => {
                 }}
               >
                 {project?.coverUrl ? (
-                  <img
+                  <ProjectCoverImage
+                    native
+                    status={project.coverStatus}
                     src={project.coverUrl}
                     alt="项目封面"
                     style={{

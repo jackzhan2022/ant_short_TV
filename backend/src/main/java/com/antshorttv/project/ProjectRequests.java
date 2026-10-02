@@ -43,7 +43,8 @@ record UpdateProjectRequest(
     String scriptType,
     String breakdownStrength,
     String visualStyle,
-    String initialScriptContent
+    String initialScriptContent,
+    Boolean clearCover
 ) {
 }
 

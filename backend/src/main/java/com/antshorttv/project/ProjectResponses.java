@@ -13,6 +13,7 @@ record ProjectResponse(
     String description,
     String coverUrl,
     String coverSource,
+    String coverStatus,
     Long ownerId,
     String ownerName,
     String status,

@@ -77,7 +77,7 @@ export async function voiceTasks(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseListAiVoiceTaskResponse>(
+  return request<API.ApiResponseMediaPageAiVoiceTaskResponse>(
     `/api/projects/${param0}/ai-voice-tasks`,
     {
       method: "GET",
@@ -186,11 +186,13 @@ export async function voiceTaskResults(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;
-  return request<API.ApiResponseListAiVoiceResultResponse>(
+  return request<API.ApiResponseMediaPageAiVoiceResultResponse>(
     `/api/projects/${param0}/ai-voice-tasks/${param1}/results`,
     {
       method: "GET",
-      params: { ...queryParams },
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );
@@ -203,7 +205,7 @@ export async function episodeComposeTasks(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseListEpisodeComposeTaskResponse>(
+  return request<API.ApiResponseMediaPageEpisodeComposeTaskResponse>(
     `/api/projects/${param0}/episode-compose-tasks`,
     {
       method: "GET",
@@ -288,6 +290,25 @@ export async function cancelEpisodeComposeTask(
   );
 }
 
+/** 此处后端没有提供注释 GET /api/projects/${param0}/episode-compose-tasks/${param1}/items */
+export async function episodeComposeItems(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.episodeComposeItemsParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, taskId: param1, ...queryParams } = params;
+  return request<API.ApiResponseMediaPageEpisodeComposeItemResponse>(
+    `/api/projects/${param0}/episode-compose-tasks/${param1}/items`,
+    {
+      method: "GET",
+      params: {
+        ...queryParams,
+      },
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 POST /api/projects/${param0}/episode-compose-tasks/${param1}/regenerate */
 export async function regenerateEpisodeComposeTask(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -305,6 +326,25 @@ export async function regenerateEpisodeComposeTask(
   );
 }
 
+/** 此处后端没有提供注释 GET /api/projects/${param0}/episode-compose-tasks/${param1}/results */
+export async function episodeComposeResults(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.episodeComposeResultsParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, taskId: param1, ...queryParams } = params;
+  return request<API.ApiResponseMediaPageEpisodeVideoVersionResponse>(
+    `/api/projects/${param0}/episode-compose-tasks/${param1}/results`,
+    {
+      method: "GET",
+      params: {
+        ...queryParams,
+      },
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 GET /api/projects/${param0}/episode-export-records */
 export async function episodeExportRecords(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -312,7 +352,7 @@ export async function episodeExportRecords(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseListEpisodeExportRecordResponse>(
+  return request<API.ApiResponseMediaPageEpisodeExportRecordResponse>(
     `/api/projects/${param0}/episode-export-records`,
     {
       method: "GET",
@@ -331,7 +371,7 @@ export async function episodeVideoVersions(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseListEpisodeVideoVersionResponse>(
+  return request<API.ApiResponseMediaPageEpisodeVideoVersionResponse>(
     `/api/projects/${param0}/episode-video-versions`,
     {
       method: "GET",
@@ -399,23 +439,6 @@ export async function deleteEpisodeVideoVersion(
   );
 }
 
-/** 此处后端没有提供注释 GET /api/projects/${param0}/episode-video-versions/${param1}/cover */
-export async function episodeVideoCover(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.episodeVideoCoverParams,
-  options?: { [key: string]: any }
-) {
-  const { projectId: param0, versionId: param1, ...queryParams } = params;
-  return request<string>(
-    `/api/projects/${param0}/episode-video-versions/${param1}/cover`,
-    {
-      method: "GET",
-      params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
-}
-
 /** 此处后端没有提供注释 POST /api/projects/${param0}/episode-video-versions/${param1}/current */
 export async function setCurrentEpisodeVideoVersion(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -462,6 +485,25 @@ export async function saveEpisodeVideoMaterial(
     {
       method: "POST",
       params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/episode-video-versions/current */
+export async function currentEpisodeVideoVersion(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.currentEpisodeVideoVersionParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseEpisodeVideoVersionResponse>(
+    `/api/projects/${param0}/episode-video-versions/current`,
+    {
+      method: "GET",
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );
@@ -542,7 +584,7 @@ export async function composeTasks(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseListShotComposeTaskResponse>(
+  return request<API.ApiResponseMediaPageShotComposeTaskResponse>(
     `/api/projects/${param0}/shot-compose-tasks`,
     {
       method: "GET",
@@ -651,11 +693,13 @@ export async function composeTaskResults(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;
-  return request<API.ApiResponseListShotComposeResultResponse>(
+  return request<API.ApiResponseMediaPageShotComposeResultResponse>(
     `/api/projects/${param0}/shot-compose-tasks/${param1}/results`,
     {
       method: "GET",
-      params: { ...queryParams },
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );
@@ -668,7 +712,7 @@ export async function subtitles(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseListStoryboardSubtitleResponse>(
+  return request<API.ApiResponseMediaPageStoryboardSubtitleResponse>(
     `/api/projects/${param0}/storyboard-subtitles`,
     {
       method: "GET",

@@ -1,6 +1,8 @@
 package com.antshorttv.project;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDate;
@@ -14,8 +16,17 @@ public class ProjectEntity {
     public String name;
     public String code;
     public String description;
+    // Cover writes use dedicated SQL so ordinary edits cannot overwrite a newer source/version.
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     public String coverUrl;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     public String coverSource;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    public String coverVersion;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    public String coverStatus;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    public String coverError;
     public Long ownerId;
     public String status;
     public LocalDate startDate;

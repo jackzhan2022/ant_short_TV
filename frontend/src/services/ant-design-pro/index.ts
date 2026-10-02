@@ -25,6 +25,7 @@ import * as aiExecutionController from "./aiExecutionController";
 import * as scriptContentController from "./scriptContentController";
 import * as assetImageBatchController from "./assetImageBatchController";
 import * as aiVideoTaskController from "./aiVideoTaskController";
+import * as projectCoverController from "./projectCoverController";
 import * as storyboardAssetReferenceBackfillController from "./storyboardAssetReferenceBackfillController";
 import * as platformCommercialPackageController from "./platformCommercialPackageController";
 import * as platformCommercialOrderController from "./platformCommercialOrderController";
@@ -40,6 +41,9 @@ import * as teamSubscriptionController from "./teamSubscriptionController";
 import * as teamCommercialCatalogController from "./teamCommercialCatalogController";
 import * as aiCallLogController from "./aiCallLogController";
 import * as styleLibraryController from "./styleLibraryController";
+import * as mediaCoverDeliveryController from "./mediaCoverDeliveryController";
+import * as storyboardMediaController from "./storyboardMediaController";
+import * as mediaPlaybackController from "./mediaPlaybackController";
 import * as platformAiOperationsController from "./platformAiOperationsController";
 import * as workflowToolCatalogController from "./workflowToolCatalogController";
 import * as inspirationCreationController from "./inspirationCreationController";
@@ -68,6 +72,7 @@ export default {
   scriptContentController,
   assetImageBatchController,
   aiVideoTaskController,
+  projectCoverController,
   storyboardAssetReferenceBackfillController,
   platformCommercialPackageController,
   platformCommercialOrderController,
@@ -83,6 +88,9 @@ export default {
   teamCommercialCatalogController,
   aiCallLogController,
   styleLibraryController,
+  mediaCoverDeliveryController,
+  storyboardMediaController,
+  mediaPlaybackController,
   platformAiOperationsController,
   workflowToolCatalogController,
   inspirationCreationController,

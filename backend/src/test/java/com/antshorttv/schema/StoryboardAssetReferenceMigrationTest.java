@@ -23,7 +23,7 @@ class StoryboardAssetReferenceMigrationTest {
         assertThat(jdbc.queryForObject("""
             select version from flyway_schema_history
              where version is not null order by installed_rank desc limit 1
-            """, String.class)).isEqualTo("128");
+            """, String.class)).isEqualTo("129");
         assertThat(jdbc.queryForObject("""
             select count(*) from information_schema.tables
              where lower(table_name) = 'storyboard_asset_reference'

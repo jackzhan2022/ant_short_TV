@@ -2,9 +2,17 @@ package com.antshorttv.script;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.common.MediaPage;
+import com.antshorttv.common.PageBounds;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +36,135 @@ public class AssetVisualVariantService {
                 .eq("asset_type", type.name()).eq("asset_id", assetId)
                 .isNull("deleted_at").orderByDesc("is_primary").orderByAsc("id"))
             .stream().map(this::response).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public MediaPage<VariantResponse> page(Long tenantId, Long projectId, String assetType, Long assetId,
+        Integer current, Integer pageSize) {
+        AssetType type = AssetType.fromStorageValue(assetType);
+        requireAsset(tenantId, projectId, type, assetId);
+        PageBounds bounds = PageBounds.of(current, pageSize);
+        Long total = jdbc.queryForObject("""
+            select count(*) from asset_visual_variant
+             where tenant_id = ? and project_id = ? and asset_type = ? and asset_id = ? and deleted_at is null
+            """, Long.class, tenantId, projectId, type.name(), assetId);
+        List<VariantResponse> data = jdbc.query(browserQuery(type)
+            + " order by v.is_primary desc, v.id asc limit ? offset ?", this::browserResponse,
+            tenantId, projectId, type.name(), assetId, bounds.pageSize(), bounds.offset());
+        return new MediaPage<>(data, bounds.current(), bounds.pageSize(), total == null ? 0 : total);
+    }
+
+    public VariantResponse primaryVariant(Long tenantId, Long projectId, String assetType, Long assetId) {
+        AssetType type = AssetType.fromStorageValue(assetType);
+        List<VariantResponse> values = jdbc.query(browserQuery(type)
+            + " and v.is_primary = true order by v.id asc limit 1", this::browserResponse,
+            tenantId, projectId, type.name(), assetId);
+        return values.isEmpty() ? null : values.get(0);
+    }
+
+    public VariantResponse selectedVariant(Long tenantId, Long projectId, String assetType, Long assetId,
+        Long selectedVariantId, EpisodeAwareVisualResolver.ResolvedVisual resolved) {
+        AssetType type = AssetType.fromStorageValue(assetType);
+        Long variantId = selectedVariantId == null ? resolved.variantId() : selectedVariantId;
+        String condition;
+        Object reference;
+        if (variantId != null) {
+            condition = " and v.id = ?";
+            reference = variantId;
+        } else if (resolved.imageResultId() != null) {
+            condition = " and v.current_image_result_id = ?";
+            reference = resolved.imageResultId();
+        } else if (resolved.imageUrl() != null && !resolved.imageUrl().isBlank()) {
+            condition = " and v.current_image_url = ?";
+            reference = resolved.imageUrl();
+        } else return null;
+        List<VariantResponse> values = jdbc.query(browserQuery(type)
+            + condition + " order by v.is_primary desc, v.id asc limit 1", this::browserResponse,
+            tenantId, projectId, type.name(), assetId, reference);
+        if (values.isEmpty() && selectedVariantId != null)
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Selected visual variant is unavailable for this asset.");
+        return values.isEmpty() ? null : values.get(0);
+    }
+
+    public Map<String, Long> generationSummary(Long tenantId, Long projectId, String assetType, Long assetId) {
+        Map<String, Long> summary = new LinkedHashMap<>();
+        jdbc.query("""
+            select generation_status, count(*) as variant_count from asset_visual_variant
+             where tenant_id = ? and project_id = ? and asset_type = ? and asset_id = ? and deleted_at is null
+             group by generation_status order by generation_status
+            """, (rs, row) -> Map.entry(rs.getString("generation_status"), rs.getLong("variant_count")),
+            tenantId, projectId, AssetType.fromStorageValue(assetType).name(), assetId)
+            .forEach(entry -> summary.put(entry.getKey(), entry.getValue()));
+        return summary;
+    }
+
+    public List<AssetVisualBindingService.BindingResponse> relevantEpisodeBindings(Long tenantId, Long projectId,
+        String assetType, Long assetId, Collection<Long> variantIds) {
+        if (variantIds.isEmpty()) return List.of();
+        List<Object> args = new ArrayList<>(List.of(tenantId, projectId,
+            AssetType.fromStorageValue(assetType).name(), assetId));
+        args.addAll(variantIds);
+        return jdbc.query("""
+            select b.id, b.variant_id, b.episode_id, e.episode_no, e.title, b.is_preferred, b.binding_status
+              from asset_visual_variant_episode b
+              join script_episode e on e.id = b.episode_id and e.tenant_id = b.tenant_id and e.project_id = b.project_id
+             where b.tenant_id = ? and b.project_id = ? and b.asset_type = ? and b.asset_id = ?
+               and b.binding_status = 'ACTIVE' and b.retired_at is null
+               and e.status = 'ACTIVE' and e.retired_at is null and b.variant_id in (
+            """ + String.join(",", java.util.Collections.nCopies(variantIds.size(), "?"))
+            + ") order by e.episode_no, b.is_preferred desc, b.id", (rs, row) ->
+                new AssetVisualBindingService.BindingResponse(rs.getLong("id"), rs.getLong("variant_id"),
+                    rs.getLong("episode_id"), rs.getInt("episode_no"), rs.getString("title"),
+                    rs.getBoolean("is_preferred"), rs.getString("binding_status")), args.toArray());
+    }
+
+    public String resolvedImageThumbnailUrl(Long tenantId, Long projectId, Long imageResultId) {
+        if (imageResultId == null) return null;
+        List<Long> values = jdbc.query("""
+            select id from ai_image_result where id = ? and tenant_id = ? and project_id = ? and status = 'ACTIVE'
+              and display_path is not null and display_path <> ''
+            """, (rs, row) -> rs.getLong("id"), imageResultId, tenantId, projectId);
+        return values.isEmpty() ? null : thumbnailUrl(projectId, imageResultId);
+    }
+
+    private String browserQuery(AssetType type) {
+        String table = switch (type) {
+            case CHARACTER -> "character_asset";
+            case SCENE -> "scene_asset";
+            case PROP -> "prop_asset";
+        };
+        return """
+            select v.id, v.asset_type, v.asset_id, v.name, v.appearance,
+                   case when v.is_primary = true then a.prompt else v.prompt end as effective_prompt,
+                   v.source_type, v.generation_status, v.generation_task_id, v.current_image_result_id,
+                   case when v.current_image_url like 'data:%%' then null else v.current_image_url end as current_image_url,
+                   v.generation_error_code, v.generation_error_message, v.is_primary, v.project_id,
+                   image.display_path
+              from asset_visual_variant v
+              join %s a on a.id = v.asset_id and a.tenant_id = v.tenant_id and a.project_id = v.project_id
+                  and a.deleted_at is null
+              left join ai_image_result image on image.id = v.current_image_result_id
+                  and image.tenant_id = v.tenant_id and image.project_id = v.project_id and image.status = 'ACTIVE'
+             where v.tenant_id = ? and v.project_id = ? and v.asset_type = ? and v.asset_id = ? and v.deleted_at is null
+            """.formatted(table);
+    }
+
+    private VariantResponse browserResponse(ResultSet row, int index) throws SQLException {
+        Long resultId = row.getObject("current_image_result_id", Long.class);
+        String displayPath = row.getString("display_path");
+        String thumbnail = resultId == null || displayPath == null || displayPath.isBlank()
+            ? null : thumbnailUrl(row.getLong("project_id"), resultId);
+        String status = row.getString("generation_status"), imageUrl = row.getString("current_image_url");
+        return new VariantResponse(row.getLong("id"), row.getString("asset_type"), row.getLong("asset_id"),
+            row.getString("name"), row.getString("appearance"), row.getString("effective_prompt"),
+            row.getString("source_type"), status, row.getObject("generation_task_id", Long.class), resultId,
+            imageUrl, thumbnail, row.getString("generation_error_code"), row.getString("generation_error_message"),
+            row.getBoolean("is_primary"), "COMPLETED".equals(status)
+                && (resultId != null || imageUrl != null && !imageUrl.isBlank()));
+    }
+
+    private String thumbnailUrl(Long projectId, Long resultId) {
+        return "/api/projects/" + projectId + "/ai-image-results/" + resultId + "/thumbnail";
     }
 
     @Transactional

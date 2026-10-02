@@ -1,8 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AssetVariantGenerationModal from './AssetVariantGenerationModal';
 
 describe('AssetVariantGenerationModal', () => {
+  beforeEach(() => vi.stubGlobal('IntersectionObserver', undefined));
+  afterEach(() => vi.unstubAllGlobals());
   it('shows the complete asset generator and submits edited values', () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();

@@ -2,7 +2,11 @@ package com.antshorttv.style;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.common.MediaPage;
+import com.antshorttv.common.MediaPageQueries;
+import com.antshorttv.common.PageBounds;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -48,6 +52,33 @@ public class StyleLibraryService {
                 entity.getImageHeight()
             ))
             .toList();
+    }
+
+    public MediaPage<StyleLibraryResponse> list(String category, String keyword, Integer current, Integer pageSize) {
+        var query = new QueryWrapper<StyleLibraryEntity>().eq("is_public", true);
+        if (category != null && !category.isBlank()) query.eq("category", category.trim());
+        if (keyword != null && !keyword.isBlank()) {
+            query.and(q -> q.like("name", keyword.trim()).or().like("description", keyword.trim()));
+        }
+        return MediaPageQueries.select(styleLibraryMapper, query, PageBounds.of(current, pageSize),
+            q -> q.orderByAsc("sort_order", "id")).map(this::response);
+    }
+
+    public List<String> categories() {
+        return styleLibraryMapper.selectPublicCategories();
+    }
+
+    public StyleLibraryResponse detail(Long id) {
+        var style = styleLibraryMapper.selectOne(new QueryWrapper<StyleLibraryEntity>()
+            .eq("id", id).eq("is_public", true));
+        if (style == null) throw new BusinessException(ErrorCode.NOT_FOUND, "风格不存在。");
+        return response(style);
+    }
+
+    private StyleLibraryResponse response(StyleLibraryEntity entity) {
+        return new StyleLibraryResponse(entity.getId(), entity.getExternalId(), entity.getName(), entity.getCategory(),
+            entity.getDescription(), "/api/style-library/images/" + entity.getExternalId(), entity.getStoragePath(),
+            entity.getImageWidth(), entity.getImageHeight());
     }
 
     public String image(String externalId) {

@@ -23,9 +23,14 @@ record AiVoiceTaskResponse(
     LocalDateTime startedAt,
     LocalDateTime completedAt,
     LocalDateTime createdAt,
-    List<AiVoiceResultResponse> results
+    List<AiVoiceResultResponse> results,
+    long resultCount
 ) {
     static AiVoiceTaskResponse from(AiVoiceTaskEntity entity, List<AiVoiceResultEntity> results) {
+        return from(entity, results, results.size());
+    }
+
+    static AiVoiceTaskResponse from(AiVoiceTaskEntity entity, List<AiVoiceResultEntity> results, long resultCount) {
         return new AiVoiceTaskResponse(
             entity.id,
             entity.projectId,
@@ -44,7 +49,7 @@ record AiVoiceTaskResponse(
             entity.startedAt,
             entity.completedAt,
             entity.createdAt,
-            results.stream().map(AiVoiceResultResponse::from).toList()
+            results.stream().map(AiVoiceResultResponse::from).toList(), resultCount
         );
     }
 }
@@ -111,9 +116,18 @@ record ShotComposeTaskResponse(
     LocalDateTime startedAt,
     LocalDateTime completedAt,
     LocalDateTime createdAt,
-    List<ShotComposeResultResponse> results
+    List<ShotComposeResultResponse> results,
+    long resultCount
 ) {
     static ShotComposeTaskResponse from(ShotComposeTaskEntity entity, List<ShotComposeResultEntity> results) {
+        return from(entity, results, results.size(), false);
+    }
+
+    static ShotComposeTaskResponse from(ShotComposeTaskEntity entity, List<ShotComposeResultEntity> results, long resultCount) {
+        return from(entity, results, resultCount, true);
+    }
+
+    private static ShotComposeTaskResponse from(ShotComposeTaskEntity entity, List<ShotComposeResultEntity> results, long resultCount, boolean browser) {
         return new ShotComposeTaskResponse(
             entity.id,
             entity.projectId,
@@ -126,7 +140,7 @@ record ShotComposeTaskResponse(
             entity.startedAt,
             entity.completedAt,
             entity.createdAt,
-            results.stream().map(ShotComposeResultResponse::from).toList()
+            results.stream().map(r -> browser ? ShotComposeResultResponse.fromBrowser(r) : ShotComposeResultResponse.from(r)).toList(), resultCount
         );
     }
 }
@@ -149,13 +163,22 @@ record ShotComposeResultResponse(
     LocalDateTime createdAt
 ) {
     static ShotComposeResultResponse from(ShotComposeResultEntity entity) {
+        return from(entity, false);
+    }
+
+    static ShotComposeResultResponse fromBrowser(ShotComposeResultEntity entity) {
+        return from(entity, true);
+    }
+
+    private static ShotComposeResultResponse from(ShotComposeResultEntity entity, boolean browser) {
         return new ShotComposeResultResponse(
             entity.id,
             entity.taskId,
             entity.storyboardId,
-            entity.videoUrl,
+            browser ? "/api/projects/" + entity.projectId + "/shot-compose-results/" + entity.id + "/playback" : entity.videoUrl,
             entity.storagePath,
-            entity.coverUrl,
+            browser ? com.antshorttv.material.MediaCoverDeliveryService.coverUrl(entity.projectId, entity.id,
+                com.antshorttv.material.MediaPlaybackService.ResourceKind.SHOT_COMPOSE_RESULT, entity.coverUrl) : entity.coverUrl,
             entity.durationSeconds,
             entity.width,
             entity.height,
@@ -185,6 +208,14 @@ record EpisodeComposeItemResponse(
     LocalDateTime createdAt
 ) {
     static EpisodeComposeItemResponse from(EpisodeComposeItemEntity entity) {
+        return from(entity, false);
+    }
+
+    static EpisodeComposeItemResponse fromBrowser(EpisodeComposeItemEntity entity) {
+        return from(entity, true);
+    }
+
+    private static EpisodeComposeItemResponse from(EpisodeComposeItemEntity entity, boolean browser) {
         return new EpisodeComposeItemResponse(
             entity.id,
             entity.taskId,
@@ -192,7 +223,8 @@ record EpisodeComposeItemResponse(
             entity.storyboardId,
             entity.storyboardOrder,
             entity.shotResultId,
-            entity.videoUrl,
+            browser ? (entity.shotResultId == null ? null : "/api/projects/" + entity.projectId
+                + "/shot-compose-results/" + entity.shotResultId + "/playback") : entity.videoUrl,
             entity.durationSeconds,
             entity.width,
             entity.height,
@@ -223,15 +255,24 @@ record EpisodeVideoVersionResponse(
     LocalDateTime createdAt
 ) {
     static EpisodeVideoVersionResponse from(EpisodeVideoVersionEntity entity) {
+        return from(entity, false);
+    }
+
+    static EpisodeVideoVersionResponse fromBrowser(EpisodeVideoVersionEntity entity) {
+        return from(entity, true);
+    }
+
+    private static EpisodeVideoVersionResponse from(EpisodeVideoVersionEntity entity, boolean browser) {
         return new EpisodeVideoVersionResponse(
             entity.id,
             entity.episodeNo,
             entity.composeTaskId,
             entity.versionNo,
             entity.versionName,
-            entity.videoUrl,
+            browser ? "/api/projects/" + entity.projectId + "/episode-video-versions/" + entity.id + "/playback" : entity.videoUrl,
             entity.storagePath,
-            entity.coverUrl,
+            browser ? com.antshorttv.material.MediaCoverDeliveryService.coverUrl(entity.projectId, entity.id,
+                com.antshorttv.material.MediaPlaybackService.ResourceKind.EPISODE_VIDEO_VERSION, entity.coverUrl) : entity.coverUrl,
             entity.durationSeconds,
             entity.width,
             entity.height,
@@ -259,7 +300,9 @@ record EpisodeComposeTaskResponse(
     LocalDateTime completedAt,
     LocalDateTime createdAt,
     List<EpisodeComposeItemResponse> items,
-    EpisodeVideoVersionResponse videoVersion
+    EpisodeVideoVersionResponse videoVersion,
+    long resultCount,
+    long itemCount
 ) {
     static EpisodeComposeTaskResponse from(
         EpisodeComposeTaskEntity entity,
@@ -280,8 +323,16 @@ record EpisodeComposeTaskResponse(
             entity.completedAt,
             entity.createdAt,
             items.stream().map(EpisodeComposeItemResponse::from).toList(),
-            version == null ? null : EpisodeVideoVersionResponse.from(version)
+            version == null ? null : EpisodeVideoVersionResponse.from(version),
+            version == null ? 0 : 1, items.size()
         );
+    }
+
+    static EpisodeComposeTaskResponse summary(EpisodeComposeTaskEntity entity, EpisodeVideoVersionEntity version, long resultCount, long itemCount) {
+        return new EpisodeComposeTaskResponse(entity.id, entity.projectId, entity.episodeNo, entity.taskName,
+            null, entity.storyboardCount, entity.totalDurationSeconds, entity.status, entity.errorMessage,
+            entity.startedAt, entity.completedAt, entity.createdAt, List.of(),
+            version == null ? null : EpisodeVideoVersionResponse.fromBrowser(version), resultCount, itemCount);
     }
 }
 

@@ -36,9 +36,18 @@ record AiVideoTaskResponse(
     LocalDateTime completedAt,
     LocalDateTime createdAt,
     JsonNode referenceDiagnostics,
-    List<AiVideoResultResponse> results
+    List<AiVideoResultResponse> results,
+    long resultCount
 ) {
     static AiVideoTaskResponse from(AiVideoTaskEntity entity, List<AiVideoResultEntity> results) {
+        return from(entity, results, results.size(), false);
+    }
+
+    static AiVideoTaskResponse from(AiVideoTaskEntity entity, List<AiVideoResultEntity> results, long resultCount) {
+        return from(entity, results, resultCount, true);
+    }
+
+    private static AiVideoTaskResponse from(AiVideoTaskEntity entity, List<AiVideoResultEntity> results, long resultCount, boolean browser) {
         return new AiVideoTaskResponse(
             entity.id,
             entity.executionId,
@@ -69,7 +78,7 @@ record AiVideoTaskResponse(
             entity.completedAt,
             entity.createdAt,
             referenceDiagnostics(entity.requestSnapshotJson),
-            results.stream().map(AiVideoResultResponse::from).toList()
+            results.stream().map(r -> browser ? AiVideoResultResponse.fromBrowser(r) : AiVideoResultResponse.from(r)).toList(), resultCount
         );
     }
 
@@ -95,6 +104,7 @@ record AiVideoResultResponse(
     Long storyboardId,
     String videoUrl,
     String storagePath,
+    String referenceUrl,
     String coverUrl,
     BigDecimal durationSeconds,
     Integer width,
@@ -107,13 +117,23 @@ record AiVideoResultResponse(
     LocalDateTime createdAt
 ) {
     static AiVideoResultResponse from(AiVideoResultEntity entity) {
+        return from(entity, false);
+    }
+
+    static AiVideoResultResponse fromBrowser(AiVideoResultEntity entity) {
+        return from(entity, true);
+    }
+
+    private static AiVideoResultResponse from(AiVideoResultEntity entity, boolean browser) {
         return new AiVideoResultResponse(
             entity.id,
             entity.taskId,
             entity.storyboardId,
-            entity.videoUrl,
+            browser ? "/api/projects/" + entity.projectId + "/ai-video-results/" + entity.id + "/playback" : entity.videoUrl,
             entity.storagePath,
-            entity.coverUrl,
+            entity.videoUrl,
+            browser ? com.antshorttv.material.MediaCoverDeliveryService.coverUrl(entity.projectId, entity.id,
+                com.antshorttv.material.MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT, entity.coverUrl) : entity.coverUrl,
             entity.durationSeconds,
             entity.width,
             entity.height,

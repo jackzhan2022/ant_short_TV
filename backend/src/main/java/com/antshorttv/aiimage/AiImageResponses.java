@@ -29,9 +29,14 @@ record AiImageTaskResponse(
     LocalDateTime completedAt,
     Long createdBy,
     LocalDateTime createdAt,
-    List<AiImageResultResponse> results
+    List<AiImageResultResponse> results,
+    long resultCount
 ) {
     static AiImageTaskResponse from(AiImageTaskEntity entity, List<AiImageResultEntity> results) {
+        return from(entity, results, results.size());
+    }
+
+    static AiImageTaskResponse from(AiImageTaskEntity entity, List<AiImageResultEntity> results, long resultCount) {
         return new AiImageTaskResponse(
             entity.getId(),
             entity.getProjectId(),
@@ -57,7 +62,7 @@ record AiImageTaskResponse(
             entity.getCompletedAt(),
             entity.getCreatedBy(),
             entity.getCreatedAt(),
-            results.stream().map(AiImageResultResponse::from).toList()
+            results.stream().map(AiImageResultResponse::from).toList(), resultCount
         );
     }
 
@@ -66,7 +71,7 @@ record AiImageTaskResponse(
             id, projectId, taskType, targetType, targetId, modelId,
             providerCode, model, prompt, negativePrompt, referenceImages, aspectRatio,
             imageCount, style, quality, seed, executionId, value, status, errorMessage,
-            startedAt, completedAt, createdBy, createdAt, results
+            startedAt, completedAt, createdBy, createdAt, results, resultCount
         );
     }
 }

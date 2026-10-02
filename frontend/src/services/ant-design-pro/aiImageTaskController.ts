@@ -2,6 +2,25 @@
 /* eslint-disable */
 import { request } from "@umijs/max";
 
+/** 此处后端没有提供注释 GET /api/projects/${param0}/ai-image-results */
+export async function results1(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.results1Params,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, ...queryParams } = params;
+  return request<API.ApiResponseMediaPageAiImageResultResponse>(
+    `/api/projects/${param0}/ai-image-results`,
+    {
+      method: "GET",
+      params: {
+        ...queryParams,
+      },
+      ...(options || {}),
+    }
+  );
+}
+
 /** 此处后端没有提供注释 DELETE /api/projects/${param0}/ai-image-results/${param1} */
 export async function deleteResult1(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -113,7 +132,7 @@ export async function list8(
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, ...queryParams } = params;
-  return request<API.ApiResponseListAiImageTaskResponse>(
+  return request<API.ApiResponseMediaPageAiImageTaskResponse>(
     `/api/projects/${param0}/ai-image-tasks`,
     {
       method: "GET",
@@ -148,9 +167,9 @@ export async function create7(
 }
 
 /** 此处后端没有提供注释 GET /api/projects/${param0}/ai-image-tasks/${param1} */
-export async function detail7(
+export async function detail8(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.detail7Params,
+  params: API.detail8Params,
   options?: { [key: string]: any }
 ) {
   const { projectId: param0, taskId: param1, ...queryParams } = params;
@@ -210,6 +229,25 @@ export async function regenerate2(
     {
       method: "POST",
       params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/projects/${param0}/ai-image-tasks/${param1}/results */
+export async function taskResults(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.taskResultsParams,
+  options?: { [key: string]: any }
+) {
+  const { projectId: param0, taskId: param1, ...queryParams } = params;
+  return request<API.ApiResponseMediaPageAiImageResultResponse>(
+    `/api/projects/${param0}/ai-image-tasks/${param1}/results`,
+    {
+      method: "GET",
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );

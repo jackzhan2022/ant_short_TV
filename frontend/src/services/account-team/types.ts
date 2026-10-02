@@ -193,6 +193,7 @@ export type Project = {
   code: string;
   description?: string | null;
   coverUrl?: string | null;
+  coverStatus?: 'MISSING' | 'PENDING' | 'READY' | 'FAILED';
   coverSource?: string | null;
   ownerId: number;
   ownerName?: string | null;

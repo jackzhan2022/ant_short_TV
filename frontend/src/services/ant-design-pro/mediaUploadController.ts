@@ -18,9 +18,9 @@ export async function create12(
 }
 
 /** 此处后端没有提供注释 GET /api/media-uploads/${param0} */
-export async function status(
+export async function status1(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: API.statusParams,
+  params: API.status1Params,
   options?: { [key: string]: any }
 ) {
   const { sessionToken: param0, ...queryParams } = params;

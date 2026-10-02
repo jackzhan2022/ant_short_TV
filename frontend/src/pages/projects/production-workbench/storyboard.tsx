@@ -14,10 +14,10 @@ import {
   Button,
   Empty,
   Flex,
-  Image,
   Input,
   InputNumber,
   Modal,
+  Pagination,
   Popover,
   Select,
   Spin,
@@ -38,11 +38,14 @@ import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { queryProject } from '@/services/account-team/project';
 import type { Project } from '@/services/account-team/types';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import type { MediaPage } from '@/services/media/paging';
 import './storyboard.css';
 import AssetVariantGenerationModal, {
   type AssetVariantGenerationValues,
 } from './AssetVariantGenerationModal';
 import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
+import ClickToPlayVideo from '@/components/ClickToPlayVideo';
+import LazyMediaImage from '@/components/LazyMediaImage';
 import {
   queryProjectAiConfig,
   queryProjectAiModels,
@@ -50,8 +53,10 @@ import {
 } from './ai-config/service';
 import type {
   AiImageTask,
+  AiImageResult,
   AiVoiceTask,
   AiVideoTask,
+  AiVideoResult,
   AssetVisualWorkspace,
   CharacterAsset,
   PropAsset,
@@ -77,10 +82,10 @@ import {
   createStoryboard,
   deleteStoryboard,
   queryAiImageTask,
-  queryAiImageTasks,
+  queryAiImageResults,
+  queryAiVideoResults,
   selectAiImageResult,
-  queryAiVideoTasks,
-  queryAiVoiceTasks,
+  queryStoryboardMedia,
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
   queryLatestStoryboardBatch,
@@ -544,7 +549,7 @@ const getStoryboardVideo = (
   return {
     resultId: result?.id,
     selected: Boolean(result?.isSelected || result?.id === storyboard.currentVideoResultId),
-    coverUrl: result?.coverUrl || storyboard.firstFrameUrl || undefined,
+    coverUrl: result?.coverUrl || storyboard.firstFrameThumbnailUrl || undefined,
     videoUrl:
       result?.videoUrl ||
       storyboard.currentVideoUrl ||
@@ -591,7 +596,7 @@ const avatarRail = (names: string[], assets: CharacterAsset[], imageTasks: AiIma
             overflow: 'hidden',
           }}
         >
-          {image ? <Image src={image} alt={`${name}参考图`} width="100%" height="100%" preview={false} style={{ objectFit: 'cover' }} /> : name.slice(0, 1)}
+          {image ? <LazyMediaImage src={image} alt={`${name}参考图`} width="100%" height="100%" preview={false} style={{ objectFit: 'cover' }} /> : name.slice(0, 1)}
         </span>
       );
     })}
@@ -600,7 +605,7 @@ const avatarRail = (names: string[], assets: CharacterAsset[], imageTasks: AiIma
 
 const PreviewPoster = ({ src, title }: { src?: string; title: string }) =>
   src ? (
-    <Image
+    <LazyMediaImage
       src={src}
       alt={title}
       width="100%"
@@ -650,6 +655,9 @@ const StoryboardCard = ({
   onGenerateVoice,
   onReplaceReferences,
   onGenerateReferenceImage,
+  onLoadVariants,
+  onLoadImageCandidates,
+  onLoadVideoCandidates,
   generatingReferenceKeys,
   onSaveScript,
   onUpdateStoryboard,
@@ -698,6 +706,16 @@ const StoryboardCard = ({
     generationKey: string,
   ) => Promise<void>;
   generatingReferenceKeys: ReadonlySet<string>;
+  onLoadVariants: (
+    assetType: StoryboardAssetReference['assetType'], assetId: number,
+    selectedVariantId?: number | null, current?: number, pageSize?: number,
+  ) => Promise<void>;
+  onLoadImageCandidates: (
+    storyboardId: number, current: number, pageSize: number, signal?: AbortSignal,
+  ) => Promise<MediaPage<AiImageResult>>;
+  onLoadVideoCandidates: (
+    storyboardId: number, current: number, pageSize: number, signal?: AbortSignal,
+  ) => Promise<MediaPage<AiVideoResult>>;
   onSaveScript: (storyboard: StoryboardShot) => void;
   onUpdateStoryboard: (
     storyboard: StoryboardShot,
@@ -718,6 +736,12 @@ const StoryboardCard = ({
   const [voiceSubmitting, setVoiceSubmitting] = useState(false);
   const [previewKey, setPreviewKey] = useState<'VIDEO' | 'FIRST_FRAME' | 'SCENE'>('VIDEO');
   const [stickyReleased, setStickyReleased] = useState(false);
+  const [candidateType, setCandidateType] = useState<'IMAGE' | 'VIDEO'>();
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [imageCandidates, setImageCandidates] = useState<MediaPage<AiImageResult>>();
+  const [videoCandidates, setVideoCandidates] = useState<MediaPage<AiVideoResult>>();
+  const candidateRequest = useRef<{ id: number; controller?: AbortController }>({ id: 0 });
+  useEffect(() => () => candidateRequest.current.controller?.abort(), []);
   const [voiceValues, setVoiceValues] = useState<VoiceGenerationValues>({
     voiceType: 'DIALOGUE',
     speakerName: dialogueSpeaker || shownCharacterNames[0] || '',
@@ -732,6 +756,41 @@ const StoryboardCard = ({
   const scene = firstByName(scenes, sceneNames);
   const prop = firstByName(props, propNames);
   const video = getStoryboardVideo(item, videoTasks);
+  const loadCandidates = async (
+    type: 'IMAGE' | 'VIDEO', current = 1, pageSize = 20,
+  ) => {
+    candidateRequest.current.controller?.abort();
+    const controller = new AbortController();
+    const requestId = candidateRequest.current.id + 1;
+    candidateRequest.current = { id: requestId, controller };
+    setCandidateLoading(true);
+    try {
+      if (type === 'IMAGE') {
+        const page = await onLoadImageCandidates(item.id, current, pageSize, controller.signal);
+        if (!controller.signal.aborted && candidateRequest.current.id === requestId) setImageCandidates(page);
+      } else {
+        const page = await onLoadVideoCandidates(item.id, current, pageSize, controller.signal);
+        if (!controller.signal.aborted && candidateRequest.current.id === requestId) setVideoCandidates(page);
+      }
+    } catch {
+      if (!controller.signal.aborted && candidateRequest.current.id === requestId) {
+        message.error('历史媒体加载失败');
+      }
+    } finally {
+      if (!controller.signal.aborted && candidateRequest.current.id === requestId) setCandidateLoading(false);
+    }
+  };
+  const openCandidates = (type: 'IMAGE' | 'VIDEO') => {
+    setCandidateType(type);
+    void loadCandidates(type);
+  };
+  const closeCandidates = () => {
+    candidateRequest.current.controller?.abort();
+    candidateRequest.current = { id: candidateRequest.current.id + 1 };
+    setCandidateLoading(false);
+    setCandidateType(undefined);
+  };
+  const candidatePage = candidateType === 'IMAGE' ? imageCandidates : videoCandidates;
   const insertReference = (reference: PromptReferenceOption) => {
     const currentNodes = draft.promptDocument?.nodes?.length
       ? draft.promptDocument.nodes
@@ -869,7 +928,7 @@ const StoryboardCard = ({
     resolvedPropVisual.url ||
     thumbnailFor(imageTasks, 'PROP', prop?.id);
   const previewSources = [
-    { key: 'FIRST_FRAME' as const, label: '首帧', url: item.firstFrameUrl },
+    { key: 'FIRST_FRAME' as const, label: '首帧', url: item.firstFrameThumbnailUrl || thumbnailFor(imageTasks, 'STORYBOARD', item.id) },
     { key: 'VIDEO' as const, label: '视频', url: video.coverUrl },
     { key: 'SCENE' as const, label: '场景', url: sceneImage },
   ].filter((source) => source.url);
@@ -1021,6 +1080,9 @@ const StoryboardCard = ({
             >
               生成首帧
             </Button>
+            <Button size="small" onClick={() => openCandidates('IMAGE')}>
+              选择历史首帧
+            </Button>
             {imageTask?.execution ? (
               <AiExecutionStatus
                 task={imageTask.execution}
@@ -1072,6 +1134,7 @@ const StoryboardCard = ({
               scenes={scenes}
               props={props}
               onChange={(references) => void onReplaceReferences(item, references)}
+              onLoadVariants={onLoadVariants}
               onVoice={(speakerName) => {
                 setVoiceValues((previous) => ({ ...previous, speakerName }));
                 setVoiceModalOpen(true);
@@ -1200,7 +1263,7 @@ const StoryboardCard = ({
                 }}
               >
                 {propImage && (
-                  <Image
+                  <LazyMediaImage
                     src={propImage}
                     alt={prop?.name}
                     width="100%"
@@ -1404,20 +1467,17 @@ const StoryboardCard = ({
               style={{ position: 'relative' }}
             >
               {previewKey === 'VIDEO' && video.videoUrl ? (
-                <video
-                  aria-label={`分镜${index + 1}成片预览`}
+                <ClickToPlayVideo
+                  alt={`分镜${index + 1}成片预览`}
                   src={video.videoUrl}
                   poster={video.coverUrl || undefined}
-                  controls
                   style={{
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
                     background: '#000',
                   }}
-                >
-                  <track kind="captions" label="暂无字幕" />
-                </video>
+                />
               ) : (
                 <PreviewPoster
                   src={selectedPreview?.url || video.coverUrl}
@@ -1488,8 +1548,85 @@ const StoryboardCard = ({
               )}
             </Flex>
           ) : null}
+          <Flex justify="center" style={{ marginTop: 8 }}>
+            <Button size="small" onClick={() => openCandidates('VIDEO')}>
+              选择历史视频
+            </Button>
+          </Flex>
         </section>
       </div>
+      <Modal
+        title={candidateType === 'IMAGE' ? `分镜${index + 1}历史首帧` : `分镜${index + 1}历史视频`}
+        open={Boolean(candidateType)}
+        footer={null}
+        width={760}
+        destroyOnHidden
+        onCancel={closeCandidates}
+      >
+        <Spin spinning={candidateLoading}>
+          {candidatePage?.data.length ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
+              {candidateType === 'IMAGE'
+                ? imageCandidates?.data.map((candidate) => (
+                  <div key={candidate.id} style={{ minWidth: 0 }}>
+                    <LazyMediaImage
+                      native
+                      active={candidateType === 'IMAGE'}
+                      src={candidate.thumbnailUrl || undefined}
+                      alt={`首帧候选${candidate.id}`}
+                      height={112}
+                      preview={false}
+                    />
+                    <Button
+                      block
+                      size="small"
+                      loading={selectingFirstFrameId === candidate.id}
+                      disabled={candidate.selected}
+                      onClick={() => onSelectFirstFrame(candidate.id)}
+                      style={{ marginTop: 6 }}
+                    >
+                      {candidate.selected ? '当前首帧' : '设为首帧'}
+                    </Button>
+                  </div>
+                ))
+                : videoCandidates?.data.map((candidate) => (
+                  <div key={candidate.id} style={{ minWidth: 0 }}>
+                    <LazyMediaImage
+                      native
+                      active={candidateType === 'VIDEO'}
+                      src={candidate.coverUrl || undefined}
+                      alt={`视频候选${candidate.id}`}
+                      height={112}
+                      preview={false}
+                    />
+                    <Button
+                      block
+                      size="small"
+                      loading={bindingVideoId === candidate.id}
+                      disabled={candidate.isSelected}
+                      onClick={() => onBindVideoResult(candidate.id)}
+                      style={{ marginTop: 6 }}
+                    >
+                      {candidate.isSelected ? '当前视频' : '设为当前视频'}
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <Empty description={candidateLoading ? '加载中' : '暂无历史结果'} />
+          )}
+          {(candidatePage?.total || 0) > (candidatePage?.pageSize || 20) ? (
+            <Pagination
+              current={candidatePage?.current || 1}
+              pageSize={candidatePage?.pageSize || 20}
+              total={candidatePage?.total || 0}
+              showSizeChanger
+              onChange={(page, size) => candidateType && void loadCandidates(candidateType, page, size)}
+              style={{ marginTop: 16 }}
+            />
+          ) : null}
+        </Spin>
+      </Modal>
       <Modal
         title={`分镜${index + 1}自定义音色`}
         open={voiceModalOpen}
@@ -1617,6 +1754,43 @@ const ProductionWorkbenchStoryboard = () => {
     props: [],
     storyboards: [],
   });
+  const mediaAbort = useRef<AbortController | undefined>(undefined);
+  const mediaScopeKey = workspace.storyboards.map((item) => item.id).join(',');
+  const currentMediaScope = useRef('');
+  currentMediaScope.current = `${projectId}:${mediaScopeKey}`;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    mediaAbort.current = controller;
+    setImageTasks([]);
+    setVideoTasks([]);
+    setVoiceTasks([]);
+    const ids = mediaScopeKey ? mediaScopeKey.split(',').map(Number) : [];
+    if (ids.length) {
+      void queryStoryboardMedia(projectId, ids, controller.signal).then((response) => {
+        if (controller.signal.aborted || !response.data) return;
+        setImageTasks(response.data.imageTasks || []);
+        setVideoTasks(response.data.videoTasks || []);
+        setVoiceTasks(response.data.voiceTasks || []);
+        if (response.data.assetVisuals) {
+          const visuals = response.data.assetVisuals;
+          setAssetVisuals((previous) => ({
+            ...previous,
+            ...Object.fromEntries(visuals.map(({ key, visual }) => [key, visual])),
+          }));
+        }
+        for (const task of response.data.videoTasks.filter((item) => item.executionId &&
+          !successStatuses.includes(item.status) && !['FAILED', 'CANCELED'].includes(item.status))) {
+          void followVideoExecution(task).catch(() => {
+            if (!controller.signal.aborted) message.error('视频任务状态刷新失败');
+          });
+        }
+      }).catch(() => {
+        if (!controller.signal.aborted) message.error('分镜媒体加载失败');
+      });
+    }
+    return () => controller.abort();
+  }, [projectId, mediaScopeKey]);
 
   useEffect(() => {
     visualProjectId.current = projectId;
@@ -1629,29 +1803,43 @@ const ProductionWorkbenchStoryboard = () => {
     setReferenceVisualPollTargets({});
   }, [projectId]);
 
-  useEffect(() => {
-    if (!projectId || !workspace.storyboards.length) return;
-    const names = new Set(workspace.storyboards.flatMap((item) => [
-      ...splitNames(item.characters), ...splitNames(item.scene), ...getStoryboardPropNames(item),
-      ...[...getStoryboardPrompt(item).matchAll(/<([^<>\n]+)>/g)].map((match) => match[1].trim()),
-    ]));
-    const assets = [
-      ...workspace.characters.map((asset) => ({ type: 'CHARACTER' as const, asset })),
-      ...workspace.scenes.map((asset) => ({ type: 'SCENE' as const, asset })),
-      ...workspace.props.map((asset) => ({ type: 'PROP' as const, asset })),
-    ].filter(({ asset }) => names.has(asset.name));
-    for (const { type, asset } of assets) {
-      const key = `${type}:${asset.id}`;
-      if (asset.visual?.variants.length || requestedVisuals.current.has(key)) continue;
-      requestedVisuals.current.add(key);
-      void queryAssetVisualWorkspace(projectId, type, asset.id).then((response) => {
-        if (visualProjectId.current !== projectId || !response.data) return;
-        setAssetVisuals((previous) => ({ ...previous, [key]: response.data }));
-      }).catch(() => {
-        requestedVisuals.current.delete(key);
+  const loadAssetVariants = async (
+    type: StoryboardAssetReference['assetType'], assetId: number, selectedVariantId?: number | null,
+    current = 1, pageSize = 20,
+  ) => {
+    const key = `${type}:${assetId}`;
+    const assets = type === 'CHARACTER' ? characters : type === 'SCENE' ? scenes : props;
+    const visual = assets.find((asset) => asset.id === assetId)?.visual;
+    if (current === 1 && visual && !visual.summaryOnly
+      && visual.variants.length >= (visual.total || visual.variantCount || 1)) return;
+    const requestKey = `${key}:${current}:${pageSize}:${selectedVariantId || ''}`;
+    if (requestedVisuals.current.has(requestKey)) return;
+    requestedVisuals.current.add(requestKey);
+    try {
+      const response = await queryAssetVisualWorkspace(projectId, type, assetId, {
+        current, pageSize, selectedVariantId: selectedVariantId ?? undefined,
       });
+      if (visualProjectId.current === projectId && response.data) {
+        setAssetVisuals((previous) => {
+          const existing = previous[key];
+          const variants = [...new Map([
+            ...(existing?.variants || []),
+            response.data.primaryVariant,
+            response.data.selectedVariant,
+            ...response.data.variants,
+          ].filter((variant): variant is VisualVariant => Boolean(variant))
+            .map((variant) => [variant.id, variant])).values()];
+          return {
+            ...previous,
+            [key]: { ...existing, ...response.data, variants, summaryOnly: false },
+          };
+        });
+      }
+    } catch {
+      requestedVisuals.current.delete(requestKey);
+      message.error('资产形态加载失败');
     }
-  }, [projectId, workspace.storyboards, workspace.characters, workspace.scenes, workspace.props]);
+  };
 
   useEffect(() => {
     if (!projectId) {
@@ -1705,23 +1893,6 @@ const ProductionWorkbenchStoryboard = () => {
           promptDocument: item.promptDocument,
         }])));
         setStoryboardLoading(false);
-        void Promise.all([
-          queryAiImageTasks(projectId, undefined).catch(() => ({ data: [] })),
-          queryAiVideoTasks(projectId, undefined).catch(() => ({ data: [] })),
-          queryAiVoiceTasks(projectId, undefined).catch(() => ({ data: [] })),
-        ]).then(([imageTaskResponse, videoTaskResponse, voiceTaskResponse]) => {
-          if (!active) return;
-          setImageTasks(imageTaskResponse.data || []);
-          const nextVideoTasks = videoTaskResponse.data || [];
-          setVideoTasks(nextVideoTasks);
-          setVoiceTasks(voiceTaskResponse.data || []);
-          for (const task of nextVideoTasks.filter(
-            (item) => item.executionId && !successStatuses.includes(item.status) &&
-              !['FAILED', 'CANCELED'].includes(item.status),
-          )) {
-            void followVideoExecution(task).catch(() => message.error('视频任务状态刷新失败'));
-          }
-        });
       })
       .catch(() => {
         if (active) {
@@ -1767,7 +1938,15 @@ const ProductionWorkbenchStoryboard = () => {
     const loaded = assetVisuals[key];
     return loaded ? {
       ...existing, ...loaded,
+      variants: [...new Map([
+        loaded.primaryVariant,
+        loaded.selectedVariant,
+        ...(loaded.variants || []),
+      ].filter((variant): variant is VisualVariant => Boolean(variant))
+        .map((variant) => [variant.id, variant])).values()],
       resolvedImageUrl: loaded.resolvedImageUrl ?? existing?.resolvedImageUrl,
+      resolvedImageThumbnailUrl:
+        loaded.resolvedImageThumbnailUrl ?? existing?.resolvedImageThumbnailUrl,
       resolvedImageSource: loaded.resolvedImageSource ?? existing?.resolvedImageSource,
     } : existing;
   };
@@ -2016,19 +2195,40 @@ const ProductionWorkbenchStoryboard = () => {
     }));
   };
 
-  const reloadVideoTasks = async () => {
-    const response = await queryAiVideoTasks(projectId, undefined);
-    setVideoTasks((previous) =>
-      (response.data || []).map((task) => ({
-        ...task,
-        execution: previous.find((item) => item.id === task.id)?.execution,
-      })),
-    );
+  const reloadMediaTasks = async (storyboardId?: number) => {
+    const scope = currentMediaScope.current;
+    const ids = storyboardId ? [storyboardId] : workspace.storyboards.map((item) => item.id);
+    if (!ids.length) return;
+    const response = await queryStoryboardMedia(projectId, ids, mediaAbort.current?.signal);
+    if (currentMediaScope.current !== scope || mediaAbort.current?.signal.aborted || !response.data) return;
+    const appliesTo = (targetId: number) => ids.includes(targetId);
+    setImageTasks((previous) => [
+      ...previous.filter((task) => task.targetType !== 'STORYBOARD' || !appliesTo(task.targetId)),
+      ...response.data.imageTasks,
+    ]);
+    setVideoTasks((previous) => [
+      ...previous.filter((task) => !appliesTo(task.storyboardId)),
+      ...response.data.videoTasks.map((task) => ({ ...task, execution: previous.find((item) => item.id === task.id)?.execution })),
+    ]);
+    setVoiceTasks((previous) => [
+      ...previous.filter((task) => !appliesTo(task.storyboardId)), ...response.data.voiceTasks,
+    ]);
   };
-
-  const reloadImageTasks = async () => {
-    const response = await queryAiImageTasks(projectId, undefined);
-    setImageTasks(response.data || []);
+  const reloadVideoTasks = (storyboardId?: number) => reloadMediaTasks(storyboardId);
+  const reloadImageTasks = (storyboardId?: number) => reloadMediaTasks(storyboardId);
+  const loadImageCandidates = async (
+    storyboardId: number, current: number, pageSize: number, signal?: AbortSignal,
+  ) => {
+    const response = await queryAiImageResults(projectId, {
+      targetType: 'STORYBOARD', targetId: storyboardId, current, pageSize,
+    }, signal);
+    return response.data;
+  };
+  const loadVideoCandidates = async (
+    storyboardId: number, current: number, pageSize: number, signal?: AbortSignal,
+  ) => {
+    const response = await queryAiVideoResults(projectId, { storyboardId, current, pageSize }, signal);
+    return response.data;
   };
 
   const persistStoryboard = (storyboardId: number, values: SaveStoryboardValues) => {
@@ -2212,8 +2412,10 @@ const ProductionWorkbenchStoryboard = () => {
   const currentTenantId = () => Number(localStorage.getItem('currentTenantId'));
 
   const followImageExecution = async (task: AiImageTask) => {
+    const scope = currentMediaScope.current;
+    const signal = mediaAbort.current?.signal;
     if (!task.executionId || !currentTenantId()) {
-      await reloadImageTasks();
+      await reloadImageTasks(task.targetType === 'STORYBOARD' ? task.targetId : undefined);
       return;
     }
     await aiExecutionTaskService.poll(
@@ -2221,35 +2423,42 @@ const ProductionWorkbenchStoryboard = () => {
       task.executionId,
       async () => {
         const response = await queryAiImageTask(projectId, task.id);
-        if (response.data) {
+        if (response.data && currentMediaScope.current === scope && !signal?.aborted) {
           setImageTasks((previous) => [
             ...previous.filter((item) => item.id !== response.data?.id),
             response.data,
           ]);
         }
       },
+      1500,
+      signal,
     );
-    await reloadImageTasks();
+    await reloadImageTasks(task.targetType === 'STORYBOARD' ? task.targetId : undefined);
   };
 
   const followVideoExecution = async (task: AiVideoTask) => {
+    const scope = currentMediaScope.current;
+    const signal = mediaAbort.current?.signal;
     const tenantId = currentTenantId();
     if (!task.executionId || !tenantId) {
-      await reloadVideoTasks();
+      await reloadVideoTasks(task.storyboardId);
       return;
     }
     await aiExecutionTaskService.poll(
       tenantId,
       task.executionId,
       (execution) => {
+        if (currentMediaScope.current !== scope || signal?.aborted) return;
         setVideoTasks((previous) =>
           previous.map((item) =>
             item.id === task.id ? { ...item, execution } : item,
           ),
         );
       },
+      1500,
+      signal,
     );
-    await reloadVideoTasks();
+    await reloadVideoTasks(task.storyboardId);
   };
 
   const generateImage = async (storyboard: StoryboardShot) => {
@@ -3143,6 +3352,9 @@ const ProductionWorkbenchStoryboard = () => {
                 onGenerateVoice={generateVoice}
                 onReplaceReferences={replaceStoryboardReferences}
                 onGenerateReferenceImage={generateReferenceImage}
+                onLoadVariants={loadAssetVariants}
+                onLoadImageCandidates={loadImageCandidates}
+                onLoadVideoCandidates={loadVideoCandidates}
                 generatingReferenceKeys={generatingReferenceKeys}
                 onSaveScript={saveStoryboardScript}
                 onUpdateStoryboard={saveStoryboardFields}

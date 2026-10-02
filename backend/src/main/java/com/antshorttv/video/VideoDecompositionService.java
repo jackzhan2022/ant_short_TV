@@ -2,6 +2,9 @@ package com.antshorttv.video;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.common.MediaPage;
+import com.antshorttv.common.PageBounds;
+import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
@@ -35,6 +38,7 @@ public class VideoDecompositionService {
 
     private final TenantContextResolver tenantContextResolver;
     private final ProjectPermissionGuard projectPermissionGuard;
+    private final RbacPermissionService permissionService;
     private final VideoDecompositionBatchMapper batchMapper;
     private final VideoDecompositionEpisodeMapper episodeMapper;
     private final VideoDecompositionAnalysisMapper analysisMapper;
@@ -51,6 +55,7 @@ public class VideoDecompositionService {
     public VideoDecompositionService(
         TenantContextResolver tenantContextResolver,
         ProjectPermissionGuard projectPermissionGuard,
+        RbacPermissionService permissionService,
         VideoDecompositionBatchMapper batchMapper,
         VideoDecompositionEpisodeMapper episodeMapper,
         VideoDecompositionAnalysisMapper analysisMapper,
@@ -66,6 +71,7 @@ public class VideoDecompositionService {
     ) {
         this.tenantContextResolver = tenantContextResolver;
         this.projectPermissionGuard = projectPermissionGuard;
+        this.permissionService = permissionService;
         this.batchMapper = batchMapper;
         this.episodeMapper = episodeMapper;
         this.analysisMapper = analysisMapper;
@@ -103,6 +109,22 @@ public class VideoDecompositionService {
         VideoDecompositionBatchEntity batch = requireBatch(tenantId, batchId);
         requireProjectAccessIfBound(context, batch.getProjectId(), "PROJECT:VIEW");
         return batchResponse(batch, episodeMapper.selectByBatch(tenantId, batchId));
+    }
+
+    public MediaPage<VideoDecompositionBatchResponse> list(Long tenantId, Long projectId, Integer current, Integer pageSize) {
+        var context = tenantContextResolver.requireActiveMember(tenantId);
+        if (projectId != null) requireProjectAccess(context, projectId, "PROJECT:VIEW");
+        boolean wide = permissionService.permissionCodes(context).contains("PROJECT:VIEW_ALL");
+        var bounds = PageBounds.of(current, pageSize);
+        long total = batchMapper.countVisible(tenantId, context.userId(), wide, projectId);
+        if (bounds.offset() >= total) return new MediaPage<>(List.of(), bounds.current(), bounds.pageSize(), total);
+        var batches = batchMapper.selectVisiblePage(tenantId, context.userId(), wide, projectId, bounds);
+        var ids = batches.stream().map(VideoDecompositionBatchEntity::getId).toList();
+        if (ids.isEmpty()) return new MediaPage<>(List.of(), bounds.current(), bounds.pageSize(), total);
+        var statistics = batchMapper.selectStatistics(tenantId, ids).stream()
+            .collect(java.util.stream.Collectors.toMap(s -> s.batchId, s -> s));
+        return new MediaPage<>(batches.stream().map(batch -> VideoDecompositionBatchResponse.summary(batch, statistics.get(batch.getId())))
+            .toList(), bounds.current(), bounds.pageSize(), total);
     }
 
     @Transactional

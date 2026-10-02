@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   queryStoryboardWorkspace: vi.fn(),
   queryShotComposeTasks: vi.fn(),
   queryStoryboardSubtitles: vi.fn(),
+  queryStoryboardSubtitle: vi.fn(),
   regenerateAiVoiceTask: vi.fn(),
   regenerateShotComposeTask: vi.fn(),
   saveAiVoiceResultAsMaterial: vi.fn(),
@@ -35,13 +36,19 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({ message: { success: vi.fn(), warning: vi.fn() } }),
   },
-  Button: ({ children, icon, onClick, type }: any) => (
-    <button type="button" data-button-type={type} onClick={onClick}>
+  Button: ({ children, icon, onClick, type, loading }: any) => (
+    <button
+      type="button"
+      data-button-type={type}
+      disabled={loading}
+      onClick={onClick}
+    >
       {icon}
       {children}
     </button>
   ),
   Empty: ({ description }: any) => <div>{description || '暂无数据'}</div>,
+  Popconfirm: ({ children }: any) => <div>{children}</div>,
   Space: ({ children }: any) => <div>{children}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Tabs: ({ items = [] }: any) => (
@@ -56,83 +63,126 @@ vi.mock('antd', () => ({
   ),
 }));
 
-vi.mock('@ant-design/pro-components', () => ({
-  ModalForm: ({ children, onFinish, title, trigger }: any) => (
-    <div>
-      {trigger}
-      <form
-        aria-label={title}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (title.includes('语音')) {
-            onFinish?.({
-              storyboardId: 7,
-              voiceType: 'DIALOGUE',
-              speakerName: '女主',
-              voiceId: 'female-cn-01',
-              textContent: '你终于来了。',
-              speed: 1,
-              pitch: 1,
-              volume: 1,
-            });
-            return;
-          }
-          if (title.includes('字幕')) {
-            onFinish?.({
-              storyboardId: 7,
-              voiceResultId: 11,
-              subtitleType: 'DIALOGUE',
-              textContent: '你终于来了。',
-            });
-            return;
-          }
-          onFinish?.({
-            storyboardId: 7,
-            voiceResultId: 11,
-            subtitleId: 21,
-            includeSubtitle: true,
-            audioVolume: 1,
-            outputFormat: 'mp4',
-          });
-        }}
-      >
-        {children}
-        <button type="submit">提交{title}</button>
-      </form>
-    </div>
-  ),
-  ProCard: ({ children, title, extra }: any) => (
-    <section>
-      {title && <h2>{title}</h2>}
-      {extra}
-      {children}
-    </section>
-  ),
-  ProFormDigit: ({ label }: any) => <span>{label}</span>,
-  ProFormSelect: ({ label }: any) => <span>{label}</span>,
-  ProFormSwitch: ({ label }: any) => <span>{label}</span>,
-  ProFormText: ({ label }: any) => <span>{label}</span>,
-  ProFormTextArea: ({ label }: any) => <span>{label}</span>,
-  ProTable: ({ columns = [], request, toolBarRender }: any) => {
-    request?.({});
-    return (
+vi.mock('@ant-design/pro-components', async () => {
+  const React = await import('react');
+  return {
+    ModalForm: ({
+      children,
+      onFinish,
+      title,
+      trigger,
+      open,
+      initialValues,
+    }: any) => {
+      const [triggered, setTriggered] = React.useState(false);
+      const visible = title === '编辑字幕' ? (open ?? triggered) : true;
+      return (
+        <div>
+          {trigger
+            ? React.cloneElement(trigger, { onClick: () => setTriggered(true) })
+            : null}
+          {visible && (
+            <form
+              aria-label={title}
+              data-initial-values={JSON.stringify(initialValues)}
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (title === '编辑字幕') {
+                  onFinish?.(initialValues);
+                  return;
+                }
+                if (title.includes('语音')) {
+                  onFinish?.({
+                    storyboardId: 7,
+                    voiceType: 'DIALOGUE',
+                    speakerName: '女主',
+                    voiceId: 'female-cn-01',
+                    textContent: '你终于来了。',
+                    speed: 1,
+                    pitch: 1,
+                    volume: 1,
+                  });
+                  return;
+                }
+                if (title.includes('字幕')) {
+                  onFinish?.({
+                    storyboardId: 7,
+                    voiceResultId: 11,
+                    subtitleType: 'DIALOGUE',
+                    textContent: '你终于来了。',
+                  });
+                  return;
+                }
+                onFinish?.({
+                  storyboardId: 7,
+                  voiceResultId: 11,
+                  subtitleId: 21,
+                  includeSubtitle: true,
+                  audioVolume: 1,
+                  outputFormat: 'mp4',
+                });
+              }}
+            >
+              {children}
+              <button type="submit">提交{title}</button>
+            </form>
+          )}
+        </div>
+      );
+    },
+    ProCard: ({ children, title, extra }: any) => (
       <section>
-        <div>{toolBarRender?.()}</div>
-        <table>
-          <thead>
-            <tr>
-              {columns.map((column: any) => (
-                <th key={column.dataIndex || column.key || column.title}>
-                  {column.title}
-                </th>
-              ))}
-            </tr>
-          </thead>
-        </table>
+        {title && <h2>{title}</h2>}
+        {extra}
+        {children}
       </section>
-    );
-  },
-}));
+    ),
+    ProFormDigit: ({ label }: any) => <span>{label}</span>,
+    ProFormSelect: ({ label }: any) => <span>{label}</span>,
+    ProFormSwitch: ({ label }: any) => <span>{label}</span>,
+    ProFormText: ({ label }: any) => <span>{label}</span>,
+    ProFormTextArea: ({ label }: any) => <span>{label}</span>,
+    ProTable: ({ columns = [], request, toolBarRender }: any) => {
+      const [rows, setRows] = React.useState<any[]>([]);
+      React.useEffect(() => {
+        let active = true;
+        request?.({ current: 2, pageSize: 5 }).then((response: any) => {
+          if (active) setRows(response.data);
+        });
+        return () => {
+          active = false;
+        };
+      }, [request]);
+      return (
+        <section>
+          <div>{toolBarRender?.()}</div>
+          <table>
+            <thead>
+              <tr>
+                {columns.map((column: any) => (
+                  <th key={column.dataIndex || column.key || column.title}>
+                    {column.title}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  {columns.map((column: any) => (
+                    <td key={column.dataIndex || column.key || column.title}>
+                      {column.render?.(row[column.dataIndex], row)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      );
+    },
+  };
+});
 
 vi.mock('./service', () => ({
   cancelAiVoiceTask: mocks.cancelAiVoiceTask,
@@ -149,6 +199,7 @@ vi.mock('./service', () => ({
   queryStoryboardWorkspace: mocks.queryStoryboardWorkspace,
   queryShotComposeTasks: mocks.queryShotComposeTasks,
   queryStoryboardSubtitles: mocks.queryStoryboardSubtitles,
+  queryStoryboardSubtitle: mocks.queryStoryboardSubtitle,
   regenerateAiVoiceTask: mocks.regenerateAiVoiceTask,
   regenerateShotComposeTask: mocks.regenerateShotComposeTask,
   saveAiVoiceResultAsMaterial: mocks.saveAiVoiceResultAsMaterial,
@@ -174,12 +225,30 @@ describe('ShotProductionWorkspace', () => {
         ],
       },
     });
-    mocks.queryAiVoiceTasks.mockResolvedValue({ success: true, data: [] });
-    mocks.queryShotComposeTasks.mockResolvedValue({ success: true, data: [] });
-    mocks.queryStoryboardSubtitles.mockResolvedValue({ success: true, data: [] });
-    mocks.createAiVoiceTask.mockResolvedValue({ success: true, data: { id: 1 } });
-    mocks.createStoryboardSubtitle.mockResolvedValue({ success: true, data: { id: 2 } });
-    mocks.createShotComposeTask.mockResolvedValue({ success: true, data: { id: 3 } });
+    mocks.queryAiVoiceTasks.mockResolvedValue({
+      success: true,
+      data: { data: [], current: 2, pageSize: 5, total: 15 },
+    });
+    mocks.queryShotComposeTasks.mockResolvedValue({
+      success: true,
+      data: { data: [], current: 2, pageSize: 5, total: 15 },
+    });
+    mocks.queryStoryboardSubtitles.mockResolvedValue({
+      success: true,
+      data: { data: [], current: 2, pageSize: 5, total: 15 },
+    });
+    mocks.createAiVoiceTask.mockResolvedValue({
+      success: true,
+      data: { id: 1 },
+    });
+    mocks.createStoryboardSubtitle.mockResolvedValue({
+      success: true,
+      data: { id: 2 },
+    });
+    mocks.createShotComposeTask.mockResolvedValue({
+      success: true,
+      data: { id: 3 },
+    });
   });
 
   it('renders Ant Pro shot production controls', async () => {
@@ -194,9 +263,18 @@ describe('ShotProductionWorkspace', () => {
     await waitFor(() => {
       expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1);
       expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
-      expect(mocks.queryAiVoiceTasks).toHaveBeenCalledWith(1, {});
-      expect(mocks.queryStoryboardSubtitles).toHaveBeenCalledWith(1, {});
-      expect(mocks.queryShotComposeTasks).toHaveBeenCalledWith(1, {});
+      expect(mocks.queryAiVoiceTasks).toHaveBeenCalledWith(1, {
+        current: 2,
+        pageSize: 5,
+      });
+      expect(mocks.queryStoryboardSubtitles).toHaveBeenCalledWith(1, {
+        current: 2,
+        pageSize: 5,
+      });
+      expect(mocks.queryShotComposeTasks).toHaveBeenCalledWith(1, {
+        current: 2,
+        pageSize: 5,
+      });
     });
   });
 
@@ -233,5 +311,60 @@ describe('ShotProductionWorkspace', () => {
         voiceResultId: 11,
       });
     });
+  });
+
+  it('fetches full subtitle editing values on demand before opening the editor', async () => {
+    const summary = {
+      id: 21,
+      storyboardId: 7,
+      subtitleType: 'DIALOGUE',
+      textContent: null,
+      segments: [],
+      styleConfig: null,
+      selected: false,
+      status: 'ACTIVE',
+    };
+    mocks.queryStoryboardSubtitles.mockResolvedValue({
+      success: true,
+      data: { data: [summary], current: 2, pageSize: 5, total: 15 },
+    });
+    mocks.queryStoryboardSubtitle.mockResolvedValue({
+      success: true,
+      data: {
+        ...summary,
+        textContent: '完整保存的对白',
+        segments: [{ text: '完整保存的对白', startTime: 12, endTime: 18 }],
+        styleConfig: '{"fontSize":"LARGE","position":"TOP"}',
+      },
+    });
+    render(<ShotProductionWorkspace projectId={1} />);
+    expect(mocks.queryStoryboardSubtitle).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
+    const editor = await screen.findByRole('form', { name: '编辑字幕' });
+    expect(mocks.queryStoryboardSubtitle).toHaveBeenCalledWith(
+      1,
+      21,
+      expect.any(AbortSignal),
+    );
+    expect(
+      JSON.parse(editor.getAttribute('data-initial-values') || '{}'),
+    ).toEqual({
+      textContent: '完整保存的对白',
+      startTime: 12,
+      endTime: 18,
+      styleConfig: { fontSize: 'LARGE', position: 'TOP' },
+    });
+    fireEvent.submit(editor);
+    await waitFor(() =>
+      expect(mocks.updateStoryboardSubtitle).toHaveBeenCalledWith(
+        1,
+        21,
+        expect.objectContaining({
+          textContent: '完整保存的对白',
+          startTime: 12,
+          endTime: 18,
+        }),
+      ),
+    );
   });
 });

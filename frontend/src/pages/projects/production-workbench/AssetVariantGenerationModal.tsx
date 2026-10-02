@@ -1,4 +1,5 @@
 import { Button, Flex, Input, Modal, Typography } from 'antd';
+import LazyMediaImage from '@/components/LazyMediaImage';
 import type { ProjectModelOption } from './ai-config/service';
 import type { VisualVariant } from './service';
 
@@ -67,7 +68,9 @@ export default function AssetVariantGenerationModal({
               }}
             >
               {variant.currentImageThumbnailUrl ? (
-                <img
+                <LazyMediaImage
+                  native
+                  active={open}
                   src={variant.currentImageThumbnailUrl}
                   alt={`${variant.name}当前图`}
                   style={{ maxWidth: '100%', maxHeight: 340, objectFit: 'contain' }}
@@ -89,7 +92,9 @@ export default function AssetVariantGenerationModal({
               {(assetType || variant.assetType) === 'CHARACTER'
               && !variant.primary
               && primaryImageUrl ? (
-                <img
+                <LazyMediaImage
+                  native
+                  active={open}
                   src={primaryImageUrl}
                   aria-label={`${variant.name}引用图`}
                   alt="主形象引用图"

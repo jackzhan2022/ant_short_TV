@@ -2,6 +2,9 @@ package com.antshorttv.shot;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.common.MediaPage;
+import com.antshorttv.common.MediaPageQueries;
+import com.antshorttv.common.PageBounds;
 import com.antshorttv.material.MaterialFileAccessService;
 import com.antshorttv.material.VideoMaterialEntity;
 import com.antshorttv.material.VideoMaterialMapper;
@@ -42,6 +45,159 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ShotProductionService {
     private static final BigDecimal DEFAULT_NUMBER = BigDecimal.ONE;
+
+    public MediaPage<AiVoiceTaskResponse> voiceTasks(
+        Long tenantId, Long projectId, String status, Long storyboardId, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        var query = taskQuery(AiVoiceTaskEntity.class, tenantId, projectId, status, storyboardId);
+        var page = MediaPageQueries.select(aiVoiceTaskMapper, query, PageBounds.of(current, pageSize), q -> q
+            .select(AiVoiceTaskEntity.class, f -> !"text_content".equals(f.getColumn())).orderByDesc("created_at", "id"));
+        return new MediaPage<>(voicePreviews(tenantId, projectId, page.data()), page.current(), page.pageSize(), page.total());
+    }
+
+    public MediaPage<AiVoiceResultResponse> voiceTaskResults(
+        Long tenantId, Long projectId, Long taskId, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        requireVoiceTask(tenantId, projectId, taskId);
+        return MediaPageQueries.select(aiVoiceResultMapper,
+            MediaPageQueries.<AiVoiceResultEntity>projectQuery(tenantId, projectId).eq("task_id", taskId).eq("status", "ACTIVE"),
+            PageBounds.of(current, pageSize)).map(AiVoiceResultResponse::from);
+    }
+
+    public MediaPage<StoryboardSubtitleResponse> subtitles(
+        Long tenantId, Long projectId, Long storyboardId, String status, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        var query = MediaPageQueries.<StoryboardSubtitleEntity>projectQuery(tenantId, projectId);
+        if (storyboardId != null) query.eq("storyboard_id", storyboardId);
+        if (status != null && !status.isBlank()) query.eq("status", status);
+        else query.eq("status", "ACTIVE");
+        return MediaPageQueries.select(subtitleMapper, query, PageBounds.of(current, pageSize), q -> q
+            .select(StoryboardSubtitleEntity.class, f -> !"content".equals(f.getColumn())).orderByDesc("created_at", "id"))
+            .map(e -> new StoryboardSubtitleResponse(e.id, e.storyboardId, e.voiceResultId, e.subtitleType, null,
+                materialFileAccessService.publicUrl(e.srtUrl), e.styleConfig, e.isSelected, e.status, e.createdAt, List.of()));
+    }
+
+    public MediaPage<ShotComposeTaskResponse> composeTasks(
+        Long tenantId, Long projectId, String status, Long storyboardId, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        var page = MediaPageQueries.select(shotComposeTaskMapper,
+            taskQuery(ShotComposeTaskEntity.class, tenantId, projectId, status, storyboardId), PageBounds.of(current, pageSize),
+            q -> q.select(ShotComposeTaskEntity.class, f -> !"compose_config".equals(f.getColumn())).orderByDesc("created_at", "id"));
+        return new MediaPage<>(composePreviews(tenantId, projectId, page.data()), page.current(), page.pageSize(), page.total());
+    }
+
+    public MediaPage<ShotComposeResultResponse> composeTaskResults(
+        Long tenantId, Long projectId, Long taskId, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        requireComposeTask(tenantId, projectId, taskId);
+        return MediaPageQueries.select(shotComposeResultMapper,
+            MediaPageQueries.<ShotComposeResultEntity>projectQuery(tenantId, projectId).eq("task_id", taskId).eq("status", "ACTIVE"),
+            PageBounds.of(current, pageSize)).map(ShotComposeResultResponse::fromBrowser);
+    }
+
+    public MediaPage<EpisodeComposeTaskResponse> episodeComposeTasks(
+        Long tenantId, Long projectId, Integer episodeNo, String status, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        var query = MediaPageQueries.<EpisodeComposeTaskEntity>projectQuery(tenantId, projectId).isNull("deleted_at");
+        if (episodeNo != null) query.eq("episode_no", episodeNo);
+        if (status != null && !status.isBlank()) query.eq("status", status);
+        var page = MediaPageQueries.select(episodeComposeTaskMapper, query, PageBounds.of(current, pageSize), q -> q
+            .select(EpisodeComposeTaskEntity.class, f -> !"compose_config".equals(f.getColumn())).orderByDesc("created_at", "id"));
+        return new MediaPage<>(episodePreviews(tenantId, projectId, page.data()), page.current(), page.pageSize(), page.total());
+    }
+
+    public MediaPage<EpisodeComposeItemResponse> episodeComposeItems(
+        Long tenantId, Long projectId, Long taskId, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        requireEpisodeComposeTask(tenantId, projectId, taskId);
+        return MediaPageQueries.select(episodeComposeItemMapper,
+            MediaPageQueries.<EpisodeComposeItemEntity>projectQuery(tenantId, projectId).eq("task_id", taskId),
+            PageBounds.of(current, pageSize), q -> q.orderByAsc("storyboard_order", "id")).map(EpisodeComposeItemResponse::fromBrowser);
+    }
+
+    public MediaPage<EpisodeVideoVersionResponse> episodeComposeResults(
+        Long tenantId, Long projectId, Long taskId, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        requireEpisodeComposeTask(tenantId, projectId, taskId);
+        return MediaPageQueries.select(episodeVideoVersionMapper,
+            MediaPageQueries.<EpisodeVideoVersionEntity>projectQuery(tenantId, projectId).eq("compose_task_id", taskId).eq("status", "ACTIVE"),
+            PageBounds.of(current, pageSize)).map(EpisodeVideoVersionResponse::fromBrowser);
+    }
+
+    public MediaPage<EpisodeVideoVersionResponse> episodeVideoVersions(
+        Long tenantId, Long projectId, Integer episodeNo, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        return MediaPageQueries.select(episodeVideoVersionMapper,
+            MediaPageQueries.<EpisodeVideoVersionEntity>projectQuery(tenantId, projectId).eq("episode_no", episodeNo).eq("status", "ACTIVE"),
+            PageBounds.of(current, pageSize), q -> q.orderByDesc("is_current", "version_no", "id"))
+            .map(EpisodeVideoVersionResponse::fromBrowser);
+    }
+
+    public EpisodeVideoVersionResponse currentEpisodeVideoVersion(Long tenantId, Long projectId, Integer episodeNo) {
+        requireContext(tenantId, projectId);
+        var version = episodeVideoVersionMapper.selectOne(MediaPageQueries.<EpisodeVideoVersionEntity>projectQuery(tenantId, projectId)
+            .eq("episode_no", episodeNo).eq("status", "ACTIVE").eq("is_current", true).orderByDesc("version_no", "id").last("limit 1"));
+        return version == null ? null : EpisodeVideoVersionResponse.fromBrowser(version);
+    }
+
+    public MediaPage<EpisodeExportRecordResponse> episodeExportRecords(
+        Long tenantId, Long projectId, Integer episodeNo, Integer current, Integer pageSize
+    ) {
+        requireContext(tenantId, projectId);
+        var query = MediaPageQueries.<EpisodeExportRecordEntity>projectQuery(tenantId, projectId);
+        if (episodeNo != null) query.eq("episode_no", episodeNo);
+        return MediaPageQueries.select(episodeExportRecordMapper, query, PageBounds.of(current, pageSize)).map(EpisodeExportRecordResponse::from);
+    }
+
+    private <T> QueryWrapper<T> taskQuery(Class<T> type, Long tenantId, Long projectId, String status, Long storyboardId) {
+        var query = MediaPageQueries.<T>projectQuery(tenantId, projectId).isNull("deleted_at");
+        if (status != null && !status.isBlank()) query.eq("status", status);
+        if (storyboardId != null) query.eq("storyboard_id", storyboardId);
+        return query;
+    }
+
+    private List<AiVoiceTaskResponse> voicePreviews(Long tenantId, Long projectId, List<AiVoiceTaskEntity> tasks) {
+        if (tasks.isEmpty()) return List.of();
+        var ids = tasks.stream().map(t -> t.id).toList();
+        var results = aiVoiceResultMapper.selectList(MediaPageQueries.<AiVoiceResultEntity>representativeQuery(
+            "ai_voice_result", tenantId, projectId, ids, "ACTIVE", "is_selected"));
+        var grouped = results.stream().collect(java.util.stream.Collectors.groupingBy(r -> r.taskId));
+        var counts = MediaPageQueries.resultCounts(aiVoiceResultMapper, tenantId, projectId, ids, "ACTIVE", "task_id");
+        return tasks.stream().map(t -> AiVoiceTaskResponse.from(t, grouped.getOrDefault(t.id, List.of()), counts.getOrDefault(t.id, 0L))).toList();
+    }
+
+    private List<ShotComposeTaskResponse> composePreviews(Long tenantId, Long projectId, List<ShotComposeTaskEntity> tasks) {
+        if (tasks.isEmpty()) return List.of();
+        var ids = tasks.stream().map(t -> t.id).toList();
+        var results = shotComposeResultMapper.selectList(MediaPageQueries.<ShotComposeResultEntity>representativeQuery(
+            "shot_compose_result", tenantId, projectId, ids, "ACTIVE", "is_selected"));
+        var grouped = results.stream().collect(java.util.stream.Collectors.groupingBy(r -> r.taskId));
+        var counts = MediaPageQueries.resultCounts(shotComposeResultMapper, tenantId, projectId, ids, "ACTIVE", "task_id");
+        return tasks.stream().map(t -> ShotComposeTaskResponse.from(t, grouped.getOrDefault(t.id, List.of()), counts.getOrDefault(t.id, 0L))).toList();
+    }
+
+    private List<EpisodeComposeTaskResponse> episodePreviews(Long tenantId, Long projectId, List<EpisodeComposeTaskEntity> tasks) {
+        if (tasks.isEmpty()) return List.of();
+        var ids = tasks.stream().map(t -> t.id).toList();
+        String sqlIds = ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+        var versions = episodeVideoVersionMapper.selectList(MediaPageQueries.<EpisodeVideoVersionEntity>projectQuery(tenantId, projectId)
+            .eq("status", "ACTIVE").in("compose_task_id", ids).inSql("id", "select max(id) from episode_video_version"
+                + " where status = 'ACTIVE' and compose_task_id in (" + sqlIds + ") group by compose_task_id"));
+        var grouped = versions.stream().collect(java.util.stream.Collectors.toMap(v -> v.composeTaskId, v -> v));
+        var counts = MediaPageQueries.resultCounts(episodeVideoVersionMapper, tenantId, projectId, ids, "ACTIVE", "compose_task_id");
+        var itemCounts = MediaPageQueries.resultCounts(episodeComposeItemMapper, tenantId, projectId, ids, null, "task_id");
+        return tasks.stream().map(t -> EpisodeComposeTaskResponse.summary(t, grouped.get(t.id),
+            counts.getOrDefault(t.id, 0L), itemCounts.getOrDefault(t.id, 0L))).toList();
+    }
 
     private final ProjectAccessResolver projectAccessResolver;
     private final StoryboardMapper storyboardMapper;
@@ -112,7 +268,7 @@ public class ShotProductionService {
 
     public AiVoiceTaskResponse voiceTask(Long tenantId, Long projectId, Long taskId) {
         requireContext(tenantId, projectId);
-        return voiceTaskResponse(requireVoiceTask(tenantId, projectId, taskId));
+        return voicePreviews(tenantId, projectId, List.of(requireVoiceTask(tenantId, projectId, taskId))).get(0);
     }
 
     @Transactional
@@ -407,7 +563,7 @@ public class ShotProductionService {
 
     public ShotComposeTaskResponse composeTask(Long tenantId, Long projectId, Long taskId) {
         requireContext(tenantId, projectId);
-        return composeTaskResponse(requireComposeTask(tenantId, projectId, taskId));
+        return composePreviews(tenantId, projectId, List.of(requireComposeTask(tenantId, projectId, taskId))).get(0);
     }
 
     @Transactional
@@ -473,7 +629,12 @@ public class ShotProductionService {
 
     public EpisodeComposeTaskResponse episodeComposeTask(Long tenantId, Long projectId, Long taskId) {
         requireContext(tenantId, projectId);
-        return episodeTaskResponse(requireEpisodeComposeTask(tenantId, projectId, taskId));
+        var task = requireEpisodeComposeTask(tenantId, projectId, taskId);
+        var preview = episodePreviews(tenantId, projectId, List.of(task)).get(0);
+        var items = episodeComposeItems(tenantId, projectId, taskId, 1, 20);
+        return new EpisodeComposeTaskResponse(task.id, task.projectId, task.episodeNo, task.taskName, task.composeConfig,
+            task.storyboardCount, task.totalDurationSeconds, task.status, task.errorMessage, task.startedAt,
+            task.completedAt, task.createdAt, items.data(), preview.videoVersion(), preview.resultCount(), items.total());
     }
 
     @Transactional
@@ -587,7 +748,7 @@ public class ShotProductionService {
 
     public EpisodeVideoVersionResponse episodeVideoVersion(Long tenantId, Long projectId, Long versionId) {
         requireContext(tenantId, projectId);
-        return EpisodeVideoVersionResponse.from(requireEpisodeVideoVersion(tenantId, projectId, versionId));
+        return EpisodeVideoVersionResponse.fromBrowser(requireEpisodeVideoVersion(tenantId, projectId, versionId));
     }
 
     @Transactional

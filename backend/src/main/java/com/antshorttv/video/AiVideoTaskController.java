@@ -1,11 +1,11 @@
 package com.antshorttv.video;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.List;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,13 +26,15 @@ public class AiVideoTaskController {
 
     @GetMapping("/ai-video-tasks")
     @RequireProjectPermission("AI_VIDEO_TASK:VIEW")
-    public ApiResponse<List<AiVideoTaskResponse>> list(
+    public ApiResponse<MediaPage<AiVideoTaskResponse>> list(
         @PathVariable Long projectId,
         @RequestParam(required = false) String status,
         @RequestParam(required = false) Long storyboardId,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(aiVideoTaskService.list(tenantId(request), projectId, status, storyboardId));
+        return ApiResponse.success(aiVideoTaskService.list(tenantId(request), projectId, status, storyboardId, current, pageSize));
     }
 
     @PostMapping("/ai-video-tasks")
@@ -98,12 +100,24 @@ public class AiVideoTaskController {
 
     @GetMapping("/ai-video-tasks/{taskId}/results")
     @RequireProjectPermission("AI_VIDEO_TASK:VIEW")
-    public ApiResponse<List<AiVideoResultResponse>> results(
+    public ApiResponse<MediaPage<AiVideoResultResponse>> results(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(aiVideoTaskService.results(tenantId(request), projectId, taskId));
+        return ApiResponse.success(aiVideoTaskService.results(tenantId(request), projectId, taskId, null, current, pageSize));
+    }
+
+    @GetMapping("/ai-video-results")
+    @RequireProjectPermission("AI_VIDEO_TASK:VIEW")
+    public ApiResponse<MediaPage<AiVideoResultResponse>> candidateResults(
+        @PathVariable Long projectId, @RequestParam(required = false) Long storyboardId,
+        @RequestParam(required = false) Integer current, @RequestParam(required = false) Integer pageSize,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(aiVideoTaskService.results(tenantId(request), projectId, null, storyboardId, current, pageSize));
     }
 
     @GetMapping("/ai-video-results/{resultId}/download")

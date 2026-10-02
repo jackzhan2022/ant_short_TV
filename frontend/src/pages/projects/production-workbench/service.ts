@@ -1,4 +1,5 @@
 import { request } from '@umijs/max';
+import type { MediaPage, MediaPageParams } from '@/services/media/paging';
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -80,12 +81,18 @@ export type VisualEpisodeBinding = {
 };
 
 export type AssetVisualWorkspace = {
+  summaryOnly?: boolean;
   variantCount: number;
   primaryVariant?: VisualVariant | null;
+  selectedVariant?: VisualVariant | null;
+  current?: number;
+  pageSize?: number;
+  total?: number;
   variants: VisualVariant[];
   generationSummary: Record<string, number>;
   episodeBindings: VisualEpisodeBinding[];
   resolvedImageUrl?: string | null;
+  resolvedImageThumbnailUrl?: string | null;
   resolvedImageSource?: string | null;
 };
 
@@ -153,6 +160,7 @@ export type StoryboardShot = {
   imagePrompt: string;
   videoPrompt: string;
   firstFrameUrl?: string | null;
+  firstFrameThumbnailUrl?: string | null;
   currentVideoResultId?: number | null;
   currentVideoUrl?: string | null;
   currentAudioUrl?: string | null;
@@ -171,6 +179,7 @@ export type StoryboardAssetReference = {
   variantId?: number | null;
   variantName?: string | null;
   imageUrl?: string | null;
+  imageThumbnailUrl?: string | null;
   referenceRole: 'VISIBLE' | 'MAIN' | 'SUPPORTING' | 'TRANSITION';
   sortOrder: number;
   resolutionStatus: 'RESOLVED' | 'ASSET_PENDING' | 'UNRESOLVED';
@@ -602,9 +611,11 @@ export const queryAssetVisualWorkspace = async (
   projectId: number,
   elementType: Exclude<ScriptElementType, 'ALL'>,
   elementId: number,
+  params: MediaPageParams & { selectedVariantId?: number } = {},
 ) =>
   request<ApiResponse<AssetVisualWorkspace>>(
     `/api/projects/${projectId}/script-elements/${elementType}/${elementId}/visual-workspace`,
+    { params },
   );
 
 export const queryStoryboardWorkspace = async (
@@ -615,6 +626,21 @@ export const queryStoryboardWorkspace = async (
     `/api/projects/${projectId}/storyboard-workspace`,
     { params },
   );
+
+export type StoryboardMediaSummary = {
+  imageTasks: AiImageTask[];
+  videoTasks: AiVideoTask[];
+  voiceTasks: AiVoiceTask[];
+  assetVisuals?: Array<{ key: string; visual: AssetVisualWorkspace }>;
+};
+
+export const queryStoryboardMedia = (
+  projectId: number,
+  storyboardIds: number[],
+  signal?: AbortSignal,
+) => request<ApiResponse<StoryboardMediaSummary>>(`/api/projects/${projectId}/storyboard-media`, {
+  params: { storyboardIds: storyboardIds.join(',') }, signal,
+});
 
 export const retryScriptAnalysis = async (
   projectId: number,
@@ -972,9 +998,9 @@ export const generateWorkflowPrompts = async (
 
 export const queryAiImageTasks = async (
   projectId: number,
-  params?: { taskType?: string; status?: string },
+  params?: MediaPageParams & { taskType?: string; status?: string; targetType?: string; targetId?: number },
 ) =>
-  request<ApiResponse<AiImageTask[]>>(
+  request<ApiResponse<MediaPage<AiImageTask>>>(
     `/api/projects/${projectId}/ai-image-tasks`,
     {
       params,
@@ -984,6 +1010,20 @@ export const queryAiImageTasks = async (
 export const queryAiImageTask = async (projectId: number, taskId: number) =>
   request<ApiResponse<AiImageTask>>(
     `/api/projects/${projectId}/ai-image-tasks/${taskId}`,
+  );
+
+export const queryAiImageResults = (
+  projectId: number,
+  params: MediaPageParams & {
+    taskId?: number;
+    targetType?: string;
+    targetId?: number;
+  },
+  signal?: AbortSignal,
+) =>
+  request<ApiResponse<MediaPage<AiImageResult>>>(
+    `/api/projects/${projectId}/ai-image-results`,
+    { params, signal },
   );
 
 export const createAiImageTask = async (
@@ -1236,11 +1276,21 @@ export type CreateAiVideoTaskValues = {
 
 export const queryAiVideoTasks = async (
   projectId: number,
-  params?: { status?: AiVideoTaskStatus; storyboardId?: number },
+  params?: MediaPageParams & { status?: AiVideoTaskStatus; storyboardId?: number },
 ) =>
-  request<ApiResponse<AiVideoTask[]>>(
+  request<ApiResponse<MediaPage<AiVideoTask>>>(
     `/api/projects/${projectId}/ai-video-tasks`,
     { params },
+  );
+
+export const queryAiVideoResults = (
+  projectId: number,
+  params: MediaPageParams & { storyboardId?: number },
+  signal?: AbortSignal,
+) =>
+  request<ApiResponse<MediaPage<AiVideoResult>>>(
+    `/api/projects/${projectId}/ai-video-results`,
+    { params, signal },
   );
 
 export const createAiVideoTask = async (
@@ -1541,9 +1591,9 @@ export type RenameEpisodeVideoVersionValues = {
 
 export const queryAiVoiceTasks = async (
   projectId: number,
-  params?: { status?: string; storyboardId?: number },
+  params?: MediaPageParams & { status?: string; storyboardId?: number },
 ) =>
-  request<ApiResponse<AiVoiceTask[]>>(
+  request<ApiResponse<MediaPage<AiVoiceTask>>>(
     `/api/projects/${projectId}/ai-voice-tasks`,
     { params },
   );
@@ -1603,12 +1653,15 @@ export const createStoryboardSubtitle = async (
 
 export const queryStoryboardSubtitles = async (
   projectId: number,
-  params?: { storyboardId?: number; status?: string },
+  params?: MediaPageParams & { storyboardId?: number; status?: string },
 ) =>
-  request<ApiResponse<StoryboardSubtitle[]>>(
+  request<ApiResponse<MediaPage<StoryboardSubtitle>>>(
     `/api/projects/${projectId}/storyboard-subtitles`,
     { params },
   );
+
+export const queryStoryboardSubtitle = (projectId: number, subtitleId: number, signal?: AbortSignal) =>
+  request<ApiResponse<StoryboardSubtitle>>(`/api/projects/${projectId}/storyboard-subtitles/${subtitleId}`, { signal });
 
 export const updateStoryboardSubtitle = async (
   projectId: number,
@@ -1644,9 +1697,9 @@ export const selectStoryboardSubtitle = async (
 
 export const queryShotComposeTasks = async (
   projectId: number,
-  params?: { status?: string; storyboardId?: number },
+  params?: MediaPageParams & { status?: string; storyboardId?: number },
 ) =>
-  request<ApiResponse<ShotComposeTask[]>>(
+  request<ApiResponse<MediaPage<ShotComposeTask>>>(
     `/api/projects/${projectId}/shot-compose-tasks`,
     { params },
   );
@@ -1666,9 +1719,9 @@ export const createShotComposeTask = async (
 
 export const queryEpisodeComposeTasks = async (
   projectId: number,
-  params?: { episodeNo?: number; status?: EpisodeComposeTaskStatus },
+  params?: MediaPageParams & { episodeNo?: number; status?: EpisodeComposeTaskStatus },
 ) =>
-  request<ApiResponse<EpisodeComposeTask[]>>(
+  request<ApiResponse<MediaPage<EpisodeComposeTask>>>(
     `/api/projects/${projectId}/episode-compose-tasks`,
     { params },
   );
@@ -1724,10 +1777,11 @@ export const deleteEpisodeComposeTask = async (
 export const queryEpisodeVideoVersions = async (
   projectId: number,
   episodeNo: number,
+  params?: MediaPageParams,
 ) =>
-  request<ApiResponse<EpisodeVideoVersion[]>>(
+  request<ApiResponse<MediaPage<EpisodeVideoVersion>>>(
     `/api/projects/${projectId}/episode-video-versions`,
-    { params: { episodeNo } },
+    { params: { episodeNo, ...params } },
   );
 
 export const queryEpisodeVideoVersion = async (
@@ -1817,9 +1871,9 @@ export const deleteEpisodeVideoVersion = async (
 
 export const queryEpisodeExportRecords = async (
   projectId: number,
-  params?: { episodeNo?: number },
+  params?: MediaPageParams & { episodeNo?: number },
 ) =>
-  request<ApiResponse<EpisodeExportRecord[]>>(
+  request<ApiResponse<MediaPage<EpisodeExportRecord>>>(
     `/api/projects/${projectId}/episode-export-records`,
     { params },
   );

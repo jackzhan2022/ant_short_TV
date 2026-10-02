@@ -14,6 +14,7 @@ import {
   Flex,
   Input,
   Modal,
+  Pagination,
   Popconfirm,
   Radio,
   Skeleton,
@@ -842,6 +843,11 @@ const ProductionWorkbenchSettings = () => {
               projectId,
               visualAsset.type,
               visualAsset.item.id,
+              {
+                current: visualAsset.item.visual?.current || 1,
+                pageSize: visualAsset.item.visual?.pageSize || 20,
+                selectedVariantId: selectedVisualVariantId,
+              },
             )
           : Promise.resolve(undefined),
       ]);
@@ -915,6 +921,7 @@ const ProductionWorkbenchSettings = () => {
         projectId,
         type,
         item.id,
+        { current: 1, pageSize: 20 },
       );
       if (visualRequestIdRef.current !== requestId) return;
       setVisualAsset((current) =>
@@ -923,7 +930,9 @@ const ProductionWorkbenchSettings = () => {
           : current,
       );
       setSelectedVisualVariantId(
-        response.data.primaryVariant?.id ?? response.data.variants[0]?.id,
+        response.data.selectedVariant?.id
+          ?? response.data.primaryVariant?.id
+          ?? response.data.variants[0]?.id,
       );
     } catch {
       if (visualRequestIdRef.current === requestId) {
@@ -934,6 +943,29 @@ const ProductionWorkbenchSettings = () => {
       if (visualRequestIdRef.current === requestId) {
         setVisualLoading(false);
       }
+    }
+  };
+
+  const loadVisualPage = async (current: number, pageSize: number) => {
+    if (!visualAsset) return;
+    const requestId = ++visualRequestIdRef.current;
+    setVisualLoading(true);
+    try {
+      const response = await queryAssetVisualWorkspace(
+        projectId,
+        visualAsset.type,
+        visualAsset.item.id,
+        { current, pageSize, selectedVariantId: selectedVisualVariantId },
+      );
+      if (visualRequestIdRef.current !== requestId) return;
+      setVisualAsset((previous) => previous ? {
+        ...previous,
+        item: { ...previous.item, visual: response.data },
+      } : previous);
+    } catch {
+      if (visualRequestIdRef.current === requestId) messageRef.current.error('视觉形象分页加载失败');
+    } finally {
+      if (visualRequestIdRef.current === requestId) setVisualLoading(false);
     }
   };
 
@@ -1255,7 +1287,13 @@ const ProductionWorkbenchSettings = () => {
 
         {visualAsset
           ? (() => {
-              const variants = visualAsset.item.visual?.variants ?? [];
+              const visual = visualAsset.item.visual;
+              const variants = [...new Map([
+                visual?.primaryVariant,
+                visual?.selectedVariant,
+                ...(visual?.variants ?? []),
+              ].filter((variant): variant is VisualVariant => Boolean(variant))
+                .map((variant) => [variant.id, variant])).values()];
               const selectedVariant =
                 variants.find(
                   (variant) => variant.id === selectedVisualVariantId,
@@ -1537,6 +1575,17 @@ const ProductionWorkbenchSettings = () => {
                               </button>
                             )}
                           </section>
+                          {(visual?.total ?? 0) > (visual?.pageSize ?? 20) ? (
+                            <Pagination
+                              current={visual?.current || 1}
+                              pageSize={visual?.pageSize || 20}
+                              total={visual?.total || 0}
+                              showSizeChanger
+                              size="small"
+                              onChange={(page, size) => void loadVisualPage(page, size)}
+                              style={{ marginTop: 12 }}
+                            />
+                          ) : null}
                         </div>
                       </aside>
                       {selectedVariant ? (

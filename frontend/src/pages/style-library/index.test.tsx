@@ -4,10 +4,12 @@ import StyleLibraryPage from './index';
 
 const mocks = vi.hoisted(() => ({
   queryStyleLibrary: vi.fn(),
+  queryStyleCategories: vi.fn(),
 }));
 
 vi.mock('./service', () => ({
   queryStyleLibrary: mocks.queryStyleLibrary,
+  queryStyleCategories: mocks.queryStyleCategories,
 }));
 
 vi.mock('@ant-design/pro-components', () => ({
@@ -49,6 +51,11 @@ vi.mock('antd', () => ({
     </div>
   ),
   Space: ({ children }: any) => <div>{children}</div>,
+  Pagination: ({ current, onChange }: any) => (
+    <button type="button" onClick={() => onChange(current + 1, 24)}>
+      下一页
+    </button>
+  ),
   Spin: ({ children }: any) => <div>{children}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Typography: {
@@ -61,6 +68,10 @@ vi.mock('antd', () => ({
 describe('StyleLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('IntersectionObserver', undefined);
+    mocks.queryStyleCategories.mockResolvedValue({
+      data: ['3D风格', '未分组', '跨页分类'],
+    });
     mocks.queryStyleLibrary.mockImplementation(({ category, keyword } = {}) => {
       const all = [
         {
@@ -86,17 +97,48 @@ describe('StyleLibraryPage', () => {
       ];
       return Promise.resolve({
         success: true,
-        data: all.filter((item) => {
-          const categoryMatch =
-            !category || category === '全部' || item.category === category;
-          const keywordMatch =
-            !keyword ||
-            item.name.includes(keyword) ||
-            item.description.includes(keyword);
-          return categoryMatch && keywordMatch;
-        }),
+        data: {
+          current: 1,
+          pageSize: 24,
+          total: 50,
+          data: all.filter((item) => {
+            const categoryMatch =
+              !category || category === '全部' || item.category === category;
+            const keywordMatch =
+              !keyword ||
+              item.name.includes(keyword) ||
+              item.description.includes(keyword);
+            return categoryMatch && keywordMatch;
+          }),
+        },
       });
     });
+  });
+
+  it('requests bounded pages and resets the page when a filter changes', async () => {
+    render(<StyleLibraryPage />);
+    await screen.findByText('3D风格-高清真实渲染');
+    expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({
+      category: '全部',
+      keyword: '',
+      current: 1,
+      pageSize: 24,
+    });
+    expect(
+      screen.getByRole('button', { name: '跨页分类' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledWith(
+        expect.objectContaining({ current: 2 }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '未分组' }));
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ category: '未分组', current: 1 }),
+      ),
+    );
   });
 
   it('renders style cards from the API', async () => {

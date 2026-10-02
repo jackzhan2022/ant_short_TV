@@ -1,11 +1,11 @@
 package com.antshorttv.aiimage;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.List;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -34,13 +34,36 @@ public class AiImageTaskController {
 
     @GetMapping("/ai-image-tasks")
     @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
-    public ApiResponse<List<AiImageTaskResponse>> list(
+    public ApiResponse<MediaPage<AiImageTaskResponse>> list(
         @PathVariable Long projectId,
         @RequestParam(required = false) String taskType,
         @RequestParam(required = false) String status,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(aiImageTaskService.list(tenantId(request), projectId, taskType, status));
+        return ApiResponse.success(aiImageTaskService.list(tenantId(request), projectId, taskType, status, current, pageSize));
+    }
+
+    @GetMapping("/ai-image-tasks/{taskId}/results")
+    @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
+    public ApiResponse<MediaPage<AiImageResultResponse>> taskResults(
+        @PathVariable Long projectId, @PathVariable Long taskId,
+        @RequestParam(required = false) Integer current, @RequestParam(required = false) Integer pageSize,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(aiImageTaskService.results(tenantId(request), projectId, taskId, null, null, current, pageSize));
+    }
+
+    @GetMapping("/ai-image-results")
+    @RequireProjectPermission("AI_IMAGE_TASK:VIEW")
+    public ApiResponse<MediaPage<AiImageResultResponse>> results(
+        @PathVariable Long projectId, @RequestParam(required = false) Long taskId,
+        @RequestParam(required = false) String targetType, @RequestParam(required = false) Long targetId,
+        @RequestParam(required = false) Integer current, @RequestParam(required = false) Integer pageSize,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(aiImageTaskService.results(tenantId(request), projectId, taskId, targetType, targetId, current, pageSize));
     }
 
     @PostMapping("/ai-image-tasks")

@@ -1,11 +1,11 @@
 package com.antshorttv.shot;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.rbac.RequireProjectPermission;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.List;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -32,13 +32,15 @@ public class ShotProductionController {
 
     @GetMapping("/ai-voice-tasks")
     @RequireProjectPermission("AI_VOICE_TASK:VIEW")
-    public ApiResponse<List<AiVoiceTaskResponse>> voiceTasks(
+    public ApiResponse<MediaPage<AiVoiceTaskResponse>> voiceTasks(
         @PathVariable Long projectId,
         @RequestParam(required = false) String status,
         @RequestParam(required = false) Long storyboardId,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.voiceTasks(tenantId(request), projectId, status, storyboardId));
+        return ApiResponse.success(service.voiceTasks(tenantId(request), projectId, status, storyboardId, current, pageSize));
     }
 
     @PostMapping("/ai-voice-tasks")
@@ -104,12 +106,14 @@ public class ShotProductionController {
 
     @GetMapping("/ai-voice-tasks/{taskId}/results")
     @RequireProjectPermission("AI_VOICE_TASK:VIEW")
-    public ApiResponse<List<AiVoiceResultResponse>> voiceTaskResults(
+    public ApiResponse<MediaPage<AiVoiceResultResponse>> voiceTaskResults(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.voiceTaskResults(tenantId(request), projectId, taskId));
+        return ApiResponse.success(service.voiceTaskResults(tenantId(request), projectId, taskId, current, pageSize));
     }
 
     @GetMapping("/ai-voice-results/{resultId}/download")
@@ -155,13 +159,15 @@ public class ShotProductionController {
 
     @GetMapping("/storyboard-subtitles")
     @RequireProjectPermission("SUBTITLE:VIEW")
-    public ApiResponse<List<StoryboardSubtitleResponse>> subtitles(
+    public ApiResponse<MediaPage<StoryboardSubtitleResponse>> subtitles(
         @PathVariable Long projectId,
         @RequestParam(required = false) Long storyboardId,
         @RequestParam(required = false) String status,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.subtitles(tenantId(request), projectId, storyboardId, status));
+        return ApiResponse.success(service.subtitles(tenantId(request), projectId, storyboardId, status, current, pageSize));
     }
 
     @GetMapping("/storyboard-subtitles/{subtitleId}")
@@ -208,13 +214,15 @@ public class ShotProductionController {
 
     @GetMapping("/shot-compose-tasks")
     @RequireProjectPermission("SHOT_COMPOSE:VIEW")
-    public ApiResponse<List<ShotComposeTaskResponse>> composeTasks(
+    public ApiResponse<MediaPage<ShotComposeTaskResponse>> composeTasks(
         @PathVariable Long projectId,
         @RequestParam(required = false) String status,
         @RequestParam(required = false) Long storyboardId,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.composeTasks(tenantId(request), projectId, status, storyboardId));
+        return ApiResponse.success(service.composeTasks(tenantId(request), projectId, status, storyboardId, current, pageSize));
     }
 
     @GetMapping("/shot-compose-tasks/{taskId}")
@@ -270,23 +278,27 @@ public class ShotProductionController {
 
     @GetMapping("/shot-compose-tasks/{taskId}/results")
     @RequireProjectPermission("SHOT_COMPOSE:VIEW")
-    public ApiResponse<List<ShotComposeResultResponse>> composeTaskResults(
+    public ApiResponse<MediaPage<ShotComposeResultResponse>> composeTaskResults(
         @PathVariable Long projectId,
         @PathVariable Long taskId,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.composeTaskResults(tenantId(request), projectId, taskId));
+        return ApiResponse.success(service.composeTaskResults(tenantId(request), projectId, taskId, current, pageSize));
     }
 
     @GetMapping("/episode-compose-tasks")
     @RequireProjectPermission("EPISODE_COMPOSE:VIEW")
-    public ApiResponse<List<EpisodeComposeTaskResponse>> episodeComposeTasks(
+    public ApiResponse<MediaPage<EpisodeComposeTaskResponse>> episodeComposeTasks(
         @PathVariable Long projectId,
         @RequestParam(required = false) Integer episodeNo,
         @RequestParam(required = false) String status,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.episodeComposeTasks(tenantId(request), projectId, episodeNo, status));
+        return ApiResponse.success(service.episodeComposeTasks(tenantId(request), projectId, episodeNo, status, current, pageSize));
     }
 
     @GetMapping("/episode-compose-tasks/{taskId}")
@@ -342,12 +354,14 @@ public class ShotProductionController {
 
     @GetMapping("/episode-video-versions")
     @RequireProjectPermission("EPISODE_VERSION:VIEW")
-    public ApiResponse<List<EpisodeVideoVersionResponse>> episodeVideoVersions(
+    public ApiResponse<MediaPage<EpisodeVideoVersionResponse>> episodeVideoVersions(
         @PathVariable Long projectId,
         @RequestParam Integer episodeNo,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.episodeVideoVersions(tenantId(request), projectId, episodeNo));
+        return ApiResponse.success(service.episodeVideoVersions(tenantId(request), projectId, episodeNo, current, pageSize));
     }
 
     @GetMapping("/episode-video-versions/{versionId}")
@@ -401,18 +415,6 @@ public class ShotProductionController {
         return response.body(download.resource());
     }
 
-    @GetMapping("/episode-video-versions/{versionId}/cover")
-    @RequireProjectPermission("EPISODE_VERSION:VIEW")
-    public ResponseEntity<Resource> episodeVideoCover(
-        @PathVariable Long projectId,
-        @PathVariable Long versionId,
-        HttpServletRequest request
-    ) {
-        return ResponseEntity.ok()
-            .contentType(MediaType.IMAGE_PNG)
-            .body(service.episodeVideoCover(tenantId(request), projectId, versionId));
-    }
-
     @PostMapping("/episode-video-versions/{versionId}/save-material")
     @RequireProjectPermission("EPISODE_VERSION:SAVE_MATERIAL")
     public ApiResponse<EpisodeVideoVersionResponse> saveEpisodeVideoMaterial(
@@ -436,12 +438,42 @@ public class ShotProductionController {
 
     @GetMapping("/episode-export-records")
     @RequireProjectPermission("EPISODE_VERSION:VIEW")
-    public ApiResponse<List<EpisodeExportRecordResponse>> episodeExportRecords(
+    public ApiResponse<MediaPage<EpisodeExportRecordResponse>> episodeExportRecords(
         @PathVariable Long projectId,
         @RequestParam(required = false) Integer episodeNo,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.episodeExportRecords(tenantId(request), projectId, episodeNo));
+        return ApiResponse.success(service.episodeExportRecords(tenantId(request), projectId, episodeNo, current, pageSize));
+    }
+
+    @GetMapping("/episode-compose-tasks/{taskId}/items")
+    @RequireProjectPermission("EPISODE_COMPOSE:VIEW")
+    public ApiResponse<MediaPage<EpisodeComposeItemResponse>> episodeComposeItems(
+        @PathVariable Long projectId, @PathVariable Long taskId,
+        @RequestParam(required = false) Integer current, @RequestParam(required = false) Integer pageSize,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.episodeComposeItems(tenantId(request), projectId, taskId, current, pageSize));
+    }
+
+    @GetMapping("/episode-compose-tasks/{taskId}/results")
+    @RequireProjectPermission("EPISODE_COMPOSE:VIEW")
+    public ApiResponse<MediaPage<EpisodeVideoVersionResponse>> episodeComposeResults(
+        @PathVariable Long projectId, @PathVariable Long taskId,
+        @RequestParam(required = false) Integer current, @RequestParam(required = false) Integer pageSize,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.episodeComposeResults(tenantId(request), projectId, taskId, current, pageSize));
+    }
+
+    @GetMapping("/episode-video-versions/current")
+    @RequireProjectPermission("EPISODE_VERSION:VIEW")
+    public ApiResponse<EpisodeVideoVersionResponse> currentEpisodeVideoVersion(
+        @PathVariable Long projectId, @RequestParam Integer episodeNo, HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.currentEpisodeVideoVersion(tenantId(request), projectId, episodeNo));
     }
 
     @GetMapping("/shot-compose-results/{resultId}/download")

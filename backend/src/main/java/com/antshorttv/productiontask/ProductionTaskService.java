@@ -157,7 +157,8 @@ public class ProductionTaskService {
         String thumbnail=type.equals("IMAGE")?"thumbnail_url":"cover_url";
         List<Map<String,Object>> rows=sql.queryForList("select id,"+url+" content_url,"+thumbnail+" thumbnail_url,width,height,is_selected,status from "+table+" where tenant_id=:tenant and task_id=:task order by id limit :limit offset :offset",
             Map.of("tenant",tenant,"task",number(row,"id"),"limit",size+1,"offset",offset));
-        return collection(key,sectionKey,media(rows.size()>size?rows.subList(0,size):rows,"content_url"),page,size,
+        return collection(key,sectionKey,media(rows.size()>size?rows.subList(0,size):rows,"content_url",
+            number(row,"project_id"),type),page,size,
             rows.isEmpty()&&page==1?"PENDING":"AVAILABLE",rows.size()>size);
     }
 
@@ -292,19 +293,20 @@ public class ProductionTaskService {
     }
 
     private List<Map<String,Object>> imageSections(long tenant,long id) {
-        Map<String,Object> task=one("select prompt,negative_prompt,reference_images,model,provider_code,aspect_ratio,image_count,style,quality,seed,status,error_message from ai_image_task where tenant_id=? and id=?",tenant,id);
+        Map<String,Object> task=one("select project_id,prompt,negative_prompt,reference_images,model,provider_code,aspect_ratio,image_count,style,quality,seed,status,error_message from ai_image_task where tenant_id=? and id=?",tenant,id);
         String prompt=text(task.get("prompt"));
         List<Map<String,Object>> results=sql.queryForList("select id,image_url,thumbnail_url,width,height,file_size,is_selected,status from ai_image_result where tenant_id=:tenant and task_id=:task order by id limit 21",Map.of("tenant",tenant,"task",id));
         boolean resultsMore=results.size()>20;
         List<Map<String,Object>> references=referenceItems(task.get("reference_images"));
         return List.of(section("submission","保存的生成提示词","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt")),List.of(),more(prompt)),
             section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model"),"服务商",task.get("provider_code"),"比例",task.get("aspect_ratio"),"数量",task.get("image_count"),"风格",task.get("style"),"质量",task.get("quality"),"种子",task.get("seed")),List.of(),false),
-            section("results","生成结果","IMAGE",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),media(firstPage(results),"image_url"),resultsMore),
+            section("results","生成结果","IMAGE",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),
+                media(firstPage(results),"image_url",number(task,"project_id"),"IMAGE"),resultsMore),
             section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
     }
 
     private List<Map<String,Object>> videoSections(long tenant,long id) {
-        Map<String,Object> task=one("select prompt,negative_prompt,first_frame_url,last_frame_url,reference_images,model,provider_code,duration_seconds,aspect_ratio,resolution,motion_strength,camera_movement,random_seed from ai_video_task where tenant_id=? and id=?",tenant,id);
+        Map<String,Object> task=one("select project_id,prompt,negative_prompt,first_frame_url,last_frame_url,reference_images,model,provider_code,duration_seconds,aspect_ratio,resolution,motion_strength,camera_movement,random_seed from ai_video_task where tenant_id=? and id=?",tenant,id);
         String prompt=text(task.get("prompt"));
         List<Map<String,Object>> results=sql.queryForList("select id,video_url,cover_url thumbnail_url,duration_seconds,width,height,file_size,format,is_selected,status from ai_video_result where tenant_id=:tenant and task_id=:task order by id limit 21",Map.of("tenant",tenant,"task",id));
         boolean resultsMore=results.size()>20;
@@ -313,7 +315,8 @@ public class ProductionTaskService {
         for(Map<String,Object> reference:referenceItems(task.get("reference_images"))) if(references.size()<20) references.add(reference);
         return List.of(section("submission","本次提交","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt")),List.of(),more(prompt)),
             section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model"),"服务商",task.get("provider_code"),"时长（秒）",task.get("duration_seconds"),"比例",task.get("aspect_ratio"),"分辨率",task.get("resolution"),"运动强度",task.get("motion_strength"),"镜头运动",task.get("camera_movement"),"随机种子",task.get("random_seed")),List.of(),false),
-            section("results","生成结果","VIDEO",mediaAvailability(results,"video_url"),null,List.of(),media(firstPage(results),"video_url"),resultsMore),
+            section("results","生成结果","VIDEO",mediaAvailability(results,"video_url"),null,List.of(),
+                media(firstPage(results),"video_url",number(task,"project_id"),"VIDEO"),resultsMore),
             section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
     }
 
@@ -450,8 +453,24 @@ public class ProductionTaskService {
         for(int i=0;i<values.length;i+=2) if(values[i+1]!=null && !String.valueOf(values[i+1]).isBlank()) result.add(Map.of("label",String.valueOf(values[i]),"value",preview(String.valueOf(values[i+1]))));
         return result;
     }
-    private static List<Map<String,Object>> media(List<Map<String,Object>> rows,String urlKey) {
-        return rows.stream().map(row->{Map<String,Object> item=new LinkedHashMap<>(); item.put("id",row.get("id")); item.put("url",preview(text(row.get(urlKey)))); item.put("thumbnailUrl",preview(text(row.get("thumbnail_url")))); item.put("width",row.get("width")); item.put("height",row.get("height")); item.put("selected",truth(row.get("is_selected"))); return item;}).toList();
+    private static List<Map<String,Object>> media(List<Map<String,Object>> rows,String urlKey,Long projectId,String type) {
+        return rows.stream().map(row->{
+            Map<String,Object> item=new LinkedHashMap<>();
+            Long id=number(row,"id"); item.put("id",id);
+            if("VIDEO".equals(type) && projectId!=null && id!=null) {
+                item.put("url","/api/projects/"+projectId+"/ai-video-results/"+id+"/playback");
+                item.put("thumbnailUrl",text(row.get("thumbnail_url")).isBlank()?null:
+                    "/api/projects/"+projectId+"/ai-video-results/"+id+"/cover");
+                item.put("downloadUrl","/api/projects/"+projectId+"/ai-video-results/"+id+"/download-file");
+            } else {
+                String display=text(row.get("thumbnail_url"));
+                item.put("url",preview(display)); item.put("thumbnailUrl",preview(display));
+                if(projectId!=null&&id!=null)
+                    item.put("downloadUrl","/api/projects/"+projectId+"/ai-image-results/"+id+"/download");
+            }
+            item.put("width",row.get("width")); item.put("height",row.get("height"));
+            item.put("selected",truth(row.get("is_selected"))); return item;
+        }).toList();
     }
     private List<Map<String,Object>> referenceItems(Object stored) {
         if(stored==null || String.valueOf(stored).isBlank()) return List.of();
@@ -459,8 +478,9 @@ public class ProductionTaskService {
             List<Map<String,Object>> items=new ArrayList<>();
             for(var node:mapper.readTree(String.valueOf(stored))) {
                 String url=node.isTextual()?node.asText():node.path("url").asText("");
-                if(url.startsWith("/") && !url.startsWith("//")) {
-                    items.add(Map.of("url",url,"thumbnailUrl",url));
+                String thumbnail=com.antshorttv.material.CompressedImageReferences.thumbnail(url);
+                if(thumbnail!=null) {
+                    items.add(Map.of("url",thumbnail,"thumbnailUrl",thumbnail));
                     if(items.size()==20) break;
                 }
             }
@@ -468,7 +488,8 @@ public class ProductionTaskService {
         } catch(Exception ignored) { return List.of(); }
     }
     private static void addReference(List<Map<String,Object>> items,Object value,String role) {
-        String url=text(value); if(url.startsWith("/")&&!url.startsWith("//")&&items.size()<20) items.add(Map.of("url",url,"thumbnailUrl",url,"role",role));
+        String thumbnail=com.antshorttv.material.CompressedImageReferences.thumbnail(text(value));
+        if(thumbnail!=null&&items.size()<20) items.add(Map.of("url",thumbnail,"thumbnailUrl",thumbnail,"role",role));
     }
     private static List<Map<String,Object>> firstPage(List<Map<String,Object>> rows) { return rows.size()>20?rows.subList(0,20):rows; }
     private static List<Map<String,Object>> bounded(List<Map<String,Object>>... groups) {

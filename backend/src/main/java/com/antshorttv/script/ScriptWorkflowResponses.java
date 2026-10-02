@@ -101,16 +101,22 @@ record PropAssetResponse(
 record AssetVisualWorkspace(
     int variantCount,
     AssetVisualVariantService.VariantResponse primaryVariant,
+    AssetVisualVariantService.VariantResponse selectedVariant,
     List<AssetVisualVariantService.VariantResponse> variants,
+    int current,
+    int pageSize,
+    long total,
     Map<String, Long> generationSummary,
     List<AssetVisualBindingService.BindingResponse> episodeBindings,
     String resolvedImageUrl,
-    String resolvedImageSource
+    String resolvedImageSource,
+    String resolvedImageThumbnailUrl
 ) {
 }
 
 record StoryboardResponse(
     Long id,
+    Long projectId,
     Integer shotNo,
     Integer storyboardNo,
     Long episodeId,
@@ -137,6 +143,7 @@ record StoryboardResponse(
     static StoryboardResponse from(StoryboardEntity entity) {
         return new StoryboardResponse(
             entity.id,
+            entity.projectId,
             entity.shotNo,
             entity.storyboardNo == null ? entity.shotNo : entity.storyboardNo,
             entity.episodeId,
@@ -162,9 +169,14 @@ record StoryboardResponse(
         );
     }
 
+    @com.fasterxml.jackson.annotation.JsonProperty("firstFrameThumbnailUrl")
+    public String firstFrameThumbnailUrl() {
+        return com.antshorttv.material.MediaCoverDeliveryService.storyboardFirstFrameUrl(projectId, id, firstFrameUrl);
+    }
+
     StoryboardResponse withAssetReferences(List<StoryboardAssetReferenceResponse> references) {
         return new StoryboardResponse(
-            id, shotNo, storyboardNo, episodeId, episodeNo, shotType, visualDescription,
+            id, projectId, shotNo, storyboardNo, episodeId, episodeNo, shotType, visualDescription,
             characters, scene, props, dialogue, durationSeconds, shotPlan, promptDocument,
             materialBindingStatus, sourceFingerprint, generatedByRunId, imagePrompt, videoPrompt,
             firstFrameUrl, currentVideoResultId, currentVideoUrl,

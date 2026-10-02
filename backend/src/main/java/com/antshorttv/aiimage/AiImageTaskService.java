@@ -5,6 +5,9 @@ import com.antshorttv.ai.AiModelRouter;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.common.MediaPage;
+import com.antshorttv.common.MediaPageQueries;
+import com.antshorttv.common.PageBounds;
 import com.antshorttv.operationlog.OperationLogService;
 import com.antshorttv.operationlog.OperationResult;
 import com.antshorttv.accounting.AiUsageMetric;
@@ -108,7 +111,50 @@ public class AiImageTaskService {
 
     public AiImageTaskResponse detail(Long tenantId, Long projectId, Long taskId) {
         requireProject(tenantId, projectId);
-        return toResponse(requireTask(tenantId, projectId, taskId));
+        var task = requireTask(tenantId, projectId, taskId);
+        var response = previewResponses(tenantId, projectId, List.of(task)).get(0);
+        return task.getExecutionId() == null ? response
+            : response.withExecution(executionResponseMapper.toResponse(executionService.requireTask(task.getExecutionId())));
+    }
+
+    public MediaPage<AiImageTaskResponse> list(
+        Long tenantId, Long projectId, String taskType, String status, Integer current, Integer pageSize
+    ) {
+        requireProject(tenantId, projectId);
+        var query = MediaPageQueries.<AiImageTaskEntity>projectQuery(tenantId, projectId).isNull("deleted_at");
+        if (taskType != null && !taskType.isBlank()) query.eq("task_type", taskType);
+        if (status != null && !status.isBlank()) {
+            if ("RUNNING".equals(status)) query.in("status", "RUNNING", "SETTLING", "RENDERING");
+            else query.eq("status", status);
+        }
+        var page = MediaPageQueries.select(taskMapper, query, PageBounds.of(current, pageSize), q -> q
+            .select(AiImageTaskEntity.class, f -> !List.of("prompt", "negative_prompt", "reference_images").contains(f.getColumn()))
+            .orderByDesc("created_at", "id"));
+        return new MediaPage<>(previewResponses(tenantId, projectId, page.data()), page.current(), page.pageSize(), page.total());
+    }
+
+    public MediaPage<AiImageResultResponse> results(
+        Long tenantId, Long projectId, Long taskId, String targetType, Long targetId, Integer current, Integer pageSize
+    ) {
+        requireProject(tenantId, projectId);
+        if (taskId != null) requireTask(tenantId, projectId, taskId);
+        var query = MediaPageQueries.<AiImageResultEntity>projectQuery(tenantId, projectId).eq("status", "ACTIVE");
+        if (taskId != null) query.eq("task_id", taskId);
+        if (targetType != null && !targetType.isBlank()) query.eq("target_type", targetType);
+        if (targetId != null) query.eq("target_id", targetId);
+        query.inSql("task_id", "select id from ai_image_task where deleted_at is null");
+        return MediaPageQueries.select(resultMapper, query, PageBounds.of(current, pageSize)).map(AiImageResultResponse::from);
+    }
+
+    private List<AiImageTaskResponse> previewResponses(Long tenantId, Long projectId, List<AiImageTaskEntity> tasks) {
+        if (tasks.isEmpty()) return List.of();
+        var ids = tasks.stream().map(AiImageTaskEntity::getId).toList();
+        var results = resultMapper.selectList(MediaPageQueries.<AiImageResultEntity>representativeQuery(
+            "ai_image_result", tenantId, projectId, ids, "ACTIVE", "is_selected"));
+        var grouped = results.stream().collect(java.util.stream.Collectors.groupingBy(AiImageResultEntity::getTaskId));
+        var counts = MediaPageQueries.resultCounts(resultMapper, tenantId, projectId, ids, "ACTIVE", "task_id");
+        return tasks.stream().map(task -> AiImageTaskResponse.from(task,
+            grouped.getOrDefault(task.getId(), List.of()), counts.getOrDefault(task.getId(), 0L))).toList();
     }
 
     @Transactional

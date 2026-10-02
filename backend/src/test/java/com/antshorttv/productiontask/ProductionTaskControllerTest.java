@@ -44,6 +44,7 @@ class ProductionTaskControllerTest extends com.antshorttv.support.RegistrationTe
         jdbc.update("insert into ai_image_task(tenant_id,project_id,task_type,target_type,target_id,provider_code,model,prompt,negative_prompt,reference_images,aspect_ratio,image_count,style,quality,seed,status,created_by,created_at,updated_at) values (?,?, 'CHARACTER','CHARACTER',999999,'test','image-model',?,'no blur','[\"/reference.png\"]','16:9',1,'cinematic','high','42','SUCCEEDED',?,now(),now())",tenant,project,"a".repeat(40000),user);
         long task=jdbc.queryForObject("select id from ai_image_task where tenant_id=?",Long.class,tenant);
         jdbc.update("insert into ai_image_result(tenant_id,project_id,task_id,target_type,target_id,image_url,thumbnail_url,width,height,is_selected,status,created_at,updated_at) values (?,?,?,'CHARACTER',999999,'/result.png','/thumb.png',1920,1080,true,'SUCCEEDED',now(),now())",tenant,project,task);
+        long firstResult=jdbc.queryForObject("select min(id) from ai_image_result where task_id=?",Long.class,task);
         for(int i=2;i<=21;i++) jdbc.update("insert into ai_image_result(tenant_id,project_id,task_id,target_type,target_id,image_url,thumbnail_url,width,height,is_selected,status,created_at,updated_at) values (?,?,?,'CHARACTER',999999,?,?,1920,1080,false,'SUCCEEDED',now(),now())",tenant,project,task,"/result-"+i+".png","/thumb-"+i+".png");
         long tasksBefore=jdbc.queryForObject("select count(*) from ai_image_task where tenant_id=?",Long.class,tenant);
         long resultsBefore=jdbc.queryForObject("select count(*) from ai_image_result where tenant_id=?",Long.class,tenant);
@@ -60,10 +61,12 @@ class ProductionTaskControllerTest extends com.antshorttv.support.RegistrationTe
             .andExpect(jsonPath("$.data.sections[0].hasMore").value(true))
             .andExpect(jsonPath("$.data.sections[2].items.length()").value(20))
             .andExpect(jsonPath("$.data.sections[2].hasMore").value(true))
-            .andExpect(jsonPath("$.data.sections[2].items[0].url").value("/result.png"))
             .andExpect(jsonPath("$.data.sections[2].items[0].thumbnailUrl").value("/thumb.png"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].url").value("/thumb.png"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].downloadUrl").value(
+                "/api/projects/"+project+"/ai-image-results/"+firstResult+"/download"))
             .andExpect(jsonPath("$.data.sections[3].key").value("references"))
-            .andExpect(jsonPath("$.data.sections[3].items[0].url").value("/reference.png"));
+            .andExpect(jsonPath("$.data.sections[3].items.length()").value(0));
         mvc.perform(get(base+"/content/submission").param("offset","0").with(authenticated(token))).andExpect(status().isOk())
             .andExpect(jsonPath("$.data.sectionKey").value("submission"))
             .andExpect(jsonPath("$.data.text").value(org.hamcrest.Matchers.hasLength(32000)))
@@ -75,7 +78,7 @@ class ProductionTaskControllerTest extends com.antshorttv.support.RegistrationTe
             .andExpect(jsonPath("$.data.hasMore").value(false));
         mvc.perform(get(base+"/content/results").param("page","2").param("pageSize","20").with(authenticated(token))).andExpect(status().isOk())
             .andExpect(jsonPath("$.data.items.length()").value(1))
-            .andExpect(jsonPath("$.data.items[0].url").value("/result-21.png"))
+            .andExpect(jsonPath("$.data.items[0].url").value("/thumb-21.png"))
             .andExpect(jsonPath("$.data.hasMore").value(false));
         mvc.perform(get(base+"/content/provider-log").with(authenticated(token))).andExpect(status().is4xxClientError());
         mvc.perform(get(base+"/content/submission").param("offset","-1").with(authenticated(token))).andExpect(status().is4xxClientError());
@@ -119,11 +122,14 @@ class ProductionTaskControllerTest extends com.antshorttv.support.RegistrationTe
         jdbc.update("insert into ai_video_result(tenant_id,project_id,storyboard_id,task_id,video_url,storage_path,cover_url,duration_seconds,width,height,is_selected,status,created_at,updated_at) values (?,?,1,?,'/result.mp4','video/result.mp4','/cover.png',5,1920,1080,true,'SUCCEEDED',now(),now())",tenant,project,task);
         mvc.perform(get("/api/tenants/"+tenant+"/production-tasks/VIDEO:"+task+"/content").with(authenticated(token))).andExpect(status().isOk())
             .andExpect(jsonPath("$.data.sections[0].preview").value("saved video prompt"))
-            .andExpect(jsonPath("$.data.sections[2].items[0].url").value("/result.mp4"))
-            .andExpect(jsonPath("$.data.sections[2].items[0].thumbnailUrl").value("/cover.png"))
-            .andExpect(jsonPath("$.data.sections[3].items.length()").value(3))
-            .andExpect(jsonPath("$.data.sections[3].items[0].role").value("首帧"))
-            .andExpect(jsonPath("$.data.sections[3].items[1].role").value("尾帧"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].url").value(
+                "/api/projects/"+project+"/ai-video-results/"+
+                    jdbc.queryForObject("select id from ai_video_result where task_id=?",Long.class,task)+"/playback"))
+            .andExpect(jsonPath("$.data.sections[2].items[0].thumbnailUrl").value(
+                org.hamcrest.Matchers.endsWith("/cover")))
+            .andExpect(jsonPath("$.data.sections[2].items[0].downloadUrl").value(
+                org.hamcrest.Matchers.endsWith("/download-file")))
+            .andExpect(jsonPath("$.data.sections[3].items.length()").value(0))
             .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("outside.example"))));
     }
 

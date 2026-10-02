@@ -1,4 +1,5 @@
 import { request } from '@umijs/max';
+import type { MediaPage, MediaPageParams } from '@/services/media/paging';
 import {
   startMediaUpload,
   type MediaUploadRecovery,
@@ -161,11 +162,11 @@ export const createVideoDecompositionBatch = async (
     },
   );
 
-export const queryVideoDecompositionBatches = async (projectId?: number) =>
-  request<ApiResponse<VideoDecompositionBatch[]>>(
+export const queryVideoDecompositionBatches = async (projectId?: number, params: MediaPageParams = {}, signal?: AbortSignal) =>
+  request<ApiResponse<MediaPage<VideoDecompositionBatch>>>(
     '/api/video-script-decomposition/batches',
     {
-      params: projectId ? { projectId } : undefined,
+      params: { projectId, ...params }, signal,
     },
   );
 

@@ -18,9 +18,9 @@ import {
   Button,
   Empty,
   Flex,
-  Image,
   Input,
   Modal,
+  Pagination,
   Radio,
   Select,
   Spin,
@@ -30,13 +30,21 @@ import {
   Upload,
 } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ClickToPlayVideo, {
+  stopActiveVideo,
+} from '@/components/ClickToPlayVideo';
+import LazyMediaImage from '@/components/LazyMediaImage';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import type { TenantMember } from '@/services/account-team/types';
-import type { PublicStyle } from '../style-library/service';
+import type { MediaUploadHandle } from '@/services/mediaUpload';
+import {
+  type PublicStyle,
+  queryStyleCategories,
+} from '../style-library/service';
+import InspirationGallery from './InspirationGallery';
 import InspirationManagementDrawer from './InspirationManagementDrawer';
 import styles from './index.module.css';
-import LazyInspirationThumbnail from './LazyInspirationThumbnail';
 import {
   aspectRatioOptions,
   breakdownStrengthOptions,
@@ -46,12 +54,14 @@ import {
 import ScriptContentImport from './ScriptContentImport';
 import {
   createProject,
+  bindProjectCover,
   type InspirationCreation,
   type InspirationCreationDetail,
   queryInspirationCreationDetail,
   queryInspirationCreations,
   queryStyleLibrary,
   queryTenantMembers,
+  startProjectCoverUpload,
 } from './service';
 
 type CreationStep = 1 | 2;
@@ -102,8 +112,14 @@ const ShortDramaCreationPage = () => {
   const [scriptSourceLabel, setScriptSourceLabel] = useState<string>();
   const [coverFileName, setCoverFileName] = useState<string>();
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string>();
+  const [coverUploadSessionToken, setCoverUploadSessionToken] = useState<string>();
+  const coverUploadHandleRef = useRef<MediaUploadHandle | undefined>(undefined);
   const [selectedStyle, setSelectedStyle] = useState<PublicStyle>();
   const [styleGallery, setStyleGallery] = useState<PublicStyle[]>([]);
+  const [stylePage, setStylePage] = useState(1);
+  const [styleTotal, setStyleTotal] = useState(0);
+  const [styleCategories, setStyleCategories] = useState<string[]>([]);
+  const [styleCategory, setStyleCategory] = useState('全部');
   const [inspirationGallery, setInspirationGallery] = useState<
     InspirationCreation[]
   >([]);
@@ -122,6 +138,7 @@ const ShortDramaCreationPage = () => {
   const inspirationBottomRef = useRef<HTMLDivElement>(null);
   const inspirationRequestInFlightRef = useRef(false);
   const lastPaginationScrollVersionRef = useRef(-1);
+  const detailRequestRef = useRef(0);
   const [projectForm, setProjectForm] = useState<Partial<ProjectFormValues>>({
     coverSource: 'FIRST_FRAME',
     aspectRatio: '16:9',
@@ -170,24 +187,12 @@ const ShortDramaCreationPage = () => {
       return;
     }
     let active = true;
-    setGalleryLoading(true);
-    Promise.all([queryTenantMembers(tenantId), queryStyleLibrary({})])
-      .then(([memberResponse, styleResponse]) => {
+    queryTenantMembers(tenantId)
+      .then((memberResponse) => {
         if (!active) {
           return;
         }
-        const stylesData = styleResponse.data || [];
         setMembers(memberResponse.data || []);
-        setStyleGallery(stylesData);
-        setSelectedStyle(stylesData[0]);
-        if (stylesData[0]) {
-          setCoverPreviewUrl(stylesData[0].imageUrl);
-          setProjectForm((current) => ({
-            ...current,
-            visualStyle: current.visualStyle || stylesData[0].name,
-            coverUrl: current.coverUrl || stylesData[0].imageUrl,
-          }));
-        }
         setProjectForm((current) =>
           current.ownerId
             ? current
@@ -199,16 +204,67 @@ const ShortDramaCreationPage = () => {
       })
       .catch(() => {
         message.error('短剧创作数据加载失败');
-      })
-      .finally(() => {
-        if (active) {
-          setGalleryLoading(false);
-        }
       });
     return () => {
       active = false;
     };
   }, [tenantId, message]);
+
+  useEffect(() => {
+    let active = true;
+    void queryStyleCategories()
+      .then((response) => {
+        if (active) setStyleCategories(response.data || []);
+      })
+      .catch(() => {
+        if (active) setStyleCategories([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setGalleryLoading(true);
+    void queryStyleLibrary({
+      current: stylePage,
+      pageSize: 12,
+      ...(styleCategory === '全部' ? {} : { category: styleCategory }),
+    })
+      .then((response) => {
+        if (!active) return;
+        const records = response.data.data || [];
+        setStyleGallery(records);
+        setStyleTotal(response.data.total);
+        const first = records[0];
+        if (first) {
+          setSelectedStyle((current) => current || first);
+          setCoverPreviewUrl((current) => current || first.imageUrl);
+          setProjectForm((current) => ({
+            ...current,
+            visualStyle: current.visualStyle || first.name,
+            coverUrl: current.coverUrl || first.imageUrl,
+          }));
+        }
+      })
+      .catch(() => {
+        if (active) message.error('风格加载失败');
+      })
+      .finally(() => {
+        if (active) setGalleryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [stylePage, styleCategory, message]);
+
+  useEffect(
+    () => () => {
+      detailRequestRef.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadInspirationPage(1);
@@ -261,15 +317,18 @@ const ShortDramaCreationPage = () => {
   };
 
   const openInspirationDetail = async (item: InspirationCreation) => {
+    const request = ++detailRequestRef.current;
     setSelectedInspiration(item);
     setDetailLoading(true);
     try {
       const response = await queryInspirationCreationDetail(item.id);
-      setSelectedInspiration(response.data || item);
+      if (request === detailRequestRef.current)
+        setSelectedInspiration(response.data || item);
     } catch {
-      message.error('灵感详情加载失败');
+      if (request === detailRequestRef.current)
+        message.error('灵感详情加载失败');
     } finally {
-      setDetailLoading(false);
+      if (request === detailRequestRef.current) setDetailLoading(false);
     }
   };
 
@@ -287,19 +346,32 @@ const ShortDramaCreationPage = () => {
   };
 
   const handleCoverUpload = async (file: File) => {
+    coverUploadHandleRef.current?.cancel();
+    coverUploadHandleRef.current = undefined;
+    setCoverUploadSessionToken(undefined);
     setCoverFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const url = String(reader.result || '');
-      setCoverPreviewUrl(url);
-      updateForm({
-        coverUrl: url,
-        coverSource: 'UPLOAD',
-      });
-    };
-    reader.readAsDataURL(file);
+    if (coverPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(coverPreviewUrl);
+    const preview = URL.createObjectURL(file);
+    setCoverPreviewUrl(preview);
+    updateForm({ coverUrl: undefined, coverSource: 'UPLOAD' });
+    try {
+      const handle = await startProjectCoverUpload(file);
+      coverUploadHandleRef.current = handle;
+      const uploaded = await handle.attempt;
+      if (coverUploadHandleRef.current === handle) {
+        setCoverUploadSessionToken(uploaded.sessionToken);
+      }
+    } catch {
+      if (coverUploadHandleRef.current) coverUploadHandleRef.current = undefined;
+      message.error('封面上传失败，请重试');
+    }
     return false;
   };
+
+  useEffect(() => () => {
+    coverUploadHandleRef.current?.cancel();
+    if (coverPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(coverPreviewUrl);
+  }, [coverPreviewUrl]);
 
   const goNext = () => {
     updateForm({ initialScriptContent: scriptDraft.trim() || undefined });
@@ -314,6 +386,10 @@ const ShortDramaCreationPage = () => {
     }
     setSubmitting(true);
     try {
+      if (projectForm.coverSource === 'UPLOAD' && !coverUploadSessionToken) {
+        message.warning('封面仍在上传，请稍后再试');
+        return;
+      }
       const projectName = projectForm.name?.trim() || '未命名短剧';
       const projectCode =
         projectForm.code?.trim().toUpperCase() || `SHORT_DRAMA_${Date.now()}`;
@@ -321,7 +397,9 @@ const ShortDramaCreationPage = () => {
         name: projectName,
         code: projectCode,
         description: projectForm.description?.trim(),
-        coverUrl: projectForm.coverUrl || selectedStyle?.imageUrl,
+        coverUrl: projectForm.coverSource === 'UPLOAD'
+          ? undefined
+          : projectForm.coverUrl || selectedStyle?.imageUrl,
         coverSource: projectForm.coverSource || 'FIRST_FRAME',
         ownerId,
         startDate: projectForm.startDate,
@@ -338,7 +416,16 @@ const ShortDramaCreationPage = () => {
         initialScriptContent: scriptDraft.trim() || undefined,
       };
       const response = await createProject(payload);
-      message.success('项目已创建');
+      let coverBound = true;
+      if (projectForm.coverSource === 'UPLOAD' && coverUploadSessionToken) {
+        try {
+          await bindProjectCover(response.data.id, coverUploadSessionToken);
+        } catch {
+          coverBound = false;
+          message.warning('项目已创建，封面处理失败，可在项目中重新上传');
+        }
+      }
+      if (coverBound) message.success('项目已创建');
       history.push(`/projects/${response.data.id}/production-workbench/script`);
     } finally {
       setSubmitting(false);
@@ -446,34 +533,12 @@ const ShortDramaCreationPage = () => {
         </Flex>
         <Spin spinning={inspirationLoading && !inspirationGallery.length}>
           {inspirationGallery.length ? (
-            <div className={styles.inspirationGrid}>
-              {inspirationGallery.map((item) => {
-                const title = item.title?.trim() || `灵感 ${item.id}`;
-                return (
-                  <button
-                    className={styles.inspirationCard}
-                    aria-label={title}
-                    key={item.id}
-                    onClick={() => {
-                      void openInspirationDetail(item);
-                    }}
-                    type="button"
-                  >
-                    <LazyInspirationThumbnail
-                      alt={title}
-                      placeholderClassName={styles.inspirationPlaceholder}
-                      src={item.thumbnailUrl}
-                    />
-                    <span className={styles.inspirationOverlay}>
-                      <strong>{title}</strong>
-                      {item.promptSummary && (
-                        <small>{item.promptSummary}</small>
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <InspirationGallery
+              items={inspirationGallery}
+              onSelect={(item) => {
+                void openInspirationDetail(item);
+              }}
+            />
           ) : (
             <Empty description="暂无灵感内容" />
           )}
@@ -651,7 +716,7 @@ const ShortDramaCreationPage = () => {
           <Flex align="center" gap={10} wrap>
             <div className={styles.coverPreview}>
               {coverPreviewUrl ? (
-                <Image
+                <LazyMediaImage
                   alt="封面预览"
                   height={110}
                   preview={false}
@@ -693,10 +758,16 @@ const ShortDramaCreationPage = () => {
           {selectedStyle && (
             <button
               className={styles.selectedStyleCard}
+              aria-label={selectedStyle.name}
               onClick={() => applyStyleSelection(selectedStyle)}
               type="button"
             >
-              <img alt={selectedStyle.name} src={selectedStyle.imageUrl} />
+              <LazyMediaImage
+                native
+                height="100%"
+                alt={selectedStyle.name}
+                src={selectedStyle.imageUrl}
+              />
               <span>{selectedStyle.name}</span>
             </button>
           )}
@@ -707,24 +778,52 @@ const ShortDramaCreationPage = () => {
             平台风格
           </Typography.Text>
           <Spin spinning={galleryLoading}>
+            <Select
+              aria-label="风格分类"
+              value={styleCategory}
+              options={['全部', ...styleCategories].map((value) => ({
+                label: value,
+                value,
+              }))}
+              onChange={(value) => {
+                setStyleCategory(value);
+                setStylePage(1);
+              }}
+              style={{ width: 180, marginBottom: 16 }}
+            />
             <div className={styles.styleStrip}>
-              {styleGallery.slice(0, 12).map((style) => {
+              {styleGallery.map((style) => {
                 const active = selectedStyle?.id === style.id;
                 return (
                   <button
                     className={
                       active ? styles.styleCardActive : styles.styleCard
                     }
+                    aria-label={style.name}
                     key={style.externalId}
                     onClick={() => applyStyleSelection(style)}
                     type="button"
                   >
-                    <img alt={style.name} src={style.imageUrl} />
+                    <LazyMediaImage
+                      native
+                      height="100%"
+                      alt={style.name}
+                      src={style.imageUrl}
+                    />
                     <span>{style.name}</span>
                   </button>
                 );
               })}
             </div>
+            <Pagination
+              current={stylePage}
+              pageSize={12}
+              total={styleTotal}
+              hideOnSinglePage
+              showSizeChanger={false}
+              onChange={setStylePage}
+              style={{ marginTop: 16 }}
+            />
           </Spin>
         </section>
       </main>
@@ -748,7 +847,12 @@ const ShortDramaCreationPage = () => {
         destroyOnHidden
         footer={null}
         mask={{ enabled: true, blur: true }}
-        onCancel={() => setSelectedInspiration(undefined)}
+        onCancel={() => {
+          detailRequestRef.current += 1;
+          setDetailLoading(false);
+          stopActiveVideo();
+          setSelectedInspiration(undefined);
+        }}
         open={Boolean(selectedInspiration)}
         title={null}
         width={820}
@@ -774,11 +878,18 @@ const ShortDramaCreationPage = () => {
           <Spin spinning={detailLoading}>
             <div className={styles.detailMedia}>
               {selectedInspiration.mimeType?.startsWith('video/') ? (
-                <video controls src={selectedInspiration.url}>
-                  <track kind="captions" />
-                </video>
+                <ClickToPlayVideo
+                  src={selectedInspiration.url}
+                  poster={selectedInspiration.thumbnailUrl}
+                  alt={selectedInspiration.title || '灵感素材'}
+                  active={Boolean(selectedInspiration)}
+                  style={{ height: '100%' }}
+                />
               ) : (
-                <img
+                <LazyMediaImage
+                  native
+                  height="100%"
+                  imageStyle={{ objectFit: 'contain' }}
                   alt={selectedInspiration.title || '灵感素材'}
                   src={selectedInspiration.thumbnailUrl}
                 />
@@ -786,17 +897,12 @@ const ShortDramaCreationPage = () => {
             </div>
             <div className={styles.detailInfoPanel}>
               <div className={styles.detailThumb}>
-                {selectedInspiration.mimeType?.startsWith('video/') ? (
-                  <img
-                    alt={selectedInspiration.title || '灵感缩略图'}
-                    src={selectedInspiration.thumbnailUrl}
-                  />
-                ) : (
-                  <img
-                    alt={selectedInspiration.title || '灵感缩略图'}
-                    src={selectedInspiration.thumbnailUrl}
-                  />
-                )}
+                <LazyMediaImage
+                  native
+                  height="100%"
+                  alt={selectedInspiration.title || '灵感缩略图'}
+                  src={selectedInspiration.thumbnailUrl}
+                />
               </div>
               <div className={styles.detailCopy}>
                 <Typography.Text className={styles.detailTitle}>

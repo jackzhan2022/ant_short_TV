@@ -8,7 +8,7 @@ export async function list5(
   params: API.list5Params,
   options?: { [key: string]: any }
 ) {
-  return request<API.ApiResponseListStyleLibraryResponse>(
+  return request<API.ApiResponseMediaPageStyleLibraryResponse>(
     "/api/style-library",
     {
       method: "GET",
@@ -18,6 +18,31 @@ export async function list5(
       ...(options || {}),
     }
   );
+}
+
+/** 此处后端没有提供注释 GET /api/style-library/${param0} */
+export async function detail6(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.detail6Params,
+  options?: { [key: string]: any }
+) {
+  const { styleId: param0, ...queryParams } = params;
+  return request<API.ApiResponseStyleLibraryResponse>(
+    `/api/style-library/${param0}`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** 此处后端没有提供注释 GET /api/style-library/categories */
+export async function categories(options?: { [key: string]: any }) {
+  return request<API.ApiResponseListString>("/api/style-library/categories", {
+    method: "GET",
+    ...(options || {}),
+  });
 }
 
 /** 此处后端没有提供注释 GET /api/style-library/images/${param0} */

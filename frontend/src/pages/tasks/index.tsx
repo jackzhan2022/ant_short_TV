@@ -5,7 +5,6 @@ import {
   Button,
   Descriptions,
   Drawer,
-  Image,
   Input,
   List,
   Progress,
@@ -16,6 +15,8 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useRef, useState } from 'react';
+import ClickToPlayVideo from '@/components/ClickToPlayVideo';
+import LazyMediaImage from '@/components/LazyMediaImage';
 import {
   controlTask,
   listTasks,
@@ -146,10 +147,10 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
     {section.hasMore && !textMore && <Typography.Text type="secondary">仅展示前 20 项结果。</Typography.Text>}
     {section.fields.length > 0 && <Descriptions size="small" column={1} items={section.fields.map((field) => ({ key: field.label, label: field.label, children: field.value }))} />}
     {media && items.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-      {items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><Image width={160} src={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} />{typeof item.role === 'string' && <Tag>{item.role}</Tag>}{item.selected && <Tag color="success">当前采用</Tag>}<a href={String(item.url ?? '')} download>下载</a></div> : <div key={String(item.id ?? index)}><video controls preload="none" poster={String(item.thumbnailUrl ?? '')} style={{ width: 320, maxWidth: '100%' }}><source src={String(item.url ?? '')} /><track kind="captions" srcLang="zh-CN" label="暂无字幕" /></video><a href={String(item.url ?? '')} download>下载</a></div>)}
+      {items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><LazyMediaImage width={160} height={90} src={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} />{typeof item.role === 'string' && <Tag>{item.role}</Tag>}{item.selected && <Tag color="success">当前采用</Tag>}<a href={String(item.downloadUrl ?? '')} download>下载</a></div> : <div key={String(item.id ?? index)}><ClickToPlayVideo src={String(item.url ?? '')} poster={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} style={{ width: 320, maxWidth: '100%' }} /><a href={String(item.downloadUrl ?? '')} download>下载</a></div>)}
     </div>}
     {itemsMore && !textMore && <Button type="link" loading={loadingItems} onClick={loadMoreItems}>加载更多结果</Button>}
-    {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl'].includes(key)).map(([key, value]) => `${resultLabels[key] ?? key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
+    {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl', 'downloadUrl'].includes(key)).map(([key, value]) => `${resultLabels[key] ?? key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
   </section>;
 }
 function queryFromUrl(): Query {

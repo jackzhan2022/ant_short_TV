@@ -1,6 +1,7 @@
 package com.antshorttv.script;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.TenantRequestSupport;
 import com.antshorttv.execution.AiExecutionResponse;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
@@ -243,24 +244,29 @@ public class ScriptWorkflowController {
 
     @GetMapping("/script-elements/{elementType}/{elementId}/visual-variants")
     @RequireProjectPermission("ELEMENT:VIEW")
-    public ApiResponse<java.util.List<AssetVisualVariantService.VariantResponse>> visualVariants(
+    public ApiResponse<MediaPage<AssetVisualVariantService.VariantResponse>> visualVariants(
         @PathVariable Long projectId,
         @PathVariable String elementType,
         @PathVariable Long elementId,
-        HttpServletRequest request
+        HttpServletRequest request,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize
     ) {
         return ApiResponse.success(scriptWorkflowService.visualVariants(
-            tenantId(request), projectId, elementType, elementId));
+            tenantId(request), projectId, elementType, elementId, current, pageSize));
     }
 
     @GetMapping("/script-elements/{elementType}/{elementId}/visual-workspace")
     @RequireProjectPermission("ELEMENT:VIEW")
     public ApiResponse<AssetVisualWorkspace> assetVisualWorkspace(
         @PathVariable Long projectId, @PathVariable String elementType, @PathVariable Long elementId,
-        HttpServletRequest request
+        HttpServletRequest request,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
+        @RequestParam(required = false) Long selectedVariantId
     ) {
         return ApiResponse.success(scriptWorkflowService.assetVisualWorkspace(
-            tenantId(request), projectId, elementType, elementId));
+            tenantId(request), projectId, elementType, elementId, current, pageSize, selectedVariantId));
     }
 
     @PostMapping("/script-elements/{elementType}/{elementId}/visual-variants")

@@ -56,6 +56,15 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
         addTenantMember(tenantId, memberUserId);
         Long projectId = createProject(ownerToken, tenantId, memberUserId, "重生后我成了首富", "REBIRTH_CEO");
 
+        mockMvc.perform(get("/api/projects/%d/cover/status".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("MISSING")));
+        mockMvc.perform(get("/api/projects/%d/cover".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken)))
+            .andExpect(status().isNoContent())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", "no-store"));
+
         mockMvc.perform(get("/api/projects/%d/roles".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", tenantId))
@@ -117,6 +126,9 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.errorCode", is("PROJECT_ACCESS_DENIED")));
+        mockMvc.perform(get("/api/projects/%d/cover/status".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken)))
+            .andExpect(status().isForbidden());
     }
 
     @Test
@@ -166,7 +178,9 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[0].initialScriptContent").doesNotExist());
+            .andExpect(jsonPath("$.data.data[0].initialScriptContent").doesNotExist())
+            .andExpect(jsonPath("$.data.current", is(1)))
+            .andExpect(jsonPath("$.data.pageSize", is(20)));
         MvcResult workspace = mockMvc.perform(get("/api/projects/%d/script-page-workspace".formatted(createdId.longValue()))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", tenantId))
@@ -240,6 +254,41 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    void projectCoverResponseAndEditsPreserveReplaceAndExplicitlyClearSource() throws Exception {
+        String token = registerUser("13800011018", "Cover Editor");
+        Long tenant = createTenant(token, "Cover Team");
+        Long owner = userIdByMobile("13800011018");
+        Long id = createProject(token, tenant, owner, "Cover Project", "COVER_EDIT");
+        String source = "data:image/png;base64,legacy";
+        jdbcTemplate.update("update project set cover_url=?,cover_source='UPLOAD' where id=?", source, id);
+        mockMvc.perform(get("/api/projects/%d".formatted(id))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenant))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.coverUrl", is("/api/projects/" + id + "/cover")))
+            .andExpect(jsonPath("$.data.coverStatus", is("PENDING")));
+        mockMvc.perform(put("/api/projects/%d".formatted(id))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenant)
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                    {"name":"Renamed", "coverUrl":"/api/projects/%d/cover"}
+                    """.formatted(id)))
+            .andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select cover_url from project where id=?", String.class, id)).isEqualTo(source);
+        mockMvc.perform(put("/api/projects/%d".formatted(id))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenant)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Name only\"}"))
+            .andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select cover_url from project where id=?", String.class, id)).isEqualTo(source);
+        mockMvc.perform(put("/api/projects/%d".formatted(id))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenant)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Cleared\",\"clearCover\":true}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.coverStatus", is("MISSING")));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select cover_url from project where id=?", String.class, id)).isNull();
     }
 
     @Test

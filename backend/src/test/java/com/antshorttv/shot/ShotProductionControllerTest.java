@@ -375,7 +375,7 @@ class ShotProductionControllerTest extends com.antshorttv.support.RegistrationTe
                 .header("X-Tenant-Id", tenantId)
                 .param("storyboardId", String.valueOf(storyboardId)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(1)));
+            .andExpect(jsonPath("$.data.data", hasSize(1)));
 
         mockMvc.perform(get("/api/projects/%d/storyboard-subtitles/%d".formatted(projectId, subtitleId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -483,8 +483,8 @@ class ShotProductionControllerTest extends com.antshorttv.support.RegistrationTe
                 .header("X-Tenant-Id", tenantId)
                 .param("episodeNo", "1"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(1)))
-            .andExpect(jsonPath("$.data[0].current", is(true)));
+            .andExpect(jsonPath("$.data.data", hasSize(1)))
+            .andExpect(jsonPath("$.data.data[0].current", is(true)));
 
         mockMvc.perform(get("/api/projects/%d/episode-video-versions/%d/download".formatted(projectId, versionId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -496,8 +496,8 @@ class ShotProductionControllerTest extends com.antshorttv.support.RegistrationTe
         mockMvc.perform(get("/api/projects/%d/episode-video-versions/%d/cover".formatted(projectId, versionId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
-            .andExpect(status().isOk())
-            .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+            .andExpect(status().isNoContent())
+            .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
 
         mockMvc.perform(post("/api/projects/%d/episode-video-versions/%d/save-material".formatted(projectId, versionId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -544,7 +544,7 @@ class ShotProductionControllerTest extends com.antshorttv.support.RegistrationTe
                 .header("X-Tenant-Id", tenantId)
                 .param("episodeNo", "1"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(2)));
+            .andExpect(jsonPath("$.data.data", hasSize(2)));
 
         String storagePath = jdbc.queryForObject(
             "select storage_path from episode_video_version where id = ?",
@@ -600,11 +600,13 @@ class ShotProductionControllerTest extends com.antshorttv.support.RegistrationTe
             .andExpect(jsonPath("$.data.items[1].errorMessage", containsString("分镜视频比例不一致")));
     }
 
-    @Test
-    void composesEpisodeWhenShotResolutionDiffersButAspectRatioMatches() throws Exception {
-        String token = registerUser("13800017008", "Episode Resolution Validator");
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void composesEpisodeWhenShotResolutionDiffersButAspectRatioMatches(boolean generateCover) throws Exception {
+        String mobile = generateCover ? "13800017008" : "13800017019";
+        String token = registerUser(mobile, "Episode Resolution Validator");
         Long tenantId = createTenant(token, "六期分辨率校验团队");
-        Long ownerId = userIdByMobile("13800017008");
+        Long ownerId = userIdByMobile(mobile);
         Long projectId = createProject(token, tenantId, ownerId, "六期分辨率校验项目", "EPISODE_RESOLUTION");
         createStoryboardWithSelectedShot(tenantId, projectId, ownerId, 1, 1, 9301L, "/materials/1/1/shots/resolution-1.mp4", 5, 720, 1280);
         createStoryboardWithSelectedShot(tenantId, projectId, ownerId, 1, 2, 9302L, "/materials/1/1/shots/resolution-2.mp4", 6, 1080, 1920);
@@ -614,12 +616,13 @@ class ShotProductionControllerTest extends com.antshorttv.support.RegistrationTe
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"episodeNo":1,"outputFormat":"mp4","quality":"STANDARD","generateCover":true}
-                    """))
+                    {"episodeNo":1,"outputFormat":"mp4","quality":"STANDARD","generateCover":%s}
+                    """.formatted(generateCover)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
             .andExpect(jsonPath("$.data.items", hasSize(2)))
-            .andExpect(jsonPath("$.data.videoVersion.current", is(true)));
+            .andExpect(jsonPath("$.data.videoVersion.current", is(true)))
+            .andExpect(jsonPath("$.data.videoVersion.coverUrl", generateCover ? notNullValue() : org.hamcrest.Matchers.nullValue()));
     }
 
     private Long createStoryboard(Long tenantId, Long projectId, Long createdBy) throws Exception {

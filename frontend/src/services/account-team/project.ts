@@ -1,4 +1,5 @@
 import { request } from '@umijs/max';
+import type { MediaPage, MediaPageParams } from '@/services/media/paging';
 import type {
   ApiResponse,
   Permission,
@@ -14,6 +15,7 @@ export type ProjectFormValues = {
   description?: string;
   coverUrl?: string;
   coverSource?: string;
+  clearCover?: boolean;
   ownerId: number;
   startDate?: string;
   endDate?: string;
@@ -45,8 +47,8 @@ export type ProjectRoleFormValues = {
 export const hasProjectPermission = (project: Project, permission: string) =>
   project.effectivePermissions.includes(permission);
 
-export async function queryProjects() {
-  return request<ApiResponse<Project[]>>('/api/projects');
+export async function queryProjects(params: MediaPageParams & { keyword?: string } = {}, signal?: AbortSignal) {
+  return request<ApiResponse<MediaPage<Project>>>('/api/projects', { params, signal });
 }
 
 export async function createProject(values: ProjectFormValues) {

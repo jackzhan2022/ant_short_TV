@@ -10,6 +10,14 @@ import {
 export { queryTenantMembers } from '@/services/account-team/member';
 export { queryStyleLibrary } from '../style-library/service';
 
+export const startProjectCoverUpload = (file: File) => startMediaUpload(file);
+
+export const bindProjectCover = (projectId: number, uploadSessionToken: string) =>
+  request<ApiResponse<{ status: 'MISSING' | 'PENDING' | 'READY' | 'FAILED' }>>(
+    `/api/projects/${projectId}/cover/upload`,
+    { method: 'POST', data: { sessionToken: uploadSessionToken } },
+  );
+
 export type InspirationCreation = {
   id: number;
   externalId?: string;

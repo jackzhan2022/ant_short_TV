@@ -5,7 +5,7 @@ import {
   type MediaUploadHandle,
   type VerifiedMediaUpload,
 } from '@/services/mediaUpload';
-import { createManagedInspiration } from './service';
+import { bindProjectCover, createManagedInspiration } from './service';
 
 vi.mock('@umijs/max', () => ({ request: vi.fn() }));
 vi.mock('@/services/mediaUpload', () => ({ startMediaUpload: vi.fn() }));
@@ -117,5 +117,20 @@ describe('inspiration management uploads', () => {
         data: expect.objectContaining({ uploadSessionToken: 'session-1' }),
       }),
     );
+  });
+});
+
+describe('project cover uploads', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('binds a completed controlled upload session to the created project', async () => {
+    vi.mocked(request).mockResolvedValue({ success: true, data: { status: 'PENDING' } });
+
+    await bindProjectCover(9, 'cover-session');
+
+    expect(request).toHaveBeenCalledWith('/api/projects/9/cover/upload', {
+      method: 'POST',
+      data: { sessionToken: 'cover-session' },
+    });
   });
 });

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProjectList from './index';
 
 const mocks = vi.hoisted(() => ({
@@ -22,7 +22,11 @@ vi.mock('@/services/account-team/auth', () => ({
 
 vi.mock('./service', () => ({
   createProject: vi.fn(),
-  queryProjects: mocks.queryProjects,
+  queryProjects: async (...args: unknown[]) => {
+    const response = await mocks.queryProjects(...args);
+    return { ...response, data: Array.isArray(response.data)
+      ? { data: response.data, total: response.data.length, current: 1, pageSize: 20 } : response.data };
+  },
   queryTenantMembers: mocks.queryTenantMembers,
   updateProject: vi.fn(),
   updateProjectStatus: vi.fn(),
@@ -51,6 +55,7 @@ vi.mock('antd', () => ({
     </button>
   ),
   Empty: ({ description }: any) => <div>{description}</div>,
+  Pagination: ({ current, onChange }: any) => <button type="button" aria-label="下一页" onClick={() => onChange(current + 1, 20)}>下一页</button>,
   Space: ({ children }: any) => <div>{children}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
 }));
@@ -90,7 +95,13 @@ vi.mock('@ant-design/pro-components', () => ({
 }));
 
 describe('ProjectList', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe() { this.callback([{ isIntersecting: true }] as IntersectionObserverEntry[], this as unknown as IntersectionObserver); }
+      disconnect() {}
+    });
     vi.clearAllMocks();
     mocks.canCreateProject = true;
     mocks.queryTenantMembers.mockResolvedValue({ data: [] });
@@ -146,6 +157,7 @@ describe('ProjectList', () => {
           name: '卡片项目',
           code: 'CARD_PROJECT',
           coverUrl: 'https://example.com/card.jpg',
+          coverStatus: 'READY',
           ownerName: '张编剧',
           status: 'COMPLETED',
           memberCount: 4,
@@ -164,10 +176,9 @@ describe('ProjectList', () => {
     render(<ProjectList />);
 
     expect(await screen.findByText('卡片项目')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: '卡片项目封面' })).toHaveAttribute(
-      'src',
-      'https://example.com/card.jpg',
-    );
+    await waitFor(() => expect(screen.getByRole('img', { name: '卡片项目封面' })).toHaveAttribute(
+      'src', 'https://example.com/card.jpg',
+    ));
     expect(screen.getByText('已完成')).toBeInTheDocument();
     expect(screen.getByText('张编剧')).toBeInTheDocument();
     expect(screen.getByText(/2026-08-25/)).toBeInTheDocument();
@@ -229,5 +240,14 @@ describe('ProjectList', () => {
     expect(
       screen.queryByRole('button', { name: /创建项目/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('requests the next server page and displays its authorized total', async () => {
+    mocks.queryProjects.mockResolvedValue({ success: true,
+      data: { data: [], current: 1, pageSize: 20, total: 45 } });
+    render(<ProjectList />);
+    await screen.findByText('共 45 个项目');
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await waitFor(() => expect(mocks.queryProjects).toHaveBeenCalledWith({ current: 2, pageSize: 20 }, expect.anything()));
   });
 });

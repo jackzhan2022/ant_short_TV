@@ -14,6 +14,9 @@ import com.antshorttv.ai.AiModelRouter;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.common.MediaPage;
+import com.antshorttv.common.MediaPageQueries;
+import com.antshorttv.common.PageBounds;
 import com.antshorttv.execution.AiExecutionCreateCommand;
 import com.antshorttv.execution.AiExecutionAttemptEntity;
 import com.antshorttv.execution.AiExecutionAttemptMapper;
@@ -195,7 +198,44 @@ public class AiVideoTaskService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         AiVideoTaskEntity task = requireTask(tenantId, projectId, taskId);
-        return response(task);
+        return previewResponses(tenantId, projectId, List.of(task)).get(0);
+    }
+
+    public MediaPage<AiVideoTaskResponse> list(
+        Long tenantId, Long projectId, String status, Long storyboardId, Integer current, Integer pageSize
+    ) {
+        requireProjectAccess(tenantContextResolver.requireActiveMember(tenantId), projectId);
+        var query = MediaPageQueries.<AiVideoTaskEntity>projectQuery(tenantId, projectId).isNull("deleted_at");
+        if (status != null && !status.isBlank()) query.eq("status", status);
+        if (storyboardId != null) query.eq("storyboard_id", storyboardId);
+        var page = MediaPageQueries.select(aiVideoTaskMapper, query, PageBounds.of(current, pageSize), q -> q
+            .select(AiVideoTaskEntity.class, f -> !Set.of("prompt", "compiled_prompt", "negative_prompt", "first_frame_url",
+                "last_frame_url", "reference_images", "request_snapshot_json", "provider_result_metadata_json").contains(f.getColumn()))
+            .orderByDesc("created_at", "id"));
+        return new MediaPage<>(previewResponses(tenantId, projectId, page.data()), page.current(), page.pageSize(), page.total());
+    }
+
+    public MediaPage<AiVideoResultResponse> results(
+        Long tenantId, Long projectId, Long taskId, Long storyboardId, Integer current, Integer pageSize
+    ) {
+        requireProjectAccess(tenantContextResolver.requireActiveMember(tenantId), projectId);
+        if (taskId != null) requireTask(tenantId, projectId, taskId);
+        var query = MediaPageQueries.<AiVideoResultEntity>projectQuery(tenantId, projectId).eq("status", "ACTIVE");
+        if (taskId != null) query.eq("task_id", taskId);
+        if (storyboardId != null) query.eq("storyboard_id", storyboardId);
+        query.inSql("task_id", "select id from ai_video_task where deleted_at is null");
+        return MediaPageQueries.select(aiVideoResultMapper, query, PageBounds.of(current, pageSize)).map(AiVideoResultResponse::fromBrowser);
+    }
+
+    private List<AiVideoTaskResponse> previewResponses(Long tenantId, Long projectId, List<AiVideoTaskEntity> tasks) {
+        if (tasks.isEmpty()) return List.of();
+        var ids = tasks.stream().map(task -> task.id).toList();
+        var representatives = aiVideoResultMapper.selectList(MediaPageQueries.<AiVideoResultEntity>representativeQuery(
+            "ai_video_result", tenantId, projectId, ids, "ACTIVE", "is_selected"));
+        var grouped = representatives.stream().collect(java.util.stream.Collectors.groupingBy(result -> result.taskId));
+        var counts = MediaPageQueries.resultCounts(aiVideoResultMapper, tenantId, projectId, ids, "ACTIVE", "task_id");
+        return tasks.stream().map(task -> AiVideoTaskResponse.from(task,
+            grouped.getOrDefault(task.id, List.of()), counts.getOrDefault(task.id, 0L))).toList();
     }
 
     @Transactional

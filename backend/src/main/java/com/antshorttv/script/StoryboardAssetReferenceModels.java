@@ -73,6 +73,10 @@ record StoryboardAssetReferenceResponse(
     String sourceName,
     boolean lockedByUser
 ) {
+    @com.fasterxml.jackson.annotation.JsonProperty("imageThumbnailUrl")
+    public String imageThumbnailUrl() {
+        return com.antshorttv.material.CompressedImageReferences.thumbnail(imageUrl);
+    }
 }
 
 final class StoryboardAssetReferenceValidation {

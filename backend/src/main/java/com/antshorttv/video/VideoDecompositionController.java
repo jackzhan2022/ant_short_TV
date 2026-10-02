@@ -1,10 +1,10 @@
 package com.antshorttv.video;
 
 import com.antshorttv.common.ApiResponse;
+import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.TenantRequestSupport;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,11 +24,13 @@ public class VideoDecompositionController {
     }
 
     @GetMapping("/batches")
-    public ApiResponse<List<VideoDecompositionBatchResponse>> list(
+    public ApiResponse<MediaPage<VideoDecompositionBatchResponse>> list(
         @RequestParam(required = false) Long projectId,
+        @RequestParam(required = false) Integer current,
+        @RequestParam(required = false) Integer pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.list(tenantId(request), projectId));
+        return ApiResponse.success(service.list(tenantId(request), projectId, current, pageSize));
     }
 
     @PostMapping("/batches")
