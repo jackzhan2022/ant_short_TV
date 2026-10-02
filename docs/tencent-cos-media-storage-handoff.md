@@ -8,8 +8,8 @@ Last updated: 2026-10-02
 - Worktree: `C:\Users\12775\.codex\worktrees\migrate-media-storage-to-tencent-cos\ant_short_TV`
 - Branch: `codex/migrate-media-storage-to-tencent-cos`
 - Remote: `origin/codex/migrate-media-storage-to-tencent-cos`
-- OpenSpec change: `migrate-media-storage-to-tencent-cos`
-- OpenSpec progress: `55/55`; the owner confirmed manual test-notification receipt and explicitly accepted the final gate on 2026-10-02. Apply is complete; this change is not yet archived or merged.
+- OpenSpec change: `migrate-media-storage-to-tencent-cos`, archived at `openspec/changes/archive/2026-10-02-migrate-media-storage-to-tencent-cos` with all seven main specifications synchronized.
+- OpenSpec progress: `55/55`; the owner confirmed manual test-notification receipt and explicitly accepted the final gate on 2026-10-02. Apply and archive are complete; integration with `master` is in progress.
 - Latest implementation commit: `5010894` (`fix(storage): complete multipart and immutable media cleanup contracts`).
 - Implementation commits through `5010894` are pushed and deployed. The active release is `/opt/antv/releases/20261002-5010894-readiness`.
 
@@ -279,16 +279,16 @@ The backend test baseline is repaired without production authentication changes.
 3. Preserve the accepted browser disk-cache screenshot and stable grant evidence; do not repeat user-assisted cache checks or resubmit image processing.
 4. Continue reconciling successful processing operations, adaptive-WebP usage, package deductions, cache hit ratio, COS/CDN traffic, requests/storage/retrieval and delayed actual bills before revisiting the persistent-rendition design.
 5. Retain the completed rollback evidence and all matching snapshots/releases; never restore old database contents over later writes. Split test resources before public customers make shared acceptance unsafe.
-6. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Avoid repeating full suites for documentation-only changes. Apply is complete at 55/55; archive/merge is a separate action and has not been performed.
+6. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Apply is complete at 55/55 and the change is archived with synchronized main specifications. Validate integration with the newer `master` asset interactions before merging back; this archive/merge step does not include an additional cloud deployment.
 
 ## 8. Commands to Resume
 
 ```powershell
 cd C:\Users\12775\.codex\worktrees\migrate-media-storage-to-tencent-cos\ant_short_TV
-openspec status --change "migrate-media-storage-to-tencent-cos" --json
-openspec instructions apply --change "migrate-media-storage-to-tencent-cos" --json
+Get-Content openspec/changes/archive/2026-10-02-migrate-media-storage-to-tencent-cos/tasks.md
+openspec list --json
 git status --short --branch
-openspec validate migrate-media-storage-to-tencent-cos --strict
+openspec validate tencent-cos-media-storage --type spec --strict
 ```
 
 The local frontend preview is `http://localhost:8034`; its proxy defaults to local backend port `8080`, not the production host. It is not proof of the real COS workflow. After code changes, run checks in proportion to the affected paths; never edit generated services manually:

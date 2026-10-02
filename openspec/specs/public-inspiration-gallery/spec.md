@@ -19,40 +19,33 @@ The system SHALL persist imported public inspiration creations in a dedicated pl
 - **THEN** the system updates the existing public inspiration record instead of creating a duplicate row
 
 ### Requirement: Imported media is transferred to the platform object bucket
-
-The system SHALL download each external image or video during import and store the media file in the platform object bucket under a platform inspiration path.
+The system SHALL stream each external image or video during import into the configured COS bucket under an immutable platform inspiration asset/version namespace without buffering an entire video in application memory. Imported images SHALL receive one persistent original-resolution `imageSlim` display rendition shared by thumbnail, detail, and preview roles, and imported videos SHALL receive a persistent `imageSlim` cover.
 
 #### Scenario: Image creation media is transferred
-
 - **WHEN** an external image creation is imported with a valid media URL
-- **THEN** the system uploads the image bytes to object storage under a path such as `inspiration/creations/{externalId}/original.{ext}`
-- **AND** the public inspiration record stores that object storage path
+- **THEN** the system streams the original image to an immutable COS original key
+- **AND** records that key and the required persistent display rendition keys on the public inspiration record
 
 #### Scenario: Video creation media is transferred
-
 - **WHEN** an external video creation is imported with a valid media URL
-- **THEN** the system uploads the video bytes to object storage under a path such as `inspiration/creations/{externalId}/original.{ext}`
-- **AND** the public inspiration record stores a video MIME type or an inferred video format
+- **THEN** the system streams the original video to an immutable COS original key
+- **AND** records its video MIME type or inferred format and persistent cover state
 
 ### Requirement: External media URLs are not persisted or exposed
+The system MUST NOT persist external source media URLs, COS URLs, CDN hostnames, or signed query strings as durable public inspiration resource identities. Business data SHALL persist object keys and metadata, and authorized API responses SHALL resolve current CDN delivery URLs from those keys.
 
-The system MUST NOT persist external source media URLs in public inspiration business data or return them from public inspiration APIs.
-
-#### Scenario: Imported record stores only local URL
-
+#### Scenario: Imported record stores only object identity
 - **WHEN** an external creation is imported successfully
-- **THEN** the public inspiration record stores a local URL such as `/api/inspiration-creations/{id}/file`
-- **AND** the record does not store the external media URL
+- **THEN** the public inspiration record stores its original and rendition object keys and metadata
+- **AND** does not store the external media URL or a signed CDN/COS URL
 
 #### Scenario: Detail payload is sanitized
-
 - **WHEN** an external detail response contains media URL fields
-- **THEN** the persisted `detail_json` removes those external media URLs or replaces them with the local platform URL
+- **THEN** the persisted `detail_json` removes those external media URLs or replaces them with internal resource identities that require authorized resolution
 
 #### Scenario: Public API response contains no external media URL
-
 - **WHEN** a client requests the public inspiration list or detail API
-- **THEN** the response includes only local platform URLs for imported media
+- **THEN** the response includes only current authorized platform CDN URLs for imported media
 
 ### Requirement: Inspiration authors are normalized to administrator
 
@@ -129,85 +122,47 @@ The system SHALL expose `GET /api/inspiration-creations/{id}` for authenticated 
 - **THEN** the system returns not found
 
 ### Requirement: Public inspiration file API streams stored media
+The system SHALL preserve `GET /api/inspiration-creations/{id}/file` as the authorization boundary for published, non-deleted inspiration records while returning or redirecting to a Type D CDN URL for the stored original instead of streaming media bytes through the application server.
 
-The system SHALL expose `GET /api/inspiration-creations/{id}/file` to stream stored media for published, non-deleted inspiration records from the platform object bucket.
-
-#### Scenario: Stream published media file
-
-- **WHEN** a client requests the file endpoint for a published, non-deleted inspiration creation
-- **THEN** the system reads the record storage path from object storage
-- **AND** streams the file with the stored or inferred content type
+#### Scenario: Access published media file
+- **WHEN** an authenticated client requests the file endpoint for a published, non-deleted inspiration creation
+- **THEN** the system verifies the record and caller, resolves the original object key, and returns authorized CDN access
 
 #### Scenario: Unavailable creation file is hidden
-
 - **WHEN** a client requests the file endpoint for an unpublished, deleted, failed, or missing public inspiration creation
-- **THEN** the system returns not found
+- **THEN** the system returns not found and creates no delivery grant
 
 ### Requirement: Imported inspiration media has a stored thumbnail
-
-The system SHALL generate a bounded visual thumbnail for each imported inspiration creation and store it as a separate object under the platform inspiration path.
+The system SHALL create a persistent `imageSlim` display object for each imported inspiration creation and store it under the immutable asset version's derived namespace. Image display objects SHALL retain the original dimensions, and video covers SHALL use the deterministic video-cover policy.
 
 #### Scenario: Image import generates a thumbnail
-
-- **WHEN** an external image creation is imported successfully
-- **THEN** the system generates a reduced-size thumbnail without upscaling the original
-- **AND** uploads the thumbnail under a path such as `inspiration/creations/{externalId}/thumbnail.jpg`
-- **AND** stores the thumbnail path, local URL, MIME type, file size, and ready status on the inspiration record
+- **WHEN** an external image creation original is imported successfully
+- **THEN** Cloud Infinite creates an original-resolution `imageSlim` display object without resizing
+- **AND** the record stores its object key, MIME type, file size, dimensions, and ready status
 
 #### Scenario: Video import generates a thumbnail
-
-- **WHEN** an external video creation is imported successfully
-- **THEN** the system extracts a representative frame using the configured video frame extractor
-- **AND** uploads a reduced-size thumbnail under the platform inspiration path
-- **AND** stores the thumbnail metadata and ready status on the inspiration record
+- **WHEN** an external video creation original is imported successfully without a bound cover
+- **THEN** Cloud Infinite persists a one-second snapshot or bounded first-decodable-frame fallback and applies `imageSlim`
+- **AND** the record stores the cover metadata and ready status
 
 #### Scenario: Thumbnail generation fails
-
-- **WHEN** the original media import succeeds but thumbnail decoding, extraction, encoding, or upload fails
+- **WHEN** the original media import succeeds but required Cloud Infinite processing fails
 - **THEN** the system preserves the imported original media
-- **AND** marks thumbnail generation as failed with a clear per-item error
-- **AND** allows the thumbnail operation to be retried
-
-### Requirement: Existing inspiration media can be backfilled with thumbnails
-
-The system SHALL provide a resumable bounded operation that generates thumbnails for imported inspiration records that do not have a ready thumbnail, using the original objects already stored by the platform.
-
-#### Scenario: Backfill processes a historical record
-
-- **WHEN** backfill selects an imported record without a ready thumbnail
-- **THEN** the system reads the original object from platform storage
-- **AND** generates and uploads the deterministic thumbnail object
-- **AND** updates that record to thumbnail status ready
-
-#### Scenario: Backfill is rerun
-
-- **WHEN** backfill runs again after some records already have ready thumbnails
-- **THEN** the system skips ready records
-- **AND** continues processing eligible pending or failed records within the configured batch bound
-
-#### Scenario: One historical item fails
-
-- **WHEN** thumbnail generation fails for one record in a backfill batch
-- **THEN** the system records that item failure
-- **AND** continues processing the remaining records in the batch
+- **AND** marks rendition generation failed with a clear per-item error
+- **AND** allows the idempotent processing job to be retried
 
 ### Requirement: Thumbnail files are protected and cacheable
-
-The system SHALL expose stored thumbnails for published, non-deleted records through an authenticated local file endpoint and SHALL apply finite private browser caching to stable original and thumbnail responses.
+The system SHALL preserve the authenticated thumbnail resource boundary for published, non-deleted records and SHALL return or redirect to a Type D CDN URL for the persistent `imageSlim` display object. CDN nodes SHALL cache immutable display objects for 30 days and eligible browsers for seven days under the private-media-delivery contract.
 
 #### Scenario: Authenticated user requests a ready published thumbnail
-
 - **WHEN** an authenticated user requests `GET /api/inspiration-creations/{id}/thumbnail` for a published, non-deleted record with a ready thumbnail
-- **THEN** the system streams the thumbnail from platform object storage with its stored MIME type
-- **AND** returns a finite private cache policy
+- **THEN** the system returns authorized CDN access to the stored `imageSlim` display object
 
 #### Scenario: Thumbnail is unavailable
-
 - **WHEN** a user requests the thumbnail endpoint for an unpublished, deleted, missing, failed, or not-ready thumbnail
-- **THEN** the system returns not found
+- **THEN** the system returns not found and exposes no object identity
 
 #### Scenario: Unauthenticated thumbnail request is rejected
-
 - **WHEN** a request without a valid authenticated user queries the thumbnail endpoint
 - **THEN** the system rejects the request using the existing authentication behavior
 
