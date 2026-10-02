@@ -251,6 +251,17 @@ describe('ShotProductionWorkspace', () => {
     });
   });
 
+  it('shows a persistent load error and retries instead of reporting no storyboards', async () => {
+    mocks.queryStoryboardWorkspace.mockRejectedValueOnce(new Error('Response status:500'));
+    render(<ShotProductionWorkspace projectId={1} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('分镜数据加载失败');
+    expect(screen.queryByText('暂无分镜，请先完成剧本分镜拆解')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新加载分镜' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(await screen.findByText('语音合成')).toBeInTheDocument();
+    expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(2);
+  });
+
   it('renders Ant Pro shot production controls', async () => {
     render(<ShotProductionWorkspace projectId={1} />);
 
@@ -276,6 +287,20 @@ describe('ShotProductionWorkspace', () => {
         pageSize: 5,
       });
     });
+  });
+
+  it('keeps loaded task tables mounted while refreshing storyboard data', async () => {
+    render(<ShotProductionWorkspace projectId={1} />);
+    const table = (await screen.findAllByRole('table'))[0];
+    let finishReload!: (response: any) => void;
+    mocks.queryStoryboardWorkspace.mockReturnValueOnce(new Promise((resolve) => {
+      finishReload = resolve;
+    }));
+    fireEvent.submit(screen.getByRole('form', { name: '生成字幕' }));
+    await waitFor(() => expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(2));
+    expect(table).toBeInTheDocument();
+    finishReload({ success: true, data: { storyboards: [{ id: 7, episodeNo: 1, shotNo: 3 }] } });
+    await waitFor(() => expect(screen.getAllByRole('table')[0]).toBe(table));
   });
 
   it('submits voice subtitle and shot compose requests', async () => {

@@ -2530,4 +2530,16 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.queryByText('斌斌')).not.toBeInTheDocument();
     expect(screen.queryByText('分镜1')).not.toBeInTheDocument();
   });
+
+it('shows a persistent load error and retries instead of reporting no storyboards', async () => {
+  mocks.queryStoryboardWorkspace.mockRejectedValueOnce(new Error('Response status:500'));
+  render(<ProductionWorkbench />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('分镜数据加载失败');
+  expect(screen.queryByText('暂无分镜，请先完成剧本分镜拆解')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '重新加载分镜' }));
+  expect(await screen.findByRole('textbox', { name: '分镜1视频提示词' })).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(2);
+});
+
 });

@@ -243,7 +243,8 @@ const ShotProductionWorkspace = ({
   const subtitleActionRef = useRef<ActionType | null>(null);
   const composeActionRef = useRef<ActionType | null>(null);
   const [storyboards, setStoryboards] = useState<StoryboardShot[]>([]);
-  const [loadingStoryboards, setLoadingStoryboards] = useState(false);
+  const [loadingStoryboards, setLoadingStoryboards] = useState(true);
+  const [storyboardLoadFailed, setStoryboardLoadFailed] = useState(false);
 
   const storyboardOptions = useMemo(
     () =>
@@ -256,10 +257,12 @@ const ShotProductionWorkspace = ({
 
   const loadStoryboards = async () => {
     setLoadingStoryboards(true);
+    setStoryboardLoadFailed(false);
     try {
       const response = await queryStoryboardWorkspace(projectId);
       setStoryboards(response.data?.storyboards || []);
     } catch {
+      setStoryboardLoadFailed(true);
       message.warning('分镜数据加载失败');
     } finally {
       setLoadingStoryboards(false);
@@ -833,7 +836,15 @@ const ShotProductionWorkspace = ({
         </Space>
       }
     >
-      {storyboards.length ? (
+      {storyboardLoadFailed ? (
+        <div role="alert">
+          <p>分镜数据加载失败，请重新加载。</p>
+          <Button loading={loadingStoryboards} onClick={() => void loadStoryboards()}>重新加载分镜</Button>
+        </div>
+      ) : null}
+      {loadingStoryboards && !storyboards.length ? (
+        <div role="status">正在加载分镜数据…</div>
+      ) : storyboards.length ? (
         <Tabs
           onChange={() => stopActiveVideo()}
           destroyOnHidden
@@ -898,9 +909,9 @@ const ShotProductionWorkspace = ({
             },
           ]}
         />
-      ) : (
+      ) : !storyboardLoadFailed ? (
         <Empty description="暂无分镜，请先完成剧本分镜拆解" />
-      )}
+      ) : null}
     </ProCard>
   );
 };
