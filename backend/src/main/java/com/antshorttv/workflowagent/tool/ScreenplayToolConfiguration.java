@@ -200,6 +200,9 @@ public class ScreenplayToolConfiguration {
             variantFields.putObject("primary").put("type", "boolean");
             variantFields.putObject("episodeBound").put("type", "boolean");
             variantFields.putObject("hasPrompt").put("type", "boolean");
+            variantFields.putObject("episodePreferred").put("type", "boolean");
+            variantFields.putObject("generationStatus").put("type", "string");
+            variantFields.putObject("imageReady").put("type", "boolean");
             variantFields.putObject("content").put("type", "object");
             variants.set("items", variant);
             array.set("items", item);

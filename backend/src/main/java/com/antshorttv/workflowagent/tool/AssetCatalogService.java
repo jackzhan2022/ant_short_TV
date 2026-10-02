@@ -151,16 +151,22 @@ public class AssetCatalogService {
         String placeholders = String.join(",", java.util.Collections.nCopies(assetIds.size(), "?"));
         List<Object> arguments = new java.util.ArrayList<>(List.of(
             context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(),
+            context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(),
             context.tenantId(), context.projectId(), type));
         arguments.addAll(assetIds);
         List<Map<String,Object>> rows = jdbc.queryForList("""
-            select variant.id,variant.asset_id,variant.name,variant.is_primary,
+            select variant.id,variant.asset_id,variant.name,variant.is_primary,variant.prompt,
                    variant.generation_status,variant.current_image_result_id,variant.current_image_url,
                    case when exists (select 1 from asset_visual_variant_episode binding
                      where binding.tenant_id=? and binding.project_id=? and binding.script_id=?
                        and binding.episode_id=? and binding.variant_id=variant.id
+                       and binding.binding_status='ACTIVE' and binding.retired_at is null)
+                     then 1 else 0 end episode_bound,
+                   case when exists (select 1 from asset_visual_variant_episode binding
+                     where binding.tenant_id=? and binding.project_id=? and binding.script_id=?
+                       and binding.episode_id=? and binding.variant_id=variant.id
                        and binding.is_preferred=true and binding.binding_status='ACTIVE'
-                       and binding.retired_at is null) then 1 else 0 end episode_bound
+                       and binding.retired_at is null) then 1 else 0 end episode_preferred
               from asset_visual_variant variant
              where variant.tenant_id=? and variant.project_id=? and variant.asset_type=?
                and variant.asset_id in (%s) and variant.deleted_at is null
@@ -173,7 +179,9 @@ public class AssetCatalogService {
             variant.put("variantKey", "v_" + row.get("id"));
             variant.put("name", String.valueOf(row.get("name")));
             variant.put("primary", truthy(row.get("is_primary")));
-            variant.put("episodePreferred", truthy(row.get("episode_bound")));
+            variant.put("episodeBound", truthy(row.get("episode_bound")));
+            variant.put("hasPrompt", hasText(row.get("prompt")));
+            variant.put("episodePreferred", truthy(row.get("episode_preferred")));
             variant.put("generationStatus", String.valueOf(row.get("generation_status")));
             String imageUrl = row.get("current_image_url") == null
                 ? null : row.get("current_image_url").toString();

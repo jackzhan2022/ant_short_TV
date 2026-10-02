@@ -729,6 +729,7 @@ class ScreenplayToolDataServiceTest {
 
     @Test
     void assetCatalogExposesPromptPresenceWithoutExposingPromptText() {
+        jdbc.update("update script_episode set content = 'Serena walks into the room.' where id = ?", episodeId);
         jdbc.update("""
             insert into character_asset
               (tenant_id, project_id, script_id, name, normalized_name, role_type, status, source,
@@ -747,7 +748,13 @@ class ScreenplayToolDataServiceTest {
             """, tenantId, projectId, assetId, context.userId());
 
         ToolExecutionContext scoped = episodeContext();
-        service.readCurrentEpisode(scoped);
+        JsonNode episode = service.readCurrentEpisode(scoped);
+        schemaValidator.validate(registry.require("read_current_episode").outputSchema(), episode);
+        JsonNode candidate = episode.path("assetCatalog").path("characters").get(0).path("variants").get(0);
+        assertThat(candidate.path("hasPrompt").asBoolean()).isTrue();
+        assertThat(candidate.path("episodeBound").asBoolean()).isFalse();
+        assertThat(candidate.path("episodePreferred").asBoolean()).isFalse();
+        assertThat(episode.toString()).doesNotContain("private canonical prompt", "private variant prompt");
         var json = new com.fasterxml.jackson.databind.ObjectMapper();
         AssetCatalogService catalogs = new AssetCatalogService(jdbc, json);
         JsonNode catalog = catalogs.search(scoped, json.createObjectNode()

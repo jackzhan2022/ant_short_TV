@@ -66,17 +66,42 @@ class AssetCatalogServiceTest {
             if (sql.contains("asset_visual_variant")) return List.of(Map.of(
                 "id", 301L, "asset_id", 215L, "name", "发光形态", "is_primary", true,
                 "generation_status", "COMPLETED", "current_image_url", "/prop.png",
-                "episode_bound", 1));
+                "episode_bound", 1, "episode_preferred", 1, "prompt", "private variant prompt"));
             return props();
         });
 
         var catalog = service.candidates(context(), "双环徽章放在桌上");
         var variant = catalog.path("props").get(0).path("variants").get(0);
 
+        new WorkflowToolSchemaValidator().validate(
+            new ScreenplayToolConfiguration().readCurrentEpisodeTool(null, json)
+                .outputSchema().path("properties").path("assetCatalog"), catalog);
+
         assertThat(variant.path("variantKey").asText()).isEqualTo("v_301");
         assertThat(variant.path("primary").asBoolean()).isTrue();
         assertThat(variant.path("episodePreferred").asBoolean()).isTrue();
+        assertThat(variant.path("episodeBound").asBoolean()).isTrue();
+        assertThat(variant.path("hasPrompt").asBoolean()).isTrue();
+        assertThat(catalog.toString()).doesNotContain("private variant prompt");
         assertThat(variant.path("imageReady").asBoolean()).isTrue();
+    }
+
+    @Test void boundUnpreferredVariantsWithoutPromptsStillMatchTheEpisodeToolContract() {
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(invocation -> {
+            if (invocation.<String>getArgument(0).contains("asset_visual_variant")) return List.of(Map.of(
+                "id", 302L, "asset_id", 215L, "name", "备用形态", "is_primary", false,
+                "generation_status", "NOT_GENERATED", "episode_bound", 1, "episode_preferred", 0));
+            return props();
+        });
+        var catalog = service.candidates(context(), "双环徽章放在桌上");
+        new WorkflowToolSchemaValidator().validate(
+            new ScreenplayToolConfiguration().readCurrentEpisodeTool(null, json)
+                .outputSchema().path("properties").path("assetCatalog"), catalog);
+        var variant = catalog.path("props").get(0).path("variants").get(0);
+        assertThat(variant.path("episodeBound").asBoolean()).isTrue();
+        assertThat(variant.path("episodePreferred").asBoolean()).isFalse();
+        assertThat(variant.path("hasPrompt").asBoolean()).isFalse();
+        assertThat(variant.path("imageReady").asBoolean()).isFalse();
     }
     @Test void oversizedSingleDetailAndTooManyKeysFailExplicitly() {
         var content=json.createObjectNode().put("description","长".repeat(40_000));
