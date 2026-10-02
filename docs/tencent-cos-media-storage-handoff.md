@@ -5,12 +5,13 @@ Last updated: 2026-10-02
 ## 1. Handoff Status
 
 - Repository: `D:\信计软件项目\ant_short_TV` (main checkout remains on `master`)
-- Worktree: `C:\Users\12775\.codex\worktrees\migrate-media-storage-to-tencent-cos\ant_short_TV`
-- Branch: `codex/migrate-media-storage-to-tencent-cos`
+- Retained implementation/evidence worktree: `C:\Users\12775\.codex\worktrees\migrate-media-storage-to-tencent-cos\ant_short_TV`; ignored operational artifacts and the existing preview were preserved.
+- Integrated branch: `master`; implementation branch `codex/migrate-media-storage-to-tencent-cos` is retained for provenance.
+- Integration merge: `4768d42`, including reviewed asset-interaction integration `254ae76` and archive commit `31f941c`.
 - Remote: `origin/codex/migrate-media-storage-to-tencent-cos`
 - OpenSpec change: `migrate-media-storage-to-tencent-cos`, archived at `openspec/changes/archive/2026-10-02-migrate-media-storage-to-tencent-cos` with all seven main specifications synchronized.
-- OpenSpec progress: `55/55`; the owner confirmed manual test-notification receipt and explicitly accepted the final gate on 2026-10-02. Apply and archive are complete; integration with `master` is in progress.
-- Latest implementation commit: `5010894` (`fix(storage): complete multipart and immutable media cleanup contracts`).
+- OpenSpec progress: `55/55`; the owner confirmed manual test-notification receipt and explicitly accepted the final gate on 2026-10-02. Apply, main-spec synchronization, archive and local merge into `master` are complete.
+- Deployed implementation commit: `5010894` (`fix(storage): complete multipart and immutable media cleanup contracts`); the later local integration has not been deployed by this archive/merge task.
 - Implementation commits through `5010894` are pushed and deployed. The active release is `/opt/antv/releases/20261002-5010894-readiness`.
 
 All new image-ingestion paths use persisted asynchronous `imageSlim` jobs and publish only ready display renditions. User records `51` and `56` remain unchanged. Native callbacks, real 35-MB browser multipart uploads, backend internal uploads, failed-output cleanup, video ranges, bounded concurrent application egress, actual browser disk-cache reuse, alert configuration, and real rollback are accepted. The owner manually tested notification delivery, confirmed receipt, and accepted the last OpenSpec gate. Delayed final billing reconciliation and the residual checks below remain operational follow-ups, not claims that every eventual charge or notification channel has been observed.
@@ -131,6 +132,16 @@ Accepted Environment And Operational Follow-ups:
 - Registration fixtures request verification and capture the real mock SMS code. Offline media fixtures use fake COS/CAM/CI and authenticated callbacks, not real cloud calls or direct READY overrides. Production authentication and billing behavior are unchanged.
 
 ## 5. Verification Evidence
+
+### Archive And Merge Verification (2026-10-02)
+
+- Official OpenSpec archive synchronized seven main specifications: 16 added requirements, 14 modified, one removed historical-thumbnail-backfill requirement. Twenty unrelated requirement blocks and all eleven archived files were preserved; `.openspec.yaml` and all 55 completed tasks remain in the archive.
+- All seven touched main specifications passed strict validation. Repository-wide spec validation remains 73/75 because the unchanged `backend-field-dictionary` and `production-workbench-metadata` lack Purpose sections; those pre-existing issues were not silently changed.
+- The newer `master` commit `d2b8e2e` was integrated without dropping drag/drop cards, cascader selection, stable draft identity, shared generators or loading states. Two conflict files were resolved, and the moved/shared generator retained thumbnail-only browser display while AI requests still use originals. New regressions failed on original rendering before the correction and passed afterward. The pre-merge integration review has no remaining findings.
+- Frontend baseline: 404 tests / 76 files passed. Integrated result: 423 tests / 79 files passed, plus three fixture-cleanup checks and six post-merge main-workspace smoke tests. Lint/type checks, antd lint and frontend build passed with existing warnings only.
+- Backend integration checks: 19 tests across the updated storyboard repository and COS authorization/signing/rendition-planner classes, zero failures/errors. Backend packaging passed. The earlier full-backend cohort plus migration reruns below remains historical evidence; a new complete backend suite was not rerun for this bounded integration.
+- The main merge's tree was identical to the verified implementation tree before this documentation-only update. The main workspace's ignored `backend/env` hash remained unchanged, and declared frontend dependencies were installed offline from the lockfile without changing its content.
+- No production release, cloud configuration or user media was changed by archiving/merging. The cloud still runs `/opt/antv/releases/20261002-5010894-readiness`; deploying the integrated master build is a separate operation.
 
 Recorded verification from the implementation runs. Backend acceptance combines the completed full-cohort run with corrected migration-inventory reruns; it is not a single green full-run exit:
 
@@ -279,12 +290,12 @@ The backend test baseline is repaired without production authentication changes.
 3. Preserve the accepted browser disk-cache screenshot and stable grant evidence; do not repeat user-assisted cache checks or resubmit image processing.
 4. Continue reconciling successful processing operations, adaptive-WebP usage, package deductions, cache hit ratio, COS/CDN traffic, requests/storage/retrieval and delayed actual bills before revisiting the persistent-rendition design.
 5. Retain the completed rollback evidence and all matching snapshots/releases; never restore old database contents over later writes. Split test resources before public customers make shared acceptance unsafe.
-6. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Apply is complete at 55/55 and the change is archived with synchronized main specifications. Validate integration with the newer `master` asset interactions before merging back; this archive/merge step does not include an additional cloud deployment.
+6. Track subscription scheduler loop investigation separately; do not silently alter billing logic. Apply is complete at 55/55, specifications are synchronized, the change is archived, and integration is merged into `master`. Any deployment of the integrated build remains a separate operation; retain ignored acceptance evidence and existing recovery snapshots.
 
 ## 8. Commands to Resume
 
 ```powershell
-cd C:\Users\12775\.codex\worktrees\migrate-media-storage-to-tencent-cos\ant_short_TV
+cd D:\信计软件项目\ant_short_TV
 Get-Content openspec/changes/archive/2026-10-02-migrate-media-storage-to-tencent-cos/tasks.md
 openspec list --json
 git status --short --branch
