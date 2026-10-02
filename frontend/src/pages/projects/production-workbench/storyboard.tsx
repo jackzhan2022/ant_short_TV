@@ -1462,6 +1462,8 @@ const ProductionWorkbenchStoryboard = () => {
   const [storyboardPage, setStoryboardPage] = useState(1);
   const [storyboardTotal, setStoryboardTotal] = useState(0);
   const [storyboardLoading, setStoryboardLoading] = useState(true);
+  const [storyboardLoadFailed, setStoryboardLoadFailed] = useState(false);
+  const [storyboardLoadAttempt, setStoryboardLoadAttempt] = useState(0);
   const [episodeDetailsOpen, setEpisodeDetailsOpen] = useState(false);
   const [mutationRefreshFailed, setMutationRefreshFailed] = useState(false);
   const [project, setProject] = useState<Project>();
@@ -1531,6 +1533,8 @@ const ProductionWorkbenchStoryboard = () => {
     let active = true;
     const requestId = storyboardRequestId.current + 1;
     storyboardRequestId.current = requestId;
+    setStoryboardLoading(true);
+    setStoryboardLoadFailed(false);
     void queryProject(projectId).then((response) => {
       if (active) setProject(response.data);
     }).catch(() => {
@@ -1593,7 +1597,8 @@ const ProductionWorkbenchStoryboard = () => {
         });
       })
       .catch(() => {
-        if (active) {
+        if (active && storyboardRequestId.current === requestId) {
+          setStoryboardLoadFailed(true);
           setStoryboardLoading(false);
           message.error('分镜页面加载失败');
         }
@@ -1601,7 +1606,7 @@ const ProductionWorkbenchStoryboard = () => {
     return () => {
       active = false;
     };
-  }, [projectId]);
+  }, [projectId, storyboardLoadAttempt]);
 
   useEffect(() => {
     if (
@@ -1895,6 +1900,7 @@ const ProductionWorkbenchStoryboard = () => {
   const reloadStoryboardPage = async (episodeNo = activeEpisode, current = storyboardPage) => {
     const requestId = ++storyboardRequestId.current;
     setStoryboardLoading(true);
+    setStoryboardLoadFailed(false);
     try {
       const response = await queryStoryboardWorkspace(projectId, { episodeNo, current, pageSize: storyboardPageSize });
       if (requestId !== storyboardRequestId.current) return;
@@ -1905,6 +1911,9 @@ const ProductionWorkbenchStoryboard = () => {
       setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
         scriptText: getStoryboardScriptText(item), videoPrompt: getStoryboardPrompt(item), promptDocument: item.promptDocument,
       }])));
+    } catch (error) {
+      if (requestId === storyboardRequestId.current) setStoryboardLoadFailed(true);
+      throw error;
     } finally {
       if (requestId === storyboardRequestId.current) setStoryboardLoading(false);
     }
@@ -2704,6 +2713,17 @@ const ProductionWorkbenchStoryboard = () => {
 
         {storyboardLoading ? (
           <div style={{ paddingTop: 100, textAlign: 'center' }}><Spin /></div>
+        ) : storyboardLoadFailed ? (
+          <div role="alert" style={{ paddingTop: 100, textAlign: 'center' }}>
+            <p>分镜数据加载失败，请重新加载。</p>
+            <Button onClick={() => {
+              if (!workspace.episodes?.length) {
+                setStoryboardLoadAttempt((attempt) => attempt + 1);
+              } else {
+                void reloadStoryboardPage().catch(() => message.error('分镜页面加载失败'));
+              }
+            }}>重新加载分镜</Button>
+          </div>
         ) : visibleStoryboards.length ? (
           <div style={{ display: 'grid', gap: 16 }}>
             {visibleStoryboards.map((item, index) => (
