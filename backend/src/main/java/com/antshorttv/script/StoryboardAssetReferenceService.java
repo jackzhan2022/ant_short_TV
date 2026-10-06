@@ -118,7 +118,7 @@ public class StoryboardAssetReferenceService {
         AssetRef asset = requireAsset(tenantId, projectId, type, command.assetId());
         VariantRef variant = command.variantId() == null
             ? chooseVariant(tenantId, projectId, episodeId, type, command.assetId())
-            : requireVariant(tenantId, projectId, type, command.assetId(), command.variantId());
+            : requireVariant(tenantId, projectId, type, command.assetId(), command.variantId(), true);
         StoryboardReferenceResolutionStatus status = variant != null && variant.usable()
             ? StoryboardReferenceResolutionStatus.RESOLVED
             : StoryboardReferenceResolutionStatus.ASSET_PENDING;
@@ -151,9 +151,10 @@ public class StoryboardAssetReferenceService {
         Long projectId,
         StoryboardReferenceAssetType type,
         Long assetId,
-        Long variantId
+        Long variantId,
+        boolean lock
     ) {
-        return variants(tenantId, projectId, type, assetId).stream()
+        return variants(tenantId, projectId, type, assetId, lock).stream()
             .filter(item -> item.id().equals(variantId))
             .findFirst()
             .orElseThrow(() -> StoryboardAssetReferenceValidation.invalid("视觉形象不属于所选素材。"));
@@ -166,7 +167,7 @@ public class StoryboardAssetReferenceService {
         StoryboardReferenceAssetType type,
         Long assetId
     ) {
-        List<VariantRef> variants = variants(tenantId, projectId, type, assetId);
+        List<VariantRef> variants = variants(tenantId, projectId, type, assetId, true);
         if (variants.isEmpty()) return null;
         if (episodeId != null) {
             List<Long> preferred = jdbc.queryForList("""
@@ -192,14 +193,14 @@ public class StoryboardAssetReferenceService {
     }
 
     private List<VariantRef> variants(
-        Long tenantId, Long projectId, StoryboardReferenceAssetType type, Long assetId
+        Long tenantId, Long projectId, StoryboardReferenceAssetType type, Long assetId, boolean lock
     ) {
         return jdbc.query("""
             select id,name,generation_status,current_image_result_id,current_image_url,is_primary
               from asset_visual_variant
              where tenant_id=? and project_id=? and asset_type=? and asset_id=? and deleted_at is null
              order by is_primary desc,id
-            """, (rs, rowNum) -> {
+            """ + (lock ? " for update" : ""), (rs, rowNum) -> {
                 String url = rs.getString("current_image_url");
                 boolean usable = "COMPLETED".equals(rs.getString("generation_status"))
                     && (rs.getObject("current_image_result_id") != null || (url != null && !url.isBlank()));
@@ -233,7 +234,7 @@ public class StoryboardAssetReferenceService {
         StoryboardReferenceAssetType type = StoryboardReferenceAssetType.parse(entity.assetType);
         AssetRef asset = entity.assetId == null ? null : requireAsset(tenantId, projectId, type, entity.assetId);
         VariantRef variant = entity.variantId == null ? null
-            : requireVariant(tenantId, projectId, type, entity.assetId, entity.variantId);
+            : requireVariant(tenantId, projectId, type, entity.assetId, entity.variantId, false);
         return new StoryboardAssetReferenceResponse(
             entity.id, entity.assetType, entity.assetId, asset == null ? null : asset.name(),
             entity.variantId, variant == null ? null : variant.name(),

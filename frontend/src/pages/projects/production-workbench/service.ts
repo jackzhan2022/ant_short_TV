@@ -1130,6 +1130,12 @@ export const queryAssetImageBatch = async (
     `/api/projects/${projectId}/asset-image-batches/${batchId}`,
   );
 
+export const retryAssetImageBatch = async (projectId: number, batchId: number) =>
+  request<ApiResponse<AssetImageBatch>>(
+    `/api/projects/${projectId}/asset-image-batches/${batchId}/retry-failed`,
+    { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } },
+  );
+
 export const regenerateAiImageTask = async (
   projectId: number,
   taskId: number,

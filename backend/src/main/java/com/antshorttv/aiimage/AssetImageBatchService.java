@@ -58,6 +58,41 @@ class AssetImageBatchService {
     AssetImageBatchResponse create(
         Long tenantId, Long projectId, AssetImageBatchRequest request, String requestedIdempotencyKey
     ) {
+        return create(tenantId, projectId, request, requestedIdempotencyKey, null);
+    }
+
+    @Transactional
+    AssetImageBatchResponse retryFailed(
+        Long tenantId, Long projectId, Long batchId, String requestedIdempotencyKey
+    ) {
+        permissionGuard.require(tenantId, projectId, "AI_IMAGE_TASK:CREATE");
+        AssetImageBatchResponse source = getInternal(tenantId, projectId, batchId);
+        if (!Set.of("FAILED", "COMPLETED_WITH_FAILURES").contains(source.status())) {
+            throw invalid("批次尚未结束或没有失败项。");
+        }
+        List<Long> variantIds = failedVariantIds(source.items());
+        if (variantIds.isEmpty()) throw invalid("批次没有可重试的失败形态。");
+        List<Long> assetIds = source.items().stream()
+            .filter(item -> variantIds.contains(item.variantId()))
+            .map(AssetImageBatchItemResponse::assetId).distinct().toList();
+        AssetImageBatchRequest request = new AssetImageBatchRequest(
+            source.assetType(), assetIds, source.mode(), source.modelId(),
+            source.aspectRatio(), source.imageCount());
+        return create(tenantId, projectId, request, requestedIdempotencyKey, Set.copyOf(variantIds));
+    }
+
+    static List<Long> failedVariantIds(List<AssetImageBatchItemResponse> items) {
+        return items.stream().filter(item -> "FAILED".equals(item.status())
+                || "SKIPPED".equals(item.status()) && "DEPENDENT".equals(item.stage())
+                    && "主形象生成失败".equals(item.errorMessage()))
+            .map(AssetImageBatchItemResponse::variantId).filter(java.util.Objects::nonNull)
+            .distinct().toList();
+    }
+
+    private AssetImageBatchResponse create(
+        Long tenantId, Long projectId, AssetImageBatchRequest request,
+        String requestedIdempotencyKey, Set<Long> retryVariantIds
+    ) {
         TenantContext context = permissionGuard.require(tenantId, projectId, "AI_IMAGE_TASK:CREATE");
         String idempotencyKey = valueOrUuid(requestedIdempotencyKey);
         List<Long> existing = jdbc.queryForList("""
@@ -68,6 +103,10 @@ class AssetImageBatchService {
         if (!existing.isEmpty()) return getInternal(tenantId, projectId, existing.get(0));
 
         BatchPlan plan = plan(tenantId, projectId, request);
+        if (retryVariantIds != null) {
+            plan = new BatchPlan(plan.selectedAssets(), plan.candidates().stream()
+                .filter(item -> retryVariantIds.contains(item.variantId())).toList());
+        }
         if (plan.plannedTasks() == 0) {
             throw invalid("所选资产没有可生成的视觉形象。");
         }

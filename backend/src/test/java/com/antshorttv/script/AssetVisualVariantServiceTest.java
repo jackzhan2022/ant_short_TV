@@ -82,6 +82,53 @@ class AssetVisualVariantServiceTest {
     }
 
     @Test
+    void completingImageResolvesOnlyActiveReferencesToThatVariant() {
+        var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "日常造型", null, "角色定妆", "MANUAL", "NOT_STARTED", null, null, true));
+        var other = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "晚宴造型", null, "角色晚宴", "MANUAL", "NOT_STARTED", null, null, false));
+        jdbc.update("""
+            insert into storyboard (id,tenant_id,project_id,episode_no,shot_no,visual_description,status,created_by,created_at,updated_at)
+            values (9951,9901,9902,1,1,'角色入场','DRAFT',9999,now(),now())
+            """);
+        jdbc.update("""
+            insert into storyboard_asset_reference
+              (tenant_id,project_id,storyboard_id,asset_type,asset_id,variant_id,reference_role,
+               sort_order,resolution_status,source_type,source_name,locked_by_user,created_by,
+               created_at,updated_at)
+            values (9901,9902,9951,'CHARACTER',9910,?,'VISIBLE',0,'ASSET_PENDING',
+                    'AI','林夏',false,9999,now(),now())
+            """, variant.id());
+        jdbc.update("""
+            insert into storyboard_asset_reference
+              (tenant_id,project_id,storyboard_id,asset_type,asset_id,variant_id,reference_role,
+               sort_order,resolution_status,source_type,source_name,locked_by_user,created_by,
+               created_at,updated_at)
+            values (9901,9902,9951,'CHARACTER',9910,?,'VISIBLE',1,'ASSET_PENDING',
+                    'AI','林夏晚宴',false,9999,now(),now())
+            """, other.id());
+
+        service.generationSucceeded(9901L, 9902L, variant.id(), 9930L, "https://cdn.example.com/variant.png");
+
+        assertThat(jdbc.queryForObject("""
+            select resolution_status from storyboard_asset_reference
+             where storyboard_id=9951 and variant_id=? and retired_at is null
+            """, String.class, variant.id())).isEqualTo("RESOLVED");
+        assertThat(jdbc.queryForObject("""
+            select resolution_status from storyboard_asset_reference
+             where storyboard_id=9951 and variant_id=? and retired_at is null
+            """, String.class, other.id())).isEqualTo("ASSET_PENDING");
+
+        service.discardGeneratedResult(9901L, 9902L, variant.id(), 9930L);
+        assertThat(jdbc.queryForObject("""
+            select resolution_status from storyboard_asset_reference
+             where storyboard_id=9951 and variant_id=? and retired_at is null
+            """, String.class, variant.id())).isEqualTo("ASSET_PENDING");
+    }
+
+    @Test
     void rejectsInvalidPolymorphicOwnership() {
         assertThatThrownBy(() -> service.create(9901L, 9902L, "SCENE", 9910L, 9999L,
             new AssetVisualVariantService.VariantCommand(

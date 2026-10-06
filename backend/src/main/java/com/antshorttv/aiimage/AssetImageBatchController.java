@@ -59,6 +59,20 @@ class AssetImageBatchController {
         return ApiResponse.success(service.get(tenantId(request), projectId, batchId));
     }
 
+    @PostMapping("/{batchId}/retry-failed")
+    @RequireProjectPermission({"AI_IMAGE_TASK:CREATE", "AI_SERVICE:USE"})
+    ResponseEntity<ApiResponse<AssetImageBatchResponse>> retryFailed(
+        @PathVariable Long projectId,
+        @PathVariable Long batchId,
+        HttpServletRequest request
+    ) {
+        AssetImageBatchResponse response = service.retryFailed(
+            tenantId(request), projectId, batchId, request.getHeader("Idempotency-Key"));
+        scheduler.dispatchBatch(response.id());
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .body(ApiResponse.success(service.getCreated(tenantId(request), projectId, response.id())));
+    }
+
     private Long tenantId(HttpServletRequest request) {
         return TenantRequestSupport.tenantId(request);
     }

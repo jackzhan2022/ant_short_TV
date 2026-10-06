@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { imageFor } from './StoryboardAssetReferenceEditor';
+import { imageFor, referenceReady } from './StoryboardAssetReferenceEditor';
 import type { AssetVisualWorkspace, CharacterAsset, StoryboardAssetReference, VisualVariant } from './service';
 
 const variant: VisualVariant = {
@@ -66,5 +66,10 @@ describe('StoryboardAssetReferenceEditor display delivery', () => {
 
   it('does not render a stale original when its asset metadata is missing', () => {
     expect(imageFor({ ...reference, assetId: 99 }, [asset])).toBeUndefined();
+  });
+
+  it('reflects a newly usable image while preserving unresolved references', () => {
+    expect(referenceReady({ ...reference, resolutionStatus: 'ASSET_PENDING' }, variant)).toBe(true);
+    expect(referenceReady({ ...reference, resolutionStatus: 'UNRESOLVED' }, variant)).toBe(false);
   });
 });

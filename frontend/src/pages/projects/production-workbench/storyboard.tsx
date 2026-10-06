@@ -6,6 +6,7 @@ import {
   HolderOutlined,
   PlayCircleOutlined,
   PlusOutlined,
+  ReloadOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useParams } from '@umijs/max';
@@ -1442,6 +1443,11 @@ const StoryboardCard = ({
                 />
               </div>
             ) : null}
+            {videoTask?.status === 'FAILED' && videoTask.errorMessage ? (
+              <div role="alert" style={{ marginTop: 8, overflowWrap: 'anywhere' }}>
+                {videoTask.errorMessage}
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -1745,6 +1751,7 @@ const ProductionWorkbenchStoryboard = () => {
   const [storyboardBusy, setStoryboardBusy] = useState(false);
   const [storyboardBatch, setStoryboardBatch] = useState<StoryboardBatch>();
   const [storyboardBatchBusy, setStoryboardBatchBusy] = useState(false);
+  const [videoBatchRetryBusy, setVideoBatchRetryBusy] = useState(false);
   const reservedShotNos = useRef<Record<number, number>>({});
   const storyboardRequestId = useRef(0);
   const [workspace, setWorkspace] = useState<ProductionWorkspaceState>({
@@ -2178,6 +2185,12 @@ const ProductionWorkbenchStoryboard = () => {
   const visibleStoryboards = workspace.storyboards.filter(
     (item) => item.episodeNo === activeEpisode,
   );
+  const failedVisibleVideoTasks = visibleStoryboards.flatMap((shot) => {
+    const latest = videoTasks.filter((task) => task.storyboardId === shot.id)
+      .sort((left, right) => (right.createdAt || '').localeCompare(left.createdAt || '')
+        || right.id - left.id)[0];
+    return latest?.status === 'FAILED' ? [latest] : [];
+  });
   const storyboardWarnings = visibleStoryboards.flatMap(
     (item) => item.shotPlan?.warnings ?? [],
   );
@@ -2392,8 +2405,11 @@ const ProductionWorkbenchStoryboard = () => {
     }
   };
 
-  const generateStoryboardBatch = async () => {
-    const episodeIds = (workspace.episodes || [])
+  const generateStoryboardBatch = async (retryFailed = false) => {
+    const episodeIds = retryFailed
+      ? (storyboardBatch?.items || []).filter((item) => item.status === 'FAILED')
+          .map((item) => item.episodeId)
+      : (workspace.episodes || [])
       .map((episode) => episode.episodeId)
       .filter((episodeId): episodeId is number => Number.isSafeInteger(episodeId));
     if (!episodeIds.length) {
@@ -2410,7 +2426,7 @@ const ProductionWorkbenchStoryboard = () => {
         : await pollStoryboardBatch(response.data.id);
       setStoryboardBatch(terminal);
       await reloadWorkspace();
-      message.success('批量分镜生成已完成');
+      message.success(retryFailed ? '失败分镜已重试' : '批量分镜生成已完成');
     } catch {
       message.error('批量分镜生成失败');
     } finally {
@@ -2601,8 +2617,7 @@ const ProductionWorkbenchStoryboard = () => {
       }
       message.success('视频任务已创建');
     } catch (error) {
-      message.error(error instanceof Error && /参考图片|视频生成模型|提示词/.test(error.message)
-        ? error.message : '视频任务创建失败');
+      message.error(error instanceof Error ? error.message : '视频任务创建失败');
     }
   };
 
@@ -2633,6 +2648,32 @@ const ProductionWorkbenchStoryboard = () => {
     }
   };
 
+  const retryFailedVideos = async () => {
+    if (!failedVisibleVideoTasks.length) return;
+    setVideoBatchRetryBusy(true);
+    try {
+      const outcomes = await Promise.allSettled(
+        failedVisibleVideoTasks.map((task) => regenerateAiVideoTask(projectId, task.id)),
+      );
+      let created = 0;
+      outcomes.forEach((outcome, index) => {
+        if (outcome.status === 'rejected') {
+          message.error(`分镜${failedVisibleVideoTasks[index].storyboardId}：${
+            outcome.reason instanceof Error ? outcome.reason.message : '视频重试失败'}`);
+          return;
+        }
+        const task = outcome.value.data;
+        if (!task) return;
+        created += 1;
+        setVideoTasks((previous) => [...previous, task]);
+        void followVideoExecution(task).catch(() => message.error('视频任务状态刷新失败'));
+      });
+      if (created) message.success(`已重试 ${created} 条失败视频`);
+    } finally {
+      setVideoBatchRetryBusy(false);
+    }
+  };
+
   const cancelVideo = async (task: AiVideoTask) => {
     try {
       await cancelAiVideoTask(projectId, task.id);
@@ -2652,8 +2693,8 @@ const ProductionWorkbenchStoryboard = () => {
           message.error('视频任务状态刷新失败'),
         );
       }
-    } catch {
-      message.error('视频任务重试失败');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '视频任务重试失败');
     }
   };
 
@@ -3220,6 +3261,16 @@ const ProductionWorkbenchStoryboard = () => {
             <Button icon={<BarsOutlined />} onClick={batchGenerateVideo}>
               批量生成视频
             </Button>
+            {failedVisibleVideoTasks.length ? (
+              <Button
+                icon={<ReloadOutlined />}
+                aria-label="重试失败视频"
+                loading={videoBatchRetryBusy}
+                onClick={() => void retryFailedVideos()}
+              >
+                重试失败视频
+              </Button>
+            ) : null}
             <Button
               icon={<ThunderboltOutlined />}
               loading={storyboardBatchBusy}
@@ -3227,7 +3278,7 @@ const ProductionWorkbenchStoryboard = () => {
                 storyboardBatchBusy ||
                 ['PENDING', 'RUNNING'].includes(storyboardBatch?.status || '')
               }
-              onClick={generateStoryboardBatch}
+              onClick={() => void generateStoryboardBatch()}
             >
               批量生成分镜
             </Button>
@@ -3242,6 +3293,21 @@ const ProductionWorkbenchStoryboard = () => {
             <Tag>进行中 {storyboardBatch.running + storyboardBatch.pending} 集</Tag>
             <Tag>业务调用 {storyboardBatch.businessCallCount} 次</Tag>
             <Tag>技术重试 {storyboardBatch.technicalRetryCount} 次</Tag>
+            {storyboardBatch.items.filter((item) => item.status === 'FAILED').map((item) => (
+              <div key={item.id} role="alert" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                第{item.episodeNo}集：{item.errorMessage || '生成失败，请重试'}
+              </div>
+            ))}
+            {storyboardBatch.failed > 0 &&
+              ['FAILED', 'COMPLETED_WITH_FAILURES'].includes(storyboardBatch.status) ? (
+                <Button
+                  size="small"
+                  loading={storyboardBatchBusy}
+                  onClick={() => void generateStoryboardBatch(true)}
+                >
+                  重试失败分镜
+                </Button>
+              ) : null}
           </Flex>
         ) : null}
 

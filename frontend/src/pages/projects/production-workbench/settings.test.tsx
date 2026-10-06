@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   createAiImageTask: vi.fn(),
   queryAssetImageBatchPreflight: vi.fn(),
   createAssetImageBatch: vi.fn(),
+  retryAssetImageBatch: vi.fn(),
   queryAssetImageBatch: vi.fn(),
   selectPrimaryVisualVariant: vi.fn(),
   bindVisualVariantEpisodes: vi.fn(),
@@ -57,6 +58,7 @@ vi.mock('./service', () => ({
   createAiImageTask: mocks.createAiImageTask,
   queryAssetImageBatchPreflight: mocks.queryAssetImageBatchPreflight,
   createAssetImageBatch: mocks.createAssetImageBatch,
+  retryAssetImageBatch: mocks.retryAssetImageBatch,
   queryAssetImageBatch: mocks.queryAssetImageBatch,
   selectPrimaryVisualVariant: mocks.selectPrimaryVisualVariant,
   updateVisualVariant: mocks.updateVisualVariant,
@@ -766,6 +768,30 @@ describe('ProductionWorkbenchSettings', () => {
       expect(mocks.queryAssetImageBatch).toHaveBeenCalledWith(1, 91);
       expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('shows failed image reasons and retries only the failed batch items', async () => {
+    const failedBatch = {
+      id: 91, projectId: 1, assetType: 'CHARACTER', mode: 'ALL',
+      status: 'COMPLETED_WITH_FAILURES', total: 2, pending: 0, running: 0,
+      succeeded: 1, failed: 1, skipped: 0, modelId: 8,
+      aspectRatio: '16:9', imageCount: 1,
+      items: [
+        { id: 1, assetId: 1, variantId: 11, variantName: '日常形象', status: 'SUCCEEDED' },
+        { id: 2, assetId: 1, variantId: 12, variantName: '婚礼礼服', status: 'FAILED', errorMessage: '生成超时' },
+      ],
+    };
+    mocks.createAssetImageBatch.mockResolvedValue({ data: failedBatch });
+    mocks.queryAssetImageBatch.mockResolvedValue({ data: failedBatch });
+    mocks.retryAssetImageBatch.mockResolvedValue({ data: { ...failedBatch, id: 92, status: 'PENDING' } });
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('checkbox', { name: '选择斌斌' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成主形象图' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认提交' }));
+
+    expect(await screen.findByText('婚礼礼服：生成超时')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试失败资产图' }));
+    await waitFor(() => expect(mocks.retryAssetImageBatch).toHaveBeenCalledWith(1, 91));
   });
 
   it('uses unified image placeholders for empty cards and gallery images', async () => {

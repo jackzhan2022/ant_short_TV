@@ -73,6 +73,12 @@ export const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) =
     || reference.imageThumbnailUrl || asset?.mainImageThumbnailUrl || undefined;
 };
 
+export const referenceReady = (
+  reference: StoryboardAssetReference,
+  variant?: VisualVariant,
+) => reference.resolutionStatus === 'RESOLVED'
+  || (reference.resolutionStatus === 'ASSET_PENDING' && Boolean(variant?.usable));
+
 const defaultVariant = (asset?: Asset): VisualVariant | undefined =>
   asset?.visual?.variants.find((variant) => variant.primary)
   || asset?.visual?.variants.find((variant) => variant.usable)
@@ -167,7 +173,7 @@ function SortableAssetCard({
       .find((candidate) => candidate.id === reference.variantId)
     : defaultVariant(asset);
   const generating = isGenerating || variant?.generationStatus === 'GENERATING';
-  const isResolved = reference.resolutionStatus === 'RESOLVED';
+  const isResolved = referenceReady(reference, variant);
   const cardStyle: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -192,7 +198,7 @@ function SortableAssetCard({
             preview={false}
           />
         ) : <PictureOutlined />}
-        {reference.resolutionStatus !== 'RESOLVED' ? (
+        {!isResolved ? (
           <Tag className="storyboard-reference-status" color={statusColor(reference.resolutionStatus)}>
             {statusLabel(reference.resolutionStatus)}
           </Tag>

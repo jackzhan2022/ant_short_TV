@@ -1937,6 +1937,49 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.queryByRole('button', { name: /重试告警|修复告警/ })).not.toBeInTheDocument();
   });
 
+  it('shows failed episode reasons and retries only failed episodes', async () => {
+    const batch = {
+      id: 89, projectId: 1, name: '分镜批次-89', status: 'COMPLETED_WITH_FAILURES',
+      total: 2, pending: 0, running: 0, succeeded: 1, warning: 0, failed: 1,
+      businessCallCount: 2, technicalRetryCount: 0, settledPoints: 10,
+      items: [
+        { id: 1, episodeId: 1001, episodeNo: 1, status: 'SUCCESS' },
+        { id: 2, episodeId: 1002, episodeNo: 2, status: 'FAILED', errorMessage: '模型服务超时' },
+      ],
+      createdAt: '2026-09-05T19:00:00',
+    };
+    mocks.queryLatestStoryboardBatch.mockResolvedValue({ data: batch });
+    mocks.createStoryboardBatch.mockResolvedValue({ data: { ...batch, id: 90, status: 'PENDING' } });
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText('第2集：模型服务超时')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试失败分镜' }));
+    await waitFor(() => expect(mocks.createStoryboardBatch).toHaveBeenCalledWith(1, {
+      episodeIds: [1002],
+    }));
+  });
+
+  it('retries only failed videos from the visible episode', async () => {
+    mocks.queryStoryboardMedia.mockResolvedValue({ data: {
+      imageTasks: [], voiceTasks: [], assetVisuals: [], videoTasks: [
+        { id: 71, storyboardId: 101, status: 'SUCCEEDED', createdAt: '2026-09-05T10:00:00', results: [] },
+        { id: 72, storyboardId: 102, status: 'FAILED', createdAt: '2026-09-05T11:00:00', errorMessage: '素材拉取超时', execution: { id: 702, status: 'FAILED' }, results: [] },
+        { id: 73, storyboardId: 201, status: 'FAILED', createdAt: '2026-09-05T12:00:00', results: [] },
+      ],
+    } });
+    mocks.regenerateAiVideoTask.mockResolvedValue({ data: {
+      id: 74, storyboardId: 102, status: 'PENDING', results: [],
+    } });
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText('素材拉取超时')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '重试失败视频' }));
+    await waitFor(() => {
+      expect(mocks.regenerateAiVideoTask).toHaveBeenCalledTimes(1);
+      expect(mocks.regenerateAiVideoTask).toHaveBeenCalledWith(1, 72);
+    });
+  });
+
   it('shows successful storyboard warnings without offering a paid warning retry', async () => {
     setupWorkspaceResponse({
       storyboards: [

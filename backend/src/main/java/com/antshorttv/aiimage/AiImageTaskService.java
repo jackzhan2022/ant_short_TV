@@ -539,12 +539,8 @@ public class AiImageTaskService {
                    set first_frame_image_url = null, first_frame_result_id = null, updated_at = now()
                  where tenant_id = ? and project_id = ? and id = ? and first_frame_result_id = ?
                 """, result.getTenantId(), result.getProjectId(), result.getTargetId(), result.getId());
-            case "VISUAL_VARIANT" -> jdbcTemplate.update("""
-                update asset_visual_variant
-                   set current_image_url = null, current_image_result_id = null,
-                       generation_status = 'NOT_STARTED', updated_at = now()
-                 where tenant_id = ? and project_id = ? and id = ? and current_image_result_id = ?
-                """, result.getTenantId(), result.getProjectId(), result.getTargetId(), result.getId());
+            case "VISUAL_VARIANT" -> assetVisualVariantService.discardGeneratedResult(
+                result.getTenantId(), result.getProjectId(), result.getTargetId(), result.getId());
             default -> {
             }
         }

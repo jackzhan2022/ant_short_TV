@@ -328,6 +328,7 @@ public class AssetVisualVariantService {
         entity.setGenerationErrorMessage(null);
         entity.setUpdatedAt(LocalDateTime.now());
         variantMapper.updateById(entity);
+        resolveStoryboardReferences(tenantId, projectId, variantId);
         if (Boolean.TRUE.equals(entity.getIsPrimary())) publishLegacyIfUsable(entity);
         return response(entity);
     }
@@ -349,10 +350,20 @@ public class AssetVisualVariantService {
             """, imageResultId, blankToNull(imageUrl), variantId, tenantId, projectId,
             generationTaskId, executionId, claimToken);
         if (updated == 1) {
+            resolveStoryboardReferences(tenantId, projectId, variantId);
             AssetVisualVariantEntity published = variantMapper.selectById(variantId);
             if (published != null && Boolean.TRUE.equals(published.getIsPrimary())) publishLegacyIfUsable(published);
         }
         return updated == 1;
+    }
+
+    private void resolveStoryboardReferences(Long tenantId, Long projectId, Long variantId) {
+        jdbc.update("""
+            update storyboard_asset_reference
+               set resolution_status = 'RESOLVED', updated_at = now()
+             where tenant_id = ? and project_id = ? and variant_id = ?
+               and retired_at is null and resolution_status = 'ASSET_PENDING'
+            """, tenantId, projectId, variantId);
     }
 
     @Transactional
@@ -365,6 +376,12 @@ public class AssetVisualVariantService {
              where id = ? and tenant_id = ? and project_id = ? and current_image_result_id = ?
             """, variantId, tenantId, projectId, imageResultId);
         if (updated == 1) {
+            jdbc.update("""
+                update storyboard_asset_reference
+                   set resolution_status = 'ASSET_PENDING', updated_at = now()
+                 where tenant_id = ? and project_id = ? and variant_id = ?
+                   and retired_at is null and resolution_status = 'RESOLVED'
+                """, tenantId, projectId, variantId);
             AssetVisualVariantEntity variant = variantMapper.selectById(variantId);
             if (variant != null && Boolean.TRUE.equals(variant.getIsPrimary())) {
                 clearLegacyImageIfResultMatches(variant, imageResultId);

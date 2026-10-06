@@ -2,6 +2,7 @@ package com.antshorttv.aiimage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AssetImageBatchServiceTest {
@@ -56,5 +57,18 @@ class AssetImageBatchServiceTest {
         assertThat(AssetImageBatchService.resolveDependencyClassification(
             "WAITING_DEPENDENCY", "PENDING"))
             .isEqualTo("WAITING_DEPENDENCY");
+        assertThat(AssetImageBatchService.resolveDependencyClassification(
+            "WAITING_DEPENDENCY", "SKIPPED_COMPLETED"))
+            .isEqualTo("SKIPPED_PRIMARY_UNAVAILABLE");
+    }
+
+    @Test
+    void retrySelectsOnlyFailedVariantsFromMixedBatch() {
+        assertThat(AssetImageBatchService.failedVariantIds(List.of(
+            new AssetImageBatchItemResponse(1L, 10L, 100L, "主形象", "PRIMARY", "SUCCEEDED", null, 1L, null),
+            new AssetImageBatchItemResponse(2L, 10L, 101L, "礼服", "DIRECT", "FAILED", null, 2L, "超时"),
+            new AssetImageBatchItemResponse(3L, 10L, 103L, "晚宴", "DEPENDENT", "SKIPPED", 2L, null, "主形象生成失败"),
+            new AssetImageBatchItemResponse(4L, 11L, 102L, "主形象", "PRIMARY", "SKIPPED", null, null, "已生成完成")
+        ))).containsExactly(101L, 103L);
     }
 }

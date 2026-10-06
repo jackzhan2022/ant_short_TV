@@ -54,6 +54,7 @@ import {
   type PropAsset,
   queryAssetImageBatch,
   queryAssetImageBatchPreflight,
+  retryAssetImageBatch,
   queryAssetReextractionPreflight,
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
@@ -795,6 +796,20 @@ const ProductionWorkbenchSettings = () => {
     }
   };
 
+  const retryFailedAssetImages = async () => {
+    if (!activeImageBatch?.failed) return;
+    setBatchSubmitting(true);
+    try {
+      const response = await retryAssetImageBatch(projectId, activeImageBatch.id);
+      setActiveImageBatch(response.data);
+      message.success('失败资产图已重新提交');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '失败资产图重试失败');
+    } finally {
+      setBatchSubmitting(false);
+    }
+  };
+
   const addVariant = async () => {
     if (!visualAsset || !newVariantName.trim()) return;
     try {
@@ -1282,6 +1297,21 @@ const ProductionWorkbenchSettings = () => {
             资产图批次 #{activeImageBatch.id}：{activeImageBatch.status}，成功{' '}
             {activeImageBatch.succeeded}，失败 {activeImageBatch.failed}，等待{' '}
             {activeImageBatch.pending + activeImageBatch.running}
+            {activeImageBatch.items.filter((item) => item.status === 'FAILED').map((item) => (
+              <div key={item.id} role="alert" style={{ overflowWrap: 'anywhere' }}>
+                {item.variantName}：{item.errorMessage || '生成失败，请重试'}
+              </div>
+            ))}
+            {activeImageBatch.failed > 0 &&
+              ['FAILED', 'COMPLETED_WITH_FAILURES'].includes(activeImageBatch.status) ? (
+                <Button
+                  size="small"
+                  loading={batchSubmitting}
+                  onClick={() => void retryFailedAssetImages()}
+                >
+                  重试失败资产图
+                </Button>
+              ) : null}
           </div>
         ) : null}
 
