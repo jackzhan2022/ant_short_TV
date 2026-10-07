@@ -1,0 +1,343 @@
+<div id="jzc-purchase-premium">
+  <style>
+    #jzc-purchase-premium { font-family: "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif; color-scheme: light dark; }
+    #jzc-purchase-premium * { box-sizing: border-box; }
+    #jzc-purchase-premium .pp-app {
+      --pp-bg: light-dark(#f5f5f7,#18191d);
+      --pp-panel: light-dark(#fff,#23252b);
+      --pp-ink: light-dark(#25252c,#f2f2f5);
+      --pp-muted: light-dark(#777980,#a6a8b1);
+      --pp-line: light-dark(#e5e5eb,#383b43);
+      --pp-brand: light-dark(#6256e9,#a39aff);
+      --pp-brand-wash: light-dark(#eeecfb,#302b47);
+      --pp-gold: light-dark(#dec28c,#ead09e);
+      --pp-deep: light-dark(#252529,#252529);
+      --pp-deep-text: light-dark(#fcfcfe,#fcfcfe);
+      --pp-green: light-dark(#33806b,#8fd9be);
+      --pp-green-wash: light-dark(#eaf6f0,#223b32);
+      position: relative; min-height: 820px; background: var(--pp-bg); color: var(--pp-ink);
+      border: 1px solid var(--pp-line); border-radius: 14px; overflow: hidden; font-size: 14px; line-height: 1.5;
+    }
+    #jzc-purchase-premium button, #jzc-purchase-premium input { font: inherit; }
+    #jzc-purchase-premium button { cursor: pointer; }
+    #jzc-purchase-premium button:disabled { cursor: default; opacity: .5; }
+    #jzc-purchase-premium .pp-header { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 34px; background: var(--pp-panel); border-bottom: 1px solid var(--pp-line); }
+    #jzc-purchase-premium .pp-logo { display: inline-flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 650; white-space: nowrap; }
+    #jzc-purchase-premium .pp-logo-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--pp-brand); color: #fff; font-size: 18px; font-weight: 650; box-shadow: 0 4px 9px #6256e921; }
+    #jzc-purchase-premium .pp-header-right { display: flex; align-items: center; flex-wrap: wrap; gap: 15px; font-size: 12px; color: var(--pp-muted); }
+    #jzc-purchase-premium .pp-user { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+    #jzc-purchase-premium .pp-avatar { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--pp-brand); background: var(--pp-brand-wash); font-size: 12px; }
+    #jzc-purchase-premium .pp-header-points { display: flex; gap: 6px; align-items: center; padding-right: 15px; border-right: 1px solid var(--pp-line); }
+    #jzc-purchase-premium .pp-header-points strong { font-size: 14px; color: var(--pp-ink); font-weight: 600; }
+    #jzc-purchase-premium .pp-main { max-width: 960px; margin: auto; padding: 33px 36px 22px; }
+    #jzc-purchase-premium .pp-eyebrow { color: var(--pp-muted); font-size: 11px; letter-spacing: 1.7px; font-weight: 500; }
+    #jzc-purchase-premium .pp-hero { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 25px; }
+    #jzc-purchase-premium .pp-hero h1 { margin: 6px 0 7px; font-size: 29px; line-height: 1.35; font-weight: 650; letter-spacing: -.4px; color: var(--pp-ink); }
+    #jzc-purchase-premium .pp-sub { margin: 0; color: var(--pp-muted); font-size: 13px; }
+    #jzc-purchase-premium .pp-member { display: flex; align-items: center; gap: 9px; padding-bottom: 3px; white-space: nowrap; font-size: 12px; color: var(--pp-muted); }
+    #jzc-purchase-premium .pp-member span { color: var(--pp-green); background: var(--pp-green-wash); padding: 4px 8px; border-radius: 5px; font-weight: 500; }
+    #jzc-purchase-premium .pp-category { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 15px; }
+    #jzc-purchase-premium .pp-category-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    #jzc-purchase-premium .pp-category-title::before { content: ""; width: 3px; height: 14px; border-radius: 2px; background: var(--pp-brand); }
+    #jzc-purchase-premium .pp-category-note { color: var(--pp-muted); font-size: 12px; }
+    #jzc-purchase-premium .pp-shop-switch { display: flex; gap: 28px; margin: 0 0 22px; border-bottom: 1px solid var(--pp-line); }
+    #jzc-purchase-premium .pp-shop-switch button { display: flex; align-items: center; gap: 9px; padding: 11px 1px 13px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--pp-muted); font-size: 16px; font-weight: 600; }
+    #jzc-purchase-premium .pp-shop-switch button[aria-pressed="true"] { color: var(--pp-ink); border-bottom-color: var(--pp-brand); }
+    #jzc-purchase-premium .pp-shop-switch small { font-size: 11px; font-weight: 400; color: var(--pp-muted); }
+    #jzc-purchase-premium .pp-cycles { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; padding: 5px; border-radius: 8px; background: var(--pp-line); margin-bottom: 17px; }
+    #jzc-purchase-premium .pp-cycles button { border: 0; border-radius: 5px; color: var(--pp-muted); background: none; padding: 9px 6px; font-size: 13px; }
+    #jzc-purchase-premium .pp-cycles button[aria-pressed="true"] { background: var(--pp-panel); color: var(--pp-ink); box-shadow: 0 2px 5px #00000008; font-weight: 600; }
+    #jzc-purchase-premium .pp-membership-card { background: var(--pp-deep); color: var(--pp-deep-text); border: 1px solid var(--pp-gold); border-radius: 12px; padding: 25px 28px; }
+    #jzc-purchase-premium .pp-member-card-top { display: flex; justify-content: space-between; gap: 20px; align-items: start; }
+    #jzc-purchase-premium .pp-member-card-top h2 { margin: 7px 0 5px; color: inherit; font-size: 23px; font-weight: 600; }
+    #jzc-purchase-premium .pp-member-kicker { color: var(--pp-gold); font-size: 11px; letter-spacing: 1.7px; }
+    #jzc-purchase-premium .pp-member-duration { color: #bfc0c8; font-size: 12px; }
+    #jzc-purchase-premium .pp-member-price { text-align: right; white-space: nowrap; }
+    #jzc-purchase-premium .pp-member-price strong { font-family: Arial,sans-serif; font-size: 38px; font-weight: 600; color: var(--pp-gold); letter-spacing: -1.2px; }
+    #jzc-purchase-premium .pp-member-price small { color: #bfc0c8; font-size: 12px; }
+    #jzc-purchase-premium .pp-member-price p { margin: 3px 0 0; color: #bfc0c8; font-size: 12px; }
+    #jzc-purchase-premium .pp-member-benefits { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; border-top: 1px solid #ffffff24; margin-top: 23px; padding-top: 21px; }
+    #jzc-purchase-premium .pp-member-benefits small { display: block; color: #bfc0c8; font-size: 12px; }
+    #jzc-purchase-premium .pp-member-benefits strong { display: block; margin: 6px 0 2px; font-size: 20px; color: #fff; font-weight: 600; }
+    #jzc-purchase-premium .pp-member-benefits span { font-size: 11px; color: #bfc0c8; }
+    #jzc-purchase-premium .pp-demo-note { font-size: 11px; color: var(--pp-muted); margin: 10px 0 0; }
+    #jzc-purchase-premium .pp-plans { display: grid; grid-template-columns: 1fr 1.15fr; gap: 18px; }
+    #jzc-purchase-premium .pp-plan { position: relative; text-align: left; width: 100%; color: var(--pp-ink); background: var(--pp-panel); border: 1px solid var(--pp-line); border-radius: 12px; padding: 23px 25px 21px; display: flex; flex-direction: column; min-height: 332px; transition: border-color .15s, transform .15s; }
+    #jzc-purchase-premium .pp-plan:hover { transform: translateY(-2px); }
+    #jzc-purchase-premium .pp-plan[aria-pressed="true"] { border-color: var(--pp-brand); box-shadow: 0 0 0 1px var(--pp-brand); }
+    #jzc-purchase-premium .pp-plan-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+    #jzc-purchase-premium .pp-plan-name { font-size: 17px; font-weight: 600; }
+    #jzc-purchase-premium .pp-plan-en { display: block; margin-top: 3px; color: var(--pp-muted); font-size: 11px; letter-spacing: .8px; }
+    #jzc-purchase-premium .pp-check { width: 20px; height: 20px; border: 1px solid var(--pp-line); border-radius: 50%; display: grid; place-items: center; flex: none; color: transparent; font-size: 12px; }
+    #jzc-purchase-premium .pp-plan[aria-pressed="true"] .pp-check { background: var(--pp-brand); border-color: var(--pp-brand); color: #fff; }
+    #jzc-purchase-premium .pp-credits { margin: 23px 0 2px; display: flex; align-items: baseline; gap: 8px; }
+    #jzc-purchase-premium .pp-credits strong { font-family: "Arial", "Microsoft YaHei", sans-serif; font-size: 42px; line-height: 1.08; font-weight: 600; letter-spacing: -1.7px; }
+    #jzc-purchase-premium .pp-credits span { color: var(--pp-muted); font-size: 13px; }
+    #jzc-purchase-premium .pp-credit-note { color: var(--pp-muted); font-size: 12px; }
+    #jzc-purchase-premium .pp-plan-rule { height: 1px; background: var(--pp-line); margin: 19px 0 15px; width: 100%; }
+    #jzc-purchase-premium .pp-perks { display: grid; gap: 7px; color: var(--pp-muted); font-size: 12px; }
+    #jzc-purchase-premium .pp-perks span { display: flex; align-items: center; gap: 8px; }
+    #jzc-purchase-premium .pp-perks :is(i,svg) { color: var(--pp-green); width: 14px; height: 14px; }
+    #jzc-purchase-premium .pp-price-row { display: flex; justify-content: space-between; align-items: end; gap: 12px; margin-top: auto; padding-top: 20px; }
+    #jzc-purchase-premium .pp-price { white-space: nowrap; }
+    #jzc-purchase-premium .pp-price b { font-size: 15px; font-weight: 500; }
+    #jzc-purchase-premium .pp-price strong { font-family: Arial,sans-serif; font-size: 28px; font-weight: 600; letter-spacing: -1px; }
+    #jzc-purchase-premium .pp-price del { color: var(--pp-muted); margin-left: 7px; font-size: 12px; }
+    #jzc-purchase-premium .pp-small-badge { color: var(--pp-muted); font-size: 11px; padding: 4px 7px; background: var(--pp-bg); border-radius: 4px; white-space: nowrap; }
+    #jzc-purchase-premium .pp-featured { background: var(--pp-deep); color: var(--pp-deep-text); border-color: var(--pp-deep); }
+    #jzc-purchase-premium .pp-featured[aria-pressed="true"] { border-color: var(--pp-gold); box-shadow: 0 0 0 1px var(--pp-gold), 0 12px 24px #17172014; }
+    #jzc-purchase-premium .pp-featured .pp-plan-en, #jzc-purchase-premium .pp-featured .pp-credit-note, #jzc-purchase-premium .pp-featured .pp-credits span, #jzc-purchase-premium .pp-featured .pp-perks, #jzc-purchase-premium .pp-featured .pp-price del { color: #bfc0c8; }
+    #jzc-purchase-premium .pp-featured .pp-credits strong { color: var(--pp-gold); }
+    #jzc-purchase-premium .pp-featured .pp-plan-rule { background: #ffffff21; }
+    #jzc-purchase-premium .pp-featured .pp-perks :is(i,svg) { color: var(--pp-gold); }
+    #jzc-purchase-premium .pp-featured .pp-small-badge { background: #ffffff10; color: var(--pp-gold); }
+    #jzc-purchase-premium .pp-featured[aria-pressed="true"] .pp-check { background: var(--pp-gold); color: #26242a; border-color: var(--pp-gold); }
+    #jzc-purchase-premium .pp-ribbon { position: absolute; top: -11px; left: 25px; padding: 4px 11px; font-size: 11px; font-weight: 600; background: var(--pp-gold); color: #383025; border-radius: 4px; }
+    #jzc-purchase-premium .pp-trust { display: flex; flex-wrap: wrap; gap: 22px; align-items: center; padding: 20px 1px 22px; color: var(--pp-muted); font-size: 12px; }
+    #jzc-purchase-premium .pp-trust span { display: flex; align-items: center; gap: 6px; }
+    #jzc-purchase-premium .pp-trust :is(i,svg) { width: 14px; height: 14px; color: var(--pp-muted); }
+    #jzc-purchase-premium .pp-checkout { border-top: 1px solid var(--pp-line); background: var(--pp-panel); padding: 21px 25px; display: flex; justify-content: space-between; align-items: center; gap: 20px; border-radius: 0 0 8px 8px; }
+    #jzc-purchase-premium .pp-checkout-copy { display: grid; gap: 4px; }
+    #jzc-purchase-premium .pp-checkout-copy strong { font-size: 14px; font-weight: 600; }
+    #jzc-purchase-premium .pp-checkout-copy span { color: var(--pp-muted); font-size: 12px; }
+    #jzc-purchase-premium .pp-checkout-action { display: flex; gap: 19px; align-items: center; }
+    #jzc-purchase-premium .pp-total { text-align: right; }
+    #jzc-purchase-premium .pp-total small { display: block; color: var(--pp-muted); font-size: 11px; }
+    #jzc-purchase-premium .pp-total strong { font-family: Arial,sans-serif; font-size: 27px; font-weight: 600; letter-spacing: -.8px; white-space: nowrap; }
+    #jzc-purchase-premium .pp-pay { border: 0; border-radius: 7px; background: var(--pp-brand); color: #fff; min-height: 44px; padding: 0 24px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; font-size: 14px; font-weight: 600; white-space: nowrap; box-shadow: 0 5px 12px #6256e921; }
+    #jzc-purchase-premium .pp-pay :is(i,svg) { width: 16px; height: 16px; }
+    #jzc-purchase-premium .pp-footer { display: flex; justify-content: center; flex-wrap: wrap; gap: 9px; margin-top: 19px; font-size: 11px; color: var(--pp-muted); }
+    #jzc-purchase-premium .pp-footer button { border: 0; background: none; padding: 0; color: var(--pp-muted); font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+    #jzc-purchase-premium .pp-rules { margin-top: 14px; padding: 12px 16px; background: var(--pp-panel); border-left: 2px solid var(--pp-brand); font-size: 12px; color: var(--pp-muted); }
+    #jzc-purchase-premium [hidden] { display: none !important; }
+    #jzc-purchase-premium .pp-business { --pp-bg: light-dark(#f6f8f9,#181c20); --pp-brand: light-dark(#168579,#70cfc0); --pp-brand-wash: light-dark(#e7f4f1,#233a36); }
+    #jzc-purchase-premium .pp-business .pp-main { padding-top: 40px; }
+    #jzc-purchase-premium .pp-business .pp-shop-switch { gap: 22px; }
+    #jzc-purchase-premium .pp-business .pp-shop-switch small { display: none; }
+    #jzc-purchase-premium .pp-business .pp-membership-card { background: var(--pp-panel); color: var(--pp-ink); border-color: var(--pp-brand); padding: 23px; }
+    #jzc-purchase-premium .pp-business .pp-member-kicker, #jzc-purchase-premium .pp-business .pp-member-price strong { color: var(--pp-brand); }
+    #jzc-purchase-premium .pp-business .pp-member-duration, #jzc-purchase-premium .pp-business .pp-member-price small, #jzc-purchase-premium .pp-business .pp-member-price p, #jzc-purchase-premium .pp-business .pp-member-benefits small, #jzc-purchase-premium .pp-business .pp-member-benefits span { color: var(--pp-muted); }
+    #jzc-purchase-premium .pp-business .pp-member-benefits { grid-template-columns: 1fr 1fr; border-color: var(--pp-line); gap: 18px; }
+    #jzc-purchase-premium .pp-business .pp-member-benefits strong { color: var(--pp-ink); }
+    #jzc-purchase-premium .pp-business .pp-member-benefits > :last-child { grid-column: 1/-1; }
+    #jzc-purchase-premium .pp-business-grid { display: grid; grid-template-columns: minmax(175px,.75fr) minmax(0,1.75fr); gap: 38px; }
+    #jzc-purchase-premium .pp-intro { padding-top: 4px; }
+    #jzc-purchase-premium .pp-intro h1 { color: var(--pp-ink); margin: 12px 0; font-size: 32px; line-height: 1.45; font-weight: 600; letter-spacing: -.7px; }
+    #jzc-purchase-premium .pp-intro h1 span { display: block; color: var(--pp-brand); }
+    #jzc-purchase-premium .pp-intro .pp-sub { max-width: 220px; line-height: 1.8; }
+    #jzc-purchase-premium .pp-account { margin-top: 31px; padding-top: 21px; border-top: 1px solid var(--pp-line); }
+    #jzc-purchase-premium .pp-account small { color: var(--pp-muted); font-size: 12px; }
+    #jzc-purchase-premium .pp-account strong { display: block; margin: 5px 0 15px; font-family: Arial,sans-serif; font-size: 26px; color: var(--pp-ink); font-weight: 600; }
+    #jzc-purchase-premium .pp-account .pp-member { white-space: normal; flex-wrap: wrap; font-size: 11px; }
+    #jzc-purchase-premium .pp-business .pp-plans { display: flex; flex-direction: column; gap: 15px; }
+    #jzc-purchase-premium .pp-business .pp-plan { min-height: 180px; padding: 22px 24px; border-radius: 9px; display: grid; grid-template-columns: minmax(0,1fr) auto; column-gap: 20px; }
+    #jzc-purchase-premium .pp-business .pp-plan-head { grid-column: 1/-1; }
+    #jzc-purchase-premium .pp-business .pp-credits { margin-top: 15px; }
+    #jzc-purchase-premium .pp-business .pp-credits strong { font-size: 32px; letter-spacing: -1px; }
+    #jzc-purchase-premium .pp-business .pp-credit-note { margin-top: 6px; }
+    #jzc-purchase-premium .pp-business .pp-price-row { grid-column: 2; grid-row: 2 / span 2; display: flex; flex-direction: column; justify-content: end; align-items: end; padding-top: 8px; gap: 4px; }
+    #jzc-purchase-premium .pp-business .pp-plan[aria-pressed="true"] { border-color: var(--pp-brand); background: var(--pp-brand-wash); box-shadow: 0 0 0 1px var(--pp-brand); }
+    #jzc-purchase-premium .pp-business .pp-plan-name { font-size: 15px; }
+    #jzc-purchase-premium .pp-business .pp-plan-en { display: none; }
+    #jzc-purchase-premium .pp-business .pp-ribbon { top: -10px; left: auto; right: 45px; background: var(--pp-brand); color: #fff; }
+    #jzc-purchase-premium .pp-business .pp-small-badge { background: transparent; padding: 0; color: var(--pp-muted); }
+    #jzc-purchase-premium .pp-business .pp-checkout { margin-top: 24px; padding: 20px 0 0; background: transparent; border-radius: 0; }
+    #jzc-purchase-premium .pp-business .pp-pay { box-shadow: none; }
+    #jzc-purchase-premium .pp-business .pp-trust { border-top: 1px solid var(--pp-line); margin-top: 37px; padding-top: 22px; justify-content: space-between; gap: 12px; }
+    #jzc-purchase-premium .pp-overlay { position: absolute; inset: 0; display: grid; place-items: center; z-index: 4; padding: 20px; background: #11131a88; backdrop-filter: blur(4px); }
+    #jzc-purchase-premium .pp-dialog { width: min(380px,100%); padding: 24px; background: var(--pp-panel); color: var(--pp-ink); border: 1px solid var(--pp-line); border-radius: 14px; box-shadow: 0 20px 70px #0003; text-align: center; }
+    #jzc-purchase-premium .pp-dialog-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 21px; text-align: left; }
+    #jzc-purchase-premium .pp-dialog-head strong { font-size: 16px; font-weight: 600; }
+    #jzc-purchase-premium .pp-close { display: grid; place-items: center; padding: 4px; background: transparent; border: 0; color: var(--pp-muted); }
+    #jzc-purchase-premium .pp-close :is(i,svg) { width: 18px; height: 18px; }
+    #jzc-purchase-premium .pp-qr { display: grid; place-items: center; gap: 9px; align-content: center; width: 160px; height: 160px; margin: 19px auto; border: 1px solid var(--pp-line); border-radius: 9px; background: var(--pp-bg); color: var(--pp-muted); font-size: 12px; }
+    #jzc-purchase-premium .pp-qr :is(i,svg) { width: 42px; height: 42px; }
+    #jzc-purchase-premium .pp-dialog-price { font-family: Arial,sans-serif; font-size: 30px; margin-top: 6px; font-weight: 600; }
+    #jzc-purchase-premium .pp-dialog-note { color: var(--pp-muted); font-size: 12px; }
+    @media (max-width: 760px) {
+      #jzc-purchase-premium .pp-app { min-height: 980px; }
+      #jzc-purchase-premium .pp-header { padding: 16px 21px; }
+      #jzc-purchase-premium .pp-main { padding: 29px 23px 24px; }
+      #jzc-purchase-premium .pp-hero { align-items: start; flex-direction: column; gap: 14px; }
+      #jzc-purchase-premium .pp-hero h1 { font-size: 26px; }
+      #jzc-purchase-premium .pp-plan { padding: 21px; }
+      #jzc-purchase-premium .pp-business-grid { grid-template-columns: 1fr; gap: 25px; }
+      #jzc-purchase-premium .pp-intro h1 { font-size: 26px; margin: 7px 0; }
+      #jzc-purchase-premium .pp-intro h1 span { display: inline; margin-left: 8px; }
+      #jzc-purchase-premium .pp-intro .pp-sub { max-width: none; }
+      #jzc-purchase-premium .pp-account { display: none; }
+      #jzc-purchase-premium .pp-checkout { padding: 20px; }
+      #jzc-purchase-premium .pp-checkout-action { gap: 13px; }
+      #jzc-purchase-premium .pp-pay { padding: 0 18px; }
+    }
+    @media (max-width: 540px) {
+      #jzc-purchase-premium .pp-app { min-height: 1220px; }
+      #jzc-purchase-premium .pp-header { padding: 14px 18px; flex-wrap: wrap; gap: 13px; }
+      #jzc-purchase-premium .pp-header-right { gap: 10px; }
+      #jzc-purchase-premium .pp-header-points { border: 0; padding: 0; }
+      #jzc-purchase-premium .pp-user { display: none; }
+      #jzc-purchase-premium .pp-main { padding: 26px 17px 23px; }
+      #jzc-purchase-premium .pp-plans { grid-template-columns: 1fr; gap: 20px; }
+      #jzc-purchase-premium .pp-plan { min-height: 296px; }
+      #jzc-purchase-premium .pp-category { align-items: start; }
+      #jzc-purchase-premium .pp-category-note { font-size: 11px; }
+      #jzc-purchase-premium .pp-checkout { flex-direction: column; align-items: stretch; gap: 15px; }
+      #jzc-purchase-premium .pp-checkout-action { justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+      #jzc-purchase-premium .pp-price-row { flex-wrap: wrap; gap: 7px; }
+      #jzc-purchase-premium .pp-total { text-align: left; }
+      #jzc-purchase-premium .pp-trust { gap: 12px; }
+      #jzc-purchase-premium .pp-business .pp-plan { padding: 21px 17px; column-gap: 10px; }
+      #jzc-purchase-premium .pp-business .pp-price strong { font-size: 24px; }
+      #jzc-purchase-premium .pp-business .pp-credits strong { font-size: 29px; }
+      #jzc-purchase-premium .pp-shop-switch { gap: 22px; }
+      #jzc-purchase-premium .pp-shop-switch small { display: none; }
+      #jzc-purchase-premium .pp-membership-card { padding: 22px 18px; }
+      #jzc-purchase-premium .pp-member-card-top { flex-direction: column; gap: 13px; }
+      #jzc-purchase-premium .pp-member-price { text-align: left; }
+      #jzc-purchase-premium .pp-member-benefits { grid-template-columns: 1fr 1fr; gap: 17px; }
+      #jzc-purchase-premium .pp-member-benefits > :last-child { grid-column: 1/-1; }
+    }
+    @media (prefers-reduced-motion: reduce) { #jzc-purchase-premium .pp-plan { transition: none; } }
+  </style>
+  <div class="viz-carousel" aria-label="套餐购买页设计方案" data-previous-label="上一方案" data-next-label="下一方案">
+    <section data-variant="品牌旗舰" aria-label="品牌旗舰方案">
+      <div class="pp-app pp-flagship" data-design="flagship" aria-label="品牌旗舰购买页">
+        <header class="pp-header"><div class="pp-logo"><span class="pp-logo-mark">剧</span>剧智创</div><div class="pp-header-right"><div class="pp-header-points"><i data-lucide="coins" aria-hidden="true"></i><strong>93,379</strong> 积分</div><div class="pp-user"><span class="pp-avatar">禾</span>新禾文创</div></div></header>
+        <main class="pp-main">
+          <div class="pp-hero"><div><div class="pp-eyebrow">CREATOR PLANS</div><h1>为下一场创作，备好灵感。</h1><p class="pp-sub">会员享周期权益，积分包随时补充创作额度。</p></div><div class="pp-member"><span>月卡生效中</span>2027.08.27 到期</div></div>
+          <div class="pp-shop-switch" role="group" aria-label="购买类型"><button type="button" data-shop="membership" aria-pressed="true">会员套餐<small>周期积分与专属折扣</small></button><button type="button" data-shop="points" aria-pressed="false">积分包<small>一次性补充额度</small></button></div>
+          <div class="pp-category"><div class="pp-category-title" data-category-title>选择会员周期</div><div class="pp-category-note" data-category-note>按周期享权益</div></div>
+          <div data-member-panel>
+            <div class="pp-cycles" role="group" aria-label="会员周期"><button type="button" data-cycle="monthly" aria-pressed="true">月度</button><button type="button" data-cycle="quarterly" aria-pressed="false">季度</button><button type="button" data-cycle="halfYear" aria-pressed="false">半年</button><button type="button" data-cycle="yearly" aria-pressed="false">年度</button></div>
+            <div class="pp-membership-card"><div class="pp-member-card-top"><div><div class="pp-member-kicker">PRO MEMBERSHIP</div><h2 data-member-name>专业版月卡</h2><div class="pp-member-duration" data-member-duration>会员有效期 1 个月</div></div><div class="pp-member-price"><strong data-member-price>¥99</strong><small data-member-unit> / 月</small><p data-member-average>约 ¥99 / 月</p></div></div><div class="pp-member-benefits"><div><small>每月发放</small><strong data-member-points>3,000 积分</strong><span>按月发放至团队账户</span></div><div><small>AI 积分消耗</small><strong data-member-discount>9 折</strong><span>会员有效期内享受</span></div><div><small>周期积分总计</small><strong data-member-total>3,000 积分</strong><span>已发放积分永久有效</span></div></div></div>
+            <p class="pp-demo-note" data-member-note>会员价格与权益为设计示例，正式购买以平台配置为准。</p>
+          </div>
+          <div class="pp-plans" data-point-panel hidden>
+            <button class="pp-plan" type="button" data-plan="trial" aria-pressed="false"><span class="pp-plan-head"><span><span class="pp-plan-name">轻量体验</span><span class="pp-plan-en">STARTER</span></span><span class="pp-check">✓</span></span><span class="pp-credits"><strong>1,000</strong><span>积分</span></span><span class="pp-credit-note">从一个灵感开始</span><span class="pp-plan-rule"></span><span class="pp-perks"><span><i data-lucide="check" aria-hidden="true"></i>一次性到账，积分永久有效</span><span><i data-lucide="check" aria-hidden="true"></i>团队成员共享使用</span></span><span class="pp-price-row"><span class="pp-price"><b>¥</b><strong>0.01</strong></span><span class="pp-small-badge">体验价</span></span></button>
+            <button class="pp-plan pp-featured" type="button" data-plan="studio" aria-pressed="true"><span class="pp-ribbon">推荐方案</span><span class="pp-plan-head"><span><span class="pp-plan-name">团队创作</span><span class="pp-plan-en">STUDIO</span></span><span class="pp-check">✓</span></span><span class="pp-credits"><strong>5,000</strong><span>积分</span></span><span class="pp-credit-note">让创作持续推进</span><span class="pp-plan-rule"></span><span class="pp-perks"><span><i data-lucide="check" aria-hidden="true"></i>一次性到账，积分永久有效</span><span><i data-lucide="check" aria-hidden="true"></i>团队成员共享使用</span></span><span class="pp-price-row"><span class="pp-price"><b>¥</b><strong>49.90</strong><del>¥99.90</del></span><span class="pp-small-badge">¥9.98 / 千积分</span></span></button>
+          </div>
+          <div class="pp-trust"><span><i data-lucide="shield-check" aria-hidden="true"></i>微信安全支付</span><span><i data-lucide="users" aria-hidden="true"></i>团队共享权益</span><span><i data-lucide="infinity" aria-hidden="true"></i>已发放积分永久有效</span></div>
+          <div class="pp-checkout" aria-live="polite"><div class="pp-checkout-copy"><strong data-selected-name>专业版月卡</strong><span data-selected-detail>每月 3,000 积分 · 会员有效期 1 个月 · 新禾文创</span></div><div class="pp-checkout-action"><div class="pp-total"><small>应付金额</small><strong data-selected-price>¥99</strong></div><button type="button" class="pp-pay" data-pay><i data-lucide="scan-line" aria-hidden="true"></i>微信支付</button></div></div>
+          <div class="pp-footer"><span>如需帮助，请联系平台运营</span><span>·</span><button type="button" data-rules-toggle aria-expanded="false">购买须知</button></div>
+          <div class="pp-rules" data-rules hidden>积分包为一次性购买，不会自动续费。支付完成后积分发放到当前团队，团队成员共享使用。</div>
+          <div class="pp-overlay" data-payment hidden><section class="pp-dialog" role="dialog" aria-modal="true" aria-label="微信支付预览"><div class="pp-dialog-head"><strong>微信扫码支付</strong><button class="pp-close" data-close type="button" aria-label="关闭支付预览"><i data-lucide="x" aria-hidden="true"></i></button></div><div data-dialog-name>团队创作</div><div class="pp-dialog-price" data-dialog-price>¥49.90</div><div class="pp-qr"><i data-lucide="qr-code" aria-hidden="true"></i><span>付款码预览</span></div><div class="pp-dialog-note">设计预览，不会创建订单或扣款</div></section></div>
+        </main>
+      </div>
+    </section>
+    <section data-variant="轻盈商务" aria-label="轻盈商务方案" hidden>
+      <div class="pp-app pp-business" data-design="business" aria-label="轻盈商务购买页">
+        <header class="pp-header"><div class="pp-logo"><span class="pp-logo-mark">剧</span>剧智创</div><div class="pp-header-right"><div class="pp-header-points"><i data-lucide="coins" aria-hidden="true"></i><strong>93,379</strong> 积分</div><div class="pp-user"><span class="pp-avatar">禾</span>新禾文创</div></div></header>
+        <main class="pp-main">
+          <div class="pp-business-grid">
+            <div class="pp-intro"><div class="pp-eyebrow">YOUR NEXT CREATION</div><h1>好故事，<span>值得继续。</span></h1><p class="pp-sub">会员套餐持续享权益，积分包按需补充，让创作顺畅衔接。</p><div class="pp-account"><small>当前团队积分</small><strong>93,379</strong><div class="pp-member"><span>月卡生效中</span>2027.08.27 到期</div></div></div>
+            <div><div class="pp-shop-switch" role="group" aria-label="购买类型"><button type="button" data-shop="membership" aria-pressed="true">会员套餐</button><button type="button" data-shop="points" aria-pressed="false">积分包</button></div><div class="pp-category"><div class="pp-category-title" data-category-title>选择会员周期</div><div class="pp-category-note" data-category-note>按周期享权益</div></div>
+            <div data-member-panel><div class="pp-cycles" role="group" aria-label="会员周期"><button type="button" data-cycle="monthly" aria-pressed="true">月度</button><button type="button" data-cycle="quarterly" aria-pressed="false">季度</button><button type="button" data-cycle="halfYear" aria-pressed="false">半年</button><button type="button" data-cycle="yearly" aria-pressed="false">年度</button></div><div class="pp-membership-card"><div class="pp-member-card-top"><div><div class="pp-member-kicker">PRO MEMBERSHIP</div><h2 data-member-name>专业版月卡</h2><div class="pp-member-duration" data-member-duration>会员有效期 1 个月</div></div><div class="pp-member-price"><strong data-member-price>¥99</strong><small data-member-unit> / 月</small><p data-member-average>约 ¥99 / 月</p></div></div><div class="pp-member-benefits"><div><small>每月发放</small><strong data-member-points>3,000 积分</strong><span>按月发放至团队账户</span></div><div><small>AI 积分消耗</small><strong data-member-discount>9 折</strong><span>会员有效期内享受</span></div><div><small>周期积分总计</small><strong data-member-total>3,000 积分</strong><span>已发放积分永久有效</span></div></div></div><p class="pp-demo-note" data-member-note>会员价格与权益为设计示例，正式购买以平台配置为准。</p></div>
+            <div class="pp-plans" data-point-panel hidden>
+              <button class="pp-plan" type="button" data-plan="trial" aria-pressed="false"><span class="pp-plan-head"><span class="pp-plan-name">轻量体验</span><span class="pp-check">✓</span></span><span class="pp-credits"><strong>1,000</strong><span>积分</span></span><span class="pp-credit-note">一次性到账 · 永久有效</span><span class="pp-price-row"><span class="pp-price"><b>¥</b><strong>0.01</strong></span><span class="pp-small-badge">体验价</span></span></button>
+              <button class="pp-plan" type="button" data-plan="studio" aria-pressed="true"><span class="pp-ribbon">推荐方案</span><span class="pp-plan-head"><span class="pp-plan-name">团队创作</span><span class="pp-check">✓</span></span><span class="pp-credits"><strong>5,000</strong><span>积分</span></span><span class="pp-credit-note">一次性到账 · 永久有效</span><span class="pp-price-row"><span class="pp-price"><b>¥</b><strong>49.90</strong><del>¥99.90</del></span><span class="pp-small-badge">¥9.98 / 千积分</span></span></button>
+            </div><div class="pp-checkout" aria-live="polite"><div class="pp-checkout-copy"><strong data-selected-name>专业版月卡</strong><span data-selected-detail>每月 3,000 积分 · 1 个月 · 新禾文创</span></div><div class="pp-checkout-action"><div class="pp-total"><small>应付</small><strong data-selected-price>¥99</strong></div><button type="button" class="pp-pay" data-pay><i data-lucide="arrow-up-right" aria-hidden="true"></i>前往支付</button></div></div></div>
+          </div>
+          <div class="pp-trust"><span><i data-lucide="shield-check" aria-hidden="true"></i>微信安全支付</span><span><i data-lucide="users" aria-hidden="true"></i>团队积分共享</span><span><i data-lucide="infinity" aria-hidden="true"></i>已发放积分永久有效</span></div>
+          <div class="pp-footer"><span>如需帮助，请联系平台运营</span><span>·</span><button type="button" data-rules-toggle aria-expanded="false">购买须知</button></div><div class="pp-rules" data-rules hidden>积分包为一次性购买，不会自动续费。支付完成后积分发放到当前团队，团队成员共享使用。</div>
+          <div class="pp-overlay" data-payment hidden><section class="pp-dialog" role="dialog" aria-modal="true" aria-label="微信支付预览"><div class="pp-dialog-head"><strong>微信扫码支付</strong><button class="pp-close" data-close type="button" aria-label="关闭支付预览"><i data-lucide="x" aria-hidden="true"></i></button></div><div data-dialog-name>团队创作</div><div class="pp-dialog-price" data-dialog-price>¥49.90</div><div class="pp-qr"><i data-lucide="qr-code" aria-hidden="true"></i><span>付款码预览</span></div><div class="pp-dialog-note">设计预览，不会创建订单或扣款</div></section></div>
+        </main>
+      </div>
+    </section>
+  </div>
+  <script>
+    (() => {
+      const root = document.getElementById('jzc-purchase-premium');
+      if (!root) return;
+      const plans = { trial: { name: '轻量体验积分包', points: '1,000', price: '¥0.01' }, studio: { name: '团队创作积分包', points: '5,000', price: '¥49.90' } };
+      const memberships = {
+        monthly: { name: '专业版月卡', months: 1, price: 99, points: 3000, discount: '9 折', unit: '月' },
+        quarterly: { name: '专业版季卡', months: 3, price: 269, points: 3500, discount: '8.5 折', unit: '季' },
+        halfYear: { name: '专业版半年卡', months: 6, price: null, points: null, discount: '待配置', unit: '半年' },
+        yearly: { name: '专业版年卡', months: 12, price: 899, points: 4500, discount: '8 折', unit: '年' }
+      };
+      const stored = window.openai?.widgetState?.privateContent?.purchaseSelection || {};
+      const choices = {};
+      const restore = {};
+      root.querySelectorAll('[data-design]').forEach((scene) => {
+        const key = scene.dataset.design;
+        let shop = stored[key]?.shop === 'points' ? 'points' : 'membership';
+        let cycle = memberships[stored[key]?.cycle] ? stored[key].cycle : 'monthly';
+        let selected = plans[stored[key]?.point] ? stored[key].point : 'studio';
+        const text = (selector, value) => { scene.querySelector(selector).textContent = value; };
+        const money = (amount) => amount === null ? '待配置' : `¥${Number(amount.toFixed(2))}`;
+        const persist = () => window.openai?.setWidgetState?.({ modelContent: null, privateContent: { purchaseSelection: choices } }).catch(() => {});
+        const update = () => {
+          const plan = plans[selected];
+          const member = memberships[cycle];
+          const isMember = shop === 'membership';
+          const available = !isMember || member.price !== null;
+          const name = isMember ? member.name : plan.name;
+          const price = isMember ? money(member.price) : plan.price;
+          choices[key] = { shop, cycle, point: selected };
+          scene.querySelector('[data-member-panel]').hidden = !isMember;
+          scene.querySelector('[data-point-panel]').hidden = isMember;
+          scene.querySelectorAll('[data-shop]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.shop === shop)));
+          scene.querySelectorAll('[data-cycle]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.cycle === cycle)));
+          scene.querySelectorAll('[data-plan]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.plan === selected)));
+          text('[data-category-title]', isMember ? '选择会员周期' : '选择积分额度');
+          text('[data-category-note]', isMember ? '周期积分与专属折扣' : '一次购买 · 无自动续费');
+          text('[data-member-name]', member.name);
+          text('[data-member-duration]', `会员有效期 ${member.months} 个月`);
+          text('[data-member-price]', money(member.price));
+          text('[data-member-unit]', member.price === null ? '' : ` / ${member.unit}`);
+          text('[data-member-average]', member.price === null ? '正式方案发布后可选购' : `折合 ${money(member.price / member.months)} / 月`);
+          text('[data-member-points]', member.points === null ? '待配置' : `${member.points.toLocaleString()} 积分`);
+          text('[data-member-discount]', member.discount);
+          text('[data-member-total]', member.points === null ? '待配置' : `${(member.points * member.months).toLocaleString()} 积分`);
+          text('[data-member-note]', member.price === null ? '半年套餐尚未配置，保留选购位置。' : '会员价格与权益为设计示例，正式购买以平台配置为准。');
+          text('[data-selected-name]', name);
+          text('[data-selected-detail]', isMember
+            ? (available ? `每月 ${member.points.toLocaleString()} 积分 · ${member.months} 个月 · 新禾文创` : '半年会员方案待配置')
+            : `${plan.points} 积分一次到账 · 新禾文创`);
+          text('[data-selected-price]', price);
+          text('[data-dialog-name]', name);
+          text('[data-dialog-price]', price);
+          scene.querySelector('[data-pay]').disabled = !available;
+          text('[data-rules]', isMember
+            ? '会员积分按月发放，折扣在会员有效期内生效。已有会员时，具体生效时间以订单确认结果为准。已发放积分永久有效。'
+            : '积分包为一次性购买，不会自动续费。支付完成后积分发放到当前团队，团队成员共享使用。');
+        };
+        scene.querySelectorAll('[data-plan]').forEach((button) => button.addEventListener('click', () => {
+          selected = button.dataset.plan;
+          update();
+          persist();
+        }));
+        scene.querySelectorAll('[data-shop]').forEach((button) => button.addEventListener('click', () => { shop = button.dataset.shop; update(); persist(); }));
+        scene.querySelectorAll('[data-cycle]').forEach((button) => button.addEventListener('click', () => { cycle = button.dataset.cycle; update(); persist(); }));
+        const payment = scene.querySelector('[data-payment]');
+        const close = scene.querySelector('[data-close]');
+        scene.querySelector('[data-pay]').addEventListener('click', () => { payment.hidden = false; close.focus(); });
+        close.addEventListener('click', () => { payment.hidden = true; scene.querySelector('[data-pay]').focus(); });
+        scene.addEventListener('keydown', (event) => {
+          if (payment.hidden) return;
+          if (event.key === 'Escape') close.click();
+          if (event.key === 'Tab') { event.preventDefault(); close.focus(); }
+        });
+        const rulesButton = scene.querySelector('[data-rules-toggle]');
+        rulesButton.addEventListener('click', () => { const rules = scene.querySelector('[data-rules]'); rules.hidden = !rules.hidden; rulesButton.setAttribute('aria-expanded', String(!rules.hidden)); });
+        update();
+        restore[key] = (value) => {
+          if (!value || !['membership','points'].includes(value.shop)) return;
+          shop = value.shop;
+          if (memberships[value.cycle]) cycle = value.cycle;
+          if (plans[value.point]) selected = value.point;
+          update();
+        };
+        if (window.Tweak) {
+          const style = { compact: false };
+          const tweak = new window.Tweak({ container: scene, onChange: () => { scene.querySelector('.pp-main').style.paddingTop = style.compact ? '24px' : ''; } });
+          tweak.addToggle(style, 'compact', { label: '紧凑顶部留白' });
+        }
+      });
+      window.addEventListener('openai:set_globals', (event) => {
+        const saved = event.detail?.globals?.widgetState?.privateContent?.purchaseSelection;
+        if (saved) Object.entries(saved).forEach(([key, value]) => restore[key]?.(value));
+      });
+    })();
+  </script>
+</div>

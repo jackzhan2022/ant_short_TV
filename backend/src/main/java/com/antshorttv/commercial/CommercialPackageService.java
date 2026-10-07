@@ -27,12 +27,15 @@ public class CommercialPackageService {
 
     @Transactional
     public CommercialPackageVersionResponse createDraft(CommercialPackageDraftCommand command) {
+        if (command.packageType() == null || !Set.of("POINT_PACKAGE", "SUBSCRIPTION").contains(command.packageType())) throw validation("不支持的套餐类型。");
         if (command.price() == null || command.price().signum() < 0) throw validation("售价必须为非负数。");
         if (command.effectiveFrom() == null) throw validation("生效时间不能为空。");
         if ("SUBSCRIPTION".equals(command.packageType()) && (command.periodMonths() == null || command.periodMonths() <= 0)) throw validation("会员订阅的周期月数必须大于 0。");
         List<ValidatedEntitlement> validatedEntitlements = validateEntitlements(command.entitlements());
+        validatedEntitlements.forEach(item -> validatePackageEntitlement(command.packageType(), item.input().type()));
         String code = command.code() == null || command.code().isBlank() ? generatePackageCode() : command.code();
         CommercialPackageEntity pack = packageMapper.selectOne(new QueryWrapper<CommercialPackageEntity>().eq("code", code));
+        if (pack != null && !command.packageType().equals(pack.packageType)) throw validation("套餐类型不可变更。");
         if (pack == null) { pack = new CommercialPackageEntity(); pack.code = code; pack.packageType = command.packageType(); pack.status = "ACTIVE"; pack.createdBy = command.operatorId(); pack.createdAt = LocalDateTime.now(); pack.updatedAt = pack.createdAt; packageMapper.insert(pack); }
         Integer latest = versionMapper.selectList(new QueryWrapper<CommercialPackageVersionEntity>().eq("package_id", pack.id).orderByDesc("version_no").last("limit 1")).stream().findFirst().map(v -> v.versionNo).orElse(0);
         CommercialPackageVersionEntity version = new CommercialPackageVersionEntity(); version.packageId = pack.id; version.versionNo = latest + 1; version.name = command.name(); version.description = command.description(); version.billingPeriod = command.billingPeriod(); version.periodMonths = command.periodMonths(); version.price = command.price(); version.listPrice = command.listPrice(); version.currency = command.currency(); version.effectiveFrom = command.effectiveFrom(); version.effectiveTo = command.effectiveTo(); version.status = "DRAFT"; version.createdBy = command.operatorId(); version.createdAt = LocalDateTime.now(); versionMapper.insert(version);
@@ -40,7 +43,7 @@ public class CommercialPackageService {
         return response(version);
     }
 
-    @Transactional public CommercialPackageVersionResponse publish(Long packageId, Long versionId, Long operatorId) { CommercialPackageVersionEntity v = require(versionId); if (!packageId.equals(v.packageId)) throw new IllegalArgumentException("Package mismatch"); if (!"DRAFT".equals(v.status)) throw new IllegalStateException("Only draft versions can be published"); validateStoredEntitlements(versionId); v.status = "PUBLISHED"; v.publishedAt = LocalDateTime.now(); versionMapper.updateById(v); return response(v); }
+    @Transactional public CommercialPackageVersionResponse publish(Long packageId, Long versionId, Long operatorId) { CommercialPackageVersionEntity v = require(versionId); if (!packageId.equals(v.packageId)) throw new IllegalArgumentException("Package mismatch"); if (!"DRAFT".equals(v.status)) throw new IllegalStateException("Only draft versions can be published"); validateStoredEntitlements(versionId, packageMapper.selectById(v.packageId).packageType); v.status = "PUBLISHED"; v.publishedAt = LocalDateTime.now(); versionMapper.updateById(v); return response(v); }
     @Transactional public CommercialPackageVersionResponse unpublish(Long packageId, Long versionId) { CommercialPackageVersionEntity v = require(versionId); if (!packageId.equals(v.packageId)) throw new IllegalArgumentException("Package mismatch"); if (!"PUBLISHED".equals(v.status)) throw new IllegalStateException("Only published versions can be unpublished"); v.status = "OFF_SALE"; versionMapper.updateById(v); return response(v); }
     public List<CommercialPackageSummaryResponse> listPackages() {
         return packageMapper.selectList(new QueryWrapper<CommercialPackageEntity>().orderByAsc("id")).stream().map(pack -> {
@@ -63,12 +66,28 @@ public class CommercialPackageService {
         return versionMapper.selectList(new QueryWrapper<CommercialPackageVersionEntity>()
             .eq("status", "PUBLISHED").le("effective_from", now)
             .and(wrapper -> wrapper.isNull("effective_to").or().gt("effective_to", now))
-            .orderByAsc("price")).stream().map(version -> {
+            .orderByAsc("price")).stream().filter(this::hasFulfillableBenefits).map(version -> {
                 CommercialPackageEntity pack = packageMapper.selectById(version.packageId);
                 return new CommercialCatalogItemResponse(pack.id, version.id, pack.code, pack.packageType,
                     version.name, version.description, version.billingPeriod, version.periodMonths,
                     version.price, version.listPrice, version.currency, response(version).entitlements());
             }).toList();
+    }
+
+    boolean hasFulfillableBenefits(CommercialPackageVersionEntity version) {
+        CommercialPackageEntity pack = packageMapper.selectById(version.packageId);
+        if (pack == null || (!"POINT_PACKAGE".equals(pack.packageType) && !"SUBSCRIPTION".equals(pack.packageType))) return false;
+        return entitlementMapper.selectList(new QueryWrapper<CommercialEntitlementEntity>().eq("package_version_id", version.id))
+            .stream().noneMatch(item -> !isCompatible(pack.packageType, item.entitlementType));
+    }
+
+    private boolean isCompatible(String packageType, String entitlementType) {
+        return !"POINT_PACKAGE".equals(packageType)
+            || (!"PERIODIC_POINTS".equals(entitlementType) && !"GLOBAL_DISCOUNT".equals(entitlementType));
+    }
+
+    private void validatePackageEntitlement(String packageType, String entitlementType) {
+        if (!isCompatible(packageType, entitlementType)) throw validation("积分包不支持周期积分或会员折扣。");
     }
     public List<CommercialPackageVersionResponse> history(Long packageId) { return versionMapper.selectList(new QueryWrapper<CommercialPackageVersionEntity>().eq("package_id", packageId).orderByDesc("version_no")).stream().map(this::response).toList(); }
     CommercialPackageVersionResponse snapshot(Long versionId) { return response(require(versionId)); }
@@ -88,12 +107,13 @@ public class CommercialPackageService {
         }).toList();
     }
 
-    private void validateStoredEntitlements(Long versionId) {
+    private void validateStoredEntitlements(Long versionId, String packageType) {
         List<CommercialEntitlementEntity> stored = entitlementMapper.selectList(
             new QueryWrapper<CommercialEntitlementEntity>().eq("package_version_id", versionId));
         for (CommercialEntitlementEntity entitlement : stored) {
             CommercialEntitlementDefinitionEntity definition = entitlementCatalogService.requireByCode(entitlement.entitlementType);
             validateDefinitionAndValue(definition, entitlement.numericValue);
+            validatePackageEntitlement(packageType, entitlement.entitlementType);
         }
     }
 

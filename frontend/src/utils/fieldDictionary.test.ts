@@ -11,6 +11,9 @@ import {
 describe('后台字段字典', () => {
   it('将常见状态和服务类型转换为中文', () => {
     expect(statusText('PENDING_REVIEW')).toBe('待审核');
+    expect(statusText('QUEUED')).toBe('待生效');
+    expect(statusText('ENTITLEMENT_PENDING')).toBe('权益发放中');
+    expect(statusText('CLOSED')).toBe('已关闭');
     expect(serviceTypeText('VIDEO_UNDERSTANDING')).toBe('视频理解');
   });
 

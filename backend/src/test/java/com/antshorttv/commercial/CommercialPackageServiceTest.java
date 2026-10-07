@@ -120,6 +120,78 @@ class CommercialPackageServiceTest {
     }
 
     @Test
+    void rejectsPublishedOffersOutsideTheirEffectiveWindow() {
+        LocalDateTime now = LocalDateTime.now();
+        CommercialPackageVersionResponse future = service.createDraft(new CommercialPackageDraftCommand(
+            "FUTURE_ORDER_PACK", "POINT_PACKAGE", "未生效积分包", null, null, null,
+            new BigDecimal("20.00"), null, "CNY", now.plusDays(1), null,
+            List.of(new CommercialEntitlementInput("ONE_TIME_POINTS", new BigDecimal("200"))), 3L));
+        CommercialPackageVersionResponse expired = service.createDraft(new CommercialPackageDraftCommand(
+            "PAST_ORDER_PACK", "POINT_PACKAGE", "已过期积分包", null, null, null,
+            new BigDecimal("20.00"), null, "CNY", now.minusDays(2), now.minusDays(1),
+            List.of(new CommercialEntitlementInput("ONE_TIME_POINTS", new BigDecimal("200"))), 3L));
+        service.publish(future.packageId(), future.versionId(), 3L);
+        service.publish(expired.packageId(), expired.versionId(), 3L);
+
+        assertThatThrownBy(() -> orderService.create(new CommercialOrderCommand(14L, 24L, future.versionId())))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not for sale");
+        assertThatThrownBy(() -> orderService.create(new CommercialOrderCommand(14L, 24L, expired.versionId())))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not for sale");
+        assertThat(jdbc.queryForObject("select count(*) from commercial_order where tenant_id=14", Integer.class)).isZero();
+    }
+
+    @Test
+    void rejectsUnknownPackageTypesBeforePublication() {
+        assertThatThrownBy(() -> service.createDraft(new CommercialPackageDraftCommand(
+            "UNKNOWN_ORDER_PACK", "UNKNOWN", "未知套餐", null, null, null,
+            new BigDecimal("20.00"), null, "CNY", LocalDateTime.now().minusDays(1), null,
+            List.of(new CommercialEntitlementInput("ONE_TIME_POINTS", new BigDecimal("200"))), 3L)))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("套餐类型");
+    }
+
+    @Test
+    void rejectsPointPackagesWithSubscriptionOnlyEntitlements() {
+        for (String type : List.of("PERIODIC_POINTS", "GLOBAL_DISCOUNT")) {
+            assertThatThrownBy(() -> service.createDraft(new CommercialPackageDraftCommand(
+                "INVALID_POINT_" + type, "POINT_PACKAGE", "错误积分包", null, null, null,
+                new BigDecimal("20.00"), null, "CNY", LocalDateTime.now().minusDays(1), null,
+                List.of(
+                    new CommercialEntitlementInput("ONE_TIME_POINTS", new BigDecimal("200")),
+                    new CommercialEntitlementInput(type, new BigDecimal("1"))), 3L)))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("积分包");
+        }
+
+        CommercialPackageVersionResponse draft = service.createDraft(new CommercialPackageDraftCommand(
+            "INVALID_POINT_STORED", "POINT_PACKAGE", "待发布积分包", null, null, null,
+            new BigDecimal("20.00"), null, "CNY", LocalDateTime.now().minusDays(1), null,
+            List.of(new CommercialEntitlementInput("ONE_TIME_POINTS", new BigDecimal("200"))), 3L));
+        jdbc.update("update commercial_entitlement set entitlement_type='PERIODIC_POINTS' where package_version_id=?", draft.versionId());
+        assertThatThrownBy(() -> service.publish(draft.packageId(), draft.versionId(), 3L))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("积分包");
+
+        assertThatThrownBy(() -> service.createDraft(new CommercialPackageDraftCommand(
+            "INVALID_POINT_STORED", "SUBSCRIPTION", "不能变更商品类型", null, "MONTH", 1,
+            new BigDecimal("20.00"), null, "CNY", LocalDateTime.now().minusDays(1), null,
+            List.of(new CommercialEntitlementInput("PERIODIC_POINTS", new BigDecimal("100"))), 3L)))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("套餐类型");
+    }
+
+    @Test
+    void refusesOrdersForLegacyPointPackagesWithUnfulfillableBenefits() {
+        CommercialPackageVersionResponse draft = service.createDraft(new CommercialPackageDraftCommand(
+            "LEGACY_INVALID_POINTS", "POINT_PACKAGE", "历史异常积分包", null, null, null,
+            new BigDecimal("20.00"), null, "CNY", LocalDateTime.now().minusDays(1), null,
+            List.of(new CommercialEntitlementInput("ONE_TIME_POINTS", new BigDecimal("200"))), 3L));
+        service.publish(draft.packageId(), draft.versionId(), 3L);
+        jdbc.update("update commercial_entitlement set entitlement_type='GLOBAL_DISCOUNT' where package_version_id=?", draft.versionId());
+
+        assertThatThrownBy(() -> orderService.create(new CommercialOrderCommand(15L, 25L, draft.versionId())))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not for sale");
+        assertThat(service.listForSale(LocalDateTime.now()).stream()
+            .noneMatch(item -> item.packageVersionId().equals(draft.versionId()))).isTrue();
+    }
+
+    @Test
     void listsPlatformOrdersWithTenantPackageAndPaymentDetails() {
         CommercialPackageVersionResponse version = publishedPointPackage("PLATFORM_ORDER_PACK", "88.00", "880");
         CommercialOrderResponse order = orderService.create(new CommercialOrderCommand(91L, 92L, version.versionId()));

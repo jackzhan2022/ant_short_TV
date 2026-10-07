@@ -38,9 +38,10 @@ public class CommercialEntitlementOrchestrator {
     private void fulfill(CommercialOrderEntity order) {
         CommercialPackageVersionEntity version = versionMapper.selectById(order.packageVersionId);
         CommercialPackageEntity pack = packageMapper.selectById(version.packageId);
+        if (!List.of("POINT_PACKAGE", "SUBSCRIPTION").contains(pack.packageType)) throw new IllegalStateException("Unsupported package type: " + pack.packageType);
         List<CommercialEntitlementEntity> entitlements = entitlementMapper.selectList(new QueryWrapper<CommercialEntitlementEntity>().eq("package_version_id", version.id));
-        if ("POINT_PACKAGE".equals(pack.packageType)) entitlements.stream().filter(e -> "ONE_TIME_POINTS".equals(e.entitlementType)).forEach(e -> grantPoints(order, null, null, e.numericValue, "order:" + order.id + ":points"));
-        else activateSubscription(order, version, entitlements);
+        entitlements.stream().filter(e -> "ONE_TIME_POINTS".equals(e.entitlementType) && e.numericValue.signum() > 0).forEach(e -> grantPoints(order, null, null, e.numericValue, "order:" + order.id + ":points"));
+        if ("SUBSCRIPTION".equals(pack.packageType)) activateSubscription(order, version, entitlements);
     }
 
     private void activateSubscription(CommercialOrderEntity order, CommercialPackageVersionEntity version, List<CommercialEntitlementEntity> entitlements) {
@@ -75,5 +76,5 @@ public class CommercialEntitlementOrchestrator {
             subscriptionMapper.updateById(subscription);
         }
     }
-    private void grantPoints(CommercialOrderEntity order, TeamSubscriptionEntity sub, Integer periodNo, BigDecimal amount, String key) { CommercialEntitlementGrantEntity existing=grantMapper.selectOne(new QueryWrapper<CommercialEntitlementGrantEntity>().eq("tenant_id", order.tenantId).eq("idempotency_key", key)); if(existing!=null)return; accounting.grant(order.tenantId, order.userId, amount, key, "商业化权益发放"); CommercialEntitlementGrantEntity g=new CommercialEntitlementGrantEntity(); g.tenantId=order.tenantId; g.orderId=order.id; g.subscriptionId=sub==null?null:sub.id; g.periodNo=periodNo; g.entitlementType=sub==null?"ONE_TIME_POINTS":"PERIODIC_POINTS"; g.amount=amount; g.status="GRANTED"; g.idempotencyKey=key; g.grantedAt=LocalDateTime.now(); g.createdAt=g.grantedAt; g.updatedAt=g.grantedAt; grantMapper.insert(g); }
+    private void grantPoints(CommercialOrderEntity order, TeamSubscriptionEntity sub, Integer periodNo, BigDecimal amount, String key) { CommercialEntitlementGrantEntity existing=grantMapper.selectOne(new QueryWrapper<CommercialEntitlementGrantEntity>().eq("tenant_id", order.tenantId).eq("idempotency_key", key)); if(existing!=null)return; if (amount.signum() > 0) accounting.grant(order.tenantId, order.userId, amount, key, "商业化权益发放"); CommercialEntitlementGrantEntity g=new CommercialEntitlementGrantEntity(); g.tenantId=order.tenantId; g.orderId=order.id; g.subscriptionId=sub==null?null:sub.id; g.periodNo=periodNo; g.entitlementType=sub==null?"ONE_TIME_POINTS":"PERIODIC_POINTS"; g.amount=amount; g.status="GRANTED"; g.idempotencyKey=key; g.grantedAt=LocalDateTime.now(); g.createdAt=g.grantedAt; g.updatedAt=g.grantedAt; grantMapper.insert(g); }
 }

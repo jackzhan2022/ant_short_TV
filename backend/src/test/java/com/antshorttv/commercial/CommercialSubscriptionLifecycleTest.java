@@ -90,6 +90,78 @@ class CommercialSubscriptionLifecycleTest {
     }
 
     @Test
+    void subscriptionPurchaseBonusIsGrantedOnceForFirstPurchaseRenewalAndQueuedPurchase() {
+        CommercialPackageVersionResponse version = publishedSubscriptionWithBonus("MIXED_BONUS", 1, "100", "40");
+        LocalDateTime paidAt = LocalDateTime.of(2026, 9, 10, 9, 0);
+
+        CommercialOrderResponse first = pay(110L, 210L, version, paidAt);
+        orchestrator.confirmPaid(first.id(), "WX-DUP-BONUS", new BigDecimal("30.00"), paidAt);
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=110", BigDecimal.class))
+            .isEqualByComparingTo("140");
+
+        pay(110L, 210L, version, paidAt.plusDays(1));
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=110", BigDecimal.class))
+            .isEqualByComparingTo("180");
+        assertThat(jdbc.queryForObject("select count(*) from commercial_entitlement_grant where tenant_id=110 and entitlement_type='ONE_TIME_POINTS'", Integer.class))
+            .isEqualTo(2);
+
+        CommercialPackageVersionResponse active = publishedSubscription("BEFORE_BONUS_QUEUE", 1, "100");
+        pay(111L, 211L, active, paidAt);
+        pay(111L, 211L, version, paidAt.plusDays(1));
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=111", BigDecimal.class))
+            .isEqualByComparingTo("140");
+        assertThat(jdbc.queryForObject("select status from team_subscription where tenant_id=111 and package_version_id=?", String.class, version.versionId()))
+            .isEqualTo("QUEUED");
+    }
+
+    @Test
+    void failedSubscriptionBonusRetriesWithoutDuplicateGrants() {
+        CommercialPackageVersionResponse version = publishedSubscriptionWithBonus("RETRY_MIXED_BONUS", 1, "100", "40");
+        CommercialOrderResponse order = orderService.create(new CommercialOrderCommand(112L, 212L, version.versionId()));
+        doThrow(new IllegalStateException("temporary bonus failure"))
+            .doCallRealMethod()
+            .when(pointAccountingService)
+            .grant(eq(112L), eq(212L), any(BigDecimal.class), any(String.class), any(String.class));
+
+        CommercialOrderEntity pending = orchestrator.confirmPaid(
+            order.id(), "WX-RETRY-BONUS", new BigDecimal("30.00"), LocalDateTime.of(2026, 9, 10, 10, 0));
+        assertThat(pending.status).isEqualTo("ENTITLEMENT_PENDING");
+        assertThat(paymentLifecycleService.retryPendingEntitlements()).isGreaterThanOrEqualTo(1);
+        assertThat(paymentLifecycleService.retryPendingEntitlements()).isZero();
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=112", BigDecimal.class))
+            .isEqualByComparingTo("140");
+        assertThat(jdbc.queryForObject("select count(*) from commercial_entitlement_grant where tenant_id=112", Integer.class))
+            .isEqualTo(2);
+    }
+
+    @Test
+    void zeroValueSubscriptionBonusDoesNotBlockActivation() {
+        CommercialPackageVersionResponse version = publishedSubscriptionWithBonus("ZERO_MIXED_BONUS", 1, "100", "0");
+        CommercialOrderResponse order = pay(113L, 213L, version, LocalDateTime.of(2026, 9, 11, 10, 0));
+
+        assertThat(orderService.require(order.id()).status).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=113", BigDecimal.class))
+            .isEqualByComparingTo("100");
+        assertThat(jdbc.queryForObject("select count(*) from commercial_entitlement_grant where tenant_id=113 and entitlement_type='ONE_TIME_POINTS'", Integer.class))
+            .isZero();
+    }
+
+    @Test
+    void zeroValuePeriodicPointsDoNotBlockLaterSubscriptionPeriods() {
+        CommercialPackageVersionResponse version = publishedSubscription("ZERO_PERIODIC_POINTS", 3, "0");
+        LocalDateTime paidAt = LocalDateTime.of(2026, 9, 12, 10, 0);
+        CommercialOrderResponse order = pay(114L, 214L, version, paidAt);
+
+        assertThat(orderService.require(order.id()).status).isEqualTo("COMPLETED");
+        processDue(paidAt.plusMonths(1));
+        processDue(paidAt.plusMonths(2));
+        assertThat(jdbc.queryForObject("select count(*) from commercial_entitlement_grant where tenant_id=114 and status='GRANTED'", Integer.class))
+            .isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from point_ledger where tenant_id=114", Integer.class))
+            .isZero();
+    }
+
+    @Test
     void differentPackagesQueueWithoutOverlapping() {
         CommercialPackageVersionResponse active = publishedSubscription("QUEUE_ACTIVE", 1, "100");
         CommercialPackageVersionResponse next = publishedSubscription("QUEUE_NEXT", 3, "300");
@@ -160,9 +232,10 @@ class CommercialSubscriptionLifecycleTest {
         CommercialPackageVersionResponse version = publishedSubscription("PERIODIC_RETRY", 2, "100");
         LocalDateTime paidAt = LocalDateTime.of(2026, 6, 20, 9, 0);
         pay(106L, 206L, version, paidAt);
-        jdbc.update(
-            "update commercial_entitlement set numeric_value=0 where package_version_id=? and entitlement_type='PERIODIC_POINTS'",
-            version.versionId());
+        doThrow(new IllegalStateException("temporary periodic grant failure"))
+            .doCallRealMethod()
+            .when(pointAccountingService)
+            .grant(eq(106L), eq(206L), any(BigDecimal.class), any(String.class), any(String.class));
 
         processDue(paidAt.plusMonths(1));
 
@@ -173,9 +246,6 @@ class CommercialSubscriptionLifecycleTest {
             "select next_grant_at from team_subscription where tenant_id=106", LocalDateTime.class))
             .isEqualTo(paidAt.plusMonths(1));
 
-        jdbc.update(
-            "update commercial_entitlement set numeric_value=100 where package_version_id=? and entitlement_type='PERIODIC_POINTS'",
-            version.versionId());
         processDue(paidAt.plusMonths(1));
 
         assertThat(jdbc.queryForObject(
@@ -215,6 +285,19 @@ class CommercialSubscriptionLifecycleTest {
             List.of(
                 new CommercialEntitlementInput("PERIODIC_POINTS", new BigDecimal(periodicPoints)),
                 new CommercialEntitlementInput("GLOBAL_DISCOUNT", new BigDecimal("0.90"))),
+            1L));
+        return packageService.publish(draft.packageId(), draft.versionId(), 1L);
+    }
+
+    private CommercialPackageVersionResponse publishedSubscriptionWithBonus(
+        String code, int periodMonths, String periodicPoints, String oneTimePoints
+    ) {
+        CommercialPackageVersionResponse draft = packageService.createDraft(new CommercialPackageDraftCommand(
+            code, "SUBSCRIPTION", code, null, "MONTH", periodMonths,
+            new BigDecimal("30.00"), null, "CNY", LocalDateTime.of(2026, 1, 1, 0, 0), null,
+            List.of(
+                new CommercialEntitlementInput("PERIODIC_POINTS", new BigDecimal(periodicPoints)),
+                new CommercialEntitlementInput("ONE_TIME_POINTS", new BigDecimal(oneTimePoints))),
             1L));
         return packageService.publish(draft.packageId(), draft.versionId(), 1L);
     }

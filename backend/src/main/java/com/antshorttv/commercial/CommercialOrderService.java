@@ -31,8 +31,13 @@ public class CommercialOrderService {
     @Transactional
     public CommercialOrderResponse create(CommercialOrderCommand command) {
         CommercialPackageVersionEntity version = versionMapper.selectById(command.packageVersionId());
-        if (version == null || !"PUBLISHED".equals(version.status)) throw new IllegalArgumentException("Package version is not for sale");
         LocalDateTime now = LocalDateTime.now();
+        if (version == null || !"PUBLISHED".equals(version.status)
+            || version.effectiveFrom == null || version.effectiveFrom.isAfter(now)
+            || (version.effectiveTo != null && !version.effectiveTo.isAfter(now))
+            || !packageService.hasFulfillableBenefits(version)) {
+            throw new IllegalArgumentException("Package version is not for sale");
+        }
         CommercialOrderEntity order = new CommercialOrderEntity(); order.tenantId = command.tenantId(); order.userId = command.userId(); order.packageVersionId = version.id; order.packageSnapshotJson = packageSnapshot(version.id); order.merchantOrderNo = generateMerchantOrderNo(); order.amount = version.price; order.currency = version.currency; order.status = "PENDING_PAYMENT"; order.expiresAt = now.plusMinutes(30); order.createdAt = now; order.updatedAt = now; orderMapper.insert(order);
         CommercialPaymentEntity payment = new CommercialPaymentEntity(); payment.orderId = order.id; payment.provider = "WECHAT_NATIVE"; payment.amount = version.price; payment.status = "PENDING"; payment.createdAt = now; payment.updatedAt = now; paymentMapper.insert(payment);
         if (wechatPayProperties.isEnabled()) {

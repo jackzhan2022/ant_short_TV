@@ -1,0 +1,252 @@
+{
+  "320-light": {
+    "viewport": 320,
+    "documentWidth": 320,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "320-light-points": {
+    "viewport": 320,
+    "documentWidth": 320,
+    "background": "rgb(247, 248, 252)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "Tab 2 of 2积分包"
+    ]
+  },
+  "320-dark": {
+    "viewport": 320,
+    "documentWidth": 320,
+    "background": "rgb(24, 25, 29)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "320-dark-points": {
+    "viewport": 320,
+    "documentWidth": 320,
+    "background": "rgb(24, 25, 29)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "Tab 2 of 2积分包"
+    ]
+  },
+  "390-light": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "390-light-points": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "Tab 2 of 2积分包"
+    ]
+  },
+  "390-dark": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(24, 25, 29)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "390-dark-points": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(24, 25, 29)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "Tab 2 of 2积分包"
+    ]
+  },
+  "768-light": {
+    "viewport": 768,
+    "documentWidth": 768,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "768-light-points": {
+    "viewport": 768,
+    "documentWidth": 768,
+    "background": "rgb(247, 248, 252)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "Tab 2 of 2积分包"
+    ]
+  },
+  "768-dark": {
+    "viewport": 768,
+    "documentWidth": 768,
+    "background": "rgb(24, 25, 29)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "768-dark-points": {
+    "viewport": 768,
+    "documentWidth": 768,
+    "background": "rgb(24, 25, 29)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "Tab 2 of 2积分包"
+    ]
+  },
+  "1440-light": {
+    "viewport": 1440,
+    "documentWidth": 1440,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "1440-light-points": {
+    "viewport": 1440,
+    "documentWidth": 1440,
+    "background": "rgb(247, 248, 252)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "Tab 2 of 2积分包"
+    ]
+  },
+  "1440-dark": {
+    "viewport": 1440,
+    "documentWidth": 1440,
+    "background": "rgb(24, 25, 29)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "1440-dark-points": {
+    "viewport": 1440,
+    "documentWidth": 1440,
+    "background": "rgb(24, 25, 29)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "Tab 2 of 2积分包"
+    ]
+  },
+  "points-only": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 1,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "empty": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 0,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "catalog-error": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 0,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "pending": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "payment-expired": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "payment-expired-after-poll": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "pending-dark": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(24, 25, 29)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "fulfillment-pending": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  },
+  "fulfillment-complete": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "background": "rgb(247, 248, 252)",
+    "cards": 2,
+    "tabs": [
+      "会员套餐",
+      "积分包"
+    ]
+  }
+}

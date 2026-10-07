@@ -113,7 +113,7 @@ public class CommercialSubscriptionGrantService {
                 .eq("tenant_id", subscription.tenantId)
                 .eq("idempotency_key", key));
         try {
-            accounting.grant(subscription.tenantId, order.userId, entitlement.numericValue, key, "会员周期积分发放");
+            if (entitlement.numericValue.signum() > 0) accounting.grant(subscription.tenantId, order.userId, entitlement.numericValue, key, "会员周期积分发放");
             if (grant == null) grant = newGrant(subscription, order, periodNo, key);
             grant.amount = entitlement.numericValue;
             grant.status = "GRANTED";
