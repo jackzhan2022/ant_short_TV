@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+
+const HAVE_CURRENT_DATA = 2;
 
 const loginVideoSrc =
   'https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4';
@@ -9,6 +11,15 @@ type AuthPageLayoutProps = {
 
 const AuthPageLayout = ({ children }: AuthPageLayoutProps) => {
   const [videoReady, setVideoReady] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    // Cached/pre-rendered media can become ready before React receives loadeddata.
+    if (video && !video.error && video.readyState >= HAVE_CURRENT_DATA) {
+      setVideoReady(true);
+    }
+  }, []);
 
   return (
     <div
@@ -49,12 +60,15 @@ const AuthPageLayout = ({ children }: AuthPageLayoutProps) => {
           />
         </div>
         <video
+          ref={videoRef}
           autoPlay
           data-testid="login-background-video"
           loop
           muted
           onError={() => setVideoReady(false)}
           onLoadedData={() => setVideoReady(true)}
+          onCanPlay={() => setVideoReady(true)}
+          onPlaying={() => setVideoReady(true)}
           playsInline
           preload="auto"
           src={loginVideoSrc}
@@ -105,8 +119,8 @@ const AuthPageLayout = ({ children }: AuthPageLayoutProps) => {
           }}
         >
           粤ICP备2025112253号&nbsp;&nbsp; |
-          &nbsp;&nbsp;广州信计网络科技有限公司&nbsp;&nbsp; | &nbsp;&nbsp;Copyright
-          © 2026 绘梦空间. All rights reserved.
+          &nbsp;&nbsp;广州信计网络科技有限公司&nbsp;&nbsp; |
+          &nbsp;&nbsp;Copyright © 2026 绘梦空间. All rights reserved.
         </footer>
       </main>
     </div>
