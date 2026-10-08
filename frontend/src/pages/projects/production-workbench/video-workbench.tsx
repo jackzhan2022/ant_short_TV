@@ -9,7 +9,7 @@ import {
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import { history } from '@umijs/max';
-import { App, Button, Drawer, Modal, Select, Spin } from 'antd';
+import { App, Button, Drawer, Dropdown, Modal, Select, Spin } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import ShotProductionWorkspace from './ShotProductionWorkspace';
@@ -17,7 +17,9 @@ import StableImage from './StableImage';
 import {
   type AiVideoTask,
   createEpisodeComposeTask,
+  downloadEpisodeStoryboardVideos,
   downloadEpisodeVideoVersion,
+  downloadStoryboardVideo,
   type EpisodeComposeTask,
   type EpisodeVideoVersion,
   queryEpisodeComposeTasks,
@@ -302,13 +304,29 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
       if (mounted.current) setComposing(false);
     }
   };
-  const download = async () => {
-    if (!version || downloading) return;
+  const download = async (kind: string) => {
+    if (downloading || loading) return;
+    if (kind === 'merged' && !version) return;
+    if (kind === 'shot' && (!selected || !selectedState?.src)) return;
+    if (kind === 'all' && (!activeEpisode || !playableCount)) return;
+    if (!['merged', 'shot', 'all'].includes(kind)) return;
     setDownloading(true);
     try {
-      await downloadEpisodeVideoVersion(projectId, version.id);
+      if (kind === 'merged' && version)
+        await downloadEpisodeVideoVersion(projectId, version.id);
+      if (kind === 'shot' && selected)
+        await downloadStoryboardVideo(projectId, selected.id);
+      if (kind === 'all' && activeEpisode)
+        await downloadEpisodeStoryboardVideos(projectId, activeEpisode);
     } catch {
-      if (mounted.current) message.error('成片下载失败，请重试。');
+      if (mounted.current)
+        message.error(
+          kind === 'merged'
+            ? '成片下载失败，请重试。'
+            : kind === 'shot'
+              ? '分镜下载失败，请重试。'
+              : '批量下载失败，请重试。',
+        );
     } finally {
       if (mounted.current) setDownloading(false);
     }
@@ -419,15 +437,45 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
               onClick={() => setRefresh((value) => value + 1)}
             />
             <Button onClick={() => setRecordsOpen(true)}>任务记录</Button>
-            <Button
-              aria-label="下载成片"
-              icon={<DownloadOutlined />}
-              disabled={!version || loading}
-              loading={downloading}
-              onClick={() => void download()}
+            <Dropdown
+              trigger={['click']}
+              placement="bottomRight"
+              menu={{
+                items: [
+                  {
+                    key: 'merged',
+                    label: '下载合并视频',
+                    disabled: !version || loading || downloading,
+                  },
+                  {
+                    key: 'shot',
+                    label: '下载分镜视频',
+                    disabled: !selectedState?.src || loading || downloading,
+                  },
+                  {
+                    key: 'all',
+                    label: '下载所有视频',
+                    disabled:
+                      !activeEpisode ||
+                      !playableCount ||
+                      loading ||
+                      downloading,
+                  },
+                ],
+                onClick: ({ key }) => {
+                  void download(key);
+                },
+              }}
             >
-              下载成片
-            </Button>
+              <Button
+                aria-label="下载"
+                icon={<DownloadOutlined />}
+                loading={downloading}
+                disabled={loading || downloading}
+              >
+                下载
+              </Button>
+            </Dropdown>
             <Button
               type="primary"
               disabled={!canCompose || composing}

@@ -1974,3 +1974,41 @@ export const deleteShotComposeResult = async (
     `/api/projects/${projectId}/shot-compose-results/${resultId}`,
     { method: 'DELETE' },
   );
+
+
+const downloadWorkbenchFile = async (endpoint: string, fallbackName: string, kind: 'video' | 'zip') => {
+  const token = localStorage.getItem('accessToken');
+  const tenantId = localStorage.getItem('currentTenantId');
+  const response = await fetch(endpoint, {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(tenantId ? { 'X-Tenant-Id': tenantId } : {}),
+    },
+  });
+  const type = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const validType = type === 'application/octet-stream' || (kind === 'zip' ? type === 'application/zip' : type.startsWith('video/'));
+  if (!response.ok || !validType) throw new Error(`下载失败：${response.status}`);
+  const disposition = response.headers.get('content-disposition') || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  let name = disposition.match(/filename="?([^";]+)"?/i)?.[1] || fallbackName;
+  if (encoded) {
+    try { name = decodeURIComponent(encoded); } catch { name = fallbackName; }
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.rel = 'noreferrer';
+    link.click();
+  } finally { URL.revokeObjectURL(url); }
+};
+
+export const downloadStoryboardVideo = (projectId: number, storyboardId: number) =>
+  downloadWorkbenchFile(`/api/projects/${projectId}/storyboards/${storyboardId}/download-video`, `storyboard_${storyboardId}.mp4`, 'video');
+
+export const downloadEpisodeStoryboardVideos = (projectId: number, episodeNo: number) =>
+  downloadWorkbenchFile(`/api/projects/${projectId}/episodes/${episodeNo}/download-videos`, `episode_${episodeNo}_storyboards.zip`, 'zip');

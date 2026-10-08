@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   queryEpisodeComposeTasks: vi.fn(),
   createEpisodeComposeTask: vi.fn(),
   downloadEpisodeVideoVersion: vi.fn(),
+  downloadStoryboardVideo: vi.fn(),
+  downloadEpisodeStoryboardVideos: vi.fn(),
   push: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
@@ -154,7 +156,13 @@ describe('video preview workbench', () => {
     render(<VideoWorkbench projectId={44} canEdit />);
     await screen.findByRole('button', { name: '分镜1，已就绪' });
     expect(screen.getByRole('button', { name: '合成整集' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '下载成片' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '下载' }));
+    expect(
+      await screen.findByRole('menuitem', { name: '下载合并视频' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      screen.getByRole('menuitem', { name: '下载分镜视频' }),
+    ).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(screen.getByRole('button', { name: '任务记录' }));
     expect(
       await screen.findByText('原有语音字幕与单镜头任务'),
@@ -185,7 +193,10 @@ describe('video preview workbench', () => {
       'src',
       '/episode.mp4',
     );
-    fireEvent.click(screen.getByRole('button', { name: '下载成片' }));
+    fireEvent.click(screen.getByRole('button', { name: '下载' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: '下载合并视频' }),
+    );
     await waitFor(() =>
       expect(mocks.downloadEpisodeVideoVersion).toHaveBeenCalledWith(44, 9),
     );
@@ -253,5 +264,81 @@ describe('video preview workbench', () => {
     expect(
       await screen.findByRole('button', { name: '分镜1，已就绪' }),
     ).toBeInTheDocument();
+  });
+  it('downloads the selected shot without merging or creating a task', async () => {
+    render(<VideoWorkbench projectId={44} canEdit />);
+    await screen.findByRole('button', { name: '分镜1，已就绪' });
+    fireEvent.click(screen.getByRole('button', { name: '下载' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: '下载分镜视频' }),
+    );
+    await waitFor(() =>
+      expect(mocks.downloadStoryboardVideo).toHaveBeenCalledWith(44, 31),
+    );
+    expect(mocks.createEpisodeComposeTask).not.toHaveBeenCalled();
+  });
+  it('downloads all videos only for the current episode', async () => {
+    render(<VideoWorkbench projectId={44} canEdit />);
+    await screen.findByRole('button', { name: '分镜1，已就绪' });
+    fireEvent.click(screen.getByRole('button', { name: '第2集 重逢' }));
+    await waitFor(() =>
+      expect(mocks.queryStoryboardMedia).toHaveBeenCalledWith(44, [41]),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '下载' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: '下载所有视频' }),
+    );
+    await waitFor(() =>
+      expect(mocks.downloadEpisodeStoryboardVideos).toHaveBeenCalledWith(44, 2),
+    );
+    expect(mocks.downloadEpisodeStoryboardVideos).not.toHaveBeenCalledWith(
+      44,
+      1,
+    );
+  });
+  it('disables only the unavailable shot and merged options, keeping ready shots downloadable', async () => {
+    render(<VideoWorkbench projectId={44} canEdit />);
+    await screen.findByRole('button', { name: '分镜1，已就绪' });
+    fireEvent.click(screen.getByRole('button', { name: '分镜2，待生成' }));
+    fireEvent.click(screen.getByRole('button', { name: '下载' }));
+    expect(
+      await screen.findByRole('menuitem', { name: '下载分镜视频' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      screen.getByRole('menuitem', { name: '下载合并视频' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      screen.getByRole('menuitem', { name: '下载所有视频' }),
+    ).not.toHaveAttribute('aria-disabled', 'true');
+  });
+  it('reports a failed archive download and re-enables the menu', async () => {
+    mocks.downloadEpisodeStoryboardVideos.mockRejectedValue(
+      new Error('offline'),
+    );
+    render(<VideoWorkbench projectId={44} canEdit />);
+    await screen.findByRole('button', { name: '分镜1，已就绪' });
+    fireEvent.click(screen.getByRole('button', { name: '下载' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: '下载所有视频' }),
+    );
+    await waitFor(() =>
+      expect(mocks.error).toHaveBeenCalledWith('批量下载失败，请重试。'),
+    );
+    expect(screen.getByRole('button', { name: '下载' })).not.toBeDisabled();
+  });
+  it('keeps the dropdown visible and disables all options when this episode has no video', async () => {
+    mocks.queryStoryboardWorkspace.mockResolvedValue(page(1, [shots[1]]));
+    render(<VideoWorkbench projectId={44} canEdit />);
+    await screen.findByRole('button', { name: '分镜2，待生成' });
+    fireEvent.click(screen.getByRole('button', { name: '下载' }));
+    expect(
+      await screen.findByRole('menuitem', { name: '下载合并视频' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      screen.getByRole('menuitem', { name: '下载分镜视频' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      screen.getByRole('menuitem', { name: '下载所有视频' }),
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 });
