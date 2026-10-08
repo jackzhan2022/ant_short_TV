@@ -9,7 +9,8 @@ import {
   ReloadOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { useParams } from '@umijs/max';
+import { useLocation, useParams } from '@umijs/max';
+import { readStoryboardTarget, STORYBOARD_PAGE_SIZE } from './video-workbench-state';
 import {
   App,
   Button,
@@ -159,7 +160,7 @@ const terminalStoryboardBatchStatuses = new Set([
   'COMPLETED_WITH_FAILURES',
   'FAILED',
 ]);
-const storyboardPageSize = 20;
+const storyboardPageSize = STORYBOARD_PAGE_SIZE;
 
 const getTaskImage = (
   imageTasks: AiImageTask[],
@@ -974,6 +975,8 @@ const StoryboardCard = ({
 
   return (
     <article
+      id={`storyboard-${item.id}`}
+      tabIndex={-1}
       className={`storyboard-card${stickyReleased ? ' is-scroll-released' : ''}`}
       onWheelCapture={handleWheelCapture}
       style={{
@@ -1700,6 +1703,8 @@ const StoryboardCard = ({
 };
 
 const ProductionWorkbenchStoryboard = () => {
+  const location = useLocation();
+  const navigationTarget = readStoryboardTarget(location.search);
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
   const { message } = App.useApp();
@@ -1889,7 +1894,10 @@ const ProductionWorkbenchStoryboard = () => {
     void queryLatestStoryboardBatch(projectId).then((response) => {
       if (active) setStoryboardBatch(response.data || undefined);
     }).catch(() => undefined);
-    void queryStoryboardWorkspace(projectId)
+    const initialPage = navigationTarget.episodeNo
+      ? queryStoryboardWorkspace(projectId, { episodeNo: navigationTarget.episodeNo, current: navigationTarget.current, pageSize: storyboardPageSize })
+      : queryStoryboardWorkspace(projectId);
+    void initialPage
       .then((storyboardResponse) => {
         if (!active || storyboardRequestId.current !== requestId) return;
         const shots = storyboardResponse.data?.storyboards || [];
@@ -1897,7 +1905,7 @@ const ProductionWorkbenchStoryboard = () => {
         setWorkspace((previous) => ({ ...previous, storyboards: shots, episodes }));
         setStoryboardPage(storyboardResponse.data?.current || 1);
         setStoryboardTotal(storyboardResponse.data?.total ?? shots.length);
-        setActiveEpisode(episodes[0]?.episodeNo || shots[0]?.episodeNo || 1);
+        setActiveEpisode(storyboardResponse.data?.episodeNo || episodes[0]?.episodeNo || shots[0]?.episodeNo || 1);
         setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
           scriptText: getStoryboardScriptText(item),
           videoPrompt: getStoryboardPrompt(item),
@@ -1915,7 +1923,14 @@ const ProductionWorkbenchStoryboard = () => {
     return () => {
       active = false;
     };
-  }, [projectId, storyboardLoadAttempt]);
+  }, [projectId, storyboardLoadAttempt, navigationTarget.episodeNo, navigationTarget.current]);
+
+  useEffect(() => {
+    if (storyboardLoading || !navigationTarget.storyboardId || activeEpisode !== navigationTarget.episodeNo) return;
+    const target = document.getElementById(`storyboard-${navigationTarget.storyboardId}`);
+    target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    target?.focus({ preventScroll: true });
+  }, [storyboardLoading, navigationTarget.storyboardId, navigationTarget.episodeNo, activeEpisode]);
 
   useEffect(() => {
     if (

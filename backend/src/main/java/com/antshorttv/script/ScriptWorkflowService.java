@@ -1598,7 +1598,8 @@ public class ScriptWorkflowService {
             select id, shot_no, coalesce(storyboard_no, shot_no) storyboard_no, episode_id, episode_no,
                    shot_type, visual_description, characters, scene, props, dialogue, duration_seconds, shot_plan_json,
                    prompt_document_json, material_binding_status, source_fingerprint, generated_by_run_id,
-                   image_prompt, video_prompt, first_frame_url, current_video_result_id, current_video_url
+                   image_prompt, video_prompt, first_frame_url, current_video_result_id, current_video_url,
+                   current_shot_result_id, current_shot_video_url
               from storyboard where tenant_id = ? and project_id = ? and episode_no = ? and deleted_at is null
              order by shot_no, id limit ? offset ?
             """, (rs, rowNum) -> new StoryboardResponse(rs.getLong("id"), projectId, rs.getInt("shot_no"),
@@ -1611,7 +1612,9 @@ public class ScriptWorkflowService {
                 rs.getObject("generated_by_run_id", Long.class), rs.getString("image_prompt"),
                 rs.getString("video_prompt"), materialFileAccessService.publicUrl(rs.getString("first_frame_url")),
                 rs.getObject("current_video_result_id", Long.class),
-                materialFileAccessService.publicUrl(rs.getString("current_video_url")), List.of()),
+                materialFileAccessService.publicUrl(rs.getString("current_video_url")),
+                rs.getObject("current_shot_result_id", Long.class),
+                materialFileAccessService.publicUrl(rs.getString("current_shot_video_url")), List.of()),
             tenantId, projectId, episodeNo, limit, offset);
         Map<Long, List<StoryboardAssetReferenceResponse>> references =
             storyboardAssetReferenceRepository.listResponsesForStoryboards(

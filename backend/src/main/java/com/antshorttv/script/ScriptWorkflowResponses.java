@@ -138,6 +138,8 @@ record StoryboardResponse(
     String firstFrameUrl,
     Long currentVideoResultId,
     String currentVideoUrl,
+    Long currentShotResultId,
+    String currentShotVideoUrl,
     List<StoryboardAssetReferenceResponse> assetReferences
 ) {
     static StoryboardResponse from(StoryboardEntity entity) {
@@ -165,6 +167,8 @@ record StoryboardResponse(
             entity.firstFrameUrl,
             entity.currentVideoResultId,
             entity.currentVideoUrl,
+            entity.currentShotResultId,
+            entity.currentShotVideoUrl,
             List.of()
         );
     }
@@ -179,7 +183,7 @@ record StoryboardResponse(
             id, projectId, shotNo, storyboardNo, episodeId, episodeNo, shotType, visualDescription,
             characters, scene, props, dialogue, durationSeconds, shotPlan, promptDocument,
             materialBindingStatus, sourceFingerprint, generatedByRunId, imagePrompt, videoPrompt,
-            firstFrameUrl, currentVideoResultId, currentVideoUrl,
+            firstFrameUrl, currentVideoResultId, currentVideoUrl, currentShotResultId, currentShotVideoUrl,
             references == null ? List.of() : references);
     }
 

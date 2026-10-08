@@ -9,6 +9,7 @@ import {
 import type { ScriptEpisode } from './service';
 
 const mocks = vi.hoisted(() => ({
+  locationSearch: '',
   queryProject: vi.fn(),
   queryProjectAiModels: vi.fn(),
   queryProjectAiConfig: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock('@umijs/max', () => ({
     push: vi.fn(),
   },
   useParams: () => ({ id: '1' }),
+  useLocation: () => ({ search: mocks.locationSearch }),
 }));
 
 vi.mock('@/services/account-team/project', () => ({
@@ -762,6 +764,7 @@ describe('ProductionWorkbench script page', () => {
   });
 
   beforeEach(() => {
+    mocks.locationSearch = '';
     vi.stubGlobal('IntersectionObserver', class {
       constructor(private callback: IntersectionObserverCallback) {}
       observe() {
@@ -814,6 +817,19 @@ describe('ProductionWorkbench script page', () => {
     mocks.createAssetImageBatch.mockResolvedValue({ data: { id: 8800 } });
     setupWorkspaceResponse();
     mocks.queryAssetVisualWorkspace.mockResolvedValue({ data: { variants: [], episodeBindings: [] } });
+  });
+
+  it('opens and focuses the episode page targeted by the video workbench', async () => {
+    mocks.locationSearch = '?episodeNo=2&current=2&storyboardId=201';
+    const response = await mocks.queryStoryboardWorkspace();
+    mocks.queryStoryboardWorkspace.mockResolvedValue({ data: {
+      ...response.data, episodeNo: 2, current: 2, total: 21,
+      storyboards: response.data.storyboards.filter((shot: any) => shot.id === 201),
+    } });
+    render(<ProductionWorkbench />);
+    await waitFor(() => expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, { episodeNo: 2, current: 2, pageSize: 20 }));
+    await waitFor(() => expect(document.getElementById('storyboard-201')).toHaveFocus());
+    expect(screen.getByText('第 2 / 2 页，共 21 个镜头')).toBeInTheDocument();
   });
 
   it('uses batch current shot visuals without requesting asset candidate histories', async () => {

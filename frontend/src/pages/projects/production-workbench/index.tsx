@@ -102,6 +102,8 @@ const ProductionWorkbench = () => {
     return matched?.key || 'storyboard';
   }, [location.pathname]);
 
+  const boundedWorkspace = activeStep === 'storyboard' || activeStep === 'video';
+
   const nextStep = activeStep === 'script' ? 'settings' : activeStep === 'settings' ? 'storyboard' : undefined;
 
   const openSource = async () => {
@@ -166,12 +168,12 @@ const ProductionWorkbench = () => {
   }
 
   return (
-    <div style={{ minHeight: activeStep === 'storyboard' ? 0 : '100vh', height: activeStep === 'storyboard' ? 'calc(100dvh - 32px)' : undefined, display: activeStep === 'storyboard' ? 'grid' : undefined, gridTemplateRows: activeStep === 'storyboard' ? 'auto minmax(0, 1fr)' : undefined, overflow: activeStep === 'storyboard' ? 'hidden' : undefined, background: 'var(--app-color-bg-layout)' }}>
+    <div style={{ minHeight: boundedWorkspace ? 0 : '100vh', height: boundedWorkspace ? 'calc(100dvh - 32px)' : undefined, display: boundedWorkspace ? 'grid' : undefined, gridTemplateRows: boundedWorkspace ? 'auto minmax(0, 1fr)' : undefined, overflow: boundedWorkspace ? 'hidden' : undefined, background: 'var(--app-color-bg-layout)' }}>
       <header
         style={{
           minHeight: 68,
           boxSizing: 'border-box',
-          overflowX: activeStep === 'storyboard' ? 'auto' : undefined,
+          overflowX: boundedWorkspace ? 'auto' : undefined,
           background: 'var(--app-color-bg-container)',
           borderBottom: '1px solid var(--app-color-border)',
           display: 'flex',
@@ -312,11 +314,11 @@ const ProductionWorkbench = () => {
           margin: '0 auto',
           width: '100%',
           maxWidth: 1880,
-          minWidth: activeStep === 'storyboard' ? 0 : 1100,
+          minWidth: boundedWorkspace ? 0 : 1100,
           boxSizing: 'border-box',
-          padding: activeStep === 'storyboard' ? 0 : '0 0 72px',
-          height: activeStep === 'storyboard' ? '100%' : undefined,
-          minHeight: activeStep === 'storyboard' ? 0 : 'calc(100vh - 100px)',
+          padding: boundedWorkspace ? 0 : '0 0 72px',
+          height: boundedWorkspace ? '100%' : undefined,
+          minHeight: boundedWorkspace ? 0 : 'calc(100vh - 100px)',
         }}
       >
         <Outlet context={{ project }} />
