@@ -551,8 +551,8 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             .andExpect(jsonPath("$.data.variants[0].currentImageUrl", is("/images/original.png")))
             .andExpect(jsonPath("$.data.variants[0].currentImageThumbnailUrl",
                 is("/api/projects/" + projectId + "/ai-image-results/" + imageResultId + "/thumbnail")));
-        jdbcTemplate.update("update storyboard set current_video_url=?, current_shot_result_id=?, current_shot_video_url=? where id=?",
-            "https://example.com/raw.mp4", 7301L, "https://example.com/composed.mp4", firstStoryboardId);
+        jdbcTemplate.update("update storyboard set current_video_result_id=?, current_video_url=?, current_shot_result_id=?, current_shot_video_url=? where id=?",
+            6401L, "https://example.com/raw.mp4", 7301L, "https://example.com/composed.mp4", firstStoryboardId);
         mockMvc.perform(get("/api/projects/%d/storyboard-workspace?episodeNo=1&current=1&pageSize=2".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))
@@ -562,9 +562,9 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             .andExpect(jsonPath("$.data.pageSize", is(2)))
             .andExpect(jsonPath("$.data.storyboards", hasSize(2)))
             .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(1)))
-            .andExpect(jsonPath("$.data.storyboards[0].currentVideoUrl", is("https://example.com/raw.mp4")))
+            .andExpect(jsonPath("$.data.storyboards[0].currentVideoUrl", is("/api/projects/" + projectId + "/ai-video-results/6401/playback")))
             .andExpect(jsonPath("$.data.storyboards[0].currentShotResultId", is(7301)))
-            .andExpect(jsonPath("$.data.storyboards[0].currentShotVideoUrl", is("https://example.com/composed.mp4")))
+            .andExpect(jsonPath("$.data.storyboards[0].currentShotVideoUrl", is("/api/projects/" + projectId + "/shot-compose-results/7301/playback")))
             .andExpect(jsonPath("$.data.storyboards[0].assetReferences", hasSize(1)))
             .andExpect(jsonPath("$.data.storyboards[0].assetReferences[0].assetName", is("林晚")))
             .andExpect(jsonPath("$.data.storyboards[1].assetReferences", hasSize(0)));

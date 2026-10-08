@@ -187,6 +187,21 @@ record StoryboardResponse(
             references == null ? List.of() : references);
     }
 
+    StoryboardResponse forBrowser() {
+        return new StoryboardResponse(
+            id, projectId, shotNo, storyboardNo, episodeId, episodeNo, shotType, visualDescription,
+            characters, scene, props, dialogue, durationSeconds, shotPlan, promptDocument,
+            materialBindingStatus, sourceFingerprint, generatedByRunId, imagePrompt, videoPrompt,
+            firstFrameUrl, currentVideoResultId,
+            playbackUrl("ai-video-results", currentVideoResultId, currentVideoUrl), currentShotResultId,
+            playbackUrl("shot-compose-results", currentShotResultId, currentShotVideoUrl), assetReferences);
+    }
+
+    private String playbackUrl(String resourceType, Long resultId, String storedUrl) {
+        if (resultId == null || storedUrl == null || storedUrl.isBlank()) return storedUrl;
+        return "/api/projects/%d/%s/%d/playback".formatted(projectId, resourceType, resultId);
+    }
+
     private static com.fasterxml.jackson.databind.JsonNode parseJson(String value) {
         if (value == null || value.isBlank()) {
             return null;

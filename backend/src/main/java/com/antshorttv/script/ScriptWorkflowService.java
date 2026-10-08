@@ -1620,7 +1620,7 @@ public class ScriptWorkflowService {
             storyboardAssetReferenceRepository.listResponsesForStoryboards(
                 tenantId, projectId, page.stream().map(StoryboardResponse::id).toList());
         return page.stream().map(storyboard -> storyboard.withAssetReferences(
-            references.getOrDefault(storyboard.id(), List.of()))).toList();
+            references.getOrDefault(storyboard.id(), List.of())).forBrowser()).toList();
     }
 
     private com.fasterxml.jackson.databind.JsonNode readJson(String value) {
