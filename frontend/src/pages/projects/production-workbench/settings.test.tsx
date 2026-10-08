@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -325,7 +326,10 @@ const workspace = {
 };
 
 describe('ProductionWorkbenchSettings', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
   beforeEach(() => {
     vi.stubGlobal('IntersectionObserver', class {
       constructor(private callback: IntersectionObserverCallback) {}
@@ -336,6 +340,8 @@ describe('ProductionWorkbenchSettings', () => {
     });
     sessionStorage.clear();
     vi.clearAllMocks();
+    mocks.queryAssetSettingsSummary.mockReset();
+    mocks.queryAssetVisualWorkspace.mockReset();
     workspace.characters[0].visual.variants[0].prompt = '6岁男孩，写实都市风格';
     workspace.characters[0].visual.variants[1].prompt =
       '性别:男；衣着描述:白色礼服，领结';
@@ -941,6 +947,120 @@ describe('ProductionWorkbenchSettings', () => {
       );
     });
     expect(mocks.updateVisualVariant).not.toHaveBeenCalled();
+  });
+
+  const imageGenerationSnapshot = (status: string) => {
+    const next = structuredClone(workspace);
+    const asset = next.characters[0];
+    asset.visual.variants[0].generationStatus = status;
+    asset.visual.primaryVariant.generationStatus = status;
+    asset.visual.generationSummary.GENERATING = status === 'GENERATING' ? 1 : 0;
+    if (status === 'COMPLETED') {
+      asset.mainImageThumbnailUrl = '/new-daily-thumb.png';
+      asset.visual.variants[0].currentImageThumbnailUrl = '/new-daily-thumb.png';
+      asset.visual.primaryVariant.currentImageThumbnailUrl = '/new-daily-thumb.png';
+    }
+    return next;
+  };
+
+  const submitPrimaryImage = async () => {
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(await screen.findByRole('button', { name: '生成图片日常形象' }));
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '提交日常形象生成' }));
+    });
+  };
+
+  it.each(['COMPLETED', 'FAILED'])('refreshes a single image generation to %s and stops polling', async (terminalStatus) => {
+    let snapshot = structuredClone(workspace);
+    mocks.queryAssetSettingsSummary.mockImplementation(async () => ({ data: snapshot }));
+    mocks.queryAssetVisualWorkspace.mockImplementation(async () => ({ data: snapshot.characters[0].visual }));
+    mocks.createAiImageTask.mockImplementation(async () => {
+      snapshot = imageGenerationSnapshot('GENERATING');
+      return { data: { id: 80, executionId: 800, status: 'PENDING' } };
+    });
+    await submitPrimaryImage();
+    expect(screen.getByLabelText('日常形象主预览生成状态')).toHaveTextContent('生成中');
+
+    snapshot = imageGenerationSnapshot(terminalStatus);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+
+    if (terminalStatus === 'COMPLETED') {
+      expect(screen.queryByLabelText('日常形象主预览生成状态')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('日常形象缩略图生成状态')).not.toBeInTheDocument();
+      expect(screen.getByAltText('日常形象预览图')).toHaveAttribute('src', '/new-daily-thumb.png');
+      expect(screen.getByAltText('日常形象缩略图')).toHaveAttribute('src', '/new-daily-thumb.png');
+      expect(screen.getByAltText('斌斌当前视觉形象')).toHaveAttribute('src', '/new-daily-thumb.png');
+    } else {
+      expect(screen.getByLabelText('日常形象主预览生成状态')).toHaveTextContent('生成失败');
+      expect(within(screen.getByLabelText('日常形象主预览生成状态')).queryByRole('progressbar')).not.toBeInTheDocument();
+    }
+    const summaryCalls = mocks.queryAssetSettingsSummary.mock.calls.length;
+    const detailCalls = mocks.queryAssetVisualWorkspace.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+    expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(summaryCalls);
+    expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledTimes(detailCalls);
+    expect(mocks.createAiImageTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps refreshing after a temporary single image status request failure', async () => {
+    let snapshot = structuredClone(workspace);
+    mocks.queryAssetSettingsSummary.mockImplementation(async () => ({ data: snapshot }));
+    mocks.queryAssetVisualWorkspace.mockImplementation(async () => ({ data: snapshot.characters[0].visual }));
+    mocks.createAiImageTask.mockImplementation(async () => {
+      snapshot = imageGenerationSnapshot('GENERATING');
+      return { data: { id: 80, status: 'PENDING' } };
+    });
+    await submitPrimaryImage();
+    snapshot = imageGenerationSnapshot('COMPLETED');
+    mocks.queryAssetSettingsSummary.mockRejectedValueOnce(new Error('offline'));
+    mocks.queryAssetVisualWorkspace.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.getByLabelText('日常形象主预览生成状态')).toHaveTextContent('生成中');
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.queryByLabelText('日常形象主预览生成状态')).not.toBeInTheDocument();
+    expect(screen.getByAltText('日常形象预览图')).toHaveAttribute('src', '/new-daily-thumb.png');
+    expect(mocks.createAiImageTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes refreshing an image already generating when the gallery opens', async () => {
+    let snapshot = imageGenerationSnapshot('GENERATING');
+    mocks.queryAssetSettingsSummary.mockImplementation(async () => ({ data: snapshot }));
+    mocks.queryAssetVisualWorkspace.mockImplementation(async () => ({ data: snapshot.characters[0].visual }));
+    vi.useFakeTimers();
+    await act(async () => { render(<ProductionWorkbenchSettings />); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    });
+    expect(screen.getByLabelText('日常形象主预览生成状态')).toHaveTextContent('生成中');
+    snapshot = imageGenerationSnapshot('COMPLETED');
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.queryByLabelText('日常形象主预览生成状态')).not.toBeInTheDocument();
+    expect(screen.getByAltText('日常形象预览图')).toHaveAttribute('src', '/new-daily-thumb.png');
+    expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+  });
+
+  it('updates the asset card without reopening a gallery closed during status refresh', async () => {
+    let snapshot = structuredClone(workspace);
+    mocks.queryAssetSettingsSummary.mockImplementation(async () => ({ data: snapshot }));
+    mocks.queryAssetVisualWorkspace.mockImplementation(async () => ({ data: snapshot.characters[0].visual }));
+    mocks.createAiImageTask.mockImplementation(async () => {
+      snapshot = imageGenerationSnapshot('GENERATING');
+      return { data: { id: 80, status: 'PENDING' } };
+    });
+    await submitPrimaryImage();
+    let resolveDetail!: (value: unknown) => void;
+    mocks.queryAssetVisualWorkspace.mockImplementationOnce(() => new Promise((resolve) => { resolveDetail = resolve; }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(resolveDetail).toBeDefined();
+    fireEvent.click(within(screen.getByRole('region', { name: '视觉形象画廊' })).getByRole('button', { name: '取消' }));
+    snapshot = imageGenerationSnapshot('COMPLETED');
+    await act(async () => { resolveDetail({ data: snapshot.characters[0].visual }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.queryByRole('region', { name: '视觉形象画廊' })).not.toBeInTheDocument();
+    expect(screen.getByAltText('斌斌当前视觉形象')).toHaveAttribute('src', '/new-daily-thumb.png');
   });
 
   it('saves an edited primary prompt through the effective visual update path', async () => {

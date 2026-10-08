@@ -45,6 +45,7 @@ import {
   type AssetPromptPolicy,
   type AssetReextractionPreflight,
   type AssetSettingsWorkspace,
+  type AssetVisualWorkspace,
   type CharacterAsset,
   createAiImageTask,
   createAssetImageBatch,
@@ -98,6 +99,15 @@ const generationStatusLabel = (status: string) =>
     GENERATING: '生成中',
     FAILED: '生成失败',
   })[status] ?? status;
+
+const hasGeneratingVisualImages = (visual?: AssetVisualWorkspace) =>
+  (visual?.generationSummary.GENERATING ?? 0) > 0 ||
+  Boolean(visual?.variants.some((variant) => variant.generationStatus === 'GENERATING'));
+
+const hasGeneratingAssetImages = (workspace: AssetSettingsWorkspace) =>
+  [...workspace.characters, ...workspace.scenes, ...workspace.props].some(
+    (asset) => hasGeneratingVisualImages(asset.visual),
+  );
 
 const GenerationStatusOverlay = ({
   status,
@@ -495,7 +505,66 @@ const ProductionWorkbenchSettings = () => {
   const [generationModelId, setGenerationModelId] = useState<number>();
   const [generationAspectRatio, setGenerationAspectRatio] = useState('16:9');
   const [generationImageCount, setGenerationImageCount] = useState(1);
+  const [imageGenerationVersion, setImageGenerationVersion] = useState(0);
   const workspaceRequestId = useRef(0);
+  const visualRefreshContext = useRef({ visualAsset, selectedVisualVariantId });
+  visualRefreshContext.current = { visualAsset, selectedVisualVariantId };
+  const hasGeneratingImages = hasGeneratingAssetImages(workspace) ||
+    hasGeneratingVisualImages(visualAsset?.item.visual);
+
+  useEffect(() => {
+    if (!projectId || (!hasGeneratingImages && imageGenerationVersion === 0)) return;
+    let active = true;
+    let timer: number | undefined;
+    const poll = async () => {
+      const summaryRequestId = workspaceRequestId.current;
+      const detailRequestId = visualRequestIdRef.current;
+      const { visualAsset: currentVisual, selectedVisualVariantId: selectedId } =
+        visualRefreshContext.current;
+      try {
+        const [summaryResponse, detailResponse] = await Promise.all([
+          queryAssetSettingsSummary(projectId),
+          currentVisual
+            ? queryAssetVisualWorkspace(projectId, currentVisual.type, currentVisual.item.id, {
+                current: currentVisual.item.visual?.current || 1,
+                pageSize: currentVisual.item.visual?.pageSize || 20,
+                selectedVariantId: selectedId,
+              })
+            : Promise.resolve(undefined),
+        ]);
+        if (!active) return;
+        const nextWorkspace = { ...emptyWorkspace(projectId), ...summaryResponse.data };
+        if (summaryRequestId === workspaceRequestId.current) {
+          setWorkspace(nextWorkspace);
+        }
+        const detailIsCurrent = detailRequestId === visualRequestIdRef.current &&
+          selectedId === visualRefreshContext.current.selectedVisualVariantId;
+        if (currentVisual && detailResponse && detailIsCurrent) {
+          setVisualAsset((previous) =>
+            previous?.type === currentVisual.type && previous.item.id === currentVisual.item.id
+              ? { ...previous, item: { ...previous.item, visual: detailResponse.data } }
+              : previous,
+          );
+        }
+        const nextVisual = detailIsCurrent
+          ? detailResponse?.data
+          : visualRefreshContext.current.visualAsset?.item.visual;
+        if (summaryRequestId === workspaceRequestId.current &&
+            !hasGeneratingAssetImages(nextWorkspace) && !hasGeneratingVisualImages(nextVisual)) {
+          setImageGenerationVersion((version) => version === imageGenerationVersion ? 0 : version);
+          return;
+        }
+      } catch {
+        // Keep the current images and retry transient status-read failures.
+      }
+      if (active) timer = window.setTimeout(poll, 2000);
+    };
+    timer = window.setTimeout(poll, 2000);
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [hasGeneratingImages, imageGenerationVersion, projectId]);
 
   const reload = async () => {
     const requestId = ++workspaceRequestId.current;
@@ -538,6 +607,9 @@ const ProductionWorkbenchSettings = () => {
 
   useEffect(() => {
     batchRequestIdRef.current += 1;
+    setImageGenerationVersion(0);
+    setVisualAsset(undefined);
+    setSelectedVisualVariantId(undefined);
     setSelectedAssetIds([]);
     setBatchPreflight(undefined);
     setActiveImageBatch(undefined);
@@ -1021,6 +1093,7 @@ const ProductionWorkbenchSettings = () => {
         aspectRatio: generationAspectRatio,
         imageCount: generationImageCount,
       });
+      setImageGenerationVersion((version) => version + 1);
       await mutateVariant(async () => undefined, '已提交生成');
       setGenerationVariantId(undefined);
     } catch {
