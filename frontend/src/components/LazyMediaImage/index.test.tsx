@@ -6,6 +6,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import LazyMediaImage from './index';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -101,4 +102,21 @@ it('requires a new visibility entry after its source changes', () => {
     ),
   );
   expect(screen.getByAltText('换源图')).toHaveAttribute('src', '/second.jpg');
+});
+
+
+it('removes a native image source when the image is unmounted so old pages stop loading media', () => {
+  const view = render(<LazyMediaImage native src="/pending-cover.jpg" alt="旧页面封面" inView />);
+  const image = screen.getByAltText('旧页面封面');
+  expect(image).toHaveAttribute('src', '/pending-cover.jpg');
+  view.unmount();
+  expect(image).not.toHaveAttribute('src');
+});
+
+
+it('retains a valid native source when StrictMode detaches and reattaches its ref', () => {
+  const view = render(<StrictMode><LazyMediaImage native src="/strict-cover.jpg" alt="有效封面" inView /></StrictMode>);
+  expect(screen.getByAltText('有效封面')).toHaveAttribute('src', '/strict-cover.jpg');
+  view.rerender(<StrictMode><LazyMediaImage native src="/strict-cover.jpg" alt="有效封面" inView /></StrictMode>);
+  expect(screen.getByAltText('有效封面')).toHaveAttribute('src', '/strict-cover.jpg');
 });

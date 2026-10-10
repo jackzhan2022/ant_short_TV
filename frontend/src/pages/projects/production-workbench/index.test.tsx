@@ -202,6 +202,31 @@ describe('ProductionWorkbench shell', () => {
     expect(dialog).not.toBeInTheDocument();
   });
 
+  it.each([88, 0])('navigates to recharge when the header point balance is %i', async (balance) => {
+    mocks.queryTeamPointAccount.mockResolvedValue({ data: { balance } });
+    render(<ProductionWorkbench />);
+
+    const points = await screen.findByRole('button', {
+      name: `团队积分 ${balance}，前往充值中心`,
+    });
+    expect(points).toHaveTextContent(`✦ ${balance}`);
+    fireEvent.click(points);
+
+    expect(mocks.historyPush).toHaveBeenCalledWith('/recharge');
+  });
+
+  it('keeps the recharge entry available while the point balance is loading', async () => {
+    mocks.queryTeamPointAccount.mockImplementation(() => new Promise(() => {}));
+    render(<ProductionWorkbench />);
+    await screen.findByText('最危险的捉迷藏');
+
+    fireEvent.click(screen.getByRole('button', {
+      name: '团队积分 -，前往充值中心',
+    }));
+
+    expect(mocks.historyPush).toHaveBeenCalledWith('/recharge');
+  });
+
   it('navigates from settings to storyboard with the next-step action', async () => {
     render(<ProductionWorkbench />);
 

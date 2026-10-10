@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchScript from './script';
 
 const mocks = vi.hoisted(() => ({
@@ -201,7 +201,13 @@ describe('ProductionWorkbenchScript', () => {
     expect(await screen.findByText('历史版本正文内容')).toBeInTheDocument();
     expect(mocks.queryScriptVersion).toHaveBeenCalledTimes(2);
   });
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(target: Element) { this.callback([{ target, isIntersecting: true }] as IntersectionObserverEntry[], this as unknown as IntersectionObserver); }
+      disconnect() {}
+    });
     vi.clearAllMocks();
     mocks.queryProject.mockResolvedValue({
       data: {
@@ -868,7 +874,7 @@ describe('ProductionWorkbenchScript', () => {
     });
     expect(screen.getByText('execution-501-SUCCEEDED')).toBeInTheDocument();
     expect(screen.getAllByText('林晚雨夜归家').length).toBeGreaterThan(0);
-    expect(screen.getByText('角色变装列表')).toBeInTheDocument();
+    expect(await screen.findByText('角色变装列表')).toBeInTheDocument();
     expect(screen.getByText('林晚-雨夜装')).toBeInTheDocument();
     expect(screen.getByText('第1集')).toBeInTheDocument();
     expect(screen.getByText(/角色 1 · 场景 0 · 道具 0/)).toBeInTheDocument();
@@ -957,5 +963,46 @@ describe('ProductionWorkbenchScript', () => {
     await waitFor(() =>
       expect(mocks.regenerateEpisodeAssets).toHaveBeenCalledWith(1, 21),
     );
+  });
+  it('loads the script first and defers assets and episode bodies until their sections are visible', async () => {
+    const baseline = await mocks.queryScriptWorkspace();
+    mocks.queryScriptWorkspace.mockResolvedValue({ data: { ...baseline.data,
+      episodes: [{ episodeId: 783, episodeNo: 1, title: '第1集', summary: '概要' }],
+    } });
+    const observers: Array<{ target: Element; enter: () => void }> = [];
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(target: Element) { observers.push({ target, enter: () => this.callback([{ target, isIntersecting: true }] as IntersectionObserverEntry[], this as unknown as IntersectionObserver) }); }
+      disconnect() {}
+    });
+    render(<ProductionWorkbenchScript />);
+    await screen.findByText('分集剧情');
+    expect(mocks.queryAssetSettingsSummary).not.toHaveBeenCalled();
+    expect(mocks.queryScriptEpisode).not.toHaveBeenCalled();
+    await waitFor(() => expect(observers.some(o => o.target.getAttribute('aria-label') === '人物小传')).toBe(true));
+    act(() => observers.find(o => o.target.getAttribute('aria-label') === '人物小传')?.enter());
+    await waitFor(() => expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(1));
+    expect(mocks.queryScriptEpisode).not.toHaveBeenCalled();
+    act(() => observers.find(o => o.target.getAttribute('aria-label') === '分集剧情')?.enter());
+    await waitFor(() => expect(mocks.queryScriptEpisode).toHaveBeenCalledWith(1, 783));
+  });
+
+  it('does not block the script title on a slow asset summary', async () => {
+    vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
+    mocks.queryAssetSettingsSummary.mockImplementation(() => new Promise(() => {}));
+    render(<ProductionWorkbenchScript />);
+    expect(await screen.findByText('最危险的捉迷藏')).toBeInTheDocument();
+    expect(mocks.queryAssetSettingsSummary).not.toHaveBeenCalled();
+  });
+  it('keeps the script usable when deferred asset loading fails and retries only those assets', async () => {
+    mocks.queryAssetSettingsSummary.mockRejectedValueOnce(new Error('offline'));
+    render(<ProductionWorkbenchScript />);
+    await screen.findByText('角色信息加载失败');
+    expect(screen.getByText('最危险的捉迷藏')).toBeInTheDocument();
+    const scriptCalls = mocks.queryScriptWorkspace.mock.calls.length;
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: { characters: [{ id: 9, name: '恢复后的角色' }], scenes: [], props: [] } });
+    fireEvent.click(screen.getByRole('button', { name: '重新加载角色信息' }));
+    expect(await screen.findByText('恢复后的角色')).toBeInTheDocument();
+    expect(mocks.queryScriptWorkspace).toHaveBeenCalledTimes(scriptCalls);
   });
 });

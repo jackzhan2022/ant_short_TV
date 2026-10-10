@@ -20,11 +20,11 @@ import {
   Flex,
   Input,
   Modal,
-  Pagination,
   Radio,
   Select,
   Spin,
   Switch,
+  Tabs,
   Tooltip,
   Typography,
   Upload,
@@ -52,6 +52,7 @@ import {
   scriptTypeOptions,
 } from './options';
 import ScriptContentImport from './ScriptContentImport';
+import usePlatformStyleGallery from './usePlatformStyleGallery';
 import {
   createProject,
   bindProjectCover,
@@ -59,7 +60,6 @@ import {
   type InspirationCreationDetail,
   queryInspirationCreationDetail,
   queryInspirationCreations,
-  queryStyleLibrary,
   queryTenantMembers,
   startProjectCoverUpload,
 } from './service';
@@ -115,15 +115,16 @@ const ShortDramaCreationPage = () => {
   const [coverUploadSessionToken, setCoverUploadSessionToken] = useState<string>();
   const coverUploadHandleRef = useRef<MediaUploadHandle | undefined>(undefined);
   const [selectedStyle, setSelectedStyle] = useState<PublicStyle>();
-  const [styleGallery, setStyleGallery] = useState<PublicStyle[]>([]);
-  const [stylePage, setStylePage] = useState(1);
-  const [styleTotal, setStyleTotal] = useState(0);
+  const {
+    category: styleCategory, changeCategory: changeStyleCategory,
+    gallery: styleGallery, loading: galleryLoading, error: styleError,
+    hasMore: stylesHaveMore, bottomRef: styleBottomRef,
+    loadMore: loadMoreStyles, retry: retryStyles,
+  } = usePlatformStyleGallery(step === 2);
   const [styleCategories, setStyleCategories] = useState<string[]>([]);
-  const [styleCategory, setStyleCategory] = useState('全部');
   const [inspirationGallery, setInspirationGallery] = useState<
     InspirationCreation[]
   >([]);
-  const [galleryLoading, setGalleryLoading] = useState(false);
   const [inspirationLoading, setInspirationLoading] = useState(false);
   const [inspirationHasMore, setInspirationHasMore] = useState(true);
   const [inspirationPage, setInspirationPage] = useState(0);
@@ -225,39 +226,16 @@ const ShortDramaCreationPage = () => {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    setGalleryLoading(true);
-    void queryStyleLibrary({
-      current: stylePage,
-      pageSize: 12,
-      ...(styleCategory === '全部' ? {} : { category: styleCategory }),
-    })
-      .then((response) => {
-        if (!active) return;
-        const records = response.data.data || [];
-        setStyleGallery(records);
-        setStyleTotal(response.data.total);
-        const first = records[0];
-        if (first) {
-          setSelectedStyle((current) => current || first);
-          setCoverPreviewUrl((current) => current || first.imageUrl);
-          setProjectForm((current) => ({
-            ...current,
-            visualStyle: current.visualStyle || first.name,
-            coverUrl: current.coverUrl || first.imageUrl,
-          }));
-        }
-      })
-      .catch(() => {
-        if (active) message.error('风格加载失败');
-      })
-      .finally(() => {
-        if (active) setGalleryLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [stylePage, styleCategory, message]);
+    const first = styleGallery[0];
+    if (!first) return;
+    setSelectedStyle((current) => current || first);
+    setCoverPreviewUrl((current) => current || first.imageUrl);
+    setProjectForm((current) => ({
+      ...current,
+      visualStyle: current.visualStyle || first.name,
+      coverUrl: current.coverUrl || first.imageUrl,
+    }));
+  }, [styleGallery]);
 
   useEffect(
     () => () => {
@@ -555,6 +533,36 @@ const ShortDramaCreationPage = () => {
     </div>
   );
 
+  const platformStyleGallery = (
+    <>
+      <div className={styles.styleStrip} aria-busy={galleryLoading}>
+        {styleGallery.map((style) => {
+          const active = selectedStyle?.id === style.id;
+          return (
+            <button
+              className={active ? styles.styleCardActive : styles.styleCard}
+              aria-label={style.name}
+              aria-pressed={active}
+              key={style.id}
+              onClick={() => applyStyleSelection(style)}
+              type="button"
+            >
+              <LazyMediaImage native height="100%" alt={style.name} src={style.imageUrl} />
+              <span>{style.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      <section ref={styleBottomRef} className={styles.styleLoadMore} aria-label="风格加载状态" aria-live="polite">
+        {galleryLoading ? <><Spin size="small" /> 正在加载风格...</>
+          : styleError ? <div role="alert">风格加载失败 <Button onClick={retryStyles}>重试加载风格</Button></div>
+          : stylesHaveMore ? <Button onClick={loadMoreStyles}>加载更多风格</Button>
+          : styleGallery.length ? '已展示全部风格'
+          : <Empty description="当前分类暂无平台风格" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+      </section>
+    </>
+  );
+
   const secondStep = (
     <div className={styles.settingsPage}>
       <header className={styles.settingsHeader}>
@@ -777,54 +785,18 @@ const ShortDramaCreationPage = () => {
           >
             平台风格
           </Typography.Text>
-          <Spin spinning={galleryLoading}>
-            <Select
-              aria-label="风格分类"
-              value={styleCategory}
-              options={['全部', ...styleCategories].map((value) => ({
-                label: value,
-                value,
-              }))}
-              onChange={(value) => {
-                setStyleCategory(value);
-                setStylePage(1);
-              }}
-              style={{ width: 180, marginBottom: 16 }}
-            />
-            <div className={styles.styleStrip}>
-              {styleGallery.map((style) => {
-                const active = selectedStyle?.id === style.id;
-                return (
-                  <button
-                    className={
-                      active ? styles.styleCardActive : styles.styleCard
-                    }
-                    aria-label={style.name}
-                    key={style.externalId}
-                    onClick={() => applyStyleSelection(style)}
-                    type="button"
-                  >
-                    <LazyMediaImage
-                      native
-                      height="100%"
-                      alt={style.name}
-                      src={style.imageUrl}
-                    />
-                    <span>{style.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <Pagination
-              current={stylePage}
-              pageSize={12}
-              total={styleTotal}
-              hideOnSinglePage
-              showSizeChanger={false}
-              onChange={setStylePage}
-              style={{ marginTop: 16 }}
-            />
-          </Spin>
+          <Tabs
+            className={styles.styleTabs}
+            activeKey={styleCategory}
+            onChange={changeStyleCategory}
+            destroyOnHidden
+            animated={false}
+            items={['全部', ...styleCategories].map((category) => ({
+              key: category,
+              label: category,
+              children: category === styleCategory ? platformStyleGallery : undefined,
+            }))}
+          />
         </section>
       </main>
     </div>

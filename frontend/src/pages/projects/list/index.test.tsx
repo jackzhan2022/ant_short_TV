@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProjectList from './index';
 
@@ -61,12 +61,12 @@ vi.mock('antd', () => ({
 }));
 
 vi.mock('@ant-design/pro-components', () => ({
-  ModalForm: ({ children, title, trigger }: any) => (
-    <div>
-      {trigger}
-      <form aria-label={title}>{children}</form>
-    </div>
-  ),
+  ModalForm: ({ children, title, trigger, onOpenChange }: any) => {
+    const [open, setOpen] = require('react').useState(false);
+    return <div>{require('react').cloneElement(trigger, {
+      onClick: () => { trigger.props.onClick?.(); setOpen(true); onOpenChange?.(true); },
+    })}{open && <form aria-label={title}>{children}</form>}</div>;
+  },
   PageContainer: ({ children }: any) => <main>{children}</main>,
   ProFormDatePicker: ({ label }: any) => <span>{label}</span>,
   ProFormSelect: ({ label }: any) => <span>{label}</span>,
@@ -249,5 +249,34 @@ describe('ProjectList', () => {
     await screen.findByText('共 45 个项目');
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
     await waitFor(() => expect(mocks.queryProjects).toHaveBeenCalledWith({ current: 2, pageSize: 20 }, expect.anything()));
+  });
+  it('keeps only edit and status actions without showing the internal project code', async () => {
+    const response = await mocks.queryProjects();
+    response.data[0].code = 'SHORT_DRAMA_1790949676308';
+    response.data[0].status = 'NOT_STARTED';
+    mocks.queryProjects.mockResolvedValue(response);
+    render(<ProjectList />);
+    await screen.findByText('测试短剧');
+    const menu = screen.getByLabelText('测试短剧更多操作').closest('details');
+    expect(menu).not.toBeNull();
+    expect(within(menu as HTMLElement).getAllByRole('button')).toHaveLength(2);
+    expect(
+      within(menu as HTMLElement).getByRole('button', { name: '编辑' }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu as HTMLElement).getByRole('button', { name: '启动' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('SHORT_DRAMA_1790949676308'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not show an empty operation menu for read-only projects', async () => {
+    const response = await mocks.queryProjects();
+    response.data[0].capabilities.canEdit = false;
+    mocks.queryProjects.mockResolvedValue(response);
+    render(<ProjectList />);
+    await screen.findByText('测试短剧');
+    expect(screen.queryByLabelText('测试短剧更多操作')).not.toBeInTheDocument();
   });
 });

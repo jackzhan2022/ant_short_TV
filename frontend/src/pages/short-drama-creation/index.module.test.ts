@@ -8,6 +8,11 @@ const stylesheet = readFileSync(
 );
 
 describe('short drama creation theme', () => {
+  it('keeps all style cards in flow and applies the selection border as a separate overlay', () => {
+    expect(stylesheet).toMatch(/\.selectedStyleCard,\s*\.styleCard,\s*\.styleCardActive\s*\{\s*position: relative;/);
+    expect(stylesheet).toMatch(/\.styleCardActive::after\s*\{/);
+  });
+
   it('uses the shared application colors for structural UI', () => {
     expect(stylesheet).toContain('background: var(--app-color-bg-layout);');
     expect(stylesheet).toContain('color: var(--app-color-primary);');

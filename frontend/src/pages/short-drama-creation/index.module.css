@@ -424,6 +424,20 @@
   margin-bottom: 34px;
 }
 
+.styleTabs {
+  min-width: 0;
+}
+
+.styleLoadMore {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--app-color-text-secondary);
+}
+
 .styleStrip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -436,8 +450,14 @@
   height: 96px;
 }
 
-.styleCardActive {
-  box-shadow: 0 0 0 3px var(--app-color-primary) inset;
+.styleCardActive::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border: 3px solid var(--app-color-primary);
+  border-radius: inherit;
+  pointer-events: none;
+  content: "";
 }
 
 .selectedStyleCard img,

@@ -34,7 +34,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type WheelEvent as ReactWheelEvent,
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { queryProject } from '@/services/account-team/project';
@@ -737,7 +736,6 @@ const StoryboardCard = ({
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [voiceSubmitting, setVoiceSubmitting] = useState(false);
   const [previewKey, setPreviewKey] = useState<'VIDEO' | 'FIRST_FRAME' | 'SCENE'>('VIDEO');
-  const [stickyReleased, setStickyReleased] = useState(false);
   const [candidateType, setCandidateType] = useState<'IMAGE' | 'VIDEO'>();
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [imageCandidates, setImageCandidates] = useState<MediaPage<AiImageResult>>();
@@ -954,31 +952,11 @@ const StoryboardCard = ({
   const videoTask = videoTasks
     .filter((task) => task.storyboardId === item.id)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
-  const handleWheelCapture = (event: ReactWheelEvent<HTMLElement>) => {
-    if (!event.deltaY) return;
-    const scrollRegion = event.target instanceof Element
-      ? event.target.closest<HTMLElement>('[data-storyboard-scroll-region]')
-      : null;
-
-    if (!scrollRegion) {
-      setStickyReleased(event.deltaY > 0);
-      return;
-    }
-
-    const edgeTolerance = 1;
-    const atBottom = scrollRegion.scrollTop + scrollRegion.clientHeight
-      >= scrollRegion.scrollHeight - edgeTolerance;
-    const atTop = scrollRegion.scrollTop <= edgeTolerance;
-    if (event.deltaY > 0 && atBottom) setStickyReleased(true);
-    if (event.deltaY < 0 && atTop) setStickyReleased(false);
-  };
-
   return (
     <article
       id={`storyboard-${item.id}`}
       tabIndex={-1}
-      className={`storyboard-card${stickyReleased ? ' is-scroll-released' : ''}`}
-      onWheelCapture={handleWheelCapture}
+      className="storyboard-card"
       style={{
         border: '1px solid #e4e9f2',
         borderRadius: 12,

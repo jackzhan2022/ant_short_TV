@@ -903,7 +903,7 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByRole('list', { name: '分镜1角色资产' })).toBeInTheDocument();
   });
 
-  it('releases a sticky storyboard after its active content reaches the scroll boundary', async () => {
+  it('keeps storyboard cards in normal flow when nested content reaches a scroll boundary', async () => {
     render(<ProductionWorkbench />);
     const prompt = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
     const card = prompt.closest('.storyboard-card');
@@ -916,10 +916,6 @@ describe('ProductionWorkbench script page', () => {
     });
 
     fireEvent.wheel(prompt, { deltaY: 120 });
-    expect(card).toHaveClass('is-scroll-released');
-
-    prompt.scrollTop = 0;
-    fireEvent.wheel(prompt, { deltaY: -120 });
     expect(card).not.toHaveClass('is-scroll-released');
   });
 

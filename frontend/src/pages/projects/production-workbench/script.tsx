@@ -403,6 +403,27 @@ export const ScriptAnalysisStateContainer = ({
   );
 };
 
+const useSectionSeen = <T extends HTMLElement = HTMLElement>(projectId: number, enabled: boolean) => {
+  const ref = useRef<T>(null);
+  const [seenProject, setSeenProject] = useState<number>();
+  useEffect(() => {
+    if (!enabled || seenProject === projectId || !ref.current) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setSeenProject(projectId);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setSeenProject(projectId);
+        observer.disconnect();
+      }
+    }, { rootMargin: '150px' });
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [enabled, projectId, seenProject]);
+  return { ref, seen: seenProject === projectId };
+};
+
 const ProductionWorkbenchScript = () => {
   const params = useParams<{ id: string }>();
   const { message } = App.useApp();
@@ -468,12 +489,10 @@ const ProductionWorkbenchScript = () => {
     const loadWorkspace = async (showLoading: boolean) => {
       if (showLoading) {
         setLoading(true);
+        setWorkspace(null);
       }
       try {
-        const [workspaceResponse, assetResponse] = await Promise.all([
-          queryScriptPageWorkspace(projectId),
-          queryAssetSettingsSummary(projectId),
-        ]);
+        const workspaceResponse = await queryScriptPageWorkspace(projectId);
         if (active) {
           setWorkspace({
             projectId,
@@ -483,9 +502,9 @@ const ProductionWorkbenchScript = () => {
             episodeWarnings: workspaceResponse.data.episodeWarnings,
             analysis: workspaceResponse.data.analysis,
             globalUnderstanding: workspaceResponse.data.globalUnderstanding,
-            characters: assetResponse.data.characters || [],
-            scenes: assetResponse.data.scenes || [],
-            props: assetResponse.data.props || [],
+            characters: [],
+            scenes: [],
+            props: [],
             storyboards: [],
           });
         }
@@ -576,6 +595,33 @@ const ProductionWorkbenchScript = () => {
     episodeBlocks[0];
   const script = workspace?.script;
   const analysis = workspace?.analysis;
+  const reviewReady = workspace?.projectId === projectId && (!analysis || analysis.status === 'COMPLETED');
+  const assetsSection = useSectionSeen(projectId, reviewReady);
+  const assetStatsSection = useSectionSeen(projectId, reviewReady);
+  const assetsNeeded = assetsSection.seen || assetStatsSection.seen;
+  const episodesSection = useSectionSeen(projectId, reviewReady);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+  const [assetsReadyProject, setAssetsReadyProject] = useState<number>();
+  const [assetsError, setAssetsError] = useState(false);
+  const [assetsRefresh, setAssetsRefresh] = useState(0);
+  useEffect(() => {
+    if (!assetsNeeded || !reviewReady) return;
+    let active = true;
+    setAssetsLoading(true);
+    setAssetsError(false);
+    queryAssetSettingsSummary(projectId).then((response) => {
+      if (active) {
+        setWorkspace((current) => current?.projectId === projectId ? {
+          ...current, characters: response.data.characters || [], scenes: response.data.scenes || [], props: response.data.props || [],
+        } : current);
+        setAssetsReadyProject(projectId);
+      }
+    }).catch(() => {
+      if (active) setAssetsError(true);
+    }).finally(() => { if (active) setAssetsLoading(false); });
+    return () => { active = false; };
+  }, [projectId, reviewReady, assetsNeeded, assetsRefresh]);
+
   const tenantId = getCurrentTenantId();
 
   useEffect(() => {
@@ -584,6 +630,7 @@ const ProductionWorkbenchScript = () => {
     );
     const cacheKey = episode?.episodeId ? String(episode.episodeId) : undefined;
     if (
+      !episodesSection.seen ||
       !episode?.episodeId ||
       !cacheKey ||
       loadedEpisodeIds.current.has(cacheKey)
@@ -606,15 +653,12 @@ const ProductionWorkbenchScript = () => {
     return () => {
       active = false;
     };
-  }, [currentEpisodeNo, projectId, workspace?.episodes]);
+  }, [currentEpisodeNo, projectId, workspace?.episodes, episodesSection.seen]);
   const refreshWorkspace = async () => {
-    const [workspaceResponse, assetResponse] = await Promise.all([
-      queryScriptPageWorkspace(projectId),
-      queryAssetSettingsSummary(projectId),
-    ]);
+    const workspaceResponse = await queryScriptPageWorkspace(projectId);
     loadedEpisodeIds.current.clear();
     setEpisodeContents({});
-    setWorkspace({
+    setWorkspace((previous) => ({
       projectId,
       script: workspaceResponse.data.script,
       versions: workspaceResponse.data.versions,
@@ -622,11 +666,12 @@ const ProductionWorkbenchScript = () => {
       episodeWarnings: workspaceResponse.data.episodeWarnings,
       analysis: workspaceResponse.data.analysis,
       globalUnderstanding: workspaceResponse.data.globalUnderstanding,
-      characters: assetResponse.data.characters || [],
-      scenes: assetResponse.data.scenes || [],
-      props: assetResponse.data.props || [],
+      characters: previous?.projectId === projectId ? previous.characters : [],
+      scenes: previous?.projectId === projectId ? previous.scenes : [],
+      props: previous?.projectId === projectId ? previous.props : [],
       storyboards: [],
-    });
+    }));
+    setAssetsRefresh((value) => value + 1);
   };
   const followExecution = async (task?: API.AiExecutionResponse) => {
     if (!task?.id || !tenantId) {
@@ -1048,7 +1093,7 @@ const ProductionWorkbenchScript = () => {
               </div>
             </section>
 
-            <section style={{ marginBottom: 48 }}>
+            <section ref={assetsSection.ref} aria-label="人物小传" style={{ marginBottom: 48 }}>
               <Flex
                 justify="space-between"
                 align="center"
@@ -1061,7 +1106,11 @@ const ProductionWorkbenchScript = () => {
                   已有角色信息与视觉资产
                 </Typography.Text>
               </Flex>
-              {workspace?.characters.length ? (
+              {assetsError ? (
+                <div role="alert">角色信息加载失败 <Button onClick={() => setAssetsRefresh((value) => value + 1)}>重新加载角色信息</Button></div>
+              ) : assetsLoading || assetsReadyProject !== projectId ? (
+                <Skeleton />
+              ) : workspace?.characters.length ? (
                 <div
                   style={{
                     display: 'grid',
@@ -1261,11 +1310,11 @@ const ProductionWorkbenchScript = () => {
                   )}
                 </div>
               </div>
-              <div style={metricStyle}>
+              <section ref={assetStatsSection.ref} aria-label="正式资产统计" style={metricStyle}>
                 <span style={labelStyle}>正式资产</span>
                 <div style={{ marginTop: 6, lineHeight: '22px' }}>
-                  角色 {workspace.characters.length} · 场景{' '}
-                  {workspace.scenes.length} · 道具 {workspace.props.length}
+                  {assetsReadyProject === projectId ? <>角色 {workspace.characters.length} · 场景{' '}
+                  {workspace.scenes.length} · 道具 {workspace.props.length}</> : assetsError ? '资产信息加载失败' : '资产信息按需加载中'}
                 </div>
                 <div
                   style={{
@@ -1274,7 +1323,7 @@ const ProductionWorkbenchScript = () => {
                     color: 'var(--app-color-text-secondary)',
                   }}
                 >
-                  角色形态{' '}
+                  {assetsReadyProject === projectId ? <>角色形态{' '}
                   {workspace.characters.reduce(
                     (sum, item) => sum + (item.visual?.variantCount || 0),
                     0,
@@ -1283,15 +1332,17 @@ const ProductionWorkbenchScript = () => {
                   {workspace.props.reduce(
                     (sum, item) => sum + (item.visual?.variantCount || 0),
                     0,
-                  )}
+                  )}</> : null}
                 </div>
-              </div>
+              </section>
             </div>
           </section>
         ) : null}
 
         {workspace && (!analysis || analysis.status === 'COMPLETED') ? (
           <section
+            ref={episodesSection.ref}
+            aria-label="分集剧情"
             style={{
               background: '#fff',
               border: '1px solid var(--app-color-border)',

@@ -182,6 +182,26 @@ class MediaUploadSessionServiceTest {
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("不可签名");
     }
 
+    @Test
+    void completedScopeMustMatchIncludingNullProject() {
+        InMemoryStore store = new InMemoryStore();
+        MediaUploadSessionService service = service(store, mock(CosUploadRequestAuthorizer.class));
+        MediaUploadSession project = service.create(new CreateMediaUploadSession(11L, 22L, 33L, "video.mp4", "video/mp4", 3L));
+        store.current.status = "COMPLETED"; store.current.verifiedSize = 3L;
+        assertThatThrownBy(() -> service.requireCompleted(33L, 11L, null, project.sessionToken()))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("范围");
+        assertDoesNotThrow(() -> service.requireCompleted(33L, 11L, 22L, project.sessionToken()));
+        MediaUploadSession local = service.create(new CreateMediaUploadSession(11L, null, 33L, "video.mp4", "video/mp4", 3L));
+        assertThatThrownBy(() -> service.requireCompleted(33L, 11L, null, local.sessionToken()))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("尚未完成");
+        store.current.status = "COMPLETED"; store.current.verifiedSize = 3L;
+        assertDoesNotThrow(() -> service.requireCompleted(33L, 11L, null, local.sessionToken()));
+        assertThatThrownBy(() -> service.requireCompleted(33L, 12L, null, local.sessionToken()))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.requireCompleted(44L, 11L, null, local.sessionToken()))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private MediaUploadSessionService service(
         InMemoryStore store,
         CosUploadRequestAuthorizer authorizer

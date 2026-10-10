@@ -142,18 +142,14 @@
   top: 32px;
   right: 0;
   display: flex;
-  min-width: 120px;
+  width: max-content;
+  white-space: nowrap;
   flex-direction: column;
   padding: 6px;
   background: var(--app-color-bg-elevated);
   border: 1px solid var(--app-color-border);
   border-radius: 6px;
   box-shadow: 0 4px 14px rgb(41 43 61 / 12%);
-}
-.projectCode {
-  padding: 6px 8px;
-  color: var(--app-color-text-tertiary);
-  font-size: 12px;
 }
 .metadata {
   display: flex;

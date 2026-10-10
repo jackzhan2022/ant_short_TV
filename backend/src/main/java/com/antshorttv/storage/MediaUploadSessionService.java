@@ -154,6 +154,18 @@ public class MediaUploadSessionService {
     }
 
     @Transactional
+    public VerifiedMediaUpload requireCompleted(Long userId, Long tenantId, Long projectId, String sessionToken) {
+        MediaUploadSessionEntity entity = requireOwned(userId, sessionToken);
+        if (!entity.tenantId.equals(tenantId) || !java.util.Objects.equals(entity.projectId, projectId)) {
+            throw new IllegalArgumentException("上传会话不属于当前团队或要求的项目范围。");
+        }
+        if (!"COMPLETED".equals(entity.status)) {
+            throw new IllegalArgumentException("上传会话尚未完成校验。");
+        }
+        return verified(entity);
+    }
+
+    @Transactional
     public MediaUploadSession status(Long userId, String sessionToken) {
         return response(requireOwned(userId, sessionToken));
     }

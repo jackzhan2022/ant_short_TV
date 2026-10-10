@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { history } from '@umijs/max';
 
 const mocks = vi.hoisted(() => ({
   tenantId: 10,
@@ -94,6 +95,19 @@ describe('CommercialPage', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('uses the workbench logo in its brand entry and keeps home navigation', async () => {
+    render(<CommercialPage />);
+    await screen.findByText('2,140');
+
+    const brand = screen.getByRole('button', { name: '剧智创' });
+    expect(within(brand).getByAltText('剧智创 Logo')).toHaveAttribute(
+      'src', '/juzhichuang-logo-mark.png',
+    );
+    expect(within(brand).queryByText('剧', { exact: true })).not.toBeInTheDocument();
+    fireEvent.click(brand);
+    expect(history.push).toHaveBeenCalledWith('/');
   });
 
   it('loads unified point history without querying commercial grants', async () => {

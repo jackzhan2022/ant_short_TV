@@ -57,3 +57,16 @@ describe('commercial management routes', () => {
     });
   });
 });
+
+describe('standalone style library route', () => {
+  it('hides the menu entry without deleting the page or changing its access guard', () => {
+    expect(routes.find((route) => route.path === '/style-library')).toMatchObject({
+      hideInMenu: true,
+      component: './style-library',
+      access: 'canViewStyleLibrary',
+    });
+    expect(routes.find((route) => route.path === '/short-drama-creation')).toMatchObject({
+      component: './short-drama-creation',
+    });
+  });
+});

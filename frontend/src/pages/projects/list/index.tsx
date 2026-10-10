@@ -1,33 +1,26 @@
 import {
-  EditOutlined,
   MoreOutlined,
   PlusOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import {
-  ModalForm,
   PageContainer,
-  ProFormDatePicker,
-  ProFormSelect,
-  ProFormText,
-  ProFormTextArea,
 } from '@ant-design/pro-components';
 import { history, useAccess } from '@umijs/max';
 import { App, Button, Empty, Pagination, Tag } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import ProjectCoverImage from '@/components/ProjectCoverImage';
 import { getCurrentTenantId } from '@/services/account-team/auth';
-import type { ProjectFormValues } from '@/services/account-team/project';
 import type {
   Project,
   ProjectStatus,
   TenantMember,
 } from '@/services/account-team/types';
 import styles from './index.module.css';
+import ProjectEditor from './ProjectEditor';
 import {
   queryProjects,
   queryTenantMembers,
-  updateProject,
   updateProjectStatus,
 } from './service';
 
@@ -45,71 +38,6 @@ const statusColor: Record<ProjectStatus, string> = {
   PAUSED: 'warning',
   COMPLETED: 'success',
   ARCHIVED: 'default',
-};
-
-const ProjectEditor = ({
-  project,
-  members,
-  onDone,
-  onOpen,
-}: {
-  project: Project;
-  members: TenantMember[];
-  onDone: () => void;
-  onOpen: () => void;
-}) => {
-  const { message } = App.useApp();
-  const memberOptions = members.map((member) => ({
-    label: member.nickname || member.mobile || String(member.userId),
-    value: member.userId,
-  }));
-
-  return (
-    <ModalForm<ProjectFormValues>
-      title="编辑项目"
-      trigger={
-        <Button type="link" icon={<EditOutlined />} onClick={onOpen}>
-          编辑
-        </Button>
-      }
-      modalProps={{ destroyOnHidden: true }}
-      initialValues={{
-        name: project?.name,
-        code: project?.code,
-        description: project?.description || undefined,
-        coverUrl: project?.coverUrl || undefined,
-        ownerId: project?.ownerId,
-        startDate: project?.startDate || undefined,
-        endDate: project?.endDate || undefined,
-      }}
-      onFinish={async (values) => {
-        const payload = {
-          ...values,
-          code: values.code?.trim().toUpperCase(),
-        };
-        await updateProject(project.id, payload);
-        message.success('项目已更新');
-        onDone();
-        return true;
-      }}
-    >
-      <ProFormText
-        name="name"
-        label="项目名称"
-        rules={[{ required: true, message: '请输入项目名称' }]}
-      />
-      <ProFormSelect
-        name="ownerId"
-        label="负责人"
-        options={memberOptions}
-        rules={[{ required: true, message: '请选择负责人' }]}
-      />
-      <ProFormTextArea name="description" label="项目描述" />
-      <ProFormText name="coverUrl" label="封面地址" />
-      <ProFormDatePicker name="startDate" label="开始时间" />
-      <ProFormDatePicker name="endDate" label="结束时间" />
-    </ModalForm>
-  );
 };
 
 const formatCreatedAt = (createdAt?: string | null) => {
@@ -182,39 +110,34 @@ const ProjectCard = ({
           </div>
         </div>
       </button>
-      <details className={styles.moreMenu}>
-        <summary aria-label={`${project.name}更多操作`}>
-          <MoreOutlined />
-        </summary>
-        <div className={styles.menuPanel}>
-          {project.capabilities.canEdit && (
-            <>
-              <ProjectEditor
-                project={project}
-                members={members}
-                onDone={onDone}
-                onOpen={onEditOpen}
-              />
-              <Button
-                type="text"
-                disabled={project.status === 'ARCHIVED'}
-                onClick={async () => {
-                  const nextStatus =
-                    project.status === 'NOT_STARTED'
-                      ? 'IN_PROGRESS'
-                      : 'ARCHIVED';
-                  await updateProjectStatus(project.id, nextStatus);
-                  message.success('项目状态已更新');
-                  onDone();
-                }}
-              >
-                {project.status === 'NOT_STARTED' ? '启动' : '归档'}
-              </Button>
-            </>
-          )}
-          <span className={styles.projectCode}>{project.code}</span>
-        </div>
-      </details>
+      {project.capabilities.canEdit && (
+        <details className={styles.moreMenu}>
+          <summary aria-label={`${project.name}更多操作`}>
+            <MoreOutlined />
+          </summary>
+          <div className={styles.menuPanel}>
+            <ProjectEditor
+              project={project}
+              members={members}
+              onDone={onDone}
+              onOpen={onEditOpen}
+            />
+            <Button
+              type="text"
+              disabled={project.status === 'ARCHIVED'}
+              onClick={async () => {
+                const nextStatus =
+                  project.status === 'NOT_STARTED' ? 'IN_PROGRESS' : 'ARCHIVED';
+                await updateProjectStatus(project.id, nextStatus);
+                message.success('项目状态已更新');
+                onDone();
+              }}
+            >
+              {project.status === 'NOT_STARTED' ? '启动' : '归档'}
+            </Button>
+          </div>
+        </details>
+      )}
     </article>
   );
 };

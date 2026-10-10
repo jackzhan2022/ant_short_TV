@@ -230,6 +230,7 @@ export default [
   {
     path: '/style-library',
     name: 'style-library',
+    hideInMenu: true,
     icon: 'picture',
     access: 'canViewStyleLibrary',
     component: './style-library',

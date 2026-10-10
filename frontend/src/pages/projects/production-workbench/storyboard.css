@@ -1,18 +1,5 @@
 .storyboard-workbench {
   padding: 16px 24px 34px;
-  scroll-snap-type: y proximity;
-}
-
-.storyboard-card {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  scroll-snap-align: start;
-  background: #fff;
-}
-
-.storyboard-card.is-scroll-released {
-  position: relative;
 }
 
 .storyboard-card-header {
@@ -228,15 +215,6 @@
 }
 
 @media (max-width: 1100px) {
-  .storyboard-workbench {
-    scroll-snap-type: none;
-  }
-
-  .storyboard-card {
-    position: static;
-    scroll-snap-align: none;
-  }
-
   .storyboard-card-content {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     height: auto;

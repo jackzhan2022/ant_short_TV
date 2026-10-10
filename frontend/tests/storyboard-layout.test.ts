@@ -38,30 +38,16 @@ describe('storyboard layout', () => {
     );
   });
 
-  it('sticks storyboard cards while preserving native nested scroll handoff on desktop', () => {
-    expect(stylesheet).toMatch(
-      /\.storyboard-workbench\s*{[^}]*scroll-snap-type:\s*y\s+proximity/s,
-    );
-    expect(stylesheet).toMatch(
-      /\.storyboard-card\s*{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*scroll-snap-align:\s*start/s,
-    );
+  it('keeps storyboard cards in normal document flow without scroll snapping', () => {
+    expect(stylesheet).not.toMatch(/scroll-snap-type/);
+    expect(stylesheet).not.toMatch(/scroll-snap-align/);
+    expect(stylesheet).not.toMatch(/position:\s*sticky/);
+    expect(stylesheet).not.toMatch(/storyboard-card\.is-scroll-released/);
     expect(stylesheet).toMatch(
       /\.storyboard-card-content\s*>\s*section:first-child\s*{[^}]*overflow-y:\s*auto[^}]*overscroll-behavior-y:\s*auto/s,
     );
     expect(stylesheet).toMatch(
       /\.storyboard-prompt-editor\s*{[^}]*overflow-y:\s*auto[^}]*overscroll-behavior-y:\s*auto/s,
-    );
-    expect(stylesheet).toMatch(
-      /\.storyboard-card\.is-scroll-released\s*{[^}]*position:\s*relative/s,
-    );
-  });
-
-  it('disables storyboard sticking and snapping at the responsive breakpoint', () => {
-    expect(stylesheet).toMatch(
-      /@media\s*\(max-width:\s*1100px\)[\s\S]*?\.storyboard-workbench\s*{[^}]*scroll-snap-type:\s*none/s,
-    );
-    expect(stylesheet).toMatch(
-      /@media\s*\(max-width:\s*1100px\)[\s\S]*?\.storyboard-card\s*{[^}]*position:\s*static[^}]*scroll-snap-align:\s*none/s,
     );
   });
 });

@@ -159,6 +159,25 @@ describe('app bootstrap state', () => {
     expect(config.menu).toBeUndefined();
   });
 
+  it('hides the standalone style library from the sidebar and keeps project and task entries', async () => {
+    const { layout } = await import('./app');
+    const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
+    if (typeof config.menuDataRender !== 'function') throw new Error('menuDataRender missing');
+    const menu = config.menuDataRender([
+      { path: '/short-drama-creation', name: '短剧创作' },
+      { path: '/projects/list', name: '项目列表' },
+      { path: '/tasks', name: '任务中心' },
+      { path: '/style-library', name: '风格库' },
+    ] as any);
+
+    expect(menu.find((group) => group.key === 'mine')?.children).toEqual([
+      expect.objectContaining({ path: '/projects/list' }),
+      expect.objectContaining({ path: '/tasks' }),
+    ]);
+    expect(menu.flatMap((group) => group.children || []))
+      .not.toContainEqual(expect.objectContaining({ path: '/style-library' }));
+  });
+
   it('adds the script review library entry to the creation menu group', async () => {
     const { layout } = await import('./app');
     const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);

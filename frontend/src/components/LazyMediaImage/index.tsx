@@ -1,5 +1,5 @@
 import { Image, type ImageProps } from 'antd';
-import { type CSSProperties, type ReactNode, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useRef, useState } from 'react';
 import { useMediaVisibility } from './useMediaVisibility';
 
 export type LazyMediaImageProps = Omit<ImageProps, 'fallback' | 'srcSet'> & {
@@ -32,8 +32,23 @@ const LazyMediaImage = ({
   const [failedSrc, setFailedSrc] = useState<string>();
   const currentSrc = useRef(src);
   currentSrc.current = src;
+  const nativeImage = useRef<HTMLImageElement | null>(null);
+  const nativeSource = useRef({ source: src, imageSrc: undefined as string | undefined });
+  const attachNativeImage = useCallback((image: HTMLImageElement | null) => {
+    if (!image && nativeImage.current) {
+      nativeImage.current.removeAttribute('src');
+      currentSrc.current = undefined;
+    }
+    nativeImage.current = image;
+    if (image) {
+      currentSrc.current = nativeSource.current.source;
+      const desired = nativeSource.current.imageSrc;
+      if (desired && image.getAttribute('src') !== desired) image.setAttribute('src', desired);
+    }
+  }, []);
   const failed = Boolean(src && failedSrc === src);
   const ready = Boolean(src && readySrc === src);
+  nativeSource.current = { source: src, imageSrc: shouldLoad && !failed ? src : undefined };
   const sharedImageStyle: CSSProperties = {
     width: '100%',
     height: '100%',
@@ -80,6 +95,7 @@ const LazyMediaImage = ({
         src ? (
           <img
             {...props}
+            ref={attachNativeImage}
             alt={alt}
             src={shouldLoad && !failed ? src : undefined}
             width={width}

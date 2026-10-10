@@ -1,8 +1,8 @@
 .page { min-height: 100vh; background: var(--app-color-bg-layout); color: var(--app-color-text); }
 .header { min-height: 64px; padding: 10px 40px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--app-color-bg-container); border-bottom: 1px solid var(--app-color-border); }
-.brand { display: inline-flex; align-items: center; gap: 10px; border: 0; background: transparent; color: var(--app-color-text); font-size: 17px; font-weight: 650; cursor: pointer; }
+.brand { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--app-color-text); font-family: inherit; font-size: 16px; font-weight: 600; line-height: 22px; cursor: pointer; }
 .brand:focus-visible { outline: 3px solid var(--app-color-primary); outline-offset: 3px; }
-.brandMark { width: 30px; height: 30px; display: grid; place-items: center; color: #fff; background: var(--app-color-primary); border-radius: 6px; }
+.brandMark { display: block; width: auto; height: 22px; flex-shrink: 0; object-fit: contain; }
 .headerRight { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .headerBalance { color: var(--app-color-text-secondary); font-size: 13px; white-space: nowrap; }
 .headerBalance strong { margin-left: 5px; color: var(--app-color-text); font-size: 16px; }
@@ -111,7 +111,6 @@
     --app-color-border: #383b43;
     color-scheme: dark;
   }
-  .brandMark { background: #6256e9; }
   .purchaseSection :global(.ant-tabs-nav::before) { border-color: var(--app-color-border); }
   .purchaseSection :global(.ant-tabs-tab) { color: var(--app-color-text-secondary); }
   .purchaseSection :global(.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn) { color: var(--app-color-primary); }

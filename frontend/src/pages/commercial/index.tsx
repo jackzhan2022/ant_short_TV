@@ -205,8 +205,8 @@ const CommercialPage = () => {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <button className={styles.brand} type="button" onClick={() => history.push('/')}>
-          <span className={styles.brandMark}>剧</span><span>剧智创</span>
+        <button className={styles.brand} type="button" aria-label="剧智创" onClick={() => history.push('/')}>
+          <img className={styles.brandMark} src="/juzhichuang-logo-mark.png" alt="剧智创 Logo" /><span>剧智创</span>
         </button>
         <div className={styles.headerRight}>
           <span className={styles.headerBalance}><WalletOutlined /> 团队积分 <strong>{balance.toLocaleString('zh-CN')}</strong></span>

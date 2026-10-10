@@ -291,22 +291,29 @@ const ProductionWorkbench = () => {
           })}
         </Flex>
 
-        <div
+        <button
+          type="button"
+          aria-label={`团队积分 ${pointBalance ?? '-'}，前往充值中心`}
+          onClick={() => history.push('/recharge')}
           style={{
             minWidth: 96,
             height: 32,
+            border: 0,
+            padding: '0 12px',
             borderRadius: 8,
             background: 'var(--app-color-primary-bg)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: 'var(--app-color-text-secondary)',
+            fontFamily: 'inherit',
             fontSize: 14,
             fontWeight: 600,
+            cursor: 'pointer',
           }}
         >
           ✦ {pointBalance ?? '-'}
-        </div>
+        </button>
       </header>
 
       <main
