@@ -307,7 +307,7 @@ describe('Register Page', () => {
 
     expect(screen.getByTestId('login-background-video')).toHaveAttribute(
       'src',
-      'https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4',
+      '/media/auth-background-h264.mp4',
     );
   });
 });

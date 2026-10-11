@@ -2,8 +2,13 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 
 const HAVE_CURRENT_DATA = 2;
 
-const loginVideoSrc =
-  'https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4';
+const loginVideoSrc = '/media/auth-background-h264.mp4';
+
+const hasVideoFrame = (video: HTMLVideoElement) =>
+  !video.error &&
+  video.readyState >= HAVE_CURRENT_DATA &&
+  video.videoWidth > 0 &&
+  video.videoHeight > 0;
 
 type AuthPageLayoutProps = {
   children: ReactNode;
@@ -16,7 +21,7 @@ const AuthPageLayout = ({ children }: AuthPageLayoutProps) => {
   useEffect(() => {
     const video = videoRef.current;
     // Cached/pre-rendered media can become ready before React receives loadeddata.
-    if (video && !video.error && video.readyState >= HAVE_CURRENT_DATA) {
+    if (video && hasVideoFrame(video)) {
       setVideoReady(true);
     }
   }, []);
@@ -66,9 +71,9 @@ const AuthPageLayout = ({ children }: AuthPageLayoutProps) => {
           loop
           muted
           onError={() => setVideoReady(false)}
-          onLoadedData={() => setVideoReady(true)}
-          onCanPlay={() => setVideoReady(true)}
-          onPlaying={() => setVideoReady(true)}
+          onLoadedData={(event) => setVideoReady(hasVideoFrame(event.currentTarget))}
+          onCanPlay={(event) => setVideoReady(hasVideoFrame(event.currentTarget))}
+          onPlaying={(event) => setVideoReady(hasVideoFrame(event.currentTarget))}
           playsInline
           preload="auto"
           src={loginVideoSrc}

@@ -376,9 +376,14 @@ describe('Login Page', () => {
     expect(video).toHaveStyle({ opacity: '0' });
     expect(video).toHaveAttribute(
       'src',
-      'https://zy-dimnx.oss-cn-shenzhen.aliyuncs.com/posters/loginVideo.mp4',
+      '/media/auth-background-h264.mp4',
     );
 
+    Object.defineProperties(video, {
+      readyState: { value: 2 },
+      videoWidth: { value: 720 },
+      videoHeight: { value: 800 },
+    });
     fireEvent.loadedData(video);
 
     expect(video).toHaveStyle({ opacity: '1' });
