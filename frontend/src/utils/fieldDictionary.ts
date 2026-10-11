@@ -56,6 +56,7 @@ const METRIC: Dictionary = {
   CACHE_WRITE_TOKEN: '缓存写入 Token 数',
   OUTPUT_TOKEN: '输出 Token 数',
   IMAGE: '图片数',
+  INPUT_IMAGE: '额外参考图片数',
   VIDEO_SECOND: '视频秒数',
   AUDIO_SECOND: '音频秒数',
   CHARACTER: '字符数',

@@ -74,6 +74,10 @@ class AiImageTaskServiceTest {
                 "portrait", null, List.of(), "16:9", 1, requestedStyle, null, null),
             "style-batch-test", "style-batch-test");
 
+        verify(fixture.executions).createWithReservation(any(),
+            org.mockito.ArgumentMatchers.argThat(usage -> usage.entrySet().stream()
+                .anyMatch(entry -> entry.getKey().name().equals("INPUT_IMAGE")
+                    && entry.getValue().compareTo(BigDecimal.ZERO) == 0)), any());
         assertThat(response.style()).isEqualTo(requestedStyle == null || requestedStyle.isBlank()
             ? "3D风格-定格动画" : requestedStyle);
     }

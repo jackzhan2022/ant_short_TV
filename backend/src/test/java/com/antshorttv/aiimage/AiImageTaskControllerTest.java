@@ -611,6 +611,10 @@ class AiImageTaskControllerTest extends com.antshorttv.support.RegistrationTestS
 
         Long taskId = readLong(created, "$.data.id");
         MvcResult completed = waitForTaskSuccess(token, tenantId, projectId, taskId);
+        assertThat((List<?>) JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results")).hasSize(1);
+        assertThat((Integer) JsonPath.read(completed.getResponse().getContentAsString(), "$.data.imageCount")).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select quantity from ai_usage_line where execution_id = (select execution_id from ai_image_task where id = ?) and metric = 'IMAGE'",
+            java.math.BigDecimal.class, taskId)).isEqualByComparingTo("1");
         Long resultId = readLong(completed, "$.data.results[0].id");
         String imageUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].imageUrl");
         String thumbnailUrl = JsonPath.read(completed.getResponse().getContentAsString(), "$.data.results[0].thumbnailUrl");
@@ -791,7 +795,7 @@ class AiImageTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                 "select metric from ai_usage_cost_line where execution_id = ? and pricing_status = 'PRICED' order by metric",
                 String.class,
                 executionId
-            )).containsExactly("CALL", "IMAGE");
+            )).containsExactly("CALL", "IMAGE", "INPUT_IMAGE");
         } finally {
             server.stop(0);
         }
@@ -1222,6 +1226,9 @@ class AiImageTaskControllerTest extends com.antshorttv.support.RegistrationTestS
         );
         com.antshorttv.support.ModelBillingTestSupport.publish(
             jdbcTemplate, modelId, "CALL", java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO
+        );
+        com.antshorttv.support.ModelBillingTestSupport.publish(
+            jdbcTemplate, modelId, "INPUT_IMAGE", java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO
         );
     }
 

@@ -1,0 +1,662 @@
+{
+  "schemaVersion": 1,
+  "referenceDate": "2026-10-11",
+  "operation": "model-billing-baseline-20261011",
+  "pointMultiplier": 210,
+  "minimumCnyPerPoint": "0.008316666666666667",
+  "targetMargin": ".30",
+  "paymentFeeAssumption": ".006",
+  "variableCostBufferAssumption": ".20",
+  "fxBudgetCnyPerUsd": "7.5",
+  "notes": [
+    "DeepSeek/GPT text uses DeepSeek Flash peak benchmark, not verified reseller cost",
+    "Qwen uses conservative long-context list-price budget for all requests",
+    "Images use Seedream5Pro high-resolution0.60CNY/image plus0.02 after first reference image",
+    "Video uses supplier completion tokens and resolution/reference-video dimensions",
+    "Existing history retained, no retrospective point collection"
+  ],
+  "models": [
+    {
+      "id": 2,
+      "code": "deepseek-v4-flash",
+      "name": "deepseek-v4-flash",
+      "type": "TEXT",
+      "expectedCostVersion": 1,
+      "expectedPointVersion": 3,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "INPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "2.25",
+          "currency": "CNY",
+          "pointRate": "472.50",
+          "dimensions": {}
+        },
+        {
+          "metric": "CACHED_INPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "0.045",
+          "currency": "CNY",
+          "pointRate": "9.450",
+          "dimensions": {}
+        },
+        {
+          "metric": "CACHE_WRITE_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "2.25",
+          "currency": "CNY",
+          "pointRate": "472.50",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "9",
+          "currency": "CNY",
+          "pointRate": "1890",
+          "dimensions": {}
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "code": "qwen-video-understanding",
+      "name": "Qwen 3.7 Plus 多模态拆剧",
+      "type": "VIDEO_UNDERSTANDING",
+      "expectedCostVersion": 2,
+      "expectedPointVersion": 2,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "INPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "6",
+          "currency": "CNY",
+          "pointRate": "1260",
+          "dimensions": {}
+        },
+        {
+          "metric": "CACHED_INPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "0.6",
+          "currency": "CNY",
+          "pointRate": "126.0",
+          "dimensions": {}
+        },
+        {
+          "metric": "CACHE_WRITE_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "7.5",
+          "currency": "CNY",
+          "pointRate": "1575.0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "24",
+          "currency": "CNY",
+          "pointRate": "5040",
+          "dimensions": {}
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "code": "SEEDANCE_2_0_FAST",
+      "name": "Seedance 2.0 Fast",
+      "type": "VIDEO",
+      "expectedCostVersion": 8,
+      "expectedPointVersion": 8,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "37",
+          "currency": "CNY",
+          "pointRate": "7770",
+          "dimensions": {}
+        },
+        {
+          "metric": "VIDEO_SECOND",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "37",
+          "currency": "CNY",
+          "pointRate": "7770",
+          "dimensions": {
+            "resolution": "480p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "22",
+          "currency": "CNY",
+          "pointRate": "4620",
+          "dimensions": {
+            "resolution": "480p",
+            "referenceVideo": "true"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "37",
+          "currency": "CNY",
+          "pointRate": "7770",
+          "dimensions": {
+            "resolution": "720p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "22",
+          "currency": "CNY",
+          "pointRate": "4620",
+          "dimensions": {
+            "resolution": "720p",
+            "referenceVideo": "true"
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "code": "SEEDANCE_2_0_STANDARD",
+      "name": "Seedance 2.0 Standard",
+      "type": "VIDEO",
+      "expectedCostVersion": 10,
+      "expectedPointVersion": 10,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "51",
+          "currency": "CNY",
+          "pointRate": "10710",
+          "dimensions": {}
+        },
+        {
+          "metric": "VIDEO_SECOND",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "46",
+          "currency": "CNY",
+          "pointRate": "9660",
+          "dimensions": {
+            "resolution": "480p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "28",
+          "currency": "CNY",
+          "pointRate": "5880",
+          "dimensions": {
+            "resolution": "480p",
+            "referenceVideo": "true"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "46",
+          "currency": "CNY",
+          "pointRate": "9660",
+          "dimensions": {
+            "resolution": "720p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "28",
+          "currency": "CNY",
+          "pointRate": "5880",
+          "dimensions": {
+            "resolution": "720p",
+            "referenceVideo": "true"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "51",
+          "currency": "CNY",
+          "pointRate": "10710",
+          "dimensions": {
+            "resolution": "1080p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "31",
+          "currency": "CNY",
+          "pointRate": "6510",
+          "dimensions": {
+            "resolution": "1080p",
+            "referenceVideo": "true"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "26",
+          "currency": "CNY",
+          "pointRate": "5460",
+          "dimensions": {
+            "resolution": "4k",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "16",
+          "currency": "CNY",
+          "pointRate": "3360",
+          "dimensions": {
+            "resolution": "4k",
+            "referenceVideo": "true"
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "code": "SEEDANCE_2_5",
+      "name": "Seedance 2.5",
+      "type": "VIDEO",
+      "expectedCostVersion": 13,
+      "expectedPointVersion": 11,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "77",
+          "currency": "CNY",
+          "pointRate": "16170",
+          "dimensions": {}
+        },
+        {
+          "metric": "VIDEO_SECOND",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "70",
+          "currency": "CNY",
+          "pointRate": "14700",
+          "dimensions": {
+            "resolution": "480p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "42",
+          "currency": "CNY",
+          "pointRate": "8820",
+          "dimensions": {
+            "resolution": "480p",
+            "referenceVideo": "true"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "70",
+          "currency": "CNY",
+          "pointRate": "14700",
+          "dimensions": {
+            "resolution": "720p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "42",
+          "currency": "CNY",
+          "pointRate": "8820",
+          "dimensions": {
+            "resolution": "720p",
+            "referenceVideo": "true"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "77",
+          "currency": "CNY",
+          "pointRate": "16170",
+          "dimensions": {
+            "resolution": "1080p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "46",
+          "currency": "CNY",
+          "pointRate": "9660",
+          "dimensions": {
+            "resolution": "1080p",
+            "referenceVideo": "true"
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "code": "gpt-5.6-terra-xiongxiong",
+      "name": "GPT-5.6 Terra（中度思考）",
+      "type": "TEXT",
+      "expectedCostVersion": 5,
+      "expectedPointVersion": 6,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "INPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "2.25",
+          "currency": "CNY",
+          "pointRate": "472.50",
+          "dimensions": {}
+        },
+        {
+          "metric": "CACHED_INPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "0.045",
+          "currency": "CNY",
+          "pointRate": "9.450",
+          "dimensions": {}
+        },
+        {
+          "metric": "CACHE_WRITE_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "2.25",
+          "currency": "CNY",
+          "pointRate": "472.50",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "9",
+          "currency": "CNY",
+          "pointRate": "1890",
+          "dimensions": {}
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "code": "gpt-image-2",
+      "name": "gpt-image-2",
+      "type": "IMAGE",
+      "expectedCostVersion": 6,
+      "expectedPointVersion": 7,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "IMAGE",
+          "unitSize": 1,
+          "unitPrice": "0.6",
+          "currency": "CNY",
+          "pointRate": "126.0",
+          "dimensions": {}
+        },
+        {
+          "metric": "INPUT_IMAGE",
+          "unitSize": 1,
+          "unitPrice": "0.02",
+          "currency": "CNY",
+          "pointRate": "4.20",
+          "dimensions": {}
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "code": "gpt-image-2.5-sunburst",
+      "name": "gpt-image-2.5-sunburst",
+      "type": "IMAGE",
+      "expectedCostVersion": null,
+      "expectedPointVersion": null,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "IMAGE",
+          "unitSize": 1,
+          "unitPrice": "0.6",
+          "currency": "CNY",
+          "pointRate": "126.0",
+          "dimensions": {}
+        },
+        {
+          "metric": "INPUT_IMAGE",
+          "unitSize": 1,
+          "unitPrice": "0.02",
+          "currency": "CNY",
+          "pointRate": "4.20",
+          "dimensions": {}
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "code": "gpt-image-2.5-flare",
+      "name": "gpt-image-2.5-flare",
+      "type": "IMAGE",
+      "expectedCostVersion": null,
+      "expectedPointVersion": null,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "IMAGE",
+          "unitSize": 1,
+          "unitPrice": "0.6",
+          "currency": "CNY",
+          "pointRate": "126.0",
+          "dimensions": {}
+        },
+        {
+          "metric": "INPUT_IMAGE",
+          "unitSize": 1,
+          "unitPrice": "0.02",
+          "currency": "CNY",
+          "pointRate": "4.20",
+          "dimensions": {}
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "code": "SEEDANCE_2_0_MINI",
+      "name": "Seedance 2.0 mini",
+      "type": "VIDEO",
+      "expectedCostVersion": 9,
+      "expectedPointVersion": 9,
+      "components": [
+        {
+          "metric": "CALL",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "23",
+          "currency": "CNY",
+          "pointRate": "4830",
+          "dimensions": {}
+        },
+        {
+          "metric": "VIDEO_SECOND",
+          "unitSize": 1,
+          "unitPrice": "0",
+          "currency": "CNY",
+          "pointRate": "0",
+          "dimensions": {}
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "23",
+          "currency": "CNY",
+          "pointRate": "4830",
+          "dimensions": {
+            "resolution": "480p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "14",
+          "currency": "CNY",
+          "pointRate": "2940",
+          "dimensions": {
+            "resolution": "480p",
+            "referenceVideo": "true"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "23",
+          "currency": "CNY",
+          "pointRate": "4830",
+          "dimensions": {
+            "resolution": "720p",
+            "referenceVideo": "false"
+          }
+        },
+        {
+          "metric": "OUTPUT_TOKEN",
+          "unitSize": 1000000,
+          "unitPrice": "14",
+          "currency": "CNY",
+          "pointRate": "2940",
+          "dimensions": {
+            "resolution": "720p",
+            "referenceVideo": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "unpublishTestVersions": [
+    {
+      "packageId": 6,
+      "versionId": 6,
+      "expectedPrice": "0.01"
+    },
+    {
+      "packageId": 7,
+      "versionId": 7,
+      "expectedPrice": "0.01"
+    }
+  ]
+}

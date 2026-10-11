@@ -421,12 +421,16 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
             "select status from ai_point_reservation where execution_id = ?",
             String.class,
             executionId
-        )).isEqualTo("SETTLED");
+        )).isEqualTo("SETTLEMENT_REVIEW_REQUIRED");
         assertThat(jdbc.queryForObject(
-            "select count(*) from point_ledger where execution_id = ? and entry_type = 'SETTLE'",
+            "select count(*) from point_ledger where execution_id = ? and entry_type = 'SETTLEMENT_REVIEW'",
             Integer.class,
             executionId
         )).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from point_ledger where execution_id = ? and entry_type = 'SETTLE'",
+            Integer.class, executionId)).isZero();
+        assertThat(jdbc.queryForObject("select reserved_points - settled_points - released_points from ai_point_reservation where execution_id = ?",
+            java.math.BigDecimal.class, executionId)).isEqualByComparingTo("1");
     }
 
     @Test
@@ -969,7 +973,9 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
             assertThat(queries.get()).isZero();
             assertThat(jdbc.queryForObject(
                 "select status from ai_point_reservation where execution_id = (select execution_id from ai_video_task where id = ?)",
-                String.class, taskId)).isEqualTo("RELEASED");
+                String.class, taskId)).isEqualTo("SETTLEMENT_REVIEW_REQUIRED");
+            assertThat(jdbc.queryForObject("select reserved_points - settled_points - released_points from ai_point_reservation where execution_id = (select execution_id from ai_video_task where id = ?)",
+                java.math.BigDecimal.class, taskId)).isPositive();
         } finally {
             server.stop(0);
         }
@@ -1000,7 +1006,7 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
              where model_id = ? and capability = 'VIDEO_GENERATION'
             """, modelId);
         com.antshorttv.support.ModelBillingTestSupport.publish(
-            jdbc, modelId, "VIDEO_SECOND", java.math.BigDecimal.valueOf(5), java.math.BigDecimal.ONE);
+            jdbc, modelId, "OUTPUT_TOKEN", java.math.BigDecimal.valueOf(1000000), java.math.BigDecimal.ONE);
         com.antshorttv.support.ModelBillingTestSupport.publish(
             jdbc, modelId, "CALL", java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO);
         return modelId;

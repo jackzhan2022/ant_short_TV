@@ -1,6 +1,7 @@
 package com.antshorttv.video;
 
 import com.antshorttv.accounting.AiExecutionCostSummary;
+import com.antshorttv.accounting.AiAccountingJson;
 import com.antshorttv.accounting.AiUsageAccountingService;
 import com.antshorttv.accounting.AiUsageCommand;
 import com.antshorttv.accounting.AiUsageContext;
@@ -311,11 +312,8 @@ public class AiVideoTaskService {
                 true,
                 "{\"storyboardId\":%d}".formatted(task.storyboardId)
             ),
-            Map.of(
-                AiUsageMetric.CALL, BigDecimal.ONE,
-                AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(prepared.billingDurationSeconds())
-            ),
-            Map.of("resolution", task.resolution, "aspectRatio", task.aspectRatio)
+            videoAuthorizedUsage(task, prepared.billingDurationSeconds()),
+            videoDimensions(task)
         );
         task.executionId = execution.id;
         aiVideoTaskMapper.updateById(task);
@@ -363,7 +361,8 @@ public class AiVideoTaskService {
         task.completedAt = LocalDateTime.now();
         task.updatedAt = task.completedAt;
         aiVideoTaskMapper.updateById(task);
-        settleExecution(task, AiSettlementOutcome.PRE_CALL_CANCELED, null, null, "CANCELED");
+        settleExecution(task, task.externalTaskId == null ? AiSettlementOutcome.PRE_CALL_CANCELED
+            : AiSettlementOutcome.TRANSPORT_UNKNOWN, null, null, "CANCELED");
         recordOperation(context, projectId, "CANCEL_AI_VIDEO_TASK", task.id, servletRequest);
         return response(task);
     }
@@ -801,7 +800,8 @@ public class AiVideoTaskService {
             task.lastPollAt = now;
             if (invocation.response() != null && "SUCCEEDED".equals(invocation.response().status())) {
                 AiVideoProviderAdapter.VideoResult providerResult = invocation.response();
-                task.providerResultMetadataJson = providerResult.metadataJson();
+                rememberProviderBilling(task, attempt.id, invocation);
+                recordUsageAndCost(task, attempt.id, invocation);
                 if (providerResult.durationSeconds() != null) {
                     task.durationSeconds = providerResult.durationSeconds().intValue();
                 }
@@ -815,12 +815,13 @@ public class AiVideoTaskService {
                 task.nextPollAt = null;
                 aiVideoTaskMapper.updateById(task);
                 finishExecutionAttempt(attempt, invocation, "SUCCEEDED", false, null, null);
-                recordUsageAndCost(task, attempt.id, invocation);
                 settleExecution(task, AiSettlementOutcome.SUCCESS, attempt.id, invocation.aiCallLogId(), "SUCCEEDED");
                 executionSupport.clearAiVideoTaskClaim(task.id, false);
                 return;
             }
             if (invocation.response() != null && "FAILED".equals(invocation.response().status())) {
+                rememberProviderBilling(task, attempt.id, invocation);
+                recordUsageAndCost(task, attempt.id, invocation);
                 failTask(task, invocation.response().errorMessage() == null ? "视频生成失败。" : invocation.response().errorMessage(), userId, now);
                 invocationService.markBusinessFailure(invocation.aiCallLogId(), ErrorCode.AI_PROVIDER_ERROR, task.errorMessage);
                 finishExecutionAttempt(attempt, invocation, "FAILED", false, "AI_PROVIDER_ERROR", task.errorMessage);
@@ -1179,24 +1180,29 @@ public class AiVideoTaskService {
         AiUsageContext context = new AiUsageContext(
             task.tenantId,
             task.executionId,
-            attemptId,
-            invocation.aiCallLogId(),
+            billingCorrelation(task, "billingAttemptId", attemptId),
+            billingCorrelation(task, "billingCallLogId", invocation.aiCallLogId()),
             invocation.resolvedModelId()
         );
-        usageAccountingService.record(AiUsageCommand.requestDerived(
-            context, AiUsageMetric.CALL, "1", Map.of(), observedAt
-        ));
-        usageAccountingService.record(AiUsageCommand.resultMeasured(
-            context,
-            AiUsageMetric.VIDEO_SECOND,
-            String.valueOf(task.durationSeconds),
-            Map.of("resolution", task.resolution, "aspectRatio", task.aspectRatio),
-            observedAt
-        ));
-        AiExecutionCostSummary cost = usageAccountingService.priceExecution(
-            task.executionId,
-            Set.of(AiUsageMetric.CALL, AiUsageMetric.VIDEO_SECOND)
-        );
+        boolean tokenBilling = usesVideoTokens(task);
+        if (tokenBilling) {
+            AiVideoProviderAdapter.VideoResult result = (AiVideoProviderAdapter.VideoResult) invocation.response();
+            if (result != null && result.completionTokens() != null && result.completionTokens() > 0) {
+                Map<String, String> dimensions = new LinkedHashMap<>(videoDimensions(task));
+                if (result.resolution() != null) dimensions.put("resolution", result.resolution().toLowerCase(java.util.Locale.ROOT));
+                usageAccountingService.recordIfAbsent(AiUsageCommand.providerReported(context,
+                    AiUsageMetric.OUTPUT_TOKEN, result.completionTokens().toString(), dimensions, observedAt));
+            }
+        } else if (invocation.response() instanceof AiVideoProviderAdapter.VideoResult result
+            && "SUCCEEDED".equals(result.status())) {
+            usageAccountingService.recordIfAbsent(AiUsageCommand.requestDerived(
+                context, AiUsageMetric.CALL, "1", Map.of(), observedAt));
+            usageAccountingService.recordIfAbsent(AiUsageCommand.resultMeasured(context, AiUsageMetric.VIDEO_SECOND,
+                result.durationSeconds() == null ? String.valueOf(task.durationSeconds) : result.durationSeconds().toPlainString(),
+                videoDimensions(task), observedAt));
+        }
+        AiExecutionCostSummary cost = usageAccountingService.priceExecution(task.executionId,
+            tokenBilling ? Set.of(AiUsageMetric.OUTPUT_TOKEN) : Set.of(AiUsageMetric.CALL, AiUsageMetric.VIDEO_SECOND));
         try {
             executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
                 .set("usage_cost_status", cost.status().name())
@@ -1205,6 +1211,109 @@ public class AiVideoTaskService {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to persist video cost summary.", exception);
         }
+    }
+
+    private boolean usesVideoTokens(AiVideoTaskEntity task) {
+        AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(task.executionId);
+        // Authorization was validated against both frozen price versions when the task was created.
+        return reservation != null && AiAccountingJson.read(reservation.authorizedUsageJson)
+            .containsKey(AiUsageMetric.OUTPUT_TOKEN.name());
+    }
+
+    private Map<AiUsageMetric, BigDecimal> videoAuthorizedUsage(AiVideoTaskEntity task, int maximumDuration) {
+        if (!"VOLCENGINE_ARK".equalsIgnoreCase(task.providerCode)) {
+            return Map.of(AiUsageMetric.CALL, BigDecimal.ONE,
+                AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(maximumDuration));
+        }
+        int shortEdge = switch (task.resolution.toLowerCase(java.util.Locale.ROOT)) {
+            case "480p" -> 480;
+            case "720p" -> 720;
+            case "1080p" -> 1080;
+            case "4k" -> 2160;
+            default -> throw new IllegalArgumentException("视频分辨率没有安全的积分预占上限。");
+        };
+        double ratio = 3; // Adaptive ratio is bounded by Seedance's supported aspect ratios.
+        if (task.aspectRatio != null && task.aspectRatio.matches("[1-9][0-9]*:[1-9][0-9]*")) {
+            String[] parts = task.aspectRatio.split(":");
+            double requested = Double.parseDouble(parts[0]) / Double.parseDouble(parts[1]);
+            ratio = Math.max(requested, 1 / requested);
+        }
+        if (maximumDuration <= 0 || maximumDuration > 60 || ratio > 3) {
+            throw new IllegalArgumentException("视频生成请求没有安全的积分预占上限。");
+        }
+        // A square at the longest edge, rounded up by one 64px block, conservatively bounds
+        // output pixels. References are added separately; actual billing always uses reported tokens.
+        long edge = ((long) Math.ceil(shortEdge * ratio) / 64 + 1) * 64;
+        BigDecimal pixelFrames = BigDecimal.valueOf(edge).pow(2)
+            .multiply(BigDecimal.valueOf(24L * maximumDuration));
+        for (JsonNode item : videoSnapshot(task).path("references")) {
+            if (!"VIDEO".equalsIgnoreCase(item.path("reference").path("mediaType").asText())) continue;
+            int width = item.path("width").asInt();
+            int height = item.path("height").asInt();
+            BigDecimal duration = item.path("durationSeconds").decimalValue();
+            BigDecimal fps = item.path("fps").decimalValue().max(BigDecimal.valueOf(24));
+            if (width <= 0 || height <= 0 || duration.signum() <= 0) {
+                throw new IllegalArgumentException("参考视频缺少计费预占所需的尺寸或时长。");
+            }
+            BigDecimal referencePixels = BigDecimal.valueOf((width / 64L + 1) * 64)
+                .multiply(BigDecimal.valueOf((height / 64L + 1) * 64))
+                .max(BigDecimal.valueOf(edge).pow(2)).max(BigDecimal.valueOf(1280L * 1280));
+            pixelFrames = pixelFrames.add(referencePixels.multiply(duration).multiply(fps));
+        }
+        return Map.of(AiUsageMetric.OUTPUT_TOKEN,
+            pixelFrames.divide(BigDecimal.valueOf(1024), 0, java.math.RoundingMode.CEILING));
+    }
+
+    private Map<String, String> videoDimensions(AiVideoTaskEntity task) {
+        boolean referenceVideo = false;
+        for (JsonNode item : videoSnapshot(task).path("references")) {
+            if ("VIDEO".equalsIgnoreCase(item.path("reference").path("mediaType").asText())) referenceVideo = true;
+        }
+        return Map.of("resolution", "VOLCENGINE_ARK".equalsIgnoreCase(task.providerCode)
+                ? task.resolution.toLowerCase(java.util.Locale.ROOT) : task.resolution,
+            "aspectRatio", task.aspectRatio, "referenceVideo", String.valueOf(referenceVideo));
+    }
+
+    private JsonNode videoSnapshot(AiVideoTaskEntity task) {
+        return videoJson(task.requestSnapshotJson);
+    }
+
+    private JsonNode videoJson(String json) {
+        try {
+            return json == null || json.isBlank() ? objectMapper.createObjectNode() : objectMapper.readTree(json);
+        } catch (Exception exception) {
+            throw new IllegalStateException("视频计费快照无法读取。", exception);
+        }
+    }
+
+    private Map<AiUsageMetric, BigDecimal> videoActualUsage(AiVideoTaskEntity task, AiSettlementOutcome outcome) {
+        if (!usesVideoTokens(task)) {
+            return outcome == AiSettlementOutcome.SUCCESS ? Map.of(AiUsageMetric.CALL, BigDecimal.ONE,
+                AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(task.durationSeconds)) : Map.of();
+        }
+        JsonNode metadata = videoJson(task.providerResultMetadataJson);
+        JsonNode tokens = metadata.path("completionTokens");
+        String measuredResolution = metadata.path("resolution").asText("");
+        if (!tokens.isIntegralNumber() || !tokens.canConvertToLong() || tokens.longValue() <= 0
+            || (!measuredResolution.isBlank() && !measuredResolution.equalsIgnoreCase(task.resolution))) return Map.of();
+        return Map.of(AiUsageMetric.OUTPUT_TOKEN, BigDecimal.valueOf(tokens.longValue()));
+    }
+
+    private void rememberProviderBilling(AiVideoTaskEntity task, Long attemptId,
+        AiInvocationResult<AiVideoProviderAdapter.VideoResult> invocation) {
+        JsonNode previous = videoJson(task.providerResultMetadataJson);
+        var metadata = (com.fasterxml.jackson.databind.node.ObjectNode) videoJson(invocation.response().metadataJson());
+        if (invocation.response().completionTokens() != null) metadata.put("completionTokens", invocation.response().completionTokens());
+        if (invocation.response().resolution() != null) metadata.put("resolution", invocation.response().resolution());
+        metadata.put("billingAttemptId", previous.path("billingAttemptId").asLong(attemptId));
+        metadata.put("billingCallLogId", previous.path("billingCallLogId").asLong(invocation.aiCallLogId()));
+        task.providerResultMetadataJson = metadata.toString();
+        aiVideoTaskMapper.updateById(task);
+    }
+
+    private Long billingCorrelation(AiVideoTaskEntity task, String field, Long fallback) {
+        JsonNode value = videoJson(task.providerResultMetadataJson).path(field);
+        return value.isIntegralNumber() ? Long.valueOf(value.longValue()) : fallback;
     }
 
     private void updateExecutionPhase(Long executionId, String phase, int progress) {
@@ -1235,19 +1344,15 @@ public class AiVideoTaskService {
         if (task.executionId == null) return;
         AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(task.executionId);
         if (reservation != null && "RESERVED".equals(reservation.status)) {
-            pointSettlementService.finalizeOutcome(
-                reservation.id,
-                outcome,
-                outcome == AiSettlementOutcome.SUCCESS
-                    ? Map.of(
-                        AiUsageMetric.CALL, BigDecimal.ONE,
-                        AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(task.durationSeconds)
-                    )
-                    : Map.of(),
-                attemptId,
-                callLogId,
-                "execution:%d:v1:%s".formatted(task.executionId, outcome.name().toLowerCase())
-            );
+            Map<AiUsageMetric, BigDecimal> usage = videoActualUsage(task, outcome);
+            AiSettlementOutcome billingOutcome = usesVideoTokens(task) && usage.isEmpty()
+                && outcome != AiSettlementOutcome.PRE_CALL_CANCELED && outcome != AiSettlementOutcome.PROVIDER_REJECTION
+                ? AiSettlementOutcome.TRANSPORT_UNKNOWN : outcome;
+            Long billedAttemptId = billingCorrelation(task, "billingAttemptId", attemptId);
+            Long billedCallLogId = billingCorrelation(task, "billingCallLogId", callLogId);
+            pointSettlementService.finalizeOutcome(reservation.id, billingOutcome, usage, billedAttemptId, billedCallLogId,
+                "execution:%d:attempt:%s:call:%s:%s".formatted(task.executionId, billedAttemptId, billedCallLogId,
+                    billingOutcome.name().toLowerCase()));
         }
         AiExecutionTaskEntity execution = executionTaskMapper.selectById(task.executionId);
         execution.status = status;

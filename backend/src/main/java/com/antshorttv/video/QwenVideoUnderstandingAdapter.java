@@ -63,7 +63,9 @@ public class QwenVideoUnderstandingAdapter {
                 nullableInt(usage, "completion_tokens"),
                 nullableInt(usage, "total_tokens"),
                 Math.max(1, System.currentTimeMillis() - started),
-                Map.of("provider", provider.getCode())
+                Map.of("provider", provider.getCode()),
+                nullableInt(usage.path("prompt_tokens_details"), "cached_tokens"),
+                nullableInt(usage.path("prompt_tokens_details"), "cache_write_tokens")
             );
         } catch (AiGatewayException exception) {
             throw exception;

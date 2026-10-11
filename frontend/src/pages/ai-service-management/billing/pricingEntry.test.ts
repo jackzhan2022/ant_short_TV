@@ -13,6 +13,7 @@ describe('pricing entry helpers', () => {
     );
     expect(formatBillingUnit('CALL', 1)).toBe('1 次');
     expect(formatBillingUnit('IMAGE', 1)).toBe('1 张');
+    expect(formatBillingUnit('INPUT_IMAGE', 1)).toBe('1 张');
     expect(formatBillingUnit('VIDEO_SECOND', 1)).toBe('1 秒');
     expect(formatBillingUnit('AUDIO_SECOND', 1)).toBe('1 秒');
     expect(formatBillingUnit('CHARACTER', 1)).toBe('1 字符');

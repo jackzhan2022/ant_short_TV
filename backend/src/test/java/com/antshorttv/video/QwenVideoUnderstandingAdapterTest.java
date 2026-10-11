@@ -28,7 +28,7 @@ class QwenVideoUnderstandingAdapterTest {
                 {
                   "id":"qwen-video-test",
                   "choices":[{"message":{"content":"{\\"characters\\":[],\\"scenes\\":[],\\"props\\":[],\\"timeline\\":[],\\"dialogue\\":[],\\"actions\\":[],\\"emotions\\":[]}"}}],
-                  "usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}
+                  "usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20,"prompt_tokens_details":{"cached_tokens":6,"cache_write_tokens":2}}
                 }
                 """.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -59,6 +59,8 @@ class QwenVideoUnderstandingAdapterTest {
             assertThat(requestBody.get()).contains("只返回合法 JSON");
             assertThat(response.providerRequestId()).isEqualTo("qwen-video-test");
             assertThat(response.totalTokens()).isEqualTo(20);
+            assertThat(response.cachedInputTokens()).isEqualTo(6);
+            assertThat(response.cacheWriteTokens()).isEqualTo(2);
         } finally {
             server.stop(0);
         }

@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class DefaultAiGateway extends AiGateway {
+    @org.springframework.beans.factory.annotation.Autowired
+    private AiTextBudgetService textBudgetService;
     private final AiModelRouter aiModelRouter;
     private final AiCallLogWriter aiCallLogWriter;
     private final AiProviderConcurrencyLimiter concurrencyLimiter;
@@ -23,10 +25,12 @@ public class DefaultAiGateway extends AiGateway {
     public AiTextResponse text(AiContext context, AiTextRequest request) {
         validateContext(context);
         AiModelRoute route = aiModelRouter.route(context.modelId(), "TEXT");
+        AiTextRequest authorizedRequest = textBudgetService == null ? request
+            : textBudgetService.authorize(context.withModelId(route.model().getId()), request);
         long started = System.currentTimeMillis();
         try {
             AiTextResponse response = concurrencyLimiter.execute(route.provider(), () ->
-                route.adapter().text(route.provider(), route.providerConfig(), route.model(), request));
+                route.adapter().text(route.provider(), route.providerConfig(), route.model(), authorizedRequest));
             record(context.withModelId(route.model().getId()), route, "TEXT", request.userPrompt(), response.content(), "SUCCESS", null, started, response);
             return response;
         } catch (AiGatewayException exception) {
@@ -68,6 +72,10 @@ public class DefaultAiGateway extends AiGateway {
         long started,
         Object response
     ) {
+        if (response instanceof AiTextResponse textResponse && "SUCCESS".equals(status)) {
+            return aiCallLogWriter.record(AiInvocationLogRequest.successText(context, route,
+                requestSummary, textResponse, System.currentTimeMillis() - started));
+        }
         return aiCallLogWriter.record(new AiInvocationLogRequest(
             context,
             route,

@@ -27,6 +27,8 @@ public class AiUsageExtractor {
         Integer cacheWriteTokens,
         LocalDateTime observedAt
     ) {
+        tokenDetail(inputTokens, "inputTokens");
+        tokenDetail(outputTokens, "outputTokens");
         List<AiUsageCommand> usage = new ArrayList<>();
         if (inputTokens != null) {
             int cached = tokenDetail(cachedInputTokens, "cachedInputTokens");
@@ -34,17 +36,13 @@ public class AiUsageExtractor {
             if ((long) cached + cacheWrite > inputTokens) {
                 throw new IllegalArgumentException("cache token details cannot exceed inputTokens");
             }
-            boolean cacheBreakdownAbsent = cachedInputTokens == null && cacheWriteTokens == null;
-            boolean cacheBreakdownComplete = cachedInputTokens != null && cacheWriteTokens != null;
-            if (cacheBreakdownAbsent || cacheBreakdownComplete) {
-                usage.add(provider(
-                    context,
-                    AiUsageMetric.INPUT_TOKEN,
-                    BigDecimal.valueOf(inputTokens - cached - cacheWrite),
-                    Map.of(),
-                    observedAt
-                ));
-            }
+            usage.add(provider(
+                context,
+                AiUsageMetric.INPUT_TOKEN,
+                BigDecimal.valueOf(inputTokens - cached - cacheWrite),
+                Map.of(),
+                observedAt
+            ));
             if (cachedInputTokens != null) {
                 usage.add(provider(
                     context, AiUsageMetric.CACHED_INPUT_TOKEN, BigDecimal.valueOf(cached), Map.of(), observedAt

@@ -93,6 +93,7 @@ class AiImageExecutionHandlerRenditionTest {
     void defersCompletionAfterSubmittingGeneratedImageForDisplayProcessing() {
         Fixture fixture = new Fixture();
         fixture.task.setTaskType("CHARACTER");
+        fixture.task.setImageCount(2);
         fixture.task.setPrompt("portrait");
         fixture.task.setAspectRatio("1:1");
         fixture.task.setQuality("STANDARD");
@@ -144,6 +145,8 @@ class AiImageExecutionHandlerRenditionTest {
         assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
             .isInstanceOf(AiExecutionDeferredException.class);
 
+        assertThat(fixture.task.getImageCount()).isEqualTo(1);
+        verify(fixture.storage, never()).createPlaceholder(any(), any(), anyInt());
         assertThat(fixture.task.getStatus()).isEqualTo("RENDERING");
         assertThat(fixture.task.getCompletedAt()).isNull();
         verify(fixture.results).updateById(org.mockito.ArgumentMatchers.argThat((AiImageResultEntity result) ->
@@ -157,6 +160,7 @@ class AiImageExecutionHandlerRenditionTest {
     @Test
     void retiresDurablyRegisteredMediaBeforeDeletingResultWhenStorageSubmissionFails() {
         Fixture fixture = new Fixture();
+        fixture.settlementSucceeds();
         when(fixture.results.selectByTask(33L)).thenReturn(List.of());
         doAnswer(invocation -> {
             ((AiImageResultEntity) invocation.getArgument(0)).setId(44L);
@@ -177,6 +181,9 @@ class AiImageExecutionHandlerRenditionTest {
             AiImageResultStatus.PROCESSING.name()
         )));
         cleanup.verify(fixture.results).deleteById(44L);
+        verify(fixture.accounting, org.mockito.Mockito.atLeastOnce()).recordIfAbsent(
+            org.mockito.ArgumentMatchers.argThat(line -> line.metric() == com.antshorttv.accounting.AiUsageMetric.IMAGE
+                && line.quantity().compareTo(BigDecimal.ONE) == 0));
         assertThat(fixture.task.getStatus()).isEqualTo(AiImageTaskStatus.RUNNING.name());
         verify(fixture.results, never()).activateForPublication(any(), any());
         verify(fixture.variants, never()).generationSucceededIfClaimActive(
@@ -408,6 +415,73 @@ class AiImageExecutionHandlerRenditionTest {
         verify(fixture.variants, never()).generationSucceededIfClaimActive(
             any(), any(), any(), any(), any(), any(), any(), any()
         );
+    }
+
+    @Test
+    void rejectsMissingProviderOutputsWithoutCreatingBillablePlaceholders() {
+        Fixture fixture = new Fixture();
+        fixture.settlementSucceeds();
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of());
+        when(fixture.invocations.invokeImage(any())).thenReturn(fixture.providerResult(List.of()));
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("未返回有效图片");
+        verify(fixture.storage, never()).createPlaceholder(any(), any(), anyInt());
+        verify(fixture.settlements).finalizeOutcome(any(),
+            org.mockito.ArgumentMatchers.eq(com.antshorttv.points.AiSettlementOutcome.TRANSPORT_UNKNOWN),
+            org.mockito.ArgumentMatchers.eq(Map.of()), any(), any(), any());
+    }
+
+    @Test
+    void settlesAdditionalInputImagesOnlyWhenAuthorizedByFrozenSchedule() {
+        Fixture fixture = new Fixture();
+        fixture.settlementSucceeds();
+        fixture.task.setStatus("SETTLING");
+        fixture.task.setReferenceImages(ReferenceImagesCodec.encode(List.of("https://a", "https://b", "https://c")));
+        AiPointReservationEntity reservation = fixture.reservation();
+        reservation.authorizedUsageJson = "{\"CALL\":1,\"IMAGE\":1,\"INPUT_IMAGE\":2}";
+        when(fixture.reservations.selectByExecutionId(99L)).thenReturn(reservation);
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of(fixture.result("PROCESSING")));
+        AiExecutionAttemptEntity attempt = new AiExecutionAttemptEntity();
+        attempt.id = 100L; attempt.aiCallLogId = 900L; attempt.modelId = 8L;
+        when(fixture.attempts.selectByExecutionId(99L)).thenReturn(List.of(attempt));
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context())).isInstanceOf(AiExecutionDeferredException.class);
+        verify(fixture.accounting).recordIfAbsent(org.mockito.ArgumentMatchers.argThat(line ->
+            line.metric().name().equals("INPUT_IMAGE") && line.quantity().compareTo(BigDecimal.valueOf(2)) == 0));
+    }
+
+    @Test
+    void thirdPaidAttemptReservesOnlyItsOwnImageBudgetBeforeProviderInvocation() {
+        Fixture fixture = new Fixture();
+        fixture.settlementSucceeds();
+        AiPointReservationEntity old = fixture.settledReservation();
+        old.authorizedUsageJson = "{\"CALL\":2,\"IMAGE\":2}";
+        when(fixture.reservations.selectByExecutionId(99L)).thenReturn(old);
+        when(fixture.settlements.authorizeUsage(any(), any(), any())).thenReturn(fixture.reservation());
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of());
+        when(fixture.invocations.invokeImage(any())).thenThrow(new IllegalStateException("stop after authorization"));
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context())).hasMessage("stop after authorization");
+        InOrder order = inOrder(fixture.settlements, fixture.invocations);
+        order.verify(fixture.settlements).authorizeUsage(org.mockito.ArgumentMatchers.eq(501L),
+            org.mockito.ArgumentMatchers.eq(Map.of(com.antshorttv.accounting.AiUsageMetric.CALL, BigDecimal.ONE,
+                com.antshorttv.accounting.AiUsageMetric.IMAGE, BigDecimal.ONE)), any());
+        order.verify(fixture.invocations).invokeImage(any());
+    }
+
+    @Test
+    void unresolvedPriorBillingBlocksAnotherPaidImageInvocation() {
+        Fixture fixture = new Fixture();
+        AiPointReservationEntity reservation = fixture.reservation();
+        reservation.status = "SETTLEMENT_REVIEW_REQUIRED";
+        when(fixture.reservations.selectByExecutionId(99L)).thenReturn(reservation);
+        when(fixture.results.selectByTask(33L)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> fixture.handler.execute(fixture.context()))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("结算复核");
+        verify(fixture.invocations, never()).invokeImage(any());
     }
 
     private static final class Fixture {

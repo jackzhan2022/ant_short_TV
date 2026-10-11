@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class AiInvocationService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private AiTextBudgetService textBudgetService;
     @Autowired(required = false)
     private AiModelParameterProfileMapper parameterProfileMapper;
     private final AiModelRouter aiModelRouter;
@@ -37,6 +39,8 @@ public class AiInvocationService {
     public AiInvocationResult<AiTextResponse> invokeText(AiInvocationRequest request) {
         AiInvocationRequest effectiveRequest = withRenderedTextPrompt(request);
         AiModelRoute route = aiModelRouter.route(effectiveRequest.modelId(), AiCapability.TEXT.modelServiceType());
+        AiTextRequest authorizedRequest = textBudgetService == null ? effectiveRequest.textRequest()
+            : textBudgetService.authorize(effectiveRequest.toAiContext().withModelId(route.model().getId()), effectiveRequest.textRequest());
         long started = System.currentTimeMillis();
         try {
             AiTextResponse response = concurrencyLimiter.execute(route.provider(), () ->
@@ -44,7 +48,7 @@ public class AiInvocationService {
                     route.provider(),
                     route.providerConfig(),
                     route.model(),
-                    effectiveRequest.textRequest(),
+                    authorizedRequest,
                     effectiveRequest.idempotencyKey()
                 ));
             Long logId = aiCallLogWriter.record(AiInvocationLogRequest.successText(
@@ -111,6 +115,9 @@ public class AiInvocationService {
     public AiInvocationResult<VideoUnderstandingResponse> invokeVideoUnderstanding(AiInvocationRequest request) {
         VideoUnderstandingRequest videoRequest = requireVideoUnderstandingRequest(request);
         AiModelRoute route = aiModelRouter.route(request.modelId(), AiCapability.VIDEO_UNDERSTANDING.modelServiceType());
+        if (textBudgetService != null) {
+            textBudgetService.authorizeVideoUnderstanding(request.toAiContext().withModelId(route.model().getId()), videoRequest);
+        }
         long started = System.currentTimeMillis();
         try {
             VideoUnderstandingResponse response = concurrencyLimiter.execute(route.provider(), () ->
@@ -120,17 +127,12 @@ public class AiInvocationService {
                     route.model(),
                     videoRequest
                 ));
-            Long logId = aiCallLogWriter.record(AiInvocationLogRequest.success(
-                request.toAiContext().withModelId(route.model().getId()),
-                route,
-                AiCapability.VIDEO_UNDERSTANDING,
-                logSummary(request),
-                response.content(),
-                elapsed(started, response.durationMs()),
-                response.providerRequestId(),
-                response.promptTokens(),
-                response.completionTokens(),
-                response.totalTokens()
+            Long logId = aiCallLogWriter.record(new AiInvocationLogRequest(
+                request.toAiContext().withModelId(route.model().getId()), route, AiCapability.VIDEO_UNDERSTANDING,
+                logSummary(request), response.content(), "SUCCESS", null, elapsed(started, response.durationMs()),
+                response.providerRequestId(), response.promptTokens(), response.completionTokens(), response.totalTokens(),
+                null, "SUCCEEDED", "SUCCEEDED", response.content() == null ? null : response.content().length(),
+                null, false, response.cachedInputTokens(), response.cacheWriteTokens(), null
             ));
             return AiInvocationResult.success(
                 AiCapability.VIDEO_UNDERSTANDING,

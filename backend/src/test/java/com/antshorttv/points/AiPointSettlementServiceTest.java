@@ -58,6 +58,73 @@ class AiPointSettlementServiceTest {
     }
 
     @Test
+    void choosesMostSpecificComponentInsteadOfAddingFallbackPrice() {
+        usagePolicy("dimension_price", AiUsageMetric.IMAGE, "1", "10");
+        Long version = pointVersions.get("dimension_price");
+        jdbc.update("""
+            insert into ai_model_point_price_component
+              (price_version_id, metric, unit_size, point_rate, dimensions_json, dimensions_key, created_at)
+            values (?, 'IMAGE', 1, 20, '{"quality":"HIGH"}', 'quality=HIGH', now())
+            """, version);
+        assertThat(service.calculateModelPoints(version, Map.of(AiUsageMetric.IMAGE, new BigDecimal("2")),
+            Map.of("quality", "HIGH"))).isEqualByComparingTo("40");
+    }
+
+    @Test
+    void missingChargeableUsageRemainsUnderReviewWithoutReleasingFunds() {
+        account(291L, "100");
+        usagePolicy("missing_image_usage", AiUsageMetric.IMAGE, "1", "10");
+        AiPointReservationEntity reservation = service.reserve(new AiPointReservationCommand(
+            291L, 2L, 2911L, 1, "missing_image_usage", "AI_IMAGE_TASK", 2911L,
+            modelId("missing_image_usage"), "IMAGE", Map.of(AiUsageMetric.IMAGE, BigDecimal.ONE),
+            Map.of(), pointVersions.get("missing_image_usage"), "reserve-2911"));
+        AiPointReservationEntity result = service.settle(reservation.id, Map.of(), 1L, 1L, "missing-2911");
+        assertThat(result.status).isEqualTo("SETTLEMENT_REVIEW_REQUIRED");
+        assertThat(result.settledPoints).isZero();
+        assertThat(accountValue(291L, "reserved_balance")).isEqualByComparingTo("10");
+        assertThat(service.reconcile(291L).matches()).isTrue();
+    }
+
+    @Test
+    void authorizesAdditionalTokensOnceAndRejectsOverBudgetBeforeCallingProvider() {
+        account(292L, "100");
+        usagePolicy("token_budget", AiUsageMetric.OUTPUT_TOKEN, "1000", "10");
+        AiPointReservationEntity reservation = service.reserve(new AiPointReservationCommand(
+            292L, 2L, 2921L, 1, "token_budget", "SCRIPT_OPERATION", 2921L,
+            modelId("token_budget"), "TEXT", Map.of(AiUsageMetric.OUTPUT_TOKEN, BigDecimal.ZERO),
+            Map.of(), pointVersions.get("token_budget"), "reserve-2921"));
+        assertThat(service.usesTokenPricing(reservation.id)).isTrue();
+        service.authorizeUsage(reservation.id, Map.of(AiUsageMetric.OUTPUT_TOKEN, new BigDecimal("2000")), "call-a");
+        service.authorizeUsage(reservation.id, Map.of(AiUsageMetric.OUTPUT_TOKEN, new BigDecimal("2000")), "call-a");
+        assertThat(accountValue(292L, "reserved_balance")).isEqualByComparingTo("20");
+        assertThatThrownBy(() -> service.authorizeUsage(reservation.id,
+            Map.of(AiUsageMetric.OUTPUT_TOKEN, new BigDecimal("9000")), "call-b"))
+            .isInstanceOf(BusinessException.class);
+        assertThat(accountValue(292L, "balance")).isEqualByComparingTo("80");
+        assertThat(service.reconcile(292L).matches()).isTrue();
+    }
+
+    @Test
+    void cumulativeRetrySettlementChargesOnlyNewUsage() {
+        account(293L, "25");
+        usagePolicy("cumulative_tokens", AiUsageMetric.OUTPUT_TOKEN, "1000", "10");
+        AiPointReservationEntity reservation = service.reserve(new AiPointReservationCommand(
+            293L, 2L, 2931L, 1, "cumulative_tokens", "SCRIPT_OPERATION", 2931L,
+            modelId("cumulative_tokens"), "TEXT", Map.of(AiUsageMetric.OUTPUT_TOKEN, new BigDecimal("2000")),
+            Map.of(), pointVersions.get("cumulative_tokens"), "reserve-2931"));
+        service.settleCumulative(reservation.id, Map.of(AiUsageMetric.OUTPUT_TOKEN, new BigDecimal("1000")),
+            1L, 1L, "first");
+        service.authorizeUsage(reservation.id, Map.of(AiUsageMetric.OUTPUT_TOKEN, new BigDecimal("1000")), "retry-call");
+        assertThat(accountValue(293L, "reserved_balance")).isEqualByComparingTo("10");
+        AiPointReservationEntity result = service.settleCumulative(reservation.id,
+            Map.of(AiUsageMetric.OUTPUT_TOKEN, new BigDecimal("1500")), 2L, 2L, "retry-settle");
+        assertThat(result.settledPoints).isEqualByComparingTo("15");
+        assertThat(accountValue(293L, "balance")).isEqualByComparingTo("10");
+        assertThat(accountValue(293L, "reserved_balance")).isZero();
+        assertThat(service.reconcile(293L).matches()).isTrue();
+    }
+
+    @Test
     void rejectsNewReservationsWithoutFrozenModelPointPrice() {
         account(200L, "10");
         AiPointReservationCommand legacy = new AiPointReservationCommand(

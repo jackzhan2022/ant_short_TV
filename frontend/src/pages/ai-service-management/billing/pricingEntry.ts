@@ -23,7 +23,7 @@ const normalizeLocalDateTime = (value: string) => value.replace(' ', 'T');
 export const formatBillingUnit = (metric: string, unitSize: number) => {
   if (tokenMetrics.has(metric)) return `${unitSize / 1_000_000} 百万 Token`;
   if (metric === 'CALL') return `${unitSize} 次`;
-  if (metric === 'IMAGE') return `${unitSize} 张`;
+  if (metric === 'IMAGE' || metric === 'INPUT_IMAGE') return `${unitSize} 张`;
   if (metric === 'VIDEO_SECOND' || metric === 'AUDIO_SECOND')
     return `${unitSize} 秒`;
   if (metric === 'CHARACTER') return `${unitSize} 字符`;

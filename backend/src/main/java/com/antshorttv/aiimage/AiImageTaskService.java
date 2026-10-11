@@ -250,7 +250,8 @@ public class AiImageTaskService {
             ),
             Map.of(
                 AiUsageMetric.CALL, BigDecimal.ONE,
-                AiUsageMetric.IMAGE, BigDecimal.valueOf(request.imageCount())
+                AiUsageMetric.IMAGE, BigDecimal.valueOf(request.imageCount()),
+                AiUsageMetric.INPUT_IMAGE, BigDecimal.valueOf(Math.max(0, ReferenceImagesCodec.decode(task.getReferenceImages()).size() - 1))
             ),
             imageDimensions(task)
         );
@@ -304,7 +305,8 @@ public class AiImageTaskService {
             traceId(servletRequest),
             Map.of(
                 AiUsageMetric.CALL, BigDecimal.ONE,
-                AiUsageMetric.IMAGE, BigDecimal.valueOf(task.getImageCount())
+                AiUsageMetric.IMAGE, BigDecimal.valueOf(task.getImageCount()),
+                AiUsageMetric.INPUT_IMAGE, BigDecimal.valueOf(Math.max(0, ReferenceImagesCodec.decode(task.getReferenceImages()).size() - 1))
             ),
             imageDimensions(task)
         );

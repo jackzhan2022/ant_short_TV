@@ -11,6 +11,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.EnumMap;
+import com.fasterxml.jackson.core.type.TypeReference;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,6 +50,65 @@ public class AiPointSettlementService {
         this.accountingService = accountingService;
         this.objectMapper = objectMapper;
         this.modelPointPriceComponentMapper = modelPointPriceComponentMapper;
+    }
+
+    public boolean usesTokenPricing(Long reservationId) {
+        AiPointReservationEntity reservation = requireReservation(reservationId);
+        return reservation.pointPriceVersionId != null
+            && matchedModelComponents(reservation.pointPriceVersionId,
+                AiAccountingJson.read(reservation.dimensionsJson)).stream()
+                .anyMatch(component -> component.pointRate.signum() > 0
+                    && ("INPUT_TOKEN".equals(component.metric) || "OUTPUT_TOKEN".equals(component.metric)));
+    }
+
+    @Transactional
+    public AiPointReservationEntity authorizeUsage(Long reservationId,
+        Map<AiUsageMetric, BigDecimal> additionalUsage, String idempotencyKey) {
+        AiPointReservationEntity reservation = requireReservationForUpdate(reservationId);
+        if (ledgerExists(reservation, idempotencyKey + ":authorize")) return reservation;
+        if (!List.of("RESERVED", "SETTLED", "RELEASED").contains(reservation.status)) {
+            throw new IllegalStateException("Unresolved point reservation cannot authorize another provider call.");
+        }
+        Map<AiUsageMetric, BigDecimal> aggregate = new EnumMap<>(AiUsageMetric.class);
+        try {
+            if (reservation.authorizedUsageJson != null) aggregate.putAll(objectMapper.readValue(
+                reservation.authorizedUsageJson, new TypeReference<Map<AiUsageMetric, BigDecimal>>() {}));
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Invalid authorized usage.", exception);
+        }
+        additionalUsage.forEach((metric, quantity) -> {
+            if (quantity == null || quantity.signum() < 0) throw new IllegalArgumentException("Invalid usage quantity.");
+            aggregate.merge(metric, quantity, BigDecimal::add);
+        });
+        BigDecimal extra = reservation.pointPriceVersionId == null
+            ? calculate(reservation.policyVersionId, additionalUsage, AiAccountingJson.read(reservation.dimensionsJson))
+            : calculateModelPointPrice(reservation.pointPriceVersionId, additionalUsage,
+                AiAccountingJson.read(reservation.dimensionsJson))
+                .multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate)
+                .setScale(POINT_SCALE, RoundingMode.HALF_UP);
+        // Each call adds only its own budget; released unused budgets from prior calls stay released.
+        if (extra.signum() > 0 && accountingService.incrementReserveFunds(reservation.tenantId, extra) == 0) {
+            throw new BusinessException(ErrorCode.TEAM_POINTS_INSUFFICIENT, "团队积分不足，无法预占本次模型调用预算。");
+        }
+        reservation.reservedPoints = reservation.reservedPoints.add(extra);
+        reservation.authorizedUsageJson = writeJson(aggregate);
+        reservation.status = "RESERVED";
+        reservation.updatedAt = LocalDateTime.now();
+        reservationMapper.updateById(reservation);
+        recordLedger(reservation, "INCREMENTAL_RESERVE", extra, null, null, idempotencyKey + ":authorize");
+        return reservation;
+    }
+
+    @Transactional
+    public AiPointReservationEntity settleCumulative(Long reservationId,
+        Map<AiUsageMetric, BigDecimal> usage, Long attemptId, Long callLogId, String key) {
+        return settleInternal(reservationId, usage, attemptId, callLogId, key, true);
+    }
+
+    @Transactional
+    public AiPointReservationEntity finalizeCumulativeOutcome(Long reservationId, AiSettlementOutcome outcome,
+        Map<AiUsageMetric, BigDecimal> usage, Long attemptId, Long callLogId, String key) {
+        return finalizeOutcomeInternal(reservationId, outcome, usage, attemptId, callLogId, key, true);
     }
 
     @Transactional
@@ -112,7 +173,7 @@ public class AiPointSettlementService {
         Map<AiUsageMetric, BigDecimal> authorizedUsage,
         String idempotencyKey
     ) {
-        AiPointReservationEntity reservation = requireReservation(reservationId);
+        AiPointReservationEntity reservation = requireReservationForUpdate(reservationId);
         if ("RESERVED".equals(reservation.status)) {
             return reservation;
         }
@@ -144,8 +205,27 @@ public class AiPointSettlementService {
         Long callLogId,
         String idempotencyKey
     ) {
-        AiPointReservationEntity reservation = requireReservation(reservationId);
-        if ("SETTLED".equals(reservation.status) || "REFUNDED".equals(reservation.status)) {
+        return settleInternal(reservationId, actualUsage, attemptId, callLogId, idempotencyKey, false);
+    }
+
+    private AiPointReservationEntity settleInternal(Long reservationId,
+        Map<AiUsageMetric, BigDecimal> actualUsage, Long attemptId, Long callLogId,
+        String idempotencyKey, boolean cumulative) {
+        AiPointReservationEntity reservation = requireReservationForUpdate(reservationId);
+        if ("SETTLED".equals(reservation.status) || "REFUNDED".equals(reservation.status)
+            || ledgerExists(reservation, idempotencyKey + ":settle")) {
+            return reservation;
+        }
+        Map<AiUsageMetric, BigDecimal> measured = actualUsage == null ? Map.of() : actualUsage;
+        if (reservation.pointPriceVersionId != null
+            && matchedModelComponents(reservation.pointPriceVersionId,
+                AiAccountingJson.read(reservation.dimensionsJson)).stream()
+                .anyMatch(component -> component.pointRate.signum() > 0
+                    && !measured.containsKey(AiUsageMetric.valueOf(component.metric)))) {
+            reservation.status = "SETTLEMENT_REVIEW_REQUIRED";
+            reservation.updatedAt = LocalDateTime.now();
+            reservationMapper.updateById(reservation);
+            recordLedger(reservation, "SETTLEMENT_REVIEW", BigDecimal.ZERO, attemptId, callLogId, idempotencyKey + ":review");
             return reservation;
         }
         BigDecimal actual = reservation.pointPriceVersionId == null
@@ -154,6 +234,7 @@ public class AiPointSettlementService {
             : calculateModelPointPrice(reservation.pointPriceVersionId,
                 actualUsage == null ? Map.of() : actualUsage,
                 AiAccountingJson.read(reservation.dimensionsJson)).multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate).setScale(8, RoundingMode.HALF_UP);
+        if (cumulative) actual = actual.subtract(reservation.settledPoints).max(BigDecimal.ZERO);
         BigDecimal outstanding = reservation.reservedPoints
             .subtract(reservation.settledPoints)
             .subtract(reservation.releasedPoints);
@@ -187,7 +268,7 @@ public class AiPointSettlementService {
 
     @Transactional
     public AiPointReservationEntity release(Long reservationId, String idempotencyKey) {
-        AiPointReservationEntity reservation = requireReservation(reservationId);
+        AiPointReservationEntity reservation = requireReservationForUpdate(reservationId);
         return release(reservation, null, null, idempotencyKey);
     }
 
@@ -219,7 +300,7 @@ public class AiPointSettlementService {
 
     @Transactional
     public AiPointReservationEntity refund(Long reservationId, String idempotencyKey) {
-        AiPointReservationEntity reservation = requireReservation(reservationId);
+        AiPointReservationEntity reservation = requireReservationForUpdate(reservationId);
         if ("REFUNDED".equals(reservation.status)) {
             return reservation;
         }
@@ -246,7 +327,13 @@ public class AiPointSettlementService {
         Long callLogId,
         String idempotencyKey
     ) {
-        AiPointReservationEntity reservation = requireReservation(reservationId);
+        return finalizeOutcomeInternal(reservationId, outcome, actualUsage, attemptId, callLogId, idempotencyKey, false);
+    }
+
+    private AiPointReservationEntity finalizeOutcomeInternal(Long reservationId, AiSettlementOutcome outcome,
+        Map<AiUsageMetric, BigDecimal> actualUsage, Long attemptId, Long callLogId,
+        String idempotencyKey, boolean cumulative) {
+        AiPointReservationEntity reservation = requireReservationForUpdate(reservationId);
         if (outcome == AiSettlementOutcome.PRE_CALL_CANCELED) {
             return release(reservation, attemptId, callLogId, idempotencyKey);
         }
@@ -272,7 +359,7 @@ public class AiPointSettlementService {
             case PRE_CALL_CANCELED, TRANSPORT_UNKNOWN -> false;
         };
         return charge
-            ? settle(reservationId, actualUsage, attemptId, callLogId, idempotencyKey)
+            ? settleInternal(reservationId, actualUsage, attemptId, callLogId, idempotencyKey, cumulative)
             : release(reservation, attemptId, callLogId, idempotencyKey);
     }
 
@@ -338,12 +425,35 @@ public class AiPointSettlementService {
         Map<AiUsageMetric, BigDecimal> usage,
         Map<String, String> dimensions
     ) {
-        return modelPointPriceComponentMapper.selectByVersion(priceVersionId).stream()
-            .filter(component -> AiAccountingJson.read(component.dimensionsJson).entrySet().stream()
-                .allMatch(entry -> entry.getValue().equals(dimensions.get(entry.getKey()))))
+        return matchedModelComponents(priceVersionId, dimensions).stream()
             .map(component -> modelComponentPoints(component, usage))
             .reduce(BigDecimal.ZERO, BigDecimal::add)
             .setScale(POINT_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private List<AiModelPointPriceComponentEntity> matchedModelComponents(
+        Long priceVersionId, Map<String, String> dimensions) {
+        Map<AiUsageMetric, AiModelPointPriceComponentEntity> selected = new EnumMap<>(AiUsageMetric.class);
+        for (AiModelPointPriceComponentEntity component : modelPointPriceComponentMapper.selectByVersion(priceVersionId)) {
+            Map<String, String> filters = AiAccountingJson.read(component.dimensionsJson);
+            if (!filters.entrySet().stream().allMatch(entry -> entry.getValue().equals(dimensions.get(entry.getKey())))) continue;
+            AiUsageMetric metric = AiUsageMetric.valueOf(component.metric);
+            AiModelPointPriceComponentEntity previous = selected.get(metric);
+            if (previous == null || filters.size() > AiAccountingJson.read(previous.dimensionsJson).size()) {
+                selected.put(metric, component);
+            }
+        }
+        return List.copyOf(selected.values());
+    }
+
+    private boolean ledgerExists(AiPointReservationEntity reservation, String key) {
+        return jdbc.queryForObject("select count(*) from point_ledger where tenant_id = ? and idempotency_key = ?",
+            Integer.class, reservation.tenantId, key) > 0;
+    }
+
+    private AiPointReservationEntity requireReservationForUpdate(Long reservationId) {
+        jdbc.queryForObject("select id from ai_point_reservation where id = ? for update", Long.class, reservationId);
+        return requireReservation(reservationId);
     }
 
     public BigDecimal calculateModelPoints(Long priceVersionId, Map<AiUsageMetric, BigDecimal> usage, Map<String, String> dimensions) {
@@ -355,6 +465,7 @@ public class AiPointSettlementService {
         Map<AiUsageMetric, BigDecimal> usage
     ) {
         BigDecimal quantity = usage.getOrDefault(AiUsageMetric.valueOf(component.metric), BigDecimal.ZERO);
+        if (quantity == null || quantity.signum() < 0) throw new IllegalArgumentException("Invalid usage quantity.");
         return quantity.divide(component.unitSize, 12, RoundingMode.HALF_UP).multiply(component.pointRate);
     }
 

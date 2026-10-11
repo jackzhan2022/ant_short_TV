@@ -7,6 +7,7 @@ public enum AiUsageMetric {
     CACHE_WRITE_TOKEN("TOKEN"),
     OUTPUT_TOKEN("TOKEN"),
     IMAGE("IMAGE"),
+    INPUT_IMAGE("IMAGE"),
     VIDEO_SECOND("SECOND"),
     AUDIO_SECOND("SECOND"),
     CHARACTER("CHARACTER");

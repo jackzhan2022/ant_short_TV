@@ -46,6 +46,46 @@ import org.springframework.test.util.ReflectionTestUtils;
 class ReviewExecutionHandlerTest {
 
     @Test
+    void preCallRejectionOnFinalRetryStillSettlesPriorPaidCalls() {
+        var review=mock(ReviewWorkbenchService.class);var runs=mock(WorkflowAgentRunRepository.class);
+        var accounting=mock(AiUsageAccountingService.class);var attempts=mock(AiExecutionAttemptMapper.class);
+        var reservations=mock(AiPointReservationMapper.class);var settlements=mock(AiPointSettlementService.class);
+        when(review.executeTask(anyLong(),any())).thenThrow(new AiGatewayException(ErrorCode.AI_AUTH_FAILED,"rejected"));
+        when(runs.modelCallsForExecution(12L,3L)).thenReturn(List.of(
+            new WorkflowAgentModelCall(98L,8L,2L,"earlier","SUCCESS","SUCCESS",13L,100,20,null,null)));
+        when(accounting.priceExecution(anyLong(),any())).thenReturn(new AiExecutionCostSummary(12L,AiUsageCostStatus.PRICED,Map.of()));
+        var attempt=new com.antshorttv.execution.AiExecutionAttemptEntity();attempt.attemptNo=3;
+        when(attempts.selectById(14L)).thenReturn(attempt);
+        var reservation=new AiPointReservationEntity();reservation.id=20L;reservation.status="RESERVED";
+        when(reservations.selectByExecutionId(12L)).thenReturn(reservation);
+        when(settlements.usesTokenPricing(20L)).thenReturn(true);
+        var handler=new ReviewExecutionHandler(mock(ReviewTaskMapper.class),review,attempts,reservations,settlements,
+            mock(AiExecutionService.class),mock(AiExecutionTaskMapper.class),accounting,new AiUsageExtractor(),runs,new ObjectMapper());
+        var task=new AiExecutionTaskEntity();task.id=12L;task.tenantId=3L;task.businessId=7L;task.executionVersion=1;
+        assertThatThrownBy(() -> handler.execute(new AiExecutionContext(task,new AiExecutionClaim(12L,14L,"claim",1,"RUN"))))
+            .isInstanceOf(AiGatewayException.class);
+        verify(settlements).finalizeCumulativeOutcome(eq(20L),eq(AiSettlementOutcome.PROVIDER_BILLED_FAILURE),anyMap(),eq(14L),any(),any());
+    }
+
+    @Test
+    void frozenCallOnlyPriceDoesNotCreateUnpricedTokenCostLines() {
+        var accounting = mock(AiUsageAccountingService.class);
+        var reservations = mock(AiPointReservationMapper.class);
+        var settlements = mock(AiPointSettlementService.class);
+        var reservation = new AiPointReservationEntity();reservation.id=20L;
+        when(reservations.selectByExecutionId(12L)).thenReturn(reservation);
+        var handler = new ReviewExecutionHandler(mock(ReviewTaskMapper.class),mock(ReviewWorkbenchService.class),
+            mock(AiExecutionAttemptMapper.class),reservations,settlements,mock(AiExecutionService.class),
+            mock(AiExecutionTaskMapper.class),accounting,new AiUsageExtractor(),mock(WorkflowAgentRunRepository.class),new ObjectMapper());
+        var task = new AiExecutionTaskEntity();task.id=12L;task.tenantId=3L;task.executionVersion=1;
+        var context = new AiExecutionContext(task,new AiExecutionClaim(12L,14L,"claim",1,"RUN"));
+        ReflectionTestUtils.invokeMethod(handler,"recordCallUsage",context,99L,8L,14L,100,20,80,10);
+        var recorded=ArgumentCaptor.forClass(AiUsageCommand.class);
+        verify(accounting).recordIfAbsent(recorded.capture());
+        assertThat(recorded.getValue().metric()).isEqualTo(AiUsageMetric.CALL);
+    }
+
+    @Test
     void recordsCallAndAllProviderTokenCategoriesIdempotently() {
         AiUsageAccountingService accounting = mock(AiUsageAccountingService.class);
         ReviewExecutionHandler handler = new ReviewExecutionHandler(
@@ -74,7 +114,7 @@ class ReviewExecutionHandlerTest {
     }
 
     @Test
-    void partialCacheBreakdownRequiresUnclassifiedInputAndCannotLookComplete() {
+    void partialCacheBreakdownRecordsRemainingOrdinaryInput() {
         AiUsageAccountingService accounting = mock(AiUsageAccountingService.class);
         ReviewExecutionHandler handler = new ReviewExecutionHandler(
             mock(ReviewTaskMapper.class), mock(ReviewWorkbenchService.class),
@@ -93,9 +133,9 @@ class ReviewExecutionHandlerTest {
 
         assertThat(metrics).contains(AiUsageMetric.INPUT_TOKEN, AiUsageMetric.CACHED_INPUT_TOKEN);
         ArgumentCaptor<AiUsageCommand> commands = ArgumentCaptor.forClass(AiUsageCommand.class);
-        verify(accounting, times(3)).recordIfAbsent(commands.capture());
-        assertThat(commands.getAllValues()).extracting(AiUsageCommand::metric)
-            .doesNotContain(AiUsageMetric.INPUT_TOKEN);
+        verify(accounting, times(4)).recordIfAbsent(commands.capture());
+        assertThat(commands.getAllValues()).filteredOn(c -> c.metric() == AiUsageMetric.INPUT_TOKEN)
+            .extracting(AiUsageCommand::quantity).containsExactly(java.math.BigDecimal.valueOf(20));
     }
 
     @Test
@@ -145,7 +185,8 @@ class ReviewExecutionHandlerTest {
         AiPointReservationEntity reservation = new AiPointReservationEntity();
         reservation.id = 20L; reservation.status = "RESERVED";
         when(reservations.selectByExecutionId(12L)).thenReturn(reservation);
-        when(settlements.finalizeOutcome(anyLong(), eq(AiSettlementOutcome.SUCCESS), anyMap(),
+        when(settlements.usesTokenPricing(20L)).thenReturn(true);
+        when(settlements.finalizeCumulativeOutcome(anyLong(), eq(AiSettlementOutcome.SUCCESS), anyMap(),
             anyLong(), isNull(), any())).thenReturn(reservation);
         ReviewExecutionHandler handler = new ReviewExecutionHandler(
             mock(ReviewTaskMapper.class), review, attempts, reservations, settlements,
@@ -162,14 +203,21 @@ class ReviewExecutionHandlerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<AiUsageMetric, java.math.BigDecimal>> actualUsage =
             ArgumentCaptor.forClass(Map.class);
-        verify(settlements).finalizeOutcome(eq(20L), eq(AiSettlementOutcome.SUCCESS),
+        verify(settlements).finalizeCumulativeOutcome(eq(20L), eq(AiSettlementOutcome.SUCCESS),
             actualUsage.capture(), eq(14L), isNull(), any());
         assertThat(actualUsage.getValue()).containsEntry(AiUsageMetric.CALL,
             java.math.BigDecimal.valueOf(2));
+        assertThat(actualUsage.getValue())
+            .containsEntry(AiUsageMetric.INPUT_TOKEN, java.math.BigDecimal.valueOf(20))
+            .containsEntry(AiUsageMetric.CACHED_INPUT_TOKEN, java.math.BigDecimal.valueOf(160))
+            .containsEntry(AiUsageMetric.CACHE_WRITE_TOKEN, java.math.BigDecimal.valueOf(20))
+            .containsEntry(AiUsageMetric.OUTPUT_TOKEN, java.math.BigDecimal.valueOf(40));
     }
 
-    @Test
-    void multiCallPartialCacheBreakdownPersistsIncompleteCostStatus() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullSource
+    @org.junit.jupiter.params.provider.ValueSource(ints = {-1})
+    void multiCallMissingInputPersistsIncompleteCostStatus(Integer inputTokens) {
         AiUsageAccountingService accounting = mock(AiUsageAccountingService.class);
         AiExecutionTaskMapper executionTasks = mock(AiExecutionTaskMapper.class);
         when(accounting.priceExecution(anyLong(), any())).thenReturn(
@@ -186,11 +234,13 @@ class ReviewExecutionHandlerTest {
             new AiExecutionClaim(12L, 14L, "claim", 1, "AI_REVIEW"));
         List<WorkflowAgentModelCall> calls = List.of(
             new WorkflowAgentModelCall(98L, 8L, 2L, "partial", "SUCCESS", "SUCCESS", 14L,
-                100, 20, 80, null),
+                inputTokens, 20, null, null),
             new WorkflowAgentModelCall(99L, 8L, 2L, "complete", "SUCCESS", "SUCCESS", 14L,
                 100, 20, 80, 10));
 
-        ReflectionTestUtils.invokeMethod(handler, "recordWorkflowUsageAndCost", context, calls);
+        org.assertj.core.api.Assertions.assertThatCode(() ->
+            ReflectionTestUtils.invokeMethod(handler, "recordWorkflowUsageAndCost", context, calls))
+            .doesNotThrowAnyException();
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         ArgumentCaptor<UpdateWrapper<AiExecutionTaskEntity>> update =

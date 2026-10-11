@@ -134,13 +134,13 @@ class ScriptAiOperationExecutionHandlerTest {
         when(attemptMapper.selectById(71L)).thenReturn(attempt);
 
         List<WorkflowAgentModelCall> calls = List.of(
-            new WorkflowAgentModelCall(81L, 91L, 101L, "provider-1", "SUCCESS", "SUCCESS", 71L),
-            new WorkflowAgentModelCall(82L, 91L, 101L, "provider-2", "SUCCESS", "INVALID", 71L)
+            new WorkflowAgentModelCall(81L, 91L, 101L, "provider-1", "SUCCESS", "SUCCESS", 71L, 100, 20, 80, null),
+            new WorkflowAgentModelCall(82L, 91L, 101L, "provider-2", "SUCCESS", "INVALID", 71L, 100, 20, 80, null)
         );
         when(runs.modelCallsForExecutionAttempt(51L, 71L, 61L)).thenReturn(calls);
         when(runs.modelCallsForExecution(51L, 61L)).thenReturn(List.of(
-            new WorkflowAgentModelCall(79L, 91L, 101L, "provider-0", "SUCCESS", "INVALID", 69L),
-            new WorkflowAgentModelCall(80L, 91L, 101L, "provider-0b", "SUCCESS", "INVALID", 70L),
+            new WorkflowAgentModelCall(79L, 91L, 101L, "provider-0", "SUCCESS", "INVALID", 69L, 100, 20, 80, null),
+            new WorkflowAgentModelCall(80L, 91L, 101L, "provider-0b", "SUCCESS", "INVALID", 70L, 100, 20, 80, null),
             calls.get(0), calls.get(1)
         ));
         when(accounting.priceExecution(eq(51L), any())).thenReturn(
@@ -150,8 +150,9 @@ class ScriptAiOperationExecutionHandlerTest {
         reservation.id = 111L;
         reservation.status = "RESERVED";
         when(reservationMapper.selectByExecutionId(51L)).thenReturn(reservation);
+        when(settlementService.usesTokenPricing(111L)).thenReturn(true);
         AiPointReservationEntity settled = new AiPointReservationEntity();
-        when(settlementService.finalizeOutcome(
+        when(settlementService.finalizeCumulativeOutcome(
             eq(111L), eq(AiSettlementOutcome.PROVIDER_BILLED_FAILURE), any(), eq(71L), eq(82L), any()
         )).thenReturn(settled);
 
@@ -164,10 +165,14 @@ class ScriptAiOperationExecutionHandlerTest {
             task, new AiExecutionClaim(51L, 71L, "claim", 1, "RUN")
         ))).isInstanceOf(IllegalStateException.class);
 
-        verify(accounting, times(4)).recordIfAbsent(any(AiUsageCommand.class));
-        verify(settlementService).finalizeOutcome(
+        verify(accounting, times(16)).recordIfAbsent(any(AiUsageCommand.class));
+        verify(settlementService).finalizeCumulativeOutcome(
             eq(111L), eq(AiSettlementOutcome.PROVIDER_BILLED_FAILURE),
-            eq(Map.of(com.antshorttv.accounting.AiUsageMetric.CALL, BigDecimal.valueOf(4))),
+            eq(Map.of(com.antshorttv.accounting.AiUsageMetric.CALL, BigDecimal.valueOf(4),
+                com.antshorttv.accounting.AiUsageMetric.INPUT_TOKEN, BigDecimal.valueOf(80),
+                com.antshorttv.accounting.AiUsageMetric.CACHED_INPUT_TOKEN, BigDecimal.valueOf(320),
+                com.antshorttv.accounting.AiUsageMetric.CACHE_WRITE_TOKEN, BigDecimal.ZERO,
+                com.antshorttv.accounting.AiUsageMetric.OUTPUT_TOKEN, BigDecimal.valueOf(80))),
             eq(71L), eq(82L), any()
         );
         verify(executionService).updateSettlementSummary(settled);

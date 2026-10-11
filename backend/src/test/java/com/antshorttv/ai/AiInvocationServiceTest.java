@@ -50,6 +50,24 @@ class AiInvocationServiceTest {
     }
 
     @Test
+    void refusesPaidTextCallWhenBudgetCannotBeAuthorized() {
+        var budget = mock(AiTextBudgetService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "textBudgetService", budget);
+        var route = route(AiCapability.TEXT);
+        when(router.route(501L, "TEXT")).thenReturn(route);
+        when(route.adapter().text(any(),any(),any(),any(),any()))
+            .thenReturn(new AiTextResponse("response","req",1,2,3,1L,Map.of()));
+        org.mockito.Mockito.doThrow(new com.antshorttv.common.BusinessException(
+            ErrorCode.TEAM_POINTS_INSUFFICIENT,"insufficient"))
+            .when(budget).authorize(any(),any());
+        assertThatThrownBy(() -> service.invokeText(AiInvocationRequest.text()
+            .tenantId(1L).userId(2L).projectId(3L).modelId(501L).scene(AiBusinessScene.SCRIPT_GENERATE)
+            .executionId(6L).attemptId(7L).userPrompt("prompt").build()))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
+        org.mockito.Mockito.verifyNoInteractions(concurrencyLimiter, logWriter);
+    }
+
+    @Test
     void invokesTextThroughUnifiedContractAndReturnsLogId() {
         AiModelRoute route = route(AiCapability.TEXT);
         when(router.route(501L, "TEXT")).thenReturn(route);
@@ -81,11 +99,25 @@ class AiInvocationServiceTest {
     }
 
     @Test
+    void refusesVideoUnderstandingBeforeProviderWhenBudgetFails() {
+        var budget=mock(AiTextBudgetService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"textBudgetService",budget);
+        when(router.route(501L,"VIDEO_UNDERSTANDING")).thenReturn(route(AiCapability.VIDEO_UNDERSTANDING));
+        org.mockito.Mockito.doThrow(new com.antshorttv.common.BusinessException(ErrorCode.TEAM_POINTS_INSUFFICIENT,"insufficient"))
+            .when(budget).authorizeVideoUnderstanding(any(),any());
+        assertThatThrownBy(() -> service.invokeVideoUnderstanding(AiInvocationRequest.videoUnderstanding()
+            .tenantId(1L).userId(2L).projectId(3L).modelId(501L).scene(AiBusinessScene.VIDEO_UNDERSTANDING)
+            .executionId(6L).attemptId(7L).videoRequest(new VideoUnderstandingRequest("https://example.test/video.mp4","analyze")).build()))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
+        org.mockito.Mockito.verifyNoInteractions(qwenAdapter,logWriter);
+    }
+
+    @Test
     void invokesVideoUnderstandingThroughUnifiedContract() {
         AiModelRoute route = route(AiCapability.VIDEO_UNDERSTANDING);
         when(router.route(601L, "VIDEO_UNDERSTANDING")).thenReturn(route);
         when(qwenAdapter.videoUnderstanding(any(), any(), any(), any()))
-            .thenReturn(new VideoUnderstandingResponse("{\"characters\":[]}", "req-video", 5, 6, 11, 88L, Map.of()));
+            .thenReturn(new VideoUnderstandingResponse("{\"characters\":[]}", "req-video", 5, 6, 11, 88L, Map.of(), 1, 1));
         when(logWriter.record(any(AiInvocationLogRequest.class))).thenReturn(9002L);
 
         AiInvocationResult<VideoUnderstandingResponse> result = service.invokeVideoUnderstanding(AiInvocationRequest.videoUnderstanding()
@@ -102,6 +134,10 @@ class AiInvocationServiceTest {
         assertThat(result.aiCallLogId()).isEqualTo(9002L);
         assertThat(result.providerRequestId()).isEqualTo("req-video");
         assertThat(result.capability()).isEqualTo(AiCapability.VIDEO_UNDERSTANDING);
+        var log=ArgumentCaptor.forClass(AiInvocationLogRequest.class);
+        verify(logWriter).record(log.capture());
+        assertThat(log.getValue().cachedInputTokens()).isEqualTo(1);
+        assertThat(log.getValue().cacheWriteTokens()).isEqualTo(1);
     }
 
     @Test

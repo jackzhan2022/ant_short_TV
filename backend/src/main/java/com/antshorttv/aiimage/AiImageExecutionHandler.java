@@ -43,7 +43,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
@@ -145,6 +144,8 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         }
         java.util.List<Long> createdResultIds = new java.util.ArrayList<>();
         boolean providerPhaseComplete = false;
+        ProviderCompletion completedProvider = null;
+        authorizeProviderInvocation(context, task);
         markDomainRunning(task);
         try {
             AiInvocationResult<AiImageResponse> result = invocationService.invokeImage(
@@ -153,9 +154,21 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             markAttempt(context, result);
             requireActiveClaim(context);
             AiImageResponse response = result.response();
-            int imageCount = response.imageUrls() == null ? 0 : response.imageUrls().size();
-            for (int index = 1; index <= task.getImageCount(); index++) {
-                String imageUrl = imageCount >= index ? response.imageUrls().get(index - 1) : null;
+            List<String> imageUrls = response.imageUrls() == null ? List.of() : response.imageUrls().stream()
+                .filter(url -> url != null && !url.isBlank()).toList();
+            int imageCount = imageUrls.size();
+            if (imageCount == 0) {
+                settleFailure(context, result.aiCallLogId());
+                throw new IllegalStateException("服务商未返回有效图片，等待结算复核。");
+            }
+            task.setImageCount(imageCount);
+            taskMapper.updateById(task);
+            // Provider work is billable even if local image storage or publication subsequently fails.
+            completedProvider = new ProviderCompletion(
+                context.claim().attemptId(), result.aiCallLogId(), result.resolvedModelId());
+            recordUsageAndSettle(context, task, completedProvider, imageCount, false);
+            for (int index = 1; index <= imageCount; index++) {
+                String imageUrl = imageUrls.get(index - 1);
                 createResult(context, task, index, imageUrl, createdResultIds);
             }
             requireActiveClaim(context);
@@ -176,6 +189,38 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
             }
             settleFailure(context, exception.getAiCallLogId());
             throw exception;
+        } catch (RuntimeException exception) {
+            if (completedProvider != null && !providerPhaseComplete) {
+                recordUsageAndSettle(context, task, completedProvider, task.getImageCount());
+            }
+            throw exception;
+        }
+    }
+
+    private void authorizeProviderInvocation(AiExecutionContext context, AiImageTaskEntity task) {
+        AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(context.task().id);
+        if (reservation == null) throw new IllegalStateException("AI 图片缺少积分预占。");
+        if ("SETTLEMENT_REVIEW_REQUIRED".equals(reservation.status)) {
+            throw new IllegalStateException("AI 图片等待结算复核，不能再次调用服务商。");
+        }
+        if ("SETTLED".equals(reservation.status) || "RELEASED".equals(reservation.status)) {
+            Map<AiUsageMetric, BigDecimal> budget = new java.util.EnumMap<>(AiUsageMetric.class);
+            for (String metric : AiAccountingJson.read(reservation.authorizedUsageJson).keySet()) {
+                AiUsageMetric usageMetric = AiUsageMetric.valueOf(metric);
+                BigDecimal quantity = switch (usageMetric) {
+                    case CALL -> BigDecimal.ONE;
+                    case IMAGE -> BigDecimal.valueOf(task.getImageCount());
+                    case INPUT_IMAGE -> BigDecimal.valueOf(Math.max(0,
+                        ReferenceImagesCodec.decode(task.getReferenceImages()).size() - 1));
+                    default -> throw new IllegalStateException("AI 图片预占包含不受支持的计费指标。");
+                };
+                budget.put(usageMetric, quantity);
+            }
+            AiPointReservationEntity reopened = pointSettlementService.authorizeUsage(reservation.id, budget,
+                "execution:%d:attempt:%d:image-reserve".formatted(context.task().id, context.claim().attemptId()));
+            updateSettlementSummary(context.task().id, reopened);
+        } else if (!"RESERVED".equals(reservation.status)) {
+            throw new IllegalStateException("AI 图片积分预占状态不允许调用服务商。");
         }
     }
 
@@ -253,6 +298,13 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         ProviderCompletion provider,
         int imageCount
     ) {
+        recordUsageAndSettle(context, task, provider, imageCount, true);
+    }
+
+    private void recordUsageAndSettle(
+        AiExecutionContext context, AiImageTaskEntity task, ProviderCompletion provider,
+        int imageCount, boolean settle
+    ) {
         LocalDateTime observedAt = LocalDateTime.now();
         AiUsageContext usageContext = new AiUsageContext(
             context.task().tenantId,
@@ -267,23 +319,27 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         usageAccountingService.recordIfAbsent(AiUsageCommand.resultMeasured(
             usageContext, AiUsageMetric.IMAGE, String.valueOf(imageCount), imageDimensions(task), observedAt
         ));
-        AiExecutionCostSummary cost = usageAccountingService.priceExecution(
-            context.task().id,
-            Set.of(AiUsageMetric.CALL, AiUsageMetric.IMAGE)
-        );
-        updateCostSummary(context.task().id, cost);
-
         AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(context.task().id);
+        Map<AiUsageMetric, BigDecimal> actualUsage = new java.util.EnumMap<>(AiUsageMetric.class);
+        actualUsage.put(AiUsageMetric.CALL, BigDecimal.ONE);
+        actualUsage.put(AiUsageMetric.IMAGE, BigDecimal.valueOf(imageCount));
+        if (AiAccountingJson.read(reservation.authorizedUsageJson).containsKey(AiUsageMetric.INPUT_IMAGE.name())) {
+            BigDecimal inputImages = BigDecimal.valueOf(Math.max(0, ReferenceImagesCodec.decode(task.getReferenceImages()).size() - 1));
+            actualUsage.put(AiUsageMetric.INPUT_IMAGE, inputImages);
+            usageAccountingService.recordIfAbsent(AiUsageCommand.requestDerived(
+                usageContext, AiUsageMetric.INPUT_IMAGE, inputImages.toPlainString(), imageDimensions(task), observedAt));
+        }
+        AiExecutionCostSummary cost = usageAccountingService.priceExecution(context.task().id, actualUsage.keySet());
+        updateCostSummary(context.task().id, cost);
+        if (!settle) return;
+
         AiPointReservationEntity settled = pointSettlementService.finalizeOutcome(
             reservation.id,
             AiSettlementOutcome.SUCCESS,
-            Map.of(
-                AiUsageMetric.CALL, BigDecimal.ONE,
-                AiUsageMetric.IMAGE, BigDecimal.valueOf(imageCount)
-            ),
+            actualUsage,
             provider.attemptId(),
             provider.aiCallLogId(),
-            "execution:%d:v%d:success".formatted(context.task().id, context.task().executionVersion)
+            "execution:%d:v%d:attempt:%d:success".formatted(context.task().id, context.task().executionVersion, provider.attemptId())
         );
         if (!"SETTLED".equals(settled.status)) {
             throw new IllegalStateException("AI 图片积分结算尚未完成。");
@@ -298,11 +354,11 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         }
         AiPointReservationEntity settled = pointSettlementService.finalizeOutcome(
             reservation.id,
-            callLogId == null ? AiSettlementOutcome.PROVIDER_REJECTION : AiSettlementOutcome.PROVIDER_BILLED_FAILURE,
+            callLogId == null ? AiSettlementOutcome.PROVIDER_REJECTION : AiSettlementOutcome.TRANSPORT_UNKNOWN,
             Map.of(),
             context.claim().attemptId(),
             callLogId,
-            "execution:%d:v%d:failure".formatted(context.task().id, context.task().executionVersion)
+            "execution:%d:v%d:attempt:%d:failure".formatted(context.task().id, context.task().executionVersion, context.claim().attemptId())
         );
         updateSettlementSummary(context.task().id, settled);
     }
@@ -473,9 +529,7 @@ public class AiImageExecutionHandler extends AiExecutionHandler {
         createdResultIds.add(result.getId());
 
         try {
-            StoredImage storedImage = providerImageUrl == null || providerImageUrl.isBlank()
-                ? storageService.createPlaceholder(task, result.getId(), index)
-                : storageService.storeGenerated(task, result.getId(), index, providerImageUrl);
+            StoredImage storedImage = storageService.storeGenerated(task, result.getId(), index, providerImageUrl);
             result.setImageUrl("/api/projects/%d/ai-image-results/%d/display".formatted(task.getProjectId(), result.getId()));
             result.setThumbnailUrl("/api/projects/%d/ai-image-results/%d/thumbnail".formatted(task.getProjectId(), result.getId()));
             result.setStoragePath(storedImage.storagePath());

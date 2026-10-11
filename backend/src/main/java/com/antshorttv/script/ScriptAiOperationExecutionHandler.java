@@ -2,9 +2,11 @@ package com.antshorttv.script;
 
 import com.antshorttv.accounting.AiExecutionCostSummary;
 import com.antshorttv.accounting.AiUsageAccountingService;
-import com.antshorttv.accounting.AiUsageCommand;
 import com.antshorttv.accounting.AiUsageContext;
 import com.antshorttv.accounting.AiUsageMetric;
+import com.antshorttv.accounting.AiUsageExtractor;
+import com.antshorttv.accounting.AiTextUsage;
+import com.antshorttv.accounting.AiUsageCostStatus;
 import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.ai.AiInvocationResult;
 import com.antshorttv.ai.AiTextResponse;
@@ -73,6 +75,11 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         this.workflowAgentRuns = workflowAgentRuns;
     }
 
+    private boolean tokenPricing(AiExecutionContext context) {
+        AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(context.task().id);
+        return reservation == null || settlementService.usesTokenPricing(reservation.id);
+    }
+
     @Override
     public String scene() {
         return "script_generate";
@@ -128,9 +135,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             Long callLogId = exception instanceof AiGatewayException gateway ? gateway.getAiCallLogId() : null;
             List<WorkflowAgentModelCall> attemptAgentCalls = workflowAgentRuns.modelCallsForExecutionAttempt(
                 context.task().id, context.claim().attemptId(), context.task().tenantId);
-            List<WorkflowAgentModelCall> executionAgentCalls = usesDurableAgentCalls(operation)
-                ? workflowAgentRuns.modelCallsForExecution(context.task().id, context.task().tenantId)
-                : attemptAgentCalls;
+            List<WorkflowAgentModelCall> executionAgentCalls = allCalls(context, List.of(), attemptAgentCalls);
             WorkflowAgentModelCall lastAttemptAgentCall = attemptAgentCalls.isEmpty()
                 ? null : attemptAgentCalls.get(attemptAgentCalls.size() - 1);
             WorkflowAgentModelCall settlementAgentCall = lastAttemptAgentCall != null
@@ -141,14 +146,14 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
                     null, null, List.of(), attemptAgentCalls));
                 callLogId = lastAttemptAgentCall.callLogId();
             }
-            recordUsageAndCost(context, List.of(), executionAgentCalls);
+            recordUsageAndCost(context, executionAgentCalls);
             markFailed(operation, exception);
             int executionCallCount = executionAgentCalls.isEmpty()
                 ? (callLogId == null ? 0 : 1)
                 : executionAgentCalls.size();
             markExecutionDiagnostics(context, executionCallCount);
             settleTerminalFailure(context, settlementAgentCall, callLogId,
-                executionCallCount, retryPolicy(exception).maxAttempts());
+                executionCallCount, retryPolicy(exception).maxAttempts(), executionAgentCalls);
             return null;
             });
             throw exception;
@@ -156,10 +161,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         return withCurrentAttempt(operation, context, () -> {
         markAttempt(context, result);
         markSucceeded(operation, result);
-        List<WorkflowAgentModelCall> executionAgentCalls = usesDurableAgentCalls(operation)
-            ? workflowAgentRuns.modelCallsForExecution(context.task().id, context.task().tenantId)
-            : result.agentModelCalls();
-        recordUsageAndCost(context, result.invocations(), executionAgentCalls);
+        List<WorkflowAgentModelCall> executionAgentCalls = allCalls(context, result.invocations(), result.agentModelCalls());
+        recordUsageAndCost(context, executionAgentCalls);
         int executionCallCount = executionAgentCalls.isEmpty()
             ? result.invocations().size()
             : executionAgentCalls.size();
@@ -168,7 +171,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             ? result.lastAgentModelCall()
             : executionAgentCalls.isEmpty() ? null : executionAgentCalls.get(executionAgentCalls.size() - 1);
         settle(context, result.lastInvocation(), settlementAgentCall, AiSettlementOutcome.SUCCESS,
-            executionCallCount);
+            executionCallCount, executionAgentCalls);
         return new AiExecutionHandlerResult(result.resultType(), result.resultId());
         });
     }
@@ -187,9 +190,20 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         });
     }
 
-    private boolean usesDurableAgentCalls(ScriptAiOperationEntity operation) {
-        return "STORYBOARD_BREAKDOWN".equals(operation.operationType)
-            || "SCOPED_ASSET_REEXTRACTION".equals(operation.operationType);
+    private List<WorkflowAgentModelCall> allCalls(AiExecutionContext context,
+        List<AiInvocationResult<AiTextResponse>> invocations, List<WorkflowAgentModelCall> fallback) {
+        List<WorkflowAgentModelCall> calls = new java.util.ArrayList<>(
+            workflowAgentRuns.modelCallsForExecution(context.task().id, context.task().tenantId));
+        calls.addAll(fallback);
+        for (var invocation : invocations) {
+            AiTextResponse response = invocation.response();
+            calls.add(new WorkflowAgentModelCall(invocation.aiCallLogId(), invocation.resolvedModelId(),
+                invocation.providerId(), invocation.providerRequestId(), invocation.transportOutcome(),
+                invocation.businessOutcome(), invocation.attemptId() == null ? context.claim().attemptId() : invocation.attemptId(),
+                invocation.promptTokens(), invocation.completionTokens(),
+                response == null ? null : response.cachedInputTokens(), response == null ? null : response.cacheWriteTokens()));
+        }
+        return AiTextUsage.distinctCalls(calls);
     }
 
     private void markExecutionDiagnostics(AiExecutionContext context, int businessCallCount) {
@@ -287,48 +301,29 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             .eq("id", context.claim().attemptId()));
     }
 
-    private void recordUsageAndCost(
-        AiExecutionContext context,
-        ScriptAiOperationExecutionResult result
-    ) {
-        recordUsageAndCost(context, result.invocations(), result.agentModelCalls());
-    }
-
-    private void recordUsageAndCost(
-        AiExecutionContext context,
-        List<AiInvocationResult<AiTextResponse>> invocations,
-        List<WorkflowAgentModelCall> agentModelCalls
-    ) {
-        if (invocations.isEmpty() && agentModelCalls.isEmpty()) {
-            return;
-        }
+    private void recordUsageAndCost(AiExecutionContext context, List<WorkflowAgentModelCall> agentModelCalls) {
+        if (agentModelCalls.isEmpty()) return;
         LocalDateTime observedAt = LocalDateTime.now();
-        for (AiInvocationResult<AiTextResponse> invocation : invocations) {
-            usageAccountingService.recordIfAbsent(AiUsageCommand.requestDerived(
-                new AiUsageContext(
-                    context.task().tenantId,
-                    context.task().id,
-                    context.claim().attemptId(),
-                    invocation.aiCallLogId(),
-                    invocation.resolvedModelId()
-                ),
-                AiUsageMetric.CALL,
-                "1",
-                Map.of(),
-                observedAt
-            ));
+        AiUsageExtractor extractor = new AiUsageExtractor();
+        boolean tokens = tokenPricing(context);
+        Set<AiUsageMetric> required = java.util.EnumSet.of(AiUsageMetric.CALL);
+        for (var call : AiTextUsage.distinctCalls(agentModelCalls)) {
+            AiUsageContext usageContext = new AiUsageContext(context.task().tenantId, context.task().id,
+                call.attemptId() == null ? context.claim().attemptId() : call.attemptId(),
+                call.callLogId(), call.modelId());
+            usageAccountingService.recordIfAbsent(extractor.requestCall(usageContext, observedAt));
+            if (tokens && AiTextUsage.complete(call)) {
+                extractor.providerTokens(usageContext, call.promptTokens(), call.completionTokens(),
+                    call.cachedInputTokens(), call.cacheWriteTokens(), observedAt).forEach(command -> {
+                        usageAccountingService.recordIfAbsent(command);
+                        required.add(command.metric());
+                    });
+            }
         }
-        for (var call : agentModelCalls) {
-            usageAccountingService.recordIfAbsent(AiUsageCommand.requestDerived(
-                new AiUsageContext(context.task().tenantId, context.task().id,
-                    call.attemptId() == null ? context.claim().attemptId() : call.attemptId(),
-                    call.callLogId(), call.modelId()),
-                AiUsageMetric.CALL, "1", Map.of(), observedAt));
+        AiExecutionCostSummary cost = usageAccountingService.priceExecution(context.task().id, required);
+        if (tokens && agentModelCalls.stream().anyMatch(call -> !AiTextUsage.complete(call))) {
+            cost = new AiExecutionCostSummary(cost.executionId(), AiUsageCostStatus.INCOMPLETE, cost.totalsByCurrency());
         }
-        AiExecutionCostSummary cost = usageAccountingService.priceExecution(
-            context.task().id,
-            Set.of(AiUsageMetric.CALL)
-        );
         try {
             executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
                 .set("usage_cost_status", cost.status().name())
@@ -344,21 +339,23 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         AiInvocationResult<AiTextResponse> invocation,
         com.antshorttv.workflowagent.run.WorkflowAgentModelCall agentCall,
         AiSettlementOutcome outcome,
-        int providerCallCount
+        int providerCallCount,
+        List<WorkflowAgentModelCall> calls
     ) {
         AiPointReservationEntity reservation = reservationMapper.selectByExecutionId(context.task().id);
         if (reservation == null || !"RESERVED".equals(reservation.status)) {
             return;
         }
-        AiPointReservationEntity settled = settlementService.finalizeOutcome(
+        AiPointReservationEntity settled = settlementService.finalizeCumulativeOutcome(
             reservation.id,
             outcome,
-            Map.of(AiUsageMetric.CALL, BigDecimal.valueOf(providerCallCount)),
+            calls.isEmpty() ? Map.of(AiUsageMetric.CALL, BigDecimal.valueOf(providerCallCount)) : AiTextUsage.totals(calls),
             context.claim().attemptId(),
             invocation != null ? invocation.aiCallLogId() : agentCall == null ? null : agentCall.callLogId(),
-            "execution:%d:v%d:%s".formatted(
+            "execution:%d:v%d:attempt:%d:%s".formatted(
                 context.task().id,
                 context.task().executionVersion,
+                context.claim().attemptId(),
                 outcome.name().toLowerCase()
             )
         );
@@ -370,7 +367,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         WorkflowAgentModelCall agentCall,
         Long callLogId,
         int providerCallCount,
-        int maxAttempts
+        int maxAttempts,
+        List<WorkflowAgentModelCall> calls
     ) {
         AiExecutionAttemptEntity attempt = attemptMapper.selectById(context.claim().attemptId());
         Long failures = attemptMapper.selectCount(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<AiExecutionAttemptEntity>()
@@ -382,7 +380,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         settle(context, null, agentCall,
             providerCallCount == 0 ? AiSettlementOutcome.PROVIDER_REJECTION
                 : AiSettlementOutcome.PROVIDER_BILLED_FAILURE,
-            providerCallCount);
+            providerCallCount, calls);
     }
 
     private void markRunning(ScriptAiOperationEntity operation) {
