@@ -51,13 +51,14 @@ class WechatComponentIntegrationTest extends com.antshorttv.support.Registration
         String redirect = java.net.URLDecoder.decode(created.authorizationUrl().split("redirect_uri=")[1].split("&auth_type")[0], java.nio.charset.StandardCharsets.UTF_8);
         return redirect.split("state=")[1];
     }
-    @Test void stateIsHashedScopedSingleUseAndExpires() {
+    @Test void stateIsHashedScopedRedeemedOnceAndExpires() {
         var created = service.create(1L, 1L);
         assertFalse(db.queryForMap("select * from wechat_authorization_request where id=?", created.requestId()).containsValue(state(created)));
         assertThrows(RuntimeException.class, () -> service.request(999L, created.requestId()));
         service.callback(state(created), "code");
         assertEquals("SUCCEEDED", service.request(1L, created.requestId()).status());
-        assertThrows(RuntimeException.class, () -> service.callback(state(created), "code"));
+        assertDoesNotThrow(() -> service.callback(state(created), "code"));
+        verify(client, times(1)).post(eq("api_query_auth"), anyString(), anyMap());
         var expired = service.create(1L, 1L);
         db.update("update wechat_authorization_request set expires_at=? where id=?", LocalDateTime.now().minusSeconds(1), expired.requestId());
         assertEquals("EXPIRED", service.request(1L, expired.requestId()).status());
@@ -66,6 +67,58 @@ class WechatComponentIntegrationTest extends com.antshorttv.support.Registration
         assertThrows(RuntimeException.class, () -> service.callback(state(foreign), "code"));
         assertEquals("FAILED", service.request(2L, foreign.requestId()).status());
         assertEquals(1L, db.queryForObject("select tenant_id from wechat_authorizer where appid=?", Long.class, WechatComponentCryptoTest.APP));
+    }
+    @Test void signedAuthorizationEventBeforeBrowserCallbackReturnsCompletionWithoutRedeemingAgain() throws Exception {
+        var created = service.create(1L, 1L);
+        String preauth = java.net.URLDecoder.decode(created.authorizationUrl().split("pre_auth_code=")[1].split("&")[0], java.nio.charset.StandardCharsets.UTF_8);
+        String event = "<xml><AppId>" + WechatComponentCryptoTest.APP + "</AppId><CreateTime>" + Instant.now().getEpochSecond()
+            + "</CreateTime><InfoType>authorized</InfoType><AuthorizerAppid>" + WechatComponentCryptoTest.APP
+            + "</AuthorizerAppid><AuthorizationCode>event-code</AuthorizationCode><AuthorizationCodeExpiredTime>"
+            + Instant.now().plusSeconds(600).getEpochSecond() + "</AuthorizationCodeExpiredTime><PreAuthCode>" + preauth + "</PreAuthCode></xml>";
+        String encrypted = WechatComponentCryptoTest.encrypt(event, WechatComponentCryptoTest.APP);
+        service.event("<xml><Encrypt>" + encrypted + "</Encrypt></xml>", WechatComponentCryptoTest.signature(encrypted), "1", "nonce");
+        assertEquals("SUCCEEDED", service.request(1L, created.requestId()).status());
+        var before = db.queryForMap("select * from wechat_authorizer where appid=?", WechatComponentCryptoTest.APP);
+        clearInvocations(client);
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(get("/api/wechat/component/callback").param("state", state(created)).param("auth_code", "browser-code"))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("授权处理完成")));
+        }
+        verifyNoInteractions(client);
+        assertEquals(before, db.queryForMap("select * from wechat_authorizer where appid=?", WechatComponentCryptoTest.APP));
+        assertEquals(1, db.queryForObject("select count(*) from team_miniapp where appid=?", Integer.class, WechatComponentCryptoTest.APP));
+    }
+    @Test void completedCallbackStillRejectsExpiredUnknownAndMalformedState() {
+        var created = service.create(1L, 1L); service.callback(state(created), "code");
+        clearInvocations(client);
+        assertThrows(RuntimeException.class, () -> service.callback("a".repeat(43), "code"));
+        assertThrows(RuntimeException.class, () -> service.callback(state(created), ""));
+        db.update("update wechat_authorization_request set expires_at=? where id=?", LocalDateTime.now().minusSeconds(1), created.requestId());
+        assertThrows(RuntimeException.class, () -> service.callback(state(created), "code"));
+        verifyNoInteractions(client);
+    }
+    @Test void completedCallbackCannotConfirmRevokedOrForeignBinding() {
+        var created = service.create(1L, 1L); service.callback(state(created), "code");
+        clearInvocations(client);
+        db.update("update wechat_authorizer set auth_status='REVOKED' where appid=?", WechatComponentCryptoTest.APP);
+        assertThrows(RuntimeException.class, () -> service.callback(state(created), "code"));
+        db.update("update wechat_authorizer set auth_status='AUTHORIZED',tenant_id=2 where appid=?", WechatComponentCryptoTest.APP);
+        assertThrows(RuntimeException.class, () -> service.callback(state(created), "code"));
+        db.update("update wechat_authorizer set tenant_id=1 where appid=?", WechatComponentCryptoTest.APP);
+        db.update("update team_miniapp set auth_status='REVOKED' where appid=?", WechatComponentCryptoTest.APP);
+        assertThrows(RuntimeException.class, () -> service.callback(state(created), "code"));
+        db.update("update team_miniapp set auth_status='AUTHORIZED',tenant_id=2 where appid=?", WechatComponentCryptoTest.APP);
+        assertThrows(RuntimeException.class, () -> service.callback(state(created), "code"));
+        verifyNoInteractions(client);
+    }
+    @Test void inProgressAndFailedRequestsCannotBeClaimedAgain() {
+        var created = service.create(1L, 1L);
+        clearInvocations(client);
+        for (String requestStatus : List.of("PROCESSING", "FAILED")) {
+            db.update("update wechat_authorization_request set status=? where id=?", requestStatus, created.requestId());
+            assertThrows(RuntimeException.class, () -> service.callback(state(created), "code"));
+        }
+        verifyNoInteractions(client);
     }
     @Test void officialLoginUsesComponentAndRevokeBlocksPublishingAndSigning() throws Exception {
         var team = new com.antshorttv.tenant.TenantEntity(); team.setCode("official-login-team"); team.setName("官方授权团队");
@@ -118,7 +171,8 @@ class WechatComponentIntegrationTest extends com.antshorttv.support.Registration
                 catch (RuntimeException e) { return false; }
             };
             var a = pool.submit(call); var b = pool.submit(call); start.countDown();
-            assertNotEquals(a.get(), b.get());
+            boolean first = a.get(), second = b.get();
+            assertTrue(first || second);
             verify(client, times(1)).post(eq("api_query_auth"), anyString(), anyMap());
         } finally { pool.shutdownNow(); }
     }

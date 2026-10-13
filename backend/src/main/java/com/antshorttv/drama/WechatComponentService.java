@@ -105,10 +105,18 @@ public class WechatComponentService {
             var rows = db.queryForList("select * from wechat_authorization_request where state_hash=? for update", MiniappSessionService.hash(state));
             if (rows.isEmpty()) throw WechatComponentCrypto.rejected();
             var request = rows.get(0);
-            if (!"PENDING".equals(request.get("status")) || !time(request.get("expires_at")).isAfter(LocalDateTime.now())) throw WechatComponentCrypto.rejected();
+            if (!time(request.get("expires_at")).isAfter(LocalDateTime.now())) throw WechatComponentCrypto.rejected();
+            // 微信授权事件可能先于浏览器回调完成绑定；只确认结果，不再次兑换授权码或修改绑定。
+            if ("SUCCEEDED".equals(request.get("status"))) {
+                if (db.queryForObject("select count(*) from wechat_authorizer a join team_miniapp m on m.appid=a.appid and m.tenant_id=a.tenant_id where a.appid=? and a.tenant_id=? and a.auth_status='AUTHORIZED' and m.auth_status='AUTHORIZED' and m.binding_type='OFFICIAL'",
+                    Long.class, request.get("appid"), request.get("tenant_id")) != 1) throw WechatComponentCrypto.rejected();
+                return null;
+            }
+            if (!"PENDING".equals(request.get("status"))) throw WechatComponentCrypto.rejected();
             db.update("update wechat_authorization_request set status='PROCESSING' where id=?", request.get("id"));
             return request;
         });
+        if (row == null) return;
         try {
             tx.executeWithoutResult(s -> {
                 component(true);
