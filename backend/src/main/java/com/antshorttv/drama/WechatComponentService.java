@@ -57,7 +57,11 @@ public class WechatComponentService {
         if (value.isBlank() || value.length() > 8192) throw WechatComponentCrypto.rejected();
         return value;
     }
-    private LocalDateTime time(Object value) { return value == null ? null : ((java.sql.Timestamp)value).toLocalDateTime(); }
+    private LocalDateTime time(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDateTime dateTime) return dateTime;
+        return ((java.sql.Timestamp) value).toLocalDateTime();
+    }
     public String componentToken() {
         configured();
         return tx.execute(s -> {
