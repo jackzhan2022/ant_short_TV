@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cloneElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamSettings from './index';
 
@@ -13,13 +14,47 @@ const mocks = vi.hoisted(() => ({
   leaveTenant: vi.fn(),
   transferOwner: vi.fn(),
   success: vi.fn(),
+  setInitialState: vi.fn(),
+  formValues: {} as any,
 }));
 
 vi.mock('@/services/account-team/auth', () => ({
   getCurrentTenantId: mocks.getCurrentTenantId,
 }));
 
+vi.mock('@umijs/max', () => ({
+  useModel: () => ({ setInitialState: mocks.setInitialState }),
+}));
+vi.mock('@/components/TeamIconPicker', () => ({
+  default: ({ value, onChange, disabled }: any) =>
+    disabled ? (
+      <span>只读团队图标</span>
+    ) : (
+      <button
+        type="button"
+        aria-label="选择团队图标"
+        data-value={value || ''}
+        onClick={() => onChange?.('icon:camera')}
+      >
+        选择相机
+      </button>
+    ),
+}));
+
 vi.mock('antd', () => ({
+  Form: {
+    Item: ({ children, label, name }: any) => (
+      <div>
+        {label}
+        {cloneElement(children, {
+          value: mocks.formValues[name],
+          onChange: (value: unknown) => {
+            mocks.formValues[name] = value;
+          },
+        })}
+      </div>
+    ),
+  },
   App: {
     useApp: () => ({ message: { success: mocks.success } }),
   },
@@ -76,7 +111,25 @@ vi.mock('@ant-design/pro-components', () => ({
       {children}
     </main>
   ),
-  ProForm: ({ children }: any) => <form>{children}</form>,
+  ProForm: ({ children, initialValues, onFinish, submitter }: any) => {
+    mocks.formValues = {
+      name: initialValues.name,
+      type: initialValues.type,
+      logo: initialValues.logo,
+      description: initialValues.description,
+    };
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onFinish(mocks.formValues);
+        }}
+      >
+        {children}
+        {submitter !== false && <button type="submit">保存团队</button>}
+      </form>
+    );
+  },
   ProFormSelect: ({ label }: any) => <span>{label}</span>,
   ProFormText: ({ label }: any) => <span>{label}</span>,
   ProFormTextArea: ({ label }: any) => <span>{label}</span>,
@@ -140,6 +193,59 @@ describe('TeamSettings', () => {
         pageSize: 20,
       },
     });
+  });
+
+  it('saves a picked icon and refreshes the global team summary for immediate sidebar display', async () => {
+    const updated = {
+      id: 10,
+      code: 'TEAM',
+      name: '创作团队',
+      type: 'STUDIO',
+      status: 'ACTIVE',
+      memberType: 'OWNER',
+      memberId: 100,
+      logo: 'icon:camera',
+    };
+    mocks.updateTenant.mockResolvedValue({ success: true, data: updated });
+    render(<TeamSettings />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: '选择团队图标' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '保存团队' }));
+    await waitFor(() =>
+      expect(mocks.updateTenant).toHaveBeenCalledWith(
+        10,
+        expect.objectContaining({ logo: 'icon:camera' }),
+      ),
+    );
+    await waitFor(() => expect(mocks.setInitialState).toHaveBeenCalled());
+    const update = mocks.setInitialState.mock.calls[0][0];
+    const state = update({
+      tenants: [
+        { ...updated, logo: undefined },
+        { ...updated, id: 11 },
+      ],
+      selectedTenant: {
+        tenant: { ...updated, logo: undefined },
+        permissions: ['PROJECT:CREATE'],
+      },
+      tenantPermissions: ['PROJECT:CREATE'],
+    });
+    expect(state.tenants[0].logo).toBe('icon:camera');
+    expect(state.selectedTenant.tenant.logo).toBe('icon:camera');
+    expect(state.tenantPermissions).toEqual(['PROJECT:CREATE']);
+  });
+
+  it('keeps the icon read-only for non-owner members', async () => {
+    const response = await mocks.queryTenant();
+    mocks.queryTenant.mockResolvedValue({
+      data: { ...response.data, memberType: 'MEMBER', logo: 'icon:star' },
+    });
+    render(<TeamSettings />);
+    expect(await screen.findByText('只读团队图标')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '选择团队图标' }),
+    ).not.toBeInTheDocument();
   });
 
   it('loads team settings without loading or rendering point information', async () => {

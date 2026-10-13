@@ -24,7 +24,7 @@ vi.mock('@/components', () => ({
     </button>
   ),
 }));
-vi.mock('@ant-design/pro-components', () => ({ SettingDrawer: () => null }));
+vi.mock('@ant-design/pro-components', () => ({ SettingDrawer: () => <div data-testid="setting-drawer" /> }));
 vi.mock('antd', () => ({ App: ({ children }: any) => <div data-testid="antd-app-provider">{children}</div> }));
 vi.mock('./requestErrorConfig', () => ({ errorConfig: {} }));
 vi.mock('../config/defaultSettings', () => ({ default: { navTheme: 'light' } }));
@@ -205,6 +205,55 @@ describe('app bootstrap state', () => {
     const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
     config.onPageChange?.({} as any);
     expect(mocks.replace).toHaveBeenCalledWith('/user/login?redirect=%2Fprojects%2F1%2Fproduction-workbench');
+  });
+
+  it('shows start using for a teamless user while retaining accessible platform management', async () => {
+    const { layout } = await import('./app');
+    const config = layout({ initialState: { currentUser: { name: 'New User' }, tenants: [] }, setInitialState: vi.fn() } as any);
+    if (typeof config.menuDataRender !== 'function') throw new Error('menuDataRender missing');
+    const menu = config.menuDataRender([
+      { path: '/team/my', name: '团队管理' },
+      { path: '/projects/list', name: '项目', unaccessible: true },
+      { path: '/tasks', name: '任务中心', unaccessible: true },
+      { path: '/short-drama-creation', name: '短剧创作', unaccessible: true },
+      { path: '/commercial-management/orders', name: '订单管理', unaccessible: false },
+    ] as any);
+    expect(menu.map((item) => item.key)).toEqual(['management', 'commercial']);
+    expect(menu[0].children).toEqual([expect.objectContaining({ path: '/team/my', name: '开始使用', locale: false })]);
+    expect(menu[1].children).toEqual([expect.objectContaining({ path: '/commercial-management/orders' })]);
+  });
+
+  it('drops inaccessible and hidden menu entries before making sidebar groups', async () => {
+    const { layout } = await import('./app');
+    const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
+    if (typeof config.menuDataRender !== 'function') throw new Error('menuDataRender missing');
+    expect(config.menuDataRender([
+      { path: '/projects/list', name: '项目', unaccessible: true },
+      { path: '/tasks', name: '任务中心', hideInMenu: true },
+      { path: '/team/my', name: '团队管理' },
+    ] as any).map((item) => item.key)).toEqual(['management']);
+  });
+
+  it('redirects teamless workspace visits to onboarding without blocking invitation links', async () => {
+    const { layout } = await import('./app');
+    const config = layout({ initialState: { currentUser: { name: 'New User' }, tenants: [] }, setInitialState: vi.fn() } as any);
+    mockHistory.location = { pathname: '/projects/list', search: '', hash: '' };
+    config.onPageChange?.({} as any);
+    expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+    mocks.replace.mockClear();
+    for (const pathname of ['/team/my', '/team/invitations/invite-token', '/commercial-management/orders']) {
+      mockHistory.location = { pathname, search: '', hash: '' };
+      config.onPageChange?.({} as any);
+    }
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('does not expose the floating style settings to production users', async () => {
+    const { layout } = await import('./app');
+    const config = layout({ initialState: { currentUser: { name: 'New User' }, tenants: [] }, setInitialState: vi.fn() } as any);
+    if (typeof config.childrenRender !== 'function') throw new Error('childrenRender missing');
+    render(config.childrenRender(<div>onboarding</div>, {} as any) as React.ReactElement);
+    expect(screen.queryByTestId('setting-drawer')).not.toBeInTheDocument();
   });
 
   it('keeps the production API base URL same-origin by default', async () => {

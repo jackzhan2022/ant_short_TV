@@ -37,9 +37,29 @@ describe('SidebarAccount', () => {
     vi.clearAllMocks();
   });
 
+  it('keeps the account menu but hides points without a selected team', () => {
+    render(<SidebarAccount currentUser={{ name: 'Test User' }} />);
+    expect(screen.getByRole('button', { name: '账户菜单' })).toBeInTheDocument();
+    expect(screen.queryByText('团队积分')).not.toBeInTheDocument();
+    expect(mocks.queryTeamPointAccount).not.toHaveBeenCalled();
+  });
+
+  it('refreshes immediately on team changes without displaying the previous balance', async () => {
+    mocks.queryTeamPointAccount.mockResolvedValueOnce({ data: { balance: 1280 } }).mockReturnValueOnce(new Promise(() => {}));
+    const user = { name: 'Test User' };
+    const { rerender } = render(<SidebarAccount currentUser={user} currentTenantId={7} />);
+    await screen.findByRole('button', { name: '团队积分 1,280，前往充值中心' });
+    rerender(<SidebarAccount currentUser={user} currentTenantId={8} />);
+    expect(screen.queryByRole('button', { name: '团队积分 1,280，前往充值中心' })).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.queryTeamPointAccount).toHaveBeenCalledWith(8));
+    rerender(<SidebarAccount currentUser={user} />);
+    expect(screen.queryByText('团队积分')).not.toBeInTheDocument();
+  });
+
   it('renders team points above the current account', () => {
     const { container } = render(
       <SidebarAccount
+        currentTenantId={7}
         currentUser={{ name: 'Test User', avatar: '/avatar.png' }}
       />,
     );
@@ -62,7 +82,7 @@ describe('SidebarAccount', () => {
   });
 
   it('uses the shared account dropdown as the footer trigger', () => {
-    render(<SidebarAccount currentUser={{ name: 'Test User' }} />);
+    render(<SidebarAccount currentTenantId={7} currentUser={{ name: 'Test User' }} />);
 
     expect(screen.getByRole('button', { name: '账户菜单' })).toHaveAttribute(
       'data-placement',
@@ -74,7 +94,7 @@ describe('SidebarAccount', () => {
     mocks.getCurrentTenantId.mockReturnValue(7);
     mocks.queryTeamPointAccount.mockResolvedValue({ data: { balance: 1280 } });
 
-    render(<SidebarAccount currentUser={{ name: 'Test User' }} />);
+    render(<SidebarAccount currentTenantId={7} currentUser={{ name: 'Test User' }} />);
 
     const entry = await screen.findByRole('button', {
       name: '团队积分 1,280，前往充值中心',
@@ -92,7 +112,7 @@ describe('SidebarAccount', () => {
       .mockResolvedValueOnce({ data: { balance: 1280 } })
       .mockResolvedValueOnce({ data: { balance: 2560 } });
 
-    render(<SidebarAccount currentUser={{ name: 'Test User' }} />);
+    render(<SidebarAccount currentTenantId={7} currentUser={{ name: 'Test User' }} />);
     await screen.findByRole('button', { name: '团队积分 1,280，前往充值中心' });
 
     fireEvent.focus(window);

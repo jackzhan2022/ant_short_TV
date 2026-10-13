@@ -1,0 +1,55 @@
+import { createStyles } from 'antd-style';
+
+export const useStyles = createStyles(({ token }) => ({
+  preview: { display: 'inline-flex', alignItems: 'center', gap: 10 },
+  control: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  trigger: { height: 44, padding: '8px 14px', gap: 12, color: token.colorText },
+  readonly: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 32,
+    color: token.colorText,
+  },
+  panel: { width: 300, maxWidth: 'calc(100vw - 56px)' },
+  heading: {
+    margin: '0 0 14px',
+    fontSize: 14,
+    fontWeight: 600,
+    color: token.colorText,
+  },
+  grid: {
+    border: 0,
+    padding: 0,
+    margin: 0,
+    minWidth: 0,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 8,
+  },
+  option: {
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: 64,
+    gap: 4,
+    padding: '8px 4px',
+    fontSize: 22,
+    borderRadius: token.borderRadiusLG,
+    color: token.colorTextSecondary,
+  },
+  optionLabel: { fontSize: 12, lineHeight: 1.5 },
+  selected: {
+    color: token.colorPrimary,
+    borderColor: token.colorPrimary,
+    background: token.colorPrimaryBg,
+  },
+  hint: {
+    margin: '14px 0 0',
+    fontSize: 12,
+    lineHeight: 1.6,
+    color: token.colorTextTertiary,
+  },
+}));

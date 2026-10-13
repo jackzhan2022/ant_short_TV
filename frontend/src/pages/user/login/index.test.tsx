@@ -202,6 +202,20 @@ describe('Login Page', () => {
     window.history.replaceState({}, '', '/user/login');
   });
 
+  it('preserves a valid invitation return URL for a user without a team', async () => {
+    const noTeamSession = { ...session, tenants: [], nextAction: 'CREATE_OR_JOIN_TEAM' };
+    mocks.loginByMobile.mockResolvedValue({ success: true, data: noTeamSession });
+    mocks.queryAuthBootstrap.mockResolvedValue({ data: {
+      user: session.user, platform: { roles: [], permissions: [] }, tenants: [], selectedTenant: null, nextAction: 'CREATE_OR_JOIN_TEAM',
+    } });
+    window.history.replaceState({}, '', '/user/login?redirect=%2Fteam%2Finvitations%2Finvite-token');
+    render(<Login />);
+    fireEvent.input(screen.getByPlaceholderText('请输入手机号'), { target: { value: '13800000000' } });
+    fireEvent.input(screen.getByPlaceholderText('请输入密码'), { target: { value: 'Password123' } });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/team/invitations/invite-token'));
+  });
+
   it('submits mobile and password login', async () => {
     render(<Login />);
 

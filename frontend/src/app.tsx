@@ -119,10 +119,13 @@ export const layout: RunTimeLayoutConfig = ({
     setCurrentTenantId(tenantId);
   };
 
+  const hasNoTeams = Boolean(initialState?.currentUser) && initialState?.tenants?.length === 0;
+
   return {
     menuDataRender: (menuData) => {
       const find = (path: string, items: any[]): any | undefined => {
         for (const item of items) {
+          if (item.unaccessible || item.hideInMenu) continue;
           if (item.path === path) return item;
           const nested = item.children ? find(path, item.children) : undefined;
           if (nested) return nested;
@@ -131,7 +134,12 @@ export const layout: RunTimeLayoutConfig = ({
       };
       const pick = (path: string) => {
         const item = find(path, menuData as any[]);
-        return item ? { ...item, children: undefined } : undefined;
+        return item ? {
+          ...item,
+          name: hasNoTeams && path === '/team/my' ? '开始使用' : item.name,
+          locale: hasNoTeams && path === '/team/my' ? false : item.locale,
+          children: undefined,
+        } : undefined;
       };
       const group = (key: string, name: string, paths: string[]) => ({
         key,
@@ -145,7 +153,7 @@ export const layout: RunTimeLayoutConfig = ({
           '/script-review-library',
         ]),
         group('mine', '我的', ['/projects/list', '/tasks']),
-        group('management', '管理', [
+        group('management', hasNoTeams ? '工作空间' : '管理', [
           '/team/my',
           '/ai-service-management/model-management',
         ]),
@@ -155,7 +163,7 @@ export const layout: RunTimeLayoutConfig = ({
           '/commercial-management/tenants',
           '/ai-service-management/operations',
         ]),
-      ].filter((item) => item.children.length > 0);
+      ].filter((item) => item.children.length > 0 && (!hasNoTeams || !['creation', 'mine'].includes(item.key)));
     },
     menuItemRender: (item, dom) => {
       if (item.path) {
@@ -184,6 +192,13 @@ export const layout: RunTimeLayoutConfig = ({
         history.replace(
           `${loginPath}?redirect=${encodeURIComponent(location.pathname + location.search + location.hash)}`,
         );
+        return;
+      }
+      if (hasNoTeams && [
+        '/projects', '/tasks', '/short-drama-creation', '/video-script-decomposition',
+        '/script-review-library', '/recharge', '/team/settings', '/team/select',
+      ].some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))) {
+        history.replace('/team/my');
       }
     },
     bgLayoutImgList: [
@@ -219,7 +234,7 @@ export const layout: RunTimeLayoutConfig = ({
       ),
     menuFooterRender: (props) =>
       props?.collapsed ? null : (
-        <SidebarAccount currentUser={initialState?.currentUser} />
+        <SidebarAccount currentUser={initialState?.currentUser} currentTenantId={initialState?.currentTenantId} />
       ),
     // Replace ProLayout's default ErrorBoundary with our offline-aware version,
     // so chunk load errors show friendly messages instead of "Something went wrong."
@@ -233,7 +248,7 @@ export const layout: RunTimeLayoutConfig = ({
       return (
         <>
           {children}
-          <SettingDrawer
+          {isDev && <SettingDrawer
             disableUrlParams
             enableDarkTheme
             collapse={initialState?.settingDrawerOpen}
@@ -250,7 +265,7 @@ export const layout: RunTimeLayoutConfig = ({
                 settings,
               }));
             }}
-          />
+          />}
         </>
       );
     },

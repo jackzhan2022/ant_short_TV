@@ -6,8 +6,10 @@ import {
   ProFormText,
   ProFormTextArea,
 } from '@ant-design/pro-components';
-import { App, Button, Empty, Popconfirm, Space, Tag } from 'antd';
+import { useModel } from '@umijs/max';
+import { App, Button, Empty, Form, Popconfirm, Space, Tag } from 'antd';
 import { useEffect, useState } from 'react';
+import TeamIconPicker from '@/components/TeamIconPicker';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type {
   TenantMember,
@@ -33,6 +35,7 @@ const tenantTypeOptions = [
 const TeamSettings = () => {
   const tenantId = getCurrentTenantId();
   const { message } = App.useApp();
+  const { setInitialState } = useModel('@@initialState');
   const [tenant, setTenant] = useState<TenantSummary>();
   const [members, setMembers] = useState<TenantMember[]>([]);
 
@@ -136,7 +139,17 @@ const TeamSettings = () => {
           initialValues={tenant}
           submitter={isOwner ? undefined : false}
           onFinish={async (values) => {
-            await updateTenant(tenant.id, values);
+            const response = await updateTenant(tenant.id, values);
+            await setInitialState((state) => ({
+              ...state,
+              tenants: state?.tenants?.map((item) =>
+                item.id === tenant.id ? response.data : item,
+              ),
+              selectedTenant:
+                state?.selectedTenant?.tenant.id === tenant.id
+                  ? { ...state.selectedTenant, tenant: response.data }
+                  : state?.selectedTenant,
+            }));
             message.success('团队信息已更新');
             await load();
           }}
@@ -152,7 +165,17 @@ const TeamSettings = () => {
             options={tenantTypeOptions}
             rules={[{ required: true, message: '请选择团队类型' }]}
           />
-          <ProFormText name="logo" label="Logo 地址" />
+          <Form.Item
+            name="logo"
+            label="团队图标（选填）"
+            extra={
+              isOwner
+                ? '从内置图标中选择，不选择时使用默认团队图标。'
+                : undefined
+            }
+          >
+            <TeamIconPicker disabled={!isOwner} />
+          </Form.Item>
           <ProFormTextArea name="description" label="团队简介" />
         </ProForm>
       )}

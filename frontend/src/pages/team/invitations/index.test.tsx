@@ -84,7 +84,7 @@ vi.mock('@umijs/max', () => ({
   useParams: () => ({ token: 'test-invitation' }),
   useModel: () => ({
     initialState: {
-      selectedTenant: { membership: { memberType: mocks.memberType } },
+      selectedTenant: { tenant: { id: 10 }, membership: { memberType: mocks.memberType, status: 'ACTIVE' } },
     },
   }),
 }));
