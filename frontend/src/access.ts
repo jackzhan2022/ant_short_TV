@@ -9,6 +9,7 @@ export default function access(
         currentUser?: LayoutCurrentUser;
         tenantPermissions?: string[];
         platformPermissions?: string[];
+        bootstrap?: { platform: { roles: string[] } };
         selectedTenant?: { membership?: { status?: string } } | null;
       }
     | undefined,
@@ -19,6 +20,9 @@ export default function access(
   const hasActiveTenant =
     Boolean(currentUser) &&
     initialState?.selectedTenant?.membership?.status === 'ACTIVE';
+  const canUseDramaAdministration =
+    hasActiveTenant &&
+    initialState?.bootstrap?.platform.roles.includes('PLATFORM_ADMIN') === true;
   return {
     canAdmin: currentUser && currentUser.access === 'admin',
     canManageRoles: currentUser && tenantPermissions.includes('ROLE:VIEW'),
@@ -30,6 +34,14 @@ export default function access(
       tenantPermissions.includes('AI_SERVICE:USE'),
     canViewScriptReview: hasActiveTenant,
     canViewProjects: hasActiveTenant,
+    canViewDramas:
+      canUseDramaAdministration && tenantPermissions.includes('DRAMA:VIEW'),
+    canManageDramas:
+      canUseDramaAdministration && tenantPermissions.includes('DRAMA:MANAGE'),
+    canPublishDramas:
+      canUseDramaAdministration && tenantPermissions.includes('DRAMA:PUBLISH'),
+    canManageMiniapps:
+      canUseDramaAdministration && tenantPermissions.includes('MINIAPP:MANAGE'),
     canCreateProject:
       hasActiveTenant && tenantPermissions.includes('PROJECT:CREATE'),
     canViewAiCallLogs:

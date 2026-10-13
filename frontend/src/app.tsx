@@ -123,6 +123,7 @@ export const layout: RunTimeLayoutConfig = ({
     menuDataRender: (menuData) => {
       const find = (path: string, items: any[]): any | undefined => {
         for (const item of items) {
+          if (item.unaccessible || item.hideInMenu) continue;
           if (item.path === path) return item;
           const nested = item.children ? find(path, item.children) : undefined;
           if (nested) return nested;
@@ -146,6 +147,7 @@ export const layout: RunTimeLayoutConfig = ({
         ]),
         group('mine', '我的', ['/projects/list', '/tasks']),
         group('management', '管理', [
+          '/drama-library',
           '/team/my',
           '/ai-service-management/model-management',
         ]),

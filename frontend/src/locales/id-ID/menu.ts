@@ -1,4 +1,5 @@
 export default {
+  'menu.drama-library': 'Perpustakaan Drama',
   'menu.tasks': 'Pusat Tugas',
   'menu.welcome': 'Selamat Datang',
   'menu.more-blocks': 'Blocks Lainnya',

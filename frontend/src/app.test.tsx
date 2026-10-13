@@ -151,6 +151,19 @@ describe('app bootstrap state', () => {
     expect(mocks.setCurrentTenantId).not.toHaveBeenCalled();
   });
 
+  it('仅显示有访问权限的剧库管理入口', async () => {
+    const { layout } = await import('./app');
+    const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
+    if (typeof config.menuDataRender !== 'function') throw new Error('menuDataRender missing');
+    const entry = { path: '/drama-library', name: '剧集管理' };
+    expect(config.menuDataRender([entry]).flatMap((group) => group.children || []))
+      .toContainEqual(expect.objectContaining(entry));
+    for (const flags of [{ unaccessible: true }, { hideInMenu: true }]) {
+      expect(config.menuDataRender([{ ...entry, ...flags }]).flatMap((group) => group.children || []))
+        .not.toContainEqual(expect.objectContaining(entry));
+    }
+  });
+
   it('keeps the route menu data for native sidebar groups', async () => {
     const { layout } = await import('./app');
     const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
