@@ -74,6 +74,9 @@ docs/superpowers
 .wrangler
 requestRecord.mock.js
 
+# local generated WeChat credentials
+/outputs/wechat-component.private.env
+
 # runtime storage
 backend/storage/
 /frontend/.legacy-rollback/

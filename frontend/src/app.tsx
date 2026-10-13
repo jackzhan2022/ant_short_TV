@@ -154,6 +154,7 @@ export const layout: RunTimeLayoutConfig = ({
         ]),
         group('mine', '我的', ['/projects/list', '/tasks']),
         group('management', hasNoTeams ? '工作空间' : '管理', [
+          '/drama-library',
           '/team/my',
           '/ai-service-management/model-management',
         ]),

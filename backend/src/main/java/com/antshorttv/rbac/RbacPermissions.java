@@ -5,6 +5,10 @@ import java.util.List;
 final class RbacPermissions {
 
     static final List<RbacPermissionDefinition> ALL = List.of(
+        new RbacPermissionDefinition("DRAMA:VIEW", "查看独立剧库", PermissionType.PAGE, "DRAMA", "VIEW"),
+        new RbacPermissionDefinition("DRAMA:MANAGE", "管理独立剧库", PermissionType.BUTTON, "DRAMA", "MANAGE"),
+        new RbacPermissionDefinition("DRAMA:PUBLISH", "发布小程序剧集", PermissionType.BUTTON, "DRAMA", "PUBLISH"),
+        new RbacPermissionDefinition("MINIAPP:MANAGE", "手工绑定团队小程序", PermissionType.BUTTON, "MINIAPP", "MANAGE"),
         new RbacPermissionDefinition("TENANT:VIEW", "查看团队", PermissionType.PAGE, "TENANT", "VIEW"),
         new RbacPermissionDefinition("TENANT:EDIT", "修改团队", PermissionType.BUTTON, "TENANT", "EDIT"),
         new RbacPermissionDefinition("MEMBER:VIEW", "查看成员", PermissionType.PAGE, "MEMBER", "VIEW"),

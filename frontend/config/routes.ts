@@ -243,6 +243,13 @@ export default [
     component: './short-drama-creation',
   },
   {
+    path: '/drama-library',
+    name: 'drama-library',
+    icon: 'playSquare',
+    access: 'canViewDramas',
+    component: './drama-library',
+  },
+  {
     path: '/script-review-library',
     name: 'script-review',
     icon: 'folderOpen',

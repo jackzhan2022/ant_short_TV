@@ -1,4 +1,5 @@
 export default {
+  'menu.drama-library': 'مدیریت سریال',
   'menu.tasks': 'مرکز وظایف',
   'menu.welcome': 'خوش آمدید',
   'menu.more-blocks': 'بلوک های بیشتر',

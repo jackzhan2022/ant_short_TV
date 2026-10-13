@@ -34,6 +34,9 @@ public class SecurityConfig {
         return http
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf
+                .ignoringRequestMatchers(
+                    new org.springframework.security.web.util.matcher.AntPathRequestMatcher("/api/wechat/component/events", "POST"),
+                    new org.springframework.security.web.util.matcher.AntPathRequestMatcher("/api/wechat/component/messages/*", "POST"))
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                 .ignoringRequestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/verification-code/**", "/api/commercial/payments/wechat/notify", "/api/media-processing/callbacks/tencent-ci/**"))
@@ -41,6 +44,10 @@ public class SecurityConfig {
                 .authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler))
             .authorizeHttpRequests(authorize -> authorize
+                .requestMatchers(org.springframework.http.HttpMethod.GET,
+                    "/api/wechat/component/callback", "/api/wechat/component/events", "/api/wechat/component/messages/*").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.POST,
+                    "/api/wechat/component/events", "/api/wechat/component/messages/*").permitAll()
                 .requestMatchers(
                     "/api/auth/login", "/api/auth/register",
                     "/api/auth/verification-code/**",
