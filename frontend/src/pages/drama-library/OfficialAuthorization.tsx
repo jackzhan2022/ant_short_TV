@@ -112,9 +112,9 @@ export default function OfficialAuthorization({
       }
       setCreated(result);
       setStatus('PENDING');
-      // noopener 可能使返回值为 null，始终提供经过白名单校验的备用链接。
+      // 微信校验授权发起域名，保留 Referer；noopener 隔离窗口，备用链接处理弹窗拦截。
       try {
-        window.open(result.authorizationUrl, '_blank', 'noopener,noreferrer');
+        window.open(result.authorizationUrl, '_blank', 'noopener');
       } catch {
         /* 备用链接仍可用 */
       }
@@ -286,7 +286,8 @@ export default function OfficialAuthorization({
                 <a
                   href={created.authorizationUrl}
                   target="_blank"
-                  rel="noopener noreferrer"
+                  rel="noopener"
+                  referrerPolicy="origin"
                 >
                   {t('link', '打开微信官方授权页面')}
                 </a>

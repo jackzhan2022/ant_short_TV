@@ -97,17 +97,18 @@ describe('官方授权', () => {
       screen.getByRole('button', { name: '微信官方授权小程序' }),
     ).toBeDisabled();
   });
-  it('安全打开官方链接并始终保留弹窗拦截后的备用链接', async () => {
+  it('保留授权入口来源域名并隔离新窗口，同时提供备用链接', async () => {
     render(<OfficialAuthorization onAuthorized={vi.fn()} />);
     await start();
     expect(window.open).toHaveBeenCalledWith(
       url,
       '_blank',
-      'noopener,noreferrer',
+      'noopener',
     );
     const link = screen.getByRole('link', { name: '打开微信官方授权页面' });
     expect(link).toHaveAttribute('href', url);
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link).toHaveAttribute('rel', 'noopener');
+    expect(link).toHaveAttribute('referrerpolicy', 'origin');
     expect(link).toHaveAttribute('target', '_blank');
   });
   it.each([
