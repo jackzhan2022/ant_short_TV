@@ -5,6 +5,7 @@ import {
   ProFormDigit,
   ProFormList,
   ProFormSelect,
+  ProFormTextArea,
 } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
 import { App, Button, Form, Modal, Popconfirm, Space, Table, Tabs, Tag, Typography } from 'antd';
@@ -22,6 +23,9 @@ import {
   buildPointComponents,
   findEffectiveCostVersion,
   formatBillingUnit,
+  formatPricingDimensions,
+  parsePricingDimensions,
+  type PricingComponent,
 } from './pricingEntry';
 
 type PriceKind = 'cost' | 'point';
@@ -36,6 +40,7 @@ type FormValues = {
     unitPrice?: number;
     pointRate?: number;
     currency?: string;
+    dimensionsJson?: string;
   }>;
 };
 
@@ -111,7 +116,7 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
             unitSize: component.unitSize,
             unitPrice: component.unitPrice ?? 0,
             currency: component.currency ?? 'USD',
-            dimensions: {},
+            dimensions: parsePricingDimensions(component.dimensionsJson),
           })),
         },
       );
@@ -125,7 +130,7 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
             metric: component.metric,
             unitSize: component.unitSize,
             pointRate: component.pointRate ?? 0,
-            dimensions: {},
+            dimensions: parsePricingDimensions(component.dimensionsJson),
           })),
         },
       );
@@ -164,13 +169,20 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
         {
           title: '计费项', render: (_, record) => (
             <Space orientation="vertical" size={2}>
-              {(record.components ?? []).map((component) => (
-                <Typography.Text key={component.id ?? component.metric}>
-                  {metricText(component.metric ?? '')} / {formatBillingUnit(component.metric ?? '', component.unitSize ?? 0)}:{' '}
-                  {kind === 'cost'
-                    ? `${(component as API.ModelPriceComponentResponse).unitPrice} ${(component as API.ModelPriceComponentResponse).currency}`
-                    : `${(component as API.PointPolicyComponentResponse).pointRate} 积分`}
-                </Typography.Text>
+              {(record.components ?? []).map((component: PricingComponent) => (
+                <Space orientation="vertical" size={0} key={component.id ?? `${component.metric}:${formatPricingDimensions(component.dimensions)}`}>
+                  <Typography.Text>
+                    {metricText(component.metric ?? '')} / {formatBillingUnit(component.metric ?? '', component.unitSize ?? 0)}:{' '}
+                    {kind === 'cost'
+                      ? `${(component as API.ModelPriceComponentResponse).unitPrice} ${(component as API.ModelPriceComponentResponse).currency}`
+                      : `${(component as API.PointPolicyComponentResponse).pointRate} 积分`}
+                  </Typography.Text>
+                  <Typography.Text type="secondary" style={{ whiteSpace: 'pre-wrap' }}>
+                    {Object.keys(component.dimensions ?? {}).length === 0
+                      ? '计费条件：{}（默认兜底）'
+                      : `计费条件：${formatPricingDimensions(component.dimensions)}`}
+                  </Typography.Text>
+                </Space>
               ))}
             </Space>
           ),
@@ -206,10 +218,11 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
 
     pointForm.setFieldsValue({
       components: buildPointComponents(
-        (costVersion.components ?? []).map((component) => ({
+        (costVersion.components ?? []).map((component: PricingComponent) => ({
           metric: component.metric ?? '',
           unitSize: component.unitSize ?? 0,
           unitPrice: component.unitPrice ?? 0,
+          dimensions: component.dimensions,
         })),
         values.multiplier ?? 1,
       ),
@@ -268,6 +281,15 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
             <ProFormDigit name="pointRate" label="积分单价" min={0} rules={[{ required: true }]} />
           )}
         </Space>
+        <ProFormTextArea
+          name="dimensionsJson"
+          label="计费条件（JSON）"
+          width="lg"
+          placeholder='{"resolution":"720p","referenceVideo":"false"}'
+          extra="留空或 {} 表示默认兜底；JSON 对象的值必须是字符串。"
+          fieldProps={{ autoSize: { minRows: 2, maxRows: 6 } }}
+          rules={[{ validator: async (_: unknown, value?: string) => { parsePricingDimensions(value); } }]}
+        />
       </ProFormList>
     </ModalForm>
   );

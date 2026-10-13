@@ -34,6 +34,36 @@ class PlatformAiAccountingControllerTest extends com.antshorttv.support.Registra
     private JdbcTemplate jdbc;
 
     @Test
+    void costAndPointPricingConditionsRoundTripThroughHistory() throws Exception {
+        Registration admin = registerUser();
+        grantPlatformAdmin(admin.userId());
+        Long modelId = createModel(admin.userId());
+        String conditions = "\"dimensions\":{\"resolution\":\"720p\",\"referenceVideo\":\"false\"}";
+
+        mockMvc.perform(post("/api/platform/ai/models/{modelId}/price-versions", modelId)
+                .with(SessionTestSupport.authenticated(admin.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(modelPriceRequest().replace("\"dimensions\":{}", conditions)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.components[0].dimensions.resolution", is("720p")));
+
+        mockMvc.perform(post("/api/platform/ai/models/{modelId}/point-price-versions", modelId)
+                .with(SessionTestSupport.authenticated(admin.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(pointPolicyRequest().replace("\"dimensions\":{}", conditions)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.components[0].dimensions.referenceVideo", is("false")));
+
+        mockMvc.perform(get("/api/platform/ai/models/{modelId}/billing", modelId)
+                .with(SessionTestSupport.authenticated(admin.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.costPrices[0].components[0].dimensions.resolution", is("720p")))
+            .andExpect(jsonPath("$.data.costPrices[0].components[0].dimensions.referenceVideo", is("false")))
+            .andExpect(jsonPath("$.data.pointPrices[0].components[0].dimensions.resolution", is("720p")))
+            .andExpect(jsonPath("$.data.pointPrices[0].components[0].dimensions.referenceVideo", is("false")));
+    }
+
+    @Test
     void ordinaryUserCannotPublishPricingOrViewAccounting() throws Exception {
         Registration user = registerUser();
 
