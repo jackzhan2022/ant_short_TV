@@ -54,7 +54,7 @@ vi.mock('antd', () => ({
       {children}
     </button>
   ),
-  Empty: ({ description }: any) => <div>{description}</div>,
+  Empty: ({ description, children }: any) => <div>{description}{children}</div>,
   Pagination: ({ current, onChange }: any) => <button type="button" aria-label="下一页" onClick={() => onChange(current + 1, 20)}>下一页</button>,
   Space: ({ children }: any) => <div>{children}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
@@ -231,6 +231,23 @@ describe('ProjectList', () => {
     expect(
       screen.queryByRole('button', { name: /归档/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('offers a first-project action when the selected team has no projects', async () => {
+    mocks.queryProjects.mockResolvedValue({ success: true, data: [] });
+    render(<ProjectList />);
+    const button = await screen.findByRole('button', { name: '创建第一个项目' });
+    expect(screen.getByText('创建你的第一个短剧项目')).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(mocks.historyPush).toHaveBeenCalledWith('/short-drama-creation');
+  });
+
+  it('does not offer first-project creation to users without create permission', async () => {
+    mocks.canCreateProject = false;
+    mocks.queryProjects.mockResolvedValue({ success: true, data: [] });
+    render(<ProjectList />);
+    await screen.findByText('暂无项目，请联系团队管理员创建项目');
+    expect(screen.queryByRole('button', { name: '创建第一个项目' })).not.toBeInTheDocument();
   });
 
   it('hides project creation without tenant PROJECT:CREATE permission', async () => {

@@ -3,10 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamSwitcher from './index';
 
 const mocks = vi.hoisted(() => ({
-  messageSuccess: vi.fn(),
+  messageSuccess: vi.fn(), push: vi.fn(),
 }));
 
+vi.mock('@umijs/max', () => ({ history: { push: mocks.push } }));
+
 vi.mock('antd', () => ({
+  Button: ({ children, onClick }: any) => <button type="button" onClick={onClick}>{children}</button>,
   App: {
     useApp: () => ({ message: { success: mocks.messageSuccess } }),
   },
@@ -40,6 +43,20 @@ vi.mock('antd', () => ({
 describe('TeamSwitcher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('replaces an empty dropdown with team guidance and an actionable entry', () => {
+    render(<TeamSwitcher tenants={[]} />);
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getByText('尚未加入团队')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '创建或加入团队' }));
+    expect(mocks.push).toHaveBeenCalledWith('/team/my');
+  });
+
+  it('displays the selected built-in team icon in the sidebar', () => {
+    render(<TeamSwitcher currentTenantId={10} tenants={[{ id: 10, name: '相机团队', logo: 'icon:camera' } as any]} />);
+    expect(screen.getByRole('img', { name: '团队图标：相机' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('相机团队')).toBeInTheDocument();
   });
 
   it('uses bootstrap tenants and confirms only after the validated change completes', async () => {

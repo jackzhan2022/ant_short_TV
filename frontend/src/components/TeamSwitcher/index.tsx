@@ -1,7 +1,10 @@
 import { DownOutlined, TeamOutlined } from '@ant-design/icons';
-import { App, Select } from 'antd';
+import { history } from '@umijs/max';
+import { App, Button, Select } from 'antd';
+import { useStyles } from './index.style';
 import { useMemo, useState } from 'react';
 import type { TenantSummary } from '@/services/account-team/types';
+import { TeamIcon } from '../TeamIconPicker/teamIcons';
 
 type TeamSwitcherProps = {
   currentTenantId?: number;
@@ -15,10 +18,11 @@ const TeamSwitcher = ({
   onChange,
 }: TeamSwitcherProps) => {
   const { message } = App.useApp();
+  const { styles } = useStyles();
   const [loading, setLoading] = useState(false);
 
   const options = useMemo(
-    () => tenants.map((tenant) => ({ label: tenant.name, value: tenant.id })),
+    () => tenants.map((tenant) => ({ label: tenant.name, value: tenant.id, logo: tenant.logo })),
     [tenants],
   );
 
@@ -36,13 +40,25 @@ const TeamSwitcher = ({
     }
   };
 
+  if (tenants.length === 0) {
+    return (
+      <div className={styles.empty}>
+        <span className={styles.label}><TeamOutlined /> 尚未加入团队</span>
+        <Button type="link" size="small" onClick={() => history.push('/team/my')}>
+          创建或加入团队
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <Select
       className="ant-short-team-switcher"
       aria-label="当前团队"
-      prefix={<TeamOutlined />}
+      prefix={<TeamIcon value={tenants.find((tenant) => tenant.id === currentTenantId)?.logo} size={14} />}
       loading={loading}
       options={options}
+      optionRender={(option) => <span className={styles.option}><TeamIcon value={option.data.logo} size={16} /><span>{option.data.label}</span></span>}
       placeholder="选择团队"
       size="middle"
       showSearch={{ optionFilterProp: 'label' }}

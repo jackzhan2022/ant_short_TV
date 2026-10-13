@@ -38,9 +38,13 @@ export function setCurrentTenantId(tenantId: number) {
   localStorage.setItem(CURRENT_TENANT_ID_KEY, String(tenantId));
 }
 
+export function clearCurrentTenantId() {
+  localStorage.removeItem(CURRENT_TENANT_ID_KEY);
+}
+
 export function clearAuthSession() {
   localStorage.removeItem('accessToken');
-  localStorage.removeItem(CURRENT_TENANT_ID_KEY);
+  clearCurrentTenantId();
 }
 
 export async function loginByMobile(params: LoginByMobileParams) {

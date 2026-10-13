@@ -229,7 +229,18 @@ const ProjectList = () => {
           ))}
         </div>
       ) : (
-        <Empty description="暂无项目" />
+        <Empty
+          description={total > 0 ? '当前页暂无项目' : access.canCreateProject ? '创建你的第一个短剧项目' : '暂无项目，请联系团队管理员创建项目'}
+        >
+          {total === 0 && access.canCreateProject && (
+            <>
+              <p>从一个故事想法开始，逐步完成剧本、分镜和成片。</p>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => history.push('/short-drama-creation')}>
+                创建第一个项目
+              </Button>
+            </>
+          )}
+        </Empty>
       )}
       <Pagination
         align="end"

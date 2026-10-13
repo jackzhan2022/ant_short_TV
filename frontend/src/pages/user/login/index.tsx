@@ -30,7 +30,10 @@ const getSafeRedirectUrl = (redirect: string | null): string => {
   }
 };
 
-const nextPathForSession = (session: AuthSession, redirectUrl: string) => {
+const isInvitationRedirect = (path: string) => /^\/team\/invitations\/[^/?#]+\/?(?:[?#]|$)/.test(path);
+
+const nextPathForSession = (session: Pick<AuthSession, 'nextAction'>, redirectUrl: string) => {
+  if (isInvitationRedirect(redirectUrl)) return redirectUrl;
   if (session.nextAction === 'SELECT_TENANT') {
     return '/team/select';
   }
@@ -74,7 +77,9 @@ const Login: React.FC = () => {
     const bootstrap = (
       await queryAuthBootstrap(undefined, { skipErrorHandler: true })
     ).data;
-    if (bootstrap.nextAction === 'SELECT_TENANT' && bootstrap.tenants.length > 1) {
+    const urlParams = new URL(window.location.href).searchParams;
+    const redirectUrl = getSafeRedirectUrl(urlParams.get('redirect'));
+    if (bootstrap.nextAction === 'SELECT_TENANT' && bootstrap.tenants.length > 1 && !isInvitationRedirect(redirectUrl)) {
       setPendingSession(bootstrap);
       setSelectedTenantId(bootstrap.tenants[0].id);
       message.success('登录成功');
@@ -83,9 +88,7 @@ const Login: React.FC = () => {
     await applyAuthenticatedState(bootstrap);
     message.success('登录成功');
 
-    const urlParams = new URL(window.location.href).searchParams;
-    const redirectUrl = getSafeRedirectUrl(urlParams.get('redirect'));
-    history.replace(nextPathForSession(response.data, redirectUrl));
+    history.replace(nextPathForSession(bootstrap, redirectUrl));
   };
 
   const handleEnterSelectedTenant = async () => {

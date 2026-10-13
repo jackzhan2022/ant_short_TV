@@ -1,31 +1,31 @@
 import { WalletOutlined } from '@ant-design/icons';
 import { history } from '@umijs/max';
 import { useEffect, useState } from 'react';
-import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
 import type { LayoutCurrentUser } from '@/services/account-team/types';
 import { AvatarDropdown } from '../RightContent/AvatarDropdown';
 
 type SidebarAccountProps = {
   currentUser?: LayoutCurrentUser;
+  currentTenantId?: number;
 };
 
-const SidebarAccount = ({ currentUser }: SidebarAccountProps) => {
-  const [balance, setBalance] = useState<number>();
+const SidebarAccount = ({ currentUser, currentTenantId }: SidebarAccountProps) => {
+  const [pointAccount, setPointAccount] = useState<{ tenantId: number; balance: number }>();
 
   useEffect(() => {
     let disposed = false;
     const refreshBalance = async () => {
-      const tenantId = getCurrentTenantId();
+      const tenantId = currentTenantId;
       if (!tenantId) {
-        if (!disposed) setBalance(undefined);
+        if (!disposed) setPointAccount(undefined);
         return;
       }
       try {
         const result = await queryTeamPointAccount(tenantId);
-        if (!disposed) setBalance(result.data?.balance);
+        if (!disposed) setPointAccount({ tenantId, balance: result.data.balance });
       } catch {
-        if (!disposed) setBalance(undefined);
+        if (!disposed) setPointAccount(undefined);
       }
     };
 
@@ -35,18 +35,19 @@ const SidebarAccount = ({ currentUser }: SidebarAccountProps) => {
       disposed = true;
       window.removeEventListener('focus', refreshBalance);
     };
-  }, []);
+  }, [currentTenantId]);
 
   if (!currentUser) {
     return null;
   }
 
+  const balance = pointAccount?.tenantId === currentTenantId ? pointAccount?.balance : undefined;
   const formattedBalance =
     balance === undefined ? '-' : balance.toLocaleString('zh-CN');
 
   return (
     <div className="ant-short-sidebar-account">
-      <button
+      {currentTenantId && <button
         aria-label={`团队积分 ${formattedBalance}，前往充值中心`}
         className="ant-short-sidebar-points"
         onClick={() => history.push('/recharge')}
@@ -60,7 +61,7 @@ const SidebarAccount = ({ currentUser }: SidebarAccountProps) => {
         <span className="ant-short-sidebar-points-value">
           {formattedBalance}
         </span>
-      </button>
+      </button>}
       <AvatarDropdown
         overlayClassName="ant-short-sidebar-account-menu"
         placement="topLeft"
