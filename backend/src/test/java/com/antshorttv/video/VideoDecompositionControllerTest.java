@@ -45,6 +45,98 @@ class VideoDecompositionControllerTest extends com.antshorttv.support.Registrati
     private AiExecutionService aiExecutionService;
 
     @Test
+    @org.springframework.transaction.annotation.Transactional
+    void listsDecompositionModelsForOrdinaryMemberWithoutPlatformPermission() throws Exception {
+        String token = registerUser(uniqueMobile(), "Model Reader");
+        Long tenantId = createTenant(token, "模型读取团队");
+        jdbc.update("update tenant_member set member_type = 'MEMBER' where tenant_id = ?", tenantId);
+        Long modelId = insertModelCatalogFixture();
+        mockMvc.perform(get("/api/platform/ai/models")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/video-script-decomposition/models")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(1)))
+            .andExpect(jsonPath("$.data[0].id").value(modelId))
+            .andExpect(jsonPath("$.data[0].name").value("Catalog video model"))
+            .andExpect(jsonPath("$.data[0].modelCode").value("catalog-video"))
+            .andExpect(jsonPath("$.data[0].serviceType").value("VIDEO_UNDERSTANDING"))
+            .andExpect(jsonPath("$.data[0].status").value("ENABLED"))
+            .andExpect(jsonPath("$.data[0].isDefault").value(true))
+            .andExpect(jsonPath("$.data[0].configJson").doesNotExist())
+            .andExpect(jsonPath("$.data[0].providerId").doesNotExist())
+            .andExpect(jsonPath("$.data[0].apiKeyCipher").doesNotExist());
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void decompositionModelsRequireAuthenticatedActiveTeamMembership() throws Exception {
+        String token = registerUser(uniqueMobile(), "Model Access Owner");
+        Long tenantId = createTenant(token, "模型权限团队");
+        String outsider = registerUser(uniqueMobile(), "Model Access Outsider");
+        mockMvc.perform(get("/api/video-script-decomposition/models").header("X-Tenant-Id", tenantId))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/video-script-decomposition/models")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/video-script-decomposition/models")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(outsider)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isForbidden());
+        jdbc.update("update tenant_member set status = 'REMOVED' where tenant_id = ?", tenantId);
+        mockMvc.perform(get("/api/video-script-decomposition/models")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isForbidden());
+        jdbc.update("update tenant_member set status = 'ACTIVE' where tenant_id = ?", tenantId);
+        jdbc.update("update tenant set status = 'DISABLED' where id = ?", tenantId);
+        mockMvc.perform(get("/api/video-script-decomposition/models")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void decompositionModelsExcludeUnavailableProviderConfiguration() throws Exception {
+        String token = registerUser(uniqueMobile(), "Model Availability Owner");
+        Long tenantId = createTenant(token, "模型可用性团队");
+        Long modelId = insertModelCatalogFixture();
+        jdbc.update("update ai_provider_config set status = 'DISABLED' where provider_id = (select provider_id from ai_model where id = ?)", modelId);
+        mockMvc.perform(get("/api/video-script-decomposition/models")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
+    private Long insertModelCatalogFixture() {
+        jdbc.update("update ai_model set status = 'DISABLED'");
+        jdbc.update("""
+            insert into ai_provider (name, code, supported_types, status, created_at, updated_at)
+            select 'Catalog provider', 'DeepSeek', 'VIDEO_UNDERSTANDING', 'ENABLED', now(), now()
+            where not exists (select 1 from ai_provider where code = 'DeepSeek')
+            """);
+        Long providerId = jdbc.queryForObject("select id from ai_provider where code = 'DeepSeek'", Long.class);
+        jdbc.update("update ai_provider set status = 'ENABLED' where id = ?", providerId);
+        jdbc.update("delete from ai_provider_config where provider_id = ?", providerId);
+        jdbc.update("""
+            insert into ai_provider_config (provider_id, api_key_cipher, status, last_test_status, created_at, updated_at)
+            values (?, 'catalog-secret-not-for-response', 'ENABLED', 'UNTESTED', now(), now())
+            """, providerId);
+        for (String code : java.util.List.of("catalog-video", "catalog-disabled", "catalog-text", "catalog-no-capability")) {
+            jdbc.update("""
+                insert into ai_model (provider_id, code, name, model_code, service_type, status, is_default, sort, config_json, created_at, updated_at)
+                values (?, ?, 'Catalog video model', ?, ?, ?, ?, 0, '{"internal":"private"}', now(), now())
+                """, providerId, code, code, code.equals("catalog-text") ? "TEXT" : "VIDEO_UNDERSTANDING",
+                code.equals("catalog-disabled") ? "DISABLED" : "ENABLED", code.equals("catalog-video"));
+            if (!code.equals("catalog-no-capability")) {
+                jdbc.update("""
+                    insert into ai_model_capability (model_id, capability, status, created_at, updated_at)
+                    select id, 'VIDEO_UNDERSTANDING', 'ENABLED', now(), now() from ai_model where code = ?
+                    """, code);
+            }
+        }
+        return jdbc.queryForObject("select id from ai_model where code = 'catalog-video'", Long.class);
+    }
+
+    @Test
     void uploadsVideoWithoutProjectIdThroughVerifiedSession() throws Exception {
         String mobile = uniqueMobile();
         String token = registerUser(mobile, "Decomposition Uploader");

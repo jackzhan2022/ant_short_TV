@@ -1,6 +1,7 @@
 import { request } from '@umijs/max';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  queryVideoUnderstandingModels,
   queryVideoDecompositionBatchScreenplays,
   queryVideoDecompositionBatches,
   retryVideoDecompositionEpisode,
@@ -19,6 +20,11 @@ describe('video decomposition service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(request).mockResolvedValue({ success: true, data: {} });
+  });
+
+  it('loads models from the team-scoped decomposition endpoint, not platform management', async () => {
+    await queryVideoUnderstandingModels();
+    expect(request).toHaveBeenCalledWith('/api/video-script-decomposition/models');
   });
 
   it('passes server paging and cancellation for batch browsing', async () => {
