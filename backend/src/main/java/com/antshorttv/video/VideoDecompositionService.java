@@ -9,6 +9,10 @@ import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
 import com.antshorttv.ai.AiBusinessScene;
+import com.antshorttv.ai.AiGatewayException;
+import com.antshorttv.ai.AiModelEntity;
+import com.antshorttv.ai.AiModelMapper;
+import com.antshorttv.ai.AiModelRouter;
 import com.antshorttv.ai.PromptTemplateRenderer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.antshorttv.rbac.ProjectPermissionGuard;
@@ -37,6 +41,8 @@ public class VideoDecompositionService {
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".mp4", ".mov", ".avi");
 
     private final TenantContextResolver tenantContextResolver;
+    private final AiModelMapper aiModelMapper;
+    private final AiModelRouter aiModelRouter;
     private final ProjectPermissionGuard projectPermissionGuard;
     private final RbacPermissionService permissionService;
     private final VideoDecompositionBatchMapper batchMapper;
@@ -54,6 +60,8 @@ public class VideoDecompositionService {
 
     public VideoDecompositionService(
         TenantContextResolver tenantContextResolver,
+        AiModelMapper aiModelMapper,
+        AiModelRouter aiModelRouter,
         ProjectPermissionGuard projectPermissionGuard,
         RbacPermissionService permissionService,
         VideoDecompositionBatchMapper batchMapper,
@@ -70,6 +78,8 @@ public class VideoDecompositionService {
         ObjectMapper objectMapper
     ) {
         this.tenantContextResolver = tenantContextResolver;
+        this.aiModelMapper = aiModelMapper;
+        this.aiModelRouter = aiModelRouter;
         this.projectPermissionGuard = projectPermissionGuard;
         this.permissionService = permissionService;
         this.batchMapper = batchMapper;
@@ -84,6 +94,28 @@ public class VideoDecompositionService {
         this.executionTaskMapper = executionTaskMapper;
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.objectMapper = objectMapper;
+    }
+
+    public List<VideoDecompositionModelResponse> availableModels(Long tenantId) {
+        tenantContextResolver.requireActiveMember(tenantId);
+        return aiModelMapper.selectList(new LambdaQueryWrapper<AiModelEntity>()
+                .eq(AiModelEntity::getServiceType, "VIDEO_UNDERSTANDING")
+                .eq(AiModelEntity::getStatus, "ENABLED")
+                .orderByDesc(AiModelEntity::getSort)
+                .orderByDesc(AiModelEntity::getId))
+            .stream()
+            .filter(model -> {
+                try {
+                    aiModelRouter.route(model.getId(), "VIDEO_UNDERSTANDING");
+                    return true;
+                } catch (AiGatewayException exception) {
+                    return false;
+                }
+            })
+            .map(model -> new VideoDecompositionModelResponse(
+                model.getId(), model.getName(), model.getModelCode(), model.getServiceType(),
+                model.getStatus(), model.getIsDefault()))
+            .toList();
     }
 
     public List<VideoDecompositionBatchResponse> list(Long tenantId, Long projectId) {

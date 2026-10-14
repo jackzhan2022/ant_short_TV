@@ -4,6 +4,15 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+record VideoDecompositionModelResponse(
+    Long id,
+    String name,
+    String modelCode,
+    String serviceType,
+    String status,
+    Boolean isDefault
+) {}
+
 record VideoDecompositionBatchResponse(
     Long id,
     Long tenantId,

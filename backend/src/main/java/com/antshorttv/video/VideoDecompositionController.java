@@ -5,6 +5,7 @@ import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.TenantRequestSupport;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,6 +22,11 @@ public class VideoDecompositionController {
 
     public VideoDecompositionController(VideoDecompositionService service) {
         this.service = service;
+    }
+
+    @GetMapping("/models")
+    public ApiResponse<List<VideoDecompositionModelResponse>> models(HttpServletRequest request) {
+        return ApiResponse.success(service.availableModels(tenantId(request)));
     }
 
     @GetMapping("/batches")

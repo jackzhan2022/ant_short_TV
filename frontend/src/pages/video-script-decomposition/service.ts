@@ -122,7 +122,7 @@ export type VideoUnderstandingModel = {
 
 export const queryVideoUnderstandingModels = async () =>
   request<{ success: boolean; data: VideoUnderstandingModel[] }>(
-    '/api/platform/ai/models',
+    '/api/video-script-decomposition/models',
   );
 
 export const uploadEpisodeVideo = async (
