@@ -1,4 +1,27 @@
 export default {
+  'drama.code.title': 'Trial version management',
+  'drama.code.overwrite':
+    'Uploading overwrites the target development version without affecting production. No review submission or production release.',
+  'drama.code.failed':
+    'Request failed. Check permissions, authorization and template. Uploads are never retried automatically.',
+  'drama.code.unknown':
+    'UNKNOWN: The upload may have executed. A network interruption or timeout does not mean failure. Verify the WeChat development version manually; do not retry automatically or upload again.',
+  'drama.code.success':
+    'Code uploaded. You can fetch the trial QR code; production is unchanged.',
+  'drama.code.template': 'Ordinary template',
+  'drama.code.version': 'Upload version',
+  'drama.code.description': 'Upload description',
+  'drama.code.empty':
+    'No ordinary templates. Configure the corresponding template library first.',
+  'drama.code.source': 'Template source / source version',
+  'drama.code.confirm':
+    'I confirm the target AppID and agree to overwrite its development version (production is unaffected)',
+  'drama.code.upload': 'Confirm one upload',
+  'drama.code.path': 'Trial page path (optional)',
+  'drama.code.qr': 'Fetch trial QR code',
+  'drama.code.qrError':
+    'QR request failed or returned an invalid image. Check authorization and trial version status.',
+  'drama.code.qrAlt': 'Trial QR code',
   'drama.title': 'Drama Library',
   'drama.subtitle':
     'Maintain independent dramas and episodes; distribute to each miniapp separately',

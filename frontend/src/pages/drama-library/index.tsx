@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ImportEpisode from './ImportEpisode';
 import OfficialAuthorization from './OfficialAuthorization';
 import {
+  canManageCode,
   canUseMiniapp,
   type Drama,
   type DramaInput,
@@ -39,9 +40,13 @@ import {
   saveDrama,
   unpublishDrama,
 } from './service';
+import TrialCode from './TrialCode';
 
 function DramaLibraryContent() {
   const access = useAccess();
+  const { initialState } = useModel('@@initialState');
+  const tenantId = initialState?.selectedTenant?.tenant.id;
+  const [codeAppId, setCodeAppId] = useState<number>();
   const intl = useIntl();
   const t = (key: string, text: string) =>
     intl.formatMessage({ id: `drama.${key}`, defaultMessage: text });
@@ -397,12 +402,23 @@ function DramaLibraryContent() {
                       {
                         title: t('actions', '操作'),
                         render: (_, app) => (
-                          <Button
-                            type="link"
-                            onClick={() => void loadReleases(app)}
-                          >
-                            {t('releases', '发布记录')}
-                          </Button>
+                          <Space>
+                            <Button
+                              type="link"
+                              onClick={() => void loadReleases(app)}
+                            >
+                              {t('releases', '发布记录')}
+                            </Button>
+                            {access.canManageMiniapps && (
+                              <Button
+                                type="link"
+                                disabled={busy || !canManageCode(app)}
+                                onClick={() => setCodeAppId(app.id)}
+                              >
+                                {t('code.title', '体验版管理')}
+                              </Button>
+                            )}
+                          </Space>
                         ),
                       },
                     ]}
@@ -651,6 +667,18 @@ function DramaLibraryContent() {
           )}
         </Space>
       </Modal>
+      {access.canManageMiniapps &&
+        tenantId != null &&
+        apps
+          .filter((app) => app.id === codeAppId && canManageCode(app))
+          .map((app) => (
+            <TrialCode
+              key={`${tenantId}:${app.id}`}
+              tenantId={tenantId}
+              app={app}
+              onClose={() => setCodeAppId(undefined)}
+            />
+          ))}
       {importing && detail && (
         <ImportEpisode
           dramaId={detail.id}
