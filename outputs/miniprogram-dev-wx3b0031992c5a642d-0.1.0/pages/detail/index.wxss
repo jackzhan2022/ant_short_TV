@@ -1,0 +1,11 @@
+.heading { font-size: 40rpx; }
+.player { margin: 32rpx 0 40rpx; border-radius: 24rpx; overflow: hidden; background: #edf0f5; }
+.video { width: 100%; height: 390rpx; display: block; }
+.player-placeholder { min-height: 390rpx; padding: 48rpx 32rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #6e788a; line-height: 1.8; }
+.episode-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24rpx; }
+.count { color: #929aab; font-size: 24rpx; }
+.episodes { display: flex; flex-wrap: wrap; margin: 0 -8rpx; }
+.episode { margin: 0 8rpx 16rpx; width: calc(50% - 16rpx); background: #fff; border: 2rpx solid #fff; border-radius: 18rpx; text-align: left; padding: 20rpx; line-height: 1.6; }
+.selected { background: #edf0fc; border-color: #5267cc; }
+.episode-number { color: #5267cc; font-size: 26rpx; font-weight: 600; }
+.episode-title { color: #7a8494; font-size: 23rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,4 +1,5 @@
 export default {
+  'menu.drama-library': 'ドラマ管理',
   'menu.tasks': 'タスクセンター',
   'menu.welcome': 'ようこそ',
   'menu.more-blocks': 'その他のブロック',

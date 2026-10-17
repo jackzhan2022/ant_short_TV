@@ -1,0 +1,280 @@
+[ {
+  "run" : {
+    "id" : "0d4b2163-53f3-4205-be88-752d7675e6e4",
+    "sourceId" : "REELPULSE_REELSHORT_TOP",
+    "status" : "SUCCEEDED",
+    "startedAt" : "2026-10-10T03:57:34.785001Z",
+    "finishedAt" : "2026-10-10T03:57:35.966497Z",
+    "snapshotId" : "37fd977c-5d61-459d-af90-97a29548cb96",
+    "entryCount" : 10,
+    "error" : null,
+    "errorCode" : null,
+    "failureStage" : null
+  },
+  "requests" : [ {
+    "pageNumber" : 0,
+    "stage" : "ROBOTS_FETCH",
+    "url" : "https://reelpulse.net/robots.txt",
+    "httpStatus" : 200,
+    "contentType" : "text/plain; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:35.291998800Z",
+    "elapsedMillis" : 448,
+    "headers" : {
+      "content-type" : "text/plain; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:35 GMT",
+      "server" : "Vercel"
+    },
+    "provider" : "UNKNOWN",
+    "cause" : "NONE",
+    "requestId" : null
+  }, {
+    "pageNumber" : 1,
+    "stage" : "PAGE_FETCH",
+    "url" : "https://reelpulse.net/trends",
+    "httpStatus" : 200,
+    "contentType" : "text/html; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:35.880674200Z",
+    "elapsedMillis" : 161,
+    "headers" : {
+      "content-type" : "text/html; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:35 GMT",
+      "server" : "Vercel"
+    },
+    "provider" : "UNKNOWN",
+    "cause" : "NONE",
+    "requestId" : null
+  } ]
+}, {
+  "run" : {
+    "id" : "2f87a0c3-5dbc-4f77-8942-ea33179602c7",
+    "sourceId" : "REELPULSE_GOODSHORT_TOP",
+    "status" : "SUCCEEDED",
+    "startedAt" : "2026-10-10T03:57:36.081496Z",
+    "finishedAt" : "2026-10-10T03:57:36.683479Z",
+    "snapshotId" : "052c012d-dacd-4bdb-8bfc-ccb8c4b2ed1f",
+    "entryCount" : 10,
+    "error" : null,
+    "errorCode" : null,
+    "failureStage" : null
+  },
+  "requests" : [ {
+    "pageNumber" : 0,
+    "stage" : "ROBOTS_FETCH",
+    "url" : "https://reelpulse.net/robots.txt",
+    "httpStatus" : 200,
+    "contentType" : "text/plain; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:36.166574600Z",
+    "elapsedMillis" : 81,
+    "headers" : {
+      "content-type" : "text/plain; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:36 GMT",
+      "server" : "Vercel"
+    },
+    "provider" : "UNKNOWN",
+    "cause" : "NONE",
+    "requestId" : null
+  }, {
+    "pageNumber" : 1,
+    "stage" : "PAGE_FETCH",
+    "url" : "https://reelpulse.net/trends",
+    "httpStatus" : 200,
+    "contentType" : "text/html; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:36.655473800Z",
+    "elapsedMillis" : 172,
+    "headers" : {
+      "content-type" : "text/html; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:36 GMT",
+      "server" : "Vercel"
+    },
+    "provider" : "UNKNOWN",
+    "cause" : "NONE",
+    "requestId" : null
+  } ]
+}, {
+  "run" : {
+    "id" : "a9cff45a-6130-4c11-9389-57e120dba5fb",
+    "sourceId" : "REELPULSE_GOODSHORT_TRENDING",
+    "status" : "SUCCEEDED",
+    "startedAt" : "2026-10-10T03:57:36.694473Z",
+    "finishedAt" : "2026-10-10T03:57:37.211424Z",
+    "snapshotId" : "a741793a-4be7-4dc2-afb9-5a82b63a9240",
+    "entryCount" : 10,
+    "error" : null,
+    "errorCode" : null,
+    "failureStage" : null
+  },
+  "requests" : [ {
+    "pageNumber" : 0,
+    "stage" : "ROBOTS_FETCH",
+    "url" : "https://reelpulse.net/robots.txt",
+    "httpStatus" : 200,
+    "contentType" : "text/plain; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:36.752908200Z",
+    "elapsedMillis" : 55,
+    "headers" : {
+      "content-type" : "text/plain; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:36 GMT",
+      "server" : "Vercel"
+    },
+    "provider" : "UNKNOWN",
+    "cause" : "NONE",
+    "requestId" : null
+  }, {
+    "pageNumber" : 1,
+    "stage" : "PAGE_FETCH",
+    "url" : "https://reelpulse.net/trends",
+    "httpStatus" : 200,
+    "contentType" : "text/html; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:37.189425600Z",
+    "elapsedMillis" : 118,
+    "headers" : {
+      "content-type" : "text/html; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:37 GMT",
+      "server" : "Vercel"
+    },
+    "provider" : "UNKNOWN",
+    "cause" : "NONE",
+    "requestId" : null
+  } ]
+}, {
+  "run" : {
+    "id" : "0669c3f5-6ed1-4b73-bc8c-f339230df325",
+    "sourceId" : "REELPULSE_DRAMABOX_TOP",
+    "status" : "SUCCEEDED",
+    "startedAt" : "2026-10-10T03:57:37.227425Z",
+    "finishedAt" : "2026-10-10T03:57:37.741710Z",
+    "snapshotId" : "75ac752c-2d48-4db0-b252-564c72f77d48",
+    "entryCount" : 10,
+    "error" : null,
+    "errorCode" : null,
+    "failureStage" : null
+  },
+  "requests" : [ {
+    "pageNumber" : 0,
+    "stage" : "ROBOTS_FETCH",
+    "url" : "https://reelpulse.net/robots.txt",
+    "httpStatus" : 200,
+    "contentType" : "text/plain; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:37.284423600Z",
+    "elapsedMillis" : 54,
+    "headers" : {
+      "content-type" : "text/plain; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:37 GMT",
+      "server" : "Vercel"
+    },
+    "provider" : "UNKNOWN",
+    "cause" : "NONE",
+    "requestId" : null
+  }, {
+    "pageNumber" : 1,
+    "stage" : "PAGE_FETCH",
+    "url" : "https://reelpulse.net/guides/best-dramabox-shows",
+    "httpStatus" : 200,
+    "contentType" : "text/html; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:37.715711700Z",
+    "elapsedMillis" : 126,
+    "headers" : {
+      "content-type" : "text/html; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:37 GMT",
+      "server" : "Vercel"
+    },
+    "provider" : "UNKNOWN",
+    "cause" : "NONE",
+    "requestId" : null
+  } ]
+}, {
+  "run" : {
+    "id" : "16276f49-8e98-4a51-b715-415a1d0a5cec",
+    "sourceId" : "REELSHORT_TOP",
+    "status" : "BLOCKED",
+    "startedAt" : "2026-10-10T03:57:37.756707Z",
+    "finishedAt" : "2026-10-10T03:57:38.423679Z",
+    "snapshotId" : null,
+    "entryCount" : 0,
+    "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+    "errorCode" : "ROBOTS_UNAVAILABLE_403",
+    "failureStage" : "ROBOTS_VALIDATE"
+  },
+  "requests" : [ {
+    "pageNumber" : 0,
+    "stage" : "ROBOTS_FETCH",
+    "url" : "https://www.reelshort.com/robots.txt",
+    "httpStatus" : 403,
+    "contentType" : "text/html",
+    "fetchedAt" : "2026-10-10T03:57:38.420677600Z",
+    "elapsedMillis" : 660,
+    "headers" : {
+      "content-type" : "text/html",
+      "date" : "Sat, 10 Oct 2026 03:57:38 GMT",
+      "server" : "CloudFront",
+      "x-amz-cf-id" : "aP3Dt04inkyJy978rJm_lbgm3dImNZKpCF8t_w4gYcriSaY9vptFZQ==",
+      "x-amz-cf-pop" : "FRA60-P13",
+      "x-cache" : "Error from cloudfront"
+    },
+    "provider" : "CLOUDFRONT",
+    "cause" : "GEO_RESTRICTED",
+    "requestId" : "aP3Dt04inkyJy978rJm_lbgm3dImNZKpCF8t_w4gYcriSaY9vptFZQ=="
+  } ]
+}, {
+  "run" : {
+    "id" : "8d1587c3-dd3e-46e9-8090-2debd2136083",
+    "sourceId" : "DRAMABOX_TOP",
+    "status" : "BLOCKED",
+    "startedAt" : "2026-10-10T03:57:38.429678Z",
+    "finishedAt" : "2026-10-10T03:57:38.991197Z",
+    "snapshotId" : null,
+    "entryCount" : 0,
+    "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+    "errorCode" : "ROBOTS_UNAVAILABLE_403",
+    "failureStage" : "ROBOTS_VALIDATE"
+  },
+  "requests" : [ {
+    "pageNumber" : 0,
+    "stage" : "ROBOTS_FETCH",
+    "url" : "https://www.dramabox.com/robots.txt",
+    "httpStatus" : 403,
+    "contentType" : "text/html",
+    "fetchedAt" : "2026-10-10T03:57:38.989192200Z",
+    "elapsedMillis" : 555,
+    "headers" : {
+      "content-type" : "text/html",
+      "date" : "Sat, 10 Oct 2026 03:57:38 GMT",
+      "server" : "CloudFront",
+      "x-amz-cf-id" : "9XGEQ7admYKSij5VFlvBvwgvq6BpzShtKfN5BVlKmc-9K-d3MqU4qA==",
+      "x-amz-cf-pop" : "LAX54-P10",
+      "x-cache" : "Error from cloudfront"
+    },
+    "provider" : "CLOUDFRONT",
+    "cause" : "EDGE_REQUEST_BLOCKED",
+    "requestId" : "9XGEQ7admYKSij5VFlvBvwgvq6BpzShtKfN5BVlKmc-9K-d3MqU4qA=="
+  } ]
+}, {
+  "run" : {
+    "id" : "1e8f4148-dc82-4b09-98bc-3e81b0d2db90",
+    "sourceId" : "GOODSHORT_TOP",
+    "status" : "BLOCKED",
+    "startedAt" : "2026-10-10T03:57:38.997198Z",
+    "finishedAt" : "2026-10-10T03:57:39.876503Z",
+    "snapshotId" : null,
+    "entryCount" : 0,
+    "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+    "errorCode" : "ROBOTS_UNAVAILABLE_403",
+    "failureStage" : "ROBOTS_VALIDATE"
+  },
+  "requests" : [ {
+    "pageNumber" : 0,
+    "stage" : "ROBOTS_FETCH",
+    "url" : "https://www.goodshort.com/robots.txt",
+    "httpStatus" : 403,
+    "contentType" : "text/html; charset=utf-8",
+    "fetchedAt" : "2026-10-10T03:57:39.875503300Z",
+    "elapsedMillis" : 874,
+    "headers" : {
+      "content-type" : "text/html; charset=utf-8",
+      "date" : "Sat, 10 Oct 2026 03:57:39 GMT"
+    },
+    "provider" : "OPENRESTY",
+    "cause" : "HTTP_FORBIDDEN_UNCLASSIFIED",
+    "requestId" : null
+  } ]
+} ]

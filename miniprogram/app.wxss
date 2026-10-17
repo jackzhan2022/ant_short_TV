@@ -1,0 +1,12 @@
+page { background: #f7f8fa; color: #192334; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; font-size: 28rpx; }
+view, button { box-sizing: border-box; }
+.container { padding: 36rpx 32rpx 64rpx; padding-bottom: calc(64rpx + env(safe-area-inset-bottom)); }
+.eyebrow { color: #5267cc; font-size: 22rpx; font-weight: 600; letter-spacing: 4rpx; }
+.heading { margin: 14rpx 0; font-size: 48rpx; font-weight: 700; line-height: 1.3; }
+.subtitle { color: #7a8494; font-size: 25rpx; line-height: 1.7; }
+.state { padding: 64rpx 32rpx; text-align: center; background: #fff; border-radius: 24rpx; margin-top: 32rpx; }
+.state-title { font-size: 32rpx; font-weight: 600; margin-bottom: 16rpx; }
+.state-text { color: #7a8494; line-height: 1.8; word-break: break-all; }
+.action { margin-top: 28rpx; background: #5267cc; color: #fff; border-radius: 16rpx; font-size: 26rpx; padding: 4rpx 32rpx; }
+button::after { border: 0; }
+.section-title { font-size: 32rpx; font-weight: 600; }

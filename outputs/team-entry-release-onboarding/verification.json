@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "empty",
+    "existing",
+    "error",
+    "invite",
+    "login-invite"
+  ],
+  "errors": [],
+  "screenshots": "D:\\需求文档\\ant_short_TV\\outputs\\team-entry-release-onboarding"
+}

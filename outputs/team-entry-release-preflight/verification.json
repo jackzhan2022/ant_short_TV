@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "create-icon",
+    "existing-legacy",
+    "existing-member"
+  ],
+  "errors": [],
+  "createdLogo": "icon:camera",
+  "updatedLogo": "icon:rocket",
+  "resetLogo": null,
+  "legacyImagePreserved": true,
+  "mobileWidth": 375,
+  "screenshots": "D:\\需求文档\\ant_short_TV\\outputs\\team-entry-release-preflight",
+  "productionDataTouched": false
+}

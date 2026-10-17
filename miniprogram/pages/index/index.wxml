@@ -1,0 +1,27 @@
+<view class="container">
+  <view class="eyebrow">短剧 · 随心看</view>
+  <view class="heading">好故事，现在开始</view>
+  <view class="subtitle">发现已上架短剧，选一部开始观看。</view>
+  <view wx:if="{{loading}}" class="state"><view class="state-text">正在加载剧库…</view></view>
+  <view wx:elif="{{error}}" class="state">
+    <view class="state-title">暂时无法加载</view>
+    <view class="state-text">{{error}}</view>
+    <button class="action" bindtap="load">重试</button>
+  </view>
+  <view wx:elif="{{!dramas.length}}" class="state">
+    <view class="state-title">故事即将登场</view>
+    <view class="state-text">暂无已上架短剧，请稍后再来。</view>
+    <button class="action" bindtap="load">刷新剧库</button>
+  </view>
+  <view wx:else class="library">
+    <view class="section-row"><text class="section-title">全部短剧</text><text class="count">{{dramas.length}} 部</text></view>
+    <button wx:for="{{dramas}}" wx:key="id" class="drama-card" data-index="{{index}}" bindtap="openDrama">
+      <view class="tile">剧</view>
+      <view class="card-content">
+        <view class="card-title">{{item.title}}</view>
+        <view class="card-description">{{item.description || '点击查看选集'}}</view>
+        <view class="watch">选集观看 →</view>
+      </view>
+    </button>
+  </view>
+</view>

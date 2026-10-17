@@ -1,7 +1,52 @@
-import { describe, expect, it } from 'vitest';
+import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
+  it('剧集管理菜单与直达路由使用同一权限门禁', () => {
+    expect(routes.find((route) => route.path === '/drama-library')).toMatchObject({
+      access: 'canViewDramas', component: './drama-library',
+    });
+  });
+
+  const dramaPermissions = ['DRAMA:VIEW', 'DRAMA:MANAGE', 'DRAMA:PUBLISH', 'MINIAPP:MANAGE'];
+  const dramaKeys = ['canViewDramas', 'canManageDramas', 'canPublishDramas', 'canManageMiniapps'] as const;
+
+  it('仅真实平台管理员在有效团队内拥有剧库管理能力', () => {
+    const state = {
+      currentUser: { userid: '1', access: 'user' },
+      tenantPermissions: dramaPermissions,
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } },
+    };
+    for (const key of dramaKeys) {
+      expect(access(state)[key]).toBe(true);
+      expect(access({ ...state, selectedTenant: null })[key]).toBe(false);
+      expect(access({ ...state, tenantPermissions: [] })[key]).toBe(false);
+      expect(access({ ...state, currentUser: undefined })[key]).toBe(false);
+    }
+  });
+
+  it('普通成员即使有全部功能权限或旧 admin 标记仍不可访问', () => {
+    for (const roles of [[], ['ADMIN'], ['OWNER'], ['PLATFORM_OPERATOR']]) {
+      const result = access({
+        currentUser: { userid: '2', access: 'admin' },
+        tenantPermissions: dramaPermissions,
+        platformPermissions: ['PLATFORM_INSPIRATION_MANAGE'],
+        selectedTenant: { membership: { status: 'ACTIVE' } },
+        bootstrap: { platform: { roles } },
+      });
+      for (const key of dramaKeys) expect(result[key]).toBe(false);
+    }
+    for (const key of dramaKeys) {
+      expect(access(undefined)[key]).toBe(false);
+      expect(access({
+        currentUser: { userid: '3', access: 'admin' },
+        selectedTenant: { membership: { status: 'ACTIVE' } },
+        tenantPermissions: dramaPermissions,
+      })[key]).toBe(false);
+    }
+  });
+
   it('separates platform tenant view and status permissions', () => {
     const viewer = access({
       currentUser: { userid: '1', name: 'Viewer', access: 'user' },

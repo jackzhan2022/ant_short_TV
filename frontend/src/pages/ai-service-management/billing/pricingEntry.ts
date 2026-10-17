@@ -11,12 +11,35 @@ type CostVersion = {
   effectiveTo?: string;
 };
 
+export type PricingComponent = API.ModelPriceComponentResponse & API.PointPolicyComponentResponse & { dimensions?: Record<string, string> };
+
 type CostComponent = {
   metric: string;
   unitSize: number;
   unitPrice: number;
   currency?: string;
+  dimensions?: Record<string, string>;
 };
+
+export const parsePricingDimensions = (value?: string): Record<string, string> => {
+  if (!value?.trim()) return {};
+  let dimensions: unknown;
+  try {
+    dimensions = JSON.parse(value);
+  } catch {
+    throw new Error('计费条件必须是合法 JSON');
+  }
+  if (dimensions === null || typeof dimensions !== 'object' || Array.isArray(dimensions)) {
+    throw new Error('计费条件必须是 JSON 对象，例如 {"resolution":"720p"}');
+  }
+  if (Object.values(dimensions).some((item) => typeof item !== 'string')) {
+    throw new Error('计费条件的值必须是字符串，例如 {"referenceVideo":"false"}');
+  }
+  return dimensions as Record<string, string>;
+};
+
+export const formatPricingDimensions = (dimensions?: Record<string, string>) =>
+  JSON.stringify(dimensions ?? {}, null, 2);
 
 const normalizeLocalDateTime = (value: string) => value.replace(' ', 'T');
 
@@ -59,8 +82,9 @@ export const buildPointComponents = (
   components: CostComponent[],
   multiplier: number,
 ) =>
-  components.map(({ metric, unitSize, unitPrice }) => ({
+  components.map(({ metric, unitSize, unitPrice, dimensions }) => ({
     metric,
     unitSize,
     pointRate: unitPrice * multiplier,
+    dimensionsJson: formatPricingDimensions(dimensions),
   }));

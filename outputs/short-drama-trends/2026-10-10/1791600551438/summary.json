@@ -1,0 +1,72 @@
+{
+  "collectedOn": "2026-10-10",
+  "attemptedPlatforms": 10,
+  "attemptedSources": 17,
+  "successfulPlatforms": 5,
+  "successfulSources": 9,
+  "rankingRecords": 458,
+  "uniquePlatformSeries": 358,
+  "businessDatabaseModified": false,
+  "platforms": [
+    {
+      "platform": "红果",
+      "count": 400,
+      "result": "取得数据",
+      "notes": "平台官网 · 全部公开分页；平台官网 · 全部公开分页；平台官网 · 全部公开分页；平台官网 · 全部公开分页"
+    },
+    {
+      "platform": "抖音",
+      "count": 0,
+      "result": "尚未取得榜单",
+      "notes": "公开入口已检查，但尚未确认可用的短剧榜单解析规则；未将推荐列表当作榜单"
+    },
+    {
+      "platform": "快手",
+      "count": 0,
+      "result": "尚未取得榜单",
+      "notes": "robots.txt 限制采集器或AI客户端访问该路径，本轮停止"
+    },
+    {
+      "platform": "腾讯视频",
+      "count": 0,
+      "result": "尚未取得榜单",
+      "notes": "robots.txt 限制采集器或AI客户端访问该路径，本轮停止"
+    },
+    {
+      "platform": "爱奇艺",
+      "count": 0,
+      "result": "尚未取得榜单",
+      "notes": "robots.txt 限制采集器或AI客户端访问该路径，本轮停止"
+    },
+    {
+      "platform": "优酷",
+      "count": 0,
+      "result": "尚未取得榜单",
+      "notes": "无法确认 robots.txt 规则，停止采集 (HTTP 302)"
+    },
+    {
+      "platform": "ReelShort",
+      "count": 10,
+      "result": "取得数据",
+      "notes": "ReelPulse · 第三方 TOP10 快照 · 2026-10-09"
+    },
+    {
+      "platform": "DramaBox",
+      "count": 10,
+      "result": "取得数据",
+      "notes": "ReelPulse · 第三方 TOP10 快照 · 2026-10-05"
+    },
+    {
+      "platform": "GoodShort",
+      "count": 20,
+      "result": "取得数据",
+      "notes": "ReelPulse · 第三方 TOP10 快照 · 2026-10-09；ReelPulse · 第三方 TOP10 快照 · 2026-10-09"
+    },
+    {
+      "platform": "FlexTV",
+      "count": 18,
+      "result": "取得数据",
+      "notes": "平台官网 · 部分公开条目"
+    }
+  ]
+}

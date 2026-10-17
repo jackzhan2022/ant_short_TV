@@ -1,0 +1,19 @@
+{
+  "description": "独立原生短剧剧库；部署时替换真实 AppID 并配置 Java 服务和 CDN 合法域名",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "appid": "wx2a250e3fe6b31ce4",
+  "projectname": "ant-short-tv-miniapp",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "minified": true,
+    "urlCheck": true
+  },
+  "packOptions": {
+    "ignore": [
+      { "type": "folder", "value": "tests" },
+      { "type": "file", "value": "package.json" }
+    ]
+  }
+}

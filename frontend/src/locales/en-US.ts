@@ -1,4 +1,5 @@
 import component from './en-US/component';
+import drama from './en-US/drama';
 import globalHeader from './en-US/globalHeader';
 import menu from './en-US/menu';
 import network from './en-US/network';
@@ -18,5 +19,6 @@ export default {
   ...settings,
   ...network,
   ...component,
+  ...drama,
   ...pages,
 };

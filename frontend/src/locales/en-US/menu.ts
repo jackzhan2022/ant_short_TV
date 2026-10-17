@@ -1,4 +1,5 @@
 export default {
+  'menu.drama-library': 'Drama Library',
   'menu.tasks': 'Task Center',
   'menu.welcome': 'Welcome',
   'menu.more-blocks': 'More Blocks',

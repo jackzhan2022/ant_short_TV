@@ -1,0 +1,46 @@
+{
+  "observedDate": "2026-10-10",
+  "scope": "overseas-reserve",
+  "source": "ReelPulse",
+  "attemptedSources": 7,
+  "successfulSources": 4,
+  "rankingRecords": 40,
+  "uniquePlatformSeries": 40,
+  "officialRequestsBlocked": 3,
+  "businessDatabaseModified": false,
+  "scheduled": false,
+  "snapshots": [
+    {
+      "sourceId": "REELPULSE_REELSHORT_TOP",
+      "platform": "REELSHORT",
+      "sourceDate": "2026-10-09",
+      "sourceType": "THIRD_PARTY",
+      "count": 10,
+      "coverage": "THIRD_PARTY_TOP10"
+    },
+    {
+      "sourceId": "REELPULSE_GOODSHORT_TOP",
+      "platform": "GOODSHORT",
+      "sourceDate": "2026-10-09",
+      "sourceType": "THIRD_PARTY",
+      "count": 10,
+      "coverage": "THIRD_PARTY_TOP10"
+    },
+    {
+      "sourceId": "REELPULSE_GOODSHORT_TRENDING",
+      "platform": "GOODSHORT",
+      "sourceDate": "2026-10-09",
+      "sourceType": "THIRD_PARTY",
+      "count": 10,
+      "coverage": "THIRD_PARTY_TOP10"
+    },
+    {
+      "sourceId": "REELPULSE_DRAMABOX_TOP",
+      "platform": "DRAMABOX",
+      "sourceDate": "2026-10-05",
+      "sourceType": "THIRD_PARTY",
+      "count": 10,
+      "coverage": "THIRD_PARTY_TOP10"
+    }
+  ]
+}

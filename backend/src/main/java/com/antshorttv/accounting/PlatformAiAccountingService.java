@@ -143,7 +143,8 @@ public class PlatformAiAccountingService {
                 execution.pointPriceVersionId == null ? List.of() : modelPointPriceService
                     .components(execution.pointPriceVersionId).stream()
                     .map(component -> new PointPolicyComponentResponse(
-                        component.id, component.metric, component.unitSize, component.pointRate
+                        component.id, component.metric, component.unitSize, component.pointRate,
+                        AiAccountingJson.read(component.dimensionsJson)
                     ))
                     .toList()
             ),

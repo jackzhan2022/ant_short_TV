@@ -74,7 +74,14 @@ docs/superpowers
 .wrangler
 requestRecord.mock.js
 
+# local generated WeChat credentials
+/outputs/wechat-component.private.env
+
 # runtime storage
 backend/storage/
 /frontend/.legacy-rollback/
 frontend/run-frontend-dev.ps1
+
+# local browser sessions and tenant operational snapshots
+/docs/previews/short-drama-trends/edge-profile/
+/outputs/tenant-cleanup-20261012/

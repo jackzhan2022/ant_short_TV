@@ -19,6 +19,13 @@ public class PlatformPermissionGuard {
         this.authorizationService = authorizationService;
     }
 
+    public void requireAdministrator() {
+        Long userId = currentPrincipal.require().userId();
+        if (!authorizationService.roleCodes(userId).contains("PLATFORM_ADMIN")) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "仅平台管理员可访问此管理功能。");
+        }
+    }
+
     public void require(String permissionCode) {
         Long userId = currentPrincipal.require().userId();
         if (!authorizationService.hasPermission(userId, permissionCode)) {

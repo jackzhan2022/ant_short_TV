@@ -40,6 +40,7 @@ vi.mock('@ant-design/pro-components', () => ({
   ProFormSelect: ({ label, name, rules }: any) => (
     <label>{label}<select aria-label={label} data-name={name} required={rules?.some((rule: any) => rule.required)} /></label>
   ),
+  ProFormTextArea: ({ label, name }: any) => <textarea aria-label={label} data-name={name} />,
   ProFormText: ({ label, name, rules }: any) => (
     <label>{label}<input aria-label={label} data-name={name} required={rules?.some((rule: any) => rule.required)} /></label>
   ),
@@ -213,4 +214,35 @@ describe('ModelBillingPage', () => {
     await waitFor(() => expect(mocks.revokeCostPrice).toHaveBeenCalledWith({ modelId: 9, versionId: 11 }));
     expect(mocks.billingHistory).toHaveBeenCalledTimes(2);
   });
+  it.each(['成本', '积分'])('publishes %s price JSON conditions from the billing page', async (kind) => {
+    const title = `发布${kind}价`;
+    mocks.modalValues[title] = {
+      effectiveFrom: '2026-10-12T12:00:00',
+      components: [{ metric: 'OUTPUT_TOKEN', unitSize: 1_000_000, unitPrice: 70, pointRate: 140,
+        currency: 'CNY', dimensionsJson: '{"resolution":"720p","referenceVideo":"false"}' }],
+    };
+    render(<ModelBillingPage />);
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '9' } });
+    expect(screen.getAllByRole('textbox', { name: '计费条件（JSON）' })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: `提交${kind}价格表单` }));
+    const publish = kind === '成本' ? mocks.publishModelPrice : mocks.publishPointPrice;
+    await waitFor(() => expect(publish).toHaveBeenCalledWith({ modelId: 9 }, expect.objectContaining({
+      components: [expect.objectContaining({ dimensions: { resolution: '720p', referenceVideo: 'false' } })],
+    })));
+  });
+
+  it('displays historical JSON conditions and labels unrestricted default pricing', async () => {
+    mocks.billingHistory.mockResolvedValue({ data: { modelId: 9, costPrices: [{
+      id: 11, versionNo: 1, components: [
+        { id: 1, metric: 'OUTPUT_TOKEN', unitSize: 1_000_000, unitPrice: 70, currency: 'CNY',
+          dimensions: { resolution: '720p', referenceVideo: 'false' } },
+        { id: 2, metric: 'CALL', unitSize: 1, unitPrice: 0, currency: 'CNY' },
+      ],
+    }], pointPrices: [] } });
+    render(<ModelBillingPage />);
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '9' } });
+    expect(await screen.findByText(/"resolution": "720p"/)).toBeInTheDocument();
+    expect(screen.getByText(/默认兜底/)).toBeInTheDocument();
+  });
+
 });

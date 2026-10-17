@@ -1,0 +1,12 @@
+{
+  "pages": ["pages/index/index", "pages/detail/index"],
+  "window": {
+    "navigationBarTitleText": "短剧剧库",
+    "navigationBarBackgroundColor": "#f7f8fa",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f8fa",
+    "backgroundTextStyle": "dark"
+  },
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}

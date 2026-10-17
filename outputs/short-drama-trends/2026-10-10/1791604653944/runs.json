@@ -1,0 +1,78 @@
+[ {
+  "id" : "0d4b2163-53f3-4205-be88-752d7675e6e4",
+  "sourceId" : "REELPULSE_REELSHORT_TOP",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T03:57:34.785001Z",
+  "finishedAt" : "2026-10-10T03:57:35.966497Z",
+  "snapshotId" : "37fd977c-5d61-459d-af90-97a29548cb96",
+  "entryCount" : 10,
+  "error" : null,
+  "errorCode" : null,
+  "failureStage" : null
+}, {
+  "id" : "2f87a0c3-5dbc-4f77-8942-ea33179602c7",
+  "sourceId" : "REELPULSE_GOODSHORT_TOP",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T03:57:36.081496Z",
+  "finishedAt" : "2026-10-10T03:57:36.683479Z",
+  "snapshotId" : "052c012d-dacd-4bdb-8bfc-ccb8c4b2ed1f",
+  "entryCount" : 10,
+  "error" : null,
+  "errorCode" : null,
+  "failureStage" : null
+}, {
+  "id" : "a9cff45a-6130-4c11-9389-57e120dba5fb",
+  "sourceId" : "REELPULSE_GOODSHORT_TRENDING",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T03:57:36.694473Z",
+  "finishedAt" : "2026-10-10T03:57:37.211424Z",
+  "snapshotId" : "a741793a-4be7-4dc2-afb9-5a82b63a9240",
+  "entryCount" : 10,
+  "error" : null,
+  "errorCode" : null,
+  "failureStage" : null
+}, {
+  "id" : "0669c3f5-6ed1-4b73-bc8c-f339230df325",
+  "sourceId" : "REELPULSE_DRAMABOX_TOP",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T03:57:37.227425Z",
+  "finishedAt" : "2026-10-10T03:57:37.741710Z",
+  "snapshotId" : "75ac752c-2d48-4db0-b252-564c72f77d48",
+  "entryCount" : 10,
+  "error" : null,
+  "errorCode" : null,
+  "failureStage" : null
+}, {
+  "id" : "16276f49-8e98-4a51-b715-415a1d0a5cec",
+  "sourceId" : "REELSHORT_TOP",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T03:57:37.756707Z",
+  "finishedAt" : "2026-10-10T03:57:38.423679Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+  "errorCode" : "ROBOTS_UNAVAILABLE_403",
+  "failureStage" : "ROBOTS_VALIDATE"
+}, {
+  "id" : "8d1587c3-dd3e-46e9-8090-2debd2136083",
+  "sourceId" : "DRAMABOX_TOP",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T03:57:38.429678Z",
+  "finishedAt" : "2026-10-10T03:57:38.991197Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+  "errorCode" : "ROBOTS_UNAVAILABLE_403",
+  "failureStage" : "ROBOTS_VALIDATE"
+}, {
+  "id" : "1e8f4148-dc82-4b09-98bc-3e81b0d2db90",
+  "sourceId" : "GOODSHORT_TOP",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T03:57:38.997198Z",
+  "finishedAt" : "2026-10-10T03:57:39.876503Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+  "errorCode" : "ROBOTS_UNAVAILABLE_403",
+  "failureStage" : "ROBOTS_VALIDATE"
+} ]

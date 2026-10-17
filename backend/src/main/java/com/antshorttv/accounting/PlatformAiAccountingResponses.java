@@ -8,6 +8,7 @@ import com.antshorttv.points.AiPointReservationEntity;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 record ModelPriceVersionResponse(
     Long id,
@@ -43,7 +44,8 @@ record ModelPriceComponentResponse(
     String metric,
     BigDecimal unitSize,
     BigDecimal unitPrice,
-    String currency
+    String currency,
+    Map<String, String> dimensions
 ) {
     static ModelPriceComponentResponse from(AiModelPriceComponentEntity component) {
         return new ModelPriceComponentResponse(
@@ -51,7 +53,8 @@ record ModelPriceComponentResponse(
             component.metric,
             component.unitSize,
             component.unitPrice,
-            component.currency
+            component.currency,
+            AiAccountingJson.read(component.dimensionsJson)
         );
     }
 }
@@ -99,14 +102,16 @@ record PointPolicyComponentResponse(
     Long id,
     String metric,
     BigDecimal unitSize,
-    BigDecimal pointRate
+    BigDecimal pointRate,
+    Map<String, String> dimensions
 ) {
     static PointPolicyComponentResponse from(AiPointPolicyComponentEntity component) {
         return new PointPolicyComponentResponse(
             component.id,
             component.metric,
             component.unitSize,
-            component.pointRate
+            component.pointRate,
+            AiAccountingJson.read(component.dimensionsJson)
         );
     }
 }
@@ -130,7 +135,8 @@ record ModelPointPriceVersionResponse(
             version.id, version.modelId, version.versionNo, version.status,
             version.effectiveFrom, version.effectiveTo, version.publishedAt, version.createdBy,
             components.stream().map(component -> new PointPolicyComponentResponse(
-                component.id, component.metric, component.unitSize, component.pointRate
+                component.id, component.metric, component.unitSize, component.pointRate,
+                AiAccountingJson.read(component.dimensionsJson)
             )).toList()
         );
     }

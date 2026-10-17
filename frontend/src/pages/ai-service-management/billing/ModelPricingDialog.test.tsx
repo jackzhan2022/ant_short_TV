@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => {
   };
   return {
     billingHistory: vi.fn(),
+    publishModelPrice: vi.fn(),
+    publishPointPrice: vi.fn(),
+    textAreas: [] as any[],
     canPublishModelBilling: true,
     message: { success: vi.fn(), warning: vi.fn() },
     modalForms: [] as any[],
@@ -56,11 +59,15 @@ vi.mock('@ant-design/pro-components', () => ({
     return <span data-field={props.name} />;
   },
   ProFormText: () => null,
+  ProFormTextArea: (props: any) => {
+    mocks.textAreas.push(props);
+    return <textarea aria-label={props.label} data-field={props.name} />;
+  },
 }));
 vi.mock('@/services/ant-design-pro/platformAiAccountingController', () => ({
   billingHistory: mocks.billingHistory,
-  publishModelPrice: vi.fn(),
-  publishPointPrice: vi.fn(),
+  publishModelPrice: mocks.publishModelPrice,
+  publishPointPrice: mocks.publishPointPrice,
   revokeCostPrice: vi.fn(),
   revokePointPrice: vi.fn(),
 }));
@@ -80,6 +87,9 @@ describe('ModelPricingDialog', () => {
     mocks.modalForms.length = 0;
     mocks.selects.length = 0;
     mocks.digits.length = 0;
+    mocks.textAreas.length = 0;
+    mocks.publishModelPrice.mockReset();
+    mocks.publishPointPrice.mockReset();
     mocks.costForm.getFieldsValue.mockReset();
     mocks.costForm.resetFields.mockReset();
     mocks.costForm.setFieldsValue.mockReset();
@@ -189,7 +199,7 @@ describe('ModelPricingDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '按倍率生成积分项' }));
 
     expect(mocks.pointForm.setFieldsValue).toHaveBeenCalledWith({
-      components: [{ metric: 'INPUT_TOKEN', unitSize: 1_000_000, pointRate: 6 }],
+      components: [{ metric: 'INPUT_TOKEN', unitSize: 1_000_000, pointRate: 6, dimensionsJson: '{}' }],
     });
   });
 
@@ -203,4 +213,63 @@ describe('ModelPricingDialog', () => {
     expect(mocks.message.warning).toHaveBeenCalledWith('该生效时间没有可用的已发布成本价，请先发布成本价或调整生效时间');
     expect(mocks.pointForm.setFieldsValue).not.toHaveBeenCalled();
   });
+  it.each(['cost', 'point'] as const)('publishes %s conditions parsed from JSON', async (kind) => {
+    renderDialog();
+    const form = mocks.modalForms.find((item) => item.title === (kind === 'cost' ? '发布成本价' : '发布积分价'));
+    await act(async () => { await form.onFinish({
+      effectiveFrom: '2026-10-12T12:00:00',
+      components: [{ metric: 'OUTPUT_TOKEN', unitSize: 1_000_000, unitPrice: 70, pointRate: 140,
+        currency: 'CNY', dimensionsJson: '{"resolution":"720p","referenceVideo":"false"}' }],
+    }); });
+    const publish = kind === 'cost' ? mocks.publishModelPrice : mocks.publishPointPrice;
+    expect(publish).toHaveBeenCalledWith({ modelId: 9 }, expect.objectContaining({
+      components: [expect.objectContaining({ dimensions: { resolution: '720p', referenceVideo: 'false' } })],
+    }));
+  });
+
+  it('provides validated JSON condition textareas for both price forms', async () => {
+    renderDialog();
+    await waitFor(() => expect(mocks.billingHistory).toHaveBeenCalled());
+    expect(screen.getAllByRole('textbox', { name: '计费条件（JSON）' })).toHaveLength(2);
+    for (const field of mocks.textAreas) {
+      expect(field.name).toBe('dimensionsJson');
+      const validate = field.rules.find((rule: any) => rule.validator).validator;
+      await expect(validate({}, '{"resolution":"720p"}')).resolves.toBeUndefined();
+      await expect(validate({}, '')).resolves.toBeUndefined();
+      await expect(validate({}, '{')).rejects.toThrow();
+      await expect(validate({}, '[]')).rejects.toThrow();
+      await expect(validate({}, '{"referenceVideo":false}')).rejects.toThrow();
+    }
+  });
+
+  it('displays cost and point conditions returned by billing history', async () => {
+    const dimensions = { resolution: '720p', referenceVideo: 'false' };
+    mocks.billingHistory.mockResolvedValue({ data: {
+      modelId: 9,
+      costPrices: [{ id: 1, versionNo: 1, components: [{ id: 11, metric: 'OUTPUT_TOKEN',
+        unitSize: 1_000_000, unitPrice: 70, currency: 'CNY', dimensions }] }],
+      pointPrices: [{ id: 2, versionNo: 1, components: [{ id: 21, metric: 'OUTPUT_TOKEN',
+        unitSize: 1_000_000, pointRate: 140, dimensions }] }],
+    } });
+    renderDialog();
+    expect(await screen.findAllByText(/"resolution": "720p"/)).toHaveLength(2);
+    expect(screen.getAllByText(/"referenceVideo": "false"/)).toHaveLength(2);
+  });
+
+  it('preserves cost conditions when generating point-price form values', async () => {
+    const dimensions = { resolution: '1080p', referenceVideo: 'true' };
+    mocks.billingHistory.mockResolvedValue({ data: { modelId: 9, costPrices: [{
+      id: 1, status: 'PUBLISHED', effectiveFrom: '2026-01-01T00:00:00',
+      components: [{ metric: 'OUTPUT_TOKEN', unitSize: 1_000_000, unitPrice: 46, dimensions }],
+    }], pointPrices: [] } });
+    mocks.pointForm.getFieldsValue.mockReturnValue({ effectiveFrom: '2026-10-12T00:00:00', multiplier: 2 });
+    renderDialog();
+    await screen.findByText(/1 百万 Token/);
+    fireEvent.click(screen.getByRole('button', { name: '按倍率生成积分项' }));
+    expect(mocks.pointForm.setFieldsValue).toHaveBeenCalledWith({ components: [{
+      metric: 'OUTPUT_TOKEN', unitSize: 1_000_000, pointRate: 92,
+      dimensionsJson: JSON.stringify(dimensions, null, 2),
+    }] });
+  });
+
 });

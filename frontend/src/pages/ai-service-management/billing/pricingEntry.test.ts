@@ -3,6 +3,8 @@ import {
   buildPointComponents,
   findEffectiveCostVersion,
   formatBillingUnit,
+  formatPricingDimensions,
+  parsePricingDimensions,
 } from './pricingEntry';
 
 describe('pricing entry helpers', () => {
@@ -74,8 +76,38 @@ describe('pricing entry helpers', () => {
         10,
       ),
     ).toEqual([
-      { metric: 'CALL', unitSize: 1, pointRate: 2.5 },
-      { metric: 'INPUT_TOKEN', unitSize: 1_000_000, pointRate: 20 },
+      { metric: 'CALL', unitSize: 1, pointRate: 2.5, dimensionsJson: '{}' },
+      { metric: 'INPUT_TOKEN', unitSize: 1_000_000, pointRate: 20, dimensionsJson: '{}' },
     ]);
   });
+  it('parses JSON pricing conditions and treats blank input as unrestricted', () => {
+    expect(parsePricingDimensions(undefined)).toEqual({});
+    expect(parsePricingDimensions('  ')).toEqual({});
+    expect(parsePricingDimensions('{}')).toEqual({});
+    expect(parsePricingDimensions('{"resolution":"720p","referenceVideo":"false"}'))
+      .toEqual({ resolution: '720p', referenceVideo: 'false' });
+  });
+
+  it.each(['{', 'null', '[]', '"720p"', '1', '{"referenceVideo":false}',
+    '{"resolution":720}', '{"resolution":null}', '{"resolution":{}}'])
+    ('rejects invalid or non-string condition JSON: %s', (value) => {
+      expect(() => parsePricingDimensions(value)).toThrow(/计费条件/);
+    });
+
+  it('formats pricing conditions as editable JSON', () => {
+    expect(formatPricingDimensions(undefined)).toBe('{}');
+    expect(formatPricingDimensions({ resolution: '720p' }))
+      .toBe(JSON.stringify({ resolution: '720p' }, null, 2));
+  });
+
+  it('preserves conditions in generated point-price form entries', () => {
+    const dimensions = { resolution: '720p', referenceVideo: 'false' };
+    expect(buildPointComponents([{
+      metric: 'OUTPUT_TOKEN', unitSize: 1_000_000, unitPrice: 70, currency: 'CNY', dimensions,
+    }], 2)).toEqual([{
+      metric: 'OUTPUT_TOKEN', unitSize: 1_000_000, pointRate: 140,
+      dimensionsJson: JSON.stringify(dimensions, null, 2),
+    }]);
+  });
+
 });

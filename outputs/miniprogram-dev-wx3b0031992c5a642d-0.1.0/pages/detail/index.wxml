@@ -1,0 +1,27 @@
+<view class="container">
+  <view wx:if="{{loading}}" class="state"><view class="state-text">正在加载选集…</view></view>
+  <view wx:elif="{{error}}" class="state">
+    <view class="state-title">暂时无法观看</view><view class="state-text">{{error}}</view>
+    <button class="action" bindtap="load">重试</button>
+  </view>
+  <block wx:elif="{{drama}}">
+    <view class="eyebrow">短剧 · 选集观看</view>
+    <view class="heading">{{drama.title}}</view>
+    <view wx:if="{{drama.description}}" class="subtitle">{{drama.description}}</view>
+    <view class="player">
+      <video wx:if="{{videoUrl}}" id="drama-video" class="video" src="{{videoUrl}}" initial-time="{{initialTime}}" controls autoplay show-center-play-btn object-fit="contain" binderror="onVideoError" bindplay="onVideoPlay" bindtimeupdate="onTimeUpdate" />
+      <view wx:elif="{{playLoading}}" class="player-placeholder">正在获取播放地址…</view>
+      <view wx:elif="{{playError}}" class="player-placeholder">
+        <view>{{playError}}</view><button class="action" bindtap="retryPlay">重试播放</button>
+      </view>
+      <view wx:else class="player-placeholder">选择下方选集，开始观看</view>
+    </view>
+    <view class="episode-header"><text class="section-title">选集</text><text class="count">共 {{episodes.length}} 集</text></view>
+    <view wx:if="{{!episodes.length}}" class="state"><view class="state-text">暂无可播放选集</view></view>
+    <view class="episodes">
+      <button wx:for="{{episodes}}" wx:key="episodeId" class="episode {{selectedId == item.episodeId ? 'selected' : ''}}" data-index="{{index}}" bindtap="selectEpisode">
+        <view class="episode-number">第 {{item.episodeNo}} 集</view><view class="episode-title">{{item.title}}</view>
+      </button>
+    </view>
+  </block>
+</view>

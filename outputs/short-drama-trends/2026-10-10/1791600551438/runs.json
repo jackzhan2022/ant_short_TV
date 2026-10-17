@@ -1,0 +1,171 @@
+[ {
+  "id" : "15f9b0a7-8b4a-4543-baf9-349571ae8a28",
+  "sourceId" : "HONGGUO_HOT",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:12.170503Z",
+  "finishedAt" : "2026-10-10T02:49:15.749940Z",
+  "snapshotId" : "5af95d67-d7b1-40b1-b180-29fb6c820f29",
+  "entryCount" : 100,
+  "error" : null,
+  "errorCode" : null
+}, {
+  "id" : "c3887243-b12d-4f6a-84e1-12b501298d80",
+  "sourceId" : "HONGGUO_REAL",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:15.860937Z",
+  "finishedAt" : "2026-10-10T02:49:18.347292Z",
+  "snapshotId" : "22d7d85b-a7e0-40ae-b2fe-86fe69e113ce",
+  "entryCount" : 100,
+  "error" : null,
+  "errorCode" : null
+}, {
+  "id" : "b344df46-0015-4eca-ac43-a7ddb28e2c5c",
+  "sourceId" : "HONGGUO_AI",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:18.359256Z",
+  "finishedAt" : "2026-10-10T02:49:20.923569Z",
+  "snapshotId" : "aa67eaf6-0640-4cc7-9747-8f3d4e3a4a7d",
+  "entryCount" : 100,
+  "error" : null,
+  "errorCode" : null
+}, {
+  "id" : "b9be13d1-f834-41c9-b481-d3ea501923db",
+  "sourceId" : "HONGGUO_COMIC",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:20.934568Z",
+  "finishedAt" : "2026-10-10T02:49:23.626372Z",
+  "snapshotId" : "b2cac8a1-81ba-426e-8987-844c0ee2c22a",
+  "entryCount" : 100,
+  "error" : null,
+  "errorCode" : null
+}, {
+  "id" : "adbe750d-d270-4706-bc52-76ecd837c816",
+  "sourceId" : "DOUYIN_PUBLIC",
+  "status" : "NEEDS_SOURCE",
+  "startedAt" : "2026-10-10T02:49:23.638376Z",
+  "finishedAt" : "2026-10-10T02:49:24.176455Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "公开入口已检查，但尚未确认可用的短剧榜单解析规则；未将推荐列表当作榜单",
+  "errorCode" : "NO_VERIFIED_CHART"
+}, {
+  "id" : "7785410b-f5a6-493b-85e5-ffd508ca0f2b",
+  "sourceId" : "KUAISHOU_PUBLIC",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T02:49:24.179454Z",
+  "finishedAt" : "2026-10-10T02:49:24.427857Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "robots.txt 限制采集器或AI客户端访问该路径，本轮停止",
+  "errorCode" : "ROBOTS_DENIED"
+}, {
+  "id" : "9e2218cd-dc8f-4514-b0fb-f56aa2d9a991",
+  "sourceId" : "TENCENT_PUBLIC",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T02:49:24.431857Z",
+  "finishedAt" : "2026-10-10T02:49:24.540817Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "robots.txt 限制采集器或AI客户端访问该路径，本轮停止",
+  "errorCode" : "ROBOTS_DENIED"
+}, {
+  "id" : "98635114-5de1-40e2-9928-af27b8b60081",
+  "sourceId" : "IQIYI_PUBLIC",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T02:49:24.542816Z",
+  "finishedAt" : "2026-10-10T02:49:24.599946Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "robots.txt 限制采集器或AI客户端访问该路径，本轮停止",
+  "errorCode" : "ROBOTS_DENIED"
+}, {
+  "id" : "cd02ed31-7105-4a03-93ef-f04c507ad612",
+  "sourceId" : "YOUKU_PUBLIC",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T02:49:24.601946Z",
+  "finishedAt" : "2026-10-10T02:49:24.813297Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 302)",
+  "errorCode" : "ROBOTS_UNAVAILABLE_302"
+}, {
+  "id" : "69e49485-d253-40eb-9bd0-6a6e973bc08e",
+  "sourceId" : "REELSHORT_TOP",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T02:49:24.816303Z",
+  "finishedAt" : "2026-10-10T02:49:25.427406Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+  "errorCode" : "ROBOTS_UNAVAILABLE_403"
+}, {
+  "id" : "5c8b4b7d-c751-4e98-b562-3ba12fcc5022",
+  "sourceId" : "DRAMABOX_TOP",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T02:49:25.429406Z",
+  "finishedAt" : "2026-10-10T02:49:26.035407Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+  "errorCode" : "ROBOTS_UNAVAILABLE_403"
+}, {
+  "id" : "58dadab7-94cf-4452-a02d-20948e2763c6",
+  "sourceId" : "GOODSHORT_TOP",
+  "status" : "BLOCKED",
+  "startedAt" : "2026-10-10T02:49:26.038409Z",
+  "finishedAt" : "2026-10-10T02:49:27.164413Z",
+  "snapshotId" : null,
+  "entryCount" : 0,
+  "error" : "无法确认 robots.txt 规则，停止采集 (HTTP 403)",
+  "errorCode" : "ROBOTS_UNAVAILABLE_403"
+}, {
+  "id" : "b4e35d24-e8f3-4c77-9f83-4578cc1fc840",
+  "sourceId" : "FLEXTV_TOP",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:27.168410Z",
+  "finishedAt" : "2026-10-10T02:49:31.133655Z",
+  "snapshotId" : "3acc350b-1234-418e-a88a-9eb292d58311",
+  "entryCount" : 18,
+  "error" : null,
+  "errorCode" : null
+}, {
+  "id" : "c70415bb-a850-46e3-91a1-0f646977480d",
+  "sourceId" : "REELPULSE_REELSHORT_TOP",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:31.139656Z",
+  "finishedAt" : "2026-10-10T02:49:31.806625Z",
+  "snapshotId" : "25462d6d-ac21-4340-af1f-63bf155e3baf",
+  "entryCount" : 10,
+  "error" : null,
+  "errorCode" : null
+}, {
+  "id" : "57f3d8f3-ec14-4fb1-98e2-ead9f734e567",
+  "sourceId" : "REELPULSE_GOODSHORT_TOP",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:31.811625Z",
+  "finishedAt" : "2026-10-10T02:49:32.242628Z",
+  "snapshotId" : "9ad95c5b-faf8-44e0-aa2a-adfc097d00d2",
+  "entryCount" : 10,
+  "error" : null,
+  "errorCode" : null
+}, {
+  "id" : "fe95d8b9-47cb-4ce8-a8bb-d5ece88a55ed",
+  "sourceId" : "REELPULSE_GOODSHORT_TRENDING",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:32.248630Z",
+  "finishedAt" : "2026-10-10T02:49:32.698627Z",
+  "snapshotId" : "25153e56-5e6c-4682-a3e3-d6d68bba2870",
+  "entryCount" : 10,
+  "error" : null,
+  "errorCode" : null
+}, {
+  "id" : "e8243b6c-a7d3-40ef-8671-61fb993fbedb",
+  "sourceId" : "REELPULSE_DRAMABOX_TOP",
+  "status" : "SUCCEEDED",
+  "startedAt" : "2026-10-10T02:49:32.703628Z",
+  "finishedAt" : "2026-10-10T02:49:33.144627Z",
+  "snapshotId" : "cf62b345-a0cd-41d9-bf6c-7712b50f4b5f",
+  "entryCount" : 10,
+  "error" : null,
+  "errorCode" : null
+} ]

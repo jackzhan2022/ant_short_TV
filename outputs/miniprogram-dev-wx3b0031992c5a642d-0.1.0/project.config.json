@@ -1,0 +1,53 @@
+{
+  "description": "基础剧库选集播放模板",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "appid": "wx3b0031992c5a642d",
+  "projectname": "ant-short-tv-dev-template",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "minified": true,
+    "urlCheck": true
+  },
+  "packOptions": {
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "tests"
+      },
+      {
+        "type": "folder",
+        "value": "private"
+      },
+      {
+        "type": "folder",
+        "value": "node_modules"
+      },
+      {
+        "type": "file",
+        "value": "package.json"
+      },
+      {
+        "type": "file",
+        "value": "package-lock.json"
+      },
+      {
+        "type": "file",
+        "value": "project.private.config.json"
+      },
+      {
+        "type": "suffix",
+        "value": ".key"
+      },
+      {
+        "type": "suffix",
+        "value": ".pem"
+      },
+      {
+        "type": "suffix",
+        "value": ".env"
+      }
+    ]
+  }
+}
