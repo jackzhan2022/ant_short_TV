@@ -892,7 +892,7 @@ class WorkflowAgentRunnerTest {
 
     @Test
     void storyboardAgentHostPreparesAllReadsBeforeOnePlanningModelCall() {
-        String skillCode = "short-drama-storyboard-planning";
+        String skillCode = "short-drama-storyboard-production";
         when(skills.detail(skillCode)).thenReturn(new WorkflowSkillView(skillCode, "系统规划", "", "SYSTEM_CREATIVE_RULE", "sys-rev", List.of()));
         when(skills.findTenantOverride("short-drama-storyboard", 7L, skillCode)).thenReturn(
             new WorkflowSkillView(skillCode, "团队规划", "", "TENANT_CREATIVE_RULE", "tenant-rev", List.of(), "TENANT", 7L, "团队甲", true));
@@ -1501,7 +1501,7 @@ class WorkflowAgentRunnerTest {
 
     @Test
     void freezesTenantStoryboardSkillsWithSourceAndRejectsCrossTenantPlan() {
-        String code = "short-drama-storyboard-planning";
+        String code = "short-drama-storyboard-production";
         WorkflowAgentRecord storyboard = new WorkflowAgentRecord(7L, "short-drama-storyboard", "分镜规划", "", "执行", 8L,
             new BigDecimal("0.2"), 8192, 14, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(code), List.of("save_episode_storyboards"));

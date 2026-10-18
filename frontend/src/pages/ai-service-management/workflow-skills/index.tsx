@@ -49,10 +49,8 @@ const builtinAgentNames = new Map([
   ['script-review', '剧本审核'],
 ]);
 
-const tenantSkillNames = new Map([
-  ['short-drama-storyboard-planning', '整集分镜规划'],
-  ['short-drama-seedance-video-prompt', '视频提示词表达'],
-]);
+const tenantSkillCode = 'short-drama-storyboard-production';
+const tenantSkillName = '短剧分镜制作';
 
 const starter = `---
 name: my-skill
@@ -92,9 +90,6 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
   const [agentFilter, setAgentFilter] = useState<string>();
   const [scopeFilter, setScopeFilter] = useState<'SYSTEM' | 'TENANT'>();
   const [tenantFilter, setTenantFilter] = useState<number>();
-  const [newTenantCode, setNewTenantCode] = useState(
-    'short-drama-storyboard-planning',
-  );
   const [tenantNames, setTenantNames] = useState(new Map<number, string>());
   const requestId = useRef(0);
   const [loading, setLoading] = useState(false);
@@ -215,10 +210,10 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
   };
 
   const createTenantSkill = () => {
-    const name = tenantSkillNames.get(newTenantCode);
-    if (tenantId === undefined || !name) return;
+    const name = tenantSkillName;
+    if (tenantId === undefined) return;
     openEditor('create', {
-      code: newTenantCode,
+      code: tenantSkillCode,
       name,
       description: '本团队的分镜创作补充规则',
       content: `---\nname: ${name}\ndescription: 本团队的分镜创作补充规则\n---\n\n# 团队补充规则\n\n`,
@@ -512,28 +507,15 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
             </Button>
           )}
           {editable && tenantMode && (
-            <>
-              <Select
-                aria-label="新增团队 Skill 类型"
-                value={newTenantCode}
-                onChange={setNewTenantCode}
-                style={{ width: 180 }}
-                options={[...tenantSkillNames].map(([value, label]) => ({
-                  value,
-                  label,
-                  disabled: skills.some((skill) => skill.code === value),
-                }))}
-              />
-              <Button
-                type="primary"
-                aria-label="新增团队 Skill"
-                icon={<PlusOutlined />}
-                onClick={createTenantSkill}
-                disabled={skills.some((skill) => skill.code === newTenantCode)}
-              >
-                新增团队 Skill
-              </Button>
-            </>
+            <Button
+              type="primary"
+              aria-label="新增团队 Skill"
+              icon={<PlusOutlined />}
+              onClick={createTenantSkill}
+              disabled={skills.some((skill) => skill.code === tenantSkillCode)}
+            >
+              新增团队 Skill
+            </Button>
           )}
         </Space>
         <Table

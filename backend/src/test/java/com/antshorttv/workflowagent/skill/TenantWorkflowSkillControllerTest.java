@@ -26,8 +26,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @SpringBootTest(properties = "ai.workflow-agent.skill-root=target/tenant-workflow-skill-test")
 @AutoConfigureMockMvc
 class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
-    private static final String PLANNING = "short-drama-storyboard-planning";
-    private static final String VIDEO = "short-drama-seedance-video-prompt";
+    private static final String PLANNING = "short-drama-storyboard-production";
     private static final AtomicLong MOBILE = new AtomicLong(13800004000L);
     @Autowired MockMvc mvc;
     @Autowired FileSkillRepository files;
@@ -49,11 +48,10 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
     }
 
     @Test
-    void ownerCustomizesBothSkillsWithTenantIsolationAndAudit() throws Exception {
+    void ownerCustomizesUnifiedSkillWithTenantIsolationAndAudit() throws Exception {
         Actor a = actor(null), b = actor(null);
         String system = skills.detail(PLANNING).content();
         String first = save(a, PLANNING, "团队甲强调动作节奏", TenantWorkflowSkillService.NEW_REVISION);
-        save(a, VIDEO, "团队甲使用简洁镜头语言", TenantWorkflowSkillService.NEW_REVISION);
         assertThat(skills.findTenantOverride(StoryboardAgentBootstrap.AGENT_CODE, a.tenantId(), PLANNING).content())
             .contains("团队甲强调动作节奏");
         assertThat(skills.findTenantOverride(StoryboardAgentBootstrap.AGENT_CODE, b.tenantId(), PLANNING)).isNull();
@@ -64,13 +62,13 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
             Long.class, a.tenantId(), PLANNING)).isEqualTo(a.userId());
         mvc.perform(get(path(a)).with(SessionTestSupport.authenticated(a.credential()))
                 .param("agentCode", StoryboardAgentBootstrap.AGENT_CODE).param("scope", "TENANT"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()", is(2)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()", is(1)))
             .andExpect(jsonPath("$.data[0].tenantId", is(a.tenantId().intValue())))
             .andExpect(jsonPath("$.data[0].tenantName", is("团队" + a.userId())));
         mvc.perform(get(path(b) + "/" + PLANNING).with(SessionTestSupport.authenticated(b.credential())))
             .andExpect(status().isNotFound());
         mvc.perform(get(path(a)).with(SessionTestSupport.authenticated(a.credential())))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()", is(2)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()", is(1)))
             .andExpect(jsonPath("$.data[0].scope", is("TENANT")))
             .andExpect(jsonPath("$.data[0].priority", is(200)));
         mvc.perform(get(path(a)).param("scope", "SYSTEM").with(SessionTestSupport.authenticated(a.credential())))
@@ -122,7 +120,7 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
     @Test
     void rejectsProtectedSkillsStaleWritesAndInvalidDocuments() throws Exception {
         Actor owner = actor(null);
-        for (String code : new String[] {"short-drama-analysis-foundation", "short-drama-storyboard-material-reference", "custom-guide"}) {
+        for (String code : new String[] {"short-drama-analysis-foundation", "short-drama-storyboard-material-reference", "short-drama-storyboard-planning", "short-drama-seedance-video-prompt", "custom-guide"}) {
             mvc.perform(put(path(owner) + "/" + code).with(SessionTestSupport.authenticated(owner.credential()))
                     .contentType(MediaType.APPLICATION_JSON).content(payload("invalid scope", "revision")))
                 .andExpect(status().isForbidden());

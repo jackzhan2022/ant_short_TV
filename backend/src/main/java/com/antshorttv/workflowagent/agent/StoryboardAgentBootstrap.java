@@ -9,11 +9,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class StoryboardAgentBootstrap extends AbstractAnalysisAgentBootstrap {
     public static final String AGENT_CODE = "short-drama-storyboard";
-    public static final List<String> SKILLS = List.of(
-        "short-drama-analysis-foundation",
-        "short-drama-storyboard-planning",
-        "short-drama-storyboard-material-reference",
-        "short-drama-seedance-video-prompt");
+    public static final String SKILL_CODE = "short-drama-storyboard-production";
+    public static final List<String> SKILLS = List.of(SKILL_CODE);
     public static final List<String> TOOLS = List.of(
         "read_current_episode",
         "read_adjacent_episodes",

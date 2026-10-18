@@ -44,10 +44,10 @@ vi.mock('../workflow-service', async () => {
 import WorkflowSkillsPage, { TenantWorkflowSkillsPage } from './index';
 
 const planning = {
-  code: 'short-drama-storyboard-planning',
-  name: '整集分镜规划',
+  code: 'short-drama-storyboard-production',
+  name: '短剧分镜制作',
   description: '分镜规则',
-  content: '---\nname: 整集分镜规划\ndescription: 分镜规则\n---\n本团队正文',
+  content: '---\nname: 短剧分镜制作\ndescription: 分镜规则\n---\n本团队正文',
   revision: 'tenant-rev',
   scope: 'TENANT',
   tenantId: 7,
@@ -271,6 +271,9 @@ describe('WorkflowSkillsPage', () => {
     expect(mocks.queryTenantSkill).not.toHaveBeenCalled();
     expect(mocks.querySkill).not.toHaveBeenCalled();
     expect(mocks.querySkills).not.toHaveBeenCalled();
+    expect(
+      screen.queryByLabelText('新增团队 Skill 类型'),
+    ).not.toBeInTheDocument();
   });
 
   it('lets ordinary members view only tenant content without editing controls', async () => {

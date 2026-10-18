@@ -91,7 +91,7 @@ public class TenantWorkflowSkillService {
 
     private void requireEditable(String code) {
         if (!TenantStoryboardSkillPolicy.EDITABLE_CODES.contains(code)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "仅整集分镜规划和视频提示词 Skill 支持团队定制。");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "团队仅支持统一的短剧分镜制作 Skill。");
         }
     }
 

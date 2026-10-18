@@ -559,7 +559,11 @@ public class StoryboardToolDataService {
             }
             for (String field : List.of("dialogue", "narration", "innerOs")) {
                 String sound = optionalText(shot, field);
-                if (!sound.isBlank()) text.append(' ').append(sound);
+                if (!sound.isBlank()) text.append("\n[声音] ").append(switch (field) {
+                    case "dialogue" -> "对白：";
+                    case "narration" -> "旁白 VO：";
+                    default -> "内心 OS：";
+                }).append(sound);
             }
             text.append("\n\n");
         }

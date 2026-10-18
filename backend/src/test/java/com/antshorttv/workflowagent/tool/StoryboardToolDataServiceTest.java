@@ -82,7 +82,7 @@ class StoryboardToolDataServiceTest {
         assertThat(row.get("video_prompt").toString())
             .startsWith("画风: 现代都市通用")
             .contains(StoryboardToolDataService.FIXED_MEDIA_CONSTRAINT)
-            .contains("镜头4 3.8s", "Serena: No...", StoryboardToolDataService.FIXED_CONSISTENCY_CONSTRAINT);
+            .contains("镜头4 3.8s", "[声音] 对白：Serena: No...", StoryboardToolDataService.FIXED_CONSISTENCY_CONSTRAINT);
         assertThat(row.get("prompt_document_json").toString()).contains("\"version\":2", "\"nodes\"");
         assertThat(row.get("shot_plan_json").toString()).contains("\"durationSeconds\":3.8");
         assertThat(row.get("shot_plan_json").toString())

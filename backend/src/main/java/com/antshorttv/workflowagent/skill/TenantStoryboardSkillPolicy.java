@@ -4,8 +4,7 @@ import com.antshorttv.workflowagent.agent.StoryboardAgentBootstrap;
 import java.util.Set;
 
 public final class TenantStoryboardSkillPolicy {
-    public static final Set<String> EDITABLE_CODES = Set.of(
-        "short-drama-storyboard-planning", "short-drama-seedance-video-prompt");
+    public static final Set<String> EDITABLE_CODES = Set.of(StoryboardAgentBootstrap.SKILL_CODE);
 
     private TenantStoryboardSkillPolicy() { }
 
