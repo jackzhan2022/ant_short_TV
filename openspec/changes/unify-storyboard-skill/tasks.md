@@ -17,5 +17,5 @@
 
 - [x] 4.1 Add a manager-only current-system-template API and initialize independent tenant drafts with complete Markdown.
 - [x] 4.2 Verify current template content, permissions, independent saves, retry and team-switch isolation; run required checks and builds.
-- [ ] 4.3 Back up, deploy and verify the application-only update without changing system Skills or tenant records.
+- [x] 4.3 Back up, deploy and verify the application-only update without changing system Skills or tenant records.
 
