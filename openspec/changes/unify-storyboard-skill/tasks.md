@@ -11,4 +11,4 @@
 ## 3. Verification and release
 
 - [x] 3.1 Run migration, API, runtime, Skill and storyboard compatibility tests plus frontend checks and builds.
-- [ ] 3.2 Back up, deploy the unified Skill/application, verify migrated data and safely archive unused legacy files.
+- [x] 3.2 Back up, deploy the unified Skill/application, verify migrated data and safely archive unused legacy files.
