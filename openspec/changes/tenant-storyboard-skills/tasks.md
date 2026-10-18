@@ -22,4 +22,4 @@
 
 - [x] 5.1 Restrict tenant reads to their own saved records; allow ordinary members to read while retaining owner/admin-only mutations and platform system CRUD.
 - [x] 5.2 Preserve system and tenant layers in execution and snapshots with explicit tenant precedence; show priorities and add blank tenant supplement creation.
-- [ ] 5.3 Verify API isolation, member permissions, coexistence and UI behavior, then deploy and record results.
+- [x] 5.3 Verify API isolation, member permissions, coexistence and UI behavior, then deploy and record results.
