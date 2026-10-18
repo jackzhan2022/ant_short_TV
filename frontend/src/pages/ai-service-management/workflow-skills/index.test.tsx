@@ -3,7 +3,8 @@ import { App } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  access: { canEditWorkflowSkills: true },
+  access: { canEditWorkflowSkills: true, canViewWorkflowAgents: true },
+  queryAgents: vi.fn(),
   querySkills: vi.fn(),
   updateSkill: vi.fn(),
   querySkill: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock('../workflow-service', async () => {
   const actual = await vi.importActual<object>('../workflow-service');
   return {
     ...actual,
+    queryWorkflowAgents: mocks.queryAgents,
     queryWorkflowSkills: mocks.querySkills,
     updateWorkflowSkill: mocks.updateSkill,
     queryWorkflowSkill: mocks.querySkill,
@@ -26,6 +28,11 @@ describe('WorkflowSkillsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.access.canEditWorkflowSkills = true;
+    mocks.access.canViewWorkflowAgents = true;
+    mocks.queryAgents.mockResolvedValue({
+      success: true,
+      data: [{ code: 'screenplay-agent', name: '编剧 Agent' }],
+    });
     mocks.querySkills.mockResolvedValue({
       success: true,
       data: [
@@ -61,10 +68,17 @@ describe('WorkflowSkillsPage', () => {
       </App>,
     );
     expect(await screen.findByText('改写指南')).toBeInTheDocument();
+    expect(await screen.findByText('编剧 Agent')).toHaveAttribute(
+      'title',
+      'screenplay-agent',
+    );
     fireEvent.click(screen.getByRole('button', { name: /编辑/ }));
     expect(await screen.findByDisplayValue('rewrite-guide')).toBeDisabled();
     expect(screen.getByDisplayValue(/name: rewrite-guide/)).toBeInTheDocument();
     expect(screen.getAllByText(/screenplay-agent/).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('当前引用：编剧 Agent（screenplay-agent）'),
+    ).toBeInTheDocument();
     expect(screen.getAllByText(/保存后立即生效/).length).toBeGreaterThan(0);
   });
 
@@ -82,6 +96,43 @@ describe('WorkflowSkillsPage', () => {
     expect(
       screen.queryByRole('button', { name: /编辑/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('maps built-in references without requesting unauthorized Agent data', async () => {
+    mocks.access.canViewWorkflowAgents = false;
+    mocks.querySkills.mockResolvedValueOnce({
+      success: true,
+      data: [
+        {
+          code: 'guide',
+          name: '解析规范',
+          description: '规范',
+          referencingAgentCodes: ['short-drama-storyboard', 'unknown-agent'],
+        },
+      ],
+    });
+    render(
+      <App>
+        <WorkflowSkillsPage />
+      </App>,
+    );
+    expect(await screen.findByText('分镜规划')).toHaveAttribute(
+      'title',
+      'short-drama-storyboard',
+    );
+    expect(screen.getByText('unknown-agent')).toBeInTheDocument();
+    expect(mocks.queryAgents).not.toHaveBeenCalled();
+  });
+
+  it('keeps Skills available when Agent names fail to load', async () => {
+    mocks.queryAgents.mockRejectedValueOnce(new Error('unavailable'));
+    render(
+      <App>
+        <WorkflowSkillsPage />
+      </App>,
+    );
+    expect(await screen.findByText('改写指南')).toBeInTheDocument();
+    expect(screen.getByText('screenplay-agent')).toBeInTheDocument();
   });
 
   it('preserves unsaved content on revision conflict and reloads only on demand', async () => {

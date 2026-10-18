@@ -26,6 +26,7 @@ import {
   copyWorkflowSkill,
   createWorkflowSkill,
   deleteWorkflowSkill,
+  queryWorkflowAgents,
   queryWorkflowSkill,
   queryWorkflowSkills,
   updateWorkflowSkill,
@@ -33,6 +34,15 @@ import {
 
 type EditorMode = 'create' | 'edit' | 'copy';
 type SkillForm = { code: string; content: string };
+
+const builtinAgentNames = new Map([
+  ['short-drama-global-understanding', '剧情全局理解'],
+  ['short-drama-episode-splitting', '剧集智能拆分'],
+  ['short-drama-episode-summary', '剧集概要提炼'],
+  ['short-drama-asset-recognition', '角色场景道具识别'],
+  ['short-drama-storyboard', '分镜规划'],
+  ['script-review', '剧本审核'],
+]);
 
 const starter = `---
 name: my-skill
@@ -57,9 +67,11 @@ const errorMessage = (error: unknown, fallback: string) => {
 const WorkflowSkillsPage = () => {
   const access = useAccess();
   const editable = Boolean(access.canEditWorkflowSkills);
+  const canViewAgents = Boolean(access.canViewWorkflowAgents);
   const { message } = App.useApp();
   const [form] = Form.useForm<SkillForm>();
   const [skills, setSkills] = useState<WorkflowSkill[]>([]);
+  const [agentNames, setAgentNames] = useState(builtinAgentNames);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -86,6 +98,42 @@ const WorkflowSkillsPage = () => {
   useEffect(() => {
     void load('');
   }, [load]);
+
+  useEffect(() => {
+    if (!canViewAgents) {
+      setAgentNames(builtinAgentNames);
+      return;
+    }
+    let active = true;
+    void queryWorkflowAgents()
+      .then((response) => {
+        if (active) {
+          setAgentNames(
+            new Map([
+              ...builtinAgentNames,
+              ...(response.data ?? []).map((agent): [string, string] => [
+                agent.code,
+                agent.name,
+              ]),
+            ]),
+          );
+        }
+      })
+      .catch(() => {
+        if (active) setAgentNames(builtinAgentNames);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canViewAgents]);
+
+  const referenceLabel = useCallback(
+    (code: string) => {
+      const name = agentNames.get(code);
+      return name && name !== code ? `${name}（${code}）` : code;
+    },
+    [agentNames],
+  );
 
   const openEditor = (editorMode: EditorMode, record?: WorkflowSkill) => {
     setMode(editorMode);
@@ -173,7 +221,9 @@ const WorkflowSkillsPage = () => {
         render: (codes: string[]) => (
           <Space wrap>
             {codes.map((code) => (
-              <Tag key={code}>{code}</Tag>
+              <Tag key={code} title={code}>
+                {agentNames.get(code) || code}
+              </Tag>
             ))}
           </Space>
         ),
@@ -206,7 +256,7 @@ const WorkflowSkillsPage = () => {
               <Popconfirm
                 title={
                   record.referencingAgentCodes.length
-                    ? `正在被 ${record.referencingAgentCodes.join(', ')} 引用，不能删除`
+                    ? `正在被 ${record.referencingAgentCodes.map(referenceLabel).join('、')} 引用，不能删除`
                     : '确认删除这个 Skill？'
                 }
                 disabled={record.referencingAgentCodes.length > 0}
@@ -229,7 +279,7 @@ const WorkflowSkillsPage = () => {
         ),
       },
     ],
-    [editable, load],
+    [agentNames, editable, load, referenceLabel],
   );
 
   return (
@@ -292,7 +342,7 @@ const WorkflowSkillsPage = () => {
           title="保存后立即生效；修改会影响所有引用该 Skill 的 Agent。"
           description={
             source?.referencingAgentCodes.length
-              ? `当前引用：${source.referencingAgentCodes.join(', ')}`
+              ? `当前引用：${source.referencingAgentCodes.map(referenceLabel).join('、')}`
               : '当前没有 Agent 引用。'
           }
           style={{ marginBottom: 16 }}
