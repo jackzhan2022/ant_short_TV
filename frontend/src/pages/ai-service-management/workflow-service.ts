@@ -35,6 +35,16 @@ export type WorkflowSkill = {
   content: string;
   revision: string;
   referencingAgentCodes: string[];
+  scope: 'SYSTEM' | 'TENANT';
+  tenantId?: number | null;
+  tenantName?: string | null;
+  tenantEditable: boolean;
+};
+
+export type WorkflowSkillFilters = {
+  agentCode?: string;
+  scope?: 'SYSTEM' | 'TENANT';
+  tenantId?: number;
 };
 
 export type WorkflowTool = {
@@ -152,9 +162,12 @@ export const deleteWorkflowAgent = async (code: string) =>
     method: 'DELETE',
   });
 
-export const queryWorkflowSkills = async (query?: string) =>
+export const queryWorkflowSkills = async (
+  query?: string,
+  filters?: WorkflowSkillFilters,
+) =>
   request<ApiResponse<WorkflowSkill[]>>('/api/platform/ai/workflow-skills', {
-    params: { query },
+    params: { query, ...filters },
   });
 
 export const queryWorkflowSkill = async (code: string) =>
@@ -188,6 +201,47 @@ export const deleteWorkflowSkill = async (code: string) =>
   request<ApiResponse<void>>(`/api/platform/ai/workflow-skills/${code}`, {
     method: 'DELETE',
   });
+
+export const queryTenantWorkflowSkills = async (
+  tenantId: number,
+  query?: string,
+  filters?: WorkflowSkillFilters,
+) =>
+  request<ApiResponse<WorkflowSkill[]>>(
+    `/api/tenants/${tenantId}/workflow-skills`,
+    {
+      params: { query, agentCode: filters?.agentCode, scope: filters?.scope },
+    },
+  );
+
+export const queryTenantWorkflowSkill = async (
+  tenantId: number,
+  code: string,
+) =>
+  request<ApiResponse<WorkflowSkill>>(
+    `/api/tenants/${tenantId}/workflow-skills/${code}`,
+  );
+
+export const updateTenantWorkflowSkill = async (
+  tenantId: number,
+  code: string,
+  content: string,
+  expectedRevision: string,
+) =>
+  request<ApiResponse<WorkflowSkill>>(
+    `/api/tenants/${tenantId}/workflow-skills/${code}`,
+    jsonOptions('PUT', { content, expectedRevision }),
+  );
+
+export const restoreTenantWorkflowSkill = async (
+  tenantId: number,
+  code: string,
+  expectedRevision: string,
+) =>
+  request<ApiResponse<void>>(
+    `/api/tenants/${tenantId}/workflow-skills/${code}`,
+    jsonOptions('DELETE', { expectedRevision }),
+  );
 
 export const queryWorkflowTools = async () =>
   request<ApiResponse<WorkflowTool[]>>('/api/platform/ai/agent-tools');

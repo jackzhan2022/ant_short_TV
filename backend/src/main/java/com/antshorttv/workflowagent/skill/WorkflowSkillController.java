@@ -20,17 +20,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/platform/ai/workflow-skills")
 public class WorkflowSkillController {
     private final WorkflowSkillService service;
+    private final WorkflowSkillCatalogService catalog;
 
-    public WorkflowSkillController(WorkflowSkillService service) {
+    public WorkflowSkillController(WorkflowSkillService service, WorkflowSkillCatalogService catalog) {
         this.service = service;
+        this.catalog = catalog;
     }
 
     @GetMapping
     @RequirePlatformPermission(WorkflowAiPermissions.SKILL_VIEW)
     public ApiResponse<List<WorkflowSkillView>> list(
-        @RequestParam(required = false) String query
+        @RequestParam(required = false) String query,
+        @RequestParam(required = false) String agentCode,
+        @RequestParam(required = false) String scope,
+        @RequestParam(required = false) Long tenantId
     ) {
-        return ApiResponse.success(service.list(query));
+        return ApiResponse.success(catalog.list(query, agentCode, scope, tenantId));
     }
 
     @GetMapping("/{code}")

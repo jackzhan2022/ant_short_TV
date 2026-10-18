@@ -6,14 +6,17 @@ import AiCallLogsPage from '../logs';
 import PlatformModelsPage from '../platform-models';
 import PlatformProvidersPage from '../providers';
 import WorkflowAgentsPage from '../workflow-agents';
-import WorkflowSkillsPage from '../workflow-skills';
+import WorkflowSkillsPage, {
+  TenantWorkflowSkillsPage,
+} from '../workflow-skills';
 
 type ModelManagementTab =
   | 'providers'
   | 'models'
   | 'logs'
   | 'workflow-agents'
-  | 'workflow-skills';
+  | 'workflow-skills'
+  | 'tenant-workflow-skills';
 
 const ModelManagementPage = () => {
   const access = useAccess();
@@ -58,6 +61,13 @@ const ModelManagementPage = () => {
         children: <WorkflowSkillsPage />,
       });
     }
+    if (access.canManageTenantWorkflowSkills) {
+      tabs.push({
+        key: 'tenant-workflow-skills',
+        label: '团队 Skill',
+        children: <TenantWorkflowSkillsPage />,
+      });
+    }
     return tabs;
   }, [
     access.canViewAiCallLogs,
@@ -65,6 +75,7 @@ const ModelManagementPage = () => {
     access.canViewPlatformAiProviders,
     access.canViewWorkflowAgents,
     access.canViewWorkflowSkills,
+    access.canManageTenantWorkflowSkills,
   ]);
   const [activeKey, setActiveKey] = useState<ModelManagementTab>();
   const selectedKey = items.some((item) => item.key === activeKey)

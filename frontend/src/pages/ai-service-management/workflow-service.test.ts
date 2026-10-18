@@ -3,10 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createWorkflowAgent,
   createWorkflowSkill,
+  queryTenantWorkflowSkills,
   queryWorkflowAgentRuns,
   queryWorkflowAgents,
   queryWorkflowSkills,
+  restoreTenantWorkflowSkill,
   runTemporaryWorkflowAgent,
+  updateTenantWorkflowSkill,
   updateWorkflowAgent,
   updateWorkflowSkill,
 } from './workflow-service';
@@ -14,6 +17,35 @@ import {
 vi.mock('@umijs/max', () => ({ request: vi.fn() }));
 
 describe('workflow Agent and Skill services', () => {
+  it('keeps tenant mutations and filters on tenant-specific endpoints', async () => {
+    await queryTenantWorkflowSkills(7, '镜头', {
+      agentCode: 'short-drama-storyboard',
+      scope: 'TENANT',
+    });
+    await updateTenantWorkflowSkill(7, 'guide', 'content', 'revision');
+    await restoreTenantWorkflowSkill(7, 'guide', 'revision');
+    expect(request).toHaveBeenCalledWith('/api/tenants/7/workflow-skills', {
+      params: {
+        query: '镜头',
+        agentCode: 'short-drama-storyboard',
+        scope: 'TENANT',
+      },
+    });
+    expect(request).toHaveBeenCalledWith(
+      '/api/tenants/7/workflow-skills/guide',
+      expect.objectContaining({
+        method: 'PUT',
+        data: { content: 'content', expectedRevision: 'revision' },
+      }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      '/api/tenants/7/workflow-skills/guide',
+      expect.objectContaining({
+        method: 'DELETE',
+        data: { expectedRevision: 'revision' },
+      }),
+    );
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(request).mockResolvedValue({ success: true, data: {} });

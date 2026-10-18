@@ -10,7 +10,10 @@ export default function access(
         tenantPermissions?: string[];
         platformPermissions?: string[];
         bootstrap?: { platform: { roles: string[] } };
-        selectedTenant?: { membership?: { status?: string } } | null;
+        selectedTenant?: {
+          membership?: { status?: string; memberType?: string };
+          roles?: string[];
+        } | null;
       }
     | undefined,
 ) {
@@ -23,8 +26,13 @@ export default function access(
   const canUseDramaAdministration =
     hasActiveTenant &&
     initialState?.bootstrap?.platform.roles.includes('PLATFORM_ADMIN') === true;
+  const canManageTenantWorkflowSkills =
+    hasActiveTenant &&
+    (initialState?.selectedTenant?.membership?.memberType === 'OWNER' ||
+      initialState?.selectedTenant?.roles?.includes('ADMIN') === true);
   return {
     canAdmin: currentUser && currentUser.access === 'admin',
+    canManageTenantWorkflowSkills,
     canManageRoles: currentUser && tenantPermissions.includes('ROLE:VIEW'),
     canUseProjectCenter: hasActiveTenant,
     canViewStyleLibrary: Boolean(currentUser),
@@ -48,7 +56,8 @@ export default function access(
       currentUser && tenantPermissions.includes('AI_CALL_LOG:VIEW'),
     canViewAiManagement:
       currentUser &&
-      (tenantPermissions.includes('AI_CALL_LOG:VIEW') ||
+      (canManageTenantWorkflowSkills ||
+        tenantPermissions.includes('AI_CALL_LOG:VIEW') ||
         platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW') ||

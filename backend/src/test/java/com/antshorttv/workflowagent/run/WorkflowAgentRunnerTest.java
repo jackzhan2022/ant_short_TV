@@ -1492,6 +1492,31 @@ class WorkflowAgentRunnerTest {
             org.mockito.ArgumentMatchers.anyString());
     }
 
+    @Test
+    void freezesTenantStoryboardSkillsWithSourceAndRejectsCrossTenantPlan() {
+        String code = "short-drama-storyboard-planning";
+        WorkflowAgentRecord storyboard = new WorkflowAgentRecord(7L, "short-drama-storyboard", "分镜规划", "", "执行", 8L,
+            new BigDecimal("0.2"), 8192, 14, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(code), List.of("save_episode_storyboards"));
+        when(agents.loadForRun("short-drama-storyboard")).thenReturn(storyboard);
+        when(skills.detail(code)).thenReturn(new WorkflowSkillView(code, "规划", "", "system", "system-rev", List.of()));
+        when(skills.findTenantOverride("short-drama-storyboard", 7L, code)).thenReturn(
+            new WorkflowSkillView(code, "团队规划", "", "tenant-content", "tenant-rev", List.of(), "TENANT", 7L, "团队甲", true));
+        WorkflowAgentExecutionPlan plan = runner.freezeFormal("short-drama-storyboard", 7L);
+        assertThat(plan.tenantId()).isEqualTo(7L);
+        assertThat(plan.skillSnapshots().get(0).content()).isEqualTo("tenant-content");
+        assertThat(plan.skillSnapshots().get(0).tenantId()).isEqualTo(7L);
+        assertThat(plan.skillSnapshots().get(0).scope()).isEqualTo("TENANT");
+        assertThat(plan.agent().toolCodes()).containsExactly("save_episode_storyboards");
+        assertThat(runner.freezeFormal("short-drama-storyboard", 8L).skillSnapshots().get(0).content()).isEqualTo("system");
+        when(skills.findTenantOverride("short-drama-storyboard", 7L, code)).thenReturn(null);
+        assertThat(plan.skillSnapshots().get(0).content()).isEqualTo("tenant-content");
+        assertThatThrownBy(() -> runner.runFormal(plan, new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 8L, 25L, 91L, null, 9L)))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("不属于当前团队");
+        verify(invocation, never()).invokeText(any());
+    }
+
     private WorkflowAgentRecord agent(int maxSteps, List<String> skillCodes, List<String> toolCodes) {
         return new WorkflowAgentRecord(3L, "screenplay-agent", "编剧", "", "遵循工作流。", 8L,
             new BigDecimal("0.2"), 2048, maxSteps, "ENABLED", 0L, 9L, 9L,

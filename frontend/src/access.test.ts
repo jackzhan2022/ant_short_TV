@@ -2,6 +2,45 @@ import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
+  it('limits tenant Skill management to an active owner or administrator', () => {
+    const base = {
+      currentUser: { userid: '1' },
+      platformPermissions: ['PLATFORM_AI_WORKFLOW_SKILL_EDIT'],
+    };
+    expect(access(base).canManageTenantWorkflowSkills).toBe(false);
+    for (const membership of [
+      { status: 'ACTIVE', memberType: 'OWNER' },
+      { status: 'ACTIVE', memberType: 'MEMBER' },
+    ]) {
+      const state = {
+        ...base,
+        selectedTenant: {
+          membership,
+          roles: membership.memberType === 'MEMBER' ? ['ADMIN'] : [],
+        },
+      };
+      expect(access(state).canManageTenantWorkflowSkills).toBe(true);
+      expect(access(state).canViewAiManagement).toBe(true);
+      expect(
+        access({
+          ...state,
+          selectedTenant: {
+            membership: { ...membership, status: 'REMOVED' },
+            roles: ['ADMIN'],
+          },
+        }).canManageTenantWorkflowSkills,
+      ).toBe(false);
+    }
+    expect(
+      access({
+        ...base,
+        selectedTenant: {
+          membership: { status: 'ACTIVE', memberType: 'MEMBER' },
+          roles: ['MEMBER'],
+        },
+      }).canManageTenantWorkflowSkills,
+    ).toBe(false);
+  });
   it('剧集管理菜单与直达路由使用同一权限门禁', () => {
     expect(routes.find((route) => route.path === '/drama-library')).toMatchObject({
       access: 'canViewDramas', component: './drama-library',

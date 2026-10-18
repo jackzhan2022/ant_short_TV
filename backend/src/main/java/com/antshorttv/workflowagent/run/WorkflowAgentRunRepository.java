@@ -391,7 +391,7 @@ public class WorkflowAgentRunRepository {
         for (WorkflowAgentSkillSnapshot snapshot : snapshots) {
             String content = payload(snapshot.content());
             retained.add(new WorkflowAgentSkillSnapshot(
-                snapshot.code(), snapshot.name(), snapshot.revision(), content));
+                snapshot.code(), snapshot.name(), snapshot.revision(), content, snapshot.scope(), snapshot.tenantId()));
             String candidate = write(retained);
             if (candidate.getBytes(StandardCharsets.UTF_8).length > maxPayloadBytes) {
                 retained.remove(retained.size() - 1);

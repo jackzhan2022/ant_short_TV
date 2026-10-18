@@ -5,7 +5,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
-import { useAccess } from '@umijs/max';
+import { useAccess, useModel } from '@umijs/max';
 import {
   Alert,
   App,
@@ -14,25 +14,30 @@ import {
   Form,
   Input,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WorkflowSkill } from '../workflow-service';
 import {
   copyWorkflowSkill,
   createWorkflowSkill,
   deleteWorkflowSkill,
+  queryTenantWorkflowSkill,
+  queryTenantWorkflowSkills,
   queryWorkflowAgents,
   queryWorkflowSkill,
   queryWorkflowSkills,
+  restoreTenantWorkflowSkill,
+  updateTenantWorkflowSkill,
   updateWorkflowSkill,
 } from '../workflow-service';
 
-type EditorMode = 'create' | 'edit' | 'copy';
+type EditorMode = 'create' | 'edit' | 'copy' | 'view';
 type SkillForm = { code: string; content: string };
 
 const builtinAgentNames = new Map([
@@ -64,15 +69,26 @@ const errorMessage = (error: unknown, fallback: string) => {
   return error instanceof Error && error.message ? error.message : fallback;
 };
 
-const WorkflowSkillsPage = () => {
+const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
   const access = useAccess();
-  const editable = Boolean(access.canEditWorkflowSkills);
-  const canViewAgents = Boolean(access.canViewWorkflowAgents);
+  const tenantMode = tenantId !== undefined;
+  const editable = Boolean(
+    tenantMode
+      ? access.canManageTenantWorkflowSkills
+      : access.canEditWorkflowSkills,
+  );
+  const canViewAgents = !tenantMode && Boolean(access.canViewWorkflowAgents);
   const { message } = App.useApp();
   const [form] = Form.useForm<SkillForm>();
   const [skills, setSkills] = useState<WorkflowSkill[]>([]);
   const [agentNames, setAgentNames] = useState(builtinAgentNames);
   const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  const [agentFilter, setAgentFilter] = useState<string>();
+  const [scopeFilter, setScopeFilter] = useState<'SYSTEM' | 'TENANT'>();
+  const [tenantFilter, setTenantFilter] = useState<number>();
+  const [tenantNames, setTenantNames] = useState(new Map<number, string>());
+  const requestId = useRef(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<EditorMode>();
@@ -82,22 +98,52 @@ const WorkflowSkillsPage = () => {
 
   const load = useCallback(
     async (search?: string) => {
+      const currentRequest = ++requestId.current;
       setLoading(true);
       try {
-        const response = await queryWorkflowSkills(search || undefined);
+        const filters = {
+          agentCode: agentFilter,
+          scope: scopeFilter,
+          tenantId: tenantFilter,
+        };
+        const response =
+          tenantId !== undefined
+            ? await queryTenantWorkflowSkills(
+                tenantId,
+                search || undefined,
+                filters,
+              )
+            : await queryWorkflowSkills(search || undefined, filters);
+        if (currentRequest !== requestId.current) return;
         setSkills(response.data ?? []);
+        setTenantNames(
+          (previous) =>
+            new Map([
+              ...previous,
+              ...(response.data ?? [])
+                .filter((skill) => skill.tenantId != null)
+                .map((skill): [number, string] => [
+                  skill.tenantId as number,
+                  skill.tenantName || String(skill.tenantId),
+                ]),
+            ]),
+        );
       } catch (caught) {
-        message.error(errorMessage(caught, '加载 Skill 失败'));
+        if (currentRequest === requestId.current)
+          message.error(errorMessage(caught, '加载 Skill 失败'));
       } finally {
-        setLoading(false);
+        if (currentRequest === requestId.current) setLoading(false);
       }
     },
-    [message],
+    [message, tenantId, agentFilter, scopeFilter, tenantFilter],
   );
 
   useEffect(() => {
-    void load('');
-  }, [load]);
+    void load(search);
+    return () => {
+      requestId.current += 1;
+    };
+  }, [load, search]);
 
   useEffect(() => {
     if (!canViewAgents) {
@@ -150,6 +196,20 @@ const WorkflowSkillsPage = () => {
     );
   };
 
+  const editTenantSkill = async (record: WorkflowSkill) => {
+    if (tenantId === undefined) return;
+    try {
+      const response = await queryTenantWorkflowSkill(tenantId, record.code);
+      openEditor('edit', response.data);
+    } catch (caught) {
+      message.error(errorMessage(caught, '加载团队 Skill 失败'));
+    }
+  };
+
+  const canEditRow = (record: WorkflowSkill) =>
+    editable &&
+    (tenantMode ? record.tenantEditable : record.scope !== 'TENANT');
+
   const validateContent = (_: unknown, value?: string) => {
     if (!value?.trim()) return Promise.reject(new Error('请输入完整 SKILL.md'));
     const match = value.match(/^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/);
@@ -171,16 +231,27 @@ const WorkflowSkillsPage = () => {
     setEditorError(undefined);
     setConflict(false);
     try {
-      if (mode === 'edit' && source) {
+      if (tenantId !== undefined && source) {
+        await updateTenantWorkflowSkill(
+          tenantId,
+          source.code,
+          values.content,
+          source.revision,
+        );
+      } else if (mode === 'edit' && source) {
         await updateWorkflowSkill(source.code, values.content, source.revision);
       } else if (mode === 'copy' && source) {
         await copyWorkflowSkill(source.code, values.code);
       } else {
         await createWorkflowSkill(values.code, values.content);
       }
-      message.success('Skill 已保存并立即生效');
+      message.success(
+        tenantMode
+          ? '团队 Skill 已保存，后续分镜生成将优先使用'
+          : 'Skill 已保存并立即生效',
+      );
       setMode(undefined);
-      await load('');
+      await load(search);
     } catch (caught) {
       const text = errorMessage(caught, 'Skill 保存失败');
       setEditorError(text);
@@ -192,7 +263,10 @@ const WorkflowSkillsPage = () => {
 
   const reloadLatest = async () => {
     if (!source) return;
-    const response = await queryWorkflowSkill(source.code);
+    const response =
+      tenantId === undefined
+        ? await queryWorkflowSkill(source.code)
+        : await queryTenantWorkflowSkill(tenantId, source.code);
     setSource(response.data);
     form.setFieldsValue({
       code: response.data.code,
@@ -216,6 +290,23 @@ const WorkflowSkillsPage = () => {
       },
       { title: '描述', dataIndex: 'description' },
       {
+        title: '系统内置',
+        dataIndex: 'scope',
+        render: (scope) => (
+          <Tag color={scope === 'TENANT' ? 'blue' : 'default'}>
+            {scope === 'TENANT' ? '租户级' : '系统内置'}
+          </Tag>
+        ),
+      },
+      {
+        title: '所属租户',
+        dataIndex: 'tenantName',
+        render: (_, record) =>
+          record.scope === 'TENANT'
+            ? `${record.tenantName || record.tenantId}（${record.tenantId}）`
+            : '系统共享',
+      },
+      {
         title: '引用 Agent',
         dataIndex: 'referencingAgentCodes',
         render: (codes: string[]) => (
@@ -234,16 +325,25 @@ const WorkflowSkillsPage = () => {
         width: 240,
         render: (_, record) => (
           <Space>
-            {editable && (
+            {!canEditRow(record) && (
+              <Button type="link" onClick={() => openEditor('view', record)}>
+                查看
+              </Button>
+            )}
+            {canEditRow(record) && (
               <Button
                 type="link"
                 icon={<EditOutlined />}
-                onClick={() => openEditor('edit', record)}
+                onClick={() =>
+                  tenantMode
+                    ? void editTenantSkill(record)
+                    : openEditor('edit', record)
+                }
               >
-                编辑
+                {tenantMode && record.scope !== 'TENANT' ? '自定义' : '编辑'}
               </Button>
             )}
-            {editable && (
+            {editable && !tenantMode && record.scope !== 'TENANT' && (
               <Button
                 type="link"
                 icon={<CopyOutlined />}
@@ -252,7 +352,30 @@ const WorkflowSkillsPage = () => {
                 复制
               </Button>
             )}
-            {editable && (
+            {tenantMode && canEditRow(record) && record.scope === 'TENANT' && (
+              <Popconfirm
+                title="恢复系统默认？当前团队的定制内容将被移除。"
+                okText="恢复默认"
+                cancelText="取消"
+                onConfirm={async () => {
+                  if (tenantId === undefined) return;
+                  try {
+                    await restoreTenantWorkflowSkill(
+                      tenantId,
+                      record.code,
+                      record.revision,
+                    );
+                    message.success('已恢复系统默认');
+                    await load(search);
+                  } catch (caught) {
+                    message.error(errorMessage(caught, '恢复默认失败'));
+                  }
+                }}
+              >
+                <Button type="link">恢复系统默认</Button>
+              </Popconfirm>
+            )}
+            {editable && !tenantMode && record.scope !== 'TENANT' && (
               <Popconfirm
                 title={
                   record.referencingAgentCodes.length
@@ -262,7 +385,7 @@ const WorkflowSkillsPage = () => {
                 disabled={record.referencingAgentCodes.length > 0}
                 onConfirm={async () => {
                   await deleteWorkflowSkill(record.code);
-                  await load('');
+                  await load(search);
                 }}
               >
                 <Button
@@ -279,7 +402,7 @@ const WorkflowSkillsPage = () => {
         ),
       },
     ],
-    [agentNames, editable, load, referenceLabel],
+    [agentNames, editable, load, referenceLabel, tenantMode, tenantId, search],
   );
 
   return (
@@ -288,7 +411,11 @@ const WorkflowSkillsPage = () => {
         <Alert
           type="info"
           showIcon
-          title="Skill 以完整 SKILL.md 文件保存；修改成功后无需发布或重启，后续 Agent 运行立即读取新内容。"
+          title={
+            tenantMode
+              ? '团队版本优先于系统版本，仅影响当前团队后续的分镜生成。基础规范和素材引用保持只读，现有素材标签及占位方式继续保留。'
+              : 'Skill 以完整 SKILL.md 文件保存；修改成功后无需发布或重启，后续 Agent 运行立即读取新内容。租户级版本仅由所属团队所有者或管理员维护。'
+          }
         />
         <Space wrap>
           <Input.Search
@@ -296,10 +423,54 @@ const WorkflowSkillsPage = () => {
             placeholder="搜索 Skill 名称或 code"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onSearch={(value) => void load(value)}
+            onSearch={setSearch}
             style={{ width: 320 }}
           />
-          {editable && (
+          <Select
+            aria-label="按 Agent 筛选"
+            placeholder="全部 Agent"
+            allowClear
+            showSearch={{ optionFilterProp: 'label' }}
+            value={agentFilter}
+            onChange={setAgentFilter}
+            style={{ width: 240 }}
+            options={[...agentNames]
+              .filter(
+                ([code]) => !tenantMode || code === 'short-drama-storyboard',
+              )
+              .map(([value, name]) => ({
+                value,
+                label: `${name}（${value}）`,
+              }))}
+          />
+          <Select
+            aria-label="按系统内置筛选"
+            placeholder="全部级别"
+            allowClear
+            value={scopeFilter}
+            onChange={setScopeFilter}
+            style={{ width: 150 }}
+            options={[
+              { value: 'SYSTEM', label: '系统内置' },
+              { value: 'TENANT', label: '租户级' },
+            ]}
+          />
+          {!tenantMode && (
+            <Select
+              aria-label="按所属租户筛选"
+              placeholder="全部租户"
+              allowClear
+              showSearch={{ optionFilterProp: 'label' }}
+              value={tenantFilter}
+              onChange={setTenantFilter}
+              style={{ width: 200 }}
+              options={[...tenantNames].map(([value, name]) => ({
+                value,
+                label: `${name}（${value}）`,
+              }))}
+            />
+          )}
+          {editable && !tenantMode && (
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -310,7 +481,9 @@ const WorkflowSkillsPage = () => {
           )}
         </Space>
         <Table
-          rowKey="code"
+          rowKey={(record) =>
+            `${record.scope || 'SYSTEM'}:${record.tenantId || 'system'}:${record.code}`
+          }
           loading={loading}
           columns={columns}
           dataSource={skills}
@@ -324,22 +497,28 @@ const WorkflowSkillsPage = () => {
             ? '新增 Skill'
             : mode === 'copy'
               ? '复制 Skill'
-              : `编辑 Skill：${source?.name ?? ''}`
+              : `${mode === 'view' ? '查看' : '编辑'} Skill：${source?.name ?? ''}`
         }
         open={Boolean(mode)}
         size="large"
         onClose={() => setMode(undefined)}
         destroyOnHidden
         extra={
-          <Button type="primary" loading={saving} onClick={save}>
-            保存并立即生效
-          </Button>
+          mode !== 'view' && (
+            <Button type="primary" loading={saving} onClick={save}>
+              保存并立即生效
+            </Button>
+          )
         }
       >
         <Alert
-          type="warning"
+          type={mode === 'view' ? 'info' : 'warning'}
           showIcon
-          title="保存后立即生效；修改会影响所有引用该 Skill 的 Agent。"
+          title={
+            tenantMode
+              ? '仅定制当前团队的分镜规则；保存后优先使用团队版本，可恢复系统默认。'
+              : '保存后立即生效；修改会影响所有引用该 Skill 的 Agent。'
+          }
           description={
             source?.referencingAgentCodes.length
               ? `当前引用：${source.referencingAgentCodes.map(referenceLabel).join('、')}`
@@ -378,7 +557,9 @@ const WorkflowSkillsPage = () => {
               },
             ]}
           >
-            <Input disabled={mode === 'edit'} />
+            <Input
+              disabled={mode === 'edit' || mode === 'view' || tenantMode}
+            />
           </Form.Item>
           <Form.Item
             name="content"
@@ -387,6 +568,7 @@ const WorkflowSkillsPage = () => {
             extra="需要 YAML frontmatter（name、description）和 Markdown 正文。"
           >
             <Input.TextArea
+              readOnly={mode === 'view'}
               autoSize={{ minRows: 22, maxRows: 36 }}
               spellCheck={false}
               style={{
@@ -401,3 +583,10 @@ const WorkflowSkillsPage = () => {
 };
 
 export default WorkflowSkillsPage;
+
+export const TenantWorkflowSkillsPage = () => {
+  const { initialState } = useModel('@@initialState');
+  const tenantId = initialState?.currentTenantId;
+  if (!tenantId) return <Alert type="info" title="请先选择创作团队" />;
+  return <WorkflowSkillsPage key={tenantId} tenantId={tenantId} />;
+};

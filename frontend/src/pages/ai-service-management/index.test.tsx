@@ -22,6 +22,7 @@ describe('AiServiceManagementIndex', () => {
   it.each([
     'canViewWorkflowAgents',
     'canViewWorkflowSkills',
+    'canManageTenantWorkflowSkills',
   ])('opens model management for %s permission alone', (permission) => {
     mocks.replace.mockClear();
     mocks.access = { [permission]: true };

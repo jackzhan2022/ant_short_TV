@@ -5,9 +5,14 @@ import java.util.List;
 
 public record WorkflowAgentExecutionPlan(
     WorkflowAgentRecord agent,
-    List<WorkflowAgentSkillSnapshot> skillSnapshots
+    List<WorkflowAgentSkillSnapshot> skillSnapshots,
+    Long tenantId
 ) {
     public WorkflowAgentExecutionPlan {
         skillSnapshots = List.copyOf(skillSnapshots);
+    }
+
+    public WorkflowAgentExecutionPlan(WorkflowAgentRecord agent, List<WorkflowAgentSkillSnapshot> skillSnapshots) {
+        this(agent, skillSnapshots, null);
     }
 }

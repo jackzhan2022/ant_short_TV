@@ -10,10 +10,25 @@ import org.springframework.stereotype.Service;
 public class WorkflowSkillService {
     private final FileSkillRepository repository;
     private final SkillReferenceLookup references;
+    private final TenantWorkflowSkillRepository tenantSkills;
 
     public WorkflowSkillService(FileSkillRepository repository, SkillReferenceLookup references) {
+        this(repository, references, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public WorkflowSkillService(FileSkillRepository repository, SkillReferenceLookup references,
+        TenantWorkflowSkillRepository tenantSkills) {
         this.repository = repository;
         this.references = references;
+        this.tenantSkills = tenantSkills;
+    }
+
+    public WorkflowSkillView findTenantOverride(String agentCode, Long tenantId, String code) {
+        if (tenantSkills == null || tenantId == null || !TenantStoryboardSkillPolicy.canOverride(agentCode, code)) {
+            return null;
+        }
+        return tenantSkills.find(tenantId, code).orElse(null);
     }
 
     public List<WorkflowSkillView> list(String query) {
@@ -44,6 +59,9 @@ public class WorkflowSkillService {
     }
 
     public void delete(String code) {
+        if (tenantSkills != null && tenantSkills.hasOverrides(code)) {
+            throw new BusinessException(ErrorCode.WORKFLOW_SKILL_IN_USE, "Skill 存在团队定制版本，不能删除系统来源。");
+        }
         List<String> agentCodes = references.findAgentCodes(code);
         if (!agentCodes.isEmpty()) {
             throw new BusinessException(ErrorCode.WORKFLOW_SKILL_IN_USE,

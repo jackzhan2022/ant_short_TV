@@ -3,14 +3,28 @@ import { App } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  access: { canEditWorkflowSkills: true, canViewWorkflowAgents: true },
+  access: {
+    canEditWorkflowSkills: true,
+    canViewWorkflowAgents: true,
+    canManageTenantWorkflowSkills: true,
+  },
+  currentTenantId: 7,
+  queryTenantSkills: vi.fn(),
+  queryTenantSkill: vi.fn(),
+  updateTenantSkill: vi.fn(),
+  restoreTenantSkill: vi.fn(),
   queryAgents: vi.fn(),
   querySkills: vi.fn(),
   updateSkill: vi.fn(),
   querySkill: vi.fn(),
 }));
 
-vi.mock('@umijs/max', () => ({ useAccess: () => mocks.access }));
+vi.mock('@umijs/max', () => ({
+  useAccess: () => mocks.access,
+  useModel: () => ({
+    initialState: { currentTenantId: mocks.currentTenantId },
+  }),
+}));
 vi.mock('../workflow-service', async () => {
   const actual = await vi.importActual<object>('../workflow-service');
   return {
@@ -19,16 +33,47 @@ vi.mock('../workflow-service', async () => {
     queryWorkflowSkills: mocks.querySkills,
     updateWorkflowSkill: mocks.updateSkill,
     queryWorkflowSkill: mocks.querySkill,
+    queryTenantWorkflowSkills: mocks.queryTenantSkills,
+    queryTenantWorkflowSkill: mocks.queryTenantSkill,
+    updateTenantWorkflowSkill: mocks.updateTenantSkill,
+    restoreTenantWorkflowSkill: mocks.restoreTenantSkill,
   };
 });
 
-import WorkflowSkillsPage from './index';
+import WorkflowSkillsPage, { TenantWorkflowSkillsPage } from './index';
+
+const planning = {
+  code: 'short-drama-storyboard-planning',
+  name: '整集分镜规划',
+  description: '分镜规则',
+  content: '---\nname: 整集分镜规划\ndescription: 分镜规则\n---\n系统正文',
+  revision: 'system-rev',
+  scope: 'SYSTEM',
+  tenantEditable: true,
+  referencingAgentCodes: ['short-drama-storyboard'],
+};
 
 describe('WorkflowSkillsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.access.canEditWorkflowSkills = true;
     mocks.access.canViewWorkflowAgents = true;
+    mocks.access.canManageTenantWorkflowSkills = true;
+    mocks.currentTenantId = 7;
+    mocks.queryTenantSkills.mockResolvedValue({
+      data: [
+        planning,
+        {
+          ...planning,
+          code: 'short-drama-analysis-foundation',
+          name: '基础规范',
+          tenantEditable: false,
+        },
+      ],
+    });
+    mocks.queryTenantSkill.mockResolvedValue({ data: planning });
+    mocks.updateTenantSkill.mockResolvedValue({ success: true });
+    mocks.restoreTenantSkill.mockResolvedValue({ success: true });
     mocks.queryAgents.mockResolvedValue({
       success: true,
       data: [{ code: 'screenplay-agent', name: '编剧 Agent' }],
@@ -133,6 +178,134 @@ describe('WorkflowSkillsPage', () => {
     );
     expect(await screen.findByText('改写指南')).toBeInTheDocument();
     expect(screen.getByText('screenplay-agent')).toBeInTheDocument();
+  });
+
+  it('combines Agent and scope dropdown filters', async () => {
+    render(
+      <App>
+        <WorkflowSkillsPage />
+      </App>,
+    );
+    await screen.findByText('改写指南');
+    fireEvent.mouseDown(screen.getByLabelText('按 Agent 筛选'));
+    fireEvent.click(
+      await screen.findByText('分镜规划（short-drama-storyboard）', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await waitFor(() =>
+      expect(mocks.querySkills).toHaveBeenLastCalledWith(
+        undefined,
+        expect.objectContaining({ agentCode: 'short-drama-storyboard' }),
+      ),
+    );
+    fireEvent.mouseDown(screen.getByLabelText('按系统内置筛选'));
+    fireEvent.click(
+      await screen.findByText('租户级', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await waitFor(() =>
+      expect(mocks.querySkills).toHaveBeenLastCalledWith(
+        undefined,
+        expect.objectContaining({
+          agentCode: 'short-drama-storyboard',
+          scope: 'TENANT',
+        }),
+      ),
+    );
+  });
+
+  it('customizes only allowed tenant Skills using the current effective revision', async () => {
+    render(
+      <App>
+        <WorkflowSkillsPage tenantId={7} />
+      </App>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /自定义/ }));
+    const editor = await screen.findByLabelText('完整 SKILL.md');
+    fireEvent.change(editor, {
+      target: { value: `${planning.content}\n团队规则` },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存并立即生效' }));
+    await waitFor(() =>
+      expect(mocks.updateTenantSkill).toHaveBeenCalledWith(
+        7,
+        planning.code,
+        `${planning.content}\n团队规则`,
+        'system-rev',
+      ),
+    );
+    expect(mocks.updateSkill).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: /新增 Skill/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看' })).toBeInTheDocument();
+    expect(mocks.queryAgents).not.toHaveBeenCalled();
+  });
+
+  it('restores only the selected tenant override', async () => {
+    mocks.queryTenantSkills.mockResolvedValue({
+      data: [
+        {
+          ...planning,
+          scope: 'TENANT',
+          tenantId: 7,
+          tenantName: '甲团队',
+          revision: 'tenant-rev',
+        },
+      ],
+    });
+    render(
+      <App>
+        <WorkflowSkillsPage tenantId={7} />
+      </App>,
+    );
+    expect(await screen.findByText('甲团队（7）')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '恢复系统默认' }));
+    fireEvent.click(await screen.findByRole('button', { name: '恢复默认' }));
+    await waitFor(() =>
+      expect(mocks.restoreTenantSkill).toHaveBeenCalledWith(
+        7,
+        planning.code,
+        'tenant-rev',
+      ),
+    );
+  });
+
+  it('does not carry stale responses or draft state across team changes', async () => {
+    let resolveFirst: (value: unknown) => void = () => {};
+    mocks.queryTenantSkills.mockImplementation((tenantId) =>
+      tenantId === 7
+        ? new Promise((resolve) => {
+            resolveFirst = resolve;
+          })
+        : Promise.resolve({ data: [{ ...planning, name: '乙团队规则' }] }),
+    );
+    const page = render(
+      <App>
+        <TenantWorkflowSkillsPage />
+      </App>,
+    );
+    await waitFor(() =>
+      expect(mocks.queryTenantSkills).toHaveBeenCalledWith(
+        7,
+        undefined,
+        expect.anything(),
+      ),
+    );
+    mocks.currentTenantId = 8;
+    page.rerender(
+      <App>
+        <TenantWorkflowSkillsPage />
+      </App>,
+    );
+    await screen.findByText('乙团队规则');
+    resolveFirst({ data: [{ ...planning, name: '甲团队旧响应' }] });
+    await waitFor(() =>
+      expect(screen.queryByText('甲团队旧响应')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('乙团队规则')).toBeInTheDocument();
   });
 
   it('preserves unsaved content on revision conflict and reloads only on demand', async () => {

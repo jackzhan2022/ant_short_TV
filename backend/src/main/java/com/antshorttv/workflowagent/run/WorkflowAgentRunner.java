@@ -132,15 +132,28 @@ public class WorkflowAgentRunner {
     }
 
     public WorkflowAgentRunResult runFormal(WorkflowAgentRunInput input) {
-        return runFormal(freezeFormal(input.agentCode()), input);
+        return runFormal(freezeFormal(input.agentCode(), input.tenantId()), input);
     }
 
     public WorkflowAgentExecutionPlan freezeFormal(String agentCode) {
+        return freezeFormal(agentCode, null);
+    }
+
+    public WorkflowAgentExecutionPlan freezeFormal(String agentCode, Long tenantId) {
         WorkflowAgentRecord agent = agents.loadForRun(agentCode);
-        return new WorkflowAgentExecutionPlan(agent, loadSkills(agent.skillCodes()));
+        return new WorkflowAgentExecutionPlan(agent, loadSkills(agent.skillCodes(), agentCode, tenantId), tenantId);
     }
 
     public WorkflowAgentRunResult runFormal(WorkflowAgentExecutionPlan plan, WorkflowAgentRunInput input) {
+        if (plan.tenantId() != null && !plan.tenantId().equals(input.tenantId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "冻结的 Agent 运行计划不属于当前团队。");
+        }
+        for (WorkflowAgentSkillSnapshot snapshot : plan.skillSnapshots()) {
+            if (snapshot.tenantId() != null && (!snapshot.tenantId().equals(input.tenantId())
+                || !com.antshorttv.workflowagent.skill.TenantStoryboardSkillPolicy.canOverride(input.agentCode(), snapshot.code()))) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "Skill 快照不属于当前团队或 Agent。");
+            }
+        }
         if (!plan.agent().code().equals(input.agentCode())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                 "冻结的 Agent 配置与运行 code 不匹配。");
@@ -172,7 +185,7 @@ public class WorkflowAgentRunner {
         scopeGuard.requireAuthorized(input, agent.toolCodes());
         scopeGuard.requireExecutionActive(input);
         List<WorkflowAgentSkillSnapshot> skillSnapshots = frozenSkills == null
-            ? loadSkills(agent.skillCodes()) : List.copyOf(frozenSkills);
+            ? loadSkills(agent.skillCodes(), agent.code(), input.tenantId()) : List.copyOf(frozenSkills);
         List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
         String prompt = composePrompt(agent, skillSnapshots);
         Long effectiveModelId = input.modelIdOverride() == null ? agent.modelId() : input.modelIdOverride();
@@ -620,10 +633,13 @@ public class WorkflowAgentRunner {
         return stepNo;
     }
 
-    private List<WorkflowAgentSkillSnapshot> loadSkills(List<String> codes) {
+    private List<WorkflowAgentSkillSnapshot> loadSkills(List<String> codes, String agentCode, Long tenantId) {
         return codes.stream().map(code -> {
             WorkflowSkillView skill = skills.detail(code);
-            return new WorkflowAgentSkillSnapshot(skill.code(), skill.name(), skill.revision(), skill.content());
+            WorkflowSkillView override = skills.findTenantOverride(agentCode, tenantId, code);
+            if (override != null) skill = override;
+            return new WorkflowAgentSkillSnapshot(skill.code(), skill.name(), skill.revision(), skill.content(),
+                skill.scope(), skill.tenantId());
         }).toList();
     }
 

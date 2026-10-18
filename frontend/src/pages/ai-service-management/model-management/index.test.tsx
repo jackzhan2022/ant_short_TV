@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     canViewBuiltInAiAgents: true,
     canViewWorkflowAgents: true,
     canViewWorkflowSkills: true,
+    canManageTenantWorkflowSkills: false,
   },
 }));
 
@@ -47,6 +48,7 @@ vi.mock('../workflow-agents', () => ({
 }));
 vi.mock('../workflow-skills', () => ({
   default: () => <div>workflow-skill-page</div>,
+  TenantWorkflowSkillsPage: () => <div>tenant-skill-page</div>,
 }));
 
 import ModelManagementPage from './index';
@@ -60,6 +62,7 @@ describe('ModelManagementPage', () => {
     mocks.access.canViewBuiltInAiAgents = true;
     mocks.access.canViewWorkflowAgents = true;
     mocks.access.canViewWorkflowSkills = true;
+    mocks.access.canManageTenantWorkflowSkills = false;
   });
 
   it('opens the first authorized tab and renders all authorized tabs', () => {
@@ -88,6 +91,23 @@ describe('ModelManagementPage', () => {
       screen.queryByRole('button', { name: 'Skill（新）' }),
     ).not.toBeInTheDocument();
     expect(screen.getByText('service-provider-page')).toBeInTheDocument();
+  });
+
+  it('allows team managers to use the tenant tab without platform Skill access', () => {
+    mocks.access.canViewPlatformAiProviders = false;
+    mocks.access.canViewPlatformAiModels = false;
+    mocks.access.canViewAiCallLogs = false;
+    mocks.access.canViewWorkflowAgents = false;
+    mocks.access.canViewWorkflowSkills = false;
+    mocks.access.canManageTenantWorkflowSkills = true;
+    render(<ModelManagementPage />);
+    expect(
+      screen.getByRole('button', { name: '团队 Skill' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Skill 管理' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('tenant-skill-page')).toBeInTheDocument();
   });
 
   it('switches content locally when a visible tab is selected', () => {

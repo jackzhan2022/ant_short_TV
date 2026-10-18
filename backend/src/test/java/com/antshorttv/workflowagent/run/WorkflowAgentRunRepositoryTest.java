@@ -26,7 +26,7 @@ class WorkflowAgentRunRepositoryTest {
             new BigDecimal("0.2"), 2048, 3,
             "使用 apiKey=top-secret 和 sk-abcdef 完成任务",
             List.of(new WorkflowAgentSkillSnapshot("guide", "指南", "hash-1",
-                "password: dont-log-this\n保留剧情")),
+                "password: dont-log-this\n保留剧情", "TENANT", 7L)),
             List.of("read_episode_script")
         ));
         repository.recordModelStep(runId, 1, 501L,
@@ -40,6 +40,8 @@ class WorkflowAgentRunRepositoryTest {
         assertThat(detail.promptSnapshot()).contains("[REDACTED]").doesNotContain("top-secret", "sk-abcdef");
         assertThat(detail.skillSnapshots()).singleElement().satisfies(snapshot ->
             assertThat(snapshot.content()).contains("[REDACTED]").doesNotContain("dont-log-this"));
+        assertThat(detail.skillSnapshots().get(0).scope()).isEqualTo("TENANT");
+        assertThat(detail.skillSnapshots().get(0).tenantId()).isEqualTo(7L);
         assertThat(detail.toolCodes()).containsExactly("read_episode_script");
         assertThat(detail.steps()).extracting(WorkflowAgentRunStepView::stepNo).containsExactly(1, 2, 3);
         assertThat(detail.steps()).extracting(WorkflowAgentRunStepView::aiCallLogId)

@@ -16,7 +16,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 public class SkillDocumentParser {
     private final Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
 
-    public SkillDocument parse(String code, String rawContent) {
+    public synchronized SkillDocument parse(String code, String rawContent) {
         if (rawContent == null || rawContent.isBlank()) {
             throw invalid("SKILL.md 内容不能为空。");
         }
