@@ -25,6 +25,11 @@ public class TenantWorkflowSkillController {
         return ApiResponse.success(service.detail(tenantId, code));
     }
 
+    @GetMapping("/{code}/template")
+    public ApiResponse<WorkflowSkillView> template(@PathVariable Long tenantId, @PathVariable String code) {
+        return ApiResponse.success(service.template(tenantId, code));
+    }
+
     @PutMapping("/{code}")
     public ApiResponse<WorkflowSkillView> save(@PathVariable Long tenantId, @PathVariable String code,
         @Valid @RequestBody WorkflowSkillController.UpdateSkillRequest body) {

@@ -29,6 +29,7 @@ import {
   deleteWorkflowSkill,
   queryTenantWorkflowSkill,
   queryTenantWorkflowSkills,
+  queryTenantWorkflowSkillTemplate,
   queryWorkflowAgents,
   queryWorkflowSkill,
   queryWorkflowSkills,
@@ -50,7 +51,6 @@ const builtinAgentNames = new Map([
 ]);
 
 const tenantSkillCode = 'short-drama-storyboard-production';
-const tenantSkillName = '短剧分镜制作';
 
 const starter = `---
 name: my-skill
@@ -92,6 +92,8 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
   const [tenantFilter, setTenantFilter] = useState<number>();
   const [tenantNames, setTenantNames] = useState(new Map<number, string>());
   const requestId = useRef(0);
+  const templateRequestId = useRef(0);
+  const [templateLoading, setTemplateLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<EditorMode>();
@@ -147,6 +149,13 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
       requestId.current += 1;
     };
   }, [load, search]);
+
+  useEffect(
+    () => () => {
+      templateRequestId.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!canViewAgents) {
@@ -209,21 +218,32 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
     }
   };
 
-  const createTenantSkill = () => {
-    const name = tenantSkillName;
-    if (tenantId === undefined) return;
-    openEditor('create', {
-      code: tenantSkillCode,
-      name,
-      description: '本团队的分镜创作补充规则',
-      content: `---\nname: ${name}\ndescription: 本团队的分镜创作补充规则\n---\n\n# 团队补充规则\n\n`,
-      revision: 'NEW',
-      scope: 'TENANT',
-      tenantId,
-      priority: 200,
-      tenantEditable: true,
-      referencingAgentCodes: ['short-drama-storyboard'],
-    });
+  const createTenantSkill = async () => {
+    if (tenantId === undefined || templateLoading) return;
+    const currentRequest = ++templateRequestId.current;
+    setTemplateLoading(true);
+    try {
+      const response = await queryTenantWorkflowSkillTemplate(
+        tenantId,
+        tenantSkillCode,
+      );
+      if (currentRequest !== templateRequestId.current) return;
+      if (!response.data) throw new Error('系统 Skill 模板为空，请重试');
+      openEditor('create', {
+        ...response.data,
+        revision: 'NEW',
+        scope: 'TENANT',
+        tenantId,
+        priority: 200,
+        tenantEditable: true,
+      });
+    } catch (caught) {
+      if (currentRequest === templateRequestId.current)
+        message.error(errorMessage(caught, '加载系统 Skill 模板失败，请重试'));
+    } finally {
+      if (currentRequest === templateRequestId.current)
+        setTemplateLoading(false);
+    }
   };
 
   const canEditRow = (record: WorkflowSkill) =>
@@ -511,6 +531,7 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
               type="primary"
               aria-label="新增团队 Skill"
               icon={<PlusOutlined />}
+              loading={templateLoading}
               onClick={createTenantSkill}
               disabled={skills.some((skill) => skill.code === tenantSkillCode)}
             >

@@ -55,6 +55,12 @@ public class TenantWorkflowSkillService {
             new BusinessException(ErrorCode.WORKFLOW_SKILL_NOT_FOUND, "当前团队尚未创建此 Skill。"));
     }
 
+    public WorkflowSkillView template(Long tenantId, String code) {
+        requireManager(tenantId);
+        requireEditable(code);
+        return systemSkills.detail(code);
+    }
+
     @Transactional
     public WorkflowSkillView save(Long tenantId, String code, String content, String expectedRevision) {
         TenantContext actor = requireManager(tenantId);

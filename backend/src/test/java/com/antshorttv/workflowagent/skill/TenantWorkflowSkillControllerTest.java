@@ -45,6 +45,37 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
     @Test
     void tenantCatalogRequiresAuthentication() throws Exception {
         mvc.perform(get("/api/tenants/1/workflow-skills")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/tenants/1/workflow-skills/" + PLANNING + "/template"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void managerCreatesIndependentTenantCopyFromLatestSystemTemplate() throws Exception {
+        Actor owner = actor(null);
+        WorkflowSkillView original = skills.detail(PLANNING);
+        String latest = original.content() + "\n系统新发布的完整规则与素材占位说明\n";
+        try {
+            files.update(PLANNING, latest, original.revision());
+            mvc.perform(get(path(owner) + "/" + PLANNING + "/template")
+                    .with(SessionTestSupport.authenticated(owner.credential())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content", is(latest)))
+                .andExpect(jsonPath("$.data.name", is(original.name())))
+                .andExpect(jsonPath("$.data.description", is(original.description())));
+            mvc.perform(get(path(owner)).with(SessionTestSupport.authenticated(owner.credential())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()", is(0)));
+            mvc.perform(get(path(owner) + "/" + PLANNING).with(SessionTestSupport.authenticated(owner.credential())))
+                .andExpect(status().isNotFound());
+            String edited = latest + "\n租户在系统规则基础上的修改\n";
+            mvc.perform(put(path(owner) + "/" + PLANNING).with(SessionTestSupport.authenticated(owner.credential()))
+                    .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "content", edited, "expectedRevision", TenantWorkflowSkillService.NEW_REVISION))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content", is(edited)))
+                .andExpect(jsonPath("$.data.scope", is("TENANT")))
+                .andExpect(jsonPath("$.data.priority", is(200)));
+            assertThat(skills.detail(PLANNING).content()).isEqualTo(latest);
+        } finally {
+            files.update(PLANNING, original.content(), skills.detail(PLANNING).revision());
+        }
     }
 
     @Test
@@ -86,6 +117,9 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
         Actor owner = actor(null), member = actor(null);
         mvc.perform(get(path(owner)).with(SessionTestSupport.authenticated(member.credential())))
             .andExpect(status().isForbidden());
+        mvc.perform(get(path(owner) + "/" + PLANNING + "/template")
+                .with(SessionTestSupport.authenticated(member.credential())))
+            .andExpect(status().isForbidden());
         jdbc.update("""
             insert into tenant_member (tenant_id,user_id,member_type,status,joined_at,created_at,updated_at)
             values (?,?,'MEMBER','ACTIVE',now(),now(),now())
@@ -93,6 +127,9 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
         Long memberId = jdbc.queryForObject("select id from tenant_member where tenant_id=? and user_id=?",
             Long.class, owner.tenantId(), member.userId());
         Actor inTeam = new Actor(member.credential(), member.userId(), owner.tenantId());
+        mvc.perform(get(path(inTeam) + "/" + PLANNING + "/template")
+                .with(SessionTestSupport.authenticated(member.credential())))
+            .andExpect(status().isForbidden());
         mvc.perform(get(path(inTeam)).with(SessionTestSupport.authenticated(member.credential())))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()", is(0)));
         mvc.perform(put(path(inTeam) + "/" + PLANNING).with(SessionTestSupport.authenticated(member.credential()))
@@ -106,13 +143,22 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
             select ?, id, now() from `role` where tenant_id=? and code='ADMIN'
             """, memberId, owner.tenantId());
         String teamRevision = save(inTeam, PLANNING, "管理员定制", TenantWorkflowSkillService.NEW_REVISION);
+        mvc.perform(get(path(inTeam) + "/" + PLANNING + "/template")
+                .with(SessionTestSupport.authenticated(member.credential())))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.content", is(skills.detail(PLANNING).content())));
         jdbc.update("update `role` set status='DISABLED' where tenant_id=? and code='ADMIN'", owner.tenantId());
+        mvc.perform(get(path(inTeam) + "/" + PLANNING + "/template")
+                .with(SessionTestSupport.authenticated(member.credential())))
+            .andExpect(status().isForbidden());
         mvc.perform(put(path(inTeam) + "/" + PLANNING).with(SessionTestSupport.authenticated(member.credential()))
                 .contentType(MediaType.APPLICATION_JSON).content(payload("denied", teamRevision)))
             .andExpect(status().isForbidden());
         mvc.perform(get(path(inTeam) + "/" + PLANNING).with(SessionTestSupport.authenticated(member.credential())))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.content", org.hamcrest.Matchers.containsString("管理员定制")));
         jdbc.update("update tenant_member set status='REMOVED' where id=?", memberId);
+        mvc.perform(get(path(inTeam) + "/" + PLANNING + "/template")
+                .with(SessionTestSupport.authenticated(member.credential())))
+            .andExpect(status().is4xxClientError());
         mvc.perform(get(path(inTeam)).with(SessionTestSupport.authenticated(member.credential())))
             .andExpect(status().is4xxClientError());
     }
@@ -121,6 +167,9 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
     void rejectsProtectedSkillsStaleWritesAndInvalidDocuments() throws Exception {
         Actor owner = actor(null);
         for (String code : new String[] {"short-drama-analysis-foundation", "short-drama-storyboard-material-reference", "short-drama-storyboard-planning", "short-drama-seedance-video-prompt", "custom-guide"}) {
+            mvc.perform(get(path(owner) + "/" + code + "/template")
+                    .with(SessionTestSupport.authenticated(owner.credential())))
+                .andExpect(status().isForbidden());
             mvc.perform(put(path(owner) + "/" + code).with(SessionTestSupport.authenticated(owner.credential()))
                     .contentType(MediaType.APPLICATION_JSON).content(payload("invalid scope", "revision")))
                 .andExpect(status().isForbidden());

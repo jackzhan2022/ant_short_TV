@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   currentTenantId: 7,
   queryTenantSkills: vi.fn(),
   queryTenantSkill: vi.fn(),
+  queryTenantTemplate: vi.fn(),
   updateTenantSkill: vi.fn(),
   restoreTenantSkill: vi.fn(),
   queryAgents: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('../workflow-service', async () => {
     queryWorkflowSkill: mocks.querySkill,
     queryTenantWorkflowSkills: mocks.queryTenantSkills,
     queryTenantWorkflowSkill: mocks.queryTenantSkill,
+    queryTenantWorkflowSkillTemplate: mocks.queryTenantTemplate,
     updateTenantWorkflowSkill: mocks.updateTenantSkill,
     restoreTenantWorkflowSkill: mocks.restoreTenantSkill,
   };
@@ -57,6 +59,19 @@ const planning = {
   referencingAgentCodes: ['short-drama-storyboard'],
 };
 
+const systemTemplate = {
+  ...planning,
+  scope: 'SYSTEM',
+  tenantId: undefined,
+  tenantName: undefined,
+  priority: 100,
+  revision: 'system-latest-revision',
+  content: planning.content.replace(
+    '本团队正文',
+    '最新系统完整规则与素材占位方式',
+  ),
+};
+
 describe('WorkflowSkillsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,6 +84,7 @@ describe('WorkflowSkillsPage', () => {
       data: [planning],
     });
     mocks.queryTenantSkill.mockResolvedValue({ data: planning });
+    mocks.queryTenantTemplate.mockResolvedValue({ data: systemTemplate });
     mocks.updateTenantSkill.mockResolvedValue({ success: true });
     mocks.restoreTenantSkill.mockResolvedValue({ success: true });
     mocks.queryAgents.mockResolvedValue({
@@ -246,7 +262,7 @@ describe('WorkflowSkillsPage', () => {
     expect(mocks.queryAgents).not.toHaveBeenCalled();
   });
 
-  it('creates a tenant supplement without reading any system document', async () => {
+  it('prefills the latest complete system template and saves an independent tenant copy', async () => {
     mocks.queryTenantSkills.mockResolvedValue({ data: [] });
     render(
       <App>
@@ -257,6 +273,8 @@ describe('WorkflowSkillsPage', () => {
       await screen.findByRole('button', { name: '新增团队 Skill' }),
     );
     const editor = await screen.findByLabelText('完整 SKILL.md');
+    expect(editor).toHaveValue(systemTemplate.content);
+    expect(mocks.queryTenantTemplate).toHaveBeenCalledWith(7, planning.code);
     const draft = `${(editor as HTMLTextAreaElement).value}\n镜头表达偏好`;
     fireEvent.change(editor, { target: { value: draft } });
     fireEvent.click(screen.getByRole('button', { name: '保存并立即生效' }));
@@ -274,6 +292,77 @@ describe('WorkflowSkillsPage', () => {
     expect(
       screen.queryByLabelText('新增团队 Skill 类型'),
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps the editor closed on template failure and allows retry', async () => {
+    mocks.queryTenantSkills.mockResolvedValue({ data: [] });
+    mocks.queryTenantTemplate.mockRejectedValueOnce(
+      new Error('系统模板加载失败'),
+    );
+    render(
+      <App>
+        <WorkflowSkillsPage tenantId={7} />
+      </App>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: '新增团队 Skill' }),
+    );
+    await screen.findByText('系统模板加载失败');
+    expect(screen.queryByLabelText('完整 SKILL.md')).not.toBeInTheDocument();
+    expect(mocks.updateTenantSkill).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '新增团队 Skill' }));
+    expect(await screen.findByLabelText('完整 SKILL.md')).toHaveValue(
+      systemTemplate.content,
+    );
+  });
+
+  it('ignores a pending template response after changing teams', async () => {
+    mocks.queryTenantSkills.mockResolvedValue({ data: [] });
+    let resolveTemplate: (value: unknown) => void = () => {};
+    mocks.queryTenantTemplate.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveTemplate = resolve;
+      }),
+    );
+    const page = render(
+      <App>
+        <TenantWorkflowSkillsPage />
+      </App>,
+    );
+    const create = await screen.findByRole('button', {
+      name: '新增团队 Skill',
+    });
+    fireEvent.click(create);
+    fireEvent.click(create);
+    expect(mocks.queryTenantTemplate).toHaveBeenCalledTimes(1);
+    mocks.currentTenantId = 8;
+    page.rerender(
+      <App>
+        <TenantWorkflowSkillsPage />
+      </App>,
+    );
+    resolveTemplate({ data: systemTemplate });
+    await waitFor(() =>
+      expect(mocks.queryTenantSkills).toHaveBeenCalledWith(
+        8,
+        undefined,
+        expect.anything(),
+      ),
+    );
+    expect(screen.queryByLabelText('完整 SKILL.md')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '新增团队 Skill' }));
+    expect(await screen.findByLabelText('完整 SKILL.md')).toHaveValue(
+      systemTemplate.content,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '保存并立即生效' }));
+    await waitFor(() =>
+      expect(mocks.updateTenantSkill).toHaveBeenCalledWith(
+        8,
+        planning.code,
+        systemTemplate.content,
+        'NEW',
+      ),
+    );
   });
 
   it('lets ordinary members view only tenant content without editing controls', async () => {

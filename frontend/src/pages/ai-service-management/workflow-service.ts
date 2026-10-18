@@ -223,6 +223,14 @@ export const queryTenantWorkflowSkill = async (
     `/api/tenants/${tenantId}/workflow-skills/${code}`,
   );
 
+export const queryTenantWorkflowSkillTemplate = async (
+  tenantId: number,
+  code: string,
+) =>
+  request<ApiResponse<WorkflowSkill>>(
+    `/api/tenants/${tenantId}/workflow-skills/${code}/template`,
+  );
+
 export const updateTenantWorkflowSkill = async (
   tenantId: number,
   code: string,

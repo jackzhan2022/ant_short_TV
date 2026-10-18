@@ -4,6 +4,7 @@ import {
   createWorkflowAgent,
   createWorkflowSkill,
   queryTenantWorkflowSkills,
+  queryTenantWorkflowSkillTemplate,
   queryWorkflowAgentRuns,
   queryWorkflowAgents,
   queryWorkflowSkills,
@@ -23,6 +24,7 @@ describe('workflow Agent and Skill services', () => {
       scope: 'TENANT',
     });
     await updateTenantWorkflowSkill(7, 'guide', 'content', 'revision');
+    await queryTenantWorkflowSkillTemplate(7, 'guide');
     await restoreTenantWorkflowSkill(7, 'guide', 'revision');
     expect(request).toHaveBeenCalledWith('/api/tenants/7/workflow-skills', {
       params: {
@@ -31,6 +33,9 @@ describe('workflow Agent and Skill services', () => {
         scope: 'TENANT',
       },
     });
+    expect(request).toHaveBeenCalledWith(
+      '/api/tenants/7/workflow-skills/guide/template',
+    );
     expect(request).toHaveBeenCalledWith(
       '/api/tenants/7/workflow-skills/guide',
       expect.objectContaining({

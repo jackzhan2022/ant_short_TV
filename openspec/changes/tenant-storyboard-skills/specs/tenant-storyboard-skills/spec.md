@@ -20,7 +20,7 @@ Active tenant members SHALL view only saved Skills belonging to their current te
 
 #### Scenario: No system fallback in tenant APIs
 - **WHEN** a tenant has no saved Skill of an allowed type
-- **THEN** its list SHALL omit that type and its detail SHALL return 404 instead of system content; tenant managers SHALL be able to add a blank supplement of that type.
+- **THEN** its list SHALL omit that type and its detail SHALL return 404 instead of system content; tenant managers SHALL be able to request the current unified system Skill through a dedicated manager-only template endpoint and use its complete Markdown as an unsaved draft. Reading a template MUST NOT create a tenant record.
 
 ### Requirement: Restricted tenant overrides
 Tenant editors SHALL edit only `short-drama-storyboard-planning` and `short-drama-seedance-video-prompt` using complete Markdown Skill documents. Foundation and material reference Skills SHALL remain read-only. Every override SHALL preserve actor and timestamp metadata and use revision conflict checks. Restoring defaults SHALL remove only the current tenant override.

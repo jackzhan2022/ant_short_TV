@@ -27,3 +27,14 @@ The tenant UI/API SHALL expose only the unified Skill type for new/edit operatio
 #### Scenario: A team edits its unified supplement
 - **WHEN** an authorized team manager saves the unified Skill
 - **THEN** only that team's supplement SHALL change and later storyboard runs SHALL include both system and tenant layers; legacy type mutations SHALL be rejected.
+
+### Requirement: Initialize tenant Skill from the current system document
+Creating a tenant Skill SHALL prefill the entire current system unified Skill Markdown, including name, description and body. Only active tenant owners/admins MAY read this template through a dedicated endpoint for the allowed unified code. Reading it SHALL NOT insert a tenant record. Saving SHALL use the NEW revision condition and create an independent tenant layer at priority 200, preserving the system layer at priority 100.
+
+#### Scenario: Manager customizes a system template
+- **WHEN** a manager starts creating a tenant Skill after the system document was updated
+- **THEN** the editor SHALL show the latest complete system document; saving edits SHALL change only the tenant copy.
+
+#### Scenario: Template loading fails or the team changes
+- **WHEN** loading fails or the user switches teams before it completes
+- **THEN** the editor SHALL NOT open with blank or stale content; failed loads SHALL be retryable and old responses SHALL NOT populate the new team's editor.
