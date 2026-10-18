@@ -35,7 +35,7 @@ public class CommercialSubscriptionGrantService {
     public void processDue(LocalDateTime now) {
         List<TeamSubscriptionEntity> active = subscriptionMapper.selectList(
             new QueryWrapper<TeamSubscriptionEntity>()
-                .eq("status", "ACTIVE")
+                .in("status", List.of("ACTIVE", "SUPERSEDED"))
                 .le("starts_at", now)
                 .orderByAsc("ends_at"));
         active.forEach(subscription -> processActive(subscription, now));
@@ -85,7 +85,10 @@ public class CommercialSubscriptionGrantService {
             LocalDateTime next = subscription.startsAt.plusMonths(periodNo);
             subscription.nextGrantAt = next.isBefore(subscription.endsAt) ? next : null;
             subscription.updatedAt = LocalDateTime.now();
-            subscriptionMapper.updateById(subscription);
+            subscriptionMapper.update(null,
+                new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<TeamSubscriptionEntity>()
+                    .eq("id", subscription.id).set("next_grant_at", subscription.nextGrantAt)
+                    .set("updated_at", subscription.updatedAt));
         }
     }
 

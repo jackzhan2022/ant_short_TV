@@ -69,6 +69,7 @@ const CommercialPage = () => {
   const [pointTransactions, setPointTransactions] = useState<TeamPointTransaction[]>([]);
   const [orders, setOrders] = useState<CommercialOrder[]>([]);
   const [balance, setBalance] = useState(0);
+  const [trialBalance, setTrialBalance] = useState(0);
   const [payment, setPayment] = useState<PaymentOrder>();
   const [submitting, setSubmitting] = useState(false);
 
@@ -95,7 +96,10 @@ const CommercialPage = () => {
     if (currentResult.status === 'fulfilled') setCurrent(currentResult.value.data ?? null);
     if (queuedResult.status === 'fulfilled') setQueued(queuedResult.value.data ?? []);
     if (ordersResult.status === 'fulfilled') setOrders(ordersResult.value.data ?? []);
-    if (pointsResult.status === 'fulfilled') setBalance(pointsResult.value.data?.balance ?? 0);
+    if (pointsResult.status === 'fulfilled') {
+      setBalance(pointsResult.value.data?.balance ?? 0);
+      setTrialBalance(pointsResult.value.data?.trialBalance ?? 0);
+    }
     if (transactionsResult.status === 'fulfilled') {
       setPointTransactions(transactionsResult.value.data?.records ?? []);
     }
@@ -113,6 +117,7 @@ const CommercialPage = () => {
     setQueued([]);
     setOrders([]);
     setBalance(0);
+    setTrialBalance(0);
     setPointTransactions([]);
     setPayment(undefined);
     setSubmitting(false);
@@ -210,6 +215,7 @@ const CommercialPage = () => {
         </button>
         <div className={styles.headerRight}>
           <span className={styles.headerBalance}><WalletOutlined /> 团队积分 <strong>{balance.toLocaleString('zh-CN')}</strong></span>
+          {trialBalance > 0 && <span>含试用专属积分 {trialBalance.toLocaleString('zh-CN')}，不可用于视频生成</span>}
           <Button type="text" icon={<LeftOutlined />} onClick={() => history.back()}>返回工作台</Button>
         </div>
       </header>
@@ -217,7 +223,7 @@ const CommercialPage = () => {
         <section className={styles.membershipSummary} aria-label="当前会员">
           <div><span className={styles.label}>当前会员</span><strong>{current ? snapshotName(current.snapshotJson) : '暂无会员'}</strong>
             {current ? <Tag color="success">{statusText(current.status)}</Tag> : null}</div>
-          {current ? <div><span className={styles.label}>有效期至</span><strong>{formatCommercialDate(current.endsAt)}</strong></div> : null}
+          {current ? <div><span className={styles.label}>有效期至</span><strong>{snapshotName(current.snapshotJson) === '试用套餐' ? '无到期时间' : formatCommercialDate(current.endsAt)}</strong></div> : null}
           {current?.nextGrantAt ? <div><span className={styles.label}>下一次积分发放</span><strong>{formatCommercialDate(current.nextGrantAt)}</strong></div> : null}
         </section>
 

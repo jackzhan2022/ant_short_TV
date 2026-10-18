@@ -74,13 +74,14 @@ public class TeamPointService {
 
     private TeamPointAccountResponse readAccount(Long tenantId) {
         return jdbcTemplate.queryForObject("""
-            select tenant_id, balance, total_granted, total_consumed, updated_at
+            select tenant_id, balance, trial_balance, total_granted, total_consumed, updated_at
               from team_point_account
              where tenant_id = ?
             """,
             (rs, rowNum) -> new TeamPointAccountResponse(
                 rs.getLong("tenant_id"),
                 rs.getInt("balance"),
+                rs.getBigDecimal("trial_balance"),
                 rs.getInt("total_granted"),
                 rs.getInt("total_consumed"),
                 toLocalDateTime(rs.getTimestamp("updated_at"))

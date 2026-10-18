@@ -6,10 +6,12 @@ const mocks = vi.hoisted(() => ({
   access: {
     canViewPlatformTenants: true,
     canEditPlatformTenantStatus: true,
+    canAssignPlatformTenantTrial: false,
   },
   queryTenants: vi.fn(),
   getTenant: vi.fn(),
   updateStatus: vi.fn(),
+  assignTrial: vi.fn(),
   success: vi.fn(),
   reload: vi.fn(),
 }));
@@ -19,6 +21,7 @@ vi.mock('./service', () => ({
   queryPlatformTenants: mocks.queryTenants,
   getPlatformTenant: mocks.getTenant,
   updatePlatformTenantStatus: mocks.updateStatus,
+  assignPlatformTenantTrial: mocks.assignTrial,
 }));
 vi.mock('@ant-design/pro-components', () => ({
   PageContainer: ({ children }: any) => <main>{children}</main>,
@@ -70,10 +73,46 @@ describe('PlatformTenantManagementPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.access.canViewPlatformTenants = true;
+    mocks.access.canAssignPlatformTenantTrial = false;
     mocks.access.canEditPlatformTenantStatus = true;
     mocks.queryTenants.mockResolvedValue({ data: { records: [tenant], total: 1, current: 2, pageSize: 20 } });
     mocks.getTenant.mockResolvedValue({ data: { ...tenant, description: '运营租户', queuedPackages: [{ subscriptionId: 11, name: '专业版', packageType: 'SUBSCRIPTION', subscriptionStatus: 'QUEUED', startsAt: '2026-10-01T00:00:00', endsAt: '2026-11-01T00:00:00' }] } });
     mocks.updateStatus.mockResolvedValue({ data: { ...tenant, status: 'DISABLED' } });
+  });
+
+  it('assigns trial after confirmation and refreshes list and open detail', async () => {
+    mocks.access.canAssignPlatformTenantTrial = true;
+    mocks.assignTrial.mockResolvedValue({ data: { ...tenant, trialPointBalance: 3000 } });
+    render(<PlatformTenantManagementPage />);
+    await screen.findByText('Alpha Studio');
+    fireEvent.click(screen.getByRole('button', { name: '查看详情' }));
+    await screen.findByText('运营租户');
+    fireEvent.click(screen.getByRole('button', { name: /确认为租户.*分配试用套餐/ }));
+    await waitFor(() => expect(mocks.assignTrial).toHaveBeenCalledWith(9));
+    expect(mocks.reload).toHaveBeenCalled();
+    expect(mocks.getTenant).toHaveBeenCalledTimes(2);
+    expect(mocks.success).toHaveBeenCalledWith('试用套餐已分配，3000 专属积分已到账');
+  });
+
+  it('hides trial action without permission or when a package exists', async () => {
+    const { unmount } = render(<PlatformTenantManagementPage />);
+    await screen.findByText('Alpha Studio');
+    expect(screen.queryByRole('button', { name: '分配试用套餐' })).not.toBeInTheDocument();
+    unmount();
+    mocks.access.canAssignPlatformTenantTrial = true;
+    mocks.queryTenants.mockResolvedValue({ data: { records: [{ ...tenant, currentPackage: { name: '试用套餐', packageType: 'TRIAL' } }], total: 1 } });
+    render(<PlatformTenantManagementPage />);
+    await screen.findByText('试用套餐');
+    expect(screen.queryByRole('button', { name: '分配试用套餐' })).not.toBeInTheDocument();
+    expect(screen.getByText('专属积分不可用于视频生成')).toBeInTheDocument();
+  });
+
+  it('hides trial action after the previous trial has already been used', async () => {
+    mocks.access.canAssignPlatformTenantTrial = true;
+    mocks.queryTenants.mockResolvedValue({ data: { records: [{ ...tenant, trialAssigned: true }], total: 1 } });
+    render(<PlatformTenantManagementPage />);
+    await screen.findByText('Alpha Studio');
+    expect(screen.queryByRole('button', { name: '分配试用套餐' })).not.toBeInTheDocument();
   });
 
   it('loads filters and displays zero balance and missing package', async () => {

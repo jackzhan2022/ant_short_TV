@@ -1,5 +1,6 @@
 package com.antshorttv.platformtenant;
 
+import com.antshorttv.commercial.TenantTrialService;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.operationlog.OperationLogService;
@@ -29,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PlatformTenantService {
     private static final Set<String> EDITABLE_STATUSES = Set.of("ACTIVE", "DISABLED");
 
+    private final TenantTrialService trialService;
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final CurrentPrincipal currentPrincipal;
@@ -38,8 +40,10 @@ public class PlatformTenantService {
         JdbcTemplate jdbc,
         ObjectMapper objectMapper,
         CurrentPrincipal currentPrincipal,
-        OperationLogService operationLogService
+        OperationLogService operationLogService,
+        TenantTrialService trialService
     ) {
+        this.trialService = trialService;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.currentPrincipal = currentPrincipal;
@@ -65,7 +69,7 @@ public class PlatformTenantService {
         return new PlatformTenantDetailResponse(
             summary.id(), summary.code(), summary.name(), summary.type(), summary.status(),
             tenant.logo(), tenant.description(), summary.owner(), summary.activeMemberCount(),
-            summary.pointBalance(), summary.currentPackage(), queuedPackages(tenantId),
+            summary.pointBalance(), summary.trialPointBalance(), summary.trialAssigned(), summary.currentPackage(), queuedPackages(tenantId),
             summary.createdAt(), tenant.updatedAt());
     }
 
@@ -87,6 +91,14 @@ public class PlatformTenantService {
             Map.of("previousStatus", tenant.status(), "newStatus", targetStatus, "source", "PLATFORM")
         );
         return summaries(List.of(tenant.withStatus(targetStatus, LocalDateTime.now()))).get(0);
+    }
+
+    @Transactional
+    public PlatformTenantSummaryResponse assignTrial(Long tenantId, HttpServletRequest request) {
+        trialService.assign(tenantId, currentPrincipal.require().userId());
+        operationLogService.record(currentPrincipal.require().userId(), tenantId, "PLATFORM_ASSIGN_TENANT_TRIAL", tenantId,
+            OperationResult.SUCCESS, request, Map.of("points", 3000, "source", "PLATFORM"));
+        return summaries(List.of(findTenant(tenantId, false))).get(0);
     }
 
     private SqlAndArgs filteredTenantSql(PlatformTenantQuery query) {
@@ -120,11 +132,13 @@ public class PlatformTenantService {
         String placeholders = placeholders(tenantIds.size());
         Map<Long, PlatformTenantOwnerResponse> owners = loadOwners(tenantIds, placeholders);
         Map<Long, Long> memberCounts = loadMemberCounts(tenantIds, placeholders);
-        Map<Long, BigDecimal> balances = loadBalances(tenantIds, placeholders);
+        Map<Long, Balance> balances = loadBalances(tenantIds, placeholders);
         Map<Long, PlatformTenantPackageResponse> packages = loadCurrentPackages(tenantIds, placeholders);
         return tenants.stream().map(tenant -> new PlatformTenantSummaryResponse(
             tenant.id(), tenant.code(), tenant.name(), tenant.type(), tenant.status(), owners.get(tenant.id()),
-            memberCounts.getOrDefault(tenant.id(), 0L), balances.getOrDefault(tenant.id(), BigDecimal.ZERO),
+            memberCounts.getOrDefault(tenant.id(), 0L), balances.getOrDefault(tenant.id(), new Balance(BigDecimal.ZERO, BigDecimal.ZERO, false)).total(),
+            balances.getOrDefault(tenant.id(), new Balance(BigDecimal.ZERO, BigDecimal.ZERO, false)).trial(),
+            balances.getOrDefault(tenant.id(), new Balance(BigDecimal.ZERO, BigDecimal.ZERO, false)).trialAssigned(),
             packages.get(tenant.id()), tenant.createdAt()
         )).toList();
     }
@@ -158,11 +172,15 @@ public class PlatformTenantService {
             }, ids.toArray());
     }
 
-    private Map<Long, BigDecimal> loadBalances(List<Long> ids, String placeholders) {
-        return jdbc.query("select tenant_id, balance from team_point_account where tenant_id in (" + placeholders + ")",
+    private record Balance(BigDecimal total, BigDecimal trial, boolean trialAssigned) {}
+
+    private Map<Long, Balance> loadBalances(List<Long> ids, String placeholders) {
+        return jdbc.query("select a.tenant_id, a.balance, a.trial_balance, exists (select 1 from point_ledger l"
+                + " where l.tenant_id=a.tenant_id and l.idempotency_key=concat('trial:',a.tenant_id)) trial_assigned"
+                + " from team_point_account a where a.tenant_id in (" + placeholders + ")",
             rs -> {
-                Map<Long, BigDecimal> result = new HashMap<>();
-                while (rs.next()) result.put(rs.getLong("tenant_id"), rs.getBigDecimal("balance"));
+                Map<Long, Balance> result = new HashMap<>();
+                while (rs.next()) result.put(rs.getLong("tenant_id"), new Balance(rs.getBigDecimal("balance"), rs.getBigDecimal("trial_balance"), rs.getBoolean("trial_assigned")));
                 return result;
             }, ids.toArray());
     }

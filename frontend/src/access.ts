@@ -78,6 +78,8 @@ export default function access(
       platformPermissions.includes('PLATFORM_COMMERCIAL_PACKAGE_EDIT'),
     canViewPlatformTenants:
       currentUser && platformPermissions.includes('PLATFORM_TENANT_VIEW'),
+    canAssignPlatformTenantTrial:
+      !!currentUser && platformPermissions.includes('PLATFORM_TENANT_TRIAL_ASSIGN'),
     canEditPlatformTenantStatus:
       currentUser &&
       platformPermissions.includes('PLATFORM_TENANT_STATUS_EDIT'),

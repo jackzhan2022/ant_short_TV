@@ -36,6 +36,8 @@ class AiPointSettlementServiceTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired private PointAccountingService accounting;
+
     @Autowired
     private AiExecutionService executionService;
 
@@ -55,6 +57,109 @@ class AiPointSettlementServiceTest {
         jdbc.update("delete from ai_point_policy_version");
         jdbc.update("delete from team_point_account");
         pointVersions.clear();
+    }
+
+    @Test
+    void trialPointsSupportAllNonVideoGenerationModelsAndStayRestrictedAfterRefund() {
+        int index = 0;
+        for (String type : java.util.List.of("TEXT", "IMAGE", "VIDEO_UNDERSTANDING", "AUDIO", "VOICE")) {
+            long tenantId = 880L + index++;
+            String scene = "trial_" + type;
+            account(tenantId, "100");
+            accounting.grantTrial(tenantId, 2L);
+            fixedPolicy(scene, "1000");
+            trialModel(scene, type);
+            AiPointReservationEntity reservation = service.reserve(new AiPointReservationCommand(
+                tenantId, 2L, tenantId, 1, scene, "TEST", tenantId, modelId(scene), type,
+                Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of(), pointVersions.get(scene), scene));
+            assertThat(reservation.trialReservedPoints).isEqualByComparingTo("1000");
+            service.settle(reservation.id, Map.of(AiUsageMetric.CALL, new BigDecimal("3.05")), 1L, 1L, scene + ":settle");
+            assertThat(accountValue(tenantId, "trial_balance")).isZero();
+            assertThat(accountValue(tenantId, "balance")).isEqualByComparingTo("50");
+            service.refund(reservation.id, scene + ":refund");
+            service.refund(reservation.id, scene + ":refund");
+            assertThat(accountValue(tenantId, "trial_balance")).isEqualByComparingTo("3000");
+            assertThat(accountValue(tenantId, "balance")).isEqualByComparingTo("3100");
+            assertThat(service.reconcile(tenantId).matches()).isTrue();
+        }
+    }
+
+    @Test
+    void videoGenerationCannotReserveOrIncrementUsingTrialPointsEvenWithWrongCapability() {
+        account(890L, "100");
+        accounting.grantTrial(890L, 2L);
+        fixedPolicy("trial_video", "60");
+        trialModel("trial_video", "VIDEO");
+        var command = new AiPointReservationCommand(890L, 2L, 890L, 1, "trial_video", "AI_VIDEO_TASK", 890L,
+            modelId("trial_video"), "TEXT", Map.of(AiUsageMetric.CALL, BigDecimal.ONE), Map.of(),
+            pointVersions.get("trial_video"), "trial-video");
+        var reservation = service.reserve(command);
+        assertThat(reservation.trialEligible).isFalse();
+        assertThatThrownBy(() -> service.authorizeUsage(reservation.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "video-extra"))
+            .isInstanceOf(BusinessException.class);
+        var result = service.settle(reservation.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), 1L, 1L, "video-overage");
+        assertThat(result.status).isEqualTo("SETTLEMENT_REVIEW_REQUIRED");
+        assertThat(accountValue(890L, "trial_balance")).isEqualByComparingTo("3000");
+        service.release(reservation.id, "video-release");
+        assertThat(accountValue(890L, "balance")).isEqualByComparingTo("3100");
+        jdbc.update("update team_point_account set balance=trial_balance where tenant_id=890");
+        assertThatThrownBy(() -> service.reserveRetry(reservation.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "video-retry"))
+            .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void concurrentRequestsCannotSpendTheSameTrialPoints() throws Exception {
+        account(893L, "100");
+        accounting.grantTrial(893L, 2L);
+        fixedPolicy("script_generate", "2000");
+        trialModel("script_generate", "TEXT");
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Object> first = pool.submit(() -> reserveAfter(start, command(893L, 8931L, "trial-race-a")));
+            Future<Object> second = pool.submit(() -> reserveAfter(start, command(893L, 8932L, "trial-race-b")));
+            start.countDown();
+            var results = java.util.List.of(first.get(), second.get());
+            assertThat(results.stream().filter(AiPointReservationEntity.class::isInstance).count()).isEqualTo(1);
+            assertThat(results.stream().filter(BusinessException.class::isInstance).count()).isEqualTo(1);
+            assertThat(accountValue(893L, "balance")).isEqualByComparingTo("1100");
+            assertThat(accountValue(893L, "trial_balance")).isEqualByComparingTo("1000");
+            var reserved = (AiPointReservationEntity) results.stream().filter(AiPointReservationEntity.class::isInstance).findFirst().orElseThrow();
+            service.release(reserved.id, "trial-race-release");
+            assertThat(accountValue(893L, "trial_balance")).isEqualByComparingTo("3000");
+            assertThat(service.reconcile(893L).matches()).isTrue();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void trialReleaseRetryAndCumulativeAuthorizationPreserveOriginalPool() {
+        account(891L, "100");
+        accounting.grantTrial(891L, 2L);
+        fixedPolicy("script_generate", "1000");
+        trialModel("script_generate", "TEXT");
+        var reservation = service.reserve(command(891L, 8911L, "trial-cumulative"));
+        service.release(reservation.id, "trial-cancel");
+        assertThat(accountValue(891L, "trial_balance")).isEqualByComparingTo("3000");
+        service.reserveRetry(reservation.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "trial-retry");
+        service.settleCumulative(reservation.id, Map.of(AiUsageMetric.CALL, new BigDecimal("0.5")), 1L, 1L, "trial-first");
+        service.authorizeUsage(reservation.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), "trial-next");
+        service.authorizeUsage(reservation.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), "trial-next");
+        service.settleCumulative(reservation.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2.5")), 2L, 2L, "trial-second");
+        assertThat(accountValue(891L, "trial_balance")).isEqualByComparingTo("500");
+        assertThat(accountValue(891L, "balance")).isEqualByComparingTo("600");
+        service.refund(reservation.id, "trial-all-refund");
+        assertThat(accountValue(891L, "trial_balance")).isEqualByComparingTo("3000");
+        assertThat(service.reconcile(891L).matches()).isTrue();
+    }
+
+    private void trialModel(String scene, String type) {
+        jdbc.update("delete from ai_model where id=?", modelId(scene));
+        jdbc.update("""
+            insert into ai_model (id,provider_id,code,name,model_code,service_type,status,is_default,sort,created_at,updated_at)
+            values (?,0,?,?,?,?,'ENABLED',false,0,now(),now())
+            """, modelId(scene), scene, scene, scene, type);
     }
 
     @Test

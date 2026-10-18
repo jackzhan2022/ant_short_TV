@@ -1,6 +1,7 @@
 package com.antshorttv.platformtenant;
 
 import static org.hamcrest.Matchers.is;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -44,6 +45,31 @@ class PlatformTenantControllerTest extends com.antshorttv.support.RegistrationTe
                 .content("{\"status\":\"ACTIVE\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("ACTIVE")));
+    }
+
+    @Test
+    void assignsTrialOnlyWithPermissionAndOnlyGrantsOnce() throws Exception {
+        Registration admin = register("13800000551", "Trial Admin");
+        grantPlatformAdmin(admin.userId());
+        Long tenantId = insertTenant("CTRL-TRIAL", "Trial Tenant", "ACTIVE");
+        Cookie csrf = csrf(admin.session());
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(post("/api/platform/tenants/{id}/trial-package", tenantId)
+                    .cookie(admin.session(), csrf).header("X-XSRF-TOKEN", csrf.getValue()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentPackage.packageType", is("TRIAL")))
+                .andExpect(jsonPath("$.data.trialPointBalance", is(3000.0)))
+                .andExpect(jsonPath("$.data.trialAssigned", is(true)))
+                .andExpect(jsonPath("$.data.currentPackage.name", is("试用套餐")));
+        }
+        assertThat(jdbc.queryForObject("select count(*) from point_ledger where tenant_id=?", Integer.class, tenantId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from team_subscription where tenant_id=?", Integer.class, tenantId)).isEqualTo(1);
+        Registration viewer = register("13800000552", "Trial Viewer");
+        grantViewOnly(viewer.userId());
+        Cookie viewerCsrf = csrf(viewer.session());
+        mockMvc.perform(post("/api/platform/tenants/{id}/trial-package", tenantId)
+                .cookie(viewer.session(), viewerCsrf).header("X-XSRF-TOKEN", viewerCsrf.getValue()))
+            .andExpect(status().isForbidden());
     }
 
     @Test

@@ -2,7 +2,7 @@ import { request } from '@umijs/max';
 
 export type ApiResponse<T> = { success: boolean; data: T };
 export type PlatformTenantStatus = 'ACTIVE' | 'DISABLED';
-export type CommercialPackageType = 'POINT_PACKAGE' | 'SUBSCRIPTION';
+export type CommercialPackageType = 'POINT_PACKAGE' | 'SUBSCRIPTION' | 'TRIAL';
 
 export type PlatformTenantOwner = {
   memberId: number;
@@ -32,6 +32,8 @@ export type PlatformTenantSummary = {
   owner?: PlatformTenantOwner;
   activeMemberCount: number;
   pointBalance: number | string;
+  trialPointBalance?: number | string;
+  trialAssigned?: boolean;
   currentPackage?: PlatformTenantPackage | null;
   createdAt: string;
 };
@@ -73,4 +75,10 @@ export const updatePlatformTenantStatus = (
   request<ApiResponse<PlatformTenantSummary>>(
     `/api/platform/tenants/${tenantId}/status`,
     { method: 'PUT', data: { status } },
+  );
+
+export const assignPlatformTenantTrial = (tenantId: number) =>
+  request<ApiResponse<PlatformTenantSummary>>(
+    `/api/platform/tenants/${tenantId}/trial-package`,
+    { method: 'POST' },
   );

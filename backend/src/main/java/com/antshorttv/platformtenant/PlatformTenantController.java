@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -38,6 +39,12 @@ public class PlatformTenantController {
     @RequirePlatformPermission("PLATFORM_TENANT_VIEW")
     public ApiResponse<PlatformTenantDetailResponse> detail(@PathVariable Long tenantId) {
         return ApiResponse.success(service.detail(tenantId));
+    }
+
+    @PostMapping("/{tenantId:\\d+}/trial-package")
+    @RequirePlatformPermission("PLATFORM_TENANT_TRIAL_ASSIGN")
+    public ApiResponse<PlatformTenantSummaryResponse> assignTrial(@PathVariable Long tenantId, HttpServletRequest request) {
+        return ApiResponse.success(service.assignTrial(tenantId, request));
     }
 
     @PutMapping("/{tenantId:\\d+}/status")

@@ -36,6 +36,7 @@ public class CommercialEntitlementOrchestrator {
     }
 
     private void fulfill(CommercialOrderEntity order) {
+        accounting.lockAccount(order.tenantId);
         CommercialPackageVersionEntity version = versionMapper.selectById(order.packageVersionId);
         CommercialPackageEntity pack = packageMapper.selectById(version.packageId);
         if (!List.of("POINT_PACKAGE", "SUBSCRIPTION").contains(pack.packageType)) throw new IllegalStateException("Unsupported package type: " + pack.packageType);
@@ -54,12 +55,11 @@ public class CommercialEntitlementOrchestrator {
             shiftQueuedSubscriptions(order.tenantId, version.periodMonths);
             return;
         }
-        TeamSubscriptionEntity tail = subscriptionMapper.selectOne(new QueryWrapper<TeamSubscriptionEntity>()
-            .eq("tenant_id", order.tenantId)
-            .in("status", List.of("ACTIVE", "QUEUED"))
-            .orderByDesc("ends_at")
-            .last("limit 1"));
-        TeamSubscriptionEntity sub = new TeamSubscriptionEntity(); sub.tenantId=order.tenantId; sub.packageVersionId=version.id; sub.sourceOrderId=order.id; sub.status=current == null ? "ACTIVE" : "QUEUED"; sub.startsAt=current == null ? now : tail.endsAt; sub.endsAt=sub.startsAt.plusMonths(version.periodMonths); sub.nextGrantAt=current == null ? sub.startsAt.plusMonths(1) : sub.startsAt; sub.snapshotJson=order.packageSnapshotJson; sub.createdAt=LocalDateTime.now(); sub.updatedAt=sub.createdAt; subscriptionMapper.insert(sub);
+        // Retain previously purchased periodic grants while switching the effective package immediately.
+        subscriptionMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<TeamSubscriptionEntity>()
+            .eq("tenant_id", order.tenantId).eq("status", "ACTIVE")
+            .set("status", "SUPERSEDED").set("updated_at", LocalDateTime.now()));
+        TeamSubscriptionEntity sub = new TeamSubscriptionEntity(); sub.tenantId=order.tenantId; sub.packageVersionId=version.id; sub.sourceOrderId=order.id; sub.status="ACTIVE"; sub.startsAt=now; sub.endsAt=now.plusMonths(version.periodMonths); sub.nextGrantAt=now.plusMonths(1); sub.snapshotJson=order.packageSnapshotJson; sub.createdAt=LocalDateTime.now(); sub.updatedAt=sub.createdAt; subscriptionMapper.insert(sub);
         if ("ACTIVE".equals(sub.status)) entitlements.stream().filter(e -> "PERIODIC_POINTS".equals(e.entitlementType)).forEach(e -> grantPoints(order, sub, 1, e.numericValue, "subscription:" + sub.id + ":period:1"));
     }
 

@@ -20,6 +20,7 @@ import {
 } from 'antd';
 import { useRef, useState } from 'react';
 import {
+  assignPlatformTenantTrial,
   getPlatformTenant,
   queryPlatformTenants,
   type PlatformTenantDetail,
@@ -37,7 +38,9 @@ const packageTypeText = (type?: string) =>
     ? '会员订阅'
     : type === 'POINT_PACKAGE'
       ? '积分包'
-      : '-';
+      : type === 'TRIAL'
+        ? '试用套餐'
+        : '-';
 
 const dateTime = (value?: string) =>
   value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-';
@@ -68,6 +71,13 @@ const PlatformTenantManagementPage = () => {
     if (detail?.id === tenant.id) {
       await loadDetail(tenant.id);
     }
+  };
+
+  const assignTrial = async (tenant: PlatformTenantSummary) => {
+    await assignPlatformTenantTrial(tenant.id);
+    message.success('试用套餐已分配，3000 专属积分已到账');
+    actionRef.current?.reload();
+    if (detail?.id === tenant.id) await loadDetail(tenant.id);
   };
 
   const columns: ProColumns<PlatformTenantSummary>[] = [
@@ -105,6 +115,7 @@ const PlatformTenantManagementPage = () => {
       dataIndex: 'packageType',
       hideInTable: true,
       valueEnum: {
+        TRIAL: { text: '试用套餐' },
         SUBSCRIPTION: { text: '会员订阅' },
         POINT_PACKAGE: { text: '积分包' },
       },
@@ -136,7 +147,7 @@ const PlatformTenantManagementPage = () => {
           <Space orientation="vertical" size={0}>
             <Typography.Text>{record.currentPackage.name}</Typography.Text>
             <Typography.Text type="secondary">
-              {dateTime(record.currentPackage.endsAt)} 到期
+              {record.currentPackage.packageType === 'TRIAL' ? '专属积分不可用于视频生成' : `${dateTime(record.currentPackage.endsAt)} 到期`}
             </Typography.Text>
           </Space>
         ) : (
@@ -152,11 +163,23 @@ const PlatformTenantManagementPage = () => {
     {
       title: '操作',
       valueType: 'option',
-      width: 190,
+      width: 290,
       render: (_, record) => [
         <Button key="detail" type="link" onClick={() => void loadDetail(record.id)}>
           查看详情
         </Button>,
+        access.canAssignPlatformTenantTrial && !record.currentPackage && !record.trialAssigned ? (
+          <Popconfirm
+            key="trial"
+            title={`确认为租户“${record.name}”分配试用套餐？`}
+            description="每个租户限领一次，包含 3000 专属积分，不可用于视频生成模型。"
+            onConfirm={() => assignTrial(record)}
+            okText="分配"
+            cancelText="取消"
+          >
+            <Button type="link">分配试用套餐</Button>
+          </Popconfirm>
+        ) : null,
         access.canEditPlatformTenantStatus ? (
           <Popconfirm
             key="status"
@@ -228,6 +251,7 @@ const PlatformTenantManagementPage = () => {
             <Space size={48} wrap>
               <Statistic title="有效成员" value={detail.activeMemberCount} />
               <Statistic title="积分余额" value={detail.pointBalance} />
+              <Statistic title="其中试用专属积分（不可用于视频生成）" value={detail.trialPointBalance ?? 0} />
             </Space>
             <Divider>当前套餐</Divider>
             {detail.currentPackage ? (
@@ -237,7 +261,7 @@ const PlatformTenantManagementPage = () => {
                   { key: 'name', label: '套餐名称', children: detail.currentPackage.name },
                   { key: 'type', label: '套餐类型', children: packageTypeText(detail.currentPackage.packageType) },
                   { key: 'startsAt', label: '开始时间', children: dateTime(detail.currentPackage.startsAt) },
-                  { key: 'endsAt', label: '结束时间', children: dateTime(detail.currentPackage.endsAt) },
+                  { key: 'endsAt', label: '结束时间', children: detail.currentPackage.packageType === 'TRIAL' ? '无到期时间' : dateTime(detail.currentPackage.endsAt) },
                 ]}
               />
             ) : (

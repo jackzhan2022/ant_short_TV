@@ -31,17 +31,39 @@ public class PointAccountingService {
             """, tenantId, tenantId);
     }
 
-    public int reserveFunds(Long tenantId, BigDecimal amount) {
-        return jdbc.update("""
-            update team_point_account
-               set balance = balance - ?, reserved_balance = reserved_balance + ?,
-                   total_reserved = total_reserved + ?, version = version + 1, updated_at = now()
-             where tenant_id = ? and balance >= ?
-            """, amount, amount, amount, tenantId, amount);
+    public void lockAccount(Long tenantId) {
+        ensureAccount(tenantId);
+        jdbc.queryForObject("select tenant_id from team_point_account where tenant_id=? for update", Long.class, tenantId);
     }
 
-    public int incrementReserveFunds(Long tenantId, BigDecimal amount) {
-        return reserveFunds(tenantId, amount);
+    public BigDecimal reserveFunds(Long tenantId, BigDecimal amount, boolean trialEligible) {
+        Map<String, Object> account = jdbc.queryForMap(
+            "select balance, trial_balance from team_point_account where tenant_id=? for update", tenantId);
+        BigDecimal trial = decimal(account.get("trial_balance"));
+        BigDecimal available = decimal(account.get("balance"));
+        if ((trialEligible ? available : available.subtract(trial)).compareTo(amount) < 0) return null;
+        BigDecimal trialReserved = trialEligible ? trial.min(amount) : BigDecimal.ZERO;
+        jdbc.update("""
+            update team_point_account
+               set trial_balance=trial_balance-?, balance=balance-?, reserved_balance=reserved_balance+?,
+                   total_reserved=total_reserved+?, version=version+1, updated_at=now()
+             where tenant_id=?
+            """, trialReserved, amount, amount, amount, tenantId);
+        return trialReserved;
+    }
+
+    public void restoreTrialFunds(Long tenantId, BigDecimal amount) {
+        jdbc.update("update team_point_account set trial_balance=trial_balance+? where tenant_id=?", amount, tenantId);
+    }
+
+    public void grantTrial(Long tenantId, Long userId) {
+        ensureAccount(tenantId);
+        jdbc.queryForObject("select tenant_id from team_point_account where tenant_id=? for update", Long.class, tenantId);
+        String key = "trial:" + tenantId;
+        if (find(tenantId, key) != null) return;
+        BigDecimal amount = new BigDecimal("3000");
+        grant(tenantId, userId, amount, key, "试用套餐专属积分（不可用于视频生成）");
+        restoreTrialFunds(tenantId, amount);
     }
 
     public void settleFunds(Long tenantId, BigDecimal reserved, BigDecimal released, BigDecimal consumed) {

@@ -90,7 +90,7 @@ class CommercialSubscriptionLifecycleTest {
     }
 
     @Test
-    void subscriptionPurchaseBonusIsGrantedOnceForFirstPurchaseRenewalAndQueuedPurchase() {
+    void subscriptionPurchaseBonusIsGrantedOnceForFirstPurchaseRenewalAndImmediateSwitch() {
         CommercialPackageVersionResponse version = publishedSubscriptionWithBonus("MIXED_BONUS", 1, "100", "40");
         LocalDateTime paidAt = LocalDateTime.of(2026, 9, 10, 9, 0);
 
@@ -109,9 +109,9 @@ class CommercialSubscriptionLifecycleTest {
         pay(111L, 211L, active, paidAt);
         pay(111L, 211L, version, paidAt.plusDays(1));
         assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=111", BigDecimal.class))
-            .isEqualByComparingTo("140");
+            .isEqualByComparingTo("240");
         assertThat(jdbc.queryForObject("select status from team_subscription where tenant_id=111 and package_version_id=?", String.class, version.versionId()))
-            .isEqualTo("QUEUED");
+            .isEqualTo("ACTIVE");
     }
 
     @Test
@@ -162,24 +162,32 @@ class CommercialSubscriptionLifecycleTest {
     }
 
     @Test
-    void differentPackagesQueueWithoutOverlapping() {
-        CommercialPackageVersionResponse active = publishedSubscription("QUEUE_ACTIVE", 1, "100");
-        CommercialPackageVersionResponse next = publishedSubscription("QUEUE_NEXT", 3, "300");
-        CommercialPackageVersionResponse last = publishedSubscription("QUEUE_LAST", 6, "600");
-        LocalDateTime firstPaidAt = LocalDateTime.of(2026, 3, 15, 8, 0);
-        pay(103L, 203L, active, firstPaidAt);
+    void differentPackagesSwitchImmediatelyAndPreservePurchasedPeriodicPoints() {
+        var active = publishedSubscription("SWITCH_ACTIVE", 3, "100");
+        var next = publishedSubscription("SWITCH_NEXT", 1, "300");
+        LocalDateTime paidAt = LocalDateTime.of(2026, 3, 15, 8, 0);
+        pay(103L, 203L, active, paidAt);
+        pay(103L, 203L, next, paidAt.plusDays(1));
+        assertThat(jdbc.queryForObject("select package_version_id from team_subscription where tenant_id=103 and status='ACTIVE'", Long.class))
+            .isEqualTo(next.versionId());
+        assertThat(jdbc.queryForObject("select count(*) from team_subscription where tenant_id=103 and status='QUEUED'", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=103", BigDecimal.class)).isEqualByComparingTo("400");
+        processDue(paidAt.plusMonths(1));
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=103", BigDecimal.class)).isEqualByComparingTo("500");
+    }
 
-        pay(103L, 203L, next, firstPaidAt.plusDays(1));
-        pay(103L, 203L, last, firstPaidAt.plusDays(2));
-
-        List<SubscriptionWindow> queued = jdbc.query(
-            "select starts_at, ends_at from team_subscription where tenant_id=103 and status='QUEUED' order by starts_at",
-            (rs, rowNum) -> new SubscriptionWindow(
-                rs.getTimestamp("starts_at").toLocalDateTime(),
-                rs.getTimestamp("ends_at").toLocalDateTime()));
-        assertThat(queued).containsExactly(
-            new SubscriptionWindow(firstPaidAt.plusMonths(1), firstPaidAt.plusMonths(4)),
-            new SubscriptionWindow(firstPaidAt.plusMonths(4), firstPaidAt.plusMonths(10)));
+    @Test
+    void paidSubscriptionReplacesTrialImmediatelyAndKeepsRestrictedPoints() {
+        jdbc.update("insert into tenant (id,code,name,type,status,created_at,updated_at) values (892,'TRIAL-UPGRADE','Trial','STUDIO','ACTIVE',now(),now())");
+        context.getBean(TenantTrialService.class).assign(892L, 292L);
+        var version = publishedSubscription("TRIAL_UPGRADE", 1, "100");
+        pay(892L, 292L, version, LocalDateTime.now().plusSeconds(1));
+        assertThat(jdbc.queryForObject("select package_version_id from team_subscription where tenant_id=892 and status='ACTIVE'", Long.class))
+            .isEqualTo(version.versionId());
+        assertThat(jdbc.queryForObject("select trial_balance from team_point_account where tenant_id=892", BigDecimal.class)).isEqualByComparingTo("3000");
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=892", BigDecimal.class)).isEqualByComparingTo("3100");
+        context.getBean(TenantTrialService.class).assign(892L, 292L);
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=892", BigDecimal.class)).isEqualByComparingTo("3100");
     }
 
     @Test
@@ -208,7 +216,7 @@ class CommercialSubscriptionLifecycleTest {
     }
 
     @Test
-    void dueQueuedSubscriptionReplacesExpiredSubscriptionAndGetsFirstGrant() {
+    void supersededSubscriptionExpiresWithoutChangingTheNewSubscription() {
         CommercialPackageVersionResponse current = publishedSubscription("ACTIVATE_CURRENT", 1, "100");
         CommercialPackageVersionResponse queued = publishedSubscription("ACTIVATE_QUEUED", 1, "250");
         LocalDateTime paidAt = LocalDateTime.of(2026, 5, 15, 12, 0);
@@ -268,7 +276,7 @@ class CommercialSubscriptionLifecycleTest {
             .isEqualTo(new BigDecimal("0.90000000"));
         assertThat(ReflectionTestUtils.getField(activeSnapshot, "subscriptionId")).isNotNull();
 
-        Object expiredSnapshot = resolveDiscount(107L, paidAt.plusMonths(1).plusSeconds(1));
+        Object expiredSnapshot = resolveDiscount(107L, paidAt.plusDays(1).plusMonths(1).plusSeconds(1));
         assertThat(ReflectionTestUtils.getField(expiredSnapshot, "discountRate"))
             .isEqualTo(new BigDecimal("1.00000000"));
         assertThat(ReflectionTestUtils.getField(expiredSnapshot, "subscriptionId")).isNull();
@@ -328,5 +336,4 @@ class CommercialSubscriptionLifecycleTest {
             context.getBean("commercialEntitlementResolver"), "resolveGlobalDiscount", tenantId, at);
     }
 
-    private record SubscriptionWindow(LocalDateTime startsAt, LocalDateTime endsAt) {}
 }

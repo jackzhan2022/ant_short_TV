@@ -15,7 +15,7 @@ record PlatformTenantQuery(
     int pageSize
 ) {
     private static final Set<String> STATUSES = Set.of("ACTIVE", "DISABLED");
-    private static final Set<String> PACKAGE_TYPES = Set.of("POINT_PACKAGE", "SUBSCRIPTION");
+    private static final Set<String> PACKAGE_TYPES = Set.of("POINT_PACKAGE", "SUBSCRIPTION", "TRIAL");
 
     static PlatformTenantQuery of(String keyword, String status, String packageType, Integer current, Integer pageSize) {
         String normalizedStatus = normalize(status);
@@ -80,6 +80,8 @@ record PlatformTenantSummaryResponse(
     PlatformTenantOwnerResponse owner,
     long activeMemberCount,
     BigDecimal pointBalance,
+    BigDecimal trialPointBalance,
+    boolean trialAssigned,
     PlatformTenantPackageResponse currentPackage,
     LocalDateTime createdAt
 ) {}
@@ -95,6 +97,8 @@ record PlatformTenantDetailResponse(
     PlatformTenantOwnerResponse owner,
     long activeMemberCount,
     BigDecimal pointBalance,
+    BigDecimal trialPointBalance,
+    boolean trialAssigned,
     PlatformTenantPackageResponse currentPackage,
     List<PlatformTenantPackageResponse> queuedPackages,
     LocalDateTime createdAt,

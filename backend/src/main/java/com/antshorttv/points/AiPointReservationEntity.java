@@ -20,6 +20,9 @@ public class AiPointReservationEntity {
     public Long policyVersionId;
     public Long pointPriceVersionId;
     public BigDecimal discountRate;
+    public Boolean trialEligible;
+    public BigDecimal trialReservedPoints;
+    public BigDecimal trialSettledPoints;
     public String status;
     public String authorizedUsageJson;
     public String dimensionsJson;

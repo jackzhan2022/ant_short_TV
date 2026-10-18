@@ -118,6 +118,7 @@ export type TenantInvitation = {
 };
 
 export type TeamPointAccount = {
+  trialBalance?: number;
   tenantId: number;
   balance: number;
   totalGranted: number;

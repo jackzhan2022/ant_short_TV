@@ -87,7 +87,7 @@ public class AiPointSettlementService {
                 .multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate)
                 .setScale(POINT_SCALE, RoundingMode.HALF_UP);
         // Each call adds only its own budget; released unused budgets from prior calls stay released.
-        if (extra.signum() > 0 && accountingService.incrementReserveFunds(reservation.tenantId, extra) == 0) {
+        if (extra.signum() > 0 && !reserveFunds(reservation, extra)) {
             throw new BusinessException(ErrorCode.TEAM_POINTS_INSUFFICIENT, "团队积分不足，无法预占本次模型调用预算。");
         }
         reservation.reservedPoints = reservation.reservedPoints.add(extra);
@@ -132,8 +132,14 @@ public class AiPointSettlementService {
             command.pointPriceVersionId(), command.authorizedUsage(), command.dimensions());
         required = required.multiply(command.discountRate()).setScale(8, RoundingMode.HALF_UP);
         accountingService.ensureAccount(command.tenantId());
-        int updated = accountingService.reserveFunds(command.tenantId(), required);
-        if (updated == 0) {
+        // Resolve eligibility from the frozen price's model, never from a client supplied scene.
+        boolean trialEligible = jdbc.queryForObject("""
+            select count(*) from ai_model_point_price_version v join ai_model m on m.id=v.model_id
+             where v.id=? and m.service_type <> 'VIDEO'
+            """, Integer.class, command.pointPriceVersionId()) > 0
+            && !"VIDEO".equals(command.capability());
+        BigDecimal trialReserved = accountingService.reserveFunds(command.tenantId(), required, trialEligible);
+        if (trialReserved == null) {
             throw new BusinessException(
                 ErrorCode.TEAM_POINTS_INSUFFICIENT,
                 "团队积分不足，请充值后再使用 AI 能力。"
@@ -152,6 +158,9 @@ public class AiPointSettlementService {
         reservation.policyVersionId = policy == null ? null : policy.id;
         reservation.pointPriceVersionId = command.pointPriceVersionId();
         reservation.discountRate = command.discountRate();
+        reservation.trialEligible = trialEligible;
+        reservation.trialReservedPoints = trialReserved;
+        reservation.trialSettledPoints = BigDecimal.ZERO;
         reservation.status = "RESERVED";
         reservation.authorizedUsageJson = writeJson(command.authorizedUsage());
         reservation.dimensionsJson = AiAccountingJson.write(command.dimensions());
@@ -186,7 +195,7 @@ public class AiPointSettlementService {
             AiAccountingJson.read(reservation.dimensionsJson)
         ).multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate)
             .setScale(POINT_SCALE, RoundingMode.HALF_UP);
-        if (accountingService.reserveFunds(reservation.tenantId, required) == 0) {
+        if (!reserveFunds(reservation, required)) {
             throw new BusinessException(ErrorCode.TEAM_POINTS_INSUFFICIENT, "团队积分不足，请充值后再重试 AI 任务。");
         }
         reservation.reservedPoints = reservation.reservedPoints.add(required);
@@ -251,6 +260,10 @@ public class AiPointSettlementService {
             .subtract(reservation.settledPoints)
             .subtract(reservation.releasedPoints);
         BigDecimal released = outstanding.subtract(actual);
+        BigDecimal trialConsumed = reservation.trialReservedPoints.min(actual);
+        accountingService.restoreTrialFunds(reservation.tenantId, reservation.trialReservedPoints.subtract(trialConsumed));
+        reservation.trialReservedPoints = BigDecimal.ZERO;
+        reservation.trialSettledPoints = reservation.trialSettledPoints.add(trialConsumed);
         accountingService.settleFunds(reservation.tenantId, outstanding, released, actual);
         reservation.status = "SETTLED";
         reservation.settledPoints = reservation.settledPoints.add(actual);
@@ -288,6 +301,8 @@ public class AiPointSettlementService {
         BigDecimal releasable = reservation.reservedPoints
             .subtract(reservation.settledPoints)
             .subtract(reservation.releasedPoints);
+        accountingService.restoreTrialFunds(reservation.tenantId, reservation.trialReservedPoints);
+        reservation.trialReservedPoints = BigDecimal.ZERO;
         accountingService.releaseFunds(reservation.tenantId, releasable);
         reservation.status = "RELEASED";
         reservation.releasedPoints = reservation.releasedPoints.add(releasable);
@@ -308,6 +323,8 @@ public class AiPointSettlementService {
             throw new IllegalStateException("Only settled points can be refunded.");
         }
         BigDecimal refundable = reservation.settledPoints.subtract(reservation.refundedPoints);
+        accountingService.restoreTrialFunds(reservation.tenantId, reservation.trialSettledPoints);
+        reservation.trialSettledPoints = BigDecimal.ZERO;
         accountingService.refundFunds(reservation.tenantId, refundable);
         reservation.status = "REFUNDED";
         reservation.refundedPoints = reservation.refundedPoints.add(refundable);
@@ -392,13 +409,20 @@ public class AiPointSettlementService {
         );
     }
 
+    private boolean reserveFunds(AiPointReservationEntity reservation, BigDecimal amount) {
+        BigDecimal trial = accountingService.reserveFunds(reservation.tenantId, amount,
+            Boolean.TRUE.equals(reservation.trialEligible));
+        if (trial == null) return false;
+        reservation.trialReservedPoints = reservation.trialReservedPoints.add(trial);
+        return true;
+    }
+
     private boolean incrementalReserve(
         AiPointReservationEntity reservation,
         BigDecimal overage,
         String idempotencyKey
     ) {
-        int updated = accountingService.incrementReserveFunds(reservation.tenantId, overage);
-        if (updated == 0) {
+        if (!reserveFunds(reservation, overage)) {
             return false;
         }
         reservation.reservedPoints = reservation.reservedPoints.add(overage);

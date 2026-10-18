@@ -1,6 +1,7 @@
 import { request } from '@umijs/max';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  assignPlatformTenantTrial,
   getPlatformTenant,
   queryPlatformTenants,
   updatePlatformTenantStatus,
@@ -12,6 +13,11 @@ describe('platform tenant service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(request).mockResolvedValue({ success: true, data: {} });
+  });
+
+  it('assigns trial through the protected platform endpoint', async () => {
+    await assignPlatformTenantTrial(9);
+    expect(request).toHaveBeenCalledWith('/api/platform/tenants/9/trial-package', { method: 'POST' });
   });
 
   it('uses platform tenant list, detail, and status endpoints', async () => {

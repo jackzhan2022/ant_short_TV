@@ -46,7 +46,7 @@ public class CommercialPackageService {
     @Transactional public CommercialPackageVersionResponse publish(Long packageId, Long versionId, Long operatorId) { CommercialPackageVersionEntity v = require(versionId); if (!packageId.equals(v.packageId)) throw new IllegalArgumentException("Package mismatch"); if (!"DRAFT".equals(v.status)) throw new IllegalStateException("Only draft versions can be published"); validateStoredEntitlements(versionId, packageMapper.selectById(v.packageId).packageType); v.status = "PUBLISHED"; v.publishedAt = LocalDateTime.now(); versionMapper.updateById(v); return response(v); }
     @Transactional public CommercialPackageVersionResponse unpublish(Long packageId, Long versionId) { CommercialPackageVersionEntity v = require(versionId); if (!packageId.equals(v.packageId)) throw new IllegalArgumentException("Package mismatch"); if (!"PUBLISHED".equals(v.status)) throw new IllegalStateException("Only published versions can be unpublished"); v.status = "OFF_SALE"; versionMapper.updateById(v); return response(v); }
     public List<CommercialPackageSummaryResponse> listPackages() {
-        return packageMapper.selectList(new QueryWrapper<CommercialPackageEntity>().orderByAsc("id")).stream().map(pack -> {
+        return packageMapper.selectList(new QueryWrapper<CommercialPackageEntity>().ne("package_type", "TRIAL").orderByAsc("id")).stream().map(pack -> {
             CommercialPackageVersionEntity latest = versionMapper.selectList(new QueryWrapper<CommercialPackageVersionEntity>()
                 .eq("package_id", pack.id).orderByDesc("version_no").last("limit 1"))
                 .stream().findFirst().orElse(null);
