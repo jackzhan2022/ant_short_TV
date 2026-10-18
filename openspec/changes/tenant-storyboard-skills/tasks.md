@@ -16,4 +16,4 @@
 ## 4. Verification and delivery
 
 - [x] 4.1 Run backend authorization/runtime tests and frontend tests, type, Biome, antd checks and production builds.
-- [ ] 4.2 Prepare and verify deployment with database/Skill backups and document the release result.
+- [x] 4.2 Prepare and verify deployment with database/Skill backups and document the release result.
