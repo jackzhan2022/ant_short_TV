@@ -892,6 +892,10 @@ class WorkflowAgentRunnerTest {
 
     @Test
     void storyboardAgentHostPreparesAllReadsBeforeOnePlanningModelCall() {
+        String skillCode = "short-drama-storyboard-planning";
+        when(skills.detail(skillCode)).thenReturn(new WorkflowSkillView(skillCode, "系统规划", "", "SYSTEM_CREATIVE_RULE", "sys-rev", List.of()));
+        when(skills.findTenantOverride("short-drama-storyboard", 7L, skillCode)).thenReturn(
+            new WorkflowSkillView(skillCode, "团队规划", "", "TENANT_CREATIVE_RULE", "tenant-rev", List.of(), "TENANT", 7L, "团队甲", true));
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",
             "save_episode_storyboards");
@@ -903,7 +907,7 @@ class WorkflowAgentRunnerTest {
         when(agents.loadForRun("short-drama-storyboard")).thenReturn(new WorkflowAgentRecord(
             7L, "short-drama-storyboard", "分镜规划", "", "执行", 8L,
             new BigDecimal("0.2"), 8192, 12, "ENABLED", 0L, 9L, 9L,
-            LocalDateTime.now(), LocalDateTime.now(), List.of(), codes));
+            LocalDateTime.now(), LocalDateTime.now(), List.of(skillCode), codes));
         when(invocation.invokeText(any())).thenAnswer(ignored -> {
             assertThat(executed).containsExactlyElementsOf(codes.subList(0, 5));
             return result(null, List.of(
@@ -916,6 +920,9 @@ class WorkflowAgentRunnerTest {
 
         var requests = org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
         verify(invocation, org.mockito.Mockito.times(1)).invokeText(requests.capture());
+        String layeredPrompt = requests.getValue().textRequest().messages().get(0).content();
+        assertThat(layeredPrompt).contains("SYSTEM_CREATIVE_RULE", "TENANT_CREATIVE_RULE", "优先级 100", "优先级 200", "创作规则冲突时以租户规则为准");
+        assertThat(layeredPrompt.indexOf("SYSTEM_CREATIVE_RULE")).isLessThan(layeredPrompt.indexOf("TENANT_CREATIVE_RULE"));
         assertThat(requests.getValue().textRequest().tools())
             .extracting(com.antshorttv.ai.AiToolDefinition::code)
             .containsExactly("save_episode_storyboards");
@@ -1504,13 +1511,13 @@ class WorkflowAgentRunnerTest {
             new WorkflowSkillView(code, "团队规划", "", "tenant-content", "tenant-rev", List.of(), "TENANT", 7L, "团队甲", true));
         WorkflowAgentExecutionPlan plan = runner.freezeFormal("short-drama-storyboard", 7L);
         assertThat(plan.tenantId()).isEqualTo(7L);
-        assertThat(plan.skillSnapshots().get(0).content()).isEqualTo("tenant-content");
-        assertThat(plan.skillSnapshots().get(0).tenantId()).isEqualTo(7L);
-        assertThat(plan.skillSnapshots().get(0).scope()).isEqualTo("TENANT");
+        assertThat(plan.skillSnapshots()).extracting(WorkflowAgentSkillSnapshot::content).containsExactly("system", "tenant-content");
+        assertThat(plan.skillSnapshots()).extracting(WorkflowAgentSkillSnapshot::scope).containsExactly("SYSTEM", "TENANT");
+        assertThat(plan.skillSnapshots().get(1).tenantId()).isEqualTo(7L);
         assertThat(plan.agent().toolCodes()).containsExactly("save_episode_storyboards");
         assertThat(runner.freezeFormal("short-drama-storyboard", 8L).skillSnapshots().get(0).content()).isEqualTo("system");
         when(skills.findTenantOverride("short-drama-storyboard", 7L, code)).thenReturn(null);
-        assertThat(plan.skillSnapshots().get(0).content()).isEqualTo("tenant-content");
+        assertThat(plan.skillSnapshots().get(1).content()).isEqualTo("tenant-content");
         assertThatThrownBy(() -> runner.runFormal(plan, new WorkflowAgentRunInput(
             "short-drama-storyboard", "执行", 8L, 25L, 91L, null, 9L)))
             .isInstanceOf(BusinessException.class).hasMessageContaining("不属于当前团队");

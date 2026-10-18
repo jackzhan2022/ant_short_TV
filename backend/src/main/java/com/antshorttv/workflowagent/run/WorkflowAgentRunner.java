@@ -634,13 +634,20 @@ public class WorkflowAgentRunner {
     }
 
     private List<WorkflowAgentSkillSnapshot> loadSkills(List<String> codes, String agentCode, Long tenantId) {
-        return codes.stream().map(code -> {
+        List<WorkflowAgentSkillSnapshot> system = new ArrayList<>();
+        List<WorkflowAgentSkillSnapshot> tenant = new ArrayList<>();
+        for (String code : codes) {
             WorkflowSkillView skill = skills.detail(code);
+            system.add(new WorkflowAgentSkillSnapshot(skill.code(), skill.name(), skill.revision(), skill.content(),
+                skill.scope(), skill.tenantId()));
             WorkflowSkillView override = skills.findTenantOverride(agentCode, tenantId, code);
-            if (override != null) skill = override;
-            return new WorkflowAgentSkillSnapshot(skill.code(), skill.name(), skill.revision(), skill.content(),
-                skill.scope(), skill.tenantId());
-        }).toList();
+            if (override != null) {
+                tenant.add(new WorkflowAgentSkillSnapshot(override.code(), override.name(), override.revision(),
+                    override.content(), override.scope(), override.tenantId()));
+            }
+        }
+        system.addAll(tenant);
+        return List.copyOf(system);
     }
 
     private String composePrompt(
@@ -653,10 +660,20 @@ public class WorkflowAgentRunner {
             .append(agent.systemPrompt().strip()).append("\n");
         if (!skillSnapshots.isEmpty()) {
             prompt.append("\n# Associated Skills (ordered)\n");
+            boolean layered = skillSnapshots.stream().anyMatch(skill -> "TENANT".equals(skill.scope()));
+            if (layered) {
+                prompt.append("\n系统 Skill 与本租户 Skill 并存，系统优先级为 100，租户优先级为 200。")
+                    .append("先应用系统规则，再应用租户规则；创作规则冲突时以租户规则为准，未冲突的系统规则继续生效。")
+                    .append("工具授权、保存结构和素材引用校验仍由服务端固定协议约束。\n");
+            }
             for (WorkflowAgentSkillSnapshot skill : skillSnapshots) {
                 prompt.append("\n## Skill: ").append(skill.code())
-                    .append(" (revision ").append(skill.revision()).append(")\n\n")
-                    .append(skill.content().strip()).append("\n");
+                    .append(" (revision ").append(skill.revision()).append(")\n\n");
+                if (layered) {
+                    prompt.append("来源：").append("TENANT".equals(skill.scope()) ? "本租户，优先级 200" : "系统，优先级 100")
+                        .append("\n\n");
+                }
+                prompt.append(skill.content().strip()).append("\n");
             }
         }
         return prompt.toString();

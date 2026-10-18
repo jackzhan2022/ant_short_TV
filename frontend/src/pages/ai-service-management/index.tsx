@@ -13,7 +13,7 @@ const AiServiceManagementIndex = () => {
     } else if (
       access.canViewWorkflowAgents ||
       access.canViewWorkflowSkills ||
-      access.canManageTenantWorkflowSkills
+      access.canViewTenantWorkflowSkills
     ) {
       history.replace('/ai-service-management/model-management');
     } else if (access.canViewAiCallLogs) {

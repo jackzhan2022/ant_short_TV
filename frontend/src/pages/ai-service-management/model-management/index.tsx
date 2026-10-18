@@ -61,7 +61,7 @@ const ModelManagementPage = () => {
         children: <WorkflowSkillsPage />,
       });
     }
-    if (access.canManageTenantWorkflowSkills) {
+    if (access.canViewTenantWorkflowSkills) {
       tabs.push({
         key: 'tenant-workflow-skills',
         label: '团队 Skill',
@@ -75,7 +75,7 @@ const ModelManagementPage = () => {
     access.canViewPlatformAiProviders,
     access.canViewWorkflowAgents,
     access.canViewWorkflowSkills,
-    access.canManageTenantWorkflowSkills,
+    access.canViewTenantWorkflowSkills,
   ]);
   const [activeKey, setActiveKey] = useState<ModelManagementTab>();
   const selectedKey = items.some((item) => item.key === activeKey)

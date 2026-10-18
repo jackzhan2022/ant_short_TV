@@ -33,6 +33,7 @@ export default function access(
   return {
     canAdmin: currentUser && currentUser.access === 'admin',
     canManageTenantWorkflowSkills,
+    canViewTenantWorkflowSkills: hasActiveTenant,
     canManageRoles: currentUser && tenantPermissions.includes('ROLE:VIEW'),
     canUseProjectCenter: hasActiveTenant,
     canViewStyleLibrary: Boolean(currentUser),
@@ -56,7 +57,7 @@ export default function access(
       currentUser && tenantPermissions.includes('AI_CALL_LOG:VIEW'),
     canViewAiManagement:
       currentUser &&
-      (canManageTenantWorkflowSkills ||
+      (hasActiveTenant ||
         tenantPermissions.includes('AI_CALL_LOG:VIEW') ||
         platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||

@@ -19,6 +19,10 @@ public class TenantWorkflowSkillRepository {
 
     public List<WorkflowSkillView> listAll() { return select(""); }
 
+    public List<WorkflowSkillView> listForTenant(Long tenantId) {
+        return select(" and skill.tenant_id=?", tenantId);
+    }
+
     public boolean hasOverrides(String code) {
         return jdbc.queryForObject("select count(*) from tenant_workflow_skill where skill_code=?", Integer.class, code) > 0;
     }

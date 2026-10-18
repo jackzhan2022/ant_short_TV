@@ -39,6 +39,7 @@ export type WorkflowSkill = {
   tenantId?: number | null;
   tenantName?: string | null;
   tenantEditable: boolean;
+  priority: number;
 };
 
 export type WorkflowSkillFilters = {

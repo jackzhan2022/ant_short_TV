@@ -49,6 +49,11 @@ const builtinAgentNames = new Map([
   ['script-review', '剧本审核'],
 ]);
 
+const tenantSkillNames = new Map([
+  ['short-drama-storyboard-planning', '整集分镜规划'],
+  ['short-drama-seedance-video-prompt', '视频提示词表达'],
+]);
+
 const starter = `---
 name: my-skill
 description: 描述这个 Skill 提供的方法论
@@ -87,6 +92,9 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
   const [agentFilter, setAgentFilter] = useState<string>();
   const [scopeFilter, setScopeFilter] = useState<'SYSTEM' | 'TENANT'>();
   const [tenantFilter, setTenantFilter] = useState<number>();
+  const [newTenantCode, setNewTenantCode] = useState(
+    'short-drama-storyboard-planning',
+  );
   const [tenantNames, setTenantNames] = useState(new Map<number, string>());
   const requestId = useRef(0);
   const [loading, setLoading] = useState(false);
@@ -206,6 +214,23 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
     }
   };
 
+  const createTenantSkill = () => {
+    const name = tenantSkillNames.get(newTenantCode);
+    if (tenantId === undefined || !name) return;
+    openEditor('create', {
+      code: newTenantCode,
+      name,
+      description: '本团队的分镜创作补充规则',
+      content: `---\nname: ${name}\ndescription: 本团队的分镜创作补充规则\n---\n\n# 团队补充规则\n\n`,
+      revision: 'NEW',
+      scope: 'TENANT',
+      tenantId,
+      priority: 200,
+      tenantEditable: true,
+      referencingAgentCodes: ['short-drama-storyboard'],
+    });
+  };
+
   const canEditRow = (record: WorkflowSkill) =>
     editable &&
     (tenantMode ? record.tenantEditable : record.scope !== 'TENANT');
@@ -247,7 +272,7 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
       }
       message.success(
         tenantMode
-          ? '团队 Skill 已保存，后续分镜生成将优先使用'
+          ? '团队 Skill 已保存，将与系统规则共同生效，团队规则优先'
           : 'Skill 已保存并立即生效',
       );
       setMode(undefined);
@@ -305,6 +330,11 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
           record.scope === 'TENANT'
             ? `${record.tenantName || record.tenantId}（${record.tenantId}）`
             : '系统共享',
+      },
+      {
+        title: '优先级',
+        render: (_, record) =>
+          record.priority ?? (record.scope === 'TENANT' ? 200 : 100),
       },
       {
         title: '引用 Agent',
@@ -413,7 +443,7 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
           showIcon
           title={
             tenantMode
-              ? '团队版本优先于系统版本，仅影响当前团队后续的分镜生成。基础规范和素材引用保持只读，现有素材标签及占位方式继续保留。'
+              ? '仅展示本团队 Skill。生成时系统规则与团队规则并存，团队优先级 200，高于系统优先级 100；未冲突的系统规则继续生效，现有素材标签及占位方式继续保留。'
               : 'Skill 以完整 SKILL.md 文件保存；修改成功后无需发布或重启，后续 Agent 运行立即读取新内容。租户级版本仅由所属团队所有者或管理员维护。'
           }
         />
@@ -443,18 +473,20 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
                 label: `${name}（${value}）`,
               }))}
           />
-          <Select
-            aria-label="按系统内置筛选"
-            placeholder="全部级别"
-            allowClear
-            value={scopeFilter}
-            onChange={setScopeFilter}
-            style={{ width: 150 }}
-            options={[
-              { value: 'SYSTEM', label: '系统内置' },
-              { value: 'TENANT', label: '租户级' },
-            ]}
-          />
+          {!tenantMode && (
+            <Select
+              aria-label="按系统内置筛选"
+              placeholder="全部级别"
+              allowClear
+              value={scopeFilter}
+              onChange={setScopeFilter}
+              style={{ width: 150 }}
+              options={[
+                { value: 'SYSTEM', label: '系统内置' },
+                { value: 'TENANT', label: '租户级' },
+              ]}
+            />
+          )}
           {!tenantMode && (
             <Select
               aria-label="按所属租户筛选"
@@ -476,8 +508,32 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
               icon={<PlusOutlined />}
               onClick={() => openEditor('create')}
             >
-              新增 Skill
+              新增系统 Skill
             </Button>
+          )}
+          {editable && tenantMode && (
+            <>
+              <Select
+                aria-label="新增团队 Skill 类型"
+                value={newTenantCode}
+                onChange={setNewTenantCode}
+                style={{ width: 180 }}
+                options={[...tenantSkillNames].map(([value, label]) => ({
+                  value,
+                  label,
+                  disabled: skills.some((skill) => skill.code === value),
+                }))}
+              />
+              <Button
+                type="primary"
+                aria-label="新增团队 Skill"
+                icon={<PlusOutlined />}
+                onClick={createTenantSkill}
+                disabled={skills.some((skill) => skill.code === newTenantCode)}
+              >
+                新增团队 Skill
+              </Button>
+            </>
           )}
         </Space>
         <Table
@@ -494,7 +550,9 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
       <Drawer
         title={
           mode === 'create'
-            ? '新增 Skill'
+            ? tenantMode
+              ? '新增团队 Skill'
+              : '新增系统 Skill'
             : mode === 'copy'
               ? '复制 Skill'
               : `${mode === 'view' ? '查看' : '编辑'} Skill：${source?.name ?? ''}`
@@ -516,7 +574,7 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
           showIcon
           title={
             tenantMode
-              ? '仅定制当前团队的分镜规则；保存后优先使用团队版本，可恢复系统默认。'
+              ? '仅编辑本团队规则，不修改系统 Skill。两者共同生效，创作规则冲突时以本团队规则为准，可恢复系统默认。'
               : '保存后立即生效；修改会影响所有引用该 Skill 的 Agent。'
           }
           description={

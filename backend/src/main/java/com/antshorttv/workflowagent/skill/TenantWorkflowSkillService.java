@@ -6,9 +6,7 @@ import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.workflowagent.WorkflowAgentProperties;
-import com.antshorttv.workflowagent.agent.StoryboardAgentBootstrap;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -18,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TenantWorkflowSkillService {
+    public static final String NEW_REVISION = "NEW";
     private final TenantContextResolver contexts;
     private final RbacPermissionService permissions;
     private final WorkflowSkillService systemSkills;
@@ -45,23 +44,15 @@ public class TenantWorkflowSkillService {
     }
 
     public List<WorkflowSkillView> list(Long tenantId, String query, String agentCode, String scope) {
-        requireManager(tenantId);
-        List<WorkflowSkillView> result = new ArrayList<>();
-        for (String code : StoryboardAgentBootstrap.SKILLS) {
-            result.add(systemSkills.detail(code));
-            if (TenantStoryboardSkillPolicy.EDITABLE_CODES.contains(code)) {
-                repository.find(tenantId, code).ifPresent(result::add);
-            }
-        }
-        return WorkflowSkillCatalogService.filter(result, query, agentCode, scope, null);
+        contexts.requireActiveMember(tenantId);
+        return WorkflowSkillCatalogService.filter(repository.listForTenant(tenantId), query, agentCode, scope, null);
     }
 
     public WorkflowSkillView detail(Long tenantId, String code) {
-        requireManager(tenantId);
-        if (!StoryboardAgentBootstrap.SKILLS.contains(code)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "团队 Skill 仅支持分镜 Agent。");
-        }
-        return repository.find(tenantId, code).orElseGet(() -> systemSkills.detail(code));
+        contexts.requireActiveMember(tenantId);
+        requireEditable(code);
+        return repository.find(tenantId, code).orElseThrow(() ->
+            new BusinessException(ErrorCode.WORKFLOW_SKILL_NOT_FOUND, "当前团队尚未创建此 Skill。"));
     }
 
     @Transactional
@@ -78,7 +69,8 @@ public class TenantWorkflowSkillService {
         WorkflowSkillView current = repository.find(tenantId, code).orElse(null);
         String revision = UUID.randomUUID().toString();
         if (current == null) {
-            if (!Objects.equals(systemSkills.detail(code).revision(), expectedRevision)) throw conflict();
+            if (!Objects.equals(NEW_REVISION, expectedRevision)) throw conflict();
+            systemSkills.detail(code);
             try {
                 repository.insert(tenantId, document, revision, actor.userId());
             } catch (DuplicateKeyException exception) {

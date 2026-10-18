@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     canEditWorkflowSkills: true,
     canViewWorkflowAgents: true,
     canManageTenantWorkflowSkills: true,
+    canViewTenantWorkflowSkills: true,
   },
   currentTenantId: 7,
   queryTenantSkills: vi.fn(),
@@ -46,9 +47,12 @@ const planning = {
   code: 'short-drama-storyboard-planning',
   name: '整集分镜规划',
   description: '分镜规则',
-  content: '---\nname: 整集分镜规划\ndescription: 分镜规则\n---\n系统正文',
-  revision: 'system-rev',
-  scope: 'SYSTEM',
+  content: '---\nname: 整集分镜规划\ndescription: 分镜规则\n---\n本团队正文',
+  revision: 'tenant-rev',
+  scope: 'TENANT',
+  tenantId: 7,
+  tenantName: '甲团队',
+  priority: 200,
   tenantEditable: true,
   referencingAgentCodes: ['short-drama-storyboard'],
 };
@@ -59,17 +63,10 @@ describe('WorkflowSkillsPage', () => {
     mocks.access.canEditWorkflowSkills = true;
     mocks.access.canViewWorkflowAgents = true;
     mocks.access.canManageTenantWorkflowSkills = true;
+    mocks.access.canViewTenantWorkflowSkills = true;
     mocks.currentTenantId = 7;
     mocks.queryTenantSkills.mockResolvedValue({
-      data: [
-        planning,
-        {
-          ...planning,
-          code: 'short-drama-analysis-foundation',
-          name: '基础规范',
-          tenantEditable: false,
-        },
-      ],
+      data: [planning],
     });
     mocks.queryTenantSkill.mockResolvedValue({ data: planning });
     mocks.updateTenantSkill.mockResolvedValue({ success: true });
@@ -113,6 +110,9 @@ describe('WorkflowSkillsPage', () => {
       </App>,
     );
     expect(await screen.findByText('改写指南')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /新增系统 Skill/ }),
+    ).toBeInTheDocument();
     expect(await screen.findByText('编剧 Agent')).toHaveAttribute(
       'title',
       'screenplay-agent',
@@ -136,7 +136,7 @@ describe('WorkflowSkillsPage', () => {
     );
     await waitFor(() => expect(mocks.querySkills).toHaveBeenCalled());
     expect(
-      screen.queryByRole('button', { name: /新增 Skill/ }),
+      screen.queryByRole('button', { name: /新增系统 Skill/ }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /编辑/ }),
@@ -216,13 +216,13 @@ describe('WorkflowSkillsPage', () => {
     );
   });
 
-  it('customizes only allowed tenant Skills using the current effective revision', async () => {
+  it('edits only its own tenant Skill using its tenant revision', async () => {
     render(
       <App>
         <WorkflowSkillsPage tenantId={7} />
       </App>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: /自定义/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
     const editor = await screen.findByLabelText('完整 SKILL.md');
     fireEvent.change(editor, {
       target: { value: `${planning.content}\n团队规则` },
@@ -233,15 +233,63 @@ describe('WorkflowSkillsPage', () => {
         7,
         planning.code,
         `${planning.content}\n团队规则`,
-        'system-rev',
+        'tenant-rev',
       ),
     );
     expect(mocks.updateSkill).not.toHaveBeenCalled();
     expect(
-      screen.queryByRole('button', { name: /新增 Skill/ }),
+      screen.queryByRole('button', { name: /新增系统 Skill/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '查看' })).toBeInTheDocument();
+    expect(screen.queryByText('基础规范')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('按系统内置筛选')).not.toBeInTheDocument();
+    expect(mocks.querySkill).not.toHaveBeenCalled();
     expect(mocks.queryAgents).not.toHaveBeenCalled();
+  });
+
+  it('creates a tenant supplement without reading any system document', async () => {
+    mocks.queryTenantSkills.mockResolvedValue({ data: [] });
+    render(
+      <App>
+        <WorkflowSkillsPage tenantId={7} />
+      </App>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: '新增团队 Skill' }),
+    );
+    const editor = await screen.findByLabelText('完整 SKILL.md');
+    const draft = `${(editor as HTMLTextAreaElement).value}\n镜头表达偏好`;
+    fireEvent.change(editor, { target: { value: draft } });
+    fireEvent.click(screen.getByRole('button', { name: '保存并立即生效' }));
+    await waitFor(() =>
+      expect(mocks.updateTenantSkill).toHaveBeenCalledWith(
+        7,
+        planning.code,
+        draft,
+        'NEW',
+      ),
+    );
+    expect(mocks.queryTenantSkill).not.toHaveBeenCalled();
+    expect(mocks.querySkill).not.toHaveBeenCalled();
+    expect(mocks.querySkills).not.toHaveBeenCalled();
+  });
+
+  it('lets ordinary members view only tenant content without editing controls', async () => {
+    mocks.access.canManageTenantWorkflowSkills = false;
+    render(
+      <App>
+        <WorkflowSkillsPage tenantId={7} />
+      </App>,
+    );
+    expect(await screen.findByText('甲团队（7）')).toBeInTheDocument();
+    expect(screen.getByText('200')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /编辑|新增|恢复系统默认/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看' }));
+    expect(await screen.findByLabelText('完整 SKILL.md')).toHaveValue(
+      planning.content,
+    );
+    expect(screen.getByLabelText('完整 SKILL.md')).toHaveAttribute('readonly');
   });
 
   it('restores only the selected tenant override', async () => {

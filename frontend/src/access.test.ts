@@ -3,6 +3,18 @@ import access from './access';
 
 describe('access', () => {
   it('limits tenant Skill management to an active owner or administrator', () => {
+    const ordinary = access({
+      currentUser: { userid: '1' },
+      selectedTenant: {
+        membership: { status: 'ACTIVE', memberType: 'MEMBER' },
+        roles: ['MEMBER'],
+      },
+    });
+    expect(ordinary.canViewTenantWorkflowSkills).toBe(true);
+    expect(ordinary.canViewAiManagement).toBe(true);
+    expect(ordinary.canManageTenantWorkflowSkills).toBe(false);
+    expect(ordinary.canViewWorkflowSkills).toBe(false);
+    expect(ordinary.canEditWorkflowSkills).toBe(false);
     const base = {
       currentUser: { userid: '1' },
       platformPermissions: ['PLATFORM_AI_WORKFLOW_SKILL_EDIT'],
