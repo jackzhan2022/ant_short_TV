@@ -144,12 +144,12 @@ class AssetCatalogServiceTest {
         assertThat(variant.path("hasPrompt").asBoolean()).isFalse();
         assertThat(variant.path("imageReady").asBoolean()).isFalse();
     }
-    @Test void oversizedSingleDetailAndTooManyKeysFailExplicitly() {
+    @Test void oversizedSingleDetailFallsBackButTooManyKeysStillFail() {
         var content=json.createObjectNode().put("description","长".repeat(40_000));
         when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of(Map.of(
             "id",1L,"name","徽章","normalized_name","徽章","content_json",content.toString())));
         var args=json.createObjectNode();args.putArray("assetKeys").add("p_1");
-        assertThatThrownBy(()->service.details(context(),args)).hasMessageContaining("单条资产详情");
+        assertThat(service.details(context(),args).path("detailLevel").asText()).isEqualTo("SUMMARY");
         for(int i=2;i<=11;i++) ((com.fasterxml.jackson.databind.node.ArrayNode)args.path("assetKeys")).add("p_"+i);
         assertThatThrownBy(()->service.details(context(),args)).hasMessageContaining("1 到 10");
     }

@@ -511,6 +511,40 @@ class WorkflowAgentRunnerTest {
         }
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void assetDetailsDefaultToFullAndAutomaticSummaryDoesNotConsumeAnotherToolStep(boolean degraded) throws Exception {
+        List<String> executed = new ArrayList<>();
+        var read = lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "本集原文"));
+        var details = lookupWorkflowTool("read_asset_details", executed, (c, a) -> {
+            var response = json.createObjectNode().put("detailLevel", degraded ? "SUMMARY" : "FULL").put("degraded", degraded);
+            var variant = response.putArray("items").addObject().put("assetKey", "c_9")
+                .putArray("variants").addObject().put("variantKey", "v_9").put("name", "白色衬衫")
+                .put("hasPrompt", true).put("contentTruncated", degraded);
+            variant.putObject("content").put("description", "白色衬衫");
+            if (!degraded) ((com.fasterxml.jackson.databind.node.ObjectNode) variant.path("content")).put("prompt", "原有完整提示词");
+            return response;
+        });
+        var save = lookupWorkflowTool("save_episode_assets", executed, (c, a) -> json.createObjectNode().put("saved", true));
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, details, save),
+            List.of("read_current_episode", "read_asset_details", "save_episode_assets"));
+        AtomicInteger rounds = new AtomicInteger();
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            com.antshorttv.ai.AiInvocationRequest request = call.getArgument(0);
+            assertThat(request.textRequest().messages().get(0).content()).contains("默认返回FULL", "自动降级SUMMARY", "hasPrompt=true");
+            if (rounds.incrementAndGet() == 1) return result(null,
+                List.of(new AiToolCall("details", "read_asset_details", "{\"assetKeys\":[\"c_9\"]}")), 1381L);
+            assertThat(request.textRequest().messages()).anySatisfy(message ->
+                assertThat(message.content()).contains("\"detailLevel\":\"" + (degraded ? "SUMMARY" : "FULL") + "\""));
+            return result(null, List.of(new AiToolCall("save", "save_episode_assets", lookupSavePayload())), 1382L);
+        });
+        assertThat(runner.runFormal(lookupInput("short-drama-asset-recognition")).output()).contains("saved");
+        assertThat(executed).containsExactly("read_current_episode", "read_asset_details", "save_episode_assets");
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(any());
+        verify(runs).recordToolStep(org.mockito.ArgumentMatchers.eq(101L), org.mockito.ArgumentMatchers.eq(5),
+            org.mockito.ArgumentMatchers.eq("save_episode_assets"), any(), any());
+    }
+
     private void configureLookupAgent(String code, List<WorkflowToolDefinition> definitions, List<String> authorized) {
         runner = runnerWith(definitions, 30);
         when(agents.loadForRun(code)).thenReturn(new WorkflowAgentRecord(6L, code, "识别测试", "", "先读取，再匹配并保存", 8L,

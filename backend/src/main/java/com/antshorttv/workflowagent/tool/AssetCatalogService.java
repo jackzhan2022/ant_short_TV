@@ -103,59 +103,110 @@ public class AssetCatalogService {
     }
 
     public ObjectNode details(ToolExecutionContext context, JsonNode args) {
-        JsonNode keys=args.path("assetKeys");
-        if (!keys.isArray() || keys.isEmpty() || keys.size()>10) throw invalid("每次读取 1 到 10 个资产 key。");
-        if (keys.size()>1 && !args.path("cursor").asText("").isEmpty()) throw invalid("形态续页必须指定单个资产 key。");
-        ObjectNode result=json.createObjectNode();
-        ArrayNode assets=result.putArray("items");
-        for (JsonNode keyNode:keys) {
-            String key=keyNode.asText();
-            String type=typeOf(key);
-            requireScope(context,type);
-            long id=parseId(key);
-            List<Map<String,Object>> rows=jdbc.queryForList("select id,name,normalized_name,content_json,prompt from "
-                +TABLES.get(type)+" where tenant_id=? and project_id=? and script_id=? and id=? and deleted_at is null",
-                context.tenantId(),context.projectId(),context.scriptId(),id);
-            if(rows.size()!=1) throw invalid("资产 key 不属于当前剧本或已删除。");
-            ObjectNode asset=summary(type,rows.get(0));
-            asset.set("content",parse(rows.get(0).get("content_json")));
-            if(bytes(asset)>BYTE_LIMIT-2048) throw invalid("单条资产详情超过响应预算，请精简资产设定。");
-            long after=cursor(context,args.path("cursor").asText(""),"variant:"+key);
-            List<Map<String,Object>> variants=jdbc.queryForList("""
+        JsonNode keys = args.path("assetKeys");
+        if (!keys.isArray() || keys.isEmpty() || keys.size() > 10) throw invalid("每次读取 1 到 10 个资产 key。");
+        if (keys.size() > 1 && !args.path("cursor").asText("").isEmpty()) throw invalid("形态续页必须指定单个资产 key。");
+        ObjectNode result = json.createObjectNode();
+        result.put("detailLevel", "FULL");
+        result.put("degraded", false);
+        ArrayNode assets = result.putArray("items");
+        for (JsonNode keyNode : keys) {
+            String key = keyNode.asText();
+            String type = typeOf(key);
+            requireScope(context, type);
+            long id = parseId(key);
+            List<Map<String, Object>> rows = jdbc.queryForList("select id,name,normalized_name,content_json,prompt from "
+                + TABLES.get(type) + " where tenant_id=? and project_id=? and script_id=? and id=? and deleted_at is null",
+                context.tenantId(), context.projectId(), context.scriptId(), id);
+            if (rows.size() != 1) throw invalid("资产 key 不属于当前剧本或已删除。");
+            ObjectNode asset = summary(type, rows.get(0));
+            asset.set("content", parse(rows.get(0).get("content_json")));
+            long after = cursor(context, args.path("cursor").asText(""), "variant:" + key);
+            List<Map<String, Object>> variants = jdbc.queryForList("""
                 select id,name,content_json,prompt,is_primary from asset_visual_variant
                 where tenant_id=? and project_id=? and asset_type=? and asset_id=? and deleted_at is null
                   and id>? order by id limit 21
-                """,context.tenantId(),context.projectId(),type,id,after);
-            ArrayNode values=asset.putArray("variants");
-            long last=after;
-            boolean more=false;
-            for(var row:variants) {
-                ObjectNode variant=json.createObjectNode();
-                variant.put("variantKey","v_"+row.get("id"));
-                variant.put("name",String.valueOf(row.get("name")));
-                variant.put("hasPrompt",hasText(row.get("prompt")));
-                variant.put("primary",Boolean.TRUE.equals(row.get("is_primary"))
-                    || row.get("is_primary") instanceof Number n && n.intValue()!=0);
-                variant.set("content",parse(row.get("content_json")));
-                Integer bound=jdbc.queryForObject("""
+                """, context.tenantId(), context.projectId(), type, id, after);
+            ArrayNode values = asset.putArray("variants");
+            long last = after;
+            for (var row : variants.subList(0, Math.min(20, variants.size()))) {
+                ObjectNode variant = json.createObjectNode();
+                variant.put("variantKey", "v_" + row.get("id"));
+                variant.put("name", String.valueOf(row.get("name")));
+                variant.put("hasPrompt", hasText(row.get("prompt")));
+                variant.put("primary", Boolean.TRUE.equals(row.get("is_primary"))
+                    || row.get("is_primary") instanceof Number n && n.intValue() != 0);
+                variant.set("content", parse(row.get("content_json")));
+                Integer bound = jdbc.queryForObject("""
                     select count(*) from asset_visual_variant_episode where tenant_id=? and project_id=?
                     and script_id=? and episode_id=? and asset_type=? and asset_id=? and variant_id=?
                     and retired_at is null and binding_status='ACTIVE'
-                    """,Integer.class,context.tenantId(),context.projectId(),context.scriptId(),
-                    context.episodeId(),type,id,row.get("id"));
-                variant.put("episodeBound",bound!=null && bound>0);
-                if(values.size()>=20 || bytes(result)+bytes(asset)+bytes(variant)>BYTE_LIMIT-2048) {
-                    if(values.isEmpty()) throw invalid("单条形态详情超过响应预算，请逐个资产读取或精简形态设定。");
-                    more=true; break;
-                }
-                values.add(variant);last=((Number)row.get("id")).longValue();
+                    """, Integer.class, context.tenantId(), context.projectId(), context.scriptId(),
+                    context.episodeId(), type, id, row.get("id"));
+                variant.put("episodeBound", bound != null && bound > 0);
+                values.add(variant);
+                last = ((Number) row.get("id")).longValue();
             }
-            asset.put("hasMore",more);
-            asset.put("nextCursor",more?remember(context,"variant:"+key,last):"");
+            boolean more = variants.size() > values.size();
+            asset.put("hasMore", more);
+            asset.put("nextCursor", more ? remember(context, "variant:" + key, last) : "");
             assets.add(asset);
-            if(bytes(result)>BYTE_LIMIT) throw invalid("详情响应过大，请减少每次读取的资产 key。");
         }
+        // Only response size selects the fallback. Scope, cursor, metadata and database errors propagate.
+        return bytes(result) > BYTE_LIMIT - 2048 ? detailSummaries(context, assets) : result;
+    }
+
+    private ObjectNode detailSummaries(ToolExecutionContext context, ArrayNode fullAssets) {
+        ObjectNode result = json.createObjectNode();
+        result.put("detailLevel", "SUMMARY");
+        result.put("degraded", true);
+        result.put("degradationReason", "RESPONSE_SIZE_LIMIT");
+        result.put("notice", "完整详情超过响应预算，已自动返回摘要；长提示词和证据未返回。"
+            + "按 hasMore/nextCursor 续页；hasPrompt=true 的已有提示词不得因省略而重新生成。");
+        ArrayNode assets = result.putArray("items");
+        // Reserve space for every requested identity rather than letting the first asset consume it all.
+        int perAssetBudget = (BYTE_LIMIT - 2048) / fullAssets.size();
+        for (JsonNode fullAsset : fullAssets) {
+            ObjectNode asset = json.createObjectNode();
+            for (String field : List.of("assetKey", "name", "normalizedName", "hasPrompt")) {
+                asset.set(field, fullAsset.path(field).deepCopy());
+            }
+            ObjectNode content = detailSummaryContent(fullAsset.path("content"));
+            asset.set("content", content);
+            asset.put("contentTruncated", !content.equals(fullAsset.path("content")));
+            ArrayNode variants = asset.putArray("variants");
+            long last = 0;
+            for (JsonNode fullVariant : fullAsset.path("variants")) {
+                ObjectNode variant = fullVariant.deepCopy();
+                ObjectNode visual = detailSummaryContent(fullVariant.path("content"));
+                variant.set("content", visual);
+                variant.put("contentTruncated", !visual.equals(fullVariant.path("content")));
+                if (bytes(asset) + bytes(variant) + 120 > perAssetBudget) {
+                    if (variants.isEmpty()) throw invalid("单条形态摘要超过响应预算，请减少每次读取的资产 key。");
+                    break;
+                }
+                variants.add(variant);
+                last = parseId(fullVariant.path("variantKey").asText());
+            }
+            boolean more = fullAsset.path("hasMore").asBoolean()
+                || variants.size() < fullAsset.path("variants").size();
+            asset.put("hasMore", more);
+            asset.put("nextCursor", more ? remember(context, "variant:" + asset.path("assetKey").asText(), last) : "");
+            assets.add(asset);
+        }
+        if (bytes(result) > BYTE_LIMIT) throw invalid("详情摘要响应过大，请减少每次读取的资产 key。");
         return result;
+    }
+
+    private ObjectNode detailSummaryContent(JsonNode content) {
+        ObjectNode summary = json.createObjectNode();
+        String description = content.path("description").asText("");
+        if (description.isBlank()) description = content.path("appearance").asText("");
+        if (!description.isBlank()) {
+            int length = description.codePointCount(0, description.length());
+            summary.put("description", description.substring(0, description.offsetByCodePoints(0, Math.min(120, length))));
+        }
+        return summary;
     }
 
     public ObjectNode candidates(ToolExecutionContext context,String content) {

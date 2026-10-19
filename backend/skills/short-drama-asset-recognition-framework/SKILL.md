@@ -9,7 +9,7 @@ description: Use when recognizing formal characters, looks, physical scenes, pro
 
 调用顺序固定为：先调用 `read_current_episode`；候选目录遗漏或 `hasMore=true` 且没有可信 key 时，必须先检索，并调用 `search_script_assets` 查询全剧本规范名和明确别名，命中后可按需调用 `read_asset_details` 分页读取形态；最后调用 `save_episode_assets`。候选目录只是有界摘要，遗漏不能作为资产不存在的证据。已有可信候选足够时不强制额外检索。
 
-<!-- asset-catalog-protocol:v2 -->
+<!-- asset-catalog-protocol:v3 -->
 ## 批量查重与步数
 
 已有可信候选足够时直接复用，不重复搜索。同一轮先收集全部缺少可信 key 的资产规范名及需要检索的明确别名，优先一次调用 `search_script_assets`，不要按名称逐个调用：
@@ -24,6 +24,12 @@ description: Use when recognizing formal characters, looks, physical scenes, pro
 - 超过 50 项或批量响应超过 32 KiB 时拆成少量批次；单项模式保留给分页或后来发现的遗漏。
 - 候选与匹配信息足够时直接整理保存；只有需要核对形态或视觉设定时才合并调用 `read_asset_details`，不要重复读取已有信息。
 - 每次模型请求和每个工具调用都计执行步数，应合并检索，为 `save_episode_assets` 与必要纠错保留步数。
+
+## 详情读取深度
+
+`read_asset_details` 默认返回完整详情，标记 `detailLevel=FULL`、`degraded=false`。只有完整响应超过既有 32 KiB 响应预算及安全余量时，工具才在同一次调用中自动返回摘要，标记 `detailLevel=SUMMARY`、`degraded=true`、`degradationReason=RESPONSE_SIZE_LIMIT`。
+
+摘要保留资产和形态标识、名称、简短外观描述、是否默认、本集绑定状态和 `hasPrompt`；不返回长提示词和完整证据，`contentTruncated` 标明内容省略。不得将摘要当作完整详情；`hasPrompt=true` 不能因为摘要省略了 `prompt` 而被当成缺少提示词。按 `hasMore`、`nextCursor` 为指定单个资产继续读取后续形态，不重复请求同一页。当前集剧情与新建形态证据仍以当前原文为准。
 
 ## 确定性身份匹配
 

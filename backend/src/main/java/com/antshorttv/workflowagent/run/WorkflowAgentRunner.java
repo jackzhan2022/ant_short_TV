@@ -702,6 +702,9 @@ public class WorkflowAgentRunner {
                 .append("每项包含 assetType 与 query，最多50项，可混合类型；results 与请求顺序对应，保留未命中和歧义。")
                 .append("不要将同一轮清单逐个搜索；只有分页、遗漏或响应超限时补充调用。已有可信候选无需重复查询。")
                 .append("需要详情时合并 read_asset_details，信息足够则直接保存，为保存与必要纠错预留步数。")
+                .append("详情默认返回FULL，仅响应超限时工具自动降级SUMMARY，并明确degraded和contentTruncated。")
+                .append("摘要省略长提示词和证据，不能声称已读取全文；hasPrompt=true不能因prompt未返回而重复生成。")
+                .append("按hasMore/nextCursor读取指定单个资产的后续形态，不重复请求同一页。")
                 .append("基础约束中的唯一保存工具限定最终写入动作，不禁止上述只读检索。")
                 .append("最后必须调用 save_episode_assets，并以保存成功为终止动作；不得以最终文本代替保存。\n");
         }
