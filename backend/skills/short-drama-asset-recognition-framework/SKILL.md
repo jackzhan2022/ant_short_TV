@@ -9,6 +9,22 @@ description: Use when recognizing formal characters, looks, physical scenes, pro
 
 调用顺序固定为：先调用 `read_current_episode`；候选目录遗漏或 `hasMore=true` 且没有可信 key 时，必须先检索，并调用 `search_script_assets` 查询全剧本规范名和明确别名，命中后可按需调用 `read_asset_details` 分页读取形态；最后调用 `save_episode_assets`。候选目录只是有界摘要，遗漏不能作为资产不存在的证据。已有可信候选足够时不强制额外检索。
 
+<!-- asset-catalog-protocol:v2 -->
+## 批量查重与步数
+
+已有可信候选足够时直接复用，不重复搜索。同一轮先收集全部缺少可信 key 的资产规范名及需要检索的明确别名，优先一次调用 `search_script_assets`，不要按名称逐个调用：
+
+```json
+{"queries":[{"assetType":"CHARACTER","query":"原文角色名"},{"assetType":"SCENE","query":"原文场景名"},{"assetType":"PROP","query":"原文道具名"}]}
+```
+
+- `queries` 每批 1 到 50 项，可混合人物、场景、道具类型，不与顶层单项查询参数混用。
+- 返回的 `results` 按请求顺序逐项对应，包含 `assetType`、`query`、`total`、`items`、`hasMore`、`nextCursor`。保留多候选，不自动消歧；规范名和明确别名均精确匹配。
+- `total=0` 且 `hasMore=false` 才表示该查询未命中。分页使用对应结果的 `assetType`、`query`、`nextCursor` 作为单项查询的 `cursor`，不重新查询整份清单。
+- 超过 50 项或批量响应超过 32 KiB 时拆成少量批次；单项模式保留给分页或后来发现的遗漏。
+- 候选与匹配信息足够时直接整理保存；只有需要核对形态或视觉设定时才合并调用 `read_asset_details`，不要重复读取已有信息。
+- 每次模型请求和每个工具调用都计执行步数，应合并检索，为 `save_episode_assets` 与必要纠错保留步数。
+
 ## 确定性身份匹配
 
 资产目录仅为本集候选摘要，未列出不代表不存在。新建前必须调用

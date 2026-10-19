@@ -497,7 +497,11 @@ public class WorkflowAgentRunner {
                         runs.complete(runId, serialized);
                         return new WorkflowAgentRunResult(runId, serialized, modelCalls);
                     }
+                    boolean correctableBatchLookup = "short-drama-asset-recognition".equals(agent.code())
+                        && "search_script_assets".equals(call.code()) && arguments != null
+                        && arguments.has("queries") && normalized.getErrorCode() == ErrorCode.VALIDATION_ERROR;
                     if (definition.failurePolicy() == ToolFailurePolicy.RETURN_TO_MODEL
+                        || correctableBatchLookup
                         || isCorrectableSplitBoundaryFailure(call.code(), normalized)) {
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
                     } else {
@@ -557,7 +561,8 @@ public class WorkflowAgentRunner {
                 + "Agent/Skill 中先读取当前剧集的要求已由服务端完成，不要再次读取。";
             if ("short-drama-asset-recognition".equals(agent.code())) {
                 handoff += "请基于当前剧集正文识别资产，按需调用本次已授权的 search_script_assets"
-                    + " 和 read_asset_details 匹配已有资产，最后调用 save_episode_assets 保存结果。";
+                    + " 和 read_asset_details 匹配已有资产。同一轮待匹配名称优先通过 search_script_assets 的 queries 数组一次批量查重，"
+                    + "已有可信候选不重复查询；必要详情合并读取，最后调用 save_episode_assets 保存结果。";
             } else {
                 handoff += "请基于已提供的当前剧集正文完成本阶段分析，直接调用 "
                     + contract.terminalToolCode() + " 保存结果。";
@@ -693,6 +698,10 @@ public class WorkflowAgentRunner {
                 .append("读取后允许按需使用本次已授权的 search_script_assets 和 read_asset_details，")
                 .append("只用于可信作用域内的资产身份、别名、形态及已有提示词匹配；剧情事实仍只能来自当前剧集。")
                 .append("预加载目录是有界候选，未命中不等于不存在；新建前先检索，遵守 assetScope 与 assetPromptPolicy。")
+                .append("同一轮先收集全部待匹配规范名和明确别名，优先用 search_script_assets 的 queries 数组一次批量查重，")
+                .append("每项包含 assetType 与 query，最多50项，可混合类型；results 与请求顺序对应，保留未命中和歧义。")
+                .append("不要将同一轮清单逐个搜索；只有分页、遗漏或响应超限时补充调用。已有可信候选无需重复查询。")
+                .append("需要详情时合并 read_asset_details，信息足够则直接保存，为保存与必要纠错预留步数。")
                 .append("基础约束中的唯一保存工具限定最终写入动作，不禁止上述只读检索。")
                 .append("最后必须调用 save_episode_assets，并以保存成功为终止动作；不得以最终文本代替保存。\n");
         }

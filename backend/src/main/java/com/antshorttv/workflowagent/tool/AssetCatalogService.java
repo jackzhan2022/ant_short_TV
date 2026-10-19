@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,12 +33,54 @@ public class AssetCatalogService {
     }
 
     public ObjectNode search(ToolExecutionContext context, JsonNode args) {
+        if (args.has("queries")) return searchBatch(context, args);
         String type = args.path("assetType").asText();
         requireScope(context, type);
         String query = AssetIdentityNormalizer.normalize(args.path("query").asText(""));
         int size = Math.max(1, Math.min(50, args.path("pageSize").asInt(50)));
         long after = cursor(context, args.path("cursor").asText(""), type + ":" + query);
-        List<Map<String,Object>> rows = identities(context, type);
+        return searchPage(context, type, query, size, after, identities(context, type));
+    }
+
+    private ObjectNode searchBatch(ToolExecutionContext context, JsonNode args) {
+        JsonNode queries = args.path("queries");
+        if (!queries.isArray() || queries.isEmpty() || queries.size() > 50) {
+            throw invalid("批量检索每次必须提供 1 到 50 个查询。");
+        }
+        for (String field : List.of("assetType", "query", "cursor", "pageSize")) {
+            if (args.has(field)) throw invalid("批量 queries 与单项查询参数不能混用。");
+        }
+        var types = new LinkedHashSet<String>();
+        for (JsonNode query : queries) {
+            if (!query.isObject() || !query.path("assetType").isTextual()
+                || !query.path("query").isTextual() || query.path("query").asText().length() > 200
+                || AssetIdentityNormalizer.normalize(query.path("query").asText()).isBlank()) {
+                throw invalid("批量检索每项必须提供 assetType 和 1 到 200 字的非空 query。");
+            }
+            types.add(query.path("assetType").asText());
+        }
+        // Authorize the entire batch before reading any identities, including mixed scopes.
+        for (String type : types) requireScope(context, type);
+        Map<String, List<Map<String, Object>>> rowsByType = new LinkedHashMap<>();
+        for (String type : types) rowsByType.put(type, identities(context, type));
+        ObjectNode result = json.createObjectNode();
+        ArrayNode results = result.putArray("results");
+        for (JsonNode request : queries) {
+            String type = request.path("assetType").asText();
+            String query = AssetIdentityNormalizer.normalize(request.path("query").asText());
+            ObjectNode page = searchPage(context, type, query, 50, 0, rowsByType.get(type));
+            page.put("assetType", type);
+            page.put("query", request.path("query").asText());
+            results.add(page);
+            if (bytes(result) > BYTE_LIMIT) {
+                throw invalid("批量资产检索响应超过 32 KiB，请减少 queries 数量后重试；不得将未返回结果视为未命中。");
+            }
+        }
+        return result;
+    }
+
+    private ObjectNode searchPage(ToolExecutionContext context, String type, String query,
+                                  int size, long after, List<Map<String, Object>> rows) {
         var matching = rows.stream().filter(row -> query.isEmpty() || matches(row, query)).toList();
         ObjectNode result=json.createObjectNode();
         result.put("total",matching.size());

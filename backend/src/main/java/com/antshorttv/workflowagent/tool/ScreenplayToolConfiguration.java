@@ -11,13 +11,24 @@ public class ScreenplayToolConfiguration {
     @Bean
     WorkflowToolDefinition searchScriptAssetsTool(AssetCatalogService data, ObjectMapper json) {
         ObjectNode input=objectSchema(json);
-        input.putArray("required").add("assetType");
         ObjectNode fields=(ObjectNode)input.path("properties");
         fields.putObject("assetType").put("type","string").putArray("enum").add("CHARACTER").add("SCENE").add("PROP");
         fields.putObject("query").put("type","string").put("maxLength",200);
         fields.putObject("cursor").put("type","string").put("maxLength",100);
         fields.putObject("pageSize").put("type","integer").put("minimum",1).put("maximum",50);
-        return definition("search_script_assets","检索剧本资产","按规范名或明确别名查找当前剧本资产；空查询分页浏览。",
+        ObjectNode queries = fields.putObject("queries");
+        queries.put("type", "array").put("minItems", 1).put("maxItems", 50);
+        ObjectNode queryItem = objectSchema(json);
+        queryItem.putArray("required").add("assetType").add("query");
+        ObjectNode queryFields = (ObjectNode) queryItem.path("properties");
+        queryFields.putObject("assetType").put("type", "string").putArray("enum")
+            .add("CHARACTER").add("SCENE").add("PROP");
+        queryFields.putObject("query").put("type", "string").put("minLength", 1).put("maxLength", 200);
+        queries.set("items", queryItem);
+        return definition("search_script_assets","检索剧本资产",
+            "优先用 queries 数组一次批量查重本轮全部待匹配名称，最多50项，可混合人物、场景、道具；"
+                + "返回按请求顺序对应的 results，每项含 total/items/hasMore/nextCursor。按规范名或明确别名精确匹配，不自动消歧。"
+                + "批量 queries 与单项参数二选一；单项 assetType/query/cursor/pageSize 保留用于分页，空 query 按类型浏览。",
             input,json.createObjectNode().put("type","object"),ToolRiskLevel.READ_ONLY,
             executor(data::search));
     }

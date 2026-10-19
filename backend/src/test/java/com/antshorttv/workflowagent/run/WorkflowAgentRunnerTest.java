@@ -428,6 +428,89 @@ class WorkflowAgentRunnerTest {
         assertThat(executed).containsExactly("read_current_episode", "save_episode_assets", "save_episode_assets");
     }
 
+    @ParameterizedTest
+    @CsvSource({"false,0,5,2", "true,0,7,3", "true,2,11,5"})
+    void eightAssetNamesCanBeBatchMatchedAndSavedWithinTwelveSteps(
+        boolean inspectDetails, int correctiveSaves, int finalStep, int modelRequests
+    ) throws Exception {
+        List<String> executed = new ArrayList<>();
+        var batch = json.createObjectNode();
+        var queries = batch.putArray("queries");
+        for (String name : List.of("周调解员", "林记录员", "百味楼会议室", "胡百德的手机", "对账单", "记事本", "协议", "文件夹")) {
+            String type = queries.size() < 2 ? "CHARACTER" : queries.size() == 2 ? "SCENE" : "PROP";
+            queries.addObject().put("assetType", type).put("query", name);
+        }
+        var read = lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "当前集原文"));
+        var search = lookupWorkflowTool("search_script_assets", executed, (c, a) -> {
+            assertThat(a.path("queries").size()).isEqualTo(8);
+            return json.createObjectNode().set("results", json.createArrayNode());
+        });
+        var details = lookupWorkflowTool("read_asset_details", executed, (c, a) -> json.createObjectNode().put("assetKey", "c_9"));
+        AtomicInteger saves = new AtomicInteger();
+        var save = lookupWorkflowTool("save_episode_assets", executed, (c, a) -> {
+            if (saves.getAndIncrement() < correctiveSaves) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "仅修正证据");
+            return json.createObjectNode().put("saved", true);
+        });
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, search, details, save),
+            List.of("read_current_episode", "search_script_assets", "read_asset_details", "save_episode_assets"));
+        AtomicInteger rounds = new AtomicInteger();
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            com.antshorttv.ai.AiInvocationRequest request = call.getArgument(0);
+            assertThat(request.textRequest().messages().get(0).content()).contains("queries", "批量查重", "预留步数");
+            int round = rounds.incrementAndGet();
+            if (round == 1) return result(null, List.of(new AiToolCall("batch", "search_script_assets", batch.toString())), 1360L + round);
+            if (round == 2 && inspectDetails) return result(null,
+                List.of(new AiToolCall("details", "read_asset_details", "{\"assetKeys\":[\"c_9\"]}")), 1360L + round);
+            return result(null, List.of(new AiToolCall("save-" + round, "save_episode_assets", lookupSavePayload())), 1360L + round);
+        });
+        assertThat(runner.runFormal(lookupInput("short-drama-asset-recognition")).output()).contains("saved");
+        assertThat(executed.stream().filter("search_script_assets"::equals).count()).isEqualTo(1);
+        verify(invocation, org.mockito.Mockito.times(modelRequests)).invokeText(any());
+        verify(runs).recordToolStep(org.mockito.ArgumentMatchers.eq(101L), org.mockito.ArgumentMatchers.eq(finalStep),
+            org.mockito.ArgumentMatchers.eq("save_episode_assets"), any(), any());
+        var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
+        verify(runs).start(start.capture());
+        assertThat(start.getValue().maxSteps()).isEqualTo(12);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"VALIDATION_ERROR,true", "FORBIDDEN,false", "WORKFLOW_AGENT_TOOL_INVALID,false"})
+    void onlyBatchValidationErrorsCanReturnToTheModelForSmallerBatches(String errorCode, boolean recoverable) throws Exception {
+        List<String> executed = new ArrayList<>();
+        AtomicInteger searches = new AtomicInteger();
+        var read = lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "当前集原文"));
+        var search = lookupWorkflowTool("search_script_assets", executed, (c, a) -> {
+            if (searches.getAndIncrement() == 0) throw new BusinessException(ErrorCode.valueOf(errorCode), "批量响应超限，请减少 queries");
+            return json.createObjectNode().set("results", json.createArrayNode());
+        });
+        var save = lookupWorkflowTool("save_episode_assets", executed, (c, a) -> json.createObjectNode().put("saved", true));
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, search, save),
+            List.of("read_current_episode", "search_script_assets", "save_episode_assets"));
+        AtomicInteger rounds = new AtomicInteger();
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            int round = rounds.incrementAndGet();
+            if (round <= 2) {
+                if (round == 2) {
+                    com.antshorttv.ai.AiInvocationRequest request = call.getArgument(0);
+                    assertThat(request.textRequest().messages()).anySatisfy(m ->
+                        assertThat(m.content()).contains("批量响应超限"));
+                }
+                return result(null, List.of(new AiToolCall("batch-" + round, "search_script_assets",
+                    "{\"queries\":[{\"assetType\":\"PROP\",\"query\":\"手机\"}]}")), 1370L + round);
+            }
+            return result(null, List.of(new AiToolCall("save", "save_episode_assets", lookupSavePayload())), 1373L);
+        });
+        if (recoverable) {
+            assertThat(runner.runFormal(lookupInput("short-drama-asset-recognition")).output()).contains("saved");
+            assertThat(executed).containsExactly("read_current_episode", "search_script_assets", "search_script_assets", "save_episode_assets");
+        } else {
+            assertThatThrownBy(() -> runner.runFormal(lookupInput("short-drama-asset-recognition")))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.valueOf(errorCode)));
+            assertThat(executed).containsExactly("read_current_episode", "search_script_assets");
+            verify(invocation, org.mockito.Mockito.times(1)).invokeText(any());
+        }
+    }
+
     private void configureLookupAgent(String code, List<WorkflowToolDefinition> definitions, List<String> authorized) {
         runner = runnerWith(definitions, 30);
         when(agents.loadForRun(code)).thenReturn(new WorkflowAgentRecord(6L, code, "识别测试", "", "先读取，再匹配并保存", 8L,

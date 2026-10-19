@@ -21,7 +21,8 @@ class AssetRecognitionSkillContractTest {
             .contains("时间", "气氛", "不同角色", "不同形态", "可见")
             .contains("衍生道具", "道具关系", "证据", "当前剧集")
             .contains("read_current_episode", "search_script_assets", "read_asset_details")
-            .contains("候选", "遗漏", "先检索", "保存前检查", "save_episode_assets");
+            .contains("候选", "遗漏", "先检索", "保存前检查", "save_episode_assets")
+            .contains("queries", "results", "批量查重", "不要按名称逐个调用", "保留步数");
     }
 
     @Test
