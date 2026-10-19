@@ -26,3 +26,9 @@
 工作台阶段累计实际净扣费 1000.00000000 积分，本轮新增净扣费 0，预占 0。范围为 `tenant_id=39 AND workbench_project_id=50`，实扣使用 `settled_points-refunded_points`。自动分镜仍在继续；历史第 57 集分镜的数据库死锁失败与本改动独立。
 
 完整验收及进度保存在本地忽略目录 `outputs/asset-detail-release-online-verification.json`、`outputs/asset-detail-release-verification.json`、`outputs/asset-detail-retry-current.json`。
+
+## 最终验收
+
+17:50:51 再次只读确认：主执行 178613 已于 17:47:12 成功结束，概要与资产识别均为 70/70。本轮新增的 5 集自动分镜全部成功；项目累计 69 集、564 条分镜。第 57 集分镜保留此前数据库死锁的失败记录，未把它计作本轮新错误。项目无运行中任务。
+
+阶段实际净扣费仍为 1000.00000000，预占 0，本轮新增净扣费 0。现场截图保存在本机 `outputs/project50-detail-fallback-success.png`，展示修复后第 18 集成功生成的分镜。
