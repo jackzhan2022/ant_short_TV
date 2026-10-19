@@ -52,10 +52,12 @@ class AiExecutionCoreServiceTest {
         long tenant = 88101L;
         long model = 988100L;
         for (int index = 0; index < 5; index++) {
-            var generation = imageExecution(tenant, model + index, "PENDING", "full-" + index);
+            var generation = imageExecution(tenant, model + (index == 4 ? 1 : 0), "PENDING", "full-" + index);
             assertThat(claimService.claim(generation.id, "generation-" + index, LocalDateTime.now(), Duration.ofMinutes(5)))
                 .isNotNull();
         }
+        assertThat(jdbc.queryForObject("select count(*) from ai_execution_task where tenant_id=? and requested_model_id=? and status='RUNNING'",
+            Integer.class, tenant, model)).isEqualTo(4);
         var publication = imageExecution(tenant, model, "RENDERING", "full-publication");
         assertThat(claimService.claim(publication.id, "publish-full", LocalDateTime.now(), Duration.ofMinutes(5))).isNotNull();
         var blocked = imageExecution(tenant, model, "PENDING", "still-full");
