@@ -16,7 +16,11 @@ class StoryboardAgentBootstrapTest {
     @Autowired private JdbcTemplate jdbc;
 
     @Test
+    @org.springframework.transaction.annotation.Transactional
     void createsEnabledStoryboardAgentWithOrderedSkillsAndTools() throws Exception {
+        // V136 seeds a compatible model, so application startup already creates the agent.
+        agents.delete(StoryboardAgentBootstrap.AGENT_CODE);
+        jdbc.update("update ai_model set is_default = false where service_type = 'TEXT'");
         Long providerId = jdbc.queryForObject("select min(id) from ai_provider", Long.class);
         jdbc.update("""
             insert into ai_model

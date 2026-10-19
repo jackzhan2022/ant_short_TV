@@ -725,7 +725,7 @@ public class StoryboardToolDataService {
             entity.createdBy = material.createdBy == null ? context.userId() : material.createdBy;
             entities.add(entity);
         }
-        referenceRepository.replace(context.tenantId(), context.projectId(), storyboardId, entities, now);
+        referenceRepository.insertNew(context.tenantId(), context.projectId(), storyboardId, entities, now);
     }
 
     private long insert(ToolExecutionContext context, Episode episode, ValidatedStoryboard board) {

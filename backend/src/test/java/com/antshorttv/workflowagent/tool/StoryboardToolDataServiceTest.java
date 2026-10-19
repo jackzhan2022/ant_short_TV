@@ -26,6 +26,9 @@ class StoryboardToolDataServiceTest {
     @Autowired private EpisodeSourceSegmenter segmenter;
     @Autowired private StoryboardPromptCompiler promptCompiler;
 
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    private com.antshorttv.script.StoryboardAssetReferenceRepository referenceRepository;
+
     private long tenantId;
     private long projectId;
     private long scriptId;
@@ -63,6 +66,16 @@ class StoryboardToolDataServiceTest {
                visual_description, status, created_by, created_at, updated_at)
             values (?, ?, ?, ?, 1, 1, 1, 'old storyboard', 'CONFIRMED', ?, now(), now())
             """, tenantId, projectId, scriptId, episodeId, userId);
+    }
+
+    @Test
+    void freshStoryboardsDoNotRetireReferencesForNewIds() throws Exception {
+        JsonNode saved = service.saveEpisodeStoryboards(context(), validPayload());
+        assertThat(saved.path("storyboardCount").asInt()).isGreaterThan(0);
+        org.mockito.Mockito.verify(referenceRepository, org.mockito.Mockito.never()).replace(
+            org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(),
+            org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyList(),
+            org.mockito.ArgumentMatchers.any());
     }
 
     @Test

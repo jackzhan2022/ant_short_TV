@@ -355,7 +355,7 @@ public class ScreenplayToolConfiguration {
     }
 
     @Bean
-    WorkflowToolDefinition saveEpisodeStoryboardsTool(StoryboardToolDataService data, ObjectMapper json) {
+    WorkflowToolDefinition saveEpisodeStoryboardsTool(StoryboardSaveService data, ObjectMapper json) {
         ObjectNode output = objectSchema(json);
         output.putArray("required").add("saved").add("episodeId")
             .add("storyboardCount").add("storyboardIds");

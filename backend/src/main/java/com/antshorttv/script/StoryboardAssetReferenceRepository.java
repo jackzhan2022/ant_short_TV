@@ -116,6 +116,18 @@ public class StoryboardAssetReferenceRepository {
                set retired_at = ?, updated_at = ?
              where tenant_id = ? and project_id = ? and storyboard_id = ? and retired_at is null
             """, now, now, tenantId, projectId, storyboardId);
+        insertNew(tenantId, projectId, storyboardId, replacements, now);
+    }
+
+    /** For freshly inserted storyboard IDs; no existing reference range needs retirement. */
+    @Transactional
+    public void insertNew(
+        Long tenantId,
+        Long projectId,
+        Long storyboardId,
+        List<StoryboardAssetReferenceEntity> replacements,
+        LocalDateTime now
+    ) {
         if (replacements == null) return;
         for (StoryboardAssetReferenceEntity entity : replacements) {
             entity.id = null;
