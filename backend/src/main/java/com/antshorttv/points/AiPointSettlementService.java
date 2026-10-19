@@ -24,6 +24,7 @@ public class AiPointSettlementService {
     private static final int POINT_SCALE = 8;
 
     private final JdbcTemplate jdbc;
+    private final WorkbenchPointPolicy workbenchPolicy;
     private final AiPointPolicyVersionMapper policyVersionMapper;
     private final AiPointPolicyComponentMapper policyComponentMapper;
     private final AiPointReservationMapper reservationMapper;
@@ -40,9 +41,11 @@ public class AiPointSettlementService {
         AiPointLedgerMapper ledgerMapper,
         PointAccountingService accountingService,
         ObjectMapper objectMapper,
-        AiModelPointPriceComponentMapper modelPointPriceComponentMapper
+        AiModelPointPriceComponentMapper modelPointPriceComponentMapper,
+        WorkbenchPointPolicy workbenchPolicy
     ) {
         this.jdbc = jdbc;
+        this.workbenchPolicy = workbenchPolicy;
         this.policyVersionMapper = policyVersionMapper;
         this.policyComponentMapper = policyComponentMapper;
         this.reservationMapper = reservationMapper;
@@ -86,6 +89,7 @@ public class AiPointSettlementService {
                 AiAccountingJson.read(reservation.dimensionsJson))
                 .multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate)
                 .setScale(POINT_SCALE, RoundingMode.HALF_UP);
+        extra = workbenchPolicy.reserve(reservation, extra);
         // Each call adds only its own budget; released unused budgets from prior calls stay released.
         if (extra.signum() > 0 && !reserveFunds(reservation, extra)) {
             throw new BusinessException(ErrorCode.TEAM_POINTS_INSUFFICIENT, "团队积分不足，无法预占本次模型调用预算。");
@@ -131,7 +135,12 @@ public class AiPointSettlementService {
         BigDecimal required = calculateModelPointPrice(
             command.pointPriceVersionId(), command.authorizedUsage(), command.dimensions());
         required = required.multiply(command.discountRate()).setScale(8, RoundingMode.HALF_UP);
-        accountingService.ensureAccount(command.tenantId());
+        if (workbenchPolicy.project(command.tenantId(), command.executionId()) != null) {
+            accountingService.lockAccount(command.tenantId());
+        } else {
+            accountingService.ensureAccount(command.tenantId());
+        }
+        required = workbenchPolicy.reserve(command.tenantId(), command.executionId(), required);
         // Resolve eligibility from the frozen price's model, never from a client supplied scene.
         boolean trialEligible = jdbc.queryForObject("""
             select count(*) from ai_model_point_price_version v join ai_model m on m.id=v.model_id
@@ -158,6 +167,11 @@ public class AiPointSettlementService {
         reservation.policyVersionId = policy == null ? null : policy.id;
         reservation.pointPriceVersionId = command.pointPriceVersionId();
         reservation.discountRate = command.discountRate();
+        reservation.workbenchProjectId = workbenchPolicy.project(command.tenantId(), command.executionId());
+        if (reservation.workbenchProjectId != null) {
+            reservation.workbenchBaselinePoints = BigDecimal.ZERO;
+            reservation.workbenchAssessedPoints = BigDecimal.ZERO;
+        }
         reservation.trialEligible = trialEligible;
         reservation.trialReservedPoints = trialReserved;
         reservation.trialSettledPoints = BigDecimal.ZERO;
@@ -195,6 +209,7 @@ public class AiPointSettlementService {
             AiAccountingJson.read(reservation.dimensionsJson)
         ).multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate)
             .setScale(POINT_SCALE, RoundingMode.HALF_UP);
+        required = workbenchPolicy.reserve(reservation, required);
         if (!reserveFunds(reservation, required)) {
             throw new BusinessException(ErrorCode.TEAM_POINTS_INSUFFICIENT, "团队积分不足，请充值后再重试 AI 任务。");
         }
@@ -243,11 +258,13 @@ public class AiPointSettlementService {
             : calculateModelPointPrice(reservation.pointPriceVersionId,
                 actualUsage == null ? Map.of() : actualUsage,
                 AiAccountingJson.read(reservation.dimensionsJson)).multiply(reservation.discountRate == null ? BigDecimal.ONE : reservation.discountRate).setScale(8, RoundingMode.HALF_UP);
-        if (cumulative) actual = actual.subtract(reservation.settledPoints).max(BigDecimal.ZERO);
+        BigDecimal calculatedActual = actual;
+        actual = workbenchPolicy.settlement(reservation, calculatedActual, cumulative);
         BigDecimal outstanding = reservation.reservedPoints
             .subtract(reservation.settledPoints)
             .subtract(reservation.releasedPoints);
         BigDecimal overage = actual.subtract(outstanding).max(BigDecimal.ZERO);
+        if (overage.signum() > 0) releaseSharedWorkbenchBudget(reservation, overage, idempotencyKey);
         if (overage.signum() > 0 && !incrementalReserve(reservation, overage, idempotencyKey)) {
             reservation.status = "SETTLEMENT_REVIEW_REQUIRED";
             reservation.updatedAt = LocalDateTime.now();
@@ -265,6 +282,7 @@ public class AiPointSettlementService {
         reservation.trialReservedPoints = BigDecimal.ZERO;
         reservation.trialSettledPoints = reservation.trialSettledPoints.add(trialConsumed);
         accountingService.settleFunds(reservation.tenantId, outstanding, released, actual);
+        workbenchPolicy.recordSettlement(reservation, calculatedActual, cumulative);
         reservation.status = "SETTLED";
         reservation.settledPoints = reservation.settledPoints.add(actual);
         reservation.releasedPoints = reservation.releasedPoints.add(released);
@@ -417,6 +435,26 @@ public class AiPointSettlementService {
         return true;
     }
 
+    private void releaseSharedWorkbenchBudget(AiPointReservationEntity target, BigDecimal amount, String key) {
+        for (Long sourceId : workbenchPolicy.sharedBudgetReservations(target)) {
+            if (amount.signum() == 0) break;
+            AiPointReservationEntity source = reservationMapper.selectByIdForUpdate(sourceId);
+            String transferKey = key + ":shared-budget:" + sourceId;
+            if (ledgerExists(source, transferKey)) continue;
+            BigDecimal released = source.reservedPoints.subtract(source.settledPoints).subtract(source.releasedPoints).min(amount);
+            BigDecimal trial = source.trialReservedPoints.min(released);
+            accountingService.restoreTrialFunds(source.tenantId, trial);
+            accountingService.releaseFunds(source.tenantId, released);
+            source.trialReservedPoints = source.trialReservedPoints.subtract(trial);
+            source.releasedPoints = source.releasedPoints.add(released);
+            source.releasedAt = LocalDateTime.now();
+            source.updatedAt = source.releasedAt;
+            reservationMapper.updateById(source);
+            recordLedger(source, "RELEASE", released, null, null, transferKey);
+            amount = amount.subtract(released);
+        }
+    }
+
     private boolean incrementalReserve(
         AiPointReservationEntity reservation,
         BigDecimal overage,
@@ -476,6 +514,17 @@ public class AiPointSettlementService {
     }
 
     private AiPointReservationEntity requireReservationForUpdate(Long reservationId) {
+        AiPointReservationEntity existing = requireReservation(reservationId);
+        Long workbenchProject = workbenchPolicy.project(existing.tenantId, existing.executionId);
+        if (workbenchProject != null) {
+            accountingService.lockAccount(existing.tenantId);
+            AiPointReservationEntity current = reservationMapper.selectByIdForUpdate(reservationId);
+            if (current.workbenchProjectId == null) {
+                current.workbenchProjectId = workbenchProject;
+                reservationMapper.updateById(current);
+            }
+            return current;
+        }
         jdbc.queryForObject("select id from ai_point_reservation where id = ? for update", Long.class, reservationId);
         return requireReservation(reservationId);
     }

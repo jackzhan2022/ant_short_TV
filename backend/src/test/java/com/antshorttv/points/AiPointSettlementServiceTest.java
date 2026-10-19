@@ -463,6 +463,170 @@ class AiPointSettlementServiceTest {
         }
     }
 
+    @Test
+    void workbenchPreviewsReserveAndSettleAtTwentyPercentWithPackageDiscount() {
+        account(910L, "3000"); fixedPolicy("workbench", "200");
+        var r = workbenchReservation(910L, 50L, "script_analysis", "discount", "0.5");
+        assertThat(r.reservedPoints).isEqualByComparingTo("20");
+        service.authorizeUsage(r.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "discount-more");
+        var settled = service.settleCumulative(r.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), 1L, 1L, "discount-settle");
+        assertThat(settled.settledPoints).isEqualByComparingTo("40");
+        assertThat(accountValue(910L, "balance")).isEqualByComparingTo("2960");
+        assertThat(service.reconcile(910L).matches()).isTrue();
+    }
+
+    @Test
+    void analysisStoryboardsAndRetriesShareOneProjectCap() {
+        account(911L, "5000"); fixedPolicy("workbench", "4000");
+        var a = workbenchReservation(911L, 50L, "script_analysis", "cap-analysis", "1");
+        var b = workbenchReservation(911L, 50L, "storyboard_breakdown", "cap-storyboard", "1");
+        assertThat(a.reservedPoints.add(b.reservedPoints)).isEqualByComparingTo("1000");
+        service.settle(a.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 1L, 1L, "cap-analysis-settle");
+        service.settle(b.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 2L, 2L, "cap-storyboard-settle");
+        service.reserveRetry(a.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "cap-retry");
+        service.authorizeUsage(a.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "cap-retry-call");
+        service.settleCumulative(a.id, Map.of(AiUsageMetric.CALL, new BigDecimal("3")), 3L, 3L, "cap-retry-settle");
+        assertThat(accountValue(911L, "total_consumed")).isEqualByComparingTo("1000");
+        assertThat(accountValue(911L, "reserved_balance")).isZero();
+        assertThat(service.reconcile(911L).matches()).isTrue();
+    }
+
+    @Test
+    void concurrentWorkbenchChargesCannotExceedOneThousand() throws Exception {
+        account(912L, "5000"); fixedPolicy("workbench", "4000");
+        var pool = Executors.newFixedThreadPool(2); var start = new CountDownLatch(1);
+        try {
+            Future<?> a = pool.submit(() -> finishConcurrentWorkbench(start, "script_analysis", "parallel-a"));
+            Future<?> b = pool.submit(() -> finishConcurrentWorkbench(start, "storyboard_breakdown", "parallel-b"));
+            start.countDown(); a.get(30, java.util.concurrent.TimeUnit.SECONDS); b.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        } finally { pool.shutdownNow(); }
+        assertThat(accountValue(912L, "total_consumed")).isEqualByComparingTo("1000");
+        assertThat(accountValue(912L, "reserved_balance")).isZero();
+        assertThat(service.reconcile(912L).matches()).isTrue();
+    }
+
+    private void finishConcurrentWorkbench(CountDownLatch start, String scene, String key) {
+        try { start.await(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        var r = workbenchReservation(912L, 50L, scene, key, "1");
+        service.settle(r.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), 1L, 1L, key + ":settle");
+    }
+
+    @Test
+    void capIsPerProjectAndOtherTextScenesKeepTheirPrice() {
+        account(913L, "20000"); fixedPolicy("workbench", "6000");
+        var a = workbenchReservation(913L, 50L, "script_analysis", "project-a", "1");
+        var b = workbenchReservation(913L, 51L, "storyboard_breakdown", "project-b", "1");
+        var c = workbenchReservation(913L, 50L, "script_generate", "outside", "1");
+        assertThat(a.reservedPoints).isEqualByComparingTo("1000");
+        assertThat(b.reservedPoints).isEqualByComparingTo("1000");
+        assertThat(c.reservedPoints).isEqualByComparingTo("6000");
+    }
+
+    @Test
+    void cumulativeWorkbenchUsageIsNotChargedTwice() {
+        account(914L, "3000"); fixedPolicy("workbench", "200");
+        var r = workbenchReservation(914L, 50L, "script_analysis", "cumulative", "1");
+        service.settleCumulative(r.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 1L, 1L, "cumulative-one");
+        service.authorizeUsage(r.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "cumulative-extra");
+        var settled = service.settleCumulative(r.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), 2L, 2L, "cumulative-two");
+        service.settleCumulative(r.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), 2L, 2L, "cumulative-two");
+        assertThat(settled.settledPoints).isEqualByComparingTo("80");
+        assertThat(service.reconcile(914L).matches()).isTrue();
+    }
+
+    @Test
+    void retryDiscountsOnlyNewUsageAndKeepsHistoricalCharges() {
+        account(915L, "3000"); fixedPolicy("workbench", "200");
+        var r = workbenchReservation(915L, 50L, "script_generate", "historical", "1");
+        service.settleCumulative(r.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 1L, 1L, "historical-original");
+        jdbc.update("update ai_execution_task set scene='script_analysis' where id=?", r.executionId);
+        jdbc.update("update ai_point_reservation set scene='script_analysis' where id=?", r.id);
+        service.reserveRetry(r.id, Map.of(), "historical-retry");
+        service.authorizeUsage(r.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "historical-call");
+        var settled = service.settleCumulative(r.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), 2L, 2L, "historical-new");
+        assertThat(settled.settledPoints).isEqualByComparingTo("240");
+        assertThat(accountValue(915L, "total_consumed")).isEqualByComparingTo("240");
+        assertThat(service.reconcile(915L).matches()).isTrue();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void anotherCallsPendingBudgetDoesNotMakeCompletedUsageFreeBeforeTheCap(boolean trialOnly) {
+        account(916L, "1000"); fixedPolicy("workbench", "5000");
+        if (trialOnly) {
+            trialModel("workbench", "TEXT");
+            jdbc.update("update team_point_account set trial_balance=1000 where tenant_id=916");
+        }
+        var analysis = workbenchReservation(916L, 50L, "script_analysis", "pending-analysis", "1");
+        var storyboard = workbenchReservation(916L, 50L, "storyboard_breakdown", "pending-storyboard", "1");
+        assertThat(storyboard.reservedPoints).isZero();
+        var first = service.settle(storyboard.id, Map.of(AiUsageMetric.CALL, new BigDecimal("0.1")), 1L, 1L, "pending-storyboard-settle");
+        assertThat(first.status).isEqualTo("SETTLED");
+        service.settle(analysis.id, Map.of(AiUsageMetric.CALL, new BigDecimal("0.2")), 2L, 2L, "pending-analysis-settle");
+        assertThat(accountValue(916L, "total_consumed")).isEqualByComparingTo("300");
+        assertThat(accountValue(916L, "reserved_balance")).isZero();
+        assertThat(accountValue(916L, "trial_balance")).isEqualByComparingTo(trialOnly ? "700" : "0");
+        assertThat(service.reconcile(916L).matches()).isTrue();
+    }
+
+    @Test
+    void differentTenantsWithTheSameProjectIdHaveIndependentCaps() {
+        account(917L, "3000"); account(918L, "3000"); fixedPolicy("workbench", "6000");
+        var a = workbenchReservation(917L, 50L, "script_analysis", "tenant-a", "1");
+        var b = workbenchReservation(918L, 50L, "script_analysis", "tenant-b", "1");
+        assertThat(a.reservedPoints).isEqualByComparingTo("1000");
+        assertThat(b.reservedPoints).isEqualByComparingTo("1000");
+    }
+
+    @Test
+    void concurrentCallsOnOneAnalysisKeepAllReservationsAndSettleOnce() throws Exception {
+        account(919L, "3000"); fixedPolicy("workbench", "1000");
+        var r = workbenchReservation(919L, 50L, "script_analysis", "same-analysis", "1");
+        var pool = Executors.newFixedThreadPool(2); var start = new CountDownLatch(1);
+        try {
+            var a = pool.submit(() -> authorizeConcurrentCall(start, r.id, "same-analysis-a"));
+            var b = pool.submit(() -> authorizeConcurrentCall(start, r.id, "same-analysis-b"));
+            start.countDown(); a.get(30, java.util.concurrent.TimeUnit.SECONDS); b.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        } finally { pool.shutdownNow(); }
+        assertThat(accountValue(919L, "reserved_balance")).isEqualByComparingTo("600");
+        service.settleCumulative(r.id, Map.of(AiUsageMetric.CALL, new BigDecimal("3")), 1L, 1L, "same-analysis-settle");
+        assertThat(accountValue(919L, "total_consumed")).isEqualByComparingTo("600");
+        assertThat(accountValue(919L, "reserved_balance")).isZero();
+        assertThat(service.reconcile(919L).matches()).isTrue();
+    }
+
+    private void authorizeConcurrentCall(CountDownLatch start, Long reservationId, String key) {
+        try { start.await(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+        service.authorizeUsage(reservationId, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), key);
+    }
+
+    @Test
+    void refundDoesNotMakeTheNextCumulativeSettlementRebillPreviouslyWaivedUsage() {
+        account(920L, "5000"); fixedPolicy("workbench", "4000");
+        var a = workbenchReservation(920L, 50L, "script_analysis", "waived-a", "1");
+        var b = workbenchReservation(920L, 50L, "storyboard_breakdown", "waived-b", "1");
+        service.settleCumulative(a.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 1L, 1L, "waived-a-settle");
+        service.settleCumulative(b.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 2L, 2L, "waived-b-settle");
+        service.refund(a.id, "waived-a-refund");
+        service.reserveRetry(b.id, Map.of(), "waived-b-retry");
+        var unchanged = service.settleCumulative(b.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), 3L, 3L, "waived-same-usage");
+        assertThat(unchanged.settledPoints).isEqualByComparingTo("200");
+        service.authorizeUsage(b.id, Map.of(AiUsageMetric.CALL, BigDecimal.ONE), "waived-new-call");
+        var next = service.settleCumulative(b.id, Map.of(AiUsageMetric.CALL, new BigDecimal("2")), 4L, 4L, "waived-new-usage");
+        assertThat(next.settledPoints).isEqualByComparingTo("1000");
+        assertThat(accountValue(920L, "total_consumed").subtract(accountValue(920L, "total_refunded")))
+            .isEqualByComparingTo("1000");
+        assertThat(service.reconcile(920L).matches()).isTrue();
+    }
+
+    private AiPointReservationEntity workbenchReservation(Long tenant, Long project, String scene, String key, String discount) {
+        var task = executionService.create(new AiExecutionCreateCommand(tenant, 2L, project, scene, "TEXT",
+            "SCRIPT_ANALYSIS_TASK", project, modelId("workbench"), "SUBMIT", key, "trace-" + key, true, null));
+        return service.reserve(new AiPointReservationCommand(tenant, 2L, task.id, 1, scene,
+            "SCRIPT_ANALYSIS_TASK", project, modelId("workbench"), "TEXT", Map.of(AiUsageMetric.CALL, BigDecimal.ONE),
+            Map.of(), pointVersions.get("workbench"), new BigDecimal(discount), key + ":reserve"));
+    }
+
     private AiPointReservationCommand command(Long tenantId, Long executionId, String key) {
         return new AiPointReservationCommand(
             tenantId, 2L, executionId, 1, "script_generate", "SCRIPT_OPERATION", executionId,

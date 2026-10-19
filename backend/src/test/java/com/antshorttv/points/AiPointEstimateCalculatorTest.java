@@ -49,6 +49,23 @@ class AiPointEstimateCalculatorTest {
     }
 
     @Test
+    void workbenchEstimateAppliesTwentyPercentAfterTheFrozenPackageDiscount() {
+        var billing = mock(AiModelBillingResolver.class);
+        var settlements = mock(AiPointSettlementService.class);
+        var entitlements = mock(CommercialEntitlementResolver.class);
+        var reservation = new AiPointReservationEntity();
+        reservation.pointPriceVersionId = 3L; reservation.discountRate = new BigDecimal("0.5"); reservation.trialEligible = true;
+        var usage = Map.of(AiUsageMetric.CALL, BigDecimal.ONE);
+        when(settlements.calculateModelPoints(3L, usage, Map.of())).thenReturn(new BigDecimal("200"));
+        var plan = new AiPointEstimatePlan("剧本分析", 9L, usage, Map.of(), true).workbench(50L).frozen(reservation);
+        var result = new AiPointEstimateCalculator(billing, settlements, entitlements).calculate(7L, plan);
+        assertThat(result.points()).isEqualByComparingTo("20");
+        assertThat(plan.projectId()).isEqualTo(50L);
+        assertThat(plan.workbench()).isTrue();
+        verifyNoInteractions(billing, entitlements);
+    }
+
+    @Test
     void aMissingPriceCannotBePresentedAsAFreeOperation() {
         var billing=mock(AiModelBillingResolver.class);
         var settlements=mock(AiPointSettlementService.class);

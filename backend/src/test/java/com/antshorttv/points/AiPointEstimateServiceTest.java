@@ -34,15 +34,17 @@ class AiPointEstimateServiceTest {
     final AiExecutionService executions=mock(AiExecutionService.class);
     final AiPointEstimateCalculator calculator=mock(AiPointEstimateCalculator.class);
     final ObjectMapper json=new ObjectMapper();
+    final WorkbenchPointPolicy workbench=mock(WorkbenchPointPolicy.class);
     final AiPointEstimateService service=new AiPointEstimateService(jdbc,tenants,permissions,
         mock(ProjectAiConfigService.class),mock(AiModelRouter.class),images,videos,batches,
         mock(ReviewWorkbenchService.class),mock(VideoDecompositionService.class),mock(ProductionTaskService.class),
         mock(AiExecutionAccessService.class),executions,mock(AiPointReservationMapper.class),
         mock(AiModelPointPriceVersionMapper.class),mock(AiModelPointPriceComponentMapper.class),
-        mock(WorkflowAgentRunner.class),calculator,json);
+        mock(WorkflowAgentRunner.class),calculator,json,workbench);
 
     @BeforeEach
     void setUp() {
+        when(workbench.estimateRemaining(anyLong(), any())).thenReturn(new BigDecimal("1000"));
         when(tenants.requireActiveMember(7L)).thenReturn(new TenantContext(1L,7L,2L,"OWNER"));
         when(jdbc.queryForList(contains("team_point_account"),eq(7L))).thenReturn(List.of(
             Map.of("balance",new BigDecimal("100"),"trial_balance",new BigDecimal("90"))));
@@ -51,6 +53,63 @@ class AiPointEstimateServiceTest {
             return new AiPointEstimateCalculator.Line(plan.label(),plan.modelId(),20L,
                 plan.usage().get(AiUsageMetric.CALL),plan.estimated(),plan.trialEligible());
         });
+    }
+
+    @Test
+    void allLinesForTheSameWorkbenchProjectShareItsRemainingCap() {
+        when(workbench.estimateRemaining(7L, 3L)).thenReturn(new BigDecimal("350"));
+        when(images.pointEstimateRequest(eq(7L), eq(3L), any())).thenReturn(plan("分析", "300").workbench(3L));
+        var result = service.estimate(7L, List.of(
+            new AiPointEstimateService.Operation("/api/projects/3/ai-image-tasks", json.createObjectNode()),
+            new AiPointEstimateService.Operation("/api/projects/3/ai-image-tasks", json.createObjectNode())));
+        assertThat(result.estimatedPoints()).isEqualByComparingTo("350");
+        assertThat(result.lines().get(0).points()).isEqualByComparingTo("300");
+        assertThat(result.lines().get(1).points()).isEqualByComparingTo("50");
+        assertThat(result.notice()).contains("20%", "1000");
+        verify(workbench, times(1)).estimateRemaining(7L, 3L);
+        verifyNoInteractions(executions);
+    }
+
+    @Test
+    void workbenchCapDoesNotReduceUnrelatedItemsInTheSameEstimate() {
+        when(workbench.estimateRemaining(7L, 3L)).thenReturn(BigDecimal.ZERO);
+        when(images.pointEstimateRequest(eq(7L), eq(3L), any())).thenReturn(plan("分析", "200").workbench(3L));
+        when(images.pointEstimateRequest(eq(7L), eq(4L), any())).thenReturn(plan("图片", "40"));
+        var result = service.estimate(7L, List.of(
+            new AiPointEstimateService.Operation("/api/projects/3/ai-image-tasks", json.createObjectNode()),
+            new AiPointEstimateService.Operation("/api/projects/4/ai-image-tasks", json.createObjectNode())));
+        assertThat(result.estimatedPoints()).isEqualByComparingTo("40");
+        assertThat(result.lines().get(0).points()).isZero();
+        assertThat(result.lines().get(1).points()).isEqualByComparingTo("40");
+    }
+
+    @Test
+    void separateNewProjectPlansDoNotShareOneNullProjectCeiling() {
+        var configs = (ProjectAiConfigService) org.springframework.test.util.ReflectionTestUtils.getField(service, "configs");
+        when(configs.resolveModelId(7L, null, "TEXT")).thenReturn(9L);
+        var versions = (AiModelPointPriceVersionMapper) org.springframework.test.util.ReflectionTestUtils.getField(service, "pointVersions");
+        var version = new AiModelPointPriceVersionEntity(); version.id = 20L;
+        when(versions.selectEffective(eq(9L), any())).thenReturn(version);
+        var components = (AiModelPointPriceComponentMapper) org.springframework.test.util.ReflectionTestUtils.getField(service, "components");
+        var component = new AiModelPointPriceComponentEntity(); component.metric = "CALL";
+        component.unitSize = BigDecimal.ONE; component.pointRate = BigDecimal.ONE;
+        when(components.selectByVersion(20L)).thenReturn(List.of(component));
+        var agent = mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);
+        when(agent.maxTokens()).thenReturn(1024); when(agent.systemPrompt()).thenReturn("system");
+        var runner = (WorkflowAgentRunner) org.springframework.test.util.ReflectionTestUtils.getField(service, "agents");
+        when(runner.freezeFormal(anyString(), eq(7L))).thenReturn(
+            new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent, List.of()));
+        when(calculator.calculate(eq(7L), any())).thenAnswer(call -> {
+            AiPointEstimatePlan plan = call.getArgument(1);
+            return new AiPointEstimateCalculator.Line(plan.label(), plan.modelId(), 20L,
+                new BigDecimal("800"), true, true);
+        });
+        var data = json.createObjectNode().put("initialScriptContent", "第一集：测试剧本");
+        var result = service.estimate(7L, List.of(new AiPointEstimateService.Operation("/api/projects", data),
+            new AiPointEstimateService.Operation("/api/projects", data)));
+        assertThat(result.estimatedPoints()).isEqualByComparingTo("2000");
+        assertThat(result.lines().stream().map(AiPointEstimateCalculator.Line::points).reduce(BigDecimal.ZERO, BigDecimal::add))
+            .isEqualByComparingTo("2000");
     }
 
     AiPointEstimatePlan plan(String label, String points) {
@@ -134,6 +193,8 @@ class AiPointEstimateServiceTest {
         assertThat(captured.getValue().modelId()).isEqualTo(9L);
         assertThat(captured.getValue().frozenPointPriceVersionId()).isEqualTo(30L);
         assertThat(captured.getValue().frozenDiscountRate()).isEqualByComparingTo("0.5");
+        assertThat(captured.getValue().workbench()).isTrue();
+        assertThat(captured.getValue().projectId()).isEqualTo(3L);
         assertThat(captured.getValue().usage()).containsKeys(AiUsageMetric.INPUT_TOKEN,AiUsageMetric.OUTPUT_TOKEN);
         var versions=(AiModelPointPriceVersionMapper)org.springframework.test.util.ReflectionTestUtils.getField(service,"pointVersions");
         verifyNoInteractions(versions);

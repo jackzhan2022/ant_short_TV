@@ -29,6 +29,7 @@ public class AiPointEstimateCalculator {
             ? entitlements.resolveGlobalDiscount(tenantId, at).discountRate() : plan.frozenDiscountRate();
         BigDecimal points = settlements.calculateModelPoints(version, plan.usage(), plan.dimensions())
             .multiply(discount).setScale(8, RoundingMode.HALF_UP);
+        if (plan.workbench()) points = WorkbenchPointPolicy.discounted(points);
         return new Line(plan.label(), plan.modelId(), version, points, plan.estimated(), plan.trialEligible());
     }
 

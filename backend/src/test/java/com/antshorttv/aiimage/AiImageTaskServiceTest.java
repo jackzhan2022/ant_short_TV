@@ -160,7 +160,8 @@ class AiImageTaskServiceTest {
             JdbcTemplate jdbc = mock(JdbcTemplate.class);
             AiPointSettlementService settlements = new AiPointSettlementService(
                 jdbc, mock(AiPointPolicyVersionMapper.class), mock(AiPointPolicyComponentMapper.class),
-                reservations, ledger, accounting, new ObjectMapper(), mock(AiModelPointPriceComponentMapper.class)
+                reservations, ledger, accounting, new ObjectMapper(), mock(AiModelPointPriceComponentMapper.class),
+                new com.antshorttv.points.WorkbenchPointPolicy(jdbc)
             );
             service = new AiImageTaskService(
                 tenants, projects, mock(ProjectPermissionGuard.class), router, mock(ProjectAiConfigService.class),

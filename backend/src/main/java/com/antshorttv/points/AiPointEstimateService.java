@@ -52,6 +52,7 @@ public class AiPointEstimateService {
     private final WorkflowAgentRunner agents;
     private final AiPointEstimateCalculator calculator;
     private final ObjectMapper json;
+    private final WorkbenchPointPolicy workbenchPolicy;
     @org.springframework.beans.factory.annotation.Value("${review.workflow.deep-unit-characters:24000}")
     private int reviewUnitCharacters = 24000;
     @org.springframework.beans.factory.annotation.Value("${review.workflow.deep-unit-overlap:1200}")
@@ -63,11 +64,12 @@ public class AiPointEstimateService {
         ProductionTaskService productionTasks, AiExecutionAccessService executionAccess, AiExecutionService executions,
         AiPointReservationMapper reservations, AiModelPointPriceVersionMapper pointVersions,
         AiModelPointPriceComponentMapper components, WorkflowAgentRunner agents,
-        AiPointEstimateCalculator calculator, ObjectMapper json) {
+        AiPointEstimateCalculator calculator, ObjectMapper json, WorkbenchPointPolicy workbenchPolicy) {
         this.jdbc=jdbc; this.tenants=tenants; this.permissions=permissions; this.configs=configs; this.router=router;
         this.images=images; this.videos=videos; this.imageBatches=imageBatches; this.reviews=reviews;
         this.decomposition=decomposition; this.productionTasks=productionTasks; this.executionAccess=executionAccess;
         this.executions=executions; this.reservations=reservations; this.pointVersions=pointVersions;
+        this.workbenchPolicy=workbenchPolicy;
         this.components=components; this.agents=agents; this.calculator=calculator; this.json=json;
     }
 
@@ -75,8 +77,27 @@ public class AiPointEstimateService {
     public Estimate estimate(Long tenantId, List<Operation> operations) {
         tenants.requireActiveMember(tenantId);
         List<AiPointEstimatePlan> plans = new ArrayList<>();
-        for (var operation : operations) plans.addAll(plan(tenantId, operation));
-        List<AiPointEstimateCalculator.Line> lines = plans.stream().map(p -> calculator.calculate(tenantId, p)).toList();
+        List<AiPointEstimateCalculator.Line> lines = new ArrayList<>();
+        Map<String, BigDecimal> remainingByProject = new HashMap<>();
+        int operationIndex = 0;
+        for (var operation : operations) {
+            var operationPlans = plan(tenantId, operation);
+            plans.addAll(operationPlans);
+            String newProjectScope = "new:" + operationIndex++;
+            for (var plan : operationPlans) {
+                var line = calculator.calculate(tenantId, plan);
+                if (plan.workbench()) {
+                    String scope = plan.projectId() == null ? newProjectScope : "project:" + plan.projectId();
+                    BigDecimal remaining = remainingByProject.computeIfAbsent(scope,
+                        ignored -> workbenchPolicy.estimateRemaining(tenantId, plan.projectId()));
+                    BigDecimal points = line.points().min(remaining);
+                    remainingByProject.put(scope, remaining.subtract(points));
+                    line = new AiPointEstimateCalculator.Line(line.label(), line.modelId(), line.pointPriceVersionId(),
+                        points, line.estimated(), line.trialEligible());
+                }
+                lines.add(line);
+            }
+        }
         BigDecimal total = lines.stream().map(AiPointEstimateCalculator.Line::points).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal paid = lines.stream().filter(line -> !line.trialEligible())
             .map(AiPointEstimateCalculator.Line::points).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -85,7 +106,9 @@ public class AiPointEstimateService {
         BigDecimal trial = accounts.isEmpty() ? BigDecimal.ZERO : decimal(accounts.get(0).get("trial_balance"));
         return new Estimate(total, available, available.subtract(trial),
             total.compareTo(available) <= 0 && paid.compareTo(available.subtract(trial)) <= 0,
-            lines, "文本按当前上下文及输出预算估算，视频按计费预算估算；实际按模型用量结算，未使用的预占积分会释放。自动分析包含后续自动分镜的预估；技术重试产生的新调用另按实际用量计费。");
+            lines, "文本按当前上下文及输出预算估算，视频按计费预算估算；实际按模型用量结算，未使用的预占积分会释放。自动分析包含后续自动分镜的预估；技术重试产生的新调用另按实际用量计费。"
+                + (plans.stream().anyMatch(AiPointEstimatePlan::workbench)
+                    ? "工作台剧本分析与分镜按套餐折扣后积分的20%计费，同一项目本阶段累计最多1000积分（含已扣费与重试）；达到上限后不再追加扣费。" : ""));
     }
 
     private List<AiPointEstimatePlan> plan(Long tenant, Operation operation) {
@@ -145,6 +168,12 @@ public class AiPointEstimateService {
 
     private List<AiPointEstimatePlan> projectPlan(Long tenant, Long project, String path, JsonNode data,
                                                 Long frozenModel, AiPointReservationEntity reservation) {
+        return projectPlans(tenant, project, path, data, frozenModel, reservation).stream()
+            .map(plan -> plan.inProject(project)).toList();
+    }
+
+    private List<AiPointEstimatePlan> projectPlans(Long tenant, Long project, String path, JsonNode data,
+                                                 Long frozenModel, AiPointReservationEntity reservation) {
         permissions.require(tenant, project, "AI_SERVICE:USE");
         if ("ai-image-tasks".equals(path)) return List.of(images.pointEstimateRequest(tenant, project, data));
         if (path.matches("ai-image-tasks/\\d+/regenerate")) return List.of(images.pointEstimateExisting(tenant, project, pathId(path, 1)));
@@ -214,7 +243,7 @@ public class AiPointEstimateService {
             plans.add(textPlan(tenant, "分集资产识别", model, body, "short-drama-asset-recognition", 3, reservation));
             if (!hasStoryboard(tenant, project, number(episode, "id"))) plans.add(storyboard(tenant, model, body));
         }
-        return plans;
+        return plans.stream().map(plan -> plan.inProject(project)).toList();
     }
 
     private List<AiPointEstimatePlan> assetExtraction(Long tenant, Long project, Long model) {
@@ -249,6 +278,7 @@ public class AiPointEstimateService {
         }
         var result = tokenPlan(label, model, context.getBytes(StandardCharsets.UTF_8).length + 1024L, output, calls,
             reservation == null ? null : reservation.pointPriceVersionId);
+        if (WorkbenchPointPolicy.includesAgent(agentCode)) result = result.workbench(null);
         return reservation == null ? result : result.frozen(reservation);
     }
 
