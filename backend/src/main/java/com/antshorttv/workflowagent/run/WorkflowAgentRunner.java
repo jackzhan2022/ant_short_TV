@@ -446,10 +446,16 @@ public class WorkflowAgentRunner {
                         if (!correctable || assetSaveCorrections >= ASSET_SAVE_CORRECTIONS) throw normalized;
                         assetSaveCorrections++;
                         messages.add(AiChatMessage.toolResult(call.id(), writeError(normalized)));
+                        for (int skipped = callIndex + 1; skipped < calls.size(); skipped++) {
+                            messages.add(AiChatMessage.toolResult(calls.get(skipped).id(), writeError(
+                                new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
+                                    "本轮资产保存校验失败，后续工具调用未执行。"))));
+                        }
                         messages.add(AiChatMessage.user(
                             "保存失败。仅修正错误中指出的字段并再次调用 save_episode_assets；"
                                 + "五个数组必须始终存在，不得删除有效资产或清空数组来绕过校验。"
-                                + "不得再次读取正文或其他上下文；优先使用当前预加载 sourceSegments 中的"
+                                + "不得再次读取正文；如需核对已有资产，可按需调用本次已授权的 search_script_assets"
+                                + " 和 read_asset_details；优先使用当前预加载 sourceSegments 中的"
                                 + " evidenceRef: {segmentId: \"S0001\"} 和 usageEvidenceRef，"
                                 + "segmentId 必须实际存在且支持对应证据；证据不得编造。"));
                         break;
@@ -548,9 +554,14 @@ public class WorkflowAgentRunner {
             runs.recordToolStep(runId, toolStep, toolCode, "{}", serialized);
             context.runState().recordSuccess(toolCode);
             String handoff = "服务端已完成 read_current_episode，并已记录当前剧集的版本校验信息。"
-                + "Agent/Skill 中先读取当前剧集的要求已由服务端完成，不要再次读取。"
-                + "请基于已提供的当前剧集正文完成本阶段分析，直接调用 "
-                + contract.terminalToolCode() + " 保存结果。";
+                + "Agent/Skill 中先读取当前剧集的要求已由服务端完成，不要再次读取。";
+            if ("short-drama-asset-recognition".equals(agent.code())) {
+                handoff += "请基于当前剧集正文识别资产，按需调用本次已授权的 search_script_assets"
+                    + " 和 read_asset_details 匹配已有资产，最后调用 save_episode_assets 保存结果。";
+            } else {
+                handoff += "请基于已提供的当前剧集正文完成本阶段分析，直接调用 "
+                    + contract.terminalToolCode() + " 保存结果。";
+            }
             if ("short-drama-asset-recognition".equals(agent.code())) {
                 handoff += "优先使用当前预加载 sourceSegments 中的 evidenceRef: {segmentId: \"S0001\"}"
                     + " 和 usageEvidenceRef 引用证据；segmentId 必须实际存在且支持对应资产或用途。"
@@ -676,6 +687,15 @@ public class WorkflowAgentRunner {
                 prompt.append(skill.content().strip()).append("\n");
             }
         }
+        if ("short-drama-asset-recognition".equals(agent.code())) {
+            prompt.append("\n# 资产识别工具执行协议\n")
+                .append("服务端已完成唯一正文读取 read_current_episode，不要再次读取正文。")
+                .append("读取后允许按需使用本次已授权的 search_script_assets 和 read_asset_details，")
+                .append("只用于可信作用域内的资产身份、别名、形态及已有提示词匹配；剧情事实仍只能来自当前剧集。")
+                .append("预加载目录是有界候选，未命中不等于不存在；新建前先检索，遵守 assetScope 与 assetPromptPolicy。")
+                .append("基础约束中的唯一保存工具限定最终写入动作，不禁止上述只读检索。")
+                .append("最后必须调用 save_episode_assets，并以保存成功为终止动作；不得以最终文本代替保存。\n");
+        }
         return prompt.toString();
     }
 
@@ -704,9 +724,17 @@ public class WorkflowAgentRunner {
         String agentCode,
         WorkflowAgentRunContract contract
     ) {
-        if ("short-drama-asset-recognition".equals(agentCode)
-            || "short-drama-episode-summary".equals(agentCode)) {
-            // The host has already read the episode; only the stage's authorized save remains.
+        if ("short-drama-asset-recognition".equals(agentCode)) {
+            // Preloading replaces the source read, not the bounded catalog's lookup tools.
+            return allowedTools.stream()
+                .filter(tool -> contract.isTerminal(tool.code())
+                    || "search_script_assets".equals(tool.code())
+                    || "read_asset_details".equals(tool.code()))
+                .map(this::providerTool)
+                .toList();
+        }
+        if ("short-drama-episode-summary".equals(agentCode)) {
+            // The host has already read the episode; only the summary save remains.
             return allowedTools.stream()
                 .filter(tool -> contract.isTerminal(tool.code()))
                 .map(this::providerTool)

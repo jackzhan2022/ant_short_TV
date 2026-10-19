@@ -401,7 +401,7 @@ public class ScreenplayToolDataService {
         context.runState().put("currentEpisodeFingerprint", fingerprint);
         context.runState().put("currentEpisodeContentHash", sha256(content));
         context.runState().put("currentEpisodeContent", content);
-        AssetCatalogService catalogs = new AssetCatalogService(jdbc, json);
+        AssetCatalogService catalogs = new AssetCatalogService(jdbc, json, permissionGuard);
         ObjectNode candidateCatalog = catalogs.candidates(context, content);
         ArrayNode characters = catalogs.speakerNames(context);
         // Analysis precedes asset extraction; text classification must not depend on its results.

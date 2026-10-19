@@ -12,12 +12,53 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class AssetCatalogServiceTest {
     private final JdbcTemplate jdbc=mock(JdbcTemplate.class);
     private final ObjectMapper json=new ObjectMapper();
-    private final AssetCatalogService service=new AssetCatalogService(jdbc,json);
+    private final com.antshorttv.rbac.ProjectPermissionGuard permissionGuard=mock(com.antshorttv.rbac.ProjectPermissionGuard.class);
+    private final AssetCatalogService service=new AssetCatalogService(jdbc,json,permissionGuard);
     private ToolExecutionContext context() {
         var c=new ToolExecutionContext(1L,2L,3L,4L,5L,6L,null,7L,Set.of("SCRIPT:VIEW"),null,new WorkflowToolRunState());
         c.runState().put("assetScope","PROP");
         return c;
     }
+    @Test void authorizedInteractiveSearchDoesNotNeedAClaimedBackgroundPermission() {
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(props());
+        var c = new ToolExecutionContext(1L,2L,3L,4L,5L,6L,null,7L,Set.of(),null,new WorkflowToolRunState());
+        c.runState().put("assetScope","PROP");
+        var result = service.search(c,json.createObjectNode().put("assetType","PROP").put("query","双环徽章"));
+        assertThat(result.path("items").get(0).path("assetKey").asText()).isEqualTo("p_215");
+        verify(permissionGuard).require(1L,3L,"SCRIPT:VIEW");
+    }
+
+    @Test void authorizedInteractiveDetailsUsesTheCurrentUsersProjectPermission() {
+        when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(call ->
+            call.<String>getArgument(0).contains("from prop_asset") ? List.of(props().get(0)) : List.of());
+        var c = new ToolExecutionContext(1L,2L,3L,4L,5L,6L,null,7L,Set.of(),null,new WorkflowToolRunState());
+        c.runState().put("assetScope","PROP");
+        var args=json.createObjectNode();args.putArray("assetKeys").add("p_1");
+        assertThat(service.details(c,args).path("items").get(0).path("assetKey").asText()).isEqualTo("p_1");
+        verify(permissionGuard).require(1L,3L,"SCRIPT:VIEW");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"SEARCH","DETAILS"})
+    void claimedPermissionWithoutTrustedExecutionCannotBypassProjectAuthorization(String operation) {
+        doThrow(new com.antshorttv.common.BusinessException(com.antshorttv.common.ErrorCode.FORBIDDEN,"denied"))
+            .when(permissionGuard).require(1L,3L,"SCRIPT:VIEW");
+        var args=json.createObjectNode().put("assetType","PROP");args.putArray("assetKeys").add("p_1");
+        assertThatThrownBy(() -> {
+            if(operation.equals("SEARCH")) service.search(context(),args); else service.details(context(),args);
+        }).isInstanceOfSatisfying(com.antshorttv.common.BusinessException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(com.antshorttv.common.ErrorCode.FORBIDDEN));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void completeTrustedBackgroundExecutionKeepsItsServerGrantedPermission() {
+        when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(props());
+        var c=new ToolExecutionContext(1L,2L,3L,4L,5L,6L,null,7L,100L,101L,1,Set.of("SCRIPT:VIEW"),null,new WorkflowToolRunState());
+        c.runState().put("assetScope","PROP");
+        assertThat(service.search(c,json.createObjectNode().put("assetType","PROP")).path("items").isEmpty()).isFalse();
+        verifyNoInteractions(permissionGuard);
+    }
+
     private List<Map<String,Object>> props() {
         return IntStream.rangeClosed(1,215).mapToObj(i->Map.<String,Object>of(
             "id",(long)i,"name","道具"+i,"normalized_name","道具"+i,

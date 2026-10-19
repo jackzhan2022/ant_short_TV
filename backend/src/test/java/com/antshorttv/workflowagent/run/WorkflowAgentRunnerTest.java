@@ -219,7 +219,7 @@ class WorkflowAgentRunnerTest {
         "short-drama-asset-recognition,save_episode_assets,true",
         "short-drama-asset-recognition,save_episode_assets,false"
     })
-    void preloadedEpisodeStagesExposeOnlyTheirSaveAndAnnounceReadCompletion(
+    void preloadedStagesWithoutLookupAuthorizationExposeOnlyTheirSaveAndAnnounceReadCompletion(
         String agentCode, String saveCode, boolean stableContext
     ) {
         List<String> executed = new ArrayList<>();
@@ -262,6 +262,201 @@ class WorkflowAgentRunnerTest {
         assertThat(executed).containsExactly("read_current_episode");
         verify(invocation).invokeText(any());
         verify(runs).complete(org.mockito.ArgumentMatchers.eq(101L), any());
+    }
+
+    @Test
+    void assetRecognitionSearchesInspectsAndSavesWhenThePreloadedCatalogIsIncomplete() throws Exception {
+        List<String> executed = new ArrayList<>();
+        var read = lookupWorkflowTool("read_current_episode", executed, (context, args) -> {
+            var output = json.createObjectNode().put("content", "测试角色进入房间。");
+            output.putObject("assetCatalog").putObject("pages").putObject("characters").put("hasMore", true);
+            return output;
+        });
+        var search = lookupWorkflowTool("search_script_assets", executed, (context, args) -> {
+            assertThat(args.path("query").asText()).isEqualTo("测试角色");
+            var output = json.createObjectNode();
+            output.putArray("items").addObject().put("assetKey", "c_9").put("name", "测试角色");
+            return output;
+        });
+        var details = lookupWorkflowTool("read_asset_details", executed, (context, args) -> {
+            assertThat(args.path("assetKeys").get(0).asText()).isEqualTo("c_9");
+            return json.createObjectNode().put("assetKey", "c_9").put("existingLook", "白色衬衫");
+        });
+        var save = lookupWorkflowTool("save_episode_assets", executed, (context, args) -> {
+            assertThat(args.path("characters").get(0).path("assetKey").asText()).isEqualTo("c_9");
+            return json.createObjectNode().put("saved", true);
+        });
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, search, details, save, tool("read_project_context")),
+            List.of("read_current_episode", "search_script_assets", "read_asset_details", "save_episode_assets", "read_project_context"));
+        AtomicInteger round = new AtomicInteger();
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            com.antshorttv.ai.AiInvocationRequest request = call.getArgument(0);
+            assertThat(request.textRequest().tools()).extracting(com.antshorttv.ai.AiToolDefinition::code)
+                .containsExactly("search_script_assets", "read_asset_details", "save_episode_assets");
+            assertThat(request.textRequest().maxTokens()).isEqualTo(32768);
+            assertThat(request.textRequest().messages().get(0).content())
+                .contains("资产识别工具执行协议", "search_script_assets", "read_asset_details", "剧情事实仍只能来自当前剧集");
+            int current = round.incrementAndGet();
+            if (current == 1) {
+                String handoff = request.textRequest().messages().get(request.textRequest().messages().size() - 1).content();
+                assertThat(handoff).contains("按需", "search_script_assets", "read_asset_details").doesNotContain("直接调用 save_episode_assets");
+                return result(null, List.of(new AiToolCall("search", "search_script_assets", "{\"assetType\":\"CHARACTER\",\"query\":\"测试角色\"}")), 1301L);
+            }
+            if (current == 2) return result(null, List.of(new AiToolCall("details", "read_asset_details", "{\"assetKeys\":[\"c_9\"]}")), 1302L);
+            return result(null, List.of(new AiToolCall("save", "save_episode_assets", lookupSavePayload())), 1303L);
+        });
+        var result = runner.runFormal(lookupInput("short-drama-asset-recognition"));
+        assertThat(result.output()).contains("saved");
+        assertThat(executed).containsExactly("read_current_episode", "search_script_assets", "read_asset_details", "save_episode_assets");
+        verify(invocation, org.mockito.Mockito.times(3)).invokeText(any());
+        var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
+        verify(runs).start(start.capture());
+        assertThat(start.getValue().promptSnapshot()).contains("资产识别工具执行协议");
+        verify(runs).complete(org.mockito.ArgumentMatchers.eq(101L), any());
+    }
+
+    @Test
+    void assetSaveCorrectionCanReadAuthorizedDetailsBeforeRetryingTheSave() throws Exception {
+        List<String> executed = new ArrayList<>(); var attempts = new AtomicInteger();
+        var read = lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "测试角色"));
+        var search = lookupWorkflowTool("search_script_assets", executed, (c, a) -> json.createObjectNode().put("assetKey", "c_9"));
+        var details = lookupWorkflowTool("read_asset_details", executed, (c, a) -> json.createObjectNode().put("assetKey", "c_9"));
+        var save = lookupWorkflowTool("save_episode_assets", executed, (c, a) -> {
+            if (attempts.incrementAndGet() == 1) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请核对已有形态");
+            return json.createObjectNode().put("saved", true);
+        });
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, search, details, save),
+            List.of("read_current_episode", "search_script_assets", "read_asset_details", "save_episode_assets"));
+        AtomicInteger round = new AtomicInteger();
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            com.antshorttv.ai.AiInvocationRequest request = call.getArgument(0);
+            int current = round.incrementAndGet();
+            if (current == 1) return result(null, List.of(new AiToolCall("search", "search_script_assets", "{}")), 1311L);
+            if (current == 3) {
+                assertThat(request.textRequest().messages().get(request.textRequest().messages().size() - 1).content())
+                    .contains("search_script_assets", "read_asset_details").doesNotContain("不得再次读取正文或其他上下文");
+                return result(null, List.of(new AiToolCall("details", "read_asset_details", "{\"assetKeys\":[\"c_9\"]}")), 1313L);
+            }
+            return result(null, List.of(new AiToolCall("save" + current, "save_episode_assets", lookupSavePayload())), 1310L + current);
+        });
+        runner.runFormal(lookupInput("short-drama-asset-recognition"));
+        assertThat(attempts).hasValue(2);
+        assertThat(executed).containsExactly("read_current_episode", "search_script_assets", "save_episode_assets", "read_asset_details", "save_episode_assets");
+        verify(invocation, org.mockito.Mockito.times(4)).invokeText(any());
+        verify(runs).complete(org.mockito.ArgumentMatchers.eq(101L), any());
+    }
+
+    @Test
+    void episodeSummaryDoesNotExposeAssetLookupsEvenWhenTheyAreConfigured() throws Exception {
+        List<String> executed = new ArrayList<>();
+        var definitions = List.of(lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "当前剧集")),
+            tool("search_script_assets"), tool("read_asset_details"), lookupWorkflowTool("save_episode_summary", executed, (c, a) -> json.createObjectNode().put("saved", true)));
+        configureLookupAgent("short-drama-episode-summary", definitions,
+            List.of("read_current_episode", "search_script_assets", "read_asset_details", "save_episode_summary"));
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            com.antshorttv.ai.AiInvocationRequest request = call.getArgument(0);
+            assertThat(request.textRequest().tools()).extracting(com.antshorttv.ai.AiToolDefinition::code).containsExactly("save_episode_summary");
+            return result(null, List.of(new AiToolCall("save", "save_episode_summary", "{}")), 1321L);
+        });
+        runner.runFormal(lookupInput("short-drama-episode-summary"));
+        assertThat(executed).containsExactly("read_current_episode", "save_episode_summary");
+    }
+
+    @Test
+    void missingLookupAuthorizationStillRejectsAHallucinatedSearch() throws Exception {
+        List<String> executed = new ArrayList<>();
+        var read = lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "当前剧集"));
+        var search = lookupWorkflowTool("search_script_assets", executed, (c, a) -> json.createObjectNode());
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, search, tool("save_episode_assets")),
+            List.of("read_current_episode", "save_episode_assets"));
+        when(invocation.invokeText(any())).thenReturn(result(null, List.of(new AiToolCall("search", "search_script_assets", "{}")), 1331L));
+        assertThatThrownBy(() -> runner.runFormal(lookupInput("short-drama-asset-recognition")))
+            .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.WORKFLOW_AGENT_TOOL_UNAUTHORIZED));
+        assertThat(executed).containsExactly("read_current_episode");
+    }
+
+    @Test
+    void assetLookupCannotOverrideTheTrustedTenantOrProject() throws Exception {
+        List<String> executed = new ArrayList<>();
+        var read = lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "当前剧集"));
+        var search = lookupWorkflowTool("search_script_assets", executed, (c, a) -> json.createObjectNode());
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, search, tool("save_episode_assets")),
+            List.of("read_current_episode", "search_script_assets", "save_episode_assets"));
+        when(invocation.invokeText(any())).thenReturn(result(null, List.of(new AiToolCall("search", "search_script_assets", "{\"tenantId\":999,\"projectId\":888}")), 1341L));
+        assertThatThrownBy(() -> runner.runFormal(lookupInput("short-drama-asset-recognition")))
+            .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID));
+        assertThat(executed).containsExactly("read_current_episode");
+    }
+
+    @Test
+    void assetLookupsDoNotReenableReadingTheEpisodeAfterHostPreload() throws Exception {
+        List<String> executed = new ArrayList<>();
+        var read = lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "当前剧集"));
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, tool("save_episode_assets")),
+            List.of("read_current_episode", "save_episode_assets"));
+        when(invocation.invokeText(any())).thenReturn(result(null, List.of(new AiToolCall("read-again", "read_current_episode", "{}")), 1351L));
+        assertThatThrownBy(() -> runner.runFormal(lookupInput("short-drama-asset-recognition")))
+            .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.REQUIRED_TOOL_NOT_CALLED));
+        assertThat(executed).containsExactly("read_current_episode");
+    }
+
+    @Test
+    void assetSaveFailurePairsFeedbackForSkippedParallelToolsBeforeTheNextModelRound() throws Exception {
+        List<String> executed = new ArrayList<>(); AtomicInteger saves = new AtomicInteger();
+        var read = lookupWorkflowTool("read_current_episode", executed, (c, a) -> json.createObjectNode().put("content", "当前剧集"));
+        var details = lookupWorkflowTool("read_asset_details", executed, (c, a) -> json.createObjectNode());
+        var save = lookupWorkflowTool("save_episode_assets", executed, (c, a) -> {
+            if (saves.incrementAndGet() == 1) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "需要修正字段");
+            return json.createObjectNode().put("saved", true);
+        });
+        configureLookupAgent("short-drama-asset-recognition", List.of(read, details, save),
+            List.of("read_current_episode", "read_asset_details", "save_episode_assets"));
+        AtomicInteger round = new AtomicInteger();
+        when(invocation.invokeText(any())).thenAnswer(call -> {
+            if (round.incrementAndGet() == 1) return result(null, List.of(
+                new AiToolCall("bad-save", "save_episode_assets", lookupSavePayload()),
+                new AiToolCall("skipped-details", "read_asset_details", "{}")), 1361L);
+            com.antshorttv.ai.AiInvocationRequest request = call.getArgument(0);
+            var feedback = request.textRequest().messages().stream().filter(m -> m.role() == AiChatRole.TOOL).toList();
+            assertThat(feedback).extracting(AiChatMessage::toolCallId).containsExactly("bad-save", "skipped-details");
+            assertThat(feedback.get(1).content()).contains("未执行");
+            assertThat(executed).containsExactly("read_current_episode", "save_episode_assets");
+            return result(null, List.of(new AiToolCall("good-save", "save_episode_assets", lookupSavePayload())), 1362L);
+        });
+        runner.runFormal(lookupInput("short-drama-asset-recognition"));
+        assertThat(saves).hasValue(2);
+        assertThat(executed).containsExactly("read_current_episode", "save_episode_assets", "save_episode_assets");
+    }
+
+    private void configureLookupAgent(String code, List<WorkflowToolDefinition> definitions, List<String> authorized) {
+        runner = runnerWith(definitions, 30);
+        when(agents.loadForRun(code)).thenReturn(new WorkflowAgentRecord(6L, code, "识别测试", "", "先读取，再匹配并保存", 8L,
+            new BigDecimal("0.2"), 32768, 12, "ENABLED", 0L, 9L, 9L, LocalDateTime.now(), LocalDateTime.now(), List.of(), authorized));
+    }
+
+    private WorkflowAgentRunInput lookupInput(String code) {
+        return new WorkflowAgentRunInput(code, "识别当前剧集", 7L, 25L, 91L, 77L, null, null, 9L)
+            .withTrustedToolState(Map.of("assetScope", "ALL", "assetPromptPolicy", "FILL_EMPTY"));
+    }
+
+    private String lookupSavePayload() {
+        return "{\"schemaVersion\":1,\"characters\":[{\"assetKey\":\"c_9\",\"name\":\"测试角色\"}],\"characterLooks\":[],\"scenes\":[],\"props\":[],\"propVariants\":[]}";
+    }
+
+    private WorkflowToolDefinition lookupWorkflowTool(String code, List<String> executed,
+        java.util.function.BiFunction<com.antshorttv.workflowagent.tool.ToolExecutionContext, JsonNode, JsonNode> action) throws Exception {
+        return new WorkflowToolDefinition(code, code, code, json.readTree("{\"type\":\"object\"}"),
+            json.readTree("{\"type\":\"object\"}"), code.startsWith("save_") ? ToolRiskLevel.WRITE : ToolRiskLevel.READ_ONLY,
+            ToolFailurePolicy.TERMINAL, new WorkflowToolExecutor() {
+                @Override public JsonNode execute(com.antshorttv.workflowagent.tool.ToolExecutionContext context, JsonNode args) {
+                    assertThat(context.tenantId()).isEqualTo(7L);
+                    assertThat(context.projectId()).isEqualTo(25L);
+                    assertThat(context.episodeId()).isEqualTo(91L);
+                    assertThat(context.scriptId()).isEqualTo(77L);
+                    assertThat(context.runState().get("assetPromptPolicy", String.class)).isEqualTo("FILL_EMPTY");
+                    executed.add(code); return action.apply(context, args);
+                }
+            });
     }
 
     @Test

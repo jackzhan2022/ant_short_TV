@@ -756,7 +756,7 @@ class ScreenplayToolDataServiceTest {
         assertThat(candidate.path("episodePreferred").asBoolean()).isFalse();
         assertThat(episode.toString()).doesNotContain("private canonical prompt", "private variant prompt");
         var json = new com.fasterxml.jackson.databind.ObjectMapper();
-        AssetCatalogService catalogs = new AssetCatalogService(jdbc, json);
+        AssetCatalogService catalogs = new AssetCatalogService(jdbc, json, permissionGuard);
         JsonNode catalog = catalogs.search(scoped, json.createObjectNode()
             .put("assetType","CHARACTER").put("query","Serena"));
         JsonNode character = catalog.path("items").get(0);

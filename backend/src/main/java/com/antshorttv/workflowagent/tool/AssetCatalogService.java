@@ -2,6 +2,7 @@ package com.antshorttv.workflowagent.tool;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.script.AssetIdentityNormalizer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,8 +24,11 @@ public class AssetCatalogService {
     private static final Map<String,String> PREFIXES = Map.of("CHARACTER","c_","SCENE","s_","PROP","p_");
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final ProjectPermissionGuard permissionGuard;
 
-    public AssetCatalogService(JdbcTemplate jdbc, ObjectMapper json) { this.jdbc=jdbc; this.json=json; }
+    public AssetCatalogService(JdbcTemplate jdbc, ObjectMapper json, ProjectPermissionGuard permissionGuard) {
+        this.jdbc=jdbc; this.json=json; this.permissionGuard=permissionGuard;
+    }
 
     public ObjectNode search(ToolExecutionContext context, JsonNode args) {
         String type = args.path("assetType").asText();
@@ -259,8 +263,13 @@ public class AssetCatalogService {
         return saved.after();
     }
     private void requireScope(ToolExecutionContext c,String type) {
-        if(!TABLES.containsKey(type) || c.tenantId()==null || c.projectId()==null || c.scriptId()==null
-            || !included(c,type) || !c.permissions().contains("SCRIPT:VIEW")) throw invalid("资产检索作用域未授权。");
+        if(c==null || !TABLES.containsKey(type) || c.tenantId()==null || c.userId()==null
+            || c.projectId()==null || c.scriptId()==null || !included(c,type)) throw invalid("资产检索作用域未授权。");
+        boolean trustedBackgroundRun=c.agentRunId()!=null && c.taskId()!=null && c.executionId()!=null
+            && c.attemptId()!=null && c.executionVersion()!=null;
+        if(!trustedBackgroundRun || !c.permissions().contains("SCRIPT:VIEW")) {
+            permissionGuard.require(c.tenantId(),c.projectId(),"SCRIPT:VIEW");
+        }
     }
     private boolean included(ToolExecutionContext c,String type) {
         String scope=c.runState().get("assetScope",String.class);
