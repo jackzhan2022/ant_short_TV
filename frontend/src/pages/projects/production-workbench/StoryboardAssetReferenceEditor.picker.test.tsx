@@ -29,6 +29,24 @@ const reference: StoryboardAssetReference = {
 afterEach(cleanup);
 
 describe('storyboard asset cascader', () => {
+  it.each([
+    { phase: 'before the asset catalog arrives', scenes: [] },
+    { phase: 'while only the asset summary is loaded', scenes: [{
+      ...asset, visual: { variantCount: 2, variants: [], generationSummary: {}, episodeBindings: [], summaryOnly: true },
+    }] },
+  ])('keeps reference names visible $phase and updates when variants arrive', ({ scenes }) => {
+    const editor = (loadedScenes: SceneAsset[]) => <StoryboardAssetReferenceEditor
+      storyboardId={301} storyboardNo={1} references={[reference]}
+      characters={[]} scenes={loadedScenes} props={[]} onChange={vi.fn()}
+      onVoice={vi.fn()} onGenerateImage={vi.fn()} generatingReferenceKeys={new Set()}
+      onLoadVariants={vi.fn().mockResolvedValue(undefined)}
+    />;
+    const view = render(editor(scenes));
+    expect(screen.getByTitle('酒店后厨 / 夜 大图')).toBeInTheDocument();
+    view.rerender(editor([asset]));
+    expect(screen.getByTitle('酒店后厨 / 夜 大图')).toBeInTheDocument();
+  });
+
   it('shows thumbnail options and searches full asset and variant names without duplicating the prefix', async () => {
     const onChange = vi.fn();
     const onLoadVariants = vi.fn().mockResolvedValue(undefined);

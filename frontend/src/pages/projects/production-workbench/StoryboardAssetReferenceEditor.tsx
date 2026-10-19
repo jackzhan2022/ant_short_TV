@@ -369,9 +369,12 @@ function SortableAssetCard({
           }
         }}
         displayRender={(selectedLabels) => {
-          const name = selectedLabels.length > 1
-            ? `${selectedLabels[0]} / ${variantCaption(selectedLabels[0], selectedLabels[1])}`
-            : selectedLabels.join('');
+          // Cascader falls back to numeric IDs until the selected options load.
+          const assetName = asset?.name || reference.assetName || reference.sourceName
+            || String(selectedLabels[0] ?? '');
+          const variantName = variant?.name || reference.variantName
+            || (typeof selectedLabels[1] === 'string' ? selectedLabels[1] : undefined);
+          const name = variantName ? `${assetName} / ${variantCaption(assetName, variantName)}` : assetName;
           return <span title={name}>{name}</span>;
         }}
         onChange={(path) => {
