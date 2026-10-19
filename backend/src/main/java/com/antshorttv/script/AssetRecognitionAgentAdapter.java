@@ -7,6 +7,7 @@ import com.antshorttv.workflowagent.run.WorkflowAgentModelCall;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunInput;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunResult;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,6 +80,9 @@ public class AssetRecognitionAgentAdapter {
         EpisodePromptContextService.Prepared prepared = contexts == null ? null
             : reextraction ? contexts.prepareReextraction(task, episodeId, modelId)
             : contexts.prepare(task, episodeId, modelId);
+        Map<String, Object> toolState = new HashMap<>(trustedToolState);
+        toolState.put("assetScope", (scope == null ? AssetRecognitionScope.ALL : scope).name());
+        toolState.put("assetPromptPolicy", (promptPolicy == null ? AssetPromptPolicy.FILL_EMPTY : promptPolicy).name());
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             AssetRecognitionAgentBootstrap.AGENT_CODE,
             "基于服务端已准备的当前剧集正文和资产目录，识别、匹配并保存本集正式资产。"
@@ -93,10 +97,7 @@ public class AssetRecognitionAgentAdapter {
             executionContext == null ? null : executionContext.task().executionVersion,
             modelId, null,
             prepared == null ? null : prepared.commonPrefix(),
-            prepared == null ? null : prepared.cacheKey(), Map.of(
-                "assetScope", (scope == null ? AssetRecognitionScope.ALL : scope).name(),
-                "assetPromptPolicy", (promptPolicy == null ? AssetPromptPolicy.FILL_EMPTY : promptPolicy).name()))
-            .withTrustedToolState(trustedToolState);
+            prepared == null ? null : prepared.cacheKey(), Map.of(), toolState);
         WorkflowAgentRunResult run = runner.runFormal(plan, input);
         if (!assets.hasCoverage(task.getTenantId(), task.getScriptId(), episodeId, run.runId())) {
             throw new IllegalStateException("Agent 未提交本次剧集正式资产识别结果。");

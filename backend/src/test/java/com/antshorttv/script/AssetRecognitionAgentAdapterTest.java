@@ -40,8 +40,10 @@ class AssetRecognitionAgentAdapterTest {
         assertThat(input.getValue().stableContext()).isEqualTo("COMMON_PREFIX");
         assertThat(input.getValue().promptCacheKey()).isEqualTo("CACHE_KEY");
         assertThat(input.getValue().trustedToolState()).containsEntry("fanoutSnapshotId", 50L)
-            .containsEntry("fanoutUnitAttemptNo", 2);
-        assertThat(input.getValue().promptCacheOptions()).doesNotContainKeys("fanoutSnapshotId", "fanoutUnitAttemptNo");
+            .containsEntry("fanoutUnitAttemptNo", 2)
+            .containsEntry("assetScope", "ALL")
+            .containsEntry("assetPromptPolicy", "FILL_EMPTY");
+        assertThat(input.getValue().promptCacheOptions()).isEmpty();
         assertThat(input.getValue().input()).doesNotContain("概要");
     }
 
@@ -76,10 +78,29 @@ class AssetRecognitionAgentAdapterTest {
 
         ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
         verify(runner).runFormal(any(WorkflowAgentExecutionPlan.class), input.capture());
-        assertThat(input.getValue().promptCacheOptions())
+        assertThat(input.getValue().trustedToolState())
             .containsEntry("assetScope", "CHARACTER")
             .containsEntry("assetPromptPolicy", "FILL_EMPTY");
+        assertThat(input.getValue().promptCacheOptions()).isEmpty();
         assertThat(input.getValue().input()).contains("FILL_EMPTY仅补齐空提示词", "REGENERATE_ALL可覆盖", "不得删除人工资产");
+    }
+
+    @Test
+    void keepsRegenerationPolicyInToolStateWithoutProviderCacheOptions() {
+        AssetRecognitionAgentAdapter adapter = new AssetRecognitionAgentAdapter(runner, assets);
+        when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
+            .thenReturn(new WorkflowAgentRunResult(77L, "{\"saved\":true}"));
+        when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(true);
+
+        adapter.executeChild(plan(), task(), stage(), 101L, null, 99L, AssetRecognitionScope.PROP,
+            AssetPromptPolicy.REGENERATE_ALL);
+
+        ArgumentCaptor<WorkflowAgentRunInput> input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
+        verify(runner).runFormal(any(WorkflowAgentExecutionPlan.class), input.capture());
+        assertThat(input.getValue().trustedToolState())
+            .containsEntry("assetScope", "PROP")
+            .containsEntry("assetPromptPolicy", "REGENERATE_ALL");
+        assertThat(input.getValue().promptCacheOptions()).isEmpty();
     }
 
     @Test
