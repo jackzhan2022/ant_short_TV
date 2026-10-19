@@ -104,6 +104,37 @@ class PlatformAiManagementServiceTest {
         )).isInstanceOf(com.antshorttv.common.BusinessException.class);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {32768, 128000})
+    void acceptsLargeOutputBudgetsWithoutClamping(int maxTokens) {
+        var parameters = mock(AiModelParameterProfileMapper.class);
+        var parameterService = new PlatformAiManagementService(providerMapper, configMapper, modelMapper,
+            capabilityMapper, parameters, secretCodec, operationLogService, router, currentPrincipal);
+        var model = new AiModelEntity(); model.setId(12L);
+        when(modelMapper.selectById(12L)).thenReturn(model);
+        when(currentPrincipal.require()).thenReturn(new AuthenticatedUser(9L, "13800000009", "session", LocalDateTime.now().plusHours(1)));
+        var response = parameterService.updateModelParameters(12L,
+            new AiModelParameterRequest(0.2, null, maxTokens, false, 60, 0), null);
+        assertThat(response.maxTokens()).isEqualTo(maxTokens);
+        var saved = ArgumentCaptor.forClass(AiModelParameterProfileEntity.class);
+        verify(parameters).insert(saved.capture());
+        assertThat(saved.getValue().getMaxTokens()).isEqualTo(maxTokens);
+    }
+
+    @Test
+    void rejectsOutputBudgetsAboveOneHundredTwentyEightThousandBeforeSaving() {
+        var parameters = mock(AiModelParameterProfileMapper.class);
+        var parameterService = new PlatformAiManagementService(providerMapper, configMapper, modelMapper,
+            capabilityMapper, parameters, secretCodec, operationLogService, router, currentPrincipal);
+        var model = new AiModelEntity(); model.setId(12L);
+        when(modelMapper.selectById(12L)).thenReturn(model);
+        when(currentPrincipal.require()).thenReturn(new AuthenticatedUser(9L, "13800000009", "session", LocalDateTime.now().plusHours(1)));
+        assertThatThrownBy(() -> parameterService.updateModelParameters(12L,
+            new AiModelParameterRequest(0.2, null, 128001, false, 60, 0), null))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
+        org.mockito.Mockito.verifyNoInteractions(parameters);
+    }
+
     @Test
     void savesConfiguredSeedanceEndpointThroughAuthorizedModelUpdate() {
         AiModelEntity model = seedanceModel("__SEEDANCE_2_0_MINI_ENDPOINT_ID__");

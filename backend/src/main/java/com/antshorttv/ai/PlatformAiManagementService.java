@@ -100,7 +100,7 @@ public class PlatformAiManagementService {
     private void validateParameters(AiModelParameterRequest request) {
         if (request.temperature() == null || request.temperature() < 0 || request.temperature() > 2
             || (request.topP() != null && (request.topP() < 0 || request.topP() > 1))
-            || request.maxTokens() == null || request.maxTokens() < 256 || request.maxTokens() > 32768
+            || request.maxTokens() == null || request.maxTokens() < 256 || request.maxTokens() > 128000
             || request.timeoutSeconds() == null || request.timeoutSeconds() < 5 || request.timeoutSeconds() > 180
             || request.retryCount() == null || request.retryCount() < 0 || request.retryCount() > 3) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "模型参数超出允许范围。");

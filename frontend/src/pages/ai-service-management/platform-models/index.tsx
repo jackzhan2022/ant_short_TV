@@ -238,7 +238,7 @@ const ModelParameterEditor = ({ model, onDone }: { model: PlatformModel; onDone:
     >
       <ProFormDigit name="temperature" label="Temperature" min={0} max={2} step={0.1} rules={[{ required: true }]} />
       <ProFormDigit name="topP" label="Top P" min={0} max={1} step={0.1} />
-      <ProFormDigit name="maxTokens" label="最大输出 Token" min={256} max={32768} rules={[{ required: true }]} />
+      <ProFormDigit name="maxTokens" label="最大输出 Token" min={256} max={128000} rules={[{ required: true }]} />
       <ProFormSwitch name="jsonMode" label="JSON 输出模式" />
       <ProFormDigit name="timeoutSeconds" label="超时（秒）" min={5} max={180} rules={[{ required: true }]} />
       <ProFormDigit name="retryCount" label="重试次数" min={0} max={3} rules={[{ required: true }]} />

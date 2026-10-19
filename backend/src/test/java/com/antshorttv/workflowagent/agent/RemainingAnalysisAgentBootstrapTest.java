@@ -19,8 +19,14 @@ class RemainingAnalysisAgentBootstrapTest {
     @Autowired private JdbcTemplate jdbc;
 
     @Test
+    @org.springframework.transaction.annotation.Transactional
     void createsThreeStableDefinitionsAndKeepsStartupIdempotent() throws Exception {
+        for (String code : List.of(EpisodeSplittingAgentBootstrap.AGENT_CODE,
+            EpisodeSummaryAgentBootstrap.AGENT_CODE, AssetRecognitionAgentBootstrap.AGENT_CODE)) {
+            if (!agents.list(code).isEmpty()) agents.delete(code);
+        }
         Long modelId = insertCompatibleModel();
+        jdbc.update("update ai_model set is_default=false where id<>?", modelId);
         var arguments = new DefaultApplicationArguments(new String[0]);
 
         splitting.run(arguments);
@@ -37,7 +43,7 @@ class RemainingAnalysisAgentBootstrapTest {
         assertDefinition(AssetRecognitionAgentBootstrap.AGENT_CODE, modelId,
             List.of("short-drama-analysis-foundation", "short-drama-asset-recognition-framework"),
             List.of("read_current_episode", "search_script_assets", "read_asset_details",
-                "save_episode_assets"), 16384, 12);
+                "save_episode_assets"), 32768, 12);
 
         assertThat(agents.get(EpisodeSplittingAgentBootstrap.AGENT_CODE).systemPrompt())
             .contains("不要输出分析过程", "只提交标题和原文边界", "立即调用保存工具");

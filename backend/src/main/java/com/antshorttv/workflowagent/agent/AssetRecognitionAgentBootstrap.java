@@ -26,7 +26,7 @@ public class AssetRecognitionAgentBootstrap extends AbstractAnalysisAgentBootstr
         return new WorkflowAgentCommand(
             AGENT_CODE, "角色场景道具识别", "独立读取一集当前正文并保存正式角色、变装、场景、道具及形态。",
             "严格按已加载 Skill 执行：先读取当前剧集，再分析实体与逐字证据，最后调用保存工具；必须遵守读取结果的 assetScope，范围外数组保持为空；保存成功前不得声称完成。",
-            modelId, new BigDecimal("0.200"), 16384, 12, "ENABLED",
+            modelId, new BigDecimal("0.200"), 32768, 12, "ENABLED",
             List.of("short-drama-analysis-foundation", "short-drama-asset-recognition-framework"),
             List.of("read_current_episode", "search_script_assets", "read_asset_details", "save_episode_assets"));
     }
