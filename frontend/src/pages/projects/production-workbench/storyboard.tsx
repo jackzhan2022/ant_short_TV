@@ -23,7 +23,6 @@ import {
   Select,
   Spin,
   Switch,
-  Tabs,
   Tag,
   Typography,
 } from 'antd';
@@ -33,6 +32,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { queryProject } from '@/services/account-team/project';
@@ -56,6 +56,11 @@ import {
   queryProjectAiModels,
 } from './ai-config/service';
 import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
+import StoryboardPromptReferencePicker from './StoryboardPromptReferencePicker';
+import BatchVideoGenerationModal from './BatchVideoGenerationModal';
+import StoryboardVideoStrip from './StoryboardVideoStrip';
+import StoryboardPositionRail from './StoryboardPositionRail';
+import StoryboardVideoEmptyState from './StoryboardVideoEmptyState';
 import type {
   AiImageResult,
   AiImageTask,
@@ -74,6 +79,9 @@ import type {
   StoryboardPromptDocument,
   StoryboardPromptNode,
   StoryboardShot,
+  StoryboardMediaSummary,
+  StoryboardNavigationItem,
+  StoryboardWorkspacePage,
   VisualVariant,
 } from './service';
 import {
@@ -167,6 +175,11 @@ const terminalStoryboardBatchStatuses = new Set([
   'FAILED',
 ]);
 const storyboardPageSize = STORYBOARD_PAGE_SIZE;
+const navigationFromPage = (page: StoryboardWorkspacePage): StoryboardNavigationItem[] =>
+  page.storyboardNavigation || page.storyboards.filter((shot) => shot.episodeNo === page.episodeNo).map((shot) => ({
+    id: shot.id, shotNo: shot.shotNo, storyboardNo: shot.storyboardNo,
+    hasVideo: Boolean(shot.currentVideoResultId || shot.currentVideoUrl),
+  }));
 
 const getTaskImage = (
   imageTasks: AiImageTask[],
@@ -372,21 +385,48 @@ const plainTextFromDocument = (document?: StoryboardPromptDocument | null) =>
     .map((node) => (node.type === 'text' ? node.text : node.displayName))
     .join('') || '';
 
+const createPromptMention = (node: PromptReferenceOption) => {
+  const mention = window.document.createElement('span');
+  mention.contentEditable = 'false';
+  mention.dataset.mediaType = node.mediaType;
+  mention.dataset.sourceType = node.sourceType;
+  mention.dataset.sourceId = String(node.sourceId);
+  if (node.assetType) mention.dataset.assetType = node.assetType;
+  if (node.assetId) mention.dataset.assetId = String(node.assetId);
+  if (node.variantId) mention.dataset.variantId = String(node.variantId);
+  mention.dataset.displayName = node.displayName;
+  mention.className = 'storyboard-prompt-reference';
+  mention.title = node.displayName;
+  const name = window.document.createElement('span');
+  name.className = 'storyboard-prompt-reference-name';
+  name.textContent = node.displayName;
+  mention.append(name);
+  return mention;
+};
+
 const MaterialPromptEditor = ({
   label,
   value,
   document,
+  referenceThumbnails,
+  renderReferencePicker,
   onChange,
+  onCommit,
   onBlur,
 }: {
   label: string;
   value: string;
   document?: StoryboardPromptDocument | null;
+  referenceThumbnails: ReadonlyMap<string, string>;
+  renderReferencePicker: (onSelect: (reference: PromptReferenceOption) => void) => ReactNode;
   onChange: (plainText: string, nextDocument: StoryboardPromptDocument) => void;
+  onCommit: (plainText: string, nextDocument: StoryboardPromptDocument) => void;
   onBlur: () => void;
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const initializedKey = useRef('');
+  const composing = useRef(false);
+  const [mentionTrigger, setMentionTrigger] = useState<{ range: Range; left: number; top: number }>();
   const renderedNodes = useMemo<StoryboardPromptNode[]>(
     () =>
       document?.nodes?.length
@@ -425,31 +465,38 @@ const MaterialPromptEditor = ({
         offset += node.text.length;
         return;
       }
-      const mention = window.document.createElement('span');
-      mention.contentEditable = 'false';
-      mention.dataset.mediaType = node.mediaType;
-      mention.dataset.sourceType = node.sourceType;
-      mention.dataset.sourceId = String(node.sourceId);
-      if (node.assetType) mention.dataset.assetType = node.assetType;
-      if (node.assetId) mention.dataset.assetId = String(node.assetId);
-      if (node.variantId) mention.dataset.variantId = String(node.variantId);
-      mention.dataset.displayName = node.displayName;
-      mention.textContent = node.displayName;
-      mention.style.cssText = [
-        'display:inline-block',
-        'padding:0 4px',
-        'margin:0 1px',
-        'border-radius:4px',
-        'background:var(--ant-color-primary-bg)',
-        'color:var(--ant-color-primary)',
-        'font-weight:600',
-      ].join(';');
-      fragment.append(mention);
+      fragment.append(createPromptMention(node));
       offset += node.displayName.length;
     });
     editor.replaceChildren(fragment);
     initializedKey.current = renderedKey;
   }, [renderedKey, renderedNodes]);
+
+  useLayoutEffect(() => {
+    // Update images separately so arriving metadata does not reset the editing caret.
+    editorRef.current?.querySelectorAll<HTMLElement>('[data-media-type="IMAGE"]').forEach((mention) => {
+      const thumbnail = referenceThumbnails.get(`${mention.dataset.sourceType}:${mention.dataset.sourceId}`);
+      let image = mention.querySelector('img');
+      if (!thumbnail) {
+        image?.remove();
+        return;
+      }
+      if (image?.getAttribute('src') === thumbnail) return;
+      if (!image) {
+        image = window.document.createElement('img');
+        image.className = 'storyboard-prompt-reference-image';
+        image.alt = `${mention.dataset.displayName}参考图`;
+        image.width = 22;
+        image.height = 22;
+        image.draggable = false;
+        image.loading = 'lazy';
+        image.decoding = 'async';
+        image.onerror = () => image?.remove();
+        mention.prepend(image);
+      }
+      image.src = thumbnail;
+    });
+  }, [renderedKey, referenceThumbnails]);
 
   const readDocument = () => {
     const nodes: StoryboardPromptNode[] = [];
@@ -494,6 +541,53 @@ const MaterialPromptEditor = ({
     const nextDocument: StoryboardPromptDocument = { version: 2, nodes };
     initializedKey.current = JSON.stringify(nextDocument.nodes);
     onChange(plainTextFromDocument(nextDocument), nextDocument);
+    return nextDocument;
+  };
+
+  const detectMentionTrigger = () => {
+    const selection = window.getSelection();
+    const editor = editorRef.current;
+    if (!editor || !selection?.isCollapsed || !selection.rangeCount) {
+      setMentionTrigger(undefined);
+      return;
+    }
+    const caret = selection.getRangeAt(0);
+    const text = caret.startContainer;
+    const offset = caret.startOffset;
+    if (text.nodeType !== Node.TEXT_NODE || !editor.contains(text)
+      || text.parentElement?.closest('[contenteditable="false"]')
+      || !['@', '＠'].includes(text.textContent?.[offset - 1] || '')) {
+      setMentionTrigger(undefined);
+      return;
+    }
+    const range = caret.cloneRange();
+    range.setStart(text, offset - 1);
+    const rect = range.getBoundingClientRect();
+    setMentionTrigger({ range, left: rect.left, top: rect.bottom });
+  };
+  const insertMentionAtTrigger = (reference: PromptReferenceOption) => {
+    const editor = editorRef.current;
+    const range = mentionTrigger?.range;
+    if (!editor || !range || !editor.contains(range.commonAncestorContainer)
+      || !['@', '＠'].includes(range.toString())) {
+      setMentionTrigger(undefined);
+      return;
+    }
+    range.deleteContents();
+    const mention = createPromptMention(reference);
+    range.insertNode(mention);
+    range.setStartAfter(mention);
+    range.collapse(true);
+    setMentionTrigger(undefined);
+    editor.focus();
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    const nextDocument = readDocument();
+    onCommit(plainTextFromDocument(nextDocument), nextDocument);
+  };
+  const dismissMentionPicker = () => {
+    setMentionTrigger(undefined);
+    onBlur();
   };
 
   return (
@@ -508,16 +602,58 @@ const MaterialPromptEditor = ({
         data-storyboard-scroll-region
         contentEditable
         suppressContentEditableWarning
-        onInput={readDocument}
-        onBlur={onBlur}
+        onInput={(event) => {
+          readDocument();
+          if (!composing.current && !(event.nativeEvent as InputEvent).isComposing) detectMentionTrigger();
+        }}
+        onCompositionStart={() => { composing.current = true; }}
+        onCompositionEnd={() => {
+          composing.current = false;
+          readDocument();
+          detectMentionTrigger();
+        }}
+        onKeyDown={(event) => {
+          if (mentionTrigger && ['Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+            setMentionTrigger(undefined);
+          }
+        }}
+        onClick={() => setMentionTrigger(undefined)}
+        onScroll={() => setMentionTrigger(undefined)}
+        onBlur={() => { if (!mentionTrigger) onBlur(); }}
         className="storyboard-prompt-editor"
         style={{
           whiteSpace: 'pre-wrap',
           outline: 'none',
-          fontWeight: 600,
+          fontSize: 14,
+          fontWeight: 400,
           lineHeight: 1.7,
         }}
       />
+      {mentionTrigger ? (
+        <Popover
+          open
+          trigger="click"
+          placement="bottomLeft"
+          onOpenChange={(open) => { if (!open) dismissMentionPicker(); }}
+          content={(
+            <div
+              role="dialog"
+              aria-label={`${label}引用素材`}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation();
+                  dismissMentionPicker();
+                  editorRef.current?.focus();
+                }
+              }}
+            >
+              {renderReferencePicker(insertMentionAtTrigger)}
+            </div>
+          )}
+        >
+          <span aria-hidden="true" style={{ position: 'fixed', left: mentionTrigger.left, top: mentionTrigger.top, width: 1, height: 1, pointerEvents: 'none' }} />
+        </Popover>
+      ) : null}
     </>
   );
 };
@@ -644,7 +780,9 @@ const StoryboardCard = ({
   imageTasks,
   videoTasks,
   referenceOptions,
+  referenceThumbnails,
   draft,
+  videoHistory,
   model,
   modelConstraints,
   generationSettings,
@@ -682,7 +820,9 @@ const StoryboardCard = ({
   imageTasks: AiImageTask[];
   videoTasks: AiVideoTask[];
   referenceOptions: Record<'IMAGE' | 'VIDEO' | 'AUDIO', PromptReferenceOption[]>;
+  referenceThumbnails: ReadonlyMap<string, string>;
   draft: StoryboardDraft[number];
+  videoHistory?: MediaPage<AiVideoResult>;
   model: string;
   modelConstraints?: ProjectModelOption['constraints'];
   generationSettings: VideoGenerationSettings;
@@ -743,6 +883,11 @@ const StoryboardCard = ({
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [voiceSubmitting, setVoiceSubmitting] = useState(false);
   const [previewKey, setPreviewKey] = useState<'VIDEO' | 'FIRST_FRAME' | 'SCENE'>('VIDEO');
+  const [previewVersion, setPreviewVersion] = useState<AiVideoResult>();
+  useEffect(() => {
+    setPreviewVersion(undefined);
+    setPreviewKey('VIDEO');
+  }, [item.currentVideoResultId]);
   const [candidateType, setCandidateType] = useState<'IMAGE' | 'VIDEO'>();
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [imageCandidates, setImageCandidates] = useState<MediaPage<AiImageResult>>();
@@ -762,7 +907,15 @@ const StoryboardCard = ({
   const propNames = getStoryboardPropNames(item);
   const scene = firstByName(scenes, sceneNames);
   const prop = firstByName(props, propNames);
-  const video = getStoryboardVideo(item, videoTasks);
+  const boundVideo = getStoryboardVideo(item, videoTasks);
+  const version = previewVersion || videoHistory?.data.find((result) => result.id === item.currentVideoResultId);
+  const video = version ? {
+    resultId: version.id,
+    selected: item.currentVideoResultId != null ? version.id === item.currentVideoResultId : Boolean(version.isSelected),
+    coverUrl: version.coverUrl || undefined,
+    videoUrl: version.videoUrl,
+  } : boundVideo;
+  const videoVersions = videoTasks.filter((task) => task.storyboardId === item.id).flatMap((task) => task.results || []);
   const loadCandidates = async (
     type: 'IMAGE' | 'VIDEO', current = 1, pageSize = 20,
   ) => {
@@ -819,33 +972,18 @@ const StoryboardCard = ({
       message.error('提示词复制失败');
     }
   };
-  const referencePicker = (
-    <Tabs
-      size="small"
-      items={(['IMAGE', 'VIDEO', 'AUDIO'] as const).map((mediaType) => ({
-        key: mediaType,
-        label: { IMAGE: '图片', VIDEO: '视频', AUDIO: '音频' }[mediaType],
-        children: referenceOptions[mediaType].length ? (
-          <Flex vertical gap={4} style={{ width: 240, maxHeight: 280, overflowY: 'auto' }}>
-            {referenceOptions[mediaType].map((reference) => (
-              <Button
-                key={`${reference.sourceType}-${reference.sourceId}`}
-                type="text"
-                block
-                aria-label={`引用素材 ${reference.displayName}`}
-                onClick={() => insertReference(reference)}
-                style={{ justifyContent: 'flex-start' }}
-              >
-                {reference.displayName}
-              </Button>
-            ))}
-          </Flex>
-        ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可用素材" />
-        ),
-      }))}
+  const renderReferencePicker = (onSelect: (reference: PromptReferenceOption) => void) => (
+    <StoryboardPromptReferencePicker
+      storyboardNo={index + 1}
+      characters={characters}
+      scenes={scenes}
+      props={props}
+      references={referenceOptions}
+      onSelect={onSelect}
+      onLoadVariants={onLoadVariants}
     />
   );
+  const referencePicker = renderReferencePicker(insertReference);
   const parameterEditor = (
     <div style={{ width: 260, display: 'grid', gap: 12 }}>
       <Flex justify="space-between" align="center" gap={12}>
@@ -1098,6 +1236,7 @@ const StoryboardCard = ({
             剧本原文
           </div>
           <Input.TextArea
+            className="storyboard-script-editor"
             aria-label={`分镜${index + 1}剧本原文`}
             value={draft.scriptText}
             onChange={(event) =>
@@ -1109,7 +1248,8 @@ const StoryboardCard = ({
               marginTop: 9,
               borderColor: '#d8deee',
               borderRadius: 8,
-              fontWeight: 600,
+              fontSize: 13,
+              fontWeight: 400,
               lineHeight: 1.7,
             }}
           />
@@ -1371,6 +1511,9 @@ const StoryboardCard = ({
               label={`分镜${index + 1}视频提示词`}
               value={draft.videoPrompt}
               document={draft.promptDocument}
+              referenceThumbnails={referenceThumbnails}
+              renderReferencePicker={renderReferencePicker}
+              onCommit={(videoPrompt, promptDocument) => onUpdateStoryboard(item, { videoPrompt, promptDocument })}
               onChange={(videoPrompt, promptDocument) =>
                 onDraftChange(item.id, { videoPrompt, promptDocument })
               }
@@ -1453,7 +1596,7 @@ const StoryboardCard = ({
           <div
             className="storyboard-preview-stage"
             style={{
-              background: '#2c333f',
+              background: previewKey === 'VIDEO' && !video.videoUrl ? '#f7f8fc' : '#2c333f',
               display: 'flex',
               justifyContent: 'center',
             }}
@@ -1474,7 +1617,7 @@ const StoryboardCard = ({
                     background: '#000',
                   }}
                 />
-              ) : (
+              ) : previewKey === 'VIDEO' ? <StoryboardVideoEmptyState /> : (
                 <PreviewPoster
                   src={selectedPreview?.url || video.coverUrl}
                   title={`分镜${index + 1}主预览`}
@@ -1482,12 +1625,21 @@ const StoryboardCard = ({
               )}
             </div>
           </div>
+          <StoryboardVideoStrip
+            storyboardNo={item.storyboardNo || item.shotNo}
+            results={videoVersions}
+            history={videoHistory}
+            currentResultId={item.currentVideoResultId || (boundVideo.selected ? boundVideo.resultId : undefined)}
+            previewResultId={previewKey === 'VIDEO' ? video.resultId : undefined}
+            onPreview={(result) => { setPreviewVersion(result); setPreviewKey('VIDEO'); }}
+            onLoad={(current, pageSize, signal) => onLoadVideoCandidates(item.id, current, pageSize, signal)}
+          />
           <Flex
             justify="center"
             gap={10}
             style={{ height: 54, paddingTop: 12 }}
           >
-            {previewSources.map((source) => (
+            {previewSources.filter((source) => source.key !== 'VIDEO' || (!videoVersions.length && !videoHistory?.data.length)).map((source) => (
               <Button
                 key={source.key}
                 type="text"
@@ -1744,6 +1896,25 @@ const ProductionWorkbenchStoryboard = () => {
   const [storyboardBatch, setStoryboardBatch] = useState<StoryboardBatch>();
   const [storyboardBatchBusy, setStoryboardBatchBusy] = useState(false);
   const [videoBatchRetryBusy, setVideoBatchRetryBusy] = useState(false);
+  const [storyboardNavigation, setStoryboardNavigation] = useState<StoryboardNavigationItem[]>([]);
+  const [activeStoryboardId, setActiveStoryboardId] = useState<number>();
+  const [videoHistories, setVideoHistories] = useState<Record<number, MediaPage<AiVideoResult>>>({});
+  const workbenchRef = useRef<HTMLDivElement>(null);
+  const pendingStoryboardScroll = useRef<number | undefined>(undefined);
+  const [videoBatchOpen, setVideoBatchOpen] = useState(false);
+  const [videoBatchLoading, setVideoBatchLoading] = useState(false);
+  const [videoBatchError, setVideoBatchError] = useState(false);
+  const [videoBatchSubmitting, setVideoBatchSubmitting] = useState(false);
+  const [videoBatchCandidates, setVideoBatchCandidates] = useState<StoryboardShot[]>([]);
+  const [videoBatchSelectedIds, setVideoBatchSelectedIds] = useState<number[]>([]);
+  const videoBatchRequestId = useRef(0);
+  const videoBatchSubmission = useRef(false);
+
+  useEffect(() => {
+    setVideoBatchOpen(false);
+    setVideoBatchSelectedIds([]);
+    return () => { videoBatchRequestId.current += 1; };
+  }, [projectId, activeEpisode]);
   const reservedShotNos = useRef<Record<number, number>>({});
   const storyboardRequestId = useRef(0);
   const [workspace, setWorkspace] = useState<ProductionWorkspaceState>({
@@ -1766,6 +1937,7 @@ const ProductionWorkbenchStoryboard = () => {
     setImageTasks([]);
     setVideoTasks([]);
     setVoiceTasks([]);
+    setVideoHistories({});
     const ids = mediaScopeKey ? mediaScopeKey.split(',').map(Number) : [];
     if (ids.length) {
       void queryStoryboardMedia(projectId, ids, controller.signal).then((response) => {
@@ -1773,12 +1945,40 @@ const ProductionWorkbenchStoryboard = () => {
         setImageTasks(response.data.imageTasks || []);
         setVideoTasks(response.data.videoTasks || []);
         setVoiceTasks(response.data.voiceTasks || []);
+        setVideoHistories(Object.fromEntries((response.data.videoHistory || []).map((page) => [page.storyboardId, page])));
         if (response.data.assetVisuals) {
           const visuals = response.data.assetVisuals;
           setAssetVisuals((previous) => ({
             ...previous,
             ...Object.fromEntries(visuals.map(({ key, visual }) => [key, visual])),
           }));
+        }
+        const knownVariantIds = new Set((response.data.assetVisuals || [])
+          .flatMap(({ visual }) => visual.variants.map((variant) => variant.id)));
+        for (const shot of workspace.storyboards) {
+          for (const node of shot.promptDocument?.nodes || []) {
+            if (node.type !== 'mention' || node.mediaType !== 'IMAGE'
+              || node.sourceType !== 'ASSET_VISUAL_VARIANT' || !node.assetType || !node.assetId
+              || knownVariantIds.has(node.sourceId)) continue;
+            knownVariantIds.add(node.sourceId);
+            // Restore only the referenced look, including looks outside the current shot's asset bindings.
+            void queryAssetVisualWorkspace(projectId, node.assetType, node.assetId, {
+              current: 1, pageSize: 1, selectedVariantId: node.variantId || node.sourceId,
+            }).then(({ data }) => {
+              if (controller.signal.aborted || !data) return;
+              const key = `${node.assetType}:${node.assetId}`;
+              setAssetVisuals((previous) => ({
+                ...previous,
+                [key]: {
+                  ...data, ...previous[key],
+                  variants: [...new Map([
+                    ...(previous[key]?.variants || []), ...data.variants, data.primaryVariant, data.selectedVariant,
+                  ].filter((variant): variant is VisualVariant => Boolean(variant))
+                    .map((variant) => [variant.id, variant])).values()],
+                },
+              }));
+            }).catch(() => undefined);
+          }
         }
         for (const task of response.data.videoTasks.filter((item) => item.executionId &&
           !successStatuses.includes(item.status) && !['FAILED', 'CANCELED'].includes(item.status))) {
@@ -1892,6 +2092,7 @@ const ProductionWorkbenchStoryboard = () => {
         setWorkspace((previous) => ({ ...previous, storyboards: shots, episodes }));
         setStoryboardPage(storyboardResponse.data?.current || 1);
         setStoryboardTotal(storyboardResponse.data?.total ?? shots.length);
+        setStoryboardNavigation(navigationFromPage(storyboardResponse.data));
         setActiveEpisode(storyboardResponse.data?.episodeNo || episodes[0]?.episodeNo || shots[0]?.episodeNo || 1);
         setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
           scriptText: getStoryboardScriptText(item),
@@ -1917,6 +2118,7 @@ const ProductionWorkbenchStoryboard = () => {
     const target = document.getElementById(`storyboard-${navigationTarget.storyboardId}`);
     target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     target?.focus({ preventScroll: true });
+    if (target) setActiveStoryboardId(navigationTarget.storyboardId);
   }, [storyboardLoading, navigationTarget.storyboardId, navigationTarget.episodeNo, activeEpisode]);
 
   useEffect(() => {
@@ -2090,6 +2292,27 @@ const ProductionWorkbenchStoryboard = () => {
     return { IMAGE: [...images, ...firstFrames], VIDEO: videos, AUDIO: audio };
   }, [characters, scenes, props, imageTasks, videoTasks, voiceTasks, workspace.storyboards]);
 
+  const referenceThumbnails = useMemo(() => {
+    const thumbnails = new Map<string, string>();
+    for (const storyboard of workspace.storyboards) {
+      const thumbnail = storyboard.firstFrameThumbnailUrl || selectedFirstFrame(storyboard.id)?.thumbnailUrl;
+      if (thumbnail) thumbnails.set(`STORYBOARD_FIRST_FRAME:${storyboard.id}`, thumbnail);
+      for (const reference of storyboard.assetReferences || []) {
+        if (reference.variantId && reference.imageThumbnailUrl) {
+          thumbnails.set(`ASSET_VISUAL_VARIANT:${reference.variantId}`, reference.imageThumbnailUrl);
+        }
+      }
+    }
+    for (const asset of [...characters, ...scenes, ...props]) {
+      for (const variant of [asset.visual?.primaryVariant, asset.visual?.selectedVariant, ...(asset.visual?.variants || [])]) {
+        if (variant?.currentImageThumbnailUrl) {
+          thumbnails.set(`ASSET_VISUAL_VARIANT:${variant.id}`, variant.currentImageThumbnailUrl);
+        }
+      }
+    }
+    return thumbnails;
+  }, [characters, scenes, props, imageTasks, workspace.storyboards]);
+
   const promptFor = (storyboard: StoryboardShot) => {
     const draft = drafts[storyboard.id];
     const episodeId = workspace.episodes?.find((episode) => episode.episodeNo === storyboard.episodeNo)?.episodeId;
@@ -2187,6 +2410,41 @@ const ProductionWorkbenchStoryboard = () => {
   const visibleStoryboards = workspace.storyboards.filter(
     (item) => item.episodeNo === activeEpisode,
   );
+  const updateActiveStoryboard = () => {
+    const root = workbenchRef.current;
+    if (!root) return;
+    const threshold = root.getBoundingClientRect().top + Math.min(100, root.clientHeight / 4);
+    const cards = visibleStoryboards.map((shot) => document.getElementById(`storyboard-${shot.id}`))
+      .filter((card): card is HTMLElement => Boolean(card));
+    const current = cards.find((card) => card.getBoundingClientRect().bottom > threshold) || cards[0];
+    if (current) setActiveStoryboardId(Number(current.id.replace('storyboard-', '')));
+  };
+  const focusStoryboard = (id: number) => {
+    const card = document.getElementById(`storyboard-${id}`);
+    if (!card) return;
+    card.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    card.focus({ preventScroll: true });
+    setActiveStoryboardId(id);
+    pendingStoryboardScroll.current = undefined;
+  };
+  useLayoutEffect(() => {
+    if (storyboardLoading) return;
+    if (pendingStoryboardScroll.current != null) focusStoryboard(pendingStoryboardScroll.current);
+    else updateActiveStoryboard();
+  }, [storyboardLoading, mediaScopeKey]);
+  const navigateToStoryboard = async (id: number, position: number) => {
+    pendingStoryboardScroll.current = id;
+    setActiveStoryboardId(id);
+    const page = Math.floor(position / storyboardPageSize) + 1;
+    try {
+      if (!workbenchRef.current?.contains(document.getElementById(`storyboard-${id}`))) {
+        await reloadStoryboardPage(activeEpisode, page);
+      } else focusStoryboard(id);
+    } catch {
+      pendingStoryboardScroll.current = undefined;
+      message.error('分镜定位失败，请重试');
+    }
+  };
   const failedVisibleVideoTasks = visibleStoryboards.flatMap((shot) => {
     const latest = videoTasks.filter((task) => task.storyboardId === shot.id)
       .sort((left, right) => (right.createdAt || '').localeCompare(left.createdAt || '')
@@ -2233,6 +2491,9 @@ const ProductionWorkbenchStoryboard = () => {
     setVoiceTasks((previous) => [
       ...previous.filter((task) => !appliesTo(task.storyboardId)), ...response.data.voiceTasks,
     ]);
+    setVideoHistories((previous) => ({ ...previous,
+      ...Object.fromEntries((response.data.videoHistory || []).map((page) => [page.storyboardId, page])),
+    }));
   };
   const reloadVideoTasks = (storyboardId?: number) => reloadMediaTasks(storyboardId);
   const reloadImageTasks = (storyboardId?: number) => reloadMediaTasks(storyboardId);
@@ -2288,6 +2549,7 @@ const ProductionWorkbenchStoryboard = () => {
       setStoryboardTotal(
         storyboardResponse.data?.total ?? nextWorkspace.storyboards.length,
       );
+      setStoryboardNavigation(navigationFromPage(storyboardResponse.data));
       setDrafts(
         Object.fromEntries(
           nextWorkspace.storyboards.map((item) => [
@@ -2314,6 +2576,7 @@ const ProductionWorkbenchStoryboard = () => {
       setWorkspace((previous) => ({ ...previous, episodes: response.data.episodes || previous.episodes, storyboards: shots }));
       setStoryboardPage(response.data.current || current);
       setStoryboardTotal(response.data.total ?? shots.length);
+      setStoryboardNavigation(navigationFromPage(response.data));
       setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
         scriptText: getStoryboardScriptText(item), videoPrompt: getStoryboardPrompt(item), promptDocument: item.promptDocument,
       }])));
@@ -2342,6 +2605,9 @@ const ProductionWorkbenchStoryboard = () => {
     setActiveEpisode(episodeNo);
     setEpisodeDetailsOpen(false);
     setStoryboardPage(1);
+    setStoryboardNavigation([]);
+    setActiveStoryboardId(undefined);
+    pendingStoryboardScroll.current = undefined;
     setWorkspace((previous) => ({ ...previous, storyboards: [] }));
     try {
       await reloadStoryboardPage(episodeNo, 1);
@@ -2409,13 +2675,9 @@ const ProductionWorkbenchStoryboard = () => {
     }
   };
 
-  const generateStoryboardBatch = async (retryFailed = false) => {
-    const episodeIds = retryFailed
-      ? (storyboardBatch?.items || []).filter((item) => item.status === 'FAILED')
-          .map((item) => item.episodeId)
-      : (workspace.episodes || [])
-      .map((episode) => episode.episodeId)
-      .filter((episodeId): episodeId is number => Number.isSafeInteger(episodeId));
+  const retryFailedStoryboards = async () => {
+    const episodeIds = (storyboardBatch?.items || []).filter((item) => item.status === 'FAILED')
+      .map((item) => item.episodeId);
     if (!episodeIds.length) {
       message.warning('当前项目没有可生成分镜的有效剧集');
       return;
@@ -2430,7 +2692,7 @@ const ProductionWorkbenchStoryboard = () => {
         : await pollStoryboardBatch(response.data.id);
       setStoryboardBatch(terminal);
       await reloadWorkspace();
-      message.success(retryFailed ? '失败分镜已重试' : '批量分镜生成已完成');
+      message.success('失败分镜已重试');
     } catch (error) {
       if (isPointEstimateCancelled(error)) return;
       message.error(
@@ -2580,7 +2842,8 @@ const ProductionWorkbenchStoryboard = () => {
 
   const videoTaskValues = (storyboard: StoryboardShot) => {
     const promptDocument = promptFor(storyboard);
-    if (!hasImageReference(promptDocument)) {
+    if (!hasImageReference(promptDocument) && !storyboard.assetReferences?.some((reference) =>
+      reference.resolutionStatus === 'RESOLVED' && reference.variantId != null)) {
       throw new Error('请先为分镜绑定至少一张可用的参考图片');
     }
     if (!selectedModelId) throw new Error('请先选择视频生成模型');
@@ -2649,46 +2912,126 @@ const ProductionWorkbenchStoryboard = () => {
     }
   };
 
-  const batchGenerateVideo = async () => {
+  const openBatchVideoGeneration = async () => {
+    if (videoBatchSubmission.current) return;
+    const requestId = ++videoBatchRequestId.current;
+    setVideoBatchOpen(true);
+    setVideoBatchLoading(true);
+    setVideoBatchError(false);
+    setVideoBatchSelectedIds([]);
+    setVideoBatchCandidates([]);
+    const isCurrent = () => videoBatchRequestId.current === requestId;
     try {
-      if (!visibleStoryboards.length) return;
+      const firstPage = await queryStoryboardWorkspace(projectId, {
+        episodeNo: activeEpisode, current: 1, pageSize: storyboardPageSize,
+      });
+      if (!isCurrent()) return;
+      if (!firstPage.data) throw new Error('missing storyboard page');
+      const shots = [...firstPage.data.storyboards];
+      const pageCount = Math.ceil((firstPage.data.total ?? shots.length) / storyboardPageSize);
+      for (let current = 2; current <= pageCount; current += 1) {
+        const page = await queryStoryboardWorkspace(projectId, {
+          episodeNo: activeEpisode, current, pageSize: storyboardPageSize,
+        });
+        if (!isCurrent()) return;
+        if (!page.data) throw new Error('missing storyboard page');
+        shots.push(...page.data.storyboards);
+      }
+      const candidates = [...new Map(shots.filter((shot) => shot.episodeNo === activeEpisode)
+        .map((shot) => [shot.id, workspace.storyboards.find((item) => item.id === shot.id) || shot])).values()]
+        .sort((a, b) => (a.storyboardNo || a.shotNo) - (b.storyboardNo || b.shotNo));
+      const media: StoryboardMediaSummary[] = [];
+      for (let offset = 0; offset < candidates.length; offset += 100) {
+        const response = await queryStoryboardMedia(projectId, candidates.slice(offset, offset + 100).map((shot) => shot.id));
+        if (!isCurrent()) return;
+        if (!response.data) throw new Error('missing storyboard media');
+        media.push(response.data);
+      }
+      setImageTasks((previous) => [...new Map([...previous, ...media.flatMap((item) => item.imageTasks)]
+        .map((task) => [task.id, task])).values()]);
+      setVideoTasks((previous) => [...new Map([...previous, ...media.flatMap((item) => item.videoTasks)]
+        .map((task) => [task.id, task])).values()]);
+      setAssetVisuals((previous) => {
+        const next = { ...previous };
+        for (const { key, visual } of media.flatMap((item) => item.assetVisuals || [])) {
+          next[key] = { ...visual, ...next[key], variants: [...new Map([
+            ...(next[key]?.variants || []), ...visual.variants,
+          ].map((variant) => [variant.id, variant])).values()] };
+        }
+        return next;
+      });
+      setVideoBatchCandidates(candidates);
+      setVideoHistories((previous) => ({ ...previous,
+        ...Object.fromEntries(media.flatMap((item) => item.videoHistory || []).map((page) => [page.storyboardId, page])),
+      }));
+    } catch {
+      if (isCurrent()) setVideoBatchError(true);
+    } finally {
+      if (isCurrent()) setVideoBatchLoading(false);
+    }
+  };
+
+  const batchVideoOptions = videoBatchCandidates.map((storyboard) => {
+    let disabledReason: string | undefined;
+    if (videoTasks.some((task) => task.storyboardId === storyboard.id &&
+      ['PENDING', 'RUNNING', 'SUBMITTED', 'GENERATING'].includes(task.execution?.status || task.status))) {
+      disabledReason = '视频正在生成中';
+    } else {
+      try { videoTaskValues(storyboard); } catch (error) {
+        disabledReason = error instanceof Error ? error.message : '当前分镜暂不可生成视频';
+      }
+    }
+    return { storyboard, disabledReason };
+  });
+
+  const batchGenerateVideo = async () => {
+    if (videoBatchSubmission.current || videoBatchLoading || videoBatchError) return;
+    const selected = batchVideoOptions.filter((item) => !item.disabledReason && videoBatchSelectedIds.includes(item.storyboard.id))
+      .map((item) => item.storyboard);
+    if (!selected.length) return;
+    videoBatchSubmission.current = true;
+    setVideoBatchSubmitting(true);
+    try {
       await confirmPointEstimates(
-        visibleStoryboards.map((item) => ({
+        selected.map((item) => ({
           url: `/api/projects/${projectId}/ai-video-tasks`,
           data: { ...videoTaskValues(item), promptDocument: promptFor(item) },
         })),
       );
-      const outcomes = await Promise.allSettled(
-        visibleStoryboards.map((item) =>
-          createVideoTaskForStoryboard(item, true),
-        ),
-      );
-      let created = 0;
-      outcomes.forEach((outcome, index) => {
-      if (outcome.status === 'rejected') {
-        const storyboard = visibleStoryboards[index];
-        message.error(
-          `分镜${storyboard.storyboardNo || storyboard.shotNo || index + 1}：${outcome.reason instanceof Error ? outcome.reason.message : '视频生成失败'}`,
-        );
-        return;
+      const outcomes: PromiseSettledResult<AiVideoTask | undefined>[] = [];
+      for (let offset = 0; offset < selected.length; offset += 4) {
+        outcomes.push(...await Promise.allSettled(selected.slice(offset, offset + 4)
+          .map((item) => createVideoTaskForStoryboard(item, true))));
       }
-      const task = outcome.value;
-      if (task) {
+      let created = 0;
+      const failedIds: number[] = [];
+      outcomes.forEach((outcome, index) => {
+        const storyboard = selected[index];
+        if (outcome.status === 'rejected' || !outcome.value) {
+          failedIds.push(storyboard.id);
+          const reason = outcome.status === 'rejected' && outcome.reason instanceof Error
+            ? outcome.reason.message : '视频任务创建失败';
+          message.error(`分镜${storyboard.storyboardNo || storyboard.shotNo}：${reason}`);
+          return;
+        }
+        const task = outcome.value;
         created += 1;
         setVideoTasks((previous) => [...previous, task]);
         void followVideoExecution(task).catch(() =>
           message.error('视频任务状态刷新失败'),
         );
-      }
-    });
-      if (created > 0) {
-      message.success('批量视频任务已创建');
-    }
+      });
+      if (created > 0) message.success(`已创建 ${created} 个视频任务`);
+      setVideoBatchSelectedIds(failedIds);
+      if (!failedIds.length) setVideoBatchOpen(false);
     } catch (error) {
       if (!isPointEstimateCancelled(error))
         message.error(
           error instanceof Error ? error.message : '批量视频提交失败',
         );
+    } finally {
+      videoBatchSubmission.current = false;
+      setVideoBatchSubmitting(false);
     }
   };
 
@@ -2761,6 +3104,14 @@ const ProductionWorkbenchStoryboard = () => {
       const response = await bindAiVideoResultToStoryboard(projectId, resultId);
       if (!response.data) throw new Error('missing video result');
       const result = response.data;
+      setVideoHistories((previous) => {
+        const page = previous[result.storyboardId];
+        return { ...previous, [result.storyboardId]: {
+          current: page?.current || 1, pageSize: page?.pageSize || 8, total: Math.max(1, page?.total || 0),
+          data: [...(page?.data || []).filter((candidate) => candidate.id !== result.id)
+            .map((candidate) => ({ ...candidate, isSelected: false })), result],
+        } };
+      });
       setWorkspace((previous) => ({ ...previous, storyboards: previous.storyboards.map((item) =>
         item.id === result.storyboardId
           ? { ...item, currentVideoResultId: result.id, currentVideoUrl: result.videoUrl }
@@ -3219,6 +3570,8 @@ const ProductionWorkbenchStoryboard = () => {
   const removeStoryboard = async (storyboard: StoryboardShot) => {
     try {
       await deleteStoryboard(projectId, storyboard.id);
+      setStoryboardNavigation((previous) => previous.filter((item) => item.id !== storyboard.id));
+      setStoryboardTotal((previous) => Math.max(0, previous - 1));
       setWorkspace((previous) => ({
         ...previous,
         storyboards: previous.storyboards.filter(
@@ -3239,7 +3592,7 @@ const ProductionWorkbenchStoryboard = () => {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '64px minmax(0, 1fr)',
+        gridTemplateColumns: '64px 24px minmax(0, 1fr)',
         height: '100%',
         minHeight: 0,
         background: '#f8f9fc',
@@ -3258,17 +3611,6 @@ const ProductionWorkbenchStoryboard = () => {
           集数
         </div>
         <div style={{ position: 'relative', display: 'grid', gap: 10 }}>
-          <span
-            style={{
-              position: 'absolute',
-              left: 61,
-              top: 38,
-              bottom: 8,
-              width: 5,
-              borderRadius: 4,
-              background: '#75e0aa',
-            }}
-          />
           {episodeNumbers.map((episode) => (
             <button
               key={episode}
@@ -3295,7 +3637,17 @@ const ProductionWorkbenchStoryboard = () => {
         </div>
       </aside>
 
-      <div className="storyboard-workbench" data-testid="storyboard-workbench" style={{ minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
+      <StoryboardPositionRail
+        episodeNo={activeEpisode}
+        activeId={activeStoryboardId}
+        items={storyboardNavigation.map((shot) => ({ ...shot,
+          hasVideo: shot.hasVideo || Boolean(videoHistories[shot.id]?.total)
+            || videoTasks.some((task) => task.storyboardId === shot.id && task.results?.some((result) => result.videoUrl)),
+        }))}
+        onNavigate={(id, position) => void navigateToStoryboard(id, position)}
+      />
+
+      <div ref={workbenchRef} onScroll={updateActiveStoryboard} className="storyboard-workbench" data-testid="storyboard-workbench" style={{ minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
         {mutationRefreshFailed ? (
           <div role="alert">
             操作已完成，但分镜刷新失败。
@@ -3317,7 +3669,7 @@ const ProductionWorkbenchStoryboard = () => {
               }))}
               style={{ width: 202 }}
             />
-            <Button icon={<BarsOutlined />} onClick={batchGenerateVideo}>
+            <Button icon={<BarsOutlined />} onClick={() => void openBatchVideoGeneration()}>
               批量生成视频
             </Button>
             {failedVisibleVideoTasks.length ? (
@@ -3330,17 +3682,6 @@ const ProductionWorkbenchStoryboard = () => {
                 重试失败视频
               </Button>
             ) : null}
-            <Button
-              icon={<ThunderboltOutlined />}
-              loading={storyboardBatchBusy}
-              disabled={
-                storyboardBatchBusy ||
-                ['PENDING', 'RUNNING'].includes(storyboardBatch?.status || '')
-              }
-              onClick={() => void generateStoryboardBatch()}
-            >
-              批量生成分镜
-            </Button>
           </Flex>
         </Flex>
 
@@ -3362,13 +3703,29 @@ const ProductionWorkbenchStoryboard = () => {
                 <Button
                   size="small"
                   loading={storyboardBatchBusy}
-                  onClick={() => void generateStoryboardBatch(true)}
+                  onClick={() => void retryFailedStoryboards()}
                 >
                   重试失败分镜
                 </Button>
               ) : null}
           </Flex>
         ) : null}
+        <BatchVideoGenerationModal
+          open={videoBatchOpen}
+          loading={videoBatchLoading}
+          submitting={videoBatchSubmitting}
+          error={videoBatchError}
+          candidates={batchVideoOptions}
+          selectedIds={videoBatchSelectedIds}
+          onSelectionChange={setVideoBatchSelectedIds}
+          onCancel={() => {
+            if (videoBatchSubmission.current) return;
+            videoBatchRequestId.current += 1;
+            setVideoBatchOpen(false);
+          }}
+          onRetry={() => void openBatchVideoGeneration()}
+          onSubmit={() => void batchGenerateVideo()}
+        />
 
         <section style={{ marginTop: 18, paddingLeft: 2 }}>
           <Flex justify="space-between" align="center" gap={16} wrap>
@@ -3387,36 +3744,66 @@ const ProductionWorkbenchStoryboard = () => {
               生成本集分镜
             </Button>
           </Flex>
-          <Typography.Paragraph
-            style={{
-              margin: '14px 0 18px',
-              color: '#536079',
-              fontSize: 14,
-            }}
+          <div className="storyboard-episode-summary-row">
+            <p className="storyboard-episode-summary">{episodeSummary}</p>
+            <Button
+              type="link"
+              size="small"
+              aria-label="查看本集详情"
+              onClick={() => setEpisodeDetailsOpen(true)}
+            >
+              查看详情
+            </Button>
+          </div>
+          <Modal
+            title="本集详情"
+            open={episodeDetailsOpen}
+            onCancel={() => setEpisodeDetailsOpen(false)}
+            footer={null}
+            width={760}
+            centered
+            destroyOnHidden
+            styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
           >
-            {episodeSummary}
-          </Typography.Paragraph>
-          <Button
-            type="link"
-            size="small"
-            aria-label={episodeDetailsOpen ? '收起本集详情' : '查看本集详情'}
-            onClick={() => setEpisodeDetailsOpen((open) => !open)}
-            style={{ paddingInline: 0, marginBottom: 10 }}
-          >
-            {episodeDetailsOpen ? '收起详情' : '查看详情'}
-          </Button>
-          {episodeDetailsOpen ? (
-            <section aria-label="本集详情" style={{ marginBottom: 16 }}>
-              {(currentEpisode?.formalSummary?.content.highlights || []).map((highlight) => (
-                <Tag key={highlight}>{highlight}</Tag>
-              ))}
-              {currentEpisode?.formalSummary?.content.endingHook ? (
-                <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-                  {currentEpisode.formalSummary.content.endingHook}
-                </Typography.Text>
-              ) : null}
+            <Typography.Paragraph type="secondary">
+              第{activeEpisode}集{episodeTitle ? ` ${episodeTitle}` : ''}
+            </Typography.Paragraph>
+            <section className="storyboard-episode-detail-section" aria-label="完整剧情摘要">
+              <h3>剧情摘要</h3>
+              <p>{episodeSummary}</p>
             </section>
-          ) : null}
+            <section className="storyboard-episode-detail-section" aria-label="关键剧情节点">
+              <h3>关键剧情节点</h3>
+              {currentEpisode?.formalSummary?.content.highlights?.length ? (
+                <Flex gap={8} wrap className="storyboard-episode-highlights">
+                  {currentEpisode.formalSummary.content.highlights.map((highlight) => (
+                    <Tag key={highlight}>{highlight}</Tag>
+                  ))}
+                </Flex>
+              ) : <Typography.Text type="secondary">暂无关键剧情节点</Typography.Text>}
+            </section>
+            <section className="storyboard-episode-detail-section" aria-label="本集结尾悬念">
+              <h3>本集结尾悬念</h3>
+              {currentEpisode?.formalSummary?.content.endingHook ? (
+                <p>{currentEpisode.formalSummary.content.endingHook}</p>
+              ) : <Typography.Text type="secondary">暂无结尾悬念</Typography.Text>}
+            </section>
+            {storyboardDiagnostics ? (
+              <section className="storyboard-episode-detail-section" aria-label="分镜生成统计">
+                <h3>分镜生成统计</h3>
+                <Flex gap={8} wrap>
+                  <Tag>后端规范化 {storyboardDiagnostics.normalizationCount} 项</Tag>
+                  <Tag>派生声音 {storyboardDiagnostics.derivedSoundCount} 条</Tag>
+                  <Tag color={storyboardDiagnostics.classificationWarnings.length ? 'warning' : 'default'}>
+                    来源分类告警 {' '}
+                    {storyboardDiagnostics.classificationWarnings.length} 条
+                  </Tag>
+                  <Tag>业务调用 {storyboardDiagnostics.businessCallCount} 次</Tag>
+                  <Tag>技术重试 {storyboardDiagnostics.technicalRetryCount} 次</Tag>
+                </Flex>
+              </section>
+            ) : null}
+          </Modal>
           {storyboardExecution ? (
             <AiExecutionStatus task={storyboardExecution} busy={storyboardBusy} />
           ) : null}
@@ -3424,18 +3811,6 @@ const ProductionWorkbenchStoryboard = () => {
             <Tag color="warning" style={{ marginTop: 10 }}>
               生成成功，有 {storyboardWarnings.length} 条质量告警
             </Tag>
-          ) : null}
-          {storyboardDiagnostics ? (
-            <Flex gap={8} wrap style={{ marginTop: 10 }}>
-              <Tag>后端规范化 {storyboardDiagnostics.normalizationCount} 项</Tag>
-              <Tag>派生声音 {storyboardDiagnostics.derivedSoundCount} 条</Tag>
-              <Tag color={storyboardDiagnostics.classificationWarnings.length ? 'warning' : 'default'}>
-                来源分类告警 {' '}
-                {storyboardDiagnostics.classificationWarnings.length} 条
-              </Tag>
-              <Tag>业务调用 {storyboardDiagnostics.businessCallCount} 次</Tag>
-              <Tag>技术重试 {storyboardDiagnostics.technicalRetryCount} 次</Tag>
-            </Flex>
           ) : null}
         </section>
 
@@ -3458,14 +3833,16 @@ const ProductionWorkbenchStoryboard = () => {
               <StoryboardCard
                 key={item.id}
                 item={item}
-                index={index}
+                index={(item.storyboardNo || item.shotNo || index + 1) - 1}
                 characters={characters}
                 scenes={scenes}
                 props={props}
                 episodes={workspace?.episodes ?? []}
                 imageTasks={imageTasks}
                 videoTasks={videoTasks}
+                videoHistory={videoHistories[item.id]}
                 referenceOptions={referenceOptions}
+                referenceThumbnails={referenceThumbnails}
                 draft={
                   {
                     ...(drafts[item.id] || {
@@ -3511,8 +3888,8 @@ const ProductionWorkbenchStoryboard = () => {
             ))}
           </div>
         ) : (
-          <div style={{ paddingTop: 100 }}>
-            <Empty description="暂无分镜，请先完成剧本分镜拆解" />
+          <div className="storyboard-empty-workspace">
+            <StoryboardVideoEmptyState />
           </div>
         )}
         {storyboardTotal > storyboardPageSize ? (

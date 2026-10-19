@@ -43,10 +43,42 @@ public class StoryboardMediaQueryService {
             ? tasks(tenantId, projectId, ids, shots, "image", "first_frame_image_id") : List.of());
         result.put("videoTasks", permissions.contains("AI_VIDEO_TASK:VIEW")
             ? tasks(tenantId, projectId, ids, shots, "video", "current_video_result_id") : List.of());
+        result.put("videoHistory", permissions.contains("AI_VIDEO_TASK:VIEW")
+            ? videoHistory(tenantId, projectId, ids) : List.of());
         result.put("voiceTasks", permissions.contains("AI_VOICE_TASK:VIEW")
             ? tasks(tenantId, projectId, ids, shots, "voice", "current_voice_result_id") : List.of());
         result.put("assetVisuals", permissions.contains("ELEMENT:VIEW") ? assetVisuals(tenantId, projectId, ids, shots) : List.of());
         return result;
+    }
+
+    private List<Map<String, Object>> videoHistory(Long tenantId, Long projectId, List<Long> ids) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            select * from (
+              select r.id,r.task_id,r.storyboard_id,r.storage_path,r.cover_url,r.is_selected,r.status,r.created_at,
+                     count(*) over (partition by r.storyboard_id) result_count,
+                     row_number() over (partition by r.storyboard_id order by r.created_at desc,r.id desc) result_rank
+                from ai_video_result r join ai_video_task t on t.id=r.task_id
+                 and t.tenant_id=r.tenant_id and t.project_id=r.project_id and t.deleted_at is null
+               where r.tenant_id=? and r.project_id=? and r.status='ACTIVE'
+                 and r.storyboard_id in (%s)
+            ) ranked where result_rank <= 8 order by storyboard_id,created_at desc,id desc
+            """.formatted(placeholders(ids.size())), scopedParameters(tenantId, projectId, ids).toArray());
+        Map<Long, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        Map<Long, Long> totals = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> mapped = camelCase(row);
+            Long storyboardId = ((Number) mapped.get("storyboardId")).longValue();
+            Long resultId = ((Number) mapped.get("id")).longValue();
+            totals.put(storyboardId, ((Number) mapped.remove("resultCount")).longValue());
+            mapped.remove("resultRank");
+            mapped.put("videoUrl", "/api/projects/" + projectId + "/ai-video-results/" + resultId + "/playback");
+            mapped.put("coverUrl", com.antshorttv.material.MediaCoverDeliveryService.coverUrl(projectId, resultId,
+                com.antshorttv.material.MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT, (String) mapped.get("coverUrl")));
+            grouped.computeIfAbsent(storyboardId, ignored -> new ArrayList<>()).add(mapped);
+        }
+        return ids.stream().map(id -> Map.<String, Object>of(
+            "storyboardId", id, "current", 1, "pageSize", 8,
+            "total", totals.getOrDefault(id, 0L), "data", grouped.getOrDefault(id, List.of()))).toList();
     }
 
     private List<Map<String, Object>> assetVisuals(Long tenantId, Long projectId, List<Long> ids,

@@ -560,6 +560,11 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             .andExpect(jsonPath("$.data.total", is(3)))
             .andExpect(jsonPath("$.data.current", is(1)))
             .andExpect(jsonPath("$.data.pageSize", is(2)))
+            .andExpect(jsonPath("$.data.storyboardNavigation", hasSize(3)))
+            .andExpect(jsonPath("$.data.storyboardNavigation[0].hasVideo", is(true)))
+            .andExpect(jsonPath("$.data.storyboardNavigation[1].hasVideo", is(false)))
+            .andExpect(jsonPath("$.data.storyboardNavigation[2].shotNo", is(3)))
+            .andExpect(jsonPath("$.data.storyboardNavigation[0].visualDescription").doesNotExist())
             .andExpect(jsonPath("$.data.storyboards", hasSize(2)))
             .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(1)))
             .andExpect(jsonPath("$.data.storyboards[0].currentVideoUrl", is("/api/projects/" + projectId + "/ai-video-results/6401/playback")))
@@ -573,6 +578,7 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.storyboards", hasSize(1)))
+            .andExpect(jsonPath("$.data.storyboardNavigation", hasSize(3)))
             .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(3)));
     }
 

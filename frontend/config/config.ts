@@ -155,7 +155,6 @@ export default defineConfig({
       variant: 'filled',
       theme: {
         token: {
-          fontFamily: 'AlibabaSans, sans-serif',
           ...appThemeToken,
         },
       },

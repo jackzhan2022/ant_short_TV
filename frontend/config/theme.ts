@@ -1,4 +1,7 @@
 export const appThemeToken = {
+  fontFamily: '"PingFang SC", "PingFang TC", -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif',
+  fontSize: 14,
+  fontWeightStrong: 400,
   colorPrimary: '#5252ff',
   colorInfo: '#5252ff',
   colorLink: '#5252ff',

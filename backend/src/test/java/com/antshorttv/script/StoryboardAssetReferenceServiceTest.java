@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 class StoryboardAssetReferenceServiceTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private StoryboardAssetReferenceRepository repository;
+    @Autowired private StoryboardAssetReferenceLegacyResolver legacyResolver;
     private StoryboardAssetReferenceService service;
 
     @BeforeEach
@@ -30,7 +31,7 @@ class StoryboardAssetReferenceServiceTest {
         ProjectPermissionGuard guard = mock(ProjectPermissionGuard.class);
         when(guard.require(9901L, 9911L, "STORYBOARD:EDIT"))
             .thenReturn(new TenantContext(1L, 9901L, 1L, "OWNER"));
-        service = new StoryboardAssetReferenceService(guard, jdbc, repository);
+        service = new StoryboardAssetReferenceService(guard, jdbc, repository, legacyResolver);
 
         jdbc.update("insert into tenant (id,code,name,type,status,created_at,updated_at) values (9901,'bind-a','A','TEAM','ACTIVE',now(),now())");
         jdbc.update("insert into tenant (id,code,name,type,status,created_at,updated_at) values (9902,'bind-b','B','TEAM','ACTIVE',now(),now())");
@@ -80,6 +81,93 @@ class StoryboardAssetReferenceServiceTest {
             .containsEntry("CHARACTERS", null)
             .containsEntry("SCENE", null)
             .containsEntry("PROPS", null);
+    }
+
+    @Test
+    void preservesExistingUnresolvedReferencesWhenEditingOtherAssets() {
+        jdbc.update("""
+            insert into storyboard_asset_reference
+              (tenant_id,project_id,storyboard_id,asset_type,reference_role,sort_order,
+               resolution_status,source_type,source_name,locked_by_user,created_by,created_at,updated_at)
+            values
+              (9901,9911,9921,'CHARACTER','VISIBLE',0,'UNRESOLVED','AI','神秘人',false,1,now(),now()),
+              (9901,9911,9921,'PROP','VISIBLE',0,'UNRESOLVED','LEGACY','旧道具',false,1,now(),now())
+            """);
+
+        var commands = List.of(
+            command("CHARACTER", 9931L, 9941L, "VISIBLE", 0),
+            new StoryboardAssetReferenceCommand("CHARACTER", null, null, "VISIBLE", 1, "神秘人"),
+            new StoryboardAssetReferenceCommand("PROP", null, null, "VISIBLE", 0, "旧道具"),
+            command("SCENE", 9932L, null, "MAIN", 0)
+        );
+        var response = service.replace(9901L, 9911L, 9921L,
+            new ReplaceStoryboardAssetReferencesRequest(commands));
+
+        assertThat(response).extracting(StoryboardAssetReferenceResponse::resolutionStatus)
+            .containsExactly("RESOLVED", "UNRESOLVED", "RESOLVED", "UNRESOLVED");
+        assertThat(response.get(1).assetId()).isNull();
+        assertThat(response.get(1).sourceName()).isEqualTo("神秘人");
+        assertThat(response.get(1).sourceType()).isEqualTo("AI");
+        assertThat(response.get(1).lockedByUser()).isFalse();
+        assertThat(response.get(3).sourceType()).isEqualTo("LEGACY");
+        assertThat(jdbc.queryForMap("select characters,scene,props from storyboard where id=9921"))
+            .containsEntry("CHARACTERS", "Serena、神秘人")
+            .containsEntry("SCENE", "走廊")
+            .containsEntry("PROPS", "旧道具");
+        assertThat(service.replace(9901L, 9911L, 9921L,
+            new ReplaceStoryboardAssetReferencesRequest(commands))).hasSize(4);
+
+        var confirmed = service.replace(9901L, 9911L, 9921L,
+            new ReplaceStoryboardAssetReferencesRequest(List.of(
+                command("CHARACTER", 9931L, null, "VISIBLE", 0)
+            )));
+        assertThat(confirmed).hasSize(1);
+        assertThat(confirmed.get(0).sourceType()).isEqualTo("MANUAL");
+        assertThat(confirmed.get(0).lockedByUser()).isTrue();
+        assertThat(jdbc.queryForMap("select characters,scene,props from storyboard where id=9921"))
+            .containsEntry("CHARACTERS", "Serena")
+            .containsEntry("SCENE", null)
+            .containsEntry("PROPS", null);
+    }
+
+    @Test
+    void persistsUnresolvedLegacyNamesOnFirstControlledSave() {
+        jdbc.update("update storyboard set characters='Serena、神秘人',scene=null,props='旧道具' where id=9921");
+        var response = service.replace(9901L, 9911L, 9921L,
+            new ReplaceStoryboardAssetReferencesRequest(List.of(
+                command("CHARACTER", 9931L, null, "VISIBLE", 0),
+                new StoryboardAssetReferenceCommand("CHARACTER", null, null, "VISIBLE", 1, "神秘人"),
+                new StoryboardAssetReferenceCommand("PROP", null, null, "VISIBLE", 0, "旧道具")
+            )));
+
+        assertThat(response).hasSize(3);
+        assertThat(response.get(1).sourceType()).isEqualTo("LEGACY");
+        assertThat(response.get(1).resolutionStatus()).isEqualTo("UNRESOLVED");
+        assertThat(response.get(1).lockedByUser()).isFalse();
+        assertThat(repository.listActive(9901L, 9911L, 9921L)).hasSize(3);
+        assertThat(jdbc.queryForObject("select props from storyboard where id=9921", String.class))
+            .isEqualTo("旧道具");
+    }
+
+    @Test
+    void rejectsNewOrInvalidUnboundReferencesWithoutReplacingExistingRows() {
+        jdbc.update("update storyboard set characters='神秘人',scene=null,props=null where id=9921");
+        jdbc.update("insert into storyboard (id,tenant_id,project_id,episode_no,shot_no,visual_description,characters,status,created_by,created_at,updated_at) values (9922,9902,9912,1,1,'other','其他人','DRAFT',1,now(),now())");
+        var unknown = new StoryboardAssetReferenceCommand("CHARACTER", null, null, "VISIBLE", 0, "神秘人");
+        for (var commands : List.of(
+            List.of(new StoryboardAssetReferenceCommand("CHARACTER", null, null, "VISIBLE", 0, "其他人")),
+            List.of(new StoryboardAssetReferenceCommand("PROP", null, null, "VISIBLE", 0, "神秘人")),
+            List.of(new StoryboardAssetReferenceCommand("CHARACTER", null, 9941L, "VISIBLE", 0, "神秘人")),
+            List.of(command("CHARACTER", null, null, "VISIBLE", 0)),
+            List.of(unknown, new StoryboardAssetReferenceCommand("CHARACTER", null, null, "VISIBLE", 1, "神秘人"))
+        )) {
+            assertThatThrownBy(() -> service.replace(9901L, 9911L, 9921L,
+                new ReplaceStoryboardAssetReferencesRequest(commands)))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("当前项目资产");
+            assertThat(repository.listActive(9901L, 9911L, 9921L)).isEmpty();
+            assertThat(jdbc.queryForObject("select characters from storyboard where id=9921", String.class))
+                .isEqualTo("神秘人");
+        }
     }
 
     @Test
