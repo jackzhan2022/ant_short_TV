@@ -127,6 +127,9 @@ ai:
     max-concurrent-per-model: ${AI_EXECUTION_MAX_CONCURRENT_PER_MODEL:4}
     worker-threads: ${AI_EXECUTION_WORKER_THREADS:4}
     queue-capacity: ${AI_EXECUTION_QUEUE_CAPACITY:100}
+    image-publication:
+      worker-threads: ${AI_IMAGE_PUBLICATION_WORKER_THREADS:2}
+      queue-capacity: ${AI_IMAGE_PUBLICATION_QUEUE_CAPACITY:32}
   video:
     max-concurrent-per-tenant: ${AI_VIDEO_MAX_CONCURRENT_PER_TENANT:3}
     task-timeout-minutes: ${AI_VIDEO_TASK_TIMEOUT_MINUTES:20}

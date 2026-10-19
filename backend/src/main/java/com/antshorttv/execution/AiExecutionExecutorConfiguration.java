@@ -18,7 +18,22 @@ public class AiExecutionExecutorConfiguration {
         executor.setMaxPoolSize(workerThreads);
         executor.setQueueCapacity(queueCapacity);
         executor.setThreadNamePrefix("ai-execution-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.initialize();
+        return executor;
+    }
+
+    @Bean("aiImagePublicationExecutor")
+    ThreadPoolTaskExecutor aiImagePublicationExecutor(
+        @Value("${ai.execution.image-publication.worker-threads:2}") int workerThreads,
+        @Value("${ai.execution.image-publication.queue-capacity:32}") int queueCapacity
+    ) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(workerThreads);
+        executor.setMaxPoolSize(workerThreads);
+        executor.setQueueCapacity(queueCapacity);
+        executor.setThreadNamePrefix("ai-image-publication-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.initialize();
         return executor;
     }

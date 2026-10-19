@@ -9,6 +9,8 @@ import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.accounting.ModelBillingMissingException;
 import com.antshorttv.points.AiPointReservationEntity;
 import com.antshorttv.points.AiPointReservationMapper;
+import com.antshorttv.aiimage.AiImageTaskEntity;
+import com.antshorttv.aiimage.AiImageTaskMapper;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -38,6 +40,80 @@ class AiExecutionCoreServiceTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private AiImageTaskMapper imageTasks;
+
+    @Autowired
+    private AiExecutionDispatcher dispatcher;
+
+    @Test
+    void publicationCanClaimWhenTheTenantAndModelAreAtTheirGenerationLimits() {
+        long tenant = 88101L;
+        long model = 988100L;
+        for (int index = 0; index < 5; index++) {
+            var generation = imageExecution(tenant, model + index, "PENDING", "full-" + index);
+            assertThat(claimService.claim(generation.id, "generation-" + index, LocalDateTime.now(), Duration.ofMinutes(5)))
+                .isNotNull();
+        }
+        var publication = imageExecution(tenant, model, "RENDERING", "full-publication");
+        assertThat(claimService.claim(publication.id, "publish-full", LocalDateTime.now(), Duration.ofMinutes(5))).isNotNull();
+        var blocked = imageExecution(tenant, model, "PENDING", "still-full");
+        assertThat(claimService.claim(blocked.id, "still-blocked", LocalDateTime.now(), Duration.ofMinutes(5))).isNull();
+    }
+
+    @Test
+    void runningPublicationsDoNotConsumeTenantOrModelGenerationCapacity() {
+        long tenant = 88102L;
+        long model = 988200L;
+        jdbc.update("insert into ai_model_execution_quota(model_id,concurrency_limit,updated_at) values (?,1,now())", model);
+        for (int index = 0; index < 5; index++) {
+            var publication = imageExecution(tenant, model, "RENDERING", "publication-" + index);
+            assertThat(claimService.claim(publication.id, "publication-" + index, LocalDateTime.now(), Duration.ofMinutes(5)))
+                .isNotNull();
+        }
+        var generation = imageExecution(tenant, model, "PENDING", "free-slot");
+        assertThat(claimService.claim(generation.id, "generation-slot", LocalDateTime.now(), Duration.ofMinutes(5))).isNotNull();
+        var blocked = imageExecution(tenant + 10, model, "PENDING", "model-still-bounded");
+        assertThat(claimService.claim(blocked.id, "model-blocked", LocalDateTime.now(), Duration.ofMinutes(5))).isNull();
+    }
+
+    @Test
+    void routesLegacyImagePublicationStatesSeparatelyFromUnsubmittedImages() {
+        long tenant = 88103L;
+        var settling = imageExecution(tenant, 988103L, "SETTLING", "legacy-settling");
+        var rendering = imageExecution(tenant, 988103L, "RENDERING", "legacy-rendering");
+        var success = imageExecution(tenant, 988103L, "SUCCESS", "legacy-success");
+        var pending = imageExecution(tenant, 988103L, "PENDING", "unsubmitted");
+        var publications = dispatcher.eligibleImagePublicationIds(LocalDateTime.now().plusSeconds(1), 20);
+        var generations = dispatcher.eligibleExecutionIds(LocalDateTime.now().plusSeconds(1), 20);
+        assertThat(publications).contains(settling.id, rendering.id, success.id).doesNotContain(pending.id);
+        assertThat(generations).contains(pending.id).doesNotContain(settling.id, rendering.id, success.id);
+    }
+
+    @Test
+    void anotherTenantsImageCannotBypassGenerationLimits() {
+        var execution = imageExecution(88104L, 988104L, "RENDERING", "cross-tenant-publication");
+        jdbc.update("update ai_image_task set tenant_id=tenant_id+1 where execution_id=?",execution.id);
+        assertThat(taskMapper.countImagePublication(execution.id)).isZero();
+        assertThat(dispatcher.eligibleImagePublicationIds(LocalDateTime.now().plusSeconds(1),20))
+            .doesNotContain(execution.id);
+    }
+
+    private AiExecutionTaskEntity imageExecution(long tenant, long model, String state, String key) {
+        var image = new AiImageTaskEntity();
+        image.setTenantId(tenant); image.setProjectId(tenant + 100); image.setTaskType("CHARACTER");
+        image.setTargetType("VISUAL_VARIANT"); image.setTargetId(1L); image.setProviderCode("test");
+        image.setModel("test"); image.setPrompt("test"); image.setAspectRatio("1:1");
+        image.setImageCount(1); image.setStatus(state); image.setCreatedBy(tenant);
+        image.setCreatedAt(LocalDateTime.now()); image.setUpdatedAt(LocalDateTime.now());
+        imageTasks.insert(image);
+        var execution = executionService.create(new AiExecutionCreateCommand(tenant,tenant,tenant+100,
+            "ai_image_generate","IMAGE","AI_IMAGE_TASK",image.getId(),model,"SUBMIT",key,"trace-"+key,false,null));
+        image.setExecutionId(execution.id);
+        imageTasks.updateById(image);
+        return execution;
+    }
 
     @Test
     void missingDualPriceRejectsBeforeTaskAndReservationCreation() {
