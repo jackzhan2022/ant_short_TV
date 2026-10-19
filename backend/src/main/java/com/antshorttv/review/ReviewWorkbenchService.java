@@ -1130,6 +1130,11 @@ public class ReviewWorkbenchService {
             .orderByDesc(ReviewTaskEntity::getCreatedAt));
     }
 
+    public Long pointEstimateModelId(Long tenantId) {
+        tenantContextResolver.requireActiveMember(tenantId);
+        return resolveDefaultTextModelId(tenantId);
+    }
+
     private Long resolveDefaultTextModelId(Long tenantId) {
         AiModelEntity model = aiModelMapper.selectOne(new LambdaQueryWrapper<AiModelEntity>()
             .eq(AiModelEntity::getServiceType, "TEXT")

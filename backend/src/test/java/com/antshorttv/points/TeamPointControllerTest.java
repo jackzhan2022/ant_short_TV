@@ -28,6 +28,30 @@ class TeamPointControllerTest extends com.antshorttv.support.RegistrationTestSup
     private JdbcTemplate jdbcTemplate;
 
     @Test
+    void pointEstimateEndpointIsReadOnlyAndRejectsUnsupportedOperations() throws Exception {
+        String token = registerUser("13800019007", "Estimate Owner");
+        Long tenantId = createTenant(token, "预估团队");
+        Long executions = jdbcTemplate.queryForObject("select count(*) from ai_execution_task where tenant_id=?", Long.class, tenantId);
+        Long reservations = jdbcTemplate.queryForObject("select count(*) from ai_point_reservation where tenant_id=?", Long.class, tenantId);
+        Long ledger = jdbcTemplate.queryForObject("select count(*) from point_ledger where tenant_id=?", Long.class, tenantId);
+        mockMvc.perform(post("/api/tenants/%d/points/estimate".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"operations\":[{\"url\":\"/api/projects\",\"data\":{}}]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.estimatedPoints", is(0)))
+            .andExpect(jsonPath("$.data.lines", org.hamcrest.Matchers.hasSize(0)));
+        mockMvc.perform(post("/api/tenants/%d/points/estimate".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"operations\":[{\"url\":\"/api/unknown-ai\"}]}"))
+            .andExpect(status().isBadRequest());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select count(*) from ai_execution_task where tenant_id=?", Long.class, tenantId)).isEqualTo(executions);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select count(*) from ai_point_reservation where tenant_id=?", Long.class, tenantId)).isEqualTo(reservations);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select count(*) from point_ledger where tenant_id=?", Long.class, tenantId)).isEqualTo(ledger);
+    }
+
+    @Test
     void returnsZeroBalanceForNewTenant() throws Exception {
         String token = registerUser("13800019001", "Point Owner");
         Long tenantId = createTenant(token, "积分团队");

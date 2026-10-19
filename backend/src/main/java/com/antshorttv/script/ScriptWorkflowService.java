@@ -1046,7 +1046,7 @@ public class ScriptWorkflowService {
     }
 
 
-    public WorkflowAgentRunResult regenerateEpisodeSplitting(Long tenantId, Long projectId) {
+    public AiExecutionResponse regenerateEpisodeSplitting(Long tenantId, Long projectId, HttpServletRequest request) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "AI_SERVICE:USE", projectId);
@@ -1055,10 +1055,8 @@ public class ScriptWorkflowService {
         if (script == null || script.getContent() == null || script.getContent().isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前项目没有可智能拆分的剧本。");
         }
-        return workflowAgentRunner.runFormal(new WorkflowAgentRunInput(
-            EpisodeSplittingAgentBootstrap.AGENT_CODE,
-            "基于当前剧本重新生成并覆盖正式剧集。",
-            tenantId, projectId, null, script.getId(), null, null, context.userId()));
+        return submitOperation(context, projectId, AiBusinessScene.SCRIPT_EPISODE_SPLIT,
+            "SCRIPT_EPISODE_SPLIT", script.getId(), script.getCurrentVersionId(), Map.of(), request);
     }
 
     @Transactional
@@ -1089,11 +1087,12 @@ public class ScriptWorkflowService {
         return scriptEpisodeSummaryRepository.findCurrent(tenantId, scriptId, episodeId).orElseThrow();
     }
 
-    public WorkflowAgentRunResult regenerateEpisodeSummary(
+    public AiExecutionResponse regenerateEpisodeSummary(
         Long tenantId,
         Long projectId,
         Long episodeId,
-        boolean overwrite
+        boolean overwrite,
+        HttpServletRequest request
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
@@ -1104,16 +1103,16 @@ public class ScriptWorkflowService {
         if (scriptEpisodeSummaryRepository.findCurrent(tenantId, scriptId, episodeId).isPresent() && !overwrite) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "重新生成将覆盖现有概要，请明确确认 overwrite。");
         }
-        return workflowAgentRunner.runFormal(new WorkflowAgentRunInput(
-            com.antshorttv.workflowagent.agent.EpisodeSummaryAgentBootstrap.AGENT_CODE,
-            "读取当前剧集并重新生成、覆盖正式概要。",
-            tenantId, projectId, episodeId, scriptId, null, null, context.userId()));
+        ScriptEntity script = requireScript(tenantId, projectId);
+        return submitOperation(context, projectId, AiBusinessScene.SCRIPT_EPISODE_SUMMARY,
+            "SCRIPT_EPISODE_SUMMARY", scriptId, script.getCurrentVersionId(), Map.of("episodeId", episodeId), request);
     }
 
-    public WorkflowAgentRunResult regenerateEpisodeAssets(
+    public AiExecutionResponse regenerateEpisodeAssets(
         Long tenantId,
         Long projectId,
-        Long episodeId
+        Long episodeId,
+        HttpServletRequest request
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
@@ -1121,10 +1120,39 @@ public class ScriptWorkflowService {
         requirePermission(context, "SCRIPT:EDIT", projectId);
         Map<String, Object> episode = requireCurrentEpisode(tenantId, projectId, episodeId);
         Long scriptId = ((Number) episode.get("script_id")).longValue();
-        return workflowAgentRunner.runFormal(new WorkflowAgentRunInput(
-            com.antshorttv.workflowagent.agent.AssetRecognitionAgentBootstrap.AGENT_CODE,
-            "读取当前剧集并重新识别、匹配、覆盖本集正式角色、变装、场景、道具及形态绑定。",
-            tenantId, projectId, episodeId, scriptId, null, null, context.userId()));
+        ScriptEntity script = requireScript(tenantId, projectId);
+        return submitOperation(context, projectId, AiBusinessScene.SCRIPT_CHARACTER_SCENE_RECOGNITION,
+            "SCRIPT_EPISODE_ASSETS", scriptId, script.getCurrentVersionId(), Map.of("episodeId", episodeId), request);
+    }
+
+    public ScriptAiOperationExecutionResult executeEpisodeRegenerationOperation(
+        ScriptAiOperationEntity operation, AiExecutionContext execution
+    ) {
+        requireActiveExecutionClaim(execution);
+        ScriptEntity current = requireScript(operation.tenantId, operation.projectId);
+        if (!java.util.Objects.equals(current.getCurrentVersionId(), operation.scriptVersionId)) {
+            throw new BusinessException(ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED,
+                "剧本版本已变化，请重新确认积分后提交本次生成。");
+        }
+        String agent = switch (operation.operationType) {
+            case "SCRIPT_EPISODE_SPLIT" -> "short-drama-episode-splitting";
+            case "SCRIPT_EPISODE_SUMMARY" -> "short-drama-episode-summary";
+            case "SCRIPT_EPISODE_ASSETS" -> "short-drama-asset-recognition";
+            default -> throw new IllegalArgumentException("Unsupported episode operation.");
+        };
+        JsonNode input;
+        try { input = objectMapper.readTree(operation.redactedInputJson); }
+        catch (JsonProcessingException exception) { throw new IllegalArgumentException(exception); }
+        Long episodeId = input.hasNonNull("episodeId") ? input.path("episodeId").longValue() : null;
+        if (episodeId != null) requireCurrentEpisode(operation.tenantId, operation.projectId, episodeId);
+        var result = workflowAgentRunner.runFormal(new WorkflowAgentRunInput(agent,
+            "根据当前正式剧本重新生成并覆盖本次操作对应的正式结果。",
+            operation.tenantId, operation.projectId, episodeId, operation.scriptId, operation.id, null,
+            operation.createdBy, execution.task().id, execution.claim().attemptId(),
+            execution.task().executionVersion, execution.task().requestedModelId));
+        requireActiveExecutionClaim(execution);
+        markOperationResult(operation, "WORKFLOW_AGENT_RUN", result.runId());
+        return new ScriptAiOperationExecutionResult("WORKFLOW_AGENT_RUN", result.runId(), List.of(), result.modelCalls());
     }
 
     private Map<String, Object> requireCurrentEpisode(Long tenantId, Long projectId, Long episodeId) {

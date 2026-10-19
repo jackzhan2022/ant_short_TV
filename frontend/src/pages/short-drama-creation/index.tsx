@@ -38,6 +38,7 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import type { TenantMember } from '@/services/account-team/types';
 import type { MediaUploadHandle } from '@/services/mediaUpload';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
 import {
   type PublicStyle,
   queryStyleCategories,
@@ -52,10 +53,9 @@ import {
   scriptTypeOptions,
 } from './options';
 import ScriptContentImport from './ScriptContentImport';
-import usePlatformStyleGallery from './usePlatformStyleGallery';
 import {
-  createProject,
   bindProjectCover,
+  createProject,
   type InspirationCreation,
   type InspirationCreationDetail,
   queryInspirationCreationDetail,
@@ -63,6 +63,7 @@ import {
   queryTenantMembers,
   startProjectCoverUpload,
 } from './service';
+import usePlatformStyleGallery from './usePlatformStyleGallery';
 
 type CreationStep = 1 | 2;
 type DramaRegion = 'domestic' | 'overseas';
@@ -405,6 +406,9 @@ const ShortDramaCreationPage = () => {
       }
       if (coverBound) message.success('项目已创建');
       history.push(`/projects/${response.data.id}/production-workbench/script`);
+    } catch (error) {
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '创建项目失败');
     } finally {
       setSubmitting(false);
     }
@@ -574,7 +578,7 @@ const ShortDramaCreationPage = () => {
           初始设定
         </Button>
         <div className={styles.costNote}>
-          剧本每100字消耗5积分，实际消耗与最终上传的剧本字数相关
+          点击开始创作后，将预估自动分析及分镜的积分消耗
           <InfoCircleOutlined />
           <Button
             className={styles.startButton}
@@ -583,7 +587,7 @@ const ShortDramaCreationPage = () => {
             onClick={submitProject}
             type="primary"
           >
-            开始创作 12
+            开始创作
           </Button>
         </div>
       </header>

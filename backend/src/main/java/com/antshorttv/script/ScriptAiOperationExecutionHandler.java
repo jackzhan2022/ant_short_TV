@@ -90,6 +90,9 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         return List.of(
             "script_generate",
             "script_rewrite",
+            "script_episode_split",
+            "script_episode_summary",
+            "script_character_scene_recognition",
             "scoped_asset_reextraction",
             "storyboard_breakdown",
             "prompt_generate"
@@ -236,6 +239,10 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
                     RewriteScriptRequest.class
                 );
                 return workflowService.executeRewriteOperation(operation, request, context);
+            }
+            if (Set.of("SCRIPT_EPISODE_SPLIT", "SCRIPT_EPISODE_SUMMARY", "SCRIPT_EPISODE_ASSETS")
+                .contains(operation.operationType)) {
+                return workflowService.executeEpisodeRegenerationOperation(operation, context);
             }
             if ("SCOPED_ASSET_REEXTRACTION".equals(operation.operationType)) {
                 ScopedAssetReextractionRequest request = objectMapper.readValue(

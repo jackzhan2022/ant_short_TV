@@ -6,6 +6,7 @@ import { App as AntdApp } from 'antd';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
+import { PointEstimateProvider } from '@/services/point-estimate';
 
 // Initialize dayjs plugins globally
 dayjs.extend(relativeTime);
@@ -289,7 +290,9 @@ export function rootContainer(container: React.ReactNode) {
     <>
       <OfflineBanner />
       <AntdApp>
-        <ErrorBoundary>{container}</ErrorBoundary>
+        <PointEstimateProvider>
+          <ErrorBoundary>{container}</ErrorBoundary>
+        </PointEstimateProvider>
       </AntdApp>
     </>
   );

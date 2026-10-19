@@ -14,6 +14,10 @@ import {
 } from '@/services/mediaUpload';
 
 vi.mock('@umijs/max', () => ({ request: vi.fn() }));
+vi.mock('@/services/point-estimate', async () => {
+  const { request } = await import('@umijs/max');
+  return { pointEstimatedRequest: request };
+});
 vi.mock('@/services/mediaUpload', () => ({ startMediaUpload: vi.fn() }));
 
 describe('video decomposition service', () => {

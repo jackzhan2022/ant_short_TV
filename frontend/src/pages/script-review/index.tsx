@@ -28,11 +28,12 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
 import { statusText } from '@/utils/fieldDictionary';
 import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from './dimensions';
 import styles from './index.module.css';
-import { reportFindings } from './reportFindings';
 import ReportIssueList from './ReportIssueList';
+import { reportFindings } from './reportFindings';
 import type { ReviewProjectDetail, ReviewTask } from './service';
 import {
   cancelReviewTask,
@@ -316,6 +317,9 @@ const ScriptReviewPage = () => {
       setReviewModalOpen(false);
       message.success('审核任务已创建，后台会持续更新进度');
       await followReviewExecution(response.data);
+    } catch (error) {
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '审核提交失败');
     } finally {
       setSaving(false);
     }
@@ -723,7 +727,15 @@ const ScriptReviewPage = () => {
                         onClick={() => {
                           retryReviewTask(task.id).then((response) =>
                             followReviewExecution(response.data),
-                          );
+                          )
+                            .catch((error: unknown) => {
+                              if (!isPointEstimateCancelled(error))
+                                message.error(
+                                  error instanceof Error
+                                    ? error.message
+                                    : '审核重试失败',
+                                );
+                            });
                         }}
                       >
                         {task.retryKind === 'AGGREGATION_ONLY'

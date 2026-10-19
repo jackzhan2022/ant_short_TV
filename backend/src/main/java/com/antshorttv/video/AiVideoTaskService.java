@@ -1220,6 +1220,52 @@ public class AiVideoTaskService {
             .containsKey(AiUsageMetric.OUTPUT_TOKEN.name());
     }
 
+    public com.antshorttv.points.AiPointEstimatePlan pointEstimateRequest(
+        Long tenantId, Long projectId, JsonNode input
+    ) {
+        var body = input.deepCopy();
+        if (body instanceof com.fasterxml.jackson.databind.node.ObjectNode object) object.remove("promptDocument");
+        return pointEstimate(tenantId, projectId, objectMapper.convertValue(body, CreateAiVideoTaskRequest.class),
+            input.path("promptDocument"));
+    }
+
+    public com.antshorttv.points.AiPointEstimatePlan pointEstimate(
+        Long tenantId, Long projectId, CreateAiVideoTaskRequest request
+    ) {
+        return pointEstimate(tenantId, projectId, request, null);
+    }
+
+    private com.antshorttv.points.AiPointEstimatePlan pointEstimate(
+        Long tenantId, Long projectId, CreateAiVideoTaskRequest request, JsonNode promptDocument
+    ) {
+        ProjectEntity project = requireProjectAccess(tenantContextResolver.requireActiveMember(tenantId), projectId);
+        StoryboardEntity storyboard = requireStoryboard(tenantId, projectId, request.storyboardId());
+        if (promptDocument != null && promptDocument.isObject()) storyboard.promptDocumentJson = promptDocument.toString();
+        AiModelRoute route = resolveVideoModel(tenantId, projectId, request.modelId());
+        PreparedVideoRequest prepared = isSeedance(route)
+            ? prepareSeedanceRequest(project, storyboard, route, request)
+            : prepareLegacyRequest(storyboard, route, request);
+        AiVideoTaskEntity task = new AiVideoTaskEntity();
+        task.providerCode = route.provider().getCode();
+        task.resolution = prepared.resolution();
+        task.aspectRatio = prepared.aspectRatio();
+        task.requestSnapshotJson = prepared.snapshotJson();
+        return new com.antshorttv.points.AiPointEstimatePlan("生成分镜视频", route.model().getId(),
+            videoAuthorizedUsage(task, prepared.billingDurationSeconds()), videoDimensions(task), true).paidOnly();
+    }
+
+    public com.antshorttv.points.AiPointEstimatePlan pointEstimateExisting(Long tenantId, Long projectId, Long taskId) {
+        requireProjectAccess(tenantContextResolver.requireActiveMember(tenantId), projectId);
+        AiVideoTaskEntity task = requireTask(tenantId, projectId, taskId);
+        AiModelRoute route = resolveVideoModel(tenantId, projectId, task.modelId);
+        int maximumDuration = task.durationSeconds == -1
+            ? videoSnapshot(task).path("billingDurationSeconds").asInt(
+                seedanceValidator.constraints(route.model()).path("duration").path("max").asInt())
+            : task.durationSeconds;
+        return new com.antshorttv.points.AiPointEstimatePlan("重新生成视频", task.modelId,
+            videoAuthorizedUsage(task, maximumDuration), videoDimensions(task), true).paidOnly();
+    }
+
     private Map<AiUsageMetric, BigDecimal> videoAuthorizedUsage(AiVideoTaskEntity task, int maximumDuration) {
         if (!"VOLCENGINE_ARK".equalsIgnoreCase(task.providerCode)) {
             return Map.of(AiUsageMetric.CALL, BigDecimal.ONE,

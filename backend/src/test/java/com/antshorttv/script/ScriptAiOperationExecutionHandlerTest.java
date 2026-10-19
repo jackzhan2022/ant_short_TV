@@ -77,7 +77,8 @@ class ScriptAiOperationExecutionHandlerTest {
             mock(AiUsageAccountingService.class), mock(AiExecutionTaskMapper.class),
             new ObjectMapper(), mock(WorkflowAgentRunRepository.class));
 
-        assertThat(handler.scenes()).contains("scoped_asset_reextraction");
+        assertThat(handler.scenes()).contains("scoped_asset_reextraction", "script_episode_split",
+            "script_episode_summary", "script_character_scene_recognition");
     }
 
 
@@ -99,7 +100,8 @@ class ScriptAiOperationExecutionHandlerTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings={"STORYBOARD_BREAKDOWN","SCOPED_ASSET_REEXTRACTION"})
+    @org.junit.jupiter.params.provider.ValueSource(strings={"STORYBOARD_BREAKDOWN","SCOPED_ASSET_REEXTRACTION",
+        "SCRIPT_EPISODE_SPLIT","SCRIPT_EPISODE_SUMMARY","SCRIPT_EPISODE_ASSETS"})
     void recoversWorkflowCallsWhenFormalValidationFailsOnFinalAttempt(String operationType) {
         ScriptAiOperationMapper operationMapper = mock(ScriptAiOperationMapper.class);
         ScriptWorkflowService workflowService = mock(ScriptWorkflowService.class);
@@ -120,6 +122,8 @@ class ScriptAiOperationExecutionHandlerTest {
         when(workflowService.executeStoryboardOperation(eq(operation), any(), any()))
             .thenThrow(new IllegalStateException("Agent 未成功调用保存工具。"));
         when(workflowService.executeScopedAssetReextractionOperation(eq(operation), any(), any()))
+            .thenThrow(new IllegalStateException("Agent 未成功调用保存工具。"));
+        when(workflowService.executeEpisodeRegenerationOperation(eq(operation), any()))
             .thenThrow(new IllegalStateException("Agent 未成功调用保存工具。"));
 
         AiExecutionTaskEntity task = new AiExecutionTaskEntity();

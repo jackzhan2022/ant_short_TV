@@ -207,10 +207,22 @@ public class WorkflowAgentScopeGuard {
         }
         String operationType = switch (input.agentCode() == null ? "" : input.agentCode()) {
             case "short-drama-storyboard" -> "STORYBOARD_BREAKDOWN";
-            case "short-drama-asset-recognition" -> {
+            case "short-drama-episode-splitting", "short-drama-episode-summary", "short-drama-asset-recognition" -> {
                 String businessType = jdbc.queryForObject(
                     "select business_type from ai_execution_task where id = ?", String.class, input.executionId());
-                if ("SCRIPT_AI_OPERATION".equals(businessType)) yield "SCOPED_ASSET_REEXTRACTION";
+                if ("SCRIPT_AI_OPERATION".equals(businessType)) {
+                    String expected = switch (input.agentCode()) {
+                        case "short-drama-episode-splitting" -> "SCRIPT_EPISODE_SPLIT";
+                        case "short-drama-episode-summary" -> "SCRIPT_EPISODE_SUMMARY";
+                        default -> "SCRIPT_EPISODE_ASSETS";
+                    };
+                    String actual = jdbc.queryForObject("select operation_type from script_ai_operation where id = ?",
+                        String.class, input.taskId());
+                    if (expected.equals(actual)) yield expected;
+                    if ("short-drama-asset-recognition".equals(input.agentCode())
+                        && "SCOPED_ASSET_REEXTRACTION".equals(actual)) yield actual;
+                    throw invalid("Agent 与后台操作类型不匹配。");
+                }
                 if ("SCRIPT_ANALYSIS_TASK".equals(businessType)) yield null;
                 throw invalid("资产 Agent 执行业务类型不匹配。");
             }

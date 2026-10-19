@@ -1,4 +1,4 @@
-import { request } from '@umijs/max';
+import { pointEstimatedRequest as request } from '@/services/point-estimate';
 import type { MediaPage, MediaPageParams } from '@/services/media/paging';
 import type {
   ApiResponse,

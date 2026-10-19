@@ -30,6 +30,7 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MediaUploadHandle } from '@/services/mediaUpload';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
 import { statusText } from '@/utils/fieldDictionary';
 import type {
   VideoDecompositionBatch,
@@ -341,7 +342,8 @@ const VideoScriptDecompositionPage = () => {
       message.success(`第 ${episode.episodeNo} 集已重新加入生成队列`);
       await refreshOpenBatch();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '重试失败');
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '重试失败');
     } finally {
       setRetryingEpisodeId(undefined);
     }
@@ -470,6 +472,7 @@ const VideoScriptDecompositionPage = () => {
                   activeUploads.current.clear();
                   await loadBatches();
                 } catch (error) {
+                  if (isPointEstimateCancelled(error)) return;
                   message.error(
                     error instanceof Error ? error.message : '创建批次失败',
                   );

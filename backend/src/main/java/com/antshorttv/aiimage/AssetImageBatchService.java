@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class AssetImageBatchService {
+public class AssetImageBatchService {
     private static final Set<String> ASSET_TYPES = Set.of("CHARACTER", "SCENE", "PROP");
     private static final Set<String> MODES = Set.of("PRIMARY", "ALL");
     private static final Set<String> ASPECT_RATIOS = Set.of("1:1", "3:4", "4:3", "9:16", "16:9");
@@ -164,6 +164,42 @@ class AssetImageBatchService {
 
     AssetImageBatchResponse getCreated(Long tenantId, Long projectId, Long batchId) {
         return getInternal(tenantId, projectId, batchId);
+    }
+
+    public List<com.antshorttv.points.AiPointEstimatePlan> pointEstimateRequest(
+        Long tenantId, Long projectId, com.fasterxml.jackson.databind.JsonNode input
+    ) {
+        return pointEstimates(tenantId, projectId, new com.fasterxml.jackson.databind.ObjectMapper()
+            .convertValue(input, AssetImageBatchRequest.class));
+    }
+
+    public List<com.antshorttv.points.AiPointEstimatePlan> pointEstimates(
+        Long tenantId, Long projectId, AssetImageBatchRequest request
+    ) {
+        permissionGuard.require(tenantId, projectId, "AI_IMAGE_TASK:CREATE");
+        return estimatePlan(tenantId, projectId, request, null);
+    }
+
+    public List<com.antshorttv.points.AiPointEstimatePlan> pointEstimatesRetry(Long tenantId, Long projectId, Long batchId) {
+        permissionGuard.require(tenantId, projectId, "AI_IMAGE_TASK:CREATE");
+        var source = getInternal(tenantId, projectId, batchId);
+        var variants = failedVariantIds(source.items());
+        var assets = source.items().stream().filter(item -> variants.contains(item.variantId()))
+            .map(AssetImageBatchItemResponse::assetId).distinct().toList();
+        if (assets.isEmpty()) return List.of();
+        return estimatePlan(tenantId, projectId, new AssetImageBatchRequest(source.assetType(), assets,
+            source.mode(), source.modelId(), source.aspectRatio(), source.imageCount()), variants);
+    }
+
+    private List<com.antshorttv.points.AiPointEstimatePlan> estimatePlan(
+        Long tenantId, Long projectId, AssetImageBatchRequest request, List<Long> onlyVariants
+    ) {
+        var planned = plan(tenantId, projectId, request);
+        return planned.candidates().stream()
+            .filter(item -> Set.of("PENDING", "WAITING_DEPENDENCY").contains(item.classification()))
+            .filter(item -> onlyVariants == null || onlyVariants.contains(item.variantId()))
+            .map(item -> imageTaskService.pointEstimateBatch(tenantId, projectId, request.modelId(),
+                request.aspectRatio(), request.imageCount(), item.variantName())).toList();
     }
 
     private BatchPlan plan(Long tenantId, Long projectId, AssetImageBatchRequest request) {

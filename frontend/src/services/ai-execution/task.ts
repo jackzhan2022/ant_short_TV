@@ -1,9 +1,8 @@
 import {
   cancel1,
   detail4,
-  regenerate as regenerateRequest,
-  retry1,
 } from '@/services/ant-design-pro/aiExecutionController';
+import { pointEstimatedRequest } from '@/services/point-estimate';
 
 const TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
 const STORAGE_PREFIX = 'ai-execution:pending:';
@@ -143,9 +142,12 @@ const generatedClient: AiExecutionClient = {
   cancel: async (tenantId, executionId) =>
     responseData(await cancel1({ tenantId, executionId })),
   retry: async (tenantId, executionId) =>
-    responseData(await retry1({ tenantId, executionId })),
+    responseData(await pointEstimatedRequest<API.ApiResponseAiExecutionResponse>(
+      `/api/tenants/${tenantId}/ai-executions/${executionId}/retry`, { method: 'POST' })),
   regenerate: async (tenantId, executionId, request) =>
-    responseData(await regenerateRequest({ tenantId, executionId }, request)),
+    responseData(await pointEstimatedRequest<API.ApiResponseAiExecutionResponse>(
+      `/api/tenants/${tenantId}/ai-executions/${executionId}/regenerate`, { method: 'POST', data: request },
+    )),
 };
 
 export const aiExecutionTaskService = new AiExecutionTaskService();

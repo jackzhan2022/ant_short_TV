@@ -720,6 +720,53 @@ public class AiImageTaskService {
         return value == null || value.isBlank() ? UUID.randomUUID().toString() : value.trim();
     }
 
+    public com.antshorttv.points.AiPointEstimatePlan pointEstimateRequest(
+        Long tenantId, Long projectId, com.fasterxml.jackson.databind.JsonNode input
+    ) {
+        CreateAiImageTaskRequest request = new com.fasterxml.jackson.databind.ObjectMapper().convertValue(input, CreateAiImageTaskRequest.class);
+        if (request.imageCount() == null || request.imageCount() < 1 || request.imageCount() > 4) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "图片数量必须为 1–4 张。");
+        }
+        validateRequest(request);
+        return pointEstimate(tenantId, projectId, request);
+    }
+
+    public com.antshorttv.points.AiPointEstimatePlan pointEstimateBatch(Long tenantId, Long projectId,
+        Long modelId, String aspectRatio, int imageCount, String name) {
+        var model = resolveImageModel(tenantId, projectId, modelId);
+        return new com.antshorttv.points.AiPointEstimatePlan(name, model.modelId(), Map.of(
+            AiUsageMetric.CALL, BigDecimal.ONE, AiUsageMetric.IMAGE, BigDecimal.valueOf(imageCount),
+            AiUsageMetric.INPUT_IMAGE, BigDecimal.ZERO),
+            Map.of("aspectRatio", aspectRatio, "quality", "STANDARD"), false);
+    }
+
+    public com.antshorttv.points.AiPointEstimatePlan pointEstimate(
+        Long tenantId, Long projectId, CreateAiImageTaskRequest request
+    ) {
+        requireProject(tenantId, projectId);
+        ResolvedImageModel model = resolveImageModel(tenantId, projectId, request.modelId());
+        var references = "VISUAL_VARIANT".equals(request.targetType())
+            ? assetVisualVariantService.prepareGeneration(tenantId, projectId, request.targetId()).referenceImages()
+            : resolveReferenceImages(tenantId, projectId, request);
+        return new com.antshorttv.points.AiPointEstimatePlan("生成图片", model.modelId(), Map.of(
+            AiUsageMetric.CALL, BigDecimal.ONE,
+            AiUsageMetric.IMAGE, BigDecimal.valueOf(request.imageCount()),
+            AiUsageMetric.INPUT_IMAGE, BigDecimal.valueOf(Math.max(0, references.size() - 1))),
+            Map.of("aspectRatio", request.aspectRatio().trim(), "quality",
+                blankToNull(request.quality()) == null ? "STANDARD" : request.quality().trim()), false);
+    }
+
+    public com.antshorttv.points.AiPointEstimatePlan pointEstimateExisting(Long tenantId, Long projectId, Long taskId) {
+        requireProject(tenantId, projectId);
+        AiImageTaskEntity task = requireTask(tenantId, projectId, taskId);
+        ResolvedImageModel model = resolveImageModel(tenantId, projectId, task.getModelId());
+        return new com.antshorttv.points.AiPointEstimatePlan("重新生成图片", model.modelId(), Map.of(
+            AiUsageMetric.CALL, BigDecimal.ONE,
+            AiUsageMetric.IMAGE, BigDecimal.valueOf(task.getImageCount()),
+            AiUsageMetric.INPUT_IMAGE, BigDecimal.valueOf(Math.max(0, ReferenceImagesCodec.decode(task.getReferenceImages()).size() - 1))),
+            imageDimensions(task), false);
+    }
+
     private Map<String, String> imageDimensions(AiImageTaskEntity task) {
         return Map.of(
             "aspectRatio", task.getAspectRatio(),

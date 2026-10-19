@@ -15,11 +15,12 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useState } from 'react';
-import { reportFindings } from '../script-review/reportFindings';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
 import {
   DEFAULT_REVIEW_DIMENSIONS,
   REVIEW_DIMENSIONS,
 } from '../script-review/dimensions';
+import { reportFindings } from '../script-review/reportFindings';
 import {
   cancelReviewTask,
   createReviewTask,
@@ -75,22 +76,32 @@ const ScriptReviewHistoryPage = () => {
 
   const createReview = async () => {
     if (!projectId || !versionId || dimensions.length === 0) return;
-    const response = await createReviewTask(projectId, {
+    try {
+      const response = await createReviewTask(projectId, {
       versionId,
       reviewMode,
       selectedDimensions: dimensions,
       reviewScopeType: 'ALL',
       reviewScope: {},
     });
-    setCreateOpen(false);
-    if (response.data?.businessId)
+      setCreateOpen(false);
+      if (response.data?.businessId)
       history.push(`/script-review/tasks/${response.data.businessId}`);
+    } catch (error) {
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '审核提交失败');
+    }
   };
 
   const runTaskAction = async (taskId: number, action: 'cancel' | 'retry') => {
+    try {
     if (action === 'cancel') await cancelReviewTask(taskId);
     else await retryReviewTask(taskId);
     await load(data?.page);
+  } catch (error) {
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '审核操作失败');
+    }
   };
 
   if (!projectId) return <Empty description="无效的审核项目" />;

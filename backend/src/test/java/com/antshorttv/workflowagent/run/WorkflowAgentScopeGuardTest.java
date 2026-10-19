@@ -119,6 +119,8 @@ class WorkflowAgentScopeGuardTest {
     void assetRecognitionAgentRequiresItsScopedReextractionOperationExecutionIdentity() {
         when(jdbc.queryForObject(anyString(), eq(String.class), eq(501L)))
             .thenReturn("SCRIPT_AI_OPERATION");
+        when(jdbc.queryForObject(anyString(), eq(String.class), eq(41L)))
+            .thenReturn("SCOPED_ASSET_REEXTRACTION");
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
         WorkflowAgentRunInput input = new WorkflowAgentRunInput(
             "short-drama-asset-recognition", "run", 7L, 25L, 31L, 77L, 41L, null, 9L,

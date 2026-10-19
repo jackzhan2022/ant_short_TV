@@ -67,7 +67,7 @@ class LiveLatestProjectAgentSmokeTest {
         WorkflowAgentRunResult chunkSplit;
         try {
             workflowAgentProperties.setSplitSafeContextTokens(Integer.MAX_VALUE);
-            fullSplit = scriptWorkflowService.regenerateEpisodeSplitting(tenantId, projectId);
+            fullSplit = awaitOperation(scriptWorkflowService.regenerateEpisodeSplitting(tenantId, projectId, new org.springframework.mock.web.MockHttpServletRequest()));
             assertRunSucceeded(fullSplit, "short-drama-episode-splitting");
             assertSingleFormalSave(fullSplit.runId());
             if (snapshotCount(fullSplit.runId()) > 0) {
@@ -78,7 +78,7 @@ class LiveLatestProjectAgentSmokeTest {
             List<Long> fullEpisodeIds = activeEpisodeIds(tenantId, projectId, scriptId);
 
             workflowAgentProperties.setSplitSafeContextTokens(1);
-            chunkSplit = scriptWorkflowService.regenerateEpisodeSplitting(tenantId, projectId);
+            chunkSplit = awaitOperation(scriptWorkflowService.regenerateEpisodeSplitting(tenantId, projectId, new org.springframework.mock.web.MockHttpServletRequest()));
             assertRunSucceeded(chunkSplit, "short-drama-episode-splitting");
             assertSingleFormalSave(chunkSplit.runId());
             assertSuccessfulFallbackSnapshot(chunkSplit.runId(), List.of("CONTEXT_PREFLIGHT"));
@@ -100,8 +100,8 @@ class LiveLatestProjectAgentSmokeTest {
             """, tenantId, projectId, scriptId);
         long episodeId = number(episode, "id");
 
-        WorkflowAgentRunResult summary = scriptWorkflowService.regenerateEpisodeSummary(
-            tenantId, projectId, episodeId, true);
+        WorkflowAgentRunResult summary = awaitOperation(scriptWorkflowService.regenerateEpisodeSummary(
+            tenantId, projectId, episodeId, true, new org.springframework.mock.web.MockHttpServletRequest()));
         assertRunSucceeded(summary, "short-drama-episode-summary");
         assertThat(jdbcTemplate.queryForObject("""
             select count(*) from script_episode_summary
@@ -109,8 +109,8 @@ class LiveLatestProjectAgentSmokeTest {
                and generated_by_run_id = ?
             """, Long.class, tenantId, projectId, scriptId, episodeId, summary.runId())).isEqualTo(1L);
 
-        WorkflowAgentRunResult assets = scriptWorkflowService.regenerateEpisodeAssets(
-            tenantId, projectId, episodeId);
+        WorkflowAgentRunResult assets = awaitOperation(scriptWorkflowService.regenerateEpisodeAssets(
+            tenantId, projectId, episodeId, new org.springframework.mock.web.MockHttpServletRequest()));
         assertRunSucceeded(assets, "short-drama-asset-recognition");
         assertThat(jdbcTemplate.queryForObject("""
             select count(*) from script_episode_asset_analysis
@@ -129,6 +129,20 @@ class LiveLatestProjectAgentSmokeTest {
             userId, mobile, "live-smoke", LocalDateTime.now().plusHours(1));
         SecurityContextHolder.getContext().setAuthentication(
             new UsernamePasswordAuthenticationToken(user, null, java.util.List.of()));
+    }
+
+    private WorkflowAgentRunResult awaitOperation(com.antshorttv.execution.AiExecutionResponse submitted) {
+        long deadline = System.nanoTime() + java.time.Duration.ofMinutes(15).toNanos();
+        while (System.nanoTime() < deadline) {
+            var task = jdbcTemplate.queryForMap("select status, result_id, error_message from ai_execution_task where id=?", submitted.id());
+            if ("SUCCEEDED".equals(task.get("status")))
+                return new WorkflowAgentRunResult(((Number) task.get("result_id")).longValue(), "");
+            assertThat(task.get("status")).as(String.valueOf(task.get("error_message")))
+                .isNotIn("FAILED", "TIMED_OUT", "CANCELED");
+            try { Thread.sleep(1000); }
+            catch (InterruptedException exception) { Thread.currentThread().interrupt(); throw new IllegalStateException(exception); }
+        }
+        throw new AssertionError("Shared execution did not complete before smoke-test deadline.");
     }
 
     private void assertRunSucceeded(WorkflowAgentRunResult result, String agentCode) {

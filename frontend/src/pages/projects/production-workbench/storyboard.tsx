@@ -10,7 +10,6 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useLocation, useParams } from '@umijs/max';
-import { readStoryboardTarget, STORYBOARD_PAGE_SIZE } from './video-workbench-state';
 import {
   App,
   Button,
@@ -24,8 +23,8 @@ import {
   Select,
   Spin,
   Switch,
-  Tag,
   Tabs,
+  Tag,
   Typography,
 } from 'antd';
 import {
@@ -40,66 +39,74 @@ import { queryProject } from '@/services/account-team/project';
 import type { Project } from '@/services/account-team/types';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import type { MediaPage } from '@/services/media/paging';
+import {
+  confirmPointEstimates,
+  isPointEstimateCancelled,
+} from '@/services/point-estimate';
+import { readStoryboardTarget, STORYBOARD_PAGE_SIZE } from './video-workbench-state';
 import './storyboard.css';
+import ClickToPlayVideo from '@/components/ClickToPlayVideo';
+import LazyMediaImage from '@/components/LazyMediaImage';
 import AssetVariantGenerationModal, {
   type AssetVariantGenerationValues,
 } from './AssetVariantGenerationModal';
-import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
-import ClickToPlayVideo from '@/components/ClickToPlayVideo';
-import LazyMediaImage from '@/components/LazyMediaImage';
 import {
+  type ProjectModelOption,
   queryProjectAiConfig,
   queryProjectAiModels,
-  type ProjectModelOption,
 } from './ai-config/service';
+import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
 import type {
-  AiImageTask,
   AiImageResult,
-  AiVoiceTask,
-  AiVideoTask,
+  AiImageTask,
   AiVideoResult,
+  AiVideoTask,
+  AiVoiceTask,
   AssetVisualWorkspace,
   CharacterAsset,
+  ProductionWorkspaceState,
   PropAsset,
   SaveStoryboardValues,
   SceneAsset,
   ScriptEpisode,
-  ProductionWorkspaceState,
-  StoryboardShot,
-  StoryboardBatch,
   StoryboardAssetReference,
+  StoryboardBatch,
   StoryboardPromptDocument,
   StoryboardPromptNode,
+  StoryboardShot,
   VisualVariant,
 } from './service';
 import {
+  bindAiVideoResultToStoryboard,
   breakdownStoryboards,
-  createStoryboardBatch,
   cancelAiImageTask,
   cancelAiVideoTask,
   createAiImageTask,
-  createAiVoiceTask,
   createAiVideoTask,
+  createAiVoiceTask,
   createStoryboard,
+  createStoryboardBatch,
   deleteStoryboard,
-  queryAiImageTask,
   queryAiImageResults,
+  queryAiImageTask,
   queryAiVideoResults,
-  selectAiImageResult,
-  queryStoryboardMedia,
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
   queryLatestStoryboardBatch,
   queryStoryboardBatch,
+  queryStoryboardMedia,
   queryStoryboardWorkspace,
   regenerateAiImageTask,
   regenerateAiVideoTask,
   replaceStoryboardAssetReferences,
-  updateVisualVariant,
+  selectAiImageResult,
   updateStoryboard,
-  bindAiVideoResultToStoryboard,
+  updateVisualVariant,
 } from './service';
-import { hasImageReference, hydratePromptDocument, promptText, withFirstFrameReference, type NamedImageReference } from './storyboard-references';
+import { hasImageReference, hydratePromptDocument,
+  type NamedImageReference,
+  promptText, withFirstFrameReference,
+} from './storyboard-references';
 
 type StoryboardDraft = Record<
   number,
@@ -1328,7 +1335,8 @@ const StoryboardCard = ({
             ) : null}
             {(videoTask?.referenceDiagnostics?.omitted || []).map((omitted) => (
               <Tag color="warning" key={`${omitted.sourceType}-${omitted.sourceId}-${omitted.variantId}-${omitted.reason}`}>
-                已省略 {omitted.displayName || `${omitted.assetType || '素材'} ${omitted.assetId || ''}`}
+                已省略 {' '}
+                {omitted.displayName || `${omitted.assetType || '素材'} ${omitted.assetId || ''}`}
                 {omitted.reason ? `：${omitted.reason}` : ''}
               </Tag>
             ))}
@@ -1389,9 +1397,10 @@ const StoryboardCard = ({
                     size="small"
                     aria-label={`分镜${index + 1}视频参数`}
                   >
-                    ◷ {generationSettings.durationSeconds === -1
+                    ◷ {' '}
+                    {generationSettings.durationSeconds === -1
                       ? '智能'
-                      : `${generationSettings.durationSeconds}s`} | 1个 | {generationSettings.resolution} | mp4
+                      : `${generationSettings.durationSeconds}s`}{' '} | 1个 | {generationSettings.resolution} | mp4
                   </Button>
                 </Popover>
                 <Popover content={referencePicker} trigger="click" placement="bottomLeft">
@@ -1412,7 +1421,7 @@ const StoryboardCard = ({
                   fontWeight: 700,
                 }}
               >
-                <ThunderboltOutlined /> 1,135
+                <ThunderboltOutlined /> 生成视频
               </Button>
             </Flex>
             {videoTask?.execution ? (
@@ -2379,8 +2388,10 @@ const ProductionWorkbenchStoryboard = () => {
         await reloadWorkspace();
         message.success('本集分镜已生成');
       }
-    } catch {
-      message.error('本集分镜生成失败');
+    } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
+      message.error(
+        error instanceof Error ? error.message : '本集分镜生成失败');
     } finally {
       setStoryboardBusy(false);
     }
@@ -2420,8 +2431,10 @@ const ProductionWorkbenchStoryboard = () => {
       setStoryboardBatch(terminal);
       await reloadWorkspace();
       message.success(retryFailed ? '失败分镜已重试' : '批量分镜生成已完成');
-    } catch {
-      message.error('批量分镜生成失败');
+    } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
+      message.error(
+        error instanceof Error ? error.message : '批量分镜生成失败');
     } finally {
       setStoryboardBatchBusy(false);
     }
@@ -2500,8 +2513,10 @@ const ProductionWorkbenchStoryboard = () => {
         );
       }
       message.success('首帧任务已创建');
-    } catch {
-      message.error('首帧任务创建失败');
+    } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
+      message.error(
+        error instanceof Error ? error.message : '首帧任务创建失败');
     }
   };
 
@@ -2518,8 +2533,10 @@ const ProductionWorkbenchStoryboard = () => {
         );
       }
       message.success('再生成任务已创建');
-    } catch {
-      message.error('再生成任务创建失败');
+    } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
+      message.error(
+        error instanceof Error ? error.message : '再生成任务创建失败');
     }
   };
 
@@ -2561,7 +2578,7 @@ const ProductionWorkbenchStoryboard = () => {
   };
 
 
-  const createVideoTaskForStoryboard = async (storyboard: StoryboardShot) => {
+  const videoTaskValues = (storyboard: StoryboardShot) => {
     const promptDocument = promptFor(storyboard);
     if (!hasImageReference(promptDocument)) {
       throw new Error('请先为分镜绑定至少一张可用的参考图片');
@@ -2571,6 +2588,34 @@ const ProductionWorkbenchStoryboard = () => {
     if (!prompt.trim() || prompt.length > 3000) {
       throw new Error('视频提示词不能为空且不能超过 3000 字');
     }
+    const settings = settingsFor(storyboard);
+    return {
+      storyboardId: storyboard.id,
+      modelId: selectedModelId,
+      prompt,
+      firstFrameUrl: storyboard.firstFrameUrl || selectedFirstFrame(storyboard.id)?.imageUrl || undefined,
+      durationSeconds: settings.durationSeconds,
+      aspectRatio: project?.aspectRatio || '9:16',
+      resolution: settings.resolution,
+      generateAudio: settings.generateAudio,
+      watermark: settings.watermark,
+    };
+  };
+
+  const createVideoTaskForStoryboard = async (
+    storyboard: StoryboardShot,
+    pointEstimateConfirmed = false,
+  ) => {
+    const values = videoTaskValues(storyboard);
+    if (!pointEstimateConfirmed)
+      await confirmPointEstimates([
+        {
+          url: `/api/projects/${projectId}/ai-video-tasks`,
+          data: { ...values, promptDocument: promptFor(storyboard) },
+        },
+      ]);
+    const promptDocument = promptFor(storyboard);
+    const prompt = values.prompt;
     const scriptText = drafts[storyboard.id]?.scriptText;
     const latestStoryboard = scriptText && scriptText !== getStoryboardScriptText(storyboard)
       ? { ...storyboard, ...parseStoryboardScriptText(storyboard, scriptText) }
@@ -2584,18 +2629,7 @@ const ProductionWorkbenchStoryboard = () => {
     setDrafts((previous) => ({ ...previous, [storyboard.id]: {
       ...previous[storyboard.id], videoPrompt: prompt, promptDocument,
     } }));
-    const settings = settingsFor(storyboard);
-    const response = await createAiVideoTask(projectId, {
-      storyboardId: storyboard.id,
-      modelId: selectedModelId,
-      prompt,
-      firstFrameUrl: storyboard.firstFrameUrl || selectedFirstFrame(storyboard.id)?.imageUrl || undefined,
-      durationSeconds: settings.durationSeconds,
-      aspectRatio: project?.aspectRatio || '9:16',
-      resolution: settings.resolution,
-      generateAudio: settings.generateAudio,
-      watermark: settings.watermark,
-    });
+    const response = await createAiVideoTask(projectId, values, true);
     return response.data as AiVideoTask | undefined;
   };
 
@@ -2610,16 +2644,27 @@ const ProductionWorkbenchStoryboard = () => {
       }
       message.success('视频任务已创建');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '视频任务创建失败');
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '视频任务创建失败');
     }
   };
 
   const batchGenerateVideo = async () => {
-    const outcomes = await Promise.allSettled(
-      visibleStoryboards.map((item) => createVideoTaskForStoryboard(item)),
-    );
-    let created = 0;
-    outcomes.forEach((outcome, index) => {
+    try {
+      if (!visibleStoryboards.length) return;
+      await confirmPointEstimates(
+        visibleStoryboards.map((item) => ({
+          url: `/api/projects/${projectId}/ai-video-tasks`,
+          data: { ...videoTaskValues(item), promptDocument: promptFor(item) },
+        })),
+      );
+      const outcomes = await Promise.allSettled(
+        visibleStoryboards.map((item) =>
+          createVideoTaskForStoryboard(item, true),
+        ),
+      );
+      let created = 0;
+      outcomes.forEach((outcome, index) => {
       if (outcome.status === 'rejected') {
         const storyboard = visibleStoryboards[index];
         message.error(
@@ -2636,8 +2681,14 @@ const ProductionWorkbenchStoryboard = () => {
         );
       }
     });
-    if (created > 0) {
+      if (created > 0) {
       message.success('批量视频任务已创建');
+    }
+    } catch (error) {
+      if (!isPointEstimateCancelled(error))
+        message.error(
+          error instanceof Error ? error.message : '批量视频提交失败',
+        );
     }
   };
 
@@ -2645,8 +2696,15 @@ const ProductionWorkbenchStoryboard = () => {
     if (!failedVisibleVideoTasks.length) return;
     setVideoBatchRetryBusy(true);
     try {
+      await confirmPointEstimates(
+        failedVisibleVideoTasks.map((task) => ({
+          url: `/api/projects/${projectId}/ai-video-tasks/${task.id}/regenerate`,
+        })),
+      );
       const outcomes = await Promise.allSettled(
-        failedVisibleVideoTasks.map((task) => regenerateAiVideoTask(projectId, task.id)),
+        failedVisibleVideoTasks.map((task) =>
+          regenerateAiVideoTask(projectId, task.id, true),
+        ),
       );
       let created = 0;
       outcomes.forEach((outcome, index) => {
@@ -2662,6 +2720,11 @@ const ProductionWorkbenchStoryboard = () => {
         void followVideoExecution(task).catch(() => message.error('视频任务状态刷新失败'));
       });
       if (created) message.success(`已重试 ${created} 条失败视频`);
+    } catch (error) {
+      if (!isPointEstimateCancelled(error))
+        message.error(
+          error instanceof Error ? error.message : '批量视频重试失败',
+        );
     } finally {
       setVideoBatchRetryBusy(false);
     }
@@ -2687,7 +2750,8 @@ const ProductionWorkbenchStoryboard = () => {
         );
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '视频任务重试失败');
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '视频任务重试失败');
     }
   };
 
@@ -3083,9 +3147,11 @@ const ProductionWorkbenchStoryboard = () => {
       }
       message.success('已提交生成');
       void followReferenceVariantGeneration(target, response.data);
-    } catch {
+    } catch (error) {
       if (visualProjectId.current === requestedProjectId) {
-        message.error('提交生成失败');
+        if (!isPointEstimateCancelled(error))
+          message.error(
+            error instanceof Error ? error.message : '提交生成失败');
       }
     } finally {
       if (
@@ -3364,7 +3430,8 @@ const ProductionWorkbenchStoryboard = () => {
               <Tag>后端规范化 {storyboardDiagnostics.normalizationCount} 项</Tag>
               <Tag>派生声音 {storyboardDiagnostics.derivedSoundCount} 条</Tag>
               <Tag color={storyboardDiagnostics.classificationWarnings.length ? 'warning' : 'default'}>
-                来源分类告警 {storyboardDiagnostics.classificationWarnings.length} 条
+                来源分类告警 {' '}
+                {storyboardDiagnostics.classificationWarnings.length} 条
               </Tag>
               <Tag>业务调用 {storyboardDiagnostics.businessCallCount} 次</Tag>
               <Tag>技术重试 {storyboardDiagnostics.technicalRetryCount} 次</Tag>
@@ -3458,7 +3525,9 @@ const ProductionWorkbenchStoryboard = () => {
               上一页
             </Button>
             <Typography.Text type="secondary">
-              第 {storyboardPage} / {Math.ceil(storyboardTotal / storyboardPageSize)} 页，共 {storyboardTotal} 个镜头
+              第 {storyboardPage} / {' '}
+              {Math.ceil(storyboardTotal / storyboardPageSize)} 页，共 {' '}
+              {storyboardTotal} 个镜头
             </Typography.Text>
             <Button
               size="small"

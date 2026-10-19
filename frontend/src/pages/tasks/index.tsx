@@ -1,5 +1,9 @@
+import {
+  PageContainer,
+  type ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
 import { history, useModel } from '@umijs/max';
-import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import {
   Alert,
   Button,
@@ -10,19 +14,22 @@ import {
   Progress,
   Select,
   Table,
-  Tag,
   Tabs,
+  Tag,
   Typography,
 } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import ClickToPlayVideo from '@/components/ClickToPlayVideo';
 import LazyMediaImage from '@/components/LazyMediaImage';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
 import {
+  type ContentSection,
   controlTask,
   listTasks,
   type Query,
   type Summary,
   type Task,
+  type TaskContent,
   type TaskPage,
   taskChildren,
   taskContent,
@@ -30,8 +37,6 @@ import {
   taskContentSection,
   taskDetail,
   taskSummary,
-  type ContentSection,
-  type TaskContent,
 } from './service';
 
 const statuses: Record<string, string> = {
@@ -357,6 +362,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
         setRevision((n) => n + 1);
       }
     } catch (e) {
+      if (isPointEstimateCancelled(e)) return;
       if (mounted.current) setDetailError(errorText(e));
     } finally {
       if (mounted.current) setBusy(false);

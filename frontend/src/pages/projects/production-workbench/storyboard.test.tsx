@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   queryAiVoiceTasks: vi.fn(),
   createAiVoiceTask: vi.fn(),
   createAiVideoTask: vi.fn(),
+  confirmPointEstimates: vi.fn(),
   cancelAiVideoTask: vi.fn(),
   regenerateAiVideoTask: vi.fn(),
   replaceStoryboardAssetReferences: vi.fn(),
@@ -55,6 +56,11 @@ vi.mock('@umijs/max', () => ({
   },
   useParams: () => ({ id: '1' }),
   useLocation: () => ({ search: mocks.locationSearch }),
+}));
+
+vi.mock('@/services/point-estimate', async (original) => ({
+  ...await original<typeof import('@/services/point-estimate')>(),
+  confirmPointEstimates: mocks.confirmPointEstimates,
 }));
 
 vi.mock('@/services/account-team/project', () => ({
@@ -764,6 +770,7 @@ describe('ProductionWorkbench script page', () => {
   });
 
   beforeEach(() => {
+    mocks.confirmPointEstimates.mockResolvedValue({ estimatedPoints: 10 });
     mocks.locationSearch = '';
     vi.stubGlobal('IntersectionObserver', class {
       constructor(private callback: IntersectionObserverCallback) {}
@@ -1405,7 +1412,7 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 301, expect.objectContaining({
       promptDocument: expect.objectContaining({ nodes: expect.arrayContaining([expect.objectContaining({ sourceType: 'STORYBOARD_FIRST_FRAME', sourceId: 301 })]) }),
     })));
-    expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1, expect.objectContaining({ firstFrameUrl: '/first-frame.png' }));
+    expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1, expect.objectContaining({ firstFrameUrl: '/first-frame.png' }), true);
   });
 
   it('selects a completed image result as the storyboard first frame', async () => {
@@ -1883,7 +1890,7 @@ describe('ProductionWorkbench script page', () => {
         resolution: '1080p',
         generateAudio: false,
         watermark: true,
-      });
+      }, true);
       expect(mocks.pollExecution).toHaveBeenCalledWith(
         1,
         7002,
@@ -1988,7 +1995,7 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(await screen.findByRole('button', { name: '重试失败视频' }));
     await waitFor(() => {
       expect(mocks.regenerateAiVideoTask).toHaveBeenCalledTimes(1);
-      expect(mocks.regenerateAiVideoTask).toHaveBeenCalledWith(1, 72);
+      expect(mocks.regenerateAiVideoTask).toHaveBeenCalledWith(1, 72, true);
     });
   });
 
@@ -2226,7 +2233,7 @@ describe('ProductionWorkbench script page', () => {
           resolution: '1080p',
           generateAudio: false,
           watermark: true,
-        }),
+        }), true,
       );
     });
   });
@@ -2367,7 +2374,7 @@ describe('ProductionWorkbench script page', () => {
           resolution: '720p',
           generateAudio: true,
           watermark: false,
-        }),
+        }), true,
       );
     });
   });

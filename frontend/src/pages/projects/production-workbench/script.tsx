@@ -6,7 +6,6 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { useParams } from '@umijs/max';
-import ProjectCoverImage, { type ProjectCoverStatus } from '@/components/ProjectCoverImage';
 import {
   Alert,
   App,
@@ -22,21 +21,23 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
-import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import ProjectCoverImage, { type ProjectCoverStatus } from '@/components/ProjectCoverImage';
 import { getCurrentTenantId } from '@/services/account-team/auth';
+import { aiExecutionTaskService } from '@/services/ai-execution/task';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
 import {
+  type ProductionWorkspaceState,
   queryAssetSettingsSummary,
   queryCurrentScriptAnalysis,
   queryScriptEpisode,
-  queryScriptVersion,
   queryScriptPageWorkspace,
+  queryScriptVersion,
   reanalyzeScript,
   regenerateEpisodeAssets,
   regenerateEpisodeSplitting,
   regenerateEpisodeSummary,
   retryScriptAnalysis,
   type ScriptAnalysisStage,
-  type ProductionWorkspaceState,
   updateEpisodeSummary,
 } from './service';
 
@@ -692,8 +693,9 @@ const ProductionWorkbenchScript = () => {
       const response = await retryScriptAnalysis(projectId, stageCode);
       await followExecution(response.data);
       message.success('已重新加入分析队列');
-    } catch {
-      message.error('分析重试失败');
+    } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
+      message.error(error instanceof Error ? error.message : '分析重试失败');
     }
   };
   const reanalyzeCurrent = async () => {
@@ -701,8 +703,9 @@ const ProductionWorkbenchScript = () => {
       const response = await reanalyzeScript(projectId);
       await followExecution(response.data);
       message.success('已重新发起分析');
-    } catch {
-      message.error('重新分析失败');
+    } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
+      message.error(error instanceof Error ? error.message : '重新分析失败');
     }
   };
 
@@ -758,16 +761,19 @@ const ProductionWorkbenchScript = () => {
     }
   };
   const runDirectAgent = async (
-    action: () => Promise<unknown>,
+    action: () => Promise<{ data: API.AiExecutionResponse }>,
     successMessage: string,
   ) => {
     setExecutionBusy(true);
     try {
-      await action();
-      await refreshWorkspace();
+      const response = await action();
+      const terminal = await followExecution(response.data);
+      if (terminal.status !== 'SUCCEEDED')
+        throw new Error(terminal.errorMessage || '任务未完成');
       message.success(successMessage);
-    } catch {
-      message.error('Agent 运行失败');
+    } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
+      message.error(error instanceof Error ? error.message : 'Agent 运行失败');
     } finally {
       setExecutionBusy(false);
     }
@@ -1107,7 +1113,8 @@ const ProductionWorkbenchScript = () => {
                 </Typography.Text>
               </Flex>
               {assetsError ? (
-                <div role="alert">角色信息加载失败 <Button onClick={() => setAssetsRefresh((value) => value + 1)}>重新加载角色信息</Button></div>
+                <div role="alert">角色信息加载失败 {' '}
+                  <Button onClick={() => setAssetsRefresh((value) => value + 1)}>重新加载角色信息</Button></div>
               ) : assetsLoading || assetsReadyProject !== projectId ? (
                 <Skeleton />
               ) : workspace?.characters.length ? (

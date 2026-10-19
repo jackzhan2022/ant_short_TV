@@ -11,6 +11,12 @@ import {
   queryAssetImageBatchPreflight,
 } from './service';
 
+// Transport contract tests; confirmation behaviour is covered in point-estimate.test.tsx.
+vi.mock('@/services/point-estimate', async () => {
+  const { request } = await import('@umijs/max');
+  return { pointEstimatedRequest: request };
+});
+
 describe('asset image batch service', () => {
   const values = {
     assetType: 'CHARACTER' as const,

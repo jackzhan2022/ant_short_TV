@@ -30,6 +30,7 @@ import {
   useState,
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
 import AssetImagePlaceholder from './AssetImagePlaceholder';
 import AssetVariantGenerationModal from './AssetVariantGenerationModal';
 import {
@@ -55,10 +56,10 @@ import {
   type PropAsset,
   queryAssetImageBatch,
   queryAssetImageBatchPreflight,
-  retryAssetImageBatch,
   queryAssetReextractionPreflight,
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
+  retryAssetImageBatch,
   type SceneAsset,
   type ScriptElementType,
   selectPrimaryVisualVariant,
@@ -721,6 +722,7 @@ const ProductionWorkbenchSettings = () => {
       follow(response.data.id);
       setExtractionNotice('已提交或复用同条件资产提取任务');
     } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
       const conflictId = conflictingExecutionId(error);
       if (conflictId) {
         setExtractionNotice(
@@ -850,6 +852,7 @@ const ProductionWorkbenchSettings = () => {
       setSelectedAssetIds([]);
       message.success('资产图批次已提交');
     } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
       if (
         batchRequestIdRef.current === requestId &&
         batchProjectIdRef.current === requestProjectId
@@ -876,7 +879,8 @@ const ProductionWorkbenchSettings = () => {
       setActiveImageBatch(response.data);
       message.success('失败资产图已重新提交');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '失败资产图重试失败');
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '失败资产图重试失败');
     } finally {
       setBatchSubmitting(false);
     }
@@ -1096,8 +1100,9 @@ const ProductionWorkbenchSettings = () => {
       setImageGenerationVersion((version) => version + 1);
       await mutateVariant(async () => undefined, '已提交生成');
       setGenerationVariantId(undefined);
-    } catch {
-      message.error('提交生成失败');
+    } catch (error) {
+      if (isPointEstimateCancelled(error)) return;
+      message.error(error instanceof Error ? error.message : '提交生成失败');
     } finally {
       setGenerationSubmitting(false);
     }

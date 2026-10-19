@@ -196,12 +196,12 @@ public class ScriptWorkflowController {
 
     @PostMapping("/script-analysis/current/regenerate-episodes")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<WorkflowAgentRunResult> regenerateEpisodes(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> regenerateEpisodes(
         @PathVariable Long projectId,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.regenerateEpisodeSplitting(
-            tenantId(request), projectId));
+        return accepted(scriptWorkflowService.regenerateEpisodeSplitting(
+            tenantId(request), projectId, request));
     }
 
     @PutMapping("/episodes/{episodeId}/summary")
@@ -218,25 +218,25 @@ public class ScriptWorkflowController {
 
     @PostMapping("/episodes/{episodeId}/summary/regenerate")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<WorkflowAgentRunResult> regenerateEpisodeSummary(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> regenerateEpisodeSummary(
         @PathVariable Long projectId,
         @PathVariable Long episodeId,
         @Valid @RequestBody RegenerateEpisodeSummaryRequest body,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.regenerateEpisodeSummary(
-            tenantId(request), projectId, episodeId, Boolean.TRUE.equals(body.overwrite())));
+        return accepted(scriptWorkflowService.regenerateEpisodeSummary(
+            tenantId(request), projectId, episodeId, Boolean.TRUE.equals(body.overwrite()), request));
     }
 
     @PostMapping("/episodes/{episodeId}/assets/regenerate")
     @RequireProjectPermission("AI_SERVICE:USE")
-    public ApiResponse<WorkflowAgentRunResult> regenerateEpisodeAssets(
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> regenerateEpisodeAssets(
         @PathVariable Long projectId,
         @PathVariable Long episodeId,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(scriptWorkflowService.regenerateEpisodeAssets(
-            tenantId(request), projectId, episodeId));
+        return accepted(scriptWorkflowService.regenerateEpisodeAssets(
+            tenantId(request), projectId, episodeId, request));
     }
 
 

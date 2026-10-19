@@ -25,7 +25,10 @@ vi.mock('@/components', () => ({
   ),
 }));
 vi.mock('@ant-design/pro-components', () => ({ SettingDrawer: () => <div data-testid="setting-drawer" /> }));
-vi.mock('antd', () => ({ App: ({ children }: any) => <div data-testid="antd-app-provider">{children}</div> }));
+vi.mock('antd', () => ({ App: Object.assign(
+  ({ children }: any) => <div data-testid="antd-app-provider">{children}</div>,
+  { useApp: () => ({ modal: { confirm: vi.fn() } }) },
+) }));
 vi.mock('./requestErrorConfig', () => ({ errorConfig: {} }));
 vi.mock('../config/defaultSettings', () => ({ default: { navTheme: 'light' } }));
 

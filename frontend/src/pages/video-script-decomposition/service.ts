@@ -1,9 +1,9 @@
-import { request } from '@umijs/max';
 import type { MediaPage, MediaPageParams } from '@/services/media/paging';
 import {
-  startMediaUpload,
   type MediaUploadRecovery,
+  startMediaUpload,
 } from '@/services/mediaUpload';
+import { pointEstimatedRequest as request } from '@/services/point-estimate';
 
 export type ApiResponse<T> = {
   success: boolean;

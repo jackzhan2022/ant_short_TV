@@ -1,5 +1,5 @@
-import { request } from '@umijs/max';
 import type { MediaPage, MediaPageParams } from '@/services/media/paging';
+import { pointEstimatedRequest as request } from '@/services/point-estimate';
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -674,7 +674,7 @@ export type SaveEpisodeSummaryValues = {
 };
 
 export const regenerateEpisodeSplitting = async (projectId: number) =>
-  request<ApiResponse<unknown>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/script-analysis/current/regenerate-episodes`,
     { method: 'POST' },
   );
@@ -693,7 +693,7 @@ export const regenerateEpisodeSummary = async (
   projectId: number,
   episodeId: number,
 ) =>
-  request<ApiResponse<unknown>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/episodes/${episodeId}/summary/regenerate`,
     { method: 'POST', data: { overwrite: true } },
   );
@@ -702,7 +702,7 @@ export const regenerateEpisodeAssets = async (
   projectId: number,
   episodeId: number,
 ) =>
-  request<ApiResponse<unknown>>(
+  request<ApiResponse<API.AiExecutionResponse>>(
     `/api/projects/${projectId}/episodes/${episodeId}/assets/regenerate`,
     { method: 'POST' },
   );
@@ -1302,11 +1302,13 @@ export const queryAiVideoResults = (
 export const createAiVideoTask = async (
   projectId: number,
   values: CreateAiVideoTaskValues,
+  pointEstimateConfirmed = false,
 ) =>
   request<ApiResponse<AiVideoTask>>(
     `/api/projects/${projectId}/ai-video-tasks`,
     {
       method: 'POST',
+      pointEstimateConfirmed,
       headers: { 'Content-Type': 'application/json' },
       data: values,
     },
@@ -1327,10 +1329,11 @@ export const cancelAiVideoTask = async (projectId: number, taskId: number) =>
 export const regenerateAiVideoTask = async (
   projectId: number,
   taskId: number,
+  pointEstimateConfirmed = false,
 ) =>
   request<ApiResponse<AiVideoTask>>(
     `/api/projects/${projectId}/ai-video-tasks/${taskId}/regenerate`,
-    { method: 'POST' },
+    { method: 'POST', pointEstimateConfirmed },
   );
 
 export const deleteAiVideoTask = async (projectId: number, taskId: number) =>
