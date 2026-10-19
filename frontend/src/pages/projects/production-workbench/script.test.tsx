@@ -40,7 +40,11 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
   },
-  Modal: { confirm: mocks.confirm },
+  Modal: Object.assign(
+    ({ open, title, children }: any) =>
+      open ? <div role="dialog" aria-label={title}>{children}</div> : null,
+    { confirm: mocks.confirm },
+  ),
   Button: ({ children, ...props }: any) => (
     <button {...props}>{children}</button>
   ),
@@ -673,12 +677,22 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('正在提炼每集概要')).toBeInTheDocument();
     expect(screen.getByText('45%')).toBeInTheDocument();
     expect(screen.getByText(/1\/3 集/)).toBeInTheDocument();
-    expect(screen.getByText('episode-3失败')).toBeInTheDocument();
-    expect(screen.getByText('第1集 · episode-1')).toBeInTheDocument();
-    expect(screen.getByText(/概要：已完成/)).toBeInTheDocument();
-    expect(screen.getByText(/识别：已完成/)).toBeInTheDocument();
-    expect(screen.getByText(/分镜：积分不足/)).toBeInTheDocument();
-    expect(screen.getByText(/自动分镜会消耗积分/)).toBeInTheDocument();
+    expect(screen.queryByText(/episode-/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/自动分镜会消耗积分/)).not.toBeInTheDocument();
+    const detailsButton = screen.getByRole('button', {
+      name: '查看分集处理详情',
+    });
+    expect(detailsButton.parentElement).toHaveClass(
+      'script-analysis-details-entry',
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(detailsButton);
+    const detailsDialog = await screen.findByRole('dialog', {
+      name: '分集处理详情',
+    });
+    expect(within(detailsDialog).getByText('第1集')).toBeInTheDocument();
+    expect(within(detailsDialog).getByText('积分不足')).toBeInTheDocument();
+    expect(within(detailsDialog).queryByText(/episode-/)).not.toBeInTheDocument();
     expect(screen.getByText('分块分析 7/12')).toBeInTheDocument();
     expect(
       screen.getByText('全文输出达到上限，已自动切换'),
@@ -739,6 +753,10 @@ describe('ProductionWorkbenchScript', () => {
       (await screen.findAllByText('模型服务暂时不可用')).length,
     ).toBeGreaterThan(0);
     expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
+    expect(screen.getByText('剧情全局理解')).toBeInTheDocument();
+    expect(screen.getByText('剧集智能拆分')).toBeInTheDocument();
+    expect(screen.getByText('剧集概要提炼')).toBeInTheDocument();
+    expect(screen.getByText('角色场景识别')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重试此步骤' }));
     await waitFor(() =>
       expect(mocks.retryScriptAnalysis).toHaveBeenCalledWith(

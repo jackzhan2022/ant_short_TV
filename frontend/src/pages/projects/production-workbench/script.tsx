@@ -25,6 +25,7 @@ import ProjectCoverImage, { type ProjectCoverStatus } from '@/components/Project
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
+import './script-analysis-progress.css';
 import {
   type ProductionWorkspaceState,
   queryAssetSettingsSummary,
@@ -136,9 +137,12 @@ export const ScriptAnalysisStateContainer = ({
   const guidance = isFailed
     ? analysis.errorMessage || '解析过程中遇到问题，请重试。'
     : analysis.currentAction || '当前剧情正在解析中，请耐心等待...';
-  const stages: ScriptAnalysisStage[] = analysis.stages.length
-    ? analysis.stages
-    : Object.keys(analysisStageLabels).map((stageCode, index) => ({
+  const stagesByCode = new Map(
+    analysis.stages.map((stage) => [stage.stageCode, stage]),
+  );
+  const stages: ScriptAnalysisStage[] = Object.keys(analysisStageLabels).map(
+    (stageCode, index) =>
+      stagesByCode.get(stageCode) || {
         id: index,
         stageCode,
         stageOrder: index + 1,
@@ -146,7 +150,9 @@ export const ScriptAnalysisStateContainer = ({
         progressPercent: 0,
         completedUnits: 0,
         totalUnits: 1,
-      }));
+      },
+  );
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const branchStatusText = (status?: string | null) => {
     if (status === 'SUCCEEDED' || status === 'COMPLETED') return '已完成';
     if (status === 'RUNNING' || status === 'DISPATCHED') return '进行中';
@@ -158,92 +164,59 @@ export const ScriptAnalysisStateContainer = ({
     if (status === 'RETRYABLE') return '等待重试';
     return '等待中';
   };
+  const branchStatusColor = (status?: string | null) => {
+    if (status === 'SUCCEEDED' || status === 'COMPLETED') return 'success';
+    if (status === 'FAILED' || status === 'PARTIAL_FAILED') return 'error';
+    if (status === 'RUNNING' || status === 'DISPATCHED') return 'processing';
+    return 'default';
+  };
 
   return (
     <section
       aria-label="剧本分析进度"
-      style={{
-        minHeight: 620,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '36px 18px 72px',
-      }}
+      className="script-analysis-progress"
     >
-      <div style={{ textAlign: 'center' }}>
-        <div
-          style={{
-            fontSize: 56,
-            lineHeight: 1,
-            color: '#b8c4e8',
-            marginBottom: 18,
-          }}
+      <div className={`script-analysis-status${isFailed ? ' is-failed' : ''}`}>
+        <span className="script-analysis-status-indicator" />
+        <Typography.Title
+          level={4}
+          className="script-analysis-status-title"
+          style={{ margin: 0, fontSize: 18 }}
         >
-          ▧
-        </div>
-        <Typography.Title level={4} style={{ margin: 0, fontSize: 20 }}>
           {title}
         </Typography.Title>
-        <Typography.Text type={isFailed ? 'danger' : 'secondary'}>
+        <Typography.Text
+          type={isFailed ? 'danger' : 'secondary'}
+          className="script-analysis-status-message"
+        >
           {guidance}
         </Typography.Text>
       </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'center',
-          marginTop: 56,
-          maxWidth: 560,
-          width: '100%',
-        }}
-      >
-        {stages.map((stage, index) => {
+      <div className="script-analysis-activity" aria-hidden="true" />
+      <div className="script-analysis-stages">
+        {stages.map((stage) => {
           const completed = stage.status === 'SUCCEEDED';
+          const failed =
+            stage.status === 'FAILED' || stage.status === 'PARTIAL_FAILED';
           return (
             <div
               key={stage.stageCode}
-              style={{ display: 'flex', alignItems: 'flex-start', flex: 1 }}
+              className={`script-analysis-stage${completed ? ' is-completed' : ''}${failed ? ' is-failed' : ''}${stage.status === 'RUNNING' ? ' is-running' : ''}`}
             >
-              <div style={{ flex: 1, textAlign: 'center' }}>
-                <div
-                  style={{
-                    width: 58,
-                    height: 58,
-                    margin: '0 auto 16px',
-                    borderRadius: '50%',
-                    display: 'grid',
-                    placeItems: 'center',
-                    border: `5px solid ${completed ? '#16b979' : '#e1e5f1'}`,
-                    color: completed ? '#16b979' : '#24324a',
-                    background: '#fff',
-                    fontWeight: 700,
-                    fontSize: 15,
-                  }}
-                >
-                  {completed ? <CheckOutlined /> : `${stage.progressPercent}%`}
-                </div>
-                <Typography.Text
-                  type="secondary"
-                  style={{ fontSize: 13, whiteSpace: 'nowrap' }}
-                >
-                  {analysisStageLabels[stage.stageCode] || stage.stageCode}
-                </Typography.Text>
-                {stage.fanout ? (
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: 11,
-                      color: 'var(--app-color-text-secondary)',
-                    }}
-                  >
+              <div className="script-analysis-stage-node">
+                {completed ? <CheckOutlined /> : `${stage.progressPercent}%`}
+              </div>
+              <Typography.Text
+                type="secondary"
+                className="script-analysis-stage-label"
+              >
+                {analysisStageLabels[stage.stageCode] || stage.stageCode}
+              </Typography.Text>
+              {stage.fanout ? (
+                <div className="script-analysis-stage-detail">
                     {stage.fanout.completed}/{stage.fanout.total} 集
                     {stage.fanout.failed
                       ? ` · ${stage.fanout.failed} 集失败`
-                      : ''}
-                    {stage.fanout.currentEpisodeKey
-                      ? ` · 当前 ${stage.fanout.currentEpisodeKey}`
                       : ''}
                     <div>
                       {stage.fanout.cache?.knownCalls
@@ -262,16 +235,10 @@ export const ScriptAnalysisStateContainer = ({
                           : ` · 首字节 ${stage.fanout.timing.firstByteMs}ms`}
                       </div>
                     ) : null}
-                  </div>
-                ) : null}
-                {stage.splitProgress?.mode === 'CHUNK_FALLBACK' ? (
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: 11,
-                      color: 'var(--app-color-text-secondary)',
-                    }}
-                  >
+                </div>
+              ) : null}
+              {stage.splitProgress?.mode === 'CHUNK_FALLBACK' ? (
+                <div className="script-analysis-stage-detail">
                     <div>
                       <span>
                         分块分析 {stage.splitProgress.completedChunks}/
@@ -295,106 +262,81 @@ export const ScriptAnalysisStateContainer = ({
                             ? '全文上下文调用失败，已自动切换'
                             : '已自动切换到分块分析'}
                     </div>
-                  </div>
-                ) : null}
-                {stage.fanout?.units?.some(
-                  (unit) => unit.status === 'FAILED',
-                ) ? (
-                  <div style={{ marginTop: 5 }}>
-                    {stage.fanout.units
-                      .filter((unit) => unit.status === 'FAILED')
-                      .slice(0, 3)
-                      .map((unit) => (
-                        <Tag
-                          key={unit.episodeId}
-                          color="error"
-                          style={{ margin: '2px' }}
-                        >
-                          {unit.episodeKey}失败
-                        </Tag>
-                      ))}
-                  </div>
-                ) : null}
-                {isFailed && stage.status === 'FAILED' && stage.retryable ? (
-                  <div>
-                    <Button
-                      type="link"
-                      size="small"
-                      icon={<ReloadOutlined />}
-                      onClick={() => onRetryStage(stage.stageCode)}
-                      style={{ padding: 0, marginTop: 8 }}
-                    >
-                      重试此步骤
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-              {index < stages.length - 1 ? (
-                <div
-                  style={{
-                    flex: '0 0 26px',
-                    height: 3,
-                    marginTop: 28,
-                    background: completed ? '#c5eede' : '#e5e8f2',
-                  }}
-                />
+                </div>
+              ) : null}
+              {isFailed && stage.status === 'FAILED' && stage.retryable ? (
+                <div>
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => onRetryStage(stage.stageCode)}
+                    className="script-analysis-retry"
+                  >
+                    重试此步骤
+                  </Button>
+                </div>
               ) : null}
             </div>
           );
         })}
       </div>
       {analysis.episodes?.length ? (
-        <div style={{ width: '100%', maxWidth: 760, marginTop: 36 }}>
-          <Flex
-            justify="space-between"
-            align="center"
-            style={{ marginBottom: 10 }}
-          >
-            <Typography.Text strong>逐集处理状态</Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              自动分镜会消耗积分；已有或人工编辑的分镜不会被覆盖
-            </Typography.Text>
-          </Flex>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {analysis.episodes.map((episode) => (
-              <div
-                key={episode.episodeId}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '180px repeat(3, 1fr)',
-                  gap: 10,
-                  alignItems: 'center',
-                  padding: '10px 12px',
-                  border: '1px solid var(--app-color-border-secondary)',
-                  borderRadius: 8,
-                  background: '#fff',
-                  fontSize: 12,
-                }}
-              >
-                <Typography.Text strong>
-                  第{episode.episodeNo}集 · {episode.episodeKey}
-                </Typography.Text>
-                <span title={episode.summaryError || undefined}>
-                  概要：{branchStatusText(episode.summaryStatus)}
-                  {episode.summaryRunId ? ` #${episode.summaryRunId}` : ''}
-                </span>
-                <span title={episode.recognitionError || undefined}>
-                  识别：{branchStatusText(episode.recognitionStatus)}
-                  {episode.recognitionRunId
-                    ? ` #${episode.recognitionRunId}`
-                    : ''}
-                </span>
-                <span title={episode.storyboardError || undefined}>
-                  分镜：{branchStatusText(episode.storyboardStatus)}
-                  {episode.storyboardExecutionId
-                    ? ` #${episode.storyboardExecutionId}`
-                    : ''}
-                </span>
-              </div>
-            ))}
-          </div>
+        <div className="script-analysis-details-entry">
+          <Button onClick={() => setDetailsOpen(true)}>
+            查看分集处理详情
+          </Button>
         </div>
       ) : null}
+      <Modal
+        title="分集处理详情"
+        open={detailsOpen}
+        onCancel={() => setDetailsOpen(false)}
+        footer={null}
+        width="min(920px, calc(100vw - 32px))"
+        destroyOnHidden
+      >
+        <div className="script-analysis-details-summary">
+          共 {analysis.episodes?.length || 0} 集
+        </div>
+        <div className="script-analysis-details-scroll">
+          <table
+            className="script-analysis-details-table"
+            aria-label="逐集处理进度"
+          >
+            <thead>
+              <tr>
+                <th scope="col">集数</th>
+                <th scope="col">概要</th>
+                <th scope="col">角色场景识别</th>
+                <th scope="col">分镜</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analysis.episodes?.map((episode) => (
+                <tr key={episode.episodeId}>
+                  <th scope="row">第{episode.episodeNo}集</th>
+                  <td title={episode.summaryError || undefined}>
+                    <Tag color={branchStatusColor(episode.summaryStatus)}>
+                      {branchStatusText(episode.summaryStatus)}
+                    </Tag>
+                  </td>
+                  <td title={episode.recognitionError || undefined}>
+                    <Tag color={branchStatusColor(episode.recognitionStatus)}>
+                      {branchStatusText(episode.recognitionStatus)}
+                    </Tag>
+                  </td>
+                  <td title={episode.storyboardError || undefined}>
+                    <Tag color={branchStatusColor(episode.storyboardStatus)}>
+                      {branchStatusText(episode.storyboardStatus)}
+                    </Tag>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
       {isFailed ? (
         <Typography.Text type="danger" style={{ marginTop: 24 }}>
           {analysis.errorMessage || '解析失败，请重试。'}

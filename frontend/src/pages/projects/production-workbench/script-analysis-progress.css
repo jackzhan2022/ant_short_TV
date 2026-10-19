@@ -1,0 +1,275 @@
+.script-analysis-progress {
+  min-height: 620px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 18px 72px;
+}
+
+.script-analysis-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: min(760px, 100%);
+  margin-top: 18px;
+  text-align: center;
+}
+
+.script-analysis-status-indicator {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #5269f5;
+  box-shadow: 0 0 0 4px #5269f51a;
+  animation: script-analysis-node-pulse 1.8s ease-in-out infinite;
+}
+
+.script-analysis-status.is-failed .script-analysis-status-indicator {
+  background: #db5c61;
+  box-shadow: 0 0 0 4px #db5c611a;
+}
+
+.script-analysis-status-title {
+  flex: 0 1 auto;
+}
+
+.script-analysis-status-message {
+  flex-basis: 100%;
+}
+
+.script-analysis-activity {
+  position: relative;
+  width: min(760px, 100%);
+  height: 2px;
+  margin-top: 24px;
+  overflow: hidden;
+  background: var(--app-color-border-secondary);
+}
+
+.script-analysis-activity::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #7787ff,
+    #a6b0ff,
+    transparent
+  );
+  content: "";
+  animation: script-analysis-status-flow 3.4s ease-in-out infinite;
+}
+
+.script-analysis-stages {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  width: min(820px, 100%);
+  margin-top: 38px;
+}
+
+.script-analysis-stages::before {
+  position: absolute;
+  top: 28px;
+  right: 12.5%;
+  left: 12.5%;
+  height: 2px;
+  background: linear-gradient(90deg, #20ad78, #a6dfc7 68%, #e5e9f0);
+  background-size: 200% 100%;
+  content: "";
+  animation: script-analysis-line-flow 3.6s linear infinite;
+}
+
+.script-analysis-stage {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  padding: 0 10px;
+  text-align: center;
+}
+
+.script-analysis-stage-node {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 12px;
+  place-items: center;
+  border: 5px solid #e1e5f1;
+  border-radius: 50%;
+  background: #fff;
+  color: #24324a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.script-analysis-stage.is-completed .script-analysis-stage-node {
+  border-color: #20ad78;
+  color: #20ad78;
+}
+
+.script-analysis-stage.is-failed .script-analysis-stage-node {
+  border-color: #db5c61;
+  color: #db5c61;
+}
+
+.script-analysis-stage.is-running .script-analysis-stage-node {
+  animation: script-analysis-node-pulse 1.8s ease-in-out infinite;
+}
+
+.script-analysis-stage-label {
+  display: block;
+  min-height: 22px;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.script-analysis-stage-detail {
+  margin-top: 6px;
+  color: var(--app-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.script-analysis-retry {
+  padding: 0;
+  margin-top: 6px;
+}
+
+.script-analysis-details-entry {
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
+}
+
+.script-analysis-details-summary {
+  margin-bottom: 12px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+
+.script-analysis-details-scroll {
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 6px;
+}
+
+.script-analysis-details-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+
+.script-analysis-details-table thead {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: var(--app-color-bg-layout);
+}
+
+.script-analysis-details-table th,
+.script-analysis-details-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--app-color-border-secondary);
+}
+
+.script-analysis-details-table th {
+  color: var(--app-color-text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.script-analysis-details-table tbody th {
+  color: var(--app-color-text);
+}
+
+.script-analysis-details-table tbody tr:last-child th,
+.script-analysis-details-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+@keyframes script-analysis-status-flow {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0.45;
+  }
+}
+
+@keyframes script-analysis-line-flow {
+  to {
+    background-position: 100% 0;
+  }
+}
+
+@keyframes script-analysis-node-pulse {
+  50% {
+    box-shadow: 0 0 0 5px #5269f51a;
+  }
+}
+
+@media (max-width: 640px) {
+  .script-analysis-progress {
+    min-height: 560px;
+    padding: 28px 12px 56px;
+  }
+
+  .script-analysis-stages {
+    margin-top: 32px;
+  }
+
+  .script-analysis-stages::before {
+    top: 22px;
+  }
+
+  .script-analysis-stage {
+    padding: 0 3px;
+  }
+
+  .script-analysis-stage-node {
+    width: 46px;
+    height: 46px;
+    margin-bottom: 9px;
+    border-width: 4px;
+    font-size: 12px;
+  }
+
+  .script-analysis-stage-label {
+    min-height: 36px;
+    font-size: 11px;
+    line-height: 18px;
+  }
+
+  .script-analysis-stage-detail {
+    font-size: 10px;
+  }
+
+  .script-analysis-details-table {
+    min-width: 540px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .script-analysis-activity::after,
+  .script-analysis-stages::before,
+  .script-analysis-stage.is-running .script-analysis-stage-node {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
