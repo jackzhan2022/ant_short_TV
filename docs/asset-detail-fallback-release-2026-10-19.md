@@ -1,0 +1,28 @@
+# 资产形态详情超限降级发布
+
+2026-10-19（北京时间）发布至 antv.aixmax.cn。服务于 17:41:21 进入 active，健康检查 UP，自动重启次数 0。
+
+## 发布内容
+
+- 功能提交 `4cbe41fcc39663a2c4cdc68a0091e29ba2eb99e8`，已推送 master。`read_asset_details` 默认保留完整详情，仅超过响应预算时在同一次工具调用中自动返回明确标记的摘要；工具名称和输入参数不变。
+- 摘要保留请求资产与形态身份、短外观描述、默认/本集绑定状态和提示词存在状态；保留分页游标，不静默跳过形态。不降级权限、缺失资产、损坏元数据和数据库错误。
+- 更新运行提示及持久化技能 v3，保留既有自定义内容。其余 32 个技能文件、运行环境、Agent 预算和模型参数配置未改变。
+- 发布目录：`/opt/antv/releases/20261019172814-4cbe41f-asset-detail-fallback`；上一发布 `/opt/antv/releases/20261019163711-a37cda1-asset-batch-lookup` 保留用于回滚。
+- 后端 JAR SHA-256：`fc44f4d809e50ceed4e05120410ee89fed9572093095b6f3ae9bec7a9b886c10`。从推送提交独立构建，1,261 个应用类与测试版本一致。前端无改动，沿用原有静态资源；数据库保持 V140，无新增迁移。
+
+## 备份与验证
+
+- 211 项后端回归通过，Biome、TypeScript、antd 检查通过，保留既有警告。
+- 5 个真实失败请求只读离线回放全部通过，每个请求的 10 个资产均保留，摘要响应为 7,568–8,231 字节；不调用模型或写业务数据。
+- 数据库一致性备份流式保存到本机 `D:\需求文档\ant_short_TV\.release\20261019172814-4cbe41f-asset-detail-fallback\database.sql.gz`，避免进一步占用线上磁盘。压缩包 CRC 和两端 SHA-256 已验证；服务器备份目录 `/opt/antv/backups/20261019172814-4cbe41f-asset-detail-fallback` 保留技能、环境、配置快照及已验证的数据库备份清单。
+- 发布验收期间业务任务、模型调用及积分流水未变化；首页、项目页、静态资源和健康检查正常。
+
+## 项目 50 重试
+
+用户授权后通过现有登录页面确认预计消耗 0 积分，17:44 发起第 7 轮角色场景道具识别重试。复用 65 集成功结果，只重试第 18、19、23、60、70 集。
+
+截至 17:46:41，5 集全部成功，累计识别 70/70。真实调用中完整详情 FULL 返回 6 次，超限摘要 SUMMARY 返回 5 次；5 集实际执行步数为 9、9、9、10、9，无新增响应超限或步数上限错误。
+
+工作台阶段累计实际净扣费 1000.00000000 积分，本轮新增净扣费 0，预占 0。范围为 `tenant_id=39 AND workbench_project_id=50`，实扣使用 `settled_points-refunded_points`。自动分镜仍在继续；历史第 57 集分镜的数据库死锁失败与本改动独立。
+
+完整验收及进度保存在本地忽略目录 `outputs/asset-detail-release-online-verification.json`、`outputs/asset-detail-release-verification.json`、`outputs/asset-detail-retry-current.json`。
