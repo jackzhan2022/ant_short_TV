@@ -380,6 +380,7 @@ describe('ProductionWorkbenchScript', () => {
     render(<ProductionWorkbenchScript />);
 
     expect(await screen.findByText('线上剧本内容')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '补充剧本' })).not.toBeInTheDocument();
     expect(screen.getAllByText('剧本类型').length).toBeGreaterThan(0);
     expect(screen.getByText('AI短剧')).toBeInTheDocument();
     expect(screen.getByText('故事概览')).toBeInTheDocument();

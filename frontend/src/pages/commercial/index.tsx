@@ -6,6 +6,7 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount, queryTeamPointTransactions } from '@/services/account-team/points';
 import type { TeamPointTransaction } from '@/services/account-team/types';
 import { statusText } from '@/utils/fieldDictionary';
+import { formatPoints } from '@/utils/points';
 import PaymentModal, { type PaymentOrder } from './PaymentModal';
 import PurchasePanel, { initialPurchaseSelection } from './PurchasePanel';
 import { formatCommercialDate, formatCommercialMoney } from './purchasePresentation';
@@ -30,6 +31,7 @@ const pointTransactionTypeText: Record<string, string> = {
   SETTLE: '积分消耗',
   RELEASE: '预扣释放',
   REFUND: '积分退回',
+  SETTLEMENT_REVIEW: '结算待核对',
 };
 
 const snapshotName = (snapshot?: string) => {
@@ -214,8 +216,8 @@ const CommercialPage = () => {
           <img className={styles.brandMark} src="/juzhichuang-logo-mark.png" alt="剧智创 Logo" /><span>剧智创</span>
         </button>
         <div className={styles.headerRight}>
-          <span className={styles.headerBalance}><WalletOutlined /> 团队积分 <strong>{balance.toLocaleString('zh-CN')}</strong></span>
-          {trialBalance > 0 && <span>含试用专属积分 {trialBalance.toLocaleString('zh-CN')}，不可用于视频生成</span>}
+          <span className={styles.headerBalance}><WalletOutlined /> 团队积分 <strong>{formatPoints(balance)}</strong></span>
+          {trialBalance > 0 && <span>含试用专属积分 {formatPoints(trialBalance)}，不可用于视频生成</span>}
           <Button type="text" icon={<LeftOutlined />} onClick={() => history.back()}>返回工作台</Button>
         </div>
       </header>
@@ -281,9 +283,9 @@ const CommercialPage = () => {
             dataSource={pointTransactions}
             columns={[
               { title: '变化类型', dataIndex: 'transactionType', render: (value: string) => pointTransactionTypeText[value] ?? value },
-              { title: '变动积分', dataIndex: 'changeAmount', render: (value: number) => <Tag color={value > 0 ? 'green' : value < 0 ? 'red' : undefined}>{Number(value).toLocaleString('zh-CN')}</Tag> },
-              { title: '变动后余额', dataIndex: 'balanceAfter', render: (value: number) => Number(value).toLocaleString('zh-CN') },
-              { title: '说明', dataIndex: 'description', ellipsis: true, render: (value?: string) => value ?? '-' },
+              { title: '变动积分', dataIndex: 'changeAmount', render: (value: number) => <Tag color={value > 0 ? 'green' : value < 0 ? 'red' : undefined}>{formatPoints(Number(value))}</Tag> },
+              { title: '变动后余额', dataIndex: 'balanceAfter', render: (value: number) => formatPoints(Number(value)) },
+              { title: '说明', dataIndex: 'description', render: (value?: string) => value?.trim() || '-' },
               { title: '时间', dataIndex: 'createdAt', render: (value?: string) => formatCommercialDate(value) },
             ]}
           />

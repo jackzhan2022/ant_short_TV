@@ -2,6 +2,9 @@ import type { RequestOptions } from '@@/plugin-request/request';
 import { request } from '@umijs/max';
 import { App } from 'antd';
 import { type ReactNode, useLayoutEffect } from 'react';
+import { formatPoints } from '@/utils/points';
+
+export { formatPoints } from '@/utils/points';
 
 type EstimateModal = Pick<ReturnType<typeof App.useApp>['modal'], 'confirm'>;
 let estimateModal: EstimateModal | undefined;
@@ -43,9 +46,6 @@ export class PointEstimateCancelledError extends Error {
 
 export const isPointEstimateCancelled = (error: unknown) =>
   error instanceof PointEstimateCancelledError;
-
-export const formatPoints = (value: number) =>
-  new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 8 }).format(value);
 
 type Options = RequestOptions & { pointEstimateConfirmed?: boolean };
 

@@ -1,3 +1,4 @@
+import { formatPoints as points } from '@/utils/points';
 import type { CommercialCatalogItem, CommercialEntitlement } from './service';
 
 export type MembershipPeriod = 'monthly' | 'quarterly' | 'halfYear' | 'yearly';
@@ -24,10 +25,6 @@ const pointValue = (entitlement?: CommercialEntitlement) => {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? value : null;
 };
-
-const points = (value: number) => new Intl.NumberFormat('zh-CN', {
-  maximumFractionDigits: 2,
-}).format(value);
 
 export const formatCommercialMoney = (value?: number | null, currency = 'CNY') => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return '-';

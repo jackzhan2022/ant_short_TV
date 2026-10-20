@@ -144,6 +144,18 @@ describe('CommercialPage', () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
+  it('shows the usage description in full and translates settlement review', async () => {
+    const description = '《星河短剧》 · AI提取角色 · 任务 #123 · 用量待核对，尚未完成最终结算';
+    mocks.pointTransactions.mockResolvedValue({ data: { records: [{
+      id: 99, transactionType: 'SETTLEMENT_REVIEW', changeAmount: 0,
+      balanceAfter: 100, description, createdAt: '2026-10-20T16:42:00',
+    }] } });
+    render(<CommercialPage />);
+    expect(await screen.findByText('结算待核对')).toBeInTheDocument();
+    expect(screen.getByText(description)).toBeInTheDocument();
+    expect(screen.queryByText('SETTLEMENT_REVIEW')).not.toBeInTheDocument();
+  });
+
   it('keeps selection local and displays the selected team', async () => {
     mocks.catalog.mockResolvedValue({ data: [
       { packageId: 1, packageVersionId: 11, packageType: 'SUBSCRIPTION', periodMonths: 1, name: '标准月卡', price: 99, currency: 'CNY', entitlements: [] },

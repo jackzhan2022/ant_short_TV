@@ -502,7 +502,7 @@ describe('ProductionWorkbenchSettings', () => {
     await waitFor(() => expect(thumbnail).toHaveAttribute('src', '/daily-thumb.png'));
     expect(thumbnail).toHaveAttribute('loading', 'lazy');
     expect(thumbnail).toHaveStyle({ opacity: '0' });
-    expect(screen.getByLabelText('斌斌当前视觉形象加载中')).toBeInTheDocument();
+    expect(screen.getByLabelText('斌斌当前视觉形象加载中')).toHaveTextContent('加载中');
 
     fireEvent.load(thumbnail);
 
@@ -710,7 +710,7 @@ describe('ProductionWorkbenchSettings', () => {
     render(<ProductionWorkbenchSettings />);
 
     await screen.findByText('斌斌');
-    const generate = screen.getByRole('button', { name: '资产图生成' });
+    const generate = screen.getByRole('button', { name: '角色图生成' });
     expect(generate).toBeDisabled();
     expect(screen.getByText('已选择 0 项')).toBeInTheDocument();
 
@@ -720,7 +720,14 @@ describe('ProductionWorkbenchSettings', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /场景/ }));
     expect(screen.getByText('已选择 0 项')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '资产图生成' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '场景图生成' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '生成所选场景主图' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成所选场景全部形态图' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /道具/ }));
+    expect(screen.getByRole('button', { name: '道具图生成' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '生成所选道具主图' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成所选道具全部形态图' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /生成所选角色/ })).not.toBeInTheDocument();
   });
 
   it('consolidates extraction actions and confirms selected primary image generation', async () => {
@@ -738,7 +745,7 @@ describe('ProductionWorkbenchSettings', () => {
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: '选择斌斌' }));
-    fireEvent.click(screen.getByRole('button', { name: '生成主形象图' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成所选角色主图' }));
 
     await waitFor(() => {
       expect(mocks.queryAssetImageBatchPreflight).toHaveBeenCalledWith(
@@ -754,10 +761,10 @@ describe('ProductionWorkbenchSettings', () => {
       );
     });
     expect(
-      screen.getByRole('region', { name: '批量生成资产图' }),
+      screen.getByRole('region', { name: '批量生成角色图' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/计划生成 1 个形象，共 1 张图片/),
+      screen.getByText(/已选择 1 个角色，计划生成 1 个形态，共 1 张图片/),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '确认提交' }));
@@ -797,7 +804,7 @@ describe('ProductionWorkbenchSettings', () => {
     mocks.retryAssetImageBatch.mockResolvedValue({ data: { ...failedBatch, id: 92, status: 'PENDING' } });
     render(<ProductionWorkbenchSettings />);
     fireEvent.click(await screen.findByRole('checkbox', { name: '选择斌斌' }));
-    fireEvent.click(screen.getByRole('button', { name: '生成主形象图' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成所选角色主图' }));
     fireEvent.click(await screen.findByRole('button', { name: '确认提交' }));
 
     expect(await screen.findByText('婚礼礼服：生成超时')).toBeInTheDocument();
@@ -1327,7 +1334,7 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: '模拟归一处理中' }));
     const sceneTab = screen.getByRole('tab', { name: /场景/ });
     expect(sceneTab).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: '资产图生成' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '角色图生成' })).toBeDisabled();
     fireEvent.click(sceneTab);
     expect(sceneTab).toHaveAttribute('aria-selected', 'true');
   });

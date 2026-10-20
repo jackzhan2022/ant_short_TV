@@ -1297,7 +1297,7 @@ const ProductionWorkbenchSettings = () => {
         </Modal>
 
         <Modal
-          title="批量生成资产图"
+          title={`批量生成${batchPreflight ? elementLabels[batchPreflight.assetType] : elementLabels[activeType]}图`}
           open={Boolean(batchPreflight)}
           okText="确认提交"
           cancelText="取消"
@@ -1311,12 +1311,12 @@ const ProductionWorkbenchSettings = () => {
           {batchPreflight ? (
             <Flex vertical gap={14}>
               <Typography.Text>
-                已选择 {batchPreflight.selectedAssets} 个资产，计划生成{' '}
-                {batchPreflight.plannedTasks} 个形象，共{' '}
+                已选择 {batchPreflight.selectedAssets} 个{elementLabels[batchPreflight.assetType]}，计划生成{' '}
+                {batchPreflight.plannedTasks} 个形态，共{' '}
                 {batchPreflight.plannedTasks * batchImageCount} 张图片
               </Typography.Text>
               <Typography.Text type="secondary">
-                依赖主形象 {batchPreflight.waitingDependencies} 个，跳过已完成{' '}
+                依赖主图 {batchPreflight.waitingDependencies} 个，跳过已完成{' '}
                 {batchPreflight.skippedCompleted} 个、生成中{' '}
                 {batchPreflight.skippedGenerating} 个、缺少提示词{' '}
                 {batchPreflight.skippedMissingPrompt} 个、其它不可生成{' '}
@@ -1361,7 +1361,7 @@ const ProductionWorkbenchSettings = () => {
                   </select>
                 </label>
                 <label>
-                  每个形象
+                  每个形态
                   <select
                     aria-label="批量图片数量"
                     value={batchImageCount}
@@ -2031,8 +2031,8 @@ const ProductionWorkbenchSettings = () => {
               disabled={!selectedAssetIds.length || batchLoading}
               menu={{
                 items: [
-                  { key: 'PRIMARY', label: '生成主形象图' },
-                  { key: 'ALL', label: '生成全部形象图' },
+                  { key: 'PRIMARY', label: `生成所选${elementLabels[activeType]}主图` },
+                  { key: 'ALL', label: `生成所选${elementLabels[activeType]}全部形态图` },
                 ],
                 onClick: ({ key }) =>
                   void openAssetImageBatch(key === 'ALL' ? 'ALL' : 'PRIMARY'),
@@ -2041,11 +2041,11 @@ const ProductionWorkbenchSettings = () => {
               <Button
                 type="primary"
                 size="small"
-                aria-label="资产图生成"
+                aria-label={`${elementLabels[activeType]}图生成`}
                 disabled={!selectedAssetIds.length || batchLoading}
                 loading={batchLoading}
               >
-                资产图生成
+                {elementLabels[activeType]}图生成
               </Button>
             </Dropdown>
           </fieldset>

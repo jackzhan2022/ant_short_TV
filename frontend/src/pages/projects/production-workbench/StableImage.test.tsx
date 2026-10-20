@@ -32,10 +32,11 @@ describe('StableImage', () => {
 
     const image = screen.getByAltText('角色图');
     expect(image).toHaveStyle({ opacity: '0' });
-    expect(screen.getByLabelText('角色图加载中')).toBeInTheDocument();
+    expect(screen.getByLabelText('角色图加载中')).toHaveTextContent('加载中');
 
     fireEvent.load(image);
     expect(image).toHaveStyle({ opacity: '0' });
+    expect(screen.getByLabelText('角色图加载中')).toHaveTextContent('加载中');
     finishDecode?.();
 
     await waitFor(() => expect(image).toHaveStyle({ opacity: '1' }));

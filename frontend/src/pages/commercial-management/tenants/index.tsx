@@ -19,6 +19,7 @@ import {
   Typography,
 } from 'antd';
 import { useRef, useState } from 'react';
+import { formatPoints } from '@/utils/points';
 import {
   assignPlatformTenantTrial,
   getPlatformTenant,
@@ -137,6 +138,7 @@ const PlatformTenantManagementPage = () => {
       dataIndex: 'pointBalance',
       search: false,
       width: 110,
+      render: (_, record) => formatPoints(Number(record.pointBalance)),
     },
     {
       title: '当前套餐',
@@ -250,8 +252,8 @@ const PlatformTenantManagementPage = () => {
             <Divider>账户摘要</Divider>
             <Space size={48} wrap>
               <Statistic title="有效成员" value={detail.activeMemberCount} />
-              <Statistic title="积分余额" value={detail.pointBalance} />
-              <Statistic title="其中试用专属积分（不可用于视频生成）" value={detail.trialPointBalance ?? 0} />
+              <Statistic title="积分余额" value={detail.pointBalance} formatter={(value) => formatPoints(Number(value))} />
+              <Statistic title="其中试用专属积分（不可用于视频生成）" value={detail.trialPointBalance ?? 0} formatter={(value) => formatPoints(Number(value))} />
             </Space>
             <Divider>当前套餐</Divider>
             {detail.currentPackage ? (

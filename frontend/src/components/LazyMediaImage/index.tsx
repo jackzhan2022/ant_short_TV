@@ -6,6 +6,7 @@ export type LazyMediaImageProps = Omit<ImageProps, 'fallback' | 'srcSet'> & {
   native?: boolean;
   active?: boolean;
   inView?: boolean;
+  loadingPlaceholder?: ReactNode;
   placeholderFallback?: ReactNode;
   imageStyle?: CSSProperties;
 };
@@ -18,6 +19,7 @@ const LazyMediaImage = ({
   native = false,
   active = true,
   inView,
+  loadingPlaceholder,
   placeholderFallback,
   imageStyle,
   style,
@@ -89,7 +91,13 @@ const LazyMediaImage = ({
     >
       {!src || failed ? placeholderFallback : null}
       {src && !ready && !failed ? (
-        <span role="status" aria-label={`${alt}加载中`} />
+        <span
+          role="status"
+          aria-label={`${alt}加载中`}
+          style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}
+        >
+          {loadingPlaceholder}
+        </span>
       ) : null}
       {native ? (
         src ? (

@@ -1,5 +1,5 @@
 import { useAccess } from '@umijs/max';
-import { Alert, Button, Card, Form, InputNumber, Spin } from 'antd';
+import { Alert, App, Button, Card, Form, InputNumber, Spin } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useStyles } from './index.style';
 import { getConcurrencyConfig, updateConcurrencyConfig } from './service';
@@ -57,6 +57,7 @@ const ConfigForm = ({
   canEdit: boolean;
 }) => {
   const { styles } = useStyles();
+  const { message } = App.useApp();
   const [form] = Form.useForm<ConcurrencySettings>();
   const [saving, setSaving] = useState(false);
   const pending = useRef(false);
@@ -77,6 +78,7 @@ const ConfigForm = ({
       form.setFieldsValue(result.settings);
       setDatabaseMaxConnections(result.databaseMaxConnections);
       setSaved(true);
+      message.success('配置保存成功', 4);
     } catch (error) {
       setSaveError(errorText(error, '保存失败，请重试'));
     } finally {
@@ -158,14 +160,14 @@ const ConfigForm = ({
             {saving ? '保存中' : '保存配置'}
           </Button>
         )}
-        <p>
-          保存后对新任务生效；降低上限不会取消正在运行的任务。未保存时继续使用现有配置。
-        </p>
         {saved && (
-          <span role="status" aria-label="保存状态">
+          <span className={styles.saved} role="status" aria-label="保存状态">
             配置已保存
           </span>
         )}
+        <p>
+          保存后对新任务生效；降低上限不会取消正在运行的任务。未保存时继续使用现有配置。
+        </p>
       </div>
     </Form>
   );

@@ -1,6 +1,7 @@
 import { request } from '@umijs/max';
 import { useEffect, useRef, useState } from 'react';
 import LazyMediaImage, { type LazyMediaImageProps } from '../LazyMediaImage';
+import ImageLoadingPlaceholder from '../LazyMediaImage/ImageLoadingPlaceholder';
 import { useMediaVisibility } from '../LazyMediaImage/useMediaVisibility';
 
 export type ProjectCoverStatus = 'MISSING' | 'PENDING' | 'READY' | 'FAILED';
@@ -13,6 +14,7 @@ const ProjectCoverImage = ({
   status,
   active = true,
   style,
+  loadingPlaceholder = <ImageLoadingPlaceholder />,
   ...props
 }: Props) => {
   const { ref, visible } = useMediaVisibility(src, active);
@@ -78,6 +80,16 @@ const ProjectCoverImage = ({
         active={active}
         src={currentStatus === 'READY' ? src : undefined}
         inView={visible}
+        loadingPlaceholder={loadingPlaceholder}
+        placeholderFallback={src && currentStatus === 'PENDING' ? (
+          <span
+            role="status"
+            aria-label={`${props.alt || '封面'}加载中`}
+            style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}
+          >
+            {loadingPlaceholder}
+          </span>
+        ) : props.placeholderFallback}
       />
       {src && currentStatus === 'FAILED' ? (
         <button

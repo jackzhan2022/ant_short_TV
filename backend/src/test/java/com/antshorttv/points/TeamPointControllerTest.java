@@ -159,6 +159,91 @@ class TeamPointControllerTest extends com.antshorttv.support.RegistrationTestSup
             .andExpect(jsonPath("$.data.matches", is(true)));
     }
 
+    @Test
+    void explainsUsageScenariosAndAccountingStagesForExistingLedgerEntries() throws Exception {
+        String token = registerUser("13800019008", "Usage History");
+        Long tenantId = createTenant(token, "用途说明团队");
+        Long projectId = insertProject(tenantId, "星河短剧");
+        String[][] scenarios = {
+            {"script_analysis", "SCRIPT_ANALYSIS_TASK", "剧本分析"},
+            {"character_extract", "SCRIPT_AI_OPERATION", "AI提取角色"},
+            {"ai_image_generate", "AI_IMAGE_TASK", "图片生成"},
+            {"ai_video_generate", "AI_VIDEO_TASK", "视频生成"},
+            {"video_decomposition_video_analysis", "VIDEO_DECOMPOSITION_EPISODE", "视频拆剧：视频理解"},
+            {"video_decomposition_draft_generation", "VIDEO_DECOMPOSITION_EPISODE", "视频拆剧：剧本草稿生成"},
+            {"script_review", "REVIEW_TASK", "剧本审核"},
+        };
+        for (int i = 0; i < scenarios.length; i++) {
+            String[] scenario = scenarios[i];
+            Long executionId = insertExecution(tenantId, projectId, scenario[0], scenario[1], (long) i + 1);
+            insertLedgerEntry(tenantId, "SETTLE", 25, 100, "usage:" + i, null);
+            jdbcTemplate.update("update point_ledger set execution_id=?, business_type=?, business_id=? where tenant_id=? and idempotency_key=?",
+                executionId, scenario[1], i + 1, tenantId, "usage:" + i);
+            mockMvc.perform(get("/api/tenants/%d/points/transactions".formatted(tenantId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].description",
+                    is("《星河短剧》 · " + scenario[2] + " · 任务 #" + executionId + " · 实际消耗（从预扣积分结算）")));
+        }
+        String[][] stages = {
+            {"RESERVE", "积分预扣，任务完成后按实际用量结算"},
+            {"INCREMENTAL_RESERVE", "追加预扣，供后续生成或模型调用使用"},
+            {"RELEASE", "释放未使用的预扣积分，返还可用余额"},
+            {"REFUND", "退回已消耗的积分"},
+            {"SETTLEMENT_REVIEW", "用量待核对，尚未完成最终结算"},
+        };
+        for (String[] stage : stages) {
+            insertLedgerEntry(tenantId, stage[0], 0, 100, "stage:" + stage[0], null);
+            jdbcTemplate.update("update point_ledger set business_type='AI_IMAGE_TASK', business_id=81 where tenant_id=? and idempotency_key=?",
+                tenantId, "stage:" + stage[0]);
+            mockMvc.perform(get("/api/tenants/%d/points/transactions".formatted(tenantId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].description", is("图片生成 · 业务任务 #81 · " + stage[1])));
+        }
+    }
+
+    @Test
+    void doesNotExposeAnotherTenantsTaskOrProjectInDescriptions() throws Exception {
+        String token = registerUser("13800019009", "Scoped History");
+        Long tenantId = createTenant(token, "明细团队");
+        Long otherTenantId = createTenant(token, "其他团队");
+        Long foreignProjectId = insertProject(otherTenantId, "其他团队的私有项目");
+        Long foreignExecutionId = insertExecution(otherTenantId, foreignProjectId, "character_extract", "SCRIPT_AI_OPERATION", 1L);
+        insertLedgerEntry(tenantId, "SETTLE", 25, 100, "foreign-execution", null);
+        jdbcTemplate.update("update point_ledger set execution_id=? where tenant_id=?", foreignExecutionId, tenantId);
+        mockMvc.perform(get("/api/tenants/%d/points/transactions".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.records[0].description", is("AI任务 · 实际消耗（从预扣积分结算）")));
+
+        Long executionId = insertExecution(tenantId, foreignProjectId, "future_scene", "SCRIPT_AI_OPERATION", 2L);
+        jdbcTemplate.update("update point_ledger set execution_id=? where tenant_id=?", executionId, tenantId);
+        mockMvc.perform(get("/api/tenants/%d/points/transactions".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.records[0].description", is("剧本AI处理 · 任务 #" + executionId + " · 实际消耗（从预扣积分结算）")));
+    }
+
+    private Long insertProject(Long tenantId, String name) {
+        jdbcTemplate.update("""
+            insert into project (tenant_id, name, code, owner_id, status, created_by, created_at, updated_at)
+            values (?, ?, 'point-history', 1, 'ACTIVE', 1, now(), now())
+            """, tenantId, name);
+        return jdbcTemplate.queryForObject("select id from project where tenant_id=? and code='point-history'", Long.class, tenantId);
+    }
+
+    private Long insertExecution(Long tenantId, Long projectId, String scene, String businessType, Long businessId) {
+        String key = "point-history:" + scene + ":" + businessId;
+        jdbcTemplate.update("""
+            insert into ai_execution_task
+                (tenant_id, user_id, project_id, scene, capability, business_type, business_id,
+                 status, phase, client_idempotency_key, trace_id, created_at, updated_at)
+            values (?, 1, ?, ?, 'TEXT', ?, ?, 'SUCCEEDED', 'DONE', ?, ?, now(), now())
+            """, tenantId, projectId, scene, businessType, businessId, key, key);
+        return jdbcTemplate.queryForObject("select id from ai_execution_task where tenant_id=? and client_idempotency_key=?", Long.class, tenantId, key);
+    }
+
     private String registerUser(String mobile, String nickname) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)

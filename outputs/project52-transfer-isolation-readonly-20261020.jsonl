@@ -1,0 +1,19 @@
+{"check": "baseline", "sample": 1, "persistent_session_ms": 46.86, "result_bytes": 2}
+{"check": "read_content_return_hash", "sample": 1, "persistent_session_ms": 9.39, "result_bytes": 33}
+{"check": "synthetic_4kb", "sample": 1, "persistent_session_ms": 8.9, "result_bytes": 4097}
+{"check": "synthetic_64kb", "sample": 1, "persistent_session_ms": 18.55, "result_bytes": 65537}
+{"check": "synthetic_256kb", "sample": 1, "persistent_session_ms": 21.45, "result_bytes": 262145}
+{"check": "project_content", "sample": 1, "persistent_session_ms": 470.84, "result_bytes": 262473}
+{"check": "baseline", "sample": 2, "persistent_session_ms": 8.66, "result_bytes": 2}
+{"check": "read_content_return_hash", "sample": 2, "persistent_session_ms": 9.34, "result_bytes": 33}
+{"check": "synthetic_4kb", "sample": 2, "persistent_session_ms": 8.59, "result_bytes": 4097}
+{"check": "synthetic_64kb", "sample": 2, "persistent_session_ms": 18.76, "result_bytes": 65537}
+{"check": "synthetic_256kb", "sample": 2, "persistent_session_ms": 333.21, "result_bytes": 262145}
+{"check": "project_content", "sample": 2, "persistent_session_ms": 443.1, "result_bytes": 262473}
+{"check": "baseline", "sample": 3, "persistent_session_ms": 8.57, "result_bytes": 2}
+{"check": "read_content_return_hash", "sample": 3, "persistent_session_ms": 9.57, "result_bytes": 33}
+{"check": "synthetic_4kb", "sample": 3, "persistent_session_ms": 8.8, "result_bytes": 4097}
+{"check": "synthetic_64kb", "sample": 3, "persistent_session_ms": 252.64, "result_bytes": 65537}
+{"check": "synthetic_256kb", "sample": 3, "persistent_session_ms": 296.1, "result_bytes": 262145}
+{"check": "project_content", "sample": 3, "persistent_session_ms": 454.65, "result_bytes": 262473}
+{"check": "application_instance", "output": "MainPID=3204466\nExecMainStartTimestamp=Tue 2026-10-20 19:28:52 CST"}

@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { App } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ConcurrencyConfigPage from './index';
 import { getConcurrencyConfig, updateConcurrencyConfig } from './service';
@@ -56,7 +57,7 @@ describe('ConcurrencyConfigPage', () => {
         resolveLoad = resolve;
       }),
     );
-    const view = render(<ConcurrencyConfigPage />);
+    const view = render(<ConcurrencyConfigPage />, { wrapper: App });
     expect(screen.getByRole('status')).toHaveTextContent('正在读取配置');
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     await act(async () => resolveLoad(config));
@@ -73,7 +74,7 @@ describe('ConcurrencyConfigPage', () => {
 
   it('requires view access and keeps viewers read-only even after re-render', async () => {
     mocks.access.canViewPlatformAiConcurrency = false;
-    const view = render(<ConcurrencyConfigPage />);
+    const view = render(<ConcurrencyConfigPage />, { wrapper: App });
     expect(getConcurrencyConfig).not.toHaveBeenCalled();
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     mocks.access.canViewPlatformAiConcurrency = true;
@@ -91,7 +92,7 @@ describe('ConcurrencyConfigPage', () => {
     vi.mocked(getConcurrencyConfig).mockRejectedValueOnce(
       new Error('读取被拒绝'),
     );
-    render(<ConcurrencyConfigPage />);
+    render(<ConcurrencyConfigPage />, { wrapper: App });
     expect(await screen.findByRole('alert')).toHaveTextContent('读取被拒绝');
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     expect(
@@ -109,7 +110,7 @@ describe('ConcurrencyConfigPage', () => {
         resolveSave = resolve;
       }),
     );
-    render(<ConcurrencyConfigPage />);
+    render(<ConcurrencyConfigPage />, { wrapper: App });
     await waitFor(() => expect(textInput()).toHaveValue('17'));
     fireEvent.change(textInput(), { target: { value: '37' } });
     fireEvent.click(saveButton());
@@ -122,6 +123,7 @@ describe('ConcurrencyConfigPage', () => {
     expect(screen.getByRole('button', { name: /保存中/ })).toBeDisabled();
     expect(textInput()).toBeDisabled();
     expect(screen.queryByText('配置已保存')).not.toBeInTheDocument();
+    expect(screen.queryByText('配置保存成功')).not.toBeInTheDocument();
     await act(async () =>
       resolveSave({
         ...config,
@@ -132,18 +134,22 @@ describe('ConcurrencyConfigPage', () => {
       '配置已保存',
     );
     expect(textInput()).toHaveValue('37');
+    expect(await screen.findByText('配置保存成功')).toBeInTheDocument();
+    fireEvent.change(textInput(), { target: { value: '38' } });
+    expect(screen.queryByRole('status', { name: '保存状态' })).not.toBeInTheDocument();
   });
 
   it('retains edits on failed saves and only shows success after a successful retry', async () => {
     vi.mocked(updateConcurrencyConfig).mockRejectedValueOnce(
       new Error('保存被拒绝'),
     );
-    render(<ConcurrencyConfigPage />);
+    render(<ConcurrencyConfigPage />, { wrapper: App });
     await waitFor(() => expect(textInput()).toHaveValue('17'));
     fireEvent.change(textInput(), { target: { value: '37' } });
     fireEvent.click(saveButton());
     expect(await screen.findByRole('alert')).toHaveTextContent('保存被拒绝');
     expect(screen.queryByText('配置已保存')).not.toBeInTheDocument();
+    expect(screen.queryByText('配置保存成功')).not.toBeInTheDocument();
     expect(textInput()).toHaveValue('37');
     vi.mocked(updateConcurrencyConfig).mockResolvedValue({
       ...config,
@@ -156,6 +162,7 @@ describe('ConcurrencyConfigPage', () => {
       ).toHaveTextContent('配置已保存'),
     );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(await screen.findByText('配置保存成功')).toBeInTheDocument();
   });
 
   it.each([
@@ -171,7 +178,7 @@ describe('ConcurrencyConfigPage', () => {
     ['视频提交并行数', '0', 200],
     ['视频查询并行数', '-1', 200],
   ])('rejects invalid %s values before any save', async (label, value, max) => {
-    render(<ConcurrencyConfigPage />);
+    render(<ConcurrencyConfigPage />, { wrapper: App });
     await waitFor(() => expect(textInput()).toHaveValue('17'));
     fireEvent.change(screen.getByRole('spinbutton', { name: label }), {
       target: { value },

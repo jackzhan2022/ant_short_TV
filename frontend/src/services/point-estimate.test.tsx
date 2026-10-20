@@ -77,7 +77,7 @@ describe('point estimates before submission', () => {
       }),
     );
     render(mocks.update.mock.calls[0][0].content);
-    expect(screen.getByText('12.125')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
     mocks.confirm.mock.calls[0][0].onOk();
     await expect(pending).resolves.toEqual({ data: { id: 9 } });
     expect(mocks.request).toHaveBeenCalledTimes(2);
@@ -134,7 +134,7 @@ describe('point estimates before submission', () => {
     expect(mocks.request).toHaveBeenCalledTimes(2);
   });
 
-  it('sends every batch item in one estimate and retains small fractional points', async () => {
+  it('sends every batch item in one estimate and only rounds points for display', async () => {
     const operations = [
       { url: '/api/projects/3/ai-video-tasks', data: { storyboardId: 1 } },
       { url: '/api/projects/3/ai-video-tasks', data: { storyboardId: 2 } },
@@ -143,9 +143,14 @@ describe('point estimates before submission', () => {
     await flush();
     expect(mocks.request.mock.calls[0][1].data.operations).toEqual(operations);
     mocks.confirm.mock.calls[0][0].onOk();
-    await pending;
+    expect(await pending).toEqual(quote);
     expect(mocks.confirm).toHaveBeenCalledTimes(1);
-    expect(formatPoints(0.00000001)).toBe('0.00000001');
+    expect(formatPoints(0.00000001)).toBe('0');
+    expect(formatPoints(12.49)).toBe('12');
+    expect(formatPoints(12.5)).toBe('13');
+    expect(formatPoints(-12.5)).toBe('-13');
+    expect(formatPoints(-0.1)).toBe('0');
+    expect(formatPoints(1234.5)).toBe('1,235');
   });
 
   it.each([

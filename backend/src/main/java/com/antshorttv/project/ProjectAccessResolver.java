@@ -12,6 +12,9 @@ import java.util.stream.Collectors;
 import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.PageBounds;
 import org.springframework.stereotype.Service;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 @Service
 public class ProjectAccessResolver {
@@ -38,13 +41,25 @@ public class ProjectAccessResolver {
 
     public ProjectAccessContext requireView(Long tenantId, Long projectId) {
         TenantContext tenant = tenantContextResolver.requireActiveMember(tenantId);
-        ProjectEntity project = projectMapper.selectByTenantIdAndId(tenantId, projectId);
+        HttpServletRequest request = currentGetRequest();
+        String cacheKey = ProjectAccessResolver.class.getName() + ":" + tenant.userId() + ":" + tenantId + ":" + projectId;
+        if (request != null && request.getAttribute(cacheKey) instanceof ProjectAccessContext cached) return cached;
+
+        ProjectEntity project = projectMapper.selectMetadataByTenantIdAndId(tenantId, projectId);
         if (project == null) {
             throw denied();
         }
 
         Set<String> tenantPermissions = permissionService.permissionCodes(tenant);
-        return requireView(tenant, project, tenantPermissions);
+        ProjectAccessContext access = requireView(tenant, project, tenantPermissions);
+        if (request != null) request.setAttribute(cacheKey, access);
+        return access;
+    }
+
+    private HttpServletRequest currentGetRequest() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes
+            && "GET".equals(attributes.getRequest().getMethod())) return attributes.getRequest();
+        return null;
     }
 
     private ProjectAccessContext requireView(

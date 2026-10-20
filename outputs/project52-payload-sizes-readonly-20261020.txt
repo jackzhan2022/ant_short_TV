@@ -1,0 +1,2 @@
+latest_analysis_result_payload	4	19006	17749
+global_understanding	1	11540

@@ -6,12 +6,15 @@ const mocks = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock('@umijs/max', () => ({ request: mocks.request }));
 let visibility: IntersectionObserverCallback;
 vi.mock('antd', () => ({
+  Spin: () => <span aria-hidden="true" />,
   Image: ({ alt, src, ...props }: any) => (
     <img
       alt={alt}
       src={src}
       loading={props.loading}
       decoding={props.decoding}
+      onLoad={props.onLoad}
+      onError={props.onError}
     />
   ),
 }));
@@ -52,6 +55,7 @@ describe('ProjectCoverImage', () => {
     );
     expect(mocks.request).not.toHaveBeenCalled();
     expect(screen.getByAltText('Cover')).not.toHaveAttribute('src');
+    expect(screen.getByLabelText('Cover加载中')).toHaveTextContent('加载中');
     await show();
     expect(mocks.request).toHaveBeenCalledWith(
       '/api/projects/7/cover/status',
@@ -69,6 +73,10 @@ describe('ProjectCoverImage', () => {
       '/api/projects/7/cover',
     );
     expect(screen.getByAltText('Cover')).toHaveAttribute('loading', 'lazy');
+    expect(screen.getByLabelText('Cover加载中')).toHaveTextContent('加载中');
+    fireEvent.load(screen.getByAltText('Cover'));
+    await act(async () => undefined);
+    expect(screen.queryByLabelText('Cover加载中')).not.toBeInTheDocument();
   });
 
   it('ignores stale status responses after the source changes', async () => {
@@ -95,6 +103,7 @@ describe('ProjectCoverImage', () => {
     );
     await act(async () => finish({ data: { status: 'READY' } }));
     expect(screen.getByAltText('Cover')).not.toHaveAttribute('src');
+    expect(screen.queryByLabelText('Cover加载中')).not.toBeInTheDocument();
     await act(async () => vi.advanceTimersByTimeAsync(5000));
     expect(mocks.request).toHaveBeenCalledTimes(1);
   });

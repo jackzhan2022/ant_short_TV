@@ -15,6 +15,7 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
 import type { Project } from '@/services/account-team/types';
 import { queryProject, updateProject } from '@/services/account-team/project';
+import { formatPoints } from '@/utils/points';
 import { queryScriptContent } from './service';
 import ProjectAiConfigPage from './ai-config';
 
@@ -293,7 +294,7 @@ const ProductionWorkbench = () => {
 
         <button
           type="button"
-          aria-label={`团队积分 ${pointBalance ?? '-'}，前往充值中心`}
+          aria-label={`团队积分 ${pointBalance == null ? '-' : formatPoints(pointBalance)}，前往充值中心`}
           onClick={() => history.push('/recharge')}
           style={{
             minWidth: 96,
@@ -312,7 +313,7 @@ const ProductionWorkbench = () => {
             cursor: 'pointer',
           }}
         >
-          ✦ {pointBalance ?? '-'}
+          ✦ {pointBalance == null ? '-' : formatPoints(pointBalance)}
         </button>
       </header>
 

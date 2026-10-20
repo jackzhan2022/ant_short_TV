@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import LazyMediaImage from '@/components/LazyMediaImage';
+import ImageLoadingPlaceholder from '@/components/LazyMediaImage/ImageLoadingPlaceholder';
 
 type StableImageProps = {
   src?: string | null;
@@ -24,6 +25,7 @@ const StableImage = ({
     src={previewSrc || src || undefined}
     alt={alt}
     height="100%"
+    loadingPlaceholder={<ImageLoadingPlaceholder />}
     placeholderFallback={fallback}
     style={{ display: 'grid', placeItems: 'center', ...style }}
     imageStyle={{ position: 'absolute', inset: 0, ...imageStyle }}

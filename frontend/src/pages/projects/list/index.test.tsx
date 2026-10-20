@@ -40,6 +40,7 @@ vi.mock('@ant-design/icons', () => ({
 }));
 
 vi.mock('antd', () => ({
+  Spin: () => <span aria-hidden="true" />,
   App: {
     useApp: () => ({ message: { success: vi.fn() } }),
   },
@@ -179,6 +180,9 @@ describe('ProjectList', () => {
     await waitFor(() => expect(screen.getByRole('img', { name: '卡片项目封面' })).toHaveAttribute(
       'src', 'https://example.com/card.jpg',
     ));
+    expect(screen.getByLabelText('卡片项目封面加载中')).toHaveTextContent('加载中');
+    fireEvent.load(screen.getByRole('img', { name: '卡片项目封面' }));
+    await waitFor(() => expect(screen.queryByLabelText('卡片项目封面加载中')).not.toBeInTheDocument());
     expect(screen.getByText('已完成')).toBeInTheDocument();
     expect(screen.getByText('张编剧')).toBeInTheDocument();
     expect(screen.getByText(/2026-08-25/)).toBeInTheDocument();

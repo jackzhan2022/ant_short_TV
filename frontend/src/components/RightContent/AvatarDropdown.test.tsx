@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { history } from '@umijs/max';
 import { describe, expect, it, vi } from 'vitest';
 import { AvatarDropdown } from './AvatarDropdown';
 
@@ -18,7 +19,9 @@ vi.mock('antd', () => ({
 }));
 
 vi.mock('../HeaderDropdown', () => ({
-  default: ({ children }: any) => <div>{children}</div>,
+  default: ({ children, menu }: any) => <div>{children}{menu.items.filter((item: any) => item.key).map((item: any) => (
+    <button key={item.key} type="button" onClick={() => menu.onClick({ key: item.key })}>{item.label}</button>
+  ))}</div>,
 }));
 
 vi.mock('@/services/account-team/auth', () => ({
@@ -44,5 +47,9 @@ describe('AvatarDropdown', () => {
       'https://example.com/avatar.png',
     );
     expect(screen.getByText('yonghu67387')).toBeInTheDocument();
+    expect(screen.queryByText('主题设置')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '退出登录' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '个人设置' }));
+    expect(history.push).toHaveBeenCalledWith('/team/settings');
   });
 });

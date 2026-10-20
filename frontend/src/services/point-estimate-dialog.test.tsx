@@ -69,7 +69,7 @@ describe('point estimate confirmation dialog', () => {
   it('shows the server estimate and balance before creating any task', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '生成两张图片' }));
-    expect(await screen.findByText('24.5')).toBeInTheDocument();
+    expect(await screen.findByText('25')).toBeInTheDocument();
     expect(screen.getByText('当前可用：100 积分')).toBeInTheDocument();
     expect(mocks.request).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: '确认消耗并继续' }));
@@ -83,7 +83,7 @@ describe('point estimate confirmation dialog', () => {
   it('leaves points and tasks untouched when the user cancels', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '生成两张图片' }));
-    await screen.findByText('24.5');
+    await screen.findByText('25');
     fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
     await waitFor(() => expect(mocks.cancelled).toHaveBeenCalled());
     expect(mocks.request).toHaveBeenCalledTimes(1);

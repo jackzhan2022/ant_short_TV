@@ -1,6 +1,7 @@
 import { PageContainer } from '@ant-design/pro-components';
 import { Statistic, Table, Tag } from 'antd';
 import { useEffect, useState } from 'react';
+import { formatPoints } from '@/utils/points';
 import type { PlatformAiOperationsOverview, ProviderFailureRate } from './data';
 import { queryAiOperationsOverview } from './service';
 
@@ -67,7 +68,7 @@ const AiOperationsPage = () => {
               key={title}
               style={{ border: '1px solid var(--app-color-border-secondary)', padding: 16 }}
             >
-              <Statistic title={title} value={value} />
+              <Statistic title={title} value={value} formatter={title === '已结算积分' ? (value) => formatPoints(Number(value)) : undefined} />
             </div>
           ))}
         </div>

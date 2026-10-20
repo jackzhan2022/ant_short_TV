@@ -1,0 +1,12 @@
+{"check": "project_full", "sample": 1, "persistent_session_ms": 609.15, "result_bytes": 262794}
+{"check": "project_metadata", "sample": 1, "persistent_session_ms": 8.56, "result_bytes": 321}
+{"check": "versions_full", "sample": 1, "persistent_session_ms": 477.8, "result_bytes": 262561}
+{"check": "versions_summary", "sample": 1, "persistent_session_ms": 8.63, "result_bytes": 71}
+{"check": "project_full", "sample": 2, "persistent_session_ms": 575.78, "result_bytes": 262794}
+{"check": "project_metadata", "sample": 2, "persistent_session_ms": 8.56, "result_bytes": 321}
+{"check": "versions_full", "sample": 2, "persistent_session_ms": 617.39, "result_bytes": 262561}
+{"check": "versions_summary", "sample": 2, "persistent_session_ms": 8.61, "result_bytes": 71}
+{"check": "project_full", "sample": 3, "persistent_session_ms": 638.4, "result_bytes": 262794}
+{"check": "project_metadata", "sample": 3, "persistent_session_ms": 8.53, "result_bytes": 321}
+{"check": "versions_full", "sample": 3, "persistent_session_ms": 566.86, "result_bytes": 262561}
+{"check": "versions_summary", "sample": 3, "persistent_session_ms": 8.53, "result_bytes": 71}

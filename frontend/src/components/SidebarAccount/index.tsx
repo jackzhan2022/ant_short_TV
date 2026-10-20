@@ -3,6 +3,7 @@ import { history } from '@umijs/max';
 import { useEffect, useState } from 'react';
 import { queryTeamPointAccount } from '@/services/account-team/points';
 import type { LayoutCurrentUser } from '@/services/account-team/types';
+import { formatPoints } from '@/utils/points';
 import { AvatarDropdown } from '../RightContent/AvatarDropdown';
 
 type SidebarAccountProps = {
@@ -43,7 +44,7 @@ const SidebarAccount = ({ currentUser, currentTenantId }: SidebarAccountProps) =
 
   const balance = pointAccount?.tenantId === currentTenantId ? pointAccount?.balance : undefined;
   const formattedBalance =
-    balance === undefined ? '-' : balance.toLocaleString('zh-CN');
+    balance === undefined ? '-' : formatPoints(balance);
 
   return (
     <div className="ant-short-sidebar-account">

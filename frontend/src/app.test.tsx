@@ -24,7 +24,6 @@ vi.mock('@/components', () => ({
     </button>
   ),
 }));
-vi.mock('@ant-design/pro-components', () => ({ SettingDrawer: () => <div data-testid="setting-drawer" /> }));
 vi.mock('antd', () => ({ App: Object.assign(
   ({ children }: any) => <div data-testid="antd-app-provider">{children}</div>,
   { useApp: () => ({ modal: { confirm: vi.fn() } }) },
@@ -65,7 +64,7 @@ describe('app bootstrap state', () => {
     expect(state).toMatchObject({
       currentUser: { name: 'Test User', userid: '1' }, currentTenantId: 10,
       tenants: [tenant], tenantPermissions: ['PROJECT:CREATE'],
-      platformPermissions: ['PLATFORM_AI_PROVIDER_VIEW'], settingDrawerOpen: false,
+      platformPermissions: ['PLATFORM_AI_PROVIDER_VIEW'],
     });
   });
 
@@ -264,12 +263,10 @@ describe('app bootstrap state', () => {
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 
-  it('does not expose the floating style settings to production users', async () => {
+  it('does not attach a theme settings drawer to routed pages', async () => {
     const { layout } = await import('./app');
     const config = layout({ initialState: { currentUser: { name: 'New User' }, tenants: [] }, setInitialState: vi.fn() } as any);
-    if (typeof config.childrenRender !== 'function') throw new Error('childrenRender missing');
-    render(config.childrenRender(<div>onboarding</div>, {} as any) as React.ReactElement);
-    expect(screen.queryByTestId('setting-drawer')).not.toBeInTheDocument();
+    expect(config.childrenRender).toBeUndefined();
   });
 
   it('keeps the production API base URL same-origin by default', async () => {

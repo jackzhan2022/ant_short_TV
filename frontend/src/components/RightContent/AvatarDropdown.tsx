@@ -1,7 +1,6 @@
 import {
   LogoutOutlined,
   SettingOutlined,
-  SkinOutlined,
 } from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
 import type { MenuProps } from 'antd';
@@ -22,11 +21,6 @@ const menuItems: MenuProps['items'] = [
     key: 'settings',
     icon: <SettingOutlined />,
     label: '个人设置',
-  },
-  {
-    key: 'theme',
-    icon: <SkinOutlined />,
-    label: '主题设置',
   },
   {
     type: 'divider' as const,
@@ -73,10 +67,6 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
         setInitialState((s) => ({ ...s, currentUser: undefined }));
       });
       loginOut();
-      return;
-    }
-    if (key === 'theme') {
-      setInitialState((s) => ({ ...s, settingDrawerOpen: true }));
       return;
     }
     if (key === 'settings') {

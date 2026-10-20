@@ -886,10 +886,11 @@ const ProductionWorkbenchScript = () => {
                     status={project.coverStatus}
                     src={project.coverUrl}
                     alt="项目封面"
+                    height="100%"
+                    imageStyle={{ objectFit: 'cover', objectPosition: 'center' }}
                     style={{
                       width: '100%',
                       height: '100%',
-                      objectFit: 'cover',
                     }}
                   />
                 ) : null}
@@ -906,7 +907,6 @@ const ProductionWorkbenchScript = () => {
                   >
                     {script?.title || '未命名剧本'}
                   </Typography.Title>
-                  <Button>补充剧本</Button>
                 </Flex>
                 <div
                   style={{

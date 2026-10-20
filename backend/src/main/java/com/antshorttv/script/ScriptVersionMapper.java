@@ -9,6 +9,10 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ScriptVersionMapper extends BaseMapper<ScriptVersionEntity> {
     default List<ScriptVersionEntity> selectByScript(Long tenantId, Long scriptId) {
         return selectList(new LambdaQueryWrapper<ScriptVersionEntity>()
+            .select(ScriptVersionEntity::getId, ScriptVersionEntity::getScriptId,
+                ScriptVersionEntity::getVersionNo, ScriptVersionEntity::getSourceType,
+                ScriptVersionEntity::getInputSummary, ScriptVersionEntity::getStatus,
+                ScriptVersionEntity::getCreatedAt)
             .eq(ScriptVersionEntity::getTenantId, tenantId)
             .eq(ScriptVersionEntity::getScriptId, scriptId)
             .orderByDesc(ScriptVersionEntity::getVersionNo));

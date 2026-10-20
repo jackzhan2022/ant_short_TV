@@ -34,4 +34,8 @@ export const useStyles = createStyles(({ token }) => ({
     color: token.colorTextSecondary,
     '& p': { margin: 0 },
   },
+  saved: {
+    color: token.colorSuccess,
+    fontWeight: 500,
+  },
 }));
