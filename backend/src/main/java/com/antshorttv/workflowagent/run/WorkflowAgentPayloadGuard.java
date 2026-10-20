@@ -7,7 +7,7 @@ import java.util.Set;
 
 final class WorkflowAgentPayloadGuard {
     private static final Set<String> BOUNDED_SAVE_TOOLS = Set.of(
-        "save_global_understanding",
+        "save_asset_normalization", "save_global_understanding",
         "save_episode_splitting",
         "save_episode_summary",
         "save_episode_assets",

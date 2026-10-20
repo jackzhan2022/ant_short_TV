@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class ScriptAiOperationService {
+    @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationGuard normalizationGuard;
     @org.springframework.beans.factory.annotation.Autowired
     private AssetExtractionCoordination assetCoordination;
     private final ScriptAiOperationMapper operationMapper;
@@ -56,6 +57,8 @@ class ScriptAiOperationService {
         String idempotencyKey,
         String traceId
     ) {
+        if (normalizationGuard!=null && (scene==AiBusinessScene.STORYBOARD_BREAKDOWN || scene==AiBusinessScene.PROMPT_GENERATE))
+            normalizationGuard.requireReady(context.tenantId(),projectId);
         if (resumableInput instanceof ScopedAssetReextractionRequest request) {
             resumableInput = new ScopedAssetReextractionRequest(
                 request.targetType().trim().toUpperCase(java.util.Locale.ROOT),
@@ -65,7 +68,7 @@ class ScriptAiOperationService {
             context.tenantId(), operationType, idempotencyKey
         );
         if (existing != null && existing.executionId != null) {
-            if ("SCOPED_ASSET_REEXTRACTION".equals(operationType)
+            if (java.util.Set.of("SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION").contains(operationType)
                 && (!java.util.Objects.equals(existing.createdBy,context.userId())
                     || !java.util.Objects.equals(existing.projectId,projectId)
                     || !java.util.Objects.equals(existing.scriptId,scriptId)
@@ -78,7 +81,7 @@ class ScriptAiOperationService {
 
         Long frozenModel = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
         String assetFingerprint = null;
-        if ("SCOPED_ASSET_REEXTRACTION".equals(operationType)) {
+        if (java.util.Set.of("SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION").contains(operationType)) {
             if (frozenModel == null) throw new IllegalStateException("资产重提取缺少冻结文本模型。");
             assetFingerprint = assetCoordination.fingerprint(context.tenantId(),projectId,scriptId,
                 context.userId(),scriptVersionId,frozenModel,writeJson(resumableInput));

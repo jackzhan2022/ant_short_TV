@@ -41,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AiImageTaskService {
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.AssetNormalizationGuard normalizationGuard;
     private static final List<String> TASK_TYPES = List.of("CHARACTER", "SCENE", "PROP", "STORYBOARD_FIRST_FRAME");
     private static final List<String> TARGET_TYPES = List.of("CHARACTER", "SCENE", "STORYBOARD", "VISUAL_VARIANT");
     private static final List<String> ASPECT_RATIOS = List.of("1:1", "3:4", "4:3", "9:16", "16:9");
@@ -191,6 +192,7 @@ public class AiImageTaskService {
         String traceId,
         HttpServletRequest servletRequest
     ) {
+        if(normalizationGuard!=null && java.util.Set.of("CHARACTER","SCENE","PROP").contains(request.taskType())) normalizationGuard.requireReady(tenantId,projectId);
         validateRequest(request);
         AiImageTaskEntity existing = taskMapper.selectByIdempotency(tenantId, idempotencyKey);
         if (existing != null) {

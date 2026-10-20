@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AssetImageBatchService {
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.AssetNormalizationGuard normalizationGuard;
     private static final Set<String> ASSET_TYPES = Set.of("CHARACTER", "SCENE", "PROP");
     private static final Set<String> MODES = Set.of("PRIMARY", "ALL");
     private static final Set<String> ASPECT_RATIOS = Set.of("1:1", "3:4", "4:3", "9:16", "16:9");
@@ -94,6 +95,7 @@ public class AssetImageBatchService {
         String requestedIdempotencyKey, Set<Long> retryVariantIds
     ) {
         TenantContext context = permissionGuard.require(tenantId, projectId, "AI_IMAGE_TASK:CREATE");
+        if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
         String idempotencyKey = valueOrUuid(requestedIdempotencyKey);
         List<Long> existing = jdbc.queryForList("""
             select id from asset_image_batch

@@ -172,6 +172,18 @@ public class ScriptWorkflowController {
     }
 
 
+    @GetMapping("/asset-normalization")
+    @RequireProjectPermission("ELEMENT:VIEW")
+    public ApiResponse<java.util.Map<String,Object>> assetNormalizationStatus(@PathVariable Long projectId,HttpServletRequest request) {
+        return ApiResponse.success(scriptWorkflowService.assetNormalizationStatus(tenantId(request),projectId));
+    }
+
+    @PostMapping("/asset-normalization")
+    @RequireProjectPermission("AI_SERVICE:USE")
+    public ResponseEntity<ApiResponse<AiExecutionResponse>> normalizeAssets(@PathVariable Long projectId,HttpServletRequest request) {
+        return accepted(scriptWorkflowService.submitAssetNormalization(tenantId(request),projectId,request));
+    }
+
     @GetMapping("/asset-reextraction/preflight")
     @RequireProjectPermission("AI_SERVICE:USE")
     public ApiResponse<ScopedAssetReextractionService.AssetReextractionPreflight> assetReextractionPreflight(

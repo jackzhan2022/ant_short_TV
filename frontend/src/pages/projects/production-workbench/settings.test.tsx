@@ -8,6 +8,11 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbenchSettings from './settings';
+vi.mock('./AssetNormalizationPanel', () => ({
+  default: ({ onBlocked }: { onBlocked: (blocked: boolean) => void }) => (
+    <button type="button" onClick={() => onBlocked(true)}>模拟归一处理中</button>
+  ),
+}));
 
 const mocks = vi.hoisted(() => ({
   messageError: vi.fn(),
@@ -1314,6 +1319,17 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.click(button);
     fireEvent.click(screen.getByRole('button', { name: '提取全部资产' }));
     expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps asset categories browsable while normalization blocks changes', async () => {
+    render(<ProductionWorkbenchSettings />);
+    await screen.findAllByText('斌斌');
+    fireEvent.click(screen.getByRole('button', { name: '模拟归一处理中' }));
+    const sceneTab = screen.getByRole('tab', { name: /场景/ });
+    expect(sceneTab).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: '资产图生成' })).toBeDisabled();
+    fireEvent.click(sceneTab);
+    expect(sceneTab).toHaveAttribute('aria-selected', 'true');
   });
 
   it('shows the terminal backend failure reason', async () => {

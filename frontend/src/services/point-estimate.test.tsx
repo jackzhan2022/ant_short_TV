@@ -156,6 +156,7 @@ describe('point estimates before submission', () => {
     '/api/projects/1/episodes/2/summary/regenerate',
     '/api/projects/1/episodes/2/assets/regenerate',
     '/api/projects/1/asset-reextraction',
+    '/api/projects/1/asset-normalization',
     '/api/projects/1/asset-image-batches',
     '/api/projects/1/asset-image-batches/2/retry-failed',
     '/api/projects/1/storyboard-batches',

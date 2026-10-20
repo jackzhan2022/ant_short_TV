@@ -14,6 +14,7 @@ public class WorkflowAgentScopeGuard {
         "read_review_context", "read_review_content"
     );
     private static final Set<String> PROJECT_TOOLS = Set.of(
+        "read_asset_normalization_inventory", "read_asset_normalization_episodes", "save_asset_normalization",
         "search_script_assets", "read_asset_details",
         "read_project_context", "list_episode_scripts", "read_episode_script", "read_project_full_script",
         "read_adjacent_episodes", "read_script_analysis", "read_script_assets",
@@ -26,12 +27,14 @@ public class WorkflowAgentScopeGuard {
         "read_current_episode", "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
     );
     private static final Set<String> SCRIPT_TOOLS = Set.of(
+        "read_asset_normalization_inventory", "read_asset_normalization_episodes", "save_asset_normalization",
         "search_script_assets", "read_asset_details",
         "read_current_script", "save_global_understanding", "read_current_episode",
         "save_episode_splitting", "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
         , "read_script_structure", "analyze_script_chunks"
     );
     private static final Set<String> WRITE_TOOLS = Set.of(
+        "save_asset_normalization",
         "save_episode_script", "save_global_understanding", "save_episode_splitting",
         "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
     );
@@ -206,6 +209,13 @@ public class WorkflowAgentScopeGuard {
             throw invalid("后台 Agent 缺少可信执行身份。");
         }
         String operationType = switch (input.agentCode() == null ? "" : input.agentCode()) {
+            case "short-drama-asset-normalization" -> {
+                String businessType=jdbc.queryForObject("select business_type from ai_execution_task where id=?",String.class,input.executionId());
+                if("SCRIPT_ANALYSIS_TASK".equals(businessType)) yield null;
+                String actual=jdbc.queryForObject("select operation_type from script_ai_operation where id=?",String.class,input.taskId());
+                if("SCRIPT_AI_OPERATION".equals(businessType) && Set.of("ASSET_NORMALIZATION","SCOPED_ASSET_REEXTRACTION","SCRIPT_EPISODE_ASSETS").contains(actual)) yield actual;
+                throw invalid("归一 Agent 与后台操作类型不匹配。");
+            }
             case "short-drama-storyboard" -> "STORYBOARD_BREAKDOWN";
             case "short-drama-episode-splitting", "short-drama-episode-summary", "short-drama-asset-recognition" -> {
                 String businessType = jdbc.queryForObject(

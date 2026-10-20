@@ -25,6 +25,7 @@ class AutoStoryboardDispatchServiceTest {
     void setUp() {
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
             "jdbc:h2:mem:auto_storyboard_dispatch;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
+        AssetNormalizationTestSchema.gates(jdbc);
         for (String table : new String[]{"episode_auto_storyboard_event", "storyboard",
             "script_episode", "script", "tenant_member"}) {
             jdbc.execute("drop table if exists " + table);

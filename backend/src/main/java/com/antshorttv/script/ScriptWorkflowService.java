@@ -54,6 +54,31 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 @Service
 public class ScriptWorkflowService {
+    @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationService assetNormalization;
+    @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationGuard normalizationGuard;
+    @org.springframework.beans.factory.annotation.Autowired private AssetExtractionCoordination normalizationCoordination;
+
+    public AiExecutionResponse submitAssetNormalization(Long tenantId,Long projectId,HttpServletRequest request) {
+        TenantContext context=tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context,projectId);
+        requirePermission(context,"ELEMENT:AI_EXTRACT",projectId);
+        ScriptEntity script=requireScript(tenantId,projectId);
+        return submitOperation(context,projectId,AiBusinessScene.SCRIPT_CHARACTER_SCENE_RECOGNITION,
+            "ASSET_NORMALIZATION",script.getId(),script.getCurrentVersionId(),Map.of(),request);
+    }
+
+    public Map<String,Object> assetNormalizationStatus(Long tenantId,Long projectId) {
+        TenantContext context=tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context,projectId);
+        requirePermission(context,"ELEMENT:VIEW",projectId);
+        return normalizationGuard.status(tenantId,projectId);
+    }
+
+    ScriptAiOperationExecutionResult executeAssetNormalizationOperation(ScriptAiOperationEntity operation,AiExecutionContext c) {
+        normalizationCoordination.acquire(operation.scriptId,c);
+        var result=assetNormalization.normalize(operation.scriptId,operation.scriptVersionId,c);
+        return new ScriptAiOperationExecutionResult("ASSET_NORMALIZATION",result.snapshotId(),List.of(),result.calls());
+    }
     @Autowired(required = false)
     private ScriptGlobalUnderstandingRepository globalUnderstandingRepository;
 
@@ -1145,14 +1170,23 @@ public class ScriptWorkflowService {
         catch (JsonProcessingException exception) { throw new IllegalArgumentException(exception); }
         Long episodeId = input.hasNonNull("episodeId") ? input.path("episodeId").longValue() : null;
         if (episodeId != null) requireCurrentEpisode(operation.tenantId, operation.projectId, episodeId);
-        var result = workflowAgentRunner.runFormal(new WorkflowAgentRunInput(agent,
-            "根据当前正式剧本重新生成并覆盖本次操作对应的正式结果。",
-            operation.tenantId, operation.projectId, episodeId, operation.scriptId, operation.id, null,
-            operation.createdBy, execution.task().id, execution.claim().attemptId(),
-            execution.task().executionVersion, execution.task().requestedModelId));
-        requireActiveExecutionClaim(execution);
-        markOperationResult(operation, "WORKFLOW_AGENT_RUN", result.runId());
-        return new ScriptAiOperationExecutionResult("WORKFLOW_AGENT_RUN", result.runId(), List.of(), result.modelCalls());
+        if("SCRIPT_EPISODE_ASSETS".equals(operation.operationType)) normalizationCoordination.acquire(operation.scriptId,execution);
+        Long runId="SCRIPT_EPISODE_ASSETS".equals(operation.operationType) && episodeId!=null
+            ? assetNormalization.committedEpisodeAssetRun(operation,episodeId,execution):null;
+        java.util.List<com.antshorttv.workflowagent.run.WorkflowAgentModelCall> calls=new java.util.ArrayList<>();
+        if(runId==null) {
+            var result = workflowAgentRunner.runFormal(new WorkflowAgentRunInput(agent,
+                "根据当前正式剧本重新生成并覆盖本次操作对应的正式结果。",
+                operation.tenantId, operation.projectId, episodeId, operation.scriptId, operation.id, null,
+                operation.createdBy, execution.task().id, execution.claim().attemptId(),
+                execution.task().executionVersion, execution.task().requestedModelId));
+            requireActiveExecutionClaim(execution);
+            runId=result.runId();
+            calls.addAll(result.modelCalls());
+        }
+        if("SCRIPT_EPISODE_ASSETS".equals(operation.operationType)) calls.addAll(assetNormalization.normalize(operation.scriptId,operation.scriptVersionId,execution).calls());
+        markOperationResult(operation, "WORKFLOW_AGENT_RUN", runId);
+        return new ScriptAiOperationExecutionResult("WORKFLOW_AGENT_RUN", runId, List.of(), calls);
     }
 
     private Map<String, Object> requireCurrentEpisode(Long tenantId, Long projectId, Long episodeId) {
@@ -1176,7 +1210,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:VIEW", projectId);
-        return assetVisualVariantService.page(tenantId, projectId, assetType, assetId, current, pageSize);
+        return assetVisualVariantService.page(tenantId, projectId, assetType, AssetNormalizationGuard.canonicalId(jdbcTemplate,tenantId,projectId,normalizeElementType(assetType),assetId), current, pageSize);
     }
 
     public AssetVisualVariantService.VariantResponse createVisualVariant(
@@ -1186,6 +1220,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
+        if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
         AssetVisualVariantService.VariantCommand editable = command == null ? null
             : new AssetVisualVariantService.VariantCommand(command.name(), command.appearance(), command.prompt(),
                 "MANUAL", "NOT_STARTED", null, null, command.primary());
@@ -1199,6 +1234,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
+        if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
         AssetVisualVariantService.VariantCommand editable = command == null ? null
             : new AssetVisualVariantService.VariantCommand(command.name(), command.appearance(), command.prompt(),
                 null, null, null, null, command.primary());
@@ -1211,6 +1247,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
+        if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
         return assetVisualVariantService.selectPrimary(tenantId, projectId, variantId);
     }
 
@@ -1218,6 +1255,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
+        if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
         assetVisualVariantService.delete(tenantId, projectId, variantId);
     }
 
@@ -1227,6 +1265,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
+        if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
         return assetVisualBindingService.bind(
             tenantId, projectId, variantId, context.userId(), command);
     }
@@ -1237,7 +1276,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:VIEW", projectId);
-        return assetVisualBindingService.list(tenantId, projectId, assetType, assetId);
+        return assetVisualBindingService.list(tenantId, projectId, assetType, AssetNormalizationGuard.canonicalId(jdbcTemplate,tenantId,projectId,normalizeElementType(assetType),assetId));
     }
 
     @Transactional
@@ -1245,6 +1284,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
+        if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
         switch (normalizeElementType(elementType)) {
             case "CHARACTER" -> jdbcTemplate.update("""
                 update character_asset
@@ -1272,6 +1312,7 @@ public class ScriptWorkflowService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
+        if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
         jdbcTemplate.update("""
             update %s set deleted_at = now(), updated_at = now()
              where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
@@ -1543,6 +1584,7 @@ public class ScriptWorkflowService {
     private AssetVisualWorkspace buildAssetVisualWorkspace(
         Long tenantId, Long projectId, String assetType, Long assetId, Integer current, Integer pageSize, Long selectedVariantId
     ) {
+        assetId=AssetNormalizationGuard.canonicalId(jdbcTemplate,tenantId,projectId,assetType,assetId);
         MediaPage<AssetVisualVariantService.VariantResponse> page =
             assetVisualVariantService.page(tenantId, projectId, assetType, assetId, current, pageSize);
         AssetVisualVariantService.VariantResponse primary =

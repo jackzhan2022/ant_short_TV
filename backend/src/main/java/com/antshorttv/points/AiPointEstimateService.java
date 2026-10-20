@@ -202,6 +202,7 @@ public class AiPointEstimateService {
             if (path.contains("/summary/")) return List.of(textPlan(tenant, "重新生成本集概要", model, body, "short-drama-episode-summary", 2, reservation));
             List<AiPointEstimatePlan> plans = new ArrayList<>();
             plans.add(textPlan(tenant, "重新识别本集资产", model, body, "short-drama-asset-recognition", 3, reservation));
+            plans.add(assetNormalization(tenant,project,model,content,reservation));
             if (!hasStoryboard(tenant, project, pathId(path, 1))) plans.add(storyboard(tenant, model, body));
             return plans;
         }
@@ -212,6 +213,7 @@ public class AiPointEstimateService {
             return plans;
         }
         return switch (path) {
+            case "asset-normalization" -> List.of(assetNormalization(tenant,project,model,content,reservation));
             case "asset-reextraction" -> assetExtraction(tenant, project, model);
             case "scripts/ai-generate" -> List.of(textPlan(tenant, "AI 生成剧本", model, data.toString(), null, 1, reservation));
             case "scripts/ai-rewrite" -> List.of(textPlan(tenant, "AI 改写剧本", model, content + data, null, 1, reservation));
@@ -243,6 +245,7 @@ public class AiPointEstimateService {
             plans.add(textPlan(tenant, "分集资产识别", model, body, "short-drama-asset-recognition", 3, reservation));
             if (!hasStoryboard(tenant, project, number(episode, "id"))) plans.add(storyboard(tenant, model, body));
         }
+        plans.add(assetNormalization(tenant,project,model,content,reservation));
         return plans.stream().map(plan -> plan.inProject(project)).toList();
     }
 
@@ -254,7 +257,15 @@ public class AiPointEstimateService {
             plans.add(textPlan(tenant, "分集资产提取及提示词生成", model, text(episode,"content"), "short-drama-asset-recognition", 3));
             if (!hasStoryboard(tenant, project, number(episode,"id"))) plans.add(storyboard(tenant, model,text(episode,"content")));
         }
+        plans.add(assetNormalization(tenant,project,model,scriptContent(tenant,project),null));
         return plans;
+    }
+
+    private AiPointEstimatePlan assetNormalization(Long tenant,Long project,Long model,String content,AiPointReservationEntity reservation) {
+        StringBuilder corpus=new StringBuilder(content);
+        if(project!=null) for(String table:List.of("character_asset","scene_asset","prop_asset"))
+            corpus.append(jdbc.queryForList("select name,content_json from "+table+" where tenant_id=? and project_id=? and deleted_at is null order by id",tenant,project));
+        return textPlan(tenant,"全剧资产自动归一",model,corpus.toString(),"short-drama-asset-normalization",3,reservation);
     }
 
     private AiPointEstimatePlan storyboard(Long tenant, Long model, String content) {
@@ -384,6 +395,7 @@ public class AiPointEstimateService {
                 case "SCRIPT_GENERATE" -> "scripts/ai-generate";
                 case "SCRIPT_REWRITE" -> "scripts/ai-rewrite";
                 case "SCOPED_ASSET_REEXTRACTION" -> "asset-reextraction";
+                case "ASSET_NORMALIZATION" -> "asset-normalization";
                 case "PROMPT_GENERATE" -> "prompts/ai-generate";
                 case "SCRIPT_EPISODE_SPLIT" -> "script-analysis/current/regenerate-episodes";
                 case "SCRIPT_EPISODE_SUMMARY" -> "episodes/" + requiredLong(input,"episodeId") + "/summary/regenerate";

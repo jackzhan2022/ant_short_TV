@@ -32,6 +32,7 @@ import {
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
 import AssetImagePlaceholder from './AssetImagePlaceholder';
+import AssetNormalizationPanel from './AssetNormalizationPanel';
 import AssetVariantGenerationModal from './AssetVariantGenerationModal';
 import {
   type ProjectModelOption,
@@ -202,6 +203,7 @@ const AssetCard = ({
   onSave,
   onManageVisual,
   selected,
+  readOnly,
   onSelectedChange,
 }: {
   item: AssetRecord;
@@ -210,6 +212,7 @@ const AssetCard = ({
   onSave: (type: ElementType, item: AssetRecord) => void;
   onManageVisual: (type: ElementType, item: AssetRecord) => void;
   selected: boolean;
+  readOnly: boolean;
   onSelectedChange: (selected: boolean) => void;
 }) => {
   const [imageHovered, setImageHovered] = useState(false);
@@ -302,6 +305,7 @@ const AssetCard = ({
               <Button
                 size="small"
                 aria-label={`${item.name}资产操作`}
+                disabled={readOnly}
                 icon={<EditOutlined />}
                 onClick={() => setActionMenuOpen((open) => !open)}
               >
@@ -328,6 +332,7 @@ const AssetCard = ({
                     size="small"
                     icon={<EditOutlined />}
                     aria-label={`保存${item.name}`}
+                    disabled={readOnly}
                     onClick={() => onSave(type, item)}
                   >
                     保存修改
@@ -338,6 +343,7 @@ const AssetCard = ({
                     danger
                     icon={<DeleteOutlined />}
                     aria-label={`删除${item.name}`}
+                    disabled={readOnly}
                     onClick={() => onDelete(type, item.id)}
                   >
                     删除资产
@@ -457,6 +463,7 @@ const ProductionWorkbenchSettings = () => {
   const batchProjectIdRef = useRef(projectId);
   batchProjectIdRef.current = projectId;
   const [processingAction, setProcessingAction] = useState<string>();
+  const [normalizationBlocked, setNormalizationBlocked] = useState(false);
   const submittingExtraction = useRef(false);
   const [extractionNotice, setExtractionNotice] = useState('');
   const {
@@ -468,7 +475,7 @@ const ProductionWorkbenchSettings = () => {
     async (terminal) => {
       if (terminal.status === 'SUCCEEDED') {
         await reload();
-        messageRef.current.success('资产提取任务已完成');
+        messageRef.current.success('资产处理任务已完成');
       } else {
         messageRef.current.error(
           terminal.errorMessage || '资产提取任务已结束，未完成生成',
@@ -1243,6 +1250,8 @@ const ProductionWorkbenchSettings = () => {
             </button>
           </div>
         ) : null}
+        <AssetNormalizationPanel projectId={projectId} onTrack={follow} onBlocked={setNormalizationBlocked} onRefresh={reload} />
+        <fieldset disabled={normalizationBlocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
         <Modal
           title={`确认重新提取${reextractionPreflight ? scopeLabels[reextractionPreflight.targetType] : ''}`}
@@ -1882,6 +1891,7 @@ const ProductionWorkbenchSettings = () => {
             })()
           : null}
 
+        </fieldset>
         <div
           style={{
             display: 'flex',
@@ -1946,7 +1956,8 @@ const ProductionWorkbenchSettings = () => {
               );
             })}
           </div>
-          <div
+          <fieldset
+            disabled={normalizationBlocked}
             role="toolbar"
             aria-label={`${elementLabels[activeType]}资产操作`}
             style={{
@@ -1958,6 +1969,9 @@ const ProductionWorkbenchSettings = () => {
               color: 'var(--app-color-text-secondary)',
               fontSize: 13,
               whiteSpace: 'normal',
+              border: 0,
+              padding: 0,
+              margin: 0,
             }}
           >
             <span>
@@ -2034,7 +2048,7 @@ const ProductionWorkbenchSettings = () => {
                 资产图生成
               </Button>
             </Dropdown>
-          </div>
+          </fieldset>
         </div>
 
         {(() => {
@@ -2059,6 +2073,7 @@ const ProductionWorkbenchSettings = () => {
                       item={item}
                       type={section.type}
                       selected={selectedAssetIds.includes(item.id)}
+                      readOnly={normalizationBlocked}
                       onSelectedChange={(selected) =>
                         setSelectedAssetIds((current) =>
                           selected

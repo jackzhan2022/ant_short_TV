@@ -33,6 +33,8 @@ public record WorkflowAgentRunContract(
                 List.of("read_current_episode", "save_episode_summary"),
                 "save_episode_summary"
             );
+            case "short-drama-asset-normalization" -> new WorkflowAgentRunContract(
+                List.of("read_asset_normalization_inventory", "save_asset_normalization"), "save_asset_normalization");
             case "short-drama-asset-recognition" -> new WorkflowAgentRunContract(
                 List.of("read_current_episode", "save_episode_assets"),
                 "save_episode_assets"
@@ -61,6 +63,13 @@ public record WorkflowAgentRunContract(
     }
 
     public void requireNext(WorkflowToolRunState state, String toolCode) {
+        if ("save_asset_normalization".equals(terminalToolCode)) {
+            var completed=state.successfulToolCodes();
+            if (completed.isEmpty() && "read_asset_normalization_inventory".equals(toolCode)) return;
+            if (completed.contains("read_asset_normalization_inventory") && !completed.contains(terminalToolCode)
+                && Set.of("read_asset_normalization_episodes",terminalToolCode).contains(toolCode)) return;
+            throw new BusinessException(ErrorCode.REQUIRED_TOOL_NOT_CALLED,"先读取完整归一清单，再读取证据并保存。");
+        }
         if ("save_episode_assets".equals(terminalToolCode)) {
             var completed=state.successfulToolCodes();
             boolean first=completed.isEmpty() && "read_current_episode".equals(toolCode);
@@ -86,7 +95,7 @@ public record WorkflowAgentRunContract(
 
     public void requireComplete(WorkflowToolRunState state) {
         List<String> sequence = activeSequence(state);
-        boolean incomplete = isReviewContract() || "save_episode_assets".equals(terminalToolCode)
+        boolean incomplete = isReviewContract() || "save_episode_assets".equals(terminalToolCode) || "save_asset_normalization".equals(terminalToolCode)
             ? !new HashSet<>(state.successfulToolCodes()).containsAll(sequence)
             : state.successfulToolCodes().size() < sequence.size();
         if (incomplete) {

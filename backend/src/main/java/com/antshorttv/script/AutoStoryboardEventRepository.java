@@ -53,8 +53,16 @@ public class AutoStoryboardEventRepository {
             select id, tenant_id, project_id, script_id, episode_id, episode_key,
                    source_fingerprint, asset_analysis_id, context_snapshot_id, policy_version,
                    status, attempt_no, execution_id, created_by
-              from episode_auto_storyboard_event
+              from episode_auto_storyboard_event event
              where status in ('PENDING', 'RETRYABLE', 'BLOCKED_FUNDS')
+               and not exists (select 1 from script_asset_extraction_owner owner
+                 join ai_execution_task execution on execution.id=owner.execution_id
+                 where owner.tenant_id=event.tenant_id and owner.script_id=event.script_id and execution.status<>'SUCCEEDED')
+               and not exists (select 1 from script_asset_normalization_snapshot normalization
+                 where normalization.tenant_id=event.tenant_id and normalization.script_id=event.script_id
+                   and normalization.id=(select max(latest.id) from script_asset_normalization_snapshot latest
+                     where latest.tenant_id=event.tenant_id and latest.script_id=event.script_id)
+                   and normalization.status<>'SUCCEEDED')
                and (next_attempt_at is null or next_attempt_at <= now())
              order by case when status = 'PENDING' then 0 else 1 end, id
              limit 1 for update

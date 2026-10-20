@@ -29,6 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 class ScopedAssetReextractionService {
+    @Autowired private AssetNormalizationService assetNormalization;
     private final JdbcTemplate jdbc;
     private final WorkflowAgentRunner runner;
     private final AssetRecognitionAgentAdapter recognition;
@@ -209,6 +210,7 @@ class ScopedAssetReextractionService {
             });
             throw failure;
         }
+        if(assetNormalization!=null) calls.addAll(assetNormalization.normalize(operation.scriptId,operation.scriptVersionId,executionContext).calls());
         return new ScriptAiOperationExecutionResult("SCOPED_ASSET_REEXTRACTION", snapshot.id(), List.of(), calls);
     }
 
@@ -373,6 +375,7 @@ class ScopedAssetReextractionService {
                 """,snapshot.tenantId(),snapshot.projectId(),snapshot.scriptId(),type,snapshot.id());
             jdbc.update("update asset_visual_variant variant set deleted_at=now(),updated_at=now()"
                 + " where tenant_id=? and project_id=? and asset_type=? and source_type='AI' and generated_by_run_id is not null"
+                + " and current_image_result_id is null and nullif(trim(current_image_url),'') is null"
                 + " and deleted_at is null and exists (select 1 from "+table+" asset where asset.id=variant.asset_id"
                 + " and asset.tenant_id=variant.tenant_id and asset.project_id=variant.project_id and asset.script_id=?)"
                 + " and not exists (select 1 from asset_visual_variant_episode b where b.variant_id=variant.id"
@@ -381,10 +384,14 @@ class ScopedAssetReextractionService {
             jdbc.update("update " + table + " asset set deleted_at=now(),updated_at=now()"
                 + " where tenant_id=? and project_id=? and script_id=? and source='AI'"
                 + " and generated_by_run_id is not null and deleted_at is null"
+                + " and main_image_result_id is null and nullif(trim(main_image_url),'') is null"
                 + " and not exists (select 1 from asset_visual_variant_episode b where b.tenant_id=asset.tenant_id"
                 + " and b.project_id=asset.project_id and b.asset_type=? and b.asset_id=asset.id"
-                + " and b.retired_at is null and b.binding_status='ACTIVE')",
-                snapshot.tenantId(),snapshot.projectId(),snapshot.scriptId(),type);
+                + " and b.retired_at is null and b.binding_status='ACTIVE')"
+                + " and not exists (select 1 from asset_visual_variant v where v.tenant_id=asset.tenant_id and v.project_id=asset.project_id"
+                + " and v.asset_id=asset.id and v.asset_type=? and v.deleted_at is null and (v.source_type<>'AI'"
+                + " or v.current_image_result_id is not null or nullif(trim(v.current_image_url),'') is not null))",
+                snapshot.tenantId(),snapshot.projectId(),snapshot.scriptId(),type,type);
             AssetVisualPrimaryRepair.repair(
                 jdbc, snapshot.tenantId(), snapshot.projectId(), snapshot.scriptId(), type, table);
         }

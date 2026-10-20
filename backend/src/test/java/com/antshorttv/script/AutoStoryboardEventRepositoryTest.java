@@ -15,6 +15,7 @@ class AutoStoryboardEventRepositoryTest {
     void setUp() {
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
             "jdbc:h2:mem:auto_storyboard_event;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
+        AssetNormalizationTestSchema.gates(jdbc);
         jdbc.execute("drop table if exists episode_auto_storyboard_event");
         jdbc.execute("""
             create table episode_auto_storyboard_event (
@@ -30,6 +31,19 @@ class AutoStoryboardEventRepositoryTest {
             )
             """);
         repository = new AutoStoryboardEventRepository(jdbc);
+    }
+
+    @Test void waitsForExtractionAndNormalizationBeforeClaimingWithoutConsumingAttempts() {
+        long id=repository.recordPending(new AutoStoryboardEventRepository.Draft(7L,8L,9L,10L,"episode-1","fp",20L,30L,40L));
+        jdbc.update("insert into script_asset_extraction_owner values (7,9,100)");
+        jdbc.update("insert into ai_execution_task values (100,'RUNNING')");
+        assertThat(repository.claimNext()).isEmpty();
+        jdbc.update("update ai_execution_task set status='SUCCEEDED' where id=100");
+        jdbc.update("insert into script_asset_normalization_snapshot values (1,7,9,'FAILED')");
+        assertThat(repository.claimNext()).isEmpty();
+        jdbc.update("update script_asset_normalization_snapshot set status='SUCCEEDED'");
+        assertThat(repository.claimNext().orElseThrow().id()).isEqualTo(id);
+        assertThat(jdbc.queryForObject("select attempt_no from episode_auto_storyboard_event where id=?",Integer.class,id)).isEqualTo(1);
     }
 
     @Test

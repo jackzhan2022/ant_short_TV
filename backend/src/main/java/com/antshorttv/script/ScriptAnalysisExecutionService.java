@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class ScriptAnalysisExecutionService {
+    @Autowired private AssetNormalizationService assetNormalization;
     @Autowired private AssetExtractionCoordination assetCoordination;
     @Autowired private ScriptAnalysisConfigSnapshotService configSnapshotService;
     @Autowired(required = false) private GlobalUnderstandingAgentAdapter globalUnderstandingAgentAdapter;
@@ -280,7 +281,11 @@ public class ScriptAnalysisExecutionService {
                                 var child = assetRecognitionAgentAdapter.executeClaimedChild(plan, currentTask,
                                     currentStage, episode, currentExecution, branch.effectiveModelId());
                                 return new EpisodeFanoutCoordinator.ChildResult(child.agentRunId(), child.modelCalls());
-                            }, summary ? snapshotId -> { } : snapshotId -> assetRecognitionFinalizer.finishOwned(snapshotId,executionContext));
+                            }, summary ? snapshotId -> { } : snapshotId -> {
+                                assetRecognitionFinalizer.finishOwned(snapshotId,executionContext);
+                                if(assetNormalization!=null) assetNormalization.normalize(task.getScriptId(),task.getScriptVersionId(),executionContext)
+                                    .calls().forEach(tracker::record);
+                            });
                         return new BranchCompletion(branch.stage(), result, null);
                     } catch (RuntimeException exception) {
                         return new BranchCompletion(branch.stage(), null, exception);

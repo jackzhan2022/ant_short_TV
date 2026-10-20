@@ -233,7 +233,7 @@ public class WorkflowAgentRunner {
     private long stageRunTimeoutSeconds(String agentCode) {
         return switch (agentCode) {
             case "short-drama-episode-summary" -> properties.getEpisodeSummaryRunTimeoutSeconds();
-            case "short-drama-asset-recognition" -> properties.getAssetRecognitionRunTimeoutSeconds();
+            case "short-drama-asset-recognition", "short-drama-asset-normalization" -> properties.getAssetRecognitionRunTimeoutSeconds();
             case "short-drama-storyboard" -> properties.getStoryboardRunTimeoutSeconds();
             default -> properties.getRunTimeoutSeconds();
         };
@@ -242,7 +242,7 @@ public class WorkflowAgentRunner {
     private int stageRequestTimeoutSeconds(String agentCode) {
         return switch (agentCode) {
             case "short-drama-episode-summary" -> properties.getEpisodeSummaryRequestTimeoutSeconds();
-            case "short-drama-asset-recognition" -> properties.getAssetRecognitionRequestTimeoutSeconds();
+            case "short-drama-asset-recognition", "short-drama-asset-normalization" -> properties.getAssetRecognitionRequestTimeoutSeconds();
             case "short-drama-storyboard" -> properties.getStoryboardRequestTimeoutSeconds();
             default -> Integer.MAX_VALUE;
         };

@@ -181,7 +181,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
 
     private <T> T withCurrentAttempt(ScriptAiOperationEntity operation, AiExecutionContext context,
                                     java.util.function.Supplier<T> work) {
-        if(transactions==null || !"SCOPED_ASSET_REEXTRACTION".equals(operation.operationType)) return work.get();
+        if(transactions==null || !Set.of("SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION").contains(operation.operationType)) return work.get();
         return new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status -> {
             AiExecutionTaskEntity current=executionService.requireTaskForUpdate(context.task().id);
             if(!"RUNNING".equals(current.status)
@@ -225,6 +225,9 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         try {
             if (operation.resultId != null) {
                 return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
+            }
+            if ("ASSET_NORMALIZATION".equals(operation.operationType)) {
+                return workflowService.executeAssetNormalizationOperation(operation, context);
             }
             if ("SCRIPT_GENERATE".equals(operation.operationType)) {
                 GenerateScriptRequest request = objectMapper.readValue(

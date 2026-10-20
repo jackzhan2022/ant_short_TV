@@ -99,6 +99,7 @@ public class AssetRecognitionFinalizer {
                 + " where variant.tenant_id = ? and variant.project_id = ?"
                 + " and variant.asset_type = ? and variant.source_type = 'AI' and variant.generated_by_run_id is not null"
                 + " and variant.deleted_at is null"
+                + " and variant.current_image_result_id is null and nullif(trim(variant.current_image_url),'') is null"
                 + " and exists (select 1 from " + table + " owner where owner.id = variant.asset_id"
                 + " and owner.tenant_id = variant.tenant_id and owner.project_id = variant.project_id"
                 + " and owner.script_id = ?)"
@@ -109,13 +110,15 @@ public class AssetRecognitionFinalizer {
             jdbc.update("update " + table + " asset set deleted_at = now(), updated_at = now()"
                 + " where asset.tenant_id = ? and asset.project_id = ? and asset.script_id = ?"
                 + " and asset.source = 'AI' and asset.generated_by_run_id is not null and asset.deleted_at is null"
+                + " and asset.main_image_result_id is null and nullif(trim(asset.main_image_url),'') is null"
                 + " and not exists (select 1 from asset_visual_variant_episode binding"
                 + " where binding.tenant_id = asset.tenant_id and binding.project_id = asset.project_id"
                 + " and binding.asset_type = ? and binding.asset_id = asset.id"
                 + " and binding.retired_at is null and binding.binding_status = 'ACTIVE')"
                 + " and not exists (select 1 from asset_visual_variant variant where variant.tenant_id = asset.tenant_id"
                 + " and variant.project_id = asset.project_id and variant.asset_type = ? and variant.asset_id = asset.id"
-                + " and variant.source_type <> 'AI' and variant.deleted_at is null)",
+                + " and (variant.source_type <> 'AI' or variant.current_image_result_id is not null"
+                + " or nullif(trim(variant.current_image_url),'') is not null) and variant.deleted_at is null)",
                 tenantId, projectId, scriptId, type, type);
             AssetVisualPrimaryRepair.repair(jdbc, tenantId, projectId, scriptId, type, table);
         }

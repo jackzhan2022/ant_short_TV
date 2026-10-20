@@ -37,6 +37,7 @@ class AssetExtractionCoordinationTest {
     @MockBean ProjectAiConfigService models;
     @MockBean com.antshorttv.workflowagent.run.WorkflowAgentRunner runner;
     @MockBean AssetRecognitionAgentAdapter recognition;
+    @MockBean AssetNormalizationService normalization;
     @MockBean com.antshorttv.rbac.ProjectPermissionGuard permissions;
     @Autowired ScopedAssetReextractionService scoped;
     @Autowired ScriptAiOperationMapper operationMapper;
@@ -44,6 +45,7 @@ class AssetExtractionCoordinationTest {
     long tenant, project, script, model, version=1, episode;
 
     @BeforeEach void setup() {
+        when(normalization.normalize(anyLong(),anyLong(),any())).thenReturn(new AssetNormalizationService.Outcome(1,java.util.List.of()));
         tenant = Math.abs(UUID.randomUUID().getMostSignificantBits() % 1_000_000_000) + 10_000_000;
         project=tenant+1; script=tenant+2; model=tenant+3;
         jdbc.update("insert into ai_model(id,provider_id,code,name,model_code,service_type,status,is_default,sort,created_at,updated_at) select ?,provider_id,?,'test','test','TEXT','DISABLED',false,0,now(),now() from ai_model order by id limit 1",model,"concurrency-"+tenant);
@@ -82,6 +84,18 @@ class AssetExtractionCoordinationTest {
             assertThat(count("ai_point_reservation")).isEqualTo(1);
             assertThat(jdbc.queryForObject("select count(*) from point_ledger where tenant_id=? and entry_type='RESERVE'",Integer.class,tenant)).isEqualTo(1);
         } finally { pool.shutdownNow(); }
+    }
+
+    @Test void normalizationIsQueuedDurablyAndDuplicateSubmissionsShareOneReservation() {
+        var context=new TenantContext(tenant,tenant,tenant,"OWNER");
+        var first=operations.submit(context,project,AiBusinessScene.SCRIPT_CHARACTER_SCENE_RECOGNITION,
+            "ASSET_NORMALIZATION",script,version,java.util.Map.of(),"normalize-a-"+tenant,"normalize");
+        var duplicate=operations.submit(context,project,AiBusinessScene.SCRIPT_CHARACTER_SCENE_RECOGNITION,
+            "ASSET_NORMALIZATION",script,version,java.util.Map.of(),"normalize-b-"+tenant,"normalize");
+        assertThat(duplicate.id()).isEqualTo(first.id());
+        assertThat(tasks.selectById(first.id()).businessType).isEqualTo("SCRIPT_AI_OPERATION");
+        assertThat(count("ai_execution_task")).isEqualTo(1);
+        assertThat(count("ai_point_reservation")).isEqualTo(1);
     }
 
     @Test void differentUserScopeOrPolicyConflictsWithoutReservation() {

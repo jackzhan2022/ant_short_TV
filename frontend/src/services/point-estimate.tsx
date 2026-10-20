@@ -59,7 +59,7 @@ export function requiresPointEstimate(url: string, options: Options = {}) {
     );
   }
   return (
-    /^\/api\/projects\/\d+\/(?:ai-(?:image|video)-tasks(?:\/\d+\/regenerate)?|asset-image-batches(?:\/\d+\/retry-failed)?|asset-reextraction|scripts\/ai-(?:generate|rewrite)|prompts\/ai-generate|storyboards\/ai-breakdown|storyboard-batches|script-analysis\/(?:current\/(?:reanalyze|regenerate-episodes|retry\/[^/]+)|versions\/\d+\/reanalyze)|episodes\/\d+\/(?:summary|assets)\/regenerate)$/.test(
+    /^\/api\/projects\/\d+\/(?:ai-(?:image|video)-tasks(?:\/\d+\/regenerate)?|asset-image-batches(?:\/\d+\/retry-failed)?|asset-(?:reextraction|normalization)|scripts\/ai-(?:generate|rewrite)|prompts\/ai-generate|storyboards\/ai-breakdown|storyboard-batches|script-analysis\/(?:current\/(?:reanalyze|regenerate-episodes|retry\/[^/]+)|versions\/\d+\/reanalyze)|episodes\/\d+\/(?:summary|assets)\/regenerate)$/.test(
       url,
     ) ||
     /^\/api\/script-review\/(?:projects\/\d+\/tasks|tasks\/\d+\/retry)$/.test(
