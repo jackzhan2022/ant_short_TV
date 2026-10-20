@@ -193,6 +193,8 @@ public class WorkflowAgentRunner {
             && isDeepReviewPhase(input.reviewScope().phase());
         int effectiveMaxSteps = deepReview
             ? Math.max(agent.maxSteps(), properties.getReviewDeepMaxSteps())
+            : "short-drama-asset-normalization".equals(agent.code())
+                ? Math.max(agent.maxSteps(), properties.getAssetNormalizationMaxSteps())
             : "short-drama-asset-recognition".equals(agent.code())
                 ? Math.max(agent.maxSteps(), ASSET_MIN_STEPS)
                 : "short-drama-storyboard".equals(agent.code())
@@ -233,7 +235,8 @@ public class WorkflowAgentRunner {
     private long stageRunTimeoutSeconds(String agentCode) {
         return switch (agentCode) {
             case "short-drama-episode-summary" -> properties.getEpisodeSummaryRunTimeoutSeconds();
-            case "short-drama-asset-recognition", "short-drama-asset-normalization" -> properties.getAssetRecognitionRunTimeoutSeconds();
+            case "short-drama-asset-recognition" -> properties.getAssetRecognitionRunTimeoutSeconds();
+            case "short-drama-asset-normalization" -> properties.getAssetNormalizationRunTimeoutSeconds();
             case "short-drama-storyboard" -> properties.getStoryboardRunTimeoutSeconds();
             default -> properties.getRunTimeoutSeconds();
         };
@@ -242,7 +245,8 @@ public class WorkflowAgentRunner {
     private int stageRequestTimeoutSeconds(String agentCode) {
         return switch (agentCode) {
             case "short-drama-episode-summary" -> properties.getEpisodeSummaryRequestTimeoutSeconds();
-            case "short-drama-asset-recognition", "short-drama-asset-normalization" -> properties.getAssetRecognitionRequestTimeoutSeconds();
+            case "short-drama-asset-recognition" -> properties.getAssetRecognitionRequestTimeoutSeconds();
+            case "short-drama-asset-normalization" -> properties.getAssetNormalizationRequestTimeoutSeconds();
             case "short-drama-storyboard" -> properties.getStoryboardRequestTimeoutSeconds();
             default -> Integer.MAX_VALUE;
         };
