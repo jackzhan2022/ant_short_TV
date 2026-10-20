@@ -82,6 +82,12 @@ public class ScriptAnalysisExecutionHandler extends AiExecutionHandler {
     }
 
     @Override
+    public AiExecutionRetryPolicy retryPolicy(Throwable failure) {
+        return failure instanceof NonRetryableAssetNormalizationException
+            ? AiExecutionRetryPolicy.none() : retryPolicy();
+    }
+
+    @Override
     public void validate(AiExecutionTaskEntity execution) {
         ScriptAnalysisTaskEntity task = taskMapper.selectById(execution.businessId);
         if (task == null || !execution.id.equals(task.getExecutionId())) {
@@ -103,7 +109,7 @@ public class ScriptAnalysisExecutionHandler extends AiExecutionHandler {
             List<WorkflowAgentModelCall> calls = callsForExecution(context, new ScriptAnalysisExecutionOutcome(List.of()));
             if (!calls.isEmpty()) recordUsageAndAttempt(context, calls);
             AiExecutionAttemptEntity attempt = attemptMapper.selectById(context.claim().attemptId());
-            if (attempt != null && attempt.attemptNo >= retryPolicy().maxAttempts()) {
+            if (attempt != null && attempt.attemptNo >= retryPolicy(exception).maxAttempts()) {
                 settle(context, calls, calls.isEmpty() ? AiSettlementOutcome.PROVIDER_REJECTION : AiSettlementOutcome.BUSINESS_FAILURE);
             }
             throw exception;

@@ -265,6 +265,7 @@ public class ScriptAnalysisExecutionService {
         java.util.concurrent.ExecutorService workers = java.util.concurrent.Executors.newFixedThreadPool(2);
         var completions = new java.util.concurrent.ExecutorCompletionService<BranchCompletion>(workers);
         AiExecutionClaimLostException ownershipLost = null;
+        NonRetryableAssetNormalizationException normalizationFailure = null;
         try {
             for (EpisodeFanoutCoordinator.Prepared branch : prepared) {
                 completions.submit(() -> {
@@ -300,6 +301,11 @@ public class ScriptAnalysisExecutionService {
                     if (completion.failure() instanceof AiExecutionClaimLostException lost) throw lost;
                     if (completion.failure() != null) {
                         recordStageFailure(task, completion.stage(), completion.failure());
+                        if (completion.failure() instanceof NonRetryableAssetNormalizationException rejected) {
+                            normalizationFailure=rejected;
+                            completion.stage().setRetryable(false);
+                            stageMapper.updateById(completion.stage());
+                        }
                     } else if (!isCurrentVersion(task)) {
                         failStaleStage(task, completion.stage());
                     } else {
@@ -333,6 +339,10 @@ public class ScriptAnalysisExecutionService {
             workers.shutdownNow();
         }
         if (ownershipLost != null) throw ownershipLost;
+        if (normalizationFailure != null) {
+            failTask(task,normalizationFailure.getErrorCode().name(),normalizationFailure.getMessage());
+            throw normalizationFailure;
+        }
         for (ScriptAnalysisStageEntity stage : stages) {
             if (isIndependentEpisodeBranch(stage.getStageCode()) && "FAILED".equals(stage.getStatus())) {
                 failTask(task, stage.getErrorCode(), stage.getErrorMessage());

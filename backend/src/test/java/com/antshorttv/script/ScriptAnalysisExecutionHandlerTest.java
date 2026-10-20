@@ -15,6 +15,14 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class ScriptAnalysisExecutionHandlerTest {
+    @Test void rejectedNormalizationDisablesAnalysisRetry() {
+        var handler=new ScriptAnalysisExecutionHandler(mock(ScriptAnalysisTaskMapper.class),mock(ScriptAnalysisExecutionService.class),
+            mock(AiPointReservationMapper.class),mock(AiPointSettlementService.class),mock(AiExecutionService.class),
+            mock(AiExecutionAttemptMapper.class),mock(AiExecutionTaskMapper.class),mock(AiUsageAccountingService.class),
+            new ObjectMapper(),mock(WorkflowAgentRunRepository.class));
+        assertThat(handler.retryPolicy(new NonRetryableAssetNormalizationException(new com.antshorttv.common.BusinessException(
+            com.antshorttv.common.ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,"归一判定无效")))).isEqualTo(AiExecutionRetryPolicy.none());
+    }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void replaySettlesPersistedTokensFromEveryAttempt(boolean terminalFailure) {

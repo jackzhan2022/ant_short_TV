@@ -113,8 +113,8 @@ class ScriptAnalysisExecutionServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void preparesBothBranchesAndRecognitionCompletesWhileSummaryIsBlocked(boolean summaryFails) throws Exception {
+    @org.junit.jupiter.params.provider.CsvSource({"false,false","true,false","false,true"})
+    void preparesBothBranchesAndRecognitionCompletesWhileSummaryIsBlocked(boolean summaryFails,boolean normalizationFails) throws Exception {
         ScriptAnalysisTaskEntity task = task(91L, 2L, 3L);
         ScriptEntity script = new ScriptEntity();
         script.setCurrentVersionId(6L);
@@ -170,7 +170,7 @@ class ScriptAnalysisExecutionServiceTest {
         }).when(taskMapper).updateById(any(ScriptAnalysisTaskEntity.class));
         doAnswer(invocation -> {
             var stage = (ScriptAnalysisStageEntity) invocation.getArgument(0);
-            if (stage.getId().equals(4L) && "SUCCEEDED".equals(stage.getStatus())) recognitionFinished.countDown();
+            if (stage.getId().equals(4L) && List.of("SUCCEEDED","FAILED").contains(stage.getStatus())) recognitionFinished.countDown();
             return 1;
         }).when(stageMapper).updateById(any(ScriptAnalysisStageEntity.class));
         ReflectionTestUtils.setField(service, "episodeSummaryAgentAdapter", summary);
@@ -178,7 +178,17 @@ class ScriptAnalysisExecutionServiceTest {
         ReflectionTestUtils.setField(service, "assetRecognitionFinalizer", mock(AssetRecognitionFinalizer.class));
         ReflectionTestUtils.setField(service, "episodeFanoutCoordinator", new EpisodeFanoutCoordinator(store, runner, 1));
 
-        if (summaryFails) {
+        if(normalizationFails) {
+            var normalization=mock(AssetNormalizationService.class);
+            when(normalization.normalize(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyLong(),any())).thenThrow(new NonRetryableAssetNormalizationException(
+                new com.antshorttv.common.BusinessException(com.antshorttv.common.ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,"归一判定无效")));
+            ReflectionTestUtils.setField(service,"assetNormalization",normalization);
+        }
+
+        if(normalizationFails) {
+            assertThatThrownBy(()->service.executeTask(91L)).isInstanceOf(NonRetryableAssetNormalizationException.class);
+            assertThat(recognitionStage.getRetryable()).isFalse();
+        } else if (summaryFails) {
             assertThatThrownBy(() -> service.executeTask(91L)).isInstanceOf(IllegalStateException.class);
         } else {
             var outcome = service.executeTask(91L, null);
@@ -186,9 +196,9 @@ class ScriptAnalysisExecutionServiceTest {
             assertThat(outcome.lastCallLogId()).isEqualTo(501L);
         }
 
-        assertThat(task.getStatus()).isEqualTo(summaryFails ? "FAILED" : "COMPLETED");
+        assertThat(task.getStatus()).isEqualTo(summaryFails || normalizationFails ? "FAILED" : "COMPLETED");
         assertThat(summaryStage.getStatus()).isEqualTo(summaryFails ? "FAILED" : "SUCCEEDED");
-        assertThat(recognitionStage.getStatus()).isEqualTo("SUCCEEDED");
+        assertThat(recognitionStage.getStatus()).isEqualTo(normalizationFails ? "FAILED" : "SUCCEEDED");
         if (summaryFails) {
             org.mockito.Mockito.reset(summary);
             when(summary.executeClaimedChild(any(), any(), any(), any(), any(), any()))
