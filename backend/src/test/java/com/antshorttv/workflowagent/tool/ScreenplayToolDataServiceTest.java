@@ -261,6 +261,93 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void episodeAssetsExcludeUnrelatedAssetsEvenWhenTheScriptHasMoreThan200Props() {
+        for (int i = 0; i < 215; i++) insertEpisodeProp("无关道具" + i, "{}");
+        long named = insertEpisodeProp("信封", "{}");
+        long aliased = insertEpisodeProp("林小满的手机", "{\"aliases\":[{\"name\":\"通讯器\"}]}");
+        long bound = insertEpisodeProp("随身怀表", "{}");
+        long variant = bindEpisodeProp(bound, episodeId, "ACTIVE", false);
+        jdbc.update("update script_episode set content = '她拿起信封，用通讯器联系家人。' where id = ?", episodeId);
+        ToolExecutionContext scoped = summaryContext();
+
+        service.readCurrentEpisode(scoped);
+        JsonNode assets = service.readScriptAssets(scoped);
+
+        assertThat(assets.path("props")).hasSize(3);
+        assertThat(assets.path("props").findValuesAsText("assetKey"))
+            .containsExactlyInAnyOrder("p_" + named, "p_" + aliased, "p_" + bound);
+        JsonNode boundAsset = java.util.stream.StreamSupport.stream(assets.path("props").spliterator(), false)
+            .filter(asset -> asset.path("assetKey").asText().equals("p_" + bound)).findFirst().orElseThrow();
+        assertThat(boundAsset.path("episodeBound").asBoolean()).isTrue();
+        assertThat(boundAsset.path("variants").get(0).path("variantKey").asText()).isEqualTo("v_" + variant);
+        assertThat(boundAsset.path("variants").get(0).path("episodeBound").asBoolean()).isTrue();
+        assertThat(assets.toString()).doesNotContain("无关道具", "private prop prompt", "private variant prompt");
+        schemaValidator.validate(registry.require("read_script_assets").outputSchema(), assets);
+    }
+
+    @Test
+    void episodeAssetsDoNotFallBackToOtherEpisodesOrInactiveBindings() {
+        long otherEpisode = jdbc.queryForObject(
+            "select id from script_episode where script_id = ? and episode_no = 1", Long.class, scriptId);
+        bindEpisodeProp(insertEpisodeProp("其他集道具", "{}"), otherEpisode, "ACTIVE", false);
+        bindEpisodeProp(insertEpisodeProp("停用绑定道具", "{}"), episodeId, "INACTIVE", false);
+        bindEpisodeProp(insertEpisodeProp("退役绑定道具", "{}"), episodeId, "ACTIVE", true);
+        long deleted = insertEpisodeProp("已删除道具", "{}");
+        bindEpisodeProp(deleted, episodeId, "ACTIVE", false);
+        jdbc.update("update prop_asset set deleted_at = now() where id = ?", deleted);
+        jdbc.update("update script_episode set content = '她静静等待。' where id = ?", episodeId);
+
+        JsonNode assets = service.readScriptAssets(summaryContext());
+
+        assertThat(assets.path("characters")).isEmpty();
+        assertThat(assets.path("scenes")).isEmpty();
+        assertThat(assets.path("props")).isEmpty();
+    }
+
+    @Test
+    void episodeAssetsRequireAnActiveEpisodeInTheTrustedScript() {
+        ToolExecutionContext foreign = new ToolExecutionContext(
+            tenantId, context.userId(), projectId, episodeId, scriptId + 99999, null, null, null,
+            Set.of("SCRIPT:VIEW"), null, new WorkflowToolRunState());
+        assertThatThrownBy(() -> service.readScriptAssets(foreign))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class).hasMessageContaining("剧集");
+
+        jdbc.update("update script_episode set retired_at = now() where id = ?", episodeId);
+        assertThatThrownBy(() -> service.readScriptAssets(summaryContext()))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class).hasMessageContaining("剧集");
+    }
+
+    private long insertEpisodeProp(String name, String metadata) {
+        jdbc.update("""
+            insert into prop_asset
+              (tenant_id,project_id,script_id,name,normalized_name,prop_type,status,source,
+               content_json,prompt,created_by,created_at,updated_at)
+            values (?,?,?,?,?,'DAILY','CONFIRMED','USER',?,'private prop prompt',?,now(),now())
+            """, tenantId, projectId, scriptId, name, name, metadata, context.userId());
+        return jdbc.queryForObject("select id from prop_asset where script_id = ? and name = ?",
+            Long.class, scriptId, name);
+    }
+
+    private long bindEpisodeProp(long assetId, long targetEpisodeId, String status, boolean retired) {
+        jdbc.update("""
+            insert into asset_visual_variant
+              (tenant_id,project_id,asset_type,asset_id,name,prompt,source_type,generation_status,
+               is_primary,created_by,created_at,updated_at)
+            values (?,?,'PROP',?,'本集形态','private variant prompt','USER','NOT_GENERATED',true,?,now(),now())
+            """, tenantId, projectId, assetId, context.userId());
+        long variantId = jdbc.queryForObject("select id from asset_visual_variant where asset_id=? and asset_type='PROP'",
+            Long.class, assetId);
+        jdbc.update("""
+            insert into asset_visual_variant_episode
+              (tenant_id,project_id,script_id,episode_id,asset_type,asset_id,variant_id,is_preferred,
+               binding_status,created_by,created_at,updated_at,retired_at)
+            values (?,?,?,?,'PROP',?,?,false,?,?,now(),now(),?)
+            """, tenantId, projectId, scriptId, targetEpisodeId, assetId, variantId, status,
+            context.userId(), retired ? java.sql.Timestamp.valueOf(java.time.LocalDateTime.now()) : null);
+        return variantId;
+    }
+
+    @Test
     void saveCreatesAndSelectsNewVersionsWhileRetainingPriorVersions() {
         JsonNode first = service.saveEpisodeScript(context, screenplay("First rewritten screenplay"));
         JsonNode second = service.saveEpisodeScript(context, screenplay("Second rewritten screenplay"));

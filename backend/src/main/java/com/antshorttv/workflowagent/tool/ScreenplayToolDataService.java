@@ -222,6 +222,16 @@ public class ScreenplayToolDataService {
             result.set("characters", assets("character_asset", context));
             result.set("scenes", assets("scene_asset", context));
             result.set("props", assets("prop_asset", context));
+        } else if (context.episodeId() != null) {
+            List<String> contents = jdbc.queryForList("""
+                select content from script_episode
+                 where tenant_id=? and project_id=? and script_id=? and id=?
+                   and status='ACTIVE' and retired_at is null
+                """, String.class, context.tenantId(), context.projectId(), context.scriptId(), context.episodeId());
+            if (contents.isEmpty()) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "当前正式剧集不存在或已退役。");
+            }
+            return new AssetCatalogService(jdbc, json, permissionGuard).episodeAssets(context, contents.get(0));
         } else {
             result.set("characters", currentScriptAssets(context, "character_asset", "CHARACTER", "c_"));
             result.set("scenes", currentScriptAssets(context, "scene_asset", "SCENE", "s_"));
@@ -403,13 +413,13 @@ public class ScreenplayToolDataService {
         context.runState().put("currentEpisodeContent", content);
         AssetCatalogService catalogs = new AssetCatalogService(jdbc, json, permissionGuard);
         ObjectNode candidateCatalog = catalogs.candidates(context, content);
-        ArrayNode characters = catalogs.speakerNames(context);
         // Analysis precedes asset extraction; text classification must not depend on its results.
         // Storyboard runs retain catalog-backed classification for source coverage validation.
         List<EpisodeSourceSegmenter.EpisodeSourceSegment> sourceSegments =
             context.analysisStageId() != null
                 ? episodeSourceSegmenter.segment(content)
-                : episodeSourceSegmenter.segment(content, speakerContext(characters));
+                : episodeSourceSegmenter.segment(content,
+                    speakerContext((ArrayNode) catalogs.episodeAssets(context, content).path("characters")));
         if (sourceSegments.size() > 10_000) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                 "当前剧集原文片段过多，无法交给 Agent 处理。");

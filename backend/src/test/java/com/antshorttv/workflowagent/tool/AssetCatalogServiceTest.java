@@ -101,6 +101,55 @@ class AssetCatalogServiceTest {
         assertThat(catalog.path("characters").isEmpty()).isTrue();
     }
 
+    @Test void episodePreparationReusesIdentityAndSelectedVariantQueriesWithinTheRun() {
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(invocation ->
+            invocation.<String>getArgument(0).contains("asset_visual_variant") ? List.of() : props());
+        var c = context();
+        service.candidates(c, "双环徽章放在桌上");
+        service.candidates(c, "双环徽章放在桌上");
+
+        verify(jdbc, times(1)).queryForList(contains("from prop_asset"), any(Object[].class));
+        var queries = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc, times(2)).queryForList(queries.capture(), any(Object[].class));
+        String variantSql = queries.getAllValues().stream()
+            .filter(sql -> sql.contains("from asset_visual_variant variant")).findFirst().orElseThrow();
+        assertThat(variantSql).contains("variant.asset_id in (?)").doesNotContain("variant.content_json", "variant.prompt,");
+    }
+
+    @Test void completeEpisodeSubsetIsNotLimitedToTheInitialCandidatePage() {
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(invocation ->
+            invocation.<String>getArgument(0).contains("asset_visual_variant") ? List.of() : props());
+        when(jdbc.queryForList(anyString(), eq(Long.class), any(Object[].class)))
+            .thenReturn(IntStream.rangeClosed(1, 60).mapToObj(i -> (long) i).toList());
+        var c = context();
+
+        var initial = service.candidates(c, "她静静等待。");
+        var complete = service.episodeAssets(c, "她静静等待。");
+
+        assertThat(initial.path("props")).hasSize(50);
+        assertThat(initial.path("pages").path("props").path("hasMore").asBoolean()).isTrue();
+        assertThat(complete.path("props")).hasSize(60);
+        assertThat(complete.path("props").get(59).path("assetKey").asText()).isEqualTo("p_60");
+        assertThat(complete.path("props").get(59).path("episodeBound").asBoolean()).isTrue();
+        verify(jdbc, times(1)).queryForList(contains("from prop_asset"), any(Object[].class));
+    }
+
+    @Test void episodeCacheDoesNotReuseAnotherContentOrAssetScope() {
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(invocation ->
+            invocation.<String>getArgument(0).contains("asset_visual_variant") ? List.of() : props());
+        var c = context();
+        assertThat(service.episodeAssets(c, "双环徽章").path("props")).hasSize(1);
+        assertThat(service.episodeAssets(c, "她静静等待。").path("props")).isEmpty();
+
+        c.runState().put("assetScope", "CHARACTER");
+        var changed = service.episodeAssets(c, "双环徽章");
+
+        assertThat(changed.path("props")).isEmpty();
+        assertThat(changed.path("characters").get(0).path("assetKey").asText()).isEqualTo("c_215");
+        verify(jdbc, times(2)).queryForList(contains("from prop_asset"), any(Object[].class));
+        verify(jdbc, times(1)).queryForList(contains("from character_asset"), any(Object[].class));
+    }
+
     @Test void candidatesIncludeStableVariantKeysAndReadiness() {
         when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);

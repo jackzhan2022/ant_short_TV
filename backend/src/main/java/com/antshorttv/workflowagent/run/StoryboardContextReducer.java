@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.antshorttv.script.AssetIdentityNormalizer;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -183,7 +184,8 @@ public final class StoryboardContextReducer {
     }
 
     private boolean assetMatches(JsonNode asset, String evidence) {
-        if (matchesText(asset.path("name"), evidence)
+        if (asset.path("episodeBound").asBoolean()
+            || matchesText(asset.path("name"), evidence)
             || matchesText(asset.path("normalizedName"), evidence)) {
             return true;
         }
@@ -196,7 +198,7 @@ public final class StoryboardContextReducer {
     }
 
     private boolean matchesText(JsonNode value, String evidence) {
-        String candidate = value.asText("").strip().toLowerCase(Locale.ROOT);
+        String candidate = AssetIdentityNormalizer.normalize(value.asText(""));
         return !candidate.isEmpty() && evidence.contains(candidate);
     }
 
@@ -216,7 +218,7 @@ public final class StoryboardContextReducer {
         for (JsonNode segment : current.path("sourceSegments")) {
             evidence.append('\n').append(segment.path("text").asText(""));
         }
-        return evidence.toString().toLowerCase(Locale.ROOT);
+        return AssetIdentityNormalizer.normalize(evidence.toString());
     }
 
     private JsonNode sanitize(JsonNode source) {

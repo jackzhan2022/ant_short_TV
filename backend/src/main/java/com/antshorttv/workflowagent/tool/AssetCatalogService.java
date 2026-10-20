@@ -210,38 +210,79 @@ public class AssetCatalogService {
     }
 
     public ObjectNode candidates(ToolExecutionContext context,String content) {
+        EpisodeCatalog selected = episodeCatalog(context, content);
         ObjectNode result=json.createObjectNode();
         ObjectNode pages=result.putObject("pages");
-        String source=AssetIdentityNormalizer.normalize(content);
         for(String type:List.of("CHARACTER","SCENE","PROP")) {
             String field=switch(type) {case "CHARACTER"->"characters";case "SCENE"->"scenes";default->"props";};
             ArrayNode values=result.putArray(field);
             if(!included(context,type)) continue;
-            var rows=identities(context,type);
-            var bound=jdbc.queryForList("""
-                select distinct asset_id from asset_visual_variant_episode where tenant_id=? and project_id=?
-                  and script_id=? and episode_id=? and asset_type=? and retired_at is null and binding_status='ACTIVE'
-                """,Long.class,context.tenantId(),context.projectId(),context.scriptId(),context.episodeId(),type);
-            var relevant=rows.stream().filter(row->bound.contains(((Number)row.get("id")).longValue())
-                || mentioned(row,source)).sorted(java.util.Comparator.comparingInt(
-                    row->bound.contains(((Number)row.get("id")).longValue())?0:1)).toList();
-            Map<Long, ArrayNode> variants = candidateVariants(context, type,
-                relevant.stream().map(row -> ((Number) row.get("id")).longValue()).toList());
-            for(var row:relevant) {
-                var item=summary(type,row);
-                item.set("variants", variants.getOrDefault(
-                    ((Number) row.get("id")).longValue(), json.createArrayNode()));
+            ArrayNode relevant = (ArrayNode) selected.assets().path(field);
+            for(JsonNode item:relevant) {
                 if(values.size()>=50 || bytes(result)+bytes(item)>BYTE_LIMIT-2048) break;
-                values.add(item);
+                values.add(item.deepCopy());
             }
             var page=pages.putObject(field);
-            page.put("total",rows.size());page.put("candidateTotal",relevant.size());
-            page.put("hasMore",values.size()<rows.size());
+            page.put("total",selected.totals().get(type));page.put("candidateTotal",relevant.size());
+            page.put("hasMore",values.size()<selected.totals().get(type));
             page.put("nextCursor",remember(context,type+":",0));
             page.put("assetType",type);
         }
         return result;
     }
+
+    /** Complete episode subset; unlike the initial candidate page it is not a script-wide directory. */
+    public ObjectNode episodeAssets(ToolExecutionContext context, String content) {
+        return episodeCatalog(context, content).assets().deepCopy();
+    }
+
+    private EpisodeCatalog episodeCatalog(ToolExecutionContext context, String content) {
+        String scope = context.runState().get("assetScope", String.class);
+        EpisodeCatalog cached = context.runState().get("episodeAssetCatalog", EpisodeCatalog.class);
+        if (cached != null && java.util.Objects.equals(cached.tenantId(), context.tenantId())
+            && java.util.Objects.equals(cached.projectId(), context.projectId())
+            && java.util.Objects.equals(cached.scriptId(), context.scriptId())
+            && java.util.Objects.equals(cached.episodeId(), context.episodeId())
+            && java.util.Objects.equals(cached.scope(), scope) && cached.content().equals(content)) return cached;
+
+        ObjectNode assets = json.createObjectNode();
+        Map<String, Integer> totals = new LinkedHashMap<>();
+        String source = AssetIdentityNormalizer.normalize(content);
+        for (String type : List.of("CHARACTER", "SCENE", "PROP")) {
+            String field = switch (type) {case "CHARACTER" -> "characters"; case "SCENE" -> "scenes"; default -> "props";};
+            ArrayNode values = assets.putArray(field);
+            if (!included(context, type)) continue;
+            // Match names/explicit aliases before loading any visual variants. Prompt text is not needed.
+            var rows = jdbc.queryForList("select id,name,normalized_name,content_json,"
+                + "case when prompt is not null and trim(prompt) <> '' then true else false end has_prompt from "
+                + TABLES.get(type) + " where tenant_id=? and project_id=? and script_id=? and deleted_at is null order by id",
+                context.tenantId(), context.projectId(), context.scriptId());
+            totals.put(type, rows.size());
+            var bound = new LinkedHashSet<>(jdbc.queryForList("""
+                select distinct asset_id from asset_visual_variant_episode where tenant_id=? and project_id=?
+                  and script_id=? and episode_id=? and asset_type=? and retired_at is null and binding_status='ACTIVE'
+                """, Long.class, context.tenantId(), context.projectId(), context.scriptId(), context.episodeId(), type));
+            var relevant = rows.stream().filter(row -> bound.contains(((Number) row.get("id")).longValue())
+                || mentioned(row, source)).sorted(java.util.Comparator.comparingInt(
+                    row -> bound.contains(((Number) row.get("id")).longValue()) ? 0 : 1)).toList();
+            Map<Long, ArrayNode> variants = candidateVariants(context, type,
+                relevant.stream().map(row -> ((Number) row.get("id")).longValue()).toList());
+            for (var row : relevant) {
+                long assetId = ((Number) row.get("id")).longValue();
+                ObjectNode item = summary(type, row);
+                item.put("episodeBound", bound.contains(assetId));
+                item.set("variants", variants.getOrDefault(assetId, json.createArrayNode()));
+                values.add(item);
+            }
+        }
+        EpisodeCatalog selected = new EpisodeCatalog(context.tenantId(), context.projectId(), context.scriptId(),
+            context.episodeId(), scope, content, assets, totals);
+        context.runState().put("episodeAssetCatalog", selected);
+        return selected;
+    }
+
+    private record EpisodeCatalog(Long tenantId, Long projectId, Long scriptId, Long episodeId,
+                                  String scope, String content, ObjectNode assets, Map<String, Integer> totals) {}
 
     private Map<Long, ArrayNode> candidateVariants(
         ToolExecutionContext context, String type, List<Long> assetIds
@@ -254,7 +295,9 @@ public class AssetCatalogService {
             context.tenantId(), context.projectId(), type));
         arguments.addAll(assetIds);
         List<Map<String,Object>> rows = jdbc.queryForList("""
-            select variant.id,variant.asset_id,variant.name,variant.is_primary,variant.prompt,
+            select variant.id,variant.asset_id,variant.name,variant.is_primary,
+                   case when variant.prompt is not null and trim(variant.prompt) <> ''
+                     then true else false end has_prompt,
                    variant.generation_status,variant.current_image_result_id,variant.current_image_url,
                    case when exists (select 1 from asset_visual_variant_episode binding
                      where binding.tenant_id=? and binding.project_id=? and binding.script_id=?
@@ -279,7 +322,7 @@ public class AssetCatalogService {
             variant.put("name", String.valueOf(row.get("name")));
             variant.put("primary", truthy(row.get("is_primary")));
             variant.put("episodeBound", truthy(row.get("episode_bound")));
-            variant.put("hasPrompt", hasText(row.get("prompt")));
+            variant.put("hasPrompt", row.containsKey("has_prompt") ? truthy(row.get("has_prompt")) : hasText(row.get("prompt")));
             variant.put("episodePreferred", truthy(row.get("episode_preferred")));
             variant.put("generationStatus", String.valueOf(row.get("generation_status")));
             String imageUrl = row.get("current_image_url") == null
@@ -302,18 +345,12 @@ public class AssetCatalogService {
             c.tenantId(),c.projectId(),c.scriptId());
     }
 
-    ArrayNode speakerNames(ToolExecutionContext context) {
-        ArrayNode result=json.createArrayNode();
-        for(var row:identities(context,"CHARACTER")) result.add(summary("CHARACTER",row));
-        return result;
-    }
-
     private ObjectNode summary(String type,Map<String,Object> row) {
         ObjectNode item=json.createObjectNode();
         item.put("assetKey",PREFIXES.get(type)+row.get("id"));
         item.put("name",String.valueOf(row.get("name")));
         item.put("normalizedName",String.valueOf(row.get("normalized_name")));
-        item.put("hasPrompt",hasText(row.get("prompt")));
+        item.put("hasPrompt",row.containsKey("has_prompt") ? truthy(row.get("has_prompt")) : hasText(row.get("prompt")));
         item.set("aliases",aliasNames(row));
         item.putArray("variants");
         return item;
@@ -338,6 +375,8 @@ public class AssetCatalogService {
     private boolean mentioned(Map<String,Object> row,String source) {
         String name=AssetIdentityNormalizer.normalize(String.valueOf(row.get("name")));
         if(!name.isEmpty() && source.contains(name)) return true;
+        String normalized = AssetIdentityNormalizer.normalize((String) row.get("normalized_name"));
+        if (!normalized.isEmpty() && source.contains(normalized)) return true;
         for(JsonNode alias:aliasNames(row)) {
             String value=AssetIdentityNormalizer.normalize(alias.asText());
             if(!value.isEmpty() && source.contains(value)) return true;

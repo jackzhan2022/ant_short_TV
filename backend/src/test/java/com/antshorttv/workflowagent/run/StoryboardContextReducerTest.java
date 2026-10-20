@@ -60,6 +60,27 @@ class StoryboardContextReducerTest {
     }
 
     @Test
+    void retainsEpisodeBoundAssetsAlongsideNamesMentionedInTheEpisode() throws Exception {
+        ObjectNode prepared = prepared("Alice greets her brother.");
+        ((ObjectNode) prepared.path("read_script_assets").path("characters").get(1)).put("episodeBound", true);
+
+        JsonNode characters = reducer.reduce(prepared).context().path("read_script_assets").path("characters");
+
+        assertThat(characters.findValuesAsText("assetKey")).containsExactly("c_1", "c_2");
+    }
+
+    @Test
+    void keepsAssetsSelectedThroughNormalizedExplicitAliases() throws Exception {
+        ObjectNode prepared = prepared("Alice greets B o b.");
+        ((ObjectNode) prepared.path("read_script_assets").path("characters").get(1))
+            .withArray("aliases").add("B-o-b");
+
+        JsonNode characters = reducer.reduce(prepared).context().path("read_script_assets").path("characters");
+
+        assertThat(characters.findValuesAsText("assetKey")).containsExactly("c_1", "c_2");
+    }
+
+    @Test
     void malformedOptionalAnalysisDegradesWithoutChangingRequiredEpisode() throws Exception {
         ObjectNode prepared = prepared("Alice enters the observatory.");
         prepared.withObject("read_script_analysis").withArray("stages").get(1)
