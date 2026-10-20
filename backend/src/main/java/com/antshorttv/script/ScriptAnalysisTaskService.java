@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.antshorttv.ai.ProjectAiConfigService;
+import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
+import com.antshorttv.execution.AiExecutionService;
 
 @Service
 public class ScriptAnalysisTaskService {
@@ -22,15 +25,18 @@ public class ScriptAnalysisTaskService {
 
     private final ScriptAnalysisTaskMapper taskMapper;
     private final ScriptAnalysisStageMapper stageMapper;
+    private final AiExecutionService executionService;
     @Autowired private ScriptAnalysisConfigSnapshotService configSnapshotService;
     @Autowired private ProjectAiConfigService projectAiConfigService;
 
     public ScriptAnalysisTaskService(
         ScriptAnalysisTaskMapper taskMapper,
-        ScriptAnalysisStageMapper stageMapper
+        ScriptAnalysisStageMapper stageMapper,
+        AiExecutionService executionService
     ) {
         this.taskMapper = taskMapper;
         this.stageMapper = stageMapper;
+        this.executionService = executionService;
     }
 
     @Transactional
@@ -138,7 +144,7 @@ public class ScriptAnalysisTaskService {
                 .eq(ScriptAnalysisTaskEntity::getProjectId, projectId)
                 .in(ScriptAnalysisTaskEntity::getWorkflowCode, List.of(WORKFLOW_CODE, MANUAL_WORKFLOW_CODE))
                 .orderByDesc(ScriptAnalysisTaskEntity::getCreatedAt)
-                .last("limit 1")
+                .last("limit 1 for update")
         );
         if (task == null) {
             throw new IllegalArgumentException("当前项目没有可重试的分析任务。");
@@ -148,6 +154,15 @@ public class ScriptAnalysisTaskService {
             .filter(item -> item.code().equals(normalizedCode))
             .findFirst()
             .orElseThrow(() -> new IllegalArgumentException("未知分析阶段：" + stageCode));
+        // Serialize retries and check the execution before resetting any domain progress.
+        // A completed business stage may still have a RUNNING execution settling usage.
+        if (task.getExecutionId() != null) {
+            var execution = executionService.requireTaskForUpdate(task.getExecutionId());
+            if (!List.of("FAILED", "TIMED_OUT", "CANCELED", "SUCCEEDED").contains(execution.status)) {
+                throw new BusinessException(ErrorCode.AI_EXECUTION_STATUS_INVALID,
+                    "分析仍在排队、执行或结算中，请等待本次执行结束后再重试。");
+            }
+        }
         for (ScriptAnalysisStageEntity stage : stageMapper.selectByTask(task.getId())) {
             if (stage.getStageOrder() < target.order()) {
                 continue;
@@ -164,6 +179,8 @@ public class ScriptAnalysisTaskService {
             stage.setErrorCode(null);
             stage.setErrorMessage(null);
             stage.setRetryable(false);
+            stage.setStartedAt(null);
+            stage.setFinishedAt(null);
             stage.setUpdatedAt(LocalDateTime.now());
             stageMapper.updateById(stage);
         }
@@ -172,6 +189,7 @@ public class ScriptAnalysisTaskService {
         task.setCurrentAction(target.waitingAction());
         task.setErrorCode(null);
         task.setErrorMessage(null);
+        task.setCompletedAt(null);
         task.setOverallProgress(Math.max(0, (target.order() - 1) * 25));
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);

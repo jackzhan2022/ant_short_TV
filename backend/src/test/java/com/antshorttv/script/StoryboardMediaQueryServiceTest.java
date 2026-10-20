@@ -63,6 +63,33 @@ public class StoryboardMediaQueryServiceTest {
     }
 
     @Test
+    void returnsBoundedChronologicalVideoHistoryAcrossTasksWithoutPinningTheCurrentVideo() {
+        jdbc.update("update ai_video_result set created_at=timestamp '2020-01-01 00:00:00',is_selected=true where id=100");
+        jdbc.update("update ai_video_result set created_at=timestamp '2035-01-01 00:00:00' where id=1190");
+        var history = service.summary(1L, 2L, List.of(10L, 11L)).get("videoHistory");
+        assertThat(history).hasSize(2);
+        assertThat(history.get(0)).containsEntry("total", 200L).containsEntry("pageSize", 8);
+        @SuppressWarnings("unchecked")
+        var videos = (List<java.util.Map<String, Object>>) history.get(0).get("data");
+        assertThat(videos).hasSize(8);
+        assertThat(videos.get(0).get("id")).isEqualTo(1190L);
+        assertThat(videos.get(0).get("videoUrl")).isEqualTo("/api/projects/2/ai-video-results/1190/playback");
+        assertThat(videos).extracting(row -> row.get("id")).doesNotContain(100L);
+        assertThat(history.get(1)).containsEntry("total", 0L).containsEntry("data", List.of());
+    }
+
+    @Test
+    void videoHistoryExcludesDeletedTasksInactiveResultsAndForeignTenants() {
+        jdbc.update("update ai_video_task set deleted_at=current_timestamp where id=200");
+        jdbc.update("update ai_video_result set status='DELETED' where id=1199");
+        jdbc.update("insert into ai_video_task(id,tenant_id,project_id,storyboard_id,status,created_at) values(201,9,8,10,'SUCCEEDED',current_timestamp)");
+        jdbc.update("insert into ai_video_result(id,tenant_id,project_id,task_id,storyboard_id,status,created_at) values(9999,9,8,201,10,'ACTIVE',current_timestamp)");
+        var history = service.summary(1L, 2L, List.of(10L)).get("videoHistory").get(0);
+        assertThat(history).containsEntry("total", 198L);
+        assertThat(history.get("data").toString()).doesNotContain("id=1200,", "id=1199,", "id=9999,");
+    }
+
+    @Test
     void rejectsForeignIdsInsteadOfReturningPartialData() {
         assertThatThrownBy(() -> service.summary(1L, 2L, List.of(10L, 12L)))
             .isInstanceOf(BusinessException.class);

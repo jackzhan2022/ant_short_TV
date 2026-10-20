@@ -18,15 +18,18 @@ public class StoryboardAssetReferenceService {
     private final ProjectPermissionGuard permissionGuard;
     private final JdbcTemplate jdbc;
     private final StoryboardAssetReferenceRepository repository;
+    private final StoryboardAssetReferenceLegacyResolver legacyResolver;
 
     public StoryboardAssetReferenceService(
         ProjectPermissionGuard permissionGuard,
         JdbcTemplate jdbc,
-        StoryboardAssetReferenceRepository repository
+        StoryboardAssetReferenceRepository repository,
+        StoryboardAssetReferenceLegacyResolver legacyResolver
     ) {
         this.permissionGuard = permissionGuard;
         this.jdbc = jdbc;
         this.repository = repository;
+        this.legacyResolver = legacyResolver;
     }
 
     @Transactional
@@ -41,9 +44,18 @@ public class StoryboardAssetReferenceService {
         List<StoryboardAssetReferenceCommand> commands = request == null || request.references() == null
             ? List.of() : request.references();
         validateOrder(commands);
+        List<LegacyReference> unresolved = new ArrayList<>();
+        if (commands.stream().anyMatch(command -> command.assetId() == null)) {
+            unresolved.addAll(legacyResolver.resolveStoryboard(tenantId, projectId, storyboardId)
+                .references().stream()
+                .filter(reference -> reference.assetId() == null
+                    && "UNRESOLVED".equals(reference.resolutionStatus()))
+                .toList());
+        }
         List<ResolvedReference> resolved = new ArrayList<>();
         for (StoryboardAssetReferenceCommand command : commands) {
-            resolved.add(resolve(tenantId, projectId, storyboard.episodeId(), command));
+            resolved.add(command.assetId() == null ? retainUnresolved(command, unresolved)
+                : resolve(tenantId, projectId, storyboard.episodeId(), command));
         }
         LocalDateTime now = LocalDateTime.now();
         List<StoryboardAssetReferenceEntity> entities = new ArrayList<>();
@@ -55,9 +67,9 @@ public class StoryboardAssetReferenceService {
             entity.referenceRole = item.role().name();
             entity.sortOrder = item.sortOrder();
             entity.resolutionStatus = item.status().name();
-            entity.sourceType = StoryboardReferenceSourceType.MANUAL.name();
+            entity.sourceType = item.sourceType();
             entity.sourceName = item.sourceName();
-            entity.lockedByUser = true;
+            entity.lockedByUser = item.lockedByUser();
             entity.createdBy = context.userId();
             entities.add(entity);
         }
@@ -95,9 +107,6 @@ public class StoryboardAssetReferenceService {
         for (StoryboardAssetReferenceCommand command : commands) {
             StoryboardReferenceAssetType type = StoryboardReferenceAssetType.parse(command.assetType());
             StoryboardReferenceRole.parse(command.referenceRole());
-            if (command.assetId() == null) {
-                throw StoryboardAssetReferenceValidation.invalid("手工素材引用必须选择当前项目资产。");
-            }
             if (command.sortOrder() == null || command.sortOrder() < 0) {
                 throw StoryboardAssetReferenceValidation.invalid("素材排序必须为非负整数。");
             }
@@ -105,6 +114,27 @@ public class StoryboardAssetReferenceService {
                 throw StoryboardAssetReferenceValidation.invalid("同类素材排序不能重复。");
             }
         }
+    }
+
+    private ResolvedReference retainUnresolved(
+        StoryboardAssetReferenceCommand command, List<LegacyReference> unresolved
+    ) {
+        StoryboardReferenceAssetType type = StoryboardReferenceAssetType.parse(command.assetType());
+        StoryboardReferenceRole role = StoryboardReferenceRole.parse(command.referenceRole());
+        if (command.variantId() == null && command.sourceName() != null && !command.sourceName().isBlank()) {
+            for (int index = 0; index < unresolved.size(); index++) {
+                LegacyReference existing = unresolved.get(index);
+                if (type.name().equals(existing.assetType())
+                    && command.sourceName().trim().equals(existing.sourceName())) {
+                    // Consume each existing row once so replacement cannot introduce unbound references.
+                    unresolved.remove(index);
+                    return new ResolvedReference(type, null, null, null, role, command.sortOrder(),
+                        StoryboardReferenceResolutionStatus.UNRESOLVED, existing.sourceName(),
+                        existing.sourceType(), existing.lockedByUser());
+                }
+            }
+        }
+        throw StoryboardAssetReferenceValidation.invalid("手工素材引用必须选择当前项目资产。");
     }
 
     private ResolvedReference resolve(
@@ -125,7 +155,8 @@ public class StoryboardAssetReferenceService {
         String sourceName = command.sourceName() == null || command.sourceName().isBlank()
             ? asset.name() : command.sourceName().trim();
         return new ResolvedReference(
-            type, asset.id(), asset.name(), variant, role, command.sortOrder(), status, sourceName);
+            type, asset.id(), asset.name(), variant, role, command.sortOrder(), status, sourceName,
+            StoryboardReferenceSourceType.MANUAL.name(), true);
     }
 
     private AssetRef requireAsset(
@@ -223,7 +254,7 @@ public class StoryboardAssetReferenceService {
 
     private String names(List<ResolvedReference> references, StoryboardReferenceAssetType type) {
         String value = references.stream().filter(item -> item.assetType() == type)
-            .map(ResolvedReference::assetName).distinct()
+            .map(item -> item.assetName() == null ? item.sourceName() : item.assetName()).distinct()
             .collect(java.util.stream.Collectors.joining("、"));
         return value.isBlank() ? null : value;
     }
@@ -260,7 +291,9 @@ public class StoryboardAssetReferenceService {
         StoryboardReferenceRole role,
         Integer sortOrder,
         StoryboardReferenceResolutionStatus status,
-        String sourceName
+        String sourceName,
+        String sourceType,
+        boolean lockedByUser
     ) {
     }
 }

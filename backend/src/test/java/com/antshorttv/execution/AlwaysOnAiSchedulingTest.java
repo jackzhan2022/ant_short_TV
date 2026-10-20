@@ -20,13 +20,14 @@ class AlwaysOnAiSchedulingTest {
         var worker = mock(AiExecutionWorker.class);
         var pending = new AiExecutionTaskEntity();
         pending.id = 42L;
-        when(tasks.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(pending));
+        when(tasks.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(), List.of(pending));
         new ApplicationContextRunner()
             .withPropertyValues("ai.execution.dispatcher.enabled=false")
             .withBean(AiExecutionTaskMapper.class, () -> tasks)
             .withBean(AiExecutionClaimService.class, () -> claims)
             .withBean(AiExecutionWorker.class, () -> worker)
             .withBean("aiExecutionTaskExecutor", TaskExecutor.class, () -> Runnable::run)
+            .withBean("aiImagePublicationExecutor", TaskExecutor.class, () -> Runnable::run)
             .withUserConfiguration(AiExecutionDispatcher.class)
             .run(context -> {
                 context.getBean(AiExecutionDispatcher.class).dispatchScheduled();

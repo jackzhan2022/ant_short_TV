@@ -329,7 +329,10 @@ export type StoryboardWorkspacePage = {
   pageSize: number;
   total: number;
   storyboards: StoryboardShot[];
+  storyboardNavigation?: StoryboardNavigationItem[];
 };
+
+export type StoryboardNavigationItem = { id: number; shotNo: number; storyboardNo?: number; hasVideo: boolean };
 
 export type ScriptGlobalUnderstanding = {
   id: number;
@@ -632,6 +635,7 @@ export type StoryboardMediaSummary = {
   videoTasks: AiVideoTask[];
   voiceTasks: AiVoiceTask[];
   assetVisuals?: Array<{ key: string; visual: AssetVisualWorkspace }>;
+  videoHistory?: Array<MediaPage<AiVideoResult> & { storyboardId: number }>;
 };
 
 export const queryStoryboardMedia = (

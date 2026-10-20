@@ -22,13 +22,16 @@ public class PointAccountingService {
     }
 
     public void ensureAccount(Long tenantId) {
+        // A plain read avoids the shared index lock taken by INSERT ... SELECT under MySQL RR.
+        if (!jdbc.queryForList("select tenant_id from team_point_account where tenant_id = ?",
+            Long.class, tenantId).isEmpty()) return;
         jdbc.update("""
             insert into team_point_account
               (tenant_id, balance, total_granted, total_consumed, reserved_balance,
                total_reserved, total_released, total_refunded, version, created_at, updated_at)
-            select ?, 0, 0, 0, 0, 0, 0, 0, 0, now(), now()
-             where not exists (select 1 from team_point_account where tenant_id = ?)
-            """, tenantId, tenantId);
+            values (?, 0, 0, 0, 0, 0, 0, 0, 0, now(), now())
+            on duplicate key update tenant_id = tenant_id
+            """, tenantId);
     }
 
     public void lockAccount(Long tenantId) {

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbench, { preserveReferenceClientKeys } from './storyboard';
 import {
@@ -7,6 +7,7 @@ import {
   sortableIdFor,
 } from './StoryboardAssetReferenceEditor';
 import type { ScriptEpisode } from './service';
+import { PointEstimateCancelledError } from '@/services/point-estimate';
 
 const mocks = vi.hoisted(() => ({
   locationSearch: '',
@@ -196,6 +197,10 @@ vi.mock('antd', () => ({
     onChange,
     allowClear: _allowClear,
     className: _className,
+    classNames: _classNames,
+    popupAlign: _popupAlign,
+    popupRender: _popupRender,
+    optionRender: _optionRender,
     displayRender: _displayRender,
     placeholder: _placeholder,
     showSearch: _showSearch,
@@ -233,12 +238,17 @@ vi.mock('antd', () => ({
   Empty: ({ description }: any) => <div>{description || '暂无数据'}</div>,
   Flex: ({ children }: any) => <div>{children}</div>,
   Image: ({ alt, src }: any) => <img alt={alt} src={src} />,
-  Modal: ({ children, onCancel, onOk, okText, open, title }: any) =>
+  Checkbox: ({ children, checked, disabled, onChange, 'aria-label': ariaLabel }: any) => (
+    <label><input type="checkbox" aria-label={ariaLabel} checked={checked} disabled={disabled} onChange={onChange} />{children}</label>
+  ),
+  Modal: ({ children, footer, onCancel, onOk, okText, open, title }: any) =>
     open ? (
       <div role="dialog" aria-label={title}>
         {children}
-        <button type="button" onClick={onCancel}>取消</button>
-        <button type="button" onClick={onOk}>{okText || '确定'}</button>
+        {footer || <>
+          <button type="button" onClick={onCancel}>取消</button>
+          <button type="button" onClick={onOk}>{okText || '确定'}</button>
+        </>}
       </div>
     ) : null,
   Popover: ({ children, content }: any) => (
@@ -839,6 +849,76 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByText('第 2 / 2 页，共 21 个镜头')).toBeInTheDocument();
   });
 
+  it('navigates between storyboard cards and updates the position marker while scrolling', async () => {
+    render(<ProductionWorkbench />);
+    const secondMarker = await screen.findByRole('button', { name: '跳转到分镜2' });
+    const firstMarker = screen.getByRole('button', { name: '跳转到分镜1' });
+    const firstCard = document.getElementById('storyboard-101');
+    const secondCard = document.getElementById('storyboard-102');
+    if (!firstCard || !secondCard) throw new Error('Expected storyboard cards');
+    const scrollIntoView = vi.fn();
+    secondCard.scrollIntoView = scrollIntoView;
+    fireEvent.click(secondMarker);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
+    expect(secondCard).toHaveFocus();
+    expect(secondMarker).toHaveAttribute('aria-current', 'location');
+    expect(firstMarker).toHaveAttribute('title', '分镜1 · 已有视频');
+    expect(secondMarker).toHaveAttribute('title', '分镜2 · 未生成视频');
+    vi.spyOn(firstCard, 'getBoundingClientRect').mockReturnValue({ top: -800, bottom: -10 } as DOMRect);
+    vi.spyOn(secondCard, 'getBoundingClientRect').mockReturnValue({ top: 10, bottom: 800 } as DOMRect);
+    fireEvent.scroll(screen.getByTestId('storyboard-workbench'));
+    expect(secondMarker).toHaveAttribute('aria-current', 'location');
+    vi.mocked(firstCard.getBoundingClientRect).mockReturnValue({ top: 10, bottom: 800 } as DOMRect);
+    fireEvent.scroll(screen.getByTestId('storyboard-workbench'));
+    expect(firstMarker).toHaveAttribute('aria-current', 'location');
+  });
+
+  it('uses the episode navigation index to focus a storyboard on another page', async () => {
+    const response = await mocks.queryStoryboardWorkspace();
+    const navigation = Array.from({ length: 21 }, (_, index) => ({ id: 101 + index, shotNo: index + 1, hasVideo: index === 20 }));
+    mocks.queryStoryboardWorkspace.mockImplementation(async (_project, params) => ({ data: {
+      ...response.data, current: params?.current || 1, total: 21, storyboardNavigation: navigation,
+      storyboards: params?.current === 2
+        ? [{ ...response.data.storyboards[0], id: 121, shotNo: 21, storyboardNo: 21 }]
+        : [response.data.storyboards[0]],
+    } }));
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '跳转到分镜21' }));
+    await waitFor(() => expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, { episodeNo: 1, current: 2, pageSize: 20 }));
+    await waitFor(() => expect(document.getElementById('storyboard-121')).toHaveFocus());
+    expect(screen.getByRole('button', { name: '跳转到分镜21' })).toHaveAttribute('aria-current', 'location');
+    expect(screen.getByRole('textbox', { name: '分镜21视频提示词' })).toBeInTheDocument();
+  });
+
+  it('previews chronological video versions and changes the current binding without reordering them', async () => {
+    const versions = [
+      { id: 902, taskId: 92, storyboardId: 101, videoUrl: '/new.mp4', coverUrl: '/new.jpg', status: 'ACTIVE', createdAt: '2026-03-01', isSelected: false },
+      { id: 901, taskId: 91, storyboardId: 101, videoUrl: '/middle.mp4', coverUrl: '/middle.jpg', status: 'ACTIVE', createdAt: '2026-02-01', isSelected: false },
+      { id: 900, taskId: 90, storyboardId: 101, videoUrl: '/old.mp4', coverUrl: '/old.jpg', status: 'ACTIVE', createdAt: '2026-01-01', isSelected: true },
+    ];
+    const response = await mocks.queryStoryboardWorkspace();
+    setupWorkspaceResponse({ storyboards: [{ ...response.data.storyboards[0], currentVideoResultId: 900, currentVideoUrl: '/old.mp4' }] });
+    mocks.queryStoryboardMedia.mockResolvedValue({ data: { imageTasks: [], voiceTasks: [], assetVisuals: [],
+      videoTasks: [{ id: 90, storyboardId: 101, status: 'SUCCEEDED', results: [versions[2]] }],
+      videoHistory: [{ storyboardId: 101, data: versions, current: 1, pageSize: 8, total: 3 }],
+    } });
+    mocks.bindAiVideoResultToStoryboard.mockResolvedValue({ data: { ...versions[0], isSelected: true } });
+    render(<ProductionWorkbench />);
+    const strip = await screen.findByRole('region', { name: '分镜1视频版本' });
+    const versionOrder = () => within(strip).getAllByRole('button', { name: /预览分镜1视频版本/ })
+      .map((button) => button.getAttribute('aria-label'));
+    expect(versionOrder()).toEqual(['预览分镜1视频版本902', '预览分镜1视频版本901', '预览分镜1视频版本900']);
+    expect(within(strip).getByText('当前分镜').closest('button')).toHaveAttribute('aria-label', '预览分镜1视频版本900');
+    fireEvent.click(within(strip).getByRole('button', { name: '预览分镜1视频版本902' }));
+    expect(mocks.bindAiVideoResultToStoryboard).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '播放分镜1成片预览' }));
+    await waitFor(() => expect(screen.getByLabelText('分镜1成片预览')).toHaveAttribute('src', '/new.mp4'));
+    fireEvent.click(screen.getByRole('button', { name: '设为当前分镜视频' }));
+    await waitFor(() => expect(mocks.bindAiVideoResultToStoryboard).toHaveBeenCalledWith(1, 902));
+    expect(within(strip).getByText('当前分镜').closest('button')).toHaveAttribute('aria-label', '预览分镜1视频版本902');
+    expect(versionOrder()).toEqual(['预览分镜1视频版本902', '预览分镜1视频版本901', '预览分镜1视频版本900']);
+  });
+
   it('uses batch current shot visuals without requesting asset candidate histories', async () => {
     setupWorkspaceResponse({ storyboards: [{
       id: 301, shotNo: 1, episodeNo: 1, scene: '停车场', characters: '', visualDescription: '镜头', durationSeconds: 5,
@@ -855,7 +935,190 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => expect(editor.querySelector('[data-source-id="33"]')).not.toBeNull());
     expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
     expect(editor.querySelector('[data-unbound-reference="手机"]')).not.toBeNull();
-    expect(screen.getAllByRole('button', { name: '引用素材 停车场主形象' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '引用素材 停车场 / 停车场主形象' }).length).toBeGreaterThan(0);
+  });
+
+  it('loads another project asset from the prompt picker and inserts its named image reference', async () => {
+    const variant = (assetId: number, id: number, usable = true) => ({
+      id, assetId, assetType: 'CHARACTER', name: '默认形态', primary: true,
+      generationStatus: usable ? 'COMPLETED' : 'NOT_STARTED', usable,
+      currentImageResultId: usable ? id + 1000 : null,
+      currentImageUrl: usable ? `/original-${id}.png` : null,
+      currentImageThumbnailUrl: usable ? `/thumb-${id}.png` : null,
+    });
+    setupWorkspaceResponse({
+      characters: [{ id: 11, name: '王大山' }, { id: 12, name: '黑猫' }],
+      scenes: [{ id: 21, name: '王大山家' }],
+      props: [{ id: 31, name: '床边的衣服' }],
+      storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, characters: '王大山',
+        scene: '', props: '', visualDescription: '王大山看着黑猫', durationSeconds: 5,
+        videoPrompt: '镜头', promptDocument: { version: 2, nodes: [{ type: 'text', text: '镜头' }] } }],
+    });
+    mocks.queryStoryboardMedia.mockResolvedValue({ data: {
+      imageTasks: [], videoTasks: [], voiceTasks: [], assetVisuals: [{ key: 'CHARACTER:11',
+        visual: { summaryOnly: true, variants: [variant(11, 111)], variantCount: 1,
+          episodeBindings: [], generationSummary: {} } }],
+    } });
+    mocks.queryAssetVisualWorkspace.mockImplementation(async (_project, _type, assetId, params) => ({ data: {
+      variants: params.current === 2 ? [variant(assetId, 123)] : [variant(assetId, 121), variant(assetId, 122, false)],
+      variantCount: 21, total: 21, current: params.current, pageSize: 20,
+      episodeBindings: [], generationSummary: {},
+    } }));
+    render(<ProductionWorkbench />);
+
+    await screen.findAllByRole('button', { name: '引用素材 王大山 / 默认形态' });
+    expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
+    const picker = screen.getAllByLabelText('分镜1参考图项目资产')[0];
+    expect(within(picker).getByRole('option', { name: '角色 · 黑猫' })).toBeInTheDocument();
+    expect(within(picker).getByRole('option', { name: '场景 · 王大山家' })).toBeInTheDocument();
+    expect(within(picker).getByRole('option', { name: '道具 · 床边的衣服' })).toBeInTheDocument();
+    fireEvent.change(picker, { target: { value: 'CHARACTER:12' } });
+
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledWith(
+      1, 'CHARACTER', 12, { current: 1, pageSize: 20, selectedVariantId: undefined },
+    ));
+    const choices = await screen.findAllByRole('button', { name: '引用素材 黑猫 / 默认形态' });
+    expect(choices.some((button) => button.hasAttribute('disabled'))).toBe(true);
+    const ready = choices.find((button) => !button.hasAttribute('disabled'));
+    if (!ready) throw new Error('Expected a usable reference image');
+    await waitFor(() => expect(within(ready).getByRole('img')).toHaveAttribute('src', '/thumb-121.png'));
+    fireEvent.click(ready);
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(
+      1, 301, expect.objectContaining({ promptDocument: expect.objectContaining({ nodes: expect.arrayContaining([
+        expect.objectContaining({ type: 'mention', mediaType: 'IMAGE', sourceType: 'ASSET_VISUAL_VARIANT',
+          sourceId: 121, assetType: 'CHARACTER', assetId: 12, variantId: 121, displayName: '黑猫 / 默认形态' }),
+      ]) }) }),
+    ));
+    const editor = screen.getByRole('textbox', { name: '分镜1视频提示词' });
+    const chip = editor.querySelector('[data-source-id="121"]');
+    expect(chip).toHaveAttribute('contenteditable', 'false');
+    expect(chip?.querySelector('img')).toHaveAttribute('src', '/thumb-121.png');
+    expect(chip).toHaveTextContent('黑猫 / 默认形态');
+    fireEvent.input(editor);
+    fireEvent.blur(editor);
+    await waitFor(() => {
+      const saved = mocks.updateStoryboard.mock.calls.at(-1)?.[2].promptDocument;
+      expect(saved.nodes).toContainEqual(expect.objectContaining({ sourceId: 121, displayName: '黑猫 / 默认形态' }));
+      expect(JSON.stringify(saved)).not.toMatch(/thumb-121|original-121|<img/);
+    });
+    fireEvent.error(chip?.querySelector('img') as HTMLImageElement);
+    expect(chip?.querySelector('img')).toBeNull();
+    expect(chip).toHaveTextContent('黑猫 / 默认形态');
+    fireEvent.click(screen.getAllByRole('button', { name: '加载更多形态' })[0]);
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledWith(
+      1, 'CHARACTER', 12, { current: 2, pageSize: 20, selectedVariantId: undefined },
+    ));
+  });
+
+  it('restores saved prompt image chips without rebuilding the editing text when metadata arrives', async () => {
+    let resolveVisual!: (value: any) => void;
+    const visualResponse = new Promise((resolve) => { resolveVisual = resolve; });
+    setupWorkspaceResponse({
+      scenes: [{ id: 21, name: '酒店后厨' }],
+      storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, characters: '', scene: '', props: '',
+        visualDescription: '厨师做菜', durationSeconds: 5, videoPrompt: '参考酒店后厨-夜 大图，保持灯光一致。',
+        promptDocument: { version: 2, nodes: [
+          { type: 'text', text: '参考' },
+          { type: 'mention', mediaType: 'IMAGE', sourceType: 'ASSET_VISUAL_VARIANT',
+            sourceId: 39, assetType: 'SCENE', assetId: 21, variantId: 39, displayName: '酒店后厨-夜 大图' },
+          { type: 'text', text: '，保持灯光一致。' },
+        ] } }],
+    });
+    mocks.queryStoryboardMedia.mockResolvedValue({ data: { imageTasks: [], videoTasks: [], voiceTasks: [], assetVisuals: [] } });
+    mocks.queryAssetVisualWorkspace.mockReturnValue(visualResponse);
+    render(<ProductionWorkbench />);
+    const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    const originalText = editor.firstChild;
+    const chip = editor.querySelector('[data-source-id="39"]');
+    expect(chip?.querySelector('img')).toBeNull();
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledWith(
+      1, 'SCENE', 21, { current: 1, pageSize: 1, selectedVariantId: 39 },
+    ));
+    await act(async () => resolveVisual({ data: {
+      variantCount: 30, current: 1, pageSize: 1, total: 30, variants: [],
+      selectedVariant: { id: 39, assetId: 21, assetType: 'SCENE', name: '夜 大图', usable: true,
+        currentImageResultId: 139, currentImageUrl: '/kitchen-original.png', currentImageThumbnailUrl: '/kitchen-thumb.png' },
+      episodeBindings: [], generationSummary: {},
+    } }));
+    await waitFor(() => expect(chip?.querySelector('img')).toHaveAttribute('src', '/kitchen-thumb.png'));
+    expect(editor.firstChild).toBe(originalText);
+    expect(editor.querySelector('[data-source-id="39"]')).toBe(chip);
+    expect(editor).toHaveTextContent('参考酒店后厨-夜 大图，保持灯光一致。');
+    chip?.remove();
+    fireEvent.input(editor);
+    fireEvent.blur(editor);
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenLastCalledWith(1, 301,
+      expect.objectContaining({ promptDocument: { version: 2, nodes: [{ type: 'text', text: '参考，保持灯光一致。' }] } }),
+    ));
+  });
+
+  it.each(['@', '＠'])('opens the inline reference picker for %s and replaces it at the caret', async (trigger) => {
+    setupWorkspaceResponse({
+      scenes: [{ id: 21, name: '厨房', visual: { variantCount: 1, variants: [
+        { id: 33, assetType: 'SCENE', assetId: 21, name: '夜景', primary: true, usable: true,
+          currentImageResultId: 77, currentImageUrl: '/kitchen.png', currentImageThumbnailUrl: '/kitchen-thumb.png' },
+      ], generationSummary: {}, episodeBindings: [] } }],
+      storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, characters: '', scene: '厨房', props: '',
+        visualDescription: '做饭', durationSeconds: 5, videoPrompt: '前文后文',
+        promptDocument: { version: 2, nodes: [{ type: 'text', text: '前文后文' }] } }],
+    });
+    render(<ProductionWorkbench />);
+    const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    await screen.findAllByRole('button', { name: '引用素材 厨房 / 夜景' });
+    editor.focus();
+    if (trigger === '＠') fireEvent.compositionStart(editor);
+    editor.textContent = `前文${trigger}后文`;
+    const range = document.createRange();
+    range.setStart(editor.firstChild as Node, 3);
+    range.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.input(editor, { data: trigger, inputType: 'insertText', isComposing: trigger === '＠' });
+    if (trigger === '＠') {
+      expect(screen.queryByRole('dialog', { name: '分镜1视频提示词引用素材' })).not.toBeInTheDocument();
+      fireEvent.compositionEnd(editor, { data: trigger });
+    }
+    const picker = await screen.findByRole('dialog', { name: '分镜1视频提示词引用素材' });
+    fireEvent.blur(editor);
+    expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+    fireEvent.click(within(picker).getByRole('button', { name: '引用素材 厨房 / 夜景' }));
+    expect(screen.queryByRole('dialog', { name: '分镜1视频提示词引用素材' })).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent('前文厨房 / 夜景后文');
+    const chip = editor.querySelector('[data-source-id="33"]');
+    expect(chip?.querySelector('img')).toHaveAttribute('src', '/kitchen-thumb.png');
+    const caret = window.getSelection()?.getRangeAt(0);
+    expect(caret?.startContainer).toBe(editor);
+    expect(editor.childNodes[(caret?.startOffset || 0) - 1]).toBe(chip);
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 301,
+      expect.objectContaining({ promptDocument: { version: 2, nodes: [
+        { type: 'text', text: '前文' },
+        expect.objectContaining({ type: 'mention', sourceId: 33, assetId: 21, variantId: 33 }),
+        { type: 'text', text: '后文' },
+      ] } }),
+    ));
+  });
+
+  it('dismisses the typed reference picker with Escape and preserves the literal at sign', async () => {
+    setupWorkspaceResponse({ storyboards: [{ id: 301, shotNo: 1, episodeNo: 1,
+      characters: '', scene: '', props: '', visualDescription: '镜头', durationSeconds: 5,
+      videoPrompt: '原文', promptDocument: { version: 2, nodes: [{ type: 'text', text: '原文' }] },
+    }] });
+    render(<ProductionWorkbench />);
+    const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    editor.textContent = '原文@';
+    const range = document.createRange();
+    range.setStart(editor.firstChild as Node, 3);
+    range.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.input(editor, { data: '@', inputType: 'insertText' });
+    const picker = await screen.findByRole('dialog', { name: '分镜1视频提示词引用素材' });
+    fireEvent.keyDown(picker, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '分镜1视频提示词引用素材' })).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent('原文@');
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 301,
+      expect.objectContaining({ promptDocument: { version: 2, nodes: [{ type: 'text', text: '原文@' }] } }),
+    ));
   });
 
   it('adds and selects independent asset variants through one cascader', async () => {
@@ -1650,7 +1913,7 @@ describe('ProductionWorkbench script page', () => {
     });
   });
 
-  it('expands the selected episode formal summary details', async () => {
+  it('opens the complete episode summary, highlights and ending hook in a details modal', async () => {
     setupWorkspaceResponse({ episodes: [{
       episodeId: 1001,
       episodeNo: 1,
@@ -1667,10 +1930,21 @@ describe('ProductionWorkbench script page', () => {
       },
     }] });
     render(<ProductionWorkbench />);
+    await screen.findByText('第一集概要');
+    expect(screen.queryByRole('dialog', { name: '本集详情' })).not.toBeInTheDocument();
+    expect(screen.queryByText('后备箱成为关键线索')).not.toBeInTheDocument();
+    expect(screen.queryByText('车内传来异响')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '查看本集详情' }));
 
-    expect(screen.getByText('后备箱成为关键线索')).toBeInTheDocument();
-    expect(screen.getByText('车内传来异响')).toBeInTheDocument();
+    const details = screen.getByRole('dialog', { name: '本集详情' });
+    expect(within(details).getByText('第一集概要')).toBeInTheDocument();
+    expect(within(details).getByText('关键剧情节点')).toBeInTheDocument();
+    expect(within(details).getByText('后备箱成为关键线索')).toBeInTheDocument();
+    expect(within(details).getByText('车内传来异响')).toBeInTheDocument();
+    fireEvent.click(within(details).getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('dialog', { name: '本集详情' })).not.toBeInTheDocument();
+    expect(screen.queryByText('后备箱成为关键线索')).not.toBeInTheDocument();
+    expect(screen.getByText('第一集概要')).toBeInTheDocument();
   });
 
   it('switches the main preview from video to the selected reference image', async () => {
@@ -1681,6 +1955,20 @@ describe('ProductionWorkbench script page', () => {
       'src',
       '/shot-101-first-thumb.png',
     ));
+  });
+
+  it('shows the video empty state by default while keeping explicit first-frame preview available', async () => {
+    setupWorkspaceResponse({ videoTasks: [], storyboards: [{
+      id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5,
+      characters: '', scene: '', props: '', videoPrompt: '镜头',
+      firstFrameUrl: '/first-frame.png', firstFrameThumbnailUrl: '/first-frame-thumb.png',
+    }] });
+    render(<ProductionWorkbench />);
+    expect(await screen.findByText('请先完成分镜视频生成')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '播放分镜1成片预览' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看分镜1首帧' }));
+    expect(await screen.findByRole('img', { name: '分镜1主预览' })).toHaveAttribute('src', '/first-frame-thumb.png');
+    expect(screen.queryByText('请先完成分镜视频生成')).not.toBeInTheDocument();
   });
 
   it('uses the selected episode formal summary instead of demo or legacy content', async () => {
@@ -1920,7 +2208,7 @@ describe('ProductionWorkbench script page', () => {
     });
   });
 
-  it('submits all active episodes and shows separate batch outcome totals', async () => {
+  it('shows existing storyboard batch totals without exposing the removed batch generation button', async () => {
     const batch = {
       id: 88,
       projectId: 1,
@@ -1938,17 +2226,12 @@ describe('ProductionWorkbench script page', () => {
       items: [],
       createdAt: '2026-09-05T19:00:00',
     };
-    mocks.createStoryboardBatch.mockResolvedValue({ data: batch });
+    mocks.queryLatestStoryboardBatch.mockResolvedValue({ data: batch });
     render(<ProductionWorkbench />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /批量生成分镜/ }));
-
-    await waitFor(() => {
-      expect(mocks.createStoryboardBatch).toHaveBeenCalledWith(1, {
-        episodeIds: [1001, 1002],
-      });
-    });
-    expect(screen.getByText('成功 1 集')).toBeInTheDocument();
+    expect(await screen.findByText('成功 1 集')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /批量生成分镜/ })).not.toBeInTheDocument();
+    expect(mocks.createStoryboardBatch).not.toHaveBeenCalled();
     expect(screen.getByText('有告警 1 集')).toBeInTheDocument();
     expect(screen.getByText('失败 1 集')).toBeInTheDocument();
     expect(screen.getByText('业务调用 3 次')).toBeInTheDocument();
@@ -2049,6 +2332,8 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
 
     expect(await screen.findByText('生成成功，有 1 条质量告警')).toBeInTheDocument();
+    expect(screen.queryByText('后端规范化 5 项')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看本集详情' }));
     expect(screen.getByText('后端规范化 5 项')).toBeInTheDocument();
     expect(screen.getByText('派生声音 3 条')).toBeInTheDocument();
     expect(screen.getByText('来源分类告警 1 条')).toBeInTheDocument();
@@ -2390,6 +2675,11 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: /批量生成视频/ }),
     );
+    const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
+    await within(picker).findByRole('checkbox', { name: '选择分镜1' });
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    fireEvent.click(within(picker).getByRole('button', { name: '全选' }));
+    fireEvent.click(within(picker).getByRole('button', { name: '生成所选视频' }));
 
     await waitFor(() => {
       expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(2);
@@ -2401,6 +2691,115 @@ describe('ProductionWorkbench script page', () => {
         expect.anything(),
       );
     });
+    expect(within(picker).getByRole('checkbox', { name: '选择分镜1' })).toBeChecked();
+    expect(within(picker).getByRole('checkbox', { name: '选择分镜2' })).not.toBeChecked();
+  });
+
+  it('estimates and creates videos only for checked storyboards', async () => {
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: /批量生成视频/ }));
+    const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
+    await within(picker).findByRole('checkbox', { name: '选择分镜2' });
+    expect(within(picker).getByRole('button', { name: '生成所选视频' })).toBeDisabled();
+    expect(mocks.confirmPointEstimates).not.toHaveBeenCalled();
+    fireEvent.click(within(picker).getByRole('checkbox', { name: '选择分镜2' }));
+    fireEvent.click(within(picker).getByRole('button', { name: '生成所选视频' }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(1));
+    expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1, expect.objectContaining({ storyboardId: 102 }), true);
+    expect(mocks.confirmPointEstimates).toHaveBeenCalledWith([
+      expect.objectContaining({ data: expect.objectContaining({ storyboardId: 102 }) }),
+    ]);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '批量生成视频' })).not.toBeInTheDocument());
+  });
+
+  it('disables missing references and excludes them from select all, while cancel submits nothing', async () => {
+    const response = await mocks.queryStoryboardWorkspace();
+    setupWorkspaceResponse({ storyboards: [response.data.storyboards[0], {
+      id: 102, shotNo: 2, episodeNo: 1, characters: '', scene: '', props: '',
+      visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头',
+      promptDocument: { version: 2, nodes: [{ type: 'text', text: '镜头' }] },
+    }] });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: /批量生成视频/ }));
+    const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
+    expect(await within(picker).findByRole('checkbox', { name: '选择分镜2' })).toBeDisabled();
+    expect(within(picker).getByText('请先为分镜绑定至少一张可用的参考图片')).toBeInTheDocument();
+    fireEvent.click(within(picker).getByRole('button', { name: '全选' }));
+    expect(within(picker).getByRole('checkbox', { name: '选择分镜1' })).toBeChecked();
+    expect(within(picker).getByRole('checkbox', { name: '选择分镜2' })).not.toBeChecked();
+    fireEvent.click(within(picker).getByRole('button', { name: '取消全选' }));
+    expect(within(picker).getByRole('button', { name: '生成所选视频' })).toBeDisabled();
+    fireEvent.click(within(picker).getByRole('button', { name: '取消' }));
+    expect(mocks.confirmPointEstimates).not.toHaveBeenCalled();
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+  });
+
+  it('keeps the batch selection when the point estimate is cancelled', async () => {
+    mocks.confirmPointEstimates.mockRejectedValueOnce(new PointEstimateCancelledError());
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: /批量生成视频/ }));
+    const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
+    fireEvent.click(await within(picker).findByRole('checkbox', { name: '选择分镜1' }));
+    fireEvent.click(within(picker).getByRole('button', { name: '生成所选视频' }));
+    await waitFor(() => expect(mocks.confirmPointEstimates).toHaveBeenCalledTimes(1));
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    expect(picker).toBeInTheDocument();
+    expect(within(picker).getByRole('checkbox', { name: '选择分镜1' })).toBeChecked();
+  });
+
+  it('does not submit duplicate batches while the point estimate confirmation is pending', async () => {
+    let confirmEstimate!: (value: unknown) => void;
+    mocks.confirmPointEstimates.mockReturnValueOnce(new Promise((resolve) => { confirmEstimate = resolve; }));
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: /批量生成视频/ }));
+    const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
+    fireEvent.click(await within(picker).findByRole('checkbox', { name: '选择分镜1' }));
+    const submit = within(picker).getByRole('button', { name: '生成所选视频' });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    expect(mocks.confirmPointEstimates).toHaveBeenCalledTimes(1);
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    await act(async () => confirmEstimate({ estimatedPoints: 10 }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(1));
+  });
+
+  it('ignores a batch candidate page that arrives after the selection modal is cancelled', async () => {
+    render(<ProductionWorkbench />);
+    await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    let resolvePage!: (value: any) => void;
+    mocks.queryStoryboardWorkspace.mockReturnValueOnce(new Promise((resolve) => { resolvePage = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: /批量生成视频/ }));
+    const picker = screen.getByRole('dialog', { name: '批量生成视频' });
+    expect(within(picker).getByText('正在加载本集分镜…')).toBeInTheDocument();
+    fireEvent.click(within(picker).getByRole('button', { name: '取消' }));
+    const mediaReads = mocks.queryStoryboardMedia.mock.calls.length;
+    await act(async () => resolvePage({ data: { storyboards: [], current: 1, pageSize: 20, total: 0 } }));
+    expect(screen.queryByRole('dialog', { name: '批量生成视频' })).not.toBeInTheDocument();
+    expect(mocks.queryStoryboardMedia).toHaveBeenCalledTimes(mediaReads);
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+  });
+
+  it('loads the rest of the active episode for batch selection without navigating away from the current page', async () => {
+    const response = await mocks.queryStoryboardWorkspace();
+    const first = response.data.storyboards[0];
+    const later = { ...first, id: 121, shotNo: 21, storyboardNo: 21 };
+    mocks.queryStoryboardWorkspace.mockImplementation(async (_projectId, params) => ({ data: {
+      ...response.data, current: params?.current || 1, total: 21,
+      storyboards: params?.current === 2 ? [later] : [first],
+    } }));
+    render(<ProductionWorkbench />);
+    await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    fireEvent.click(screen.getByRole('button', { name: /批量生成视频/ }));
+    const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
+    fireEvent.click(await within(picker).findByRole('checkbox', { name: '选择分镜21' }));
+    expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, { episodeNo: 1, current: 2, pageSize: 20 });
+    expect(mocks.queryStoryboardMedia).toHaveBeenCalledWith(1, [101, 121]);
+    expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toBeInTheDocument();
+    fireEvent.click(within(picker).getByRole('button', { name: '生成所选视频' }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(
+      1, expect.objectContaining({ storyboardId: 121 }), true,
+    ));
+    expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(1);
   });
 
   it('inserts typed image video and audio references from the existing material controls', async () => {
@@ -2492,7 +2891,7 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
 
     await screen.findByRole('textbox', { name: '分镜1视频提示词' });
-    fireEvent.click(screen.getAllByRole('button', { name: '引用素材 李慧主形态' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '引用素材 李慧 / 李慧主形态' })[0]);
     fireEvent.click(screen.getAllByRole('button', { name: '引用素材 分镜1视频' })[0]);
     fireEvent.click(screen.getAllByRole('button', { name: '引用素材 旁白音频' })[0]);
 
@@ -2585,7 +2984,7 @@ describe('ProductionWorkbench script page', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('暂无分镜，请先完成剧本分镜拆解'),
+        screen.getByText('请先完成分镜视频生成'),
       ).toBeInTheDocument();
     });
 
@@ -2597,7 +2996,7 @@ it('shows a persistent load error and retries instead of reporting no storyboard
   mocks.queryStoryboardWorkspace.mockRejectedValueOnce(new Error('Response status:500'));
   render(<ProductionWorkbench />);
   expect(await screen.findByRole('alert')).toHaveTextContent('分镜数据加载失败');
-  expect(screen.queryByText('暂无分镜，请先完成剧本分镜拆解')).not.toBeInTheDocument();
+  expect(screen.queryByText('请先完成分镜视频生成')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '重新加载分镜' }));
   expect(await screen.findByRole('textbox', { name: '分镜1视频提示词' })).toBeInTheDocument();
   await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());

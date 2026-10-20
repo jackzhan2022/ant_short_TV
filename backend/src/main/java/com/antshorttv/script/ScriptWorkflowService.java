@@ -642,14 +642,23 @@ public class ScriptWorkflowService {
         }
         int selectedEpisode = episodeNo == null ? navigation.stream().findFirst().map(ScriptEpisodeNavigation::episodeNo)
             .orElse(1) : episodeNo;
-        Long total = jdbcTemplate.queryForObject("""
-            select count(*) from storyboard where tenant_id = ? and project_id = ? and episode_no = ? and deleted_at is null
-            """, Long.class, tenantId, projectId, selectedEpisode);
+        List<StoryboardNavigationResponse> storyboardNavigation = jdbcTemplate.query("""
+            select s.id, s.shot_no, coalesce(s.storyboard_no, s.shot_no) storyboard_no,
+                   (nullif(trim(s.current_video_url), '') is not null or exists (
+                     select 1 from ai_video_result r join ai_video_task t on t.id = r.task_id
+                       and t.tenant_id = r.tenant_id and t.project_id = r.project_id and t.deleted_at is null
+                      where r.storyboard_id = s.id and r.tenant_id = s.tenant_id and r.project_id = s.project_id
+                        and r.status = 'ACTIVE'
+                   )) has_video
+              from storyboard s where s.tenant_id = ? and s.project_id = ? and s.episode_no = ? and s.deleted_at is null
+             order by s.shot_no, s.id
+            """, (rs, rowNum) -> new StoryboardNavigationResponse(rs.getLong("id"), rs.getInt("shot_no"),
+                rs.getInt("storyboard_no"), rs.getBoolean("has_video")), tenantId, projectId, selectedEpisode);
         List<StoryboardResponse> storyboards = storyboardPage(tenantId, projectId, selectedEpisode,
             safePageSize, (safeCurrent - 1) * safePageSize);
         return new StoryboardWorkspacePageResponse(projectId,
             navigation.stream().map(ScriptEpisodeSummaryResponse::from).toList(), selectedEpisode, safeCurrent,
-            safePageSize, total == null ? 0L : total, storyboards);
+            safePageSize, (long) storyboardNavigation.size(), storyboards, storyboardNavigation);
     }
 
 

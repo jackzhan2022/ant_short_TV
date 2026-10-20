@@ -1,6 +1,7 @@
 package com.antshorttv.script;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -25,11 +26,14 @@ class ScriptAnalysisTaskServiceTest {
     @Mock
     private ScriptAnalysisStageMapper stageMapper;
 
+    @Mock
+    private com.antshorttv.execution.AiExecutionService executionService;
+
     private ScriptAnalysisTaskService service;
 
     @BeforeEach
     void setUp() {
-        service = new ScriptAnalysisTaskService(taskMapper, stageMapper);
+        service = new ScriptAnalysisTaskService(taskMapper, stageMapper, executionService);
     }
 
     @Test
@@ -117,6 +121,26 @@ class ScriptAnalysisTaskServiceTest {
         assertThat(stage3.getErrorCode()).isNull();
         assertThat(stage4.getStatus()).isEqualTo("PENDING");
         assertThat(stage4.getCurrentAction()).isEqualTo("等待上一阶段完成");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"PENDING", "RUNNING"})
+    void refusesToResetCompletedBusinessStateWhileItsExecutionIsStillActive(String status) {
+        ScriptAnalysisTaskEntity task = new ScriptAnalysisTaskEntity();
+        task.setId(88L);
+        task.setExecutionId(101L);
+        task.setStatus("COMPLETED");
+        var execution = new com.antshorttv.execution.AiExecutionTaskEntity();
+        execution.status = status;
+        when(taskMapper.selectOne(any())).thenReturn(task);
+        when(executionService.requireTaskForUpdate(101L)).thenReturn(execution);
+
+        assertThatThrownBy(() -> service.retryStage(1L, 2L, "EPISODE_SUMMARY"))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("结算");
+        assertThat(task.getStatus()).isEqualTo("COMPLETED");
+        verify(stageMapper, never()).selectByTask(any());
+        verify(taskMapper, never()).updateById(any(ScriptAnalysisTaskEntity.class));
     }
 
     private ScriptEntity script(long id) {

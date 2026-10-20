@@ -27,13 +27,14 @@ class StoryboardAssetReferenceConcurrencyTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager transactions;
     @Autowired private StoryboardAssetReferenceRepository repository;
+    @Autowired private StoryboardAssetReferenceLegacyResolver legacyResolver;
 
     @Test
     void saveWaitsForImageCompletionAndPersistsReadyStatus() throws Exception {
         ProjectPermissionGuard guard = mock(ProjectPermissionGuard.class);
         when(guard.require(9901L, 9902L, "STORYBOARD:EDIT"))
             .thenReturn(new TenantContext(1L, 9901L, 1L, "OWNER"));
-        StoryboardAssetReferenceService service = new StoryboardAssetReferenceService(guard, jdbc, repository);
+        StoryboardAssetReferenceService service = new StoryboardAssetReferenceService(guard, jdbc, repository, legacyResolver);
         TransactionTemplate transaction = new TransactionTemplate(transactions);
         transaction.executeWithoutResult(ignored -> {
             jdbc.update("insert into tenant (id,code,name,type,status,created_at,updated_at) values (9901,'race-a','A','TEAM','ACTIVE',now(),now())");

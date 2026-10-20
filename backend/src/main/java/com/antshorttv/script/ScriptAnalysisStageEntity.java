@@ -1,6 +1,8 @@
 package com.antshorttv.script;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
@@ -17,11 +19,15 @@ public class ScriptAnalysisStageEntity {
     private Integer completedUnits;
     private Integer totalUnits;
     private String currentAction;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String errorCode;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String errorMessage;
     private Integer attemptNo;
     private Boolean retryable;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime startedAt;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime finishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

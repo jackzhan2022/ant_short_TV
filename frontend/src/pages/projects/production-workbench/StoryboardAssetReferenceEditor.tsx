@@ -16,15 +16,17 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   AudioOutlined,
+  CheckOutlined,
   DeleteOutlined,
   HolderOutlined,
   PictureOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
-import { Button, Cascader, Empty, Flex, Spin, Tag, Tooltip, Typography } from 'antd';
+import { Button, Cascader, Empty, Flex, Input, Spin, Tag, Tooltip, Typography } from 'antd';
 import LazyMediaImage from '@/components/LazyMediaImage';
-import type { CSSProperties } from 'react';
+import { type CSSProperties, useState } from 'react';
 import type {
   CharacterAsset,
   PropAsset,
@@ -36,6 +38,15 @@ import type {
 type Asset = CharacterAsset | SceneAsset | PropAsset;
 type AssetType = StoryboardAssetReference['assetType'];
 type ClientKeyedReference = StoryboardAssetReference & { clientKey?: string };
+type MaterialOption = {
+  label: string;
+  caption: string;
+  value: number;
+  thumbnail?: string | null;
+  variant?: VisualVariant;
+  isLeaf?: boolean;
+  children?: MaterialOption[];
+};
 
 let nextDraftReferenceKey = 0;
 
@@ -115,13 +126,24 @@ export const reorderReferencesWithinType = (
     reference.assetType === assetType ? reordered[cursor++] : reference));
 };
 
-const cascaderOptionsFor = (assets: Asset[]) => assets.map((asset) => {
+const variantCaption = (assetName: string, variantName: string) =>
+  (variantName.startsWith(assetName)
+    ? variantName.slice(assetName.length).replace(/^[\s\-–—·/：:]+/, '').trim()
+    : variantName) || variantName;
+
+const cascaderOptionsFor = (assets: Asset[], canLoad: boolean): MaterialOption[] => assets.map((asset) => {
   const variants = variantsFor(assets, asset.id);
   return {
     label: asset.name,
+    caption: asset.name,
     value: asset.id,
+    thumbnail: asset.mainImageThumbnailUrl || variants.find((variant) => variant.primary)?.currentImageThumbnailUrl,
+    isLeaf: !variants.length && !(canLoad && (!asset.visual || asset.visual.summaryOnly)),
     ...(variants.length ? {
-      children: variants.map((variant) => ({ label: variant.name, value: variant.id })),
+      children: variants.map((variant) => ({
+        label: variant.name, caption: variantCaption(asset.name, variant.name), value: variant.id,
+        thumbnail: variant.currentImageThumbnailUrl, variant,
+      })),
     } : {}),
   };
 });
@@ -166,6 +188,17 @@ function SortableAssetCard({
   ) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const [search, setSearch] = useState('');
+  const [loadingAssetId, setLoadingAssetId] = useState<number>();
+  const loadVariants = async (assetId: number, variantId?: number | null, current = 1) => {
+    if (!onLoadVariants) return;
+    setLoadingAssetId(assetId);
+    try {
+      await onLoadVariants(assetType, assetId, variantId, current, 20);
+    } finally {
+      setLoadingAssetId((loading) => loading === assetId ? undefined : loading);
+    }
+  };
   const image = imageFor(reference, assets);
   const asset = assets.find((candidate) => candidate.id === reference.assetId);
   const variant = reference.variantId != null
@@ -181,6 +214,34 @@ function SortableAssetCard({
   const value = reference.assetId
     ? [reference.assetId, ...(reference.variantId ? [reference.variantId] : [])]
     : undefined;
+  const renderOption = (option: MaterialOption, breadcrumb?: string) => {
+    const selected = option.variant ? option.value === reference.variantId : option.value === reference.assetId;
+    const status = option.variant && !option.variant.usable
+      ? option.variant.generationStatus === 'GENERATING' ? '生成中'
+        : option.variant.generationStatus === 'FAILED' ? '生成失败' : '待生成'
+      : undefined;
+    return (
+      <div className="storyboard-asset-picker-option" title={breadcrumb ? `${breadcrumb} / ${option.label}` : option.label}>
+        <LazyMediaImage
+          src={option.thumbnail || undefined}
+          alt={`${option.label}缩略图`}
+          width={32}
+          height={32}
+          preview={false}
+          placeholderFallback={<PictureOutlined />}
+          style={{ flexShrink: 0, borderRadius: 6 }}
+        />
+        <span className="storyboard-asset-picker-option-copy">
+          {breadcrumb ? <span className="storyboard-asset-picker-breadcrumb">{breadcrumb}</span> : null}
+          <span className="storyboard-asset-picker-option-name">{option.caption}</span>
+          {status ? <span className="storyboard-asset-picker-option-status">{status}</span> : null}
+        </span>
+        {loadingAssetId === option.value && !option.variant ? <Spin size="small" /> : null}
+        {option.variant?.primary ? <span className="storyboard-asset-picker-default">默认</span> : null}
+        {selected ? <CheckOutlined className="storyboard-asset-picker-check" aria-label="已选中" /> : null}
+      </div>
+    );
+  };
 
   return (
     <li
@@ -258,24 +319,67 @@ function SortableAssetCard({
           </Tooltip>
         </div>
       </div>
-      <Cascader
+      <Cascader<MaterialOption>
         className="storyboard-reference-cascader"
+        classNames={{ popup: { root: 'storyboard-asset-picker-popup' } }}
+        popupAlign={{ offset: [0, 0], htmlRegion: 'visible', overflow: { adjustX: 1, adjustY: 1, shiftX: true, shiftY: true } }}
         aria-label={`分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}资产形态`}
-        options={cascaderOptionsFor(assets)}
+        options={cascaderOptionsFor(assets, Boolean(onLoadVariants))}
         placeholder={reference.sourceName || `选择${labels[assetType]}及形态`}
         value={value}
         allowClear={false}
         changeOnSelect
-        showSearch
+        showSearch={{
+          searchValue: search,
+          onSearch: setSearch,
+          matchInputWidth: false,
+          filter: (input, path) => {
+            const text = path.map((option) => option.label).join(' ').toLocaleLowerCase();
+            return input.trim().toLocaleLowerCase().split(/\s+/).every((word) => text.includes(word));
+          },
+          render: (_input, path) => renderOption(path[path.length - 1], path.length > 1 ? path[0].label : undefined),
+        }}
+        optionRender={(option) => typeof option.label === 'string' ? renderOption(option) : option.label}
+        popupRender={(menus) => (
+          <div className="storyboard-asset-picker-panel">
+            <div className="storyboard-asset-picker-header">
+              <strong>选择{labels[assetType]}及形态</strong>
+              <span>{assets.length} 个{labels[assetType]}</span>
+            </div>
+            <div className="storyboard-asset-picker-search">
+              <Input
+                aria-label={`搜索分镜${storyboardNo}${labels[assetType]}${rowIndex + 1}资产形态`}
+                placeholder={`搜索${labels[assetType]}名称或形态`}
+                prefix={<SearchOutlined />}
+                allowClear
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+            {menus}
+            <div className="storyboard-asset-picker-footer">
+              {asset ? `当前：${asset.name}${variant ? ` / ${variantCaption(asset.name, variant.name)}` : ''}` : `请选择${labels[assetType]}`}
+            </div>
+          </div>
+        )}
         onOpenChange={(open) => {
+          if (!open) setSearch('');
           if (open && reference.assetId) {
-            void onLoadVariants?.(assetType, reference.assetId, reference.variantId);
+            void loadVariants(reference.assetId, reference.variantId);
           }
         }}
-        displayRender={(selectedLabels) => selectedLabels.join(' / ')}
+        displayRender={(selectedLabels) => {
+          // Cascader falls back to numeric IDs until the selected options load.
+          const assetName = asset?.name || reference.assetName || reference.sourceName
+            || String(selectedLabels[0] ?? '');
+          const variantName = variant?.name || reference.variantName
+            || (typeof selectedLabels[1] === 'string' ? selectedLabels[1] : undefined);
+          const name = variantName ? `${assetName} / ${variantCaption(assetName, variantName)}` : assetName;
+          return <span title={name}>{name}</span>;
+        }}
         onChange={(path) => {
           const [selectedAssetId, selectedVariantId] = path.map(Number);
-          void onLoadVariants?.(assetType, selectedAssetId, selectedVariantId);
+          void loadVariants(selectedAssetId, selectedVariantId);
           const asset = assets.find((candidate) => candidate.id === selectedAssetId);
           const variant = variantsFor(assets, selectedAssetId)
             .find((candidate) => candidate.id === selectedVariantId);

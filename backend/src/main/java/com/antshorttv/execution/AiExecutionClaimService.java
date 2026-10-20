@@ -39,16 +39,21 @@ public class AiExecutionClaimService {
         if (candidate == null || !AiExecutionStatus.PENDING.name().equals(candidate.status)) {
             return null;
         }
-        Long running = taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
-            .eq("tenant_id", candidate.tenantId)
-            .eq("status", AiExecutionStatus.RUNNING.name()));
-        if (running >= maxConcurrentPerTenant) {
-            return null;
-        }
-        Long modelId = candidate.resolvedModelId == null
-            ? candidate.requestedModelId : candidate.resolvedModelId;
-        if (modelId != null && modelCapacityReached(modelId)) {
-            return null;
+        boolean publication = "ai_image_generate".equals(candidate.scene)
+            && taskMapper.countImagePublication(executionId) == 1L;
+        if (!publication) {
+            Long running = taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
+                .eq("tenant_id", candidate.tenantId)
+                .eq("status", AiExecutionStatus.RUNNING.name())
+                .apply("not " + AiExecutionTaskMapper.IMAGE_PUBLICATION));
+            if (running >= maxConcurrentPerTenant) {
+                return null;
+            }
+            Long modelId = candidate.resolvedModelId == null
+                ? candidate.requestedModelId : candidate.resolvedModelId;
+            if (modelId != null && modelCapacityReached(modelId)) {
+                return null;
+            }
         }
         int updated = taskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
             .set("status", AiExecutionStatus.RUNNING.name())
@@ -99,6 +104,7 @@ public class AiExecutionClaimService {
             """, Integer.class, modelId);
         Long running = taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
             .eq("status", AiExecutionStatus.RUNNING.name())
+            .apply("not " + AiExecutionTaskMapper.IMAGE_PUBLICATION)
             .and(scope -> scope.eq("resolved_model_id", modelId)
                 .or(nested -> nested.isNull("resolved_model_id").eq("requested_model_id", modelId))));
         return running >= (limit == null ? maxConcurrentPerModel : limit);

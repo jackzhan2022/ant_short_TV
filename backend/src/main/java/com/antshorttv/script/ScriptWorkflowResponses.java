@@ -295,8 +295,11 @@ record StoryboardWorkspacePageResponse(
     Integer current,
     Integer pageSize,
     Long total,
-    List<StoryboardResponse> storyboards
+    List<StoryboardResponse> storyboards,
+    List<StoryboardNavigationResponse> storyboardNavigation
 ) {}
+
+record StoryboardNavigationResponse(Long id, Integer shotNo, Integer storyboardNo, boolean hasVideo) {}
 
 
 record ScriptGlobalUnderstandingResponse(
