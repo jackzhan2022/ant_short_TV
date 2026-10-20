@@ -23,7 +23,7 @@
 
 ## 线上结果
 
-- 当前发布：`/opt/antv/releases/20261020201711-a08a469-feedback`。
+- 本次发布：`/opt/antv/releases/20261020201711-a08a469-feedback`。
 - 上一发布：`/opt/antv/releases/20261020193024-4c60fea-episode-assets`，保留用于回滚。
 - 数据库及 Skill 备份：`/opt/antv/backups/20261020-feedback-performance-201143`；gzip、导出完成标记及 Skill 归档完整性检查通过。
 - 前后端上传文件 SHA-256 与本地一致，安装后再次验证 JAR 和首页校验值。
@@ -37,3 +37,7 @@ JAR SHA-256：`ed383b73c153bbd0c3ab0cb737036bdf6a7f511a9b8b0c986f87133e77cbed8e`
 首页 SHA-256：`3dc9a4cb6ecb885d70f72d10a3bed3d7bf39548ea7556b3f67f40791e8b5482b`。
 
 线上完整回执保存在本次发布目录的 `deployment-receipt.json` 和 `manifest.json`。原目录中的其他未提交改动保持原样。
+
+## 同日后续发布核验
+
+最终检查期间，另一项经用户授权的监控发布将线上切换到 `/opt/antv/releases/20261020202132-fc660c2-system-monitoring`，其上一版本即本次 `a08a469` 发布。已通过 Git 祖先关系确认 `fc660c210571201ff664d71afa4715f443450af8` 完整包含本次代码提交。等待该次重启结束后再次核验：服务 `active`，HTTPS 首页 200，当前用户、项目 52 和剧本页接口在未登录状态下均为预期 401。本次改动随合并后的发布继续在线。
