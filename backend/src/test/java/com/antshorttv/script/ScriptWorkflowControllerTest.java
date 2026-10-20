@@ -734,7 +734,7 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
     }
 
     @Test
-    void createsReanalyzesAndRetriesCompletedAnalysisWithoutRepeatingPaidCalls() throws Exception {
+    void retriesCompletedAnalysisReusingEpisodeCallsAndNormalizingTheNewBatch() throws Exception {
         String token = registerUser("13800013021", "Analysis Owner");
         Long tenantId = createTenant(token, "分析任务团队");
         Long ownerId = userIdByMobile("13800013021");
@@ -809,13 +809,13 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             Integer.class,tenantId,projectId)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
             "select count(*) from ai_workflow_agent_run where task_id=? and tenant_id=? and project_id=? and status='SUCCESS'",
-            Integer.class,analysisTaskId,tenantId,projectId)).isEqualTo(6);
+            Integer.class,analysisTaskId,tenantId,projectId)).isEqualTo(7);
         assertThat(jdbcTemplate.queryForObject(
             "select count(*) from ai_call_log where execution_id=? and attempt_id is not null",
-            Integer.class,executionId)).isEqualTo(6);
+            Integer.class,executionId)).isEqualTo(7);
         assertThat(jdbcTemplate.queryForObject(
             "select count(distinct idempotency_key) from ai_call_log where execution_id=?",
-            Integer.class,executionId)).isEqualTo(6);
+            Integer.class,executionId)).isEqualTo(7);
         assertThat(jdbcTemplate.queryForObject(
             "select settled_points from ai_point_reservation where execution_id=?",
             java.math.BigDecimal.class,executionId)).isPositive();
@@ -887,9 +887,10 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             select u.* from script_analysis_fanout_unit u join script_analysis_fanout_snapshot s on s.id=u.snapshot_id
              where s.task_id=? order by u.id
             """, analysisTaskId)).isEqualTo(completedUnits);
-        assertThat(jdbcTemplate.queryForObject("select count(*) from ai_call_log where execution_id=?", Integer.class, replacementId)).isZero();
-        assertThat(jdbcTemplate.queryForObject("select settled_points from ai_point_reservation where execution_id=?", java.math.BigDecimal.class, replacementId)).isZero();
-        assertThat(jdbcTemplate.queryForObject("select balance from team_point_account where tenant_id=?", java.math.BigDecimal.class, tenantId)).isEqualByComparingTo(balance);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from ai_call_log where execution_id=?", Integer.class, replacementId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from script_asset_normalization_snapshot where execution_id=? and status='SUCCEEDED'",Integer.class,replacementId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select settled_points from ai_point_reservation where execution_id=?", java.math.BigDecimal.class, replacementId)).isPositive();
+        assertThat(jdbcTemplate.queryForObject("select balance from team_point_account where tenant_id=?", java.math.BigDecimal.class, tenantId)).isLessThan(balance);
         assertThat(jdbcTemplate.queryForObject("select count(*) from ai_execution_task where business_type='SCRIPT_ANALYSIS_TASK' and business_id=?", Integer.class, analysisTaskId)).isEqualTo(2);
     }
 
@@ -1882,7 +1883,7 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
 
     private void configureStoryboardProviderWithOneFailure(Long tenantId,Long ownerId,Long episodeId) {
         Long modelId=jdbcTemplate.queryForObject("select id from ai_model where code=?",Long.class,"test-text-"+tenantId);
-        workflowAgents.create(new com.antshorttv.workflowagent.agent.WorkflowAgentCommand(
+        workflowAgents.update("short-drama-storyboard",workflowAgents.get("short-drama-storyboard").revision(),new com.antshorttv.workflowagent.agent.WorkflowAgentCommand(
             "short-drama-storyboard","Controlled storyboard","Controller retry","Save formal episode storyboards.",modelId,
             new java.math.BigDecimal("0.1"),4096,14,"ENABLED",List.of(),
             com.antshorttv.workflowagent.agent.StoryboardAgentBootstrap.TOOLS),ownerId);
@@ -1914,7 +1915,8 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             "short-drama-global-understanding",List.of("read_current_script","save_global_understanding"),
             "short-drama-episode-splitting",List.of("read_current_script","save_episode_splitting"),
             "short-drama-episode-summary",List.of("read_current_episode","save_episode_summary"),
-            "short-drama-asset-recognition",List.of("read_current_episode","save_episode_assets"));
+            "short-drama-asset-recognition",List.of("read_current_episode","save_episode_assets"),
+            "short-drama-asset-normalization",List.of("read_asset_normalization_inventory","save_asset_normalization"));
         contracts.forEach((code,tools) -> workflowAgents.update(code, workflowAgents.get(code).revision(),
             new com.antshorttv.workflowagent.agent.WorkflowAgentCommand(
             code,code,"Controller controlled Agent","Read then save formal data.",modelId,
@@ -1924,6 +1926,16 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             String terminal = request.tools().stream().map(com.antshorttv.ai.AiToolDefinition::code)
                 .filter(code -> code.startsWith("save_")).findFirst().orElseThrow();
             String payload = switch (terminal) {
+                case "save_asset_normalization" -> {
+                    var decision=objectMapper.createObjectNode();
+                    var groups=decision.putArray("groups");decision.putArray("splits");
+                    Map.of("CHARACTER","character_asset","SCENE","scene_asset","PROP","prop_asset").forEach((type,table) ->
+                        jdbcTemplate.queryForList("select id from "+table+" where tenant_id=? and deleted_at is null",Long.class,tenantId).forEach(id -> {
+                            var group=groups.addObject().put("assetType",type).put("retainId",id);
+                            group.putArray("memberIds").add(id);group.putArray("evidence");
+                        }));
+                    yield decision.toString();
+                }
                 case "save_global_understanding" -> """
                     {"schemaVersion":1,"content":{"logline":"主角归乡面对冲突","synopsis":"主角回到故乡，面对新的冲突。",
                     "genres":[],"themes":[],"worldSetting":"故乡","coreConflict":"归乡后的冲突","relationships":[],
@@ -1947,6 +1959,8 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             // Episode agents preload their trusted read on the server; script agents read explicitly.
             if (terminal.equals("save_global_understanding") || terminal.equals("save_episode_splitting"))
                 calls.add(new com.antshorttv.ai.AiToolCall("read","read_current_script","{}"));
+            if (terminal.equals("save_asset_normalization"))
+                calls.add(new com.antshorttv.ai.AiToolCall("read","read_asset_normalization_inventory","{}"));
             calls.add(new com.antshorttv.ai.AiToolCall("save",terminal,payload));
             return new com.antshorttv.ai.AiTextResponse(null,"controlled-"+java.util.UUID.randomUUID(),10,10,20,1L,
                 Map.of("mode","controlled-test"),"tool_calls",false,calls);
