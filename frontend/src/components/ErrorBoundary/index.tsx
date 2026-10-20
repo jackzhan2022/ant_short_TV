@@ -1,6 +1,7 @@
 import { getIntl } from '@umijs/max';
 import { Button, Card, Result } from 'antd';
 import React from 'react';
+import { reportFrontendError } from '@/utils/systemMonitoring';
 
 function isChunkLoadError(error: Error): boolean {
   return (
@@ -125,6 +126,7 @@ export default class ErrorBoundary extends React.Component<
   };
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    void reportFrontendError('FRONTEND_RENDER', error, undefined, info.componentStack || '');
     console.error('[ErrorBoundary]', error, info.componentStack);
   }
 

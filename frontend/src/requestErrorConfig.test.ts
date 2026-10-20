@@ -5,7 +5,10 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   warning: vi.fn(),
   open: vi.fn(),
+  report: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock('@/utils/systemMonitoring', () => ({ reportRequestFailure: mocks.report }));
 
 vi.mock('antd', () => ({
   message: {
@@ -29,6 +32,12 @@ describe('requestErrorConfig', () => {
     vi.clearAllMocks();
     localStorage.clear();
     document.cookie = 'XSRF-TOKEN=; Max-Age=0; path=/';
+  });
+
+  it('reports transport errors before a caller opts out of the default message handler', () => {
+    const error = { request: {}, message: 'network unavailable' };
+    expect(() => errorConfig.errorConfig?.errorHandler?.(error as any, { skipErrorHandler: true })).toThrow();
+    expect(mocks.report).toHaveBeenCalledWith(error);
   });
 
   it('uses cookie credentials and copies the CSRF cookie for unsafe requests', () => {

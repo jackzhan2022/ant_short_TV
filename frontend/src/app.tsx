@@ -5,6 +5,7 @@ import { App as AntdApp } from 'antd';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
+import SystemMonitoring from '@/components/SystemMonitoring';
 import { PointEstimateProvider } from '@/services/point-estimate';
 
 // Initialize dayjs plugins globally
@@ -255,6 +256,7 @@ export const request: RequestConfig = {
 export function rootContainer(container: React.ReactNode) {
   return (
     <>
+      <SystemMonitoring />
       <OfflineBanner />
       <AntdApp>
         <PointEstimateProvider>

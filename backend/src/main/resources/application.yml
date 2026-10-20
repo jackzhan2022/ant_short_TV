@@ -30,6 +30,15 @@ spring:
 app:
   public-base-url: ${APP_PUBLIC_BASE_URL:}
 
+monitoring:
+  enabled: ${MONITORING_ENABLED:false}
+  feishu-webhook-url: ${MONITORING_FEISHU_WEBHOOK_URL:}
+  feishu-secret: ${MONITORING_FEISHU_SECRET:}
+  environment: ${MONITORING_ENVIRONMENT:unknown}
+  instance-id: ${MONITORING_INSTANCE_ID:${HOSTNAME:${COMPUTERNAME:local}}}
+  max-events: ${MONITORING_MAX_EVENTS:10000}
+  include-ai-tasks: ${MONITORING_INCLUDE_AI_TASKS:true}
+
 auth:
   session:
     token-pepper: ${AUTH_TOKEN_PEPPER}
