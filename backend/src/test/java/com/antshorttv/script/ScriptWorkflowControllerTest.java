@@ -734,7 +734,7 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
     }
 
     @Test
-    void createsAndReanalyzesInitialScriptTasks() throws Exception {
+    void createsReanalyzesAndRetriesCompletedAnalysisWithoutRepeatingPaidCalls() throws Exception {
         String token = registerUser("13800013021", "Analysis Owner");
         Long tenantId = createTenant(token, "分析任务团队");
         Long ownerId = userIdByMobile("13800013021");
@@ -773,6 +773,11 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
         aiExecutionWorker.run(executionId);
         awaitExecutionTerminal(executionId);
 
+        assertThat(jdbcTemplate.queryForList("""
+            select u.error_code,u.error_message from script_analysis_fanout_unit u
+              join script_analysis_fanout_snapshot s on s.id=u.snapshot_id
+             where s.task_id=? and u.status='FAILED'
+            """, analysisTaskId)).isEmpty();
         assertThat(jdbcTemplate.queryForMap(
             "select status, error_code, error_message, "
                 + "(select count(*) from ai_execution_attempt where execution_id = ?) attempt_count "
@@ -823,6 +828,69 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             .andReturn();
         Long latestTaskId = readLong(current, "$.data.id");
         org.assertj.core.api.Assertions.assertThat(latestTaskId).isNotEqualTo(initialTaskId);
+
+        var completedTask = jdbcTemplate.queryForMap("select * from script_analysis_task where id=?", analysisTaskId);
+        var completedStages = jdbcTemplate.queryForList("select * from script_analysis_stage where task_id=? order by id", analysisTaskId);
+        var completedUnits = jdbcTemplate.queryForList("""
+            select u.* from script_analysis_fanout_unit u join script_analysis_fanout_snapshot s on s.id=u.snapshot_id
+             where s.task_id=? order by u.id
+            """, analysisTaskId);
+        var balance = jdbcTemplate.queryForObject("select balance from team_point_account where tenant_id=?",
+            java.math.BigDecimal.class, tenantId);
+        String retryUrl = "/api/projects/%d/script-analysis/current/retry/EPISODE_SUMMARY".formatted(projectId);
+
+        // Reservation failure must roll back both the domain reset and the replacement execution.
+        jdbcTemplate.update("update team_point_account set balance=0 where tenant_id=?", tenantId);
+        mockMvc.perform(post(retryUrl)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().is4xxClientError()).andExpect(jsonPath("$.errorCode", is("TEAM_POINTS_INSUFFICIENT")));
+        assertThat(jdbcTemplate.queryForMap("select * from script_analysis_task where id=?", analysisTaskId)).isEqualTo(completedTask);
+        assertThat(jdbcTemplate.queryForList("select * from script_analysis_stage where task_id=? order by id", analysisTaskId)).isEqualTo(completedStages);
+        jdbcTemplate.update("update team_point_account set balance=? where tenant_id=?", balance, tenantId);
+
+        jdbcTemplate.update("""
+            update script_analysis_stage set error_code='OLD_ERROR',error_message='old failure'
+             where task_id=? and stage_order>=3
+            """, analysisTaskId);
+        MvcResult retried = mockMvc.perform(post(retryUrl)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isAccepted()).andExpect(jsonPath("$.data.status", is("PENDING"))).andReturn();
+        Long replacementId = readLong(retried, "$.data.id");
+        assertThat(replacementId).isNotEqualTo(executionId);
+        assertThat(jdbcTemplate.queryForObject("select source_execution_id from ai_execution_task where id=?", Long.class, replacementId)).isEqualTo(executionId);
+        assertThat(jdbcTemplate.queryForObject("select completed_at from script_analysis_task where id=?", java.time.LocalDateTime.class, analysisTaskId)).isNull();
+        assertThat(jdbcTemplate.queryForObject("""
+            select count(*) from script_analysis_stage where task_id=? and stage_order>=3
+             and status='PENDING' and error_code is null and error_message is null
+             and started_at is null and finished_at is null
+            """, Integer.class, analysisTaskId)).isEqualTo(2);
+
+        // Repeated clicks, including the final settlement window, must leave progress untouched.
+        for (String active : List.of("PENDING", "RUNNING")) {
+            jdbcTemplate.update("update ai_execution_task set status=? where id=?", active, replacementId);
+            var before = jdbcTemplate.queryForMap("select * from script_analysis_task where id=?", analysisTaskId);
+            var stagesBefore = jdbcTemplate.queryForList("select * from script_analysis_stage where task_id=? order by id", analysisTaskId);
+            mockMvc.perform(post(retryUrl)
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.errorCode", is("AI_EXECUTION_STATUS_INVALID")));
+            assertThat(jdbcTemplate.queryForMap("select * from script_analysis_task where id=?", analysisTaskId)).isEqualTo(before);
+            assertThat(jdbcTemplate.queryForList("select * from script_analysis_stage where task_id=? order by id", analysisTaskId)).isEqualTo(stagesBefore);
+        }
+        jdbcTemplate.update("update ai_execution_task set status='PENDING' where id=?", replacementId);
+        aiExecutionWorker.run(replacementId);
+        awaitExecutionTerminal(replacementId);
+        assertThat(jdbcTemplate.queryForObject("select status from ai_execution_task where id=?", String.class, replacementId)).isEqualTo("SUCCEEDED");
+        assertThat(jdbcTemplate.queryForObject("select status from script_analysis_task where id=?", String.class, analysisTaskId)).isEqualTo("COMPLETED");
+        assertThat(jdbcTemplate.queryForObject("select count(*) from script_analysis_stage where task_id=? and status='SUCCEEDED' and error_code is null", Integer.class, analysisTaskId)).isEqualTo(4);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from script_analysis_fanout_snapshot where task_id=?", Integer.class, analysisTaskId)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForList("""
+            select u.* from script_analysis_fanout_unit u join script_analysis_fanout_snapshot s on s.id=u.snapshot_id
+             where s.task_id=? order by u.id
+            """, analysisTaskId)).isEqualTo(completedUnits);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from ai_call_log where execution_id=?", Integer.class, replacementId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("select settled_points from ai_point_reservation where execution_id=?", java.math.BigDecimal.class, replacementId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("select balance from team_point_account where tenant_id=?", java.math.BigDecimal.class, tenantId)).isEqualByComparingTo(balance);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from ai_execution_task where business_type='SCRIPT_ANALYSIS_TASK' and business_id=?", Integer.class, analysisTaskId)).isEqualTo(2);
     }
 
     @Test
@@ -1847,7 +1915,8 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             "short-drama-episode-splitting",List.of("read_current_script","save_episode_splitting"),
             "short-drama-episode-summary",List.of("read_current_episode","save_episode_summary"),
             "short-drama-asset-recognition",List.of("read_current_episode","save_episode_assets"));
-        contracts.forEach((code,tools) -> workflowAgents.create(new com.antshorttv.workflowagent.agent.WorkflowAgentCommand(
+        contracts.forEach((code,tools) -> workflowAgents.update(code, workflowAgents.get(code).revision(),
+            new com.antshorttv.workflowagent.agent.WorkflowAgentCommand(
             code,code,"Controller controlled Agent","Read then save formal data.",modelId,
             new java.math.BigDecimal("0.1"),4096,8,"ENABLED",List.of(),tools),ownerId));
         org.mockito.Mockito.doAnswer(call -> {

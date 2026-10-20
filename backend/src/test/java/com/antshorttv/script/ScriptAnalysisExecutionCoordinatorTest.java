@@ -46,7 +46,7 @@ class ScriptAnalysisExecutionCoordinatorTest {
         version.setContent("script");
         AiExecutionResponse response = mock(AiExecutionResponse.class);
 
-        when(executionService.requireTask(79014L)).thenReturn(canceled);
+        when(executionService.requireTaskForUpdate(79014L)).thenReturn(canceled);
         when(versionMapper.selectById(18L)).thenReturn(version);
         when(projectAiConfig.resolveModelId(4L, 27L, "TEXT")).thenReturn(7L);
         when(executionService.restartCanceledWithReservation(

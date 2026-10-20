@@ -3,6 +3,7 @@ package com.antshorttv.script;
 import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.ai.ProjectAiConfigService;
 import com.antshorttv.common.BusinessException;
+import com.antshorttv.common.ErrorCode;
 import com.antshorttv.execution.AiExecutionCreateCommand;
 import com.antshorttv.execution.AiExecutionResponse;
 import com.antshorttv.execution.AiExecutionResponseMapper;
@@ -70,10 +71,10 @@ public class ScriptAnalysisExecutionCoordinator {
         if (task.getExecutionId() == null) {
             return responseMapper.toResponse(createExecution(task));
         }
-        AiExecutionTaskEntity execution = executionService.requireTask(task.getExecutionId());
+        AiExecutionTaskEntity execution = executionService.requireTaskForUpdate(task.getExecutionId());
         if ("FAILED".equals(execution.status) || "TIMED_OUT".equals(execution.status)) {
             execution = executionService.retry(execution.id);
-        } else if ("CANCELED".equals(execution.status)) {
+        } else if ("CANCELED".equals(execution.status) || "SUCCEEDED".equals(execution.status)) {
             ScriptVersionEntity version = versionMapper.selectById(task.getScriptVersionId());
             if (version == null || version.getContent() == null || version.getContent().isBlank()) {
                 throw new IllegalStateException("Script analysis version is unavailable.");
@@ -82,18 +83,18 @@ public class ScriptAnalysisExecutionCoordinator {
                 task.getTenantId(), task.getProjectId(), "TEXT");
             workflowAgentModelLookup.requireEnabledTextModel(modelId);
             String restartKey = "script-analysis-resume-" + task.getId() + "-" + execution.id;
-            execution = executionService.restartCanceledWithReservation(
-                execution.id,
-                task.getId(),
-                modelId,
-                restartKey,
-                restartKey,
-                Map.of(AiUsageMetric.CALL, BigDecimal.valueOf(maximumCallCount(version.getContent()))),
-                Map.of()
-            );
+            var usage = Map.of(AiUsageMetric.CALL, BigDecimal.valueOf(maximumCallCount(version.getContent())));
+            execution = "SUCCEEDED".equals(execution.status)
+                ? executionService.regenerateWithReservation(
+                    execution.id, task.getId(), modelId, restartKey, restartKey, usage, Map.of())
+                : executionService.restartCanceledWithReservation(
+                    execution.id, task.getId(), modelId, restartKey, restartKey, usage, Map.of());
             task.setExecutionId(execution.id);
             task.setUpdatedAt(LocalDateTime.now());
             taskMapper.updateById(task);
+        } else {
+            throw new BusinessException(ErrorCode.AI_EXECUTION_STATUS_INVALID,
+                "分析仍在排队、执行或结算中，请等待本次执行结束后再重试。");
         }
         return responseMapper.toResponse(execution);
     }
