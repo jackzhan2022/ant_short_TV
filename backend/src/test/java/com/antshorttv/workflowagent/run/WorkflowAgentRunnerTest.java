@@ -1725,7 +1725,7 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
-    void normalizationCanReadEightyFiveEpisodesBeforeSavingWithAnExistingTwentyStepAgent() {
+    void normalizationSavesPreloadedFullContextWithExactlyOneModelCall() {
         var codes = List.of("read_asset_normalization_inventory", "read_asset_normalization_episodes",
             "save_asset_normalization");
         runner = runnerWith(codes.stream().map(this::tool).toList(), 30);
@@ -1733,20 +1733,42 @@ class WorkflowAgentRunnerTest {
             16L, "short-drama-asset-normalization", "归一", "", "执行", 8L,
             new BigDecimal("0.1"), 32768, 20, "ENABLED", 0L, 9L, 9L,
             LocalDateTime.now(), LocalDateTime.now(), List.of(), codes));
-        AtomicInteger round = new AtomicInteger();
-        when(invocation.invokeText(any())).thenAnswer(call -> {
-            int n = round.incrementAndGet();
-            String code = n == 1 ? codes.get(0) : n <= 10 ? codes.get(1) : codes.get(2);
-            return result(null, List.of(new AiToolCall("call-" + n, code, "{}")), 950L + n);
-        });
+        when(invocation.invokeText(any())).thenReturn(
+            result(null,List.of(new AiToolCall("save", "save_asset_normalization", "{}")),951L));
 
         var completed = runner.runFormal(new WorkflowAgentRunInput(
             "short-drama-asset-normalization", "归一", 7L, 25L, null, 77L,
-            null, null, 9L));
+            null, null, 9L).withTrustedToolState(Map.of("assetNormalizationContextComplete",true)));
 
         assertThat(completed.runId()).isEqualTo(101L);
-        assertThat(round).hasValue(11);
-        verify(runs).recordToolStep(101L, 22, "save_asset_normalization", "{}", "{}");
+        var request=org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation,org.mockito.Mockito.times(1)).invokeText(request.capture());
+        assertThat(request.getValue().textRequest().tools()).extracting(com.antshorttv.ai.AiToolDefinition::code)
+            .containsExactly("save_asset_normalization");
+        assertThat(request.getValue().textRequest().timeoutSeconds()).isEqualTo(600);
+        verify(runs).recordToolStep(101L, 2, "save_asset_normalization", "{}", "{}");
+    }
+
+    @Test void normalizationValidationFailureDoesNotStartAnotherModelCall() throws Exception {
+        var save=new WorkflowToolDefinition("save_asset_normalization","保存","保存",
+            json.readTree("{\"type\":\"object\"}"),json.readTree("{\"type\":\"object\"}"),
+            ToolRiskLevel.WRITE,ToolFailurePolicy.RETURN_TO_MODEL,new WorkflowToolExecutor() {
+                @Override public JsonNode execute(com.antshorttv.workflowagent.tool.ToolExecutionContext context,JsonNode arguments) {
+                    throw new BusinessException(ErrorCode.VALIDATION_ERROR,"证据不属于原文");
+                }
+            });
+        runner=runnerWith(List.of(tool("read_asset_normalization_inventory"),save),30);
+        when(agents.loadForRun("short-drama-asset-normalization")).thenReturn(new WorkflowAgentRecord(
+            16L,"short-drama-asset-normalization","归一","","执行",8L,new BigDecimal("0.1"),32768,20,
+            "ENABLED",0L,9L,9L,LocalDateTime.now(),LocalDateTime.now(),List.of(),
+            List.of("read_asset_normalization_inventory","save_asset_normalization")));
+        when(invocation.invokeText(any())).thenReturn(
+            result(null,List.of(new AiToolCall("save","save_asset_normalization","{}")),951L));
+        assertThatThrownBy(()->runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-asset-normalization","归一",7L,25L,null,77L,null,null,9L)
+            .withTrustedToolState(Map.of("assetNormalizationContextComplete",true))))
+            .hasMessageContaining("证据不属于原文");
+        verify(invocation,org.mockito.Mockito.times(1)).invokeText(any());
     }
 
     @Test

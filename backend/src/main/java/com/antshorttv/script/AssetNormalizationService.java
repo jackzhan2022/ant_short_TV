@@ -52,13 +52,16 @@ public class AssetNormalizationService {
         if ("SUCCEEDED".equals(snapshot(c.task().tenantId, c.task().projectId, scriptId, c.task().id).get("status")))
             return new Outcome(id, List.of());
         try {
+            JsonNode frozen=parse(snapshot(c.task().tenantId,c.task().projectId,scriptId,c.task().id).get("input_json"));
+            ObjectNode context=compactInventory(frozen);
+            context.set("episodes",frozen.path("episodes"));
             var result=runner.runFormal(new WorkflowAgentRunInput(AGENT,
-                "读取完整资产清单，对全部资产进行身份归一。必要时批量读取相关剧集原文。"
-                    + "每条资产必须进入一个分组（保留独立时单例）；原文证据充分才合并。"
-                    + "不同归属的混用记录用 splits 按绑定拆分；最后调用 save_asset_normalization 自动应用。",
+                "以下已包含完整资产清单、全部剧集原文及绑定。一次分析全部输入，直接调用 save_asset_normalization 提交完整结果。\n"
+                    + write(context),
                 c.task().tenantId, c.task().projectId, null, scriptId, c.task().businessId, null,
                 c.task().userId, c.task().id, c.claim().attemptId(), c.task().executionVersion,
-                c.task().resolvedModelId == null ? c.task().requestedModelId : c.task().resolvedModelId));
+                c.task().resolvedModelId == null ? c.task().requestedModelId : c.task().resolvedModelId)
+                .withTrustedToolState(Map.of("assetNormalizationContextComplete",true)));
             if (!"SUCCEEDED".equals(snapshot(c.task().tenantId,c.task().projectId,scriptId,c.task().id).get("status")))
                 throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE,"归一 Agent 未提交完整结果。");
             return new Outcome(id,result.modelCalls());
@@ -98,7 +101,10 @@ public class AssetNormalizationService {
 
     public JsonNode inventory(ToolExecutionContext c) {
         var snapshot=toolSnapshot(c);
-        JsonNode input=parse(snapshot.get("input_json"));
+        return compactInventory(parse(snapshot.get("input_json")));
+    }
+
+    private ObjectNode compactInventory(JsonNode input) {
         ObjectNode output=json.createObjectNode();
         ArrayNode assets=output.putArray("assets");
         for(JsonNode a:input.path("assets")) {

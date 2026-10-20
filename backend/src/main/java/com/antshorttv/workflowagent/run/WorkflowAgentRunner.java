@@ -186,15 +186,21 @@ public class WorkflowAgentRunner {
         scopeGuard.requireExecutionActive(input);
         List<WorkflowAgentSkillSnapshot> skillSnapshots = frozenSkills == null
             ? loadSkills(agent.skillCodes(), agent.code(), input.tenantId()) : List.copyOf(frozenSkills);
-        List<WorkflowToolDefinition> allowedTools = agent.toolCodes().stream().map(tools::require).toList();
+        boolean singlePassNormalization=isSinglePassNormalization(input);
+        List<String> toolCodes=singlePassNormalization ? List.of("save_asset_normalization") : agent.toolCodes();
+        if (!agent.toolCodes().containsAll(toolCodes))
+            throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_UNAUTHORIZED,"归一 Agent 未授权保存工具。");
+        List<WorkflowToolDefinition> allowedTools = toolCodes.stream().map(tools::require).toList();
         String prompt = composePrompt(agent, skillSnapshots);
+        if (singlePassNormalization) prompt += "\n当前执行方式覆盖上述读取流程：完整资产清单和全剧原文已由服务端一次预置，"
+            + "仅允许一次模型调用。不要再读取工具，不要输出文字计划或分批保存。"
+            + "直接调用一次 save_asset_normalization，groups 必须覆盖全部资产（独立身份用单例），"
+            + "splits 按绑定拆分。证据从已提供原文逐字复制，无法证明同一身份就保持独立。";
         Long effectiveModelId = input.modelIdOverride() == null ? agent.modelId() : input.modelIdOverride();
         boolean deepReview = input.reviewScope() != null
             && isDeepReviewPhase(input.reviewScope().phase());
-        int effectiveMaxSteps = deepReview
+        int effectiveMaxSteps = singlePassNormalization ? 2 : deepReview
             ? Math.max(agent.maxSteps(), properties.getReviewDeepMaxSteps())
-            : "short-drama-asset-normalization".equals(agent.code())
-                ? Math.max(agent.maxSteps(), properties.getAssetNormalizationMaxSteps())
             : "short-drama-asset-recognition".equals(agent.code())
                 ? Math.max(agent.maxSteps(), ASSET_MIN_STEPS)
                 : "short-drama-storyboard".equals(agent.code())
@@ -207,7 +213,7 @@ public class WorkflowAgentRunner {
             agent.id(), agent.code(), runType, input.tenantId(), input.userId(), input.projectId(),
             input.episodeId(), input.scriptId(), input.taskId(), input.analysisStageId(), effectiveModelId,
             agent.temperature(), agent.maxTokens(), effectiveMaxSteps, prompt, skillSnapshots,
-            agent.toolCodes()
+            toolCodes
         ));
         long timeoutSeconds = deepReview
             ? Math.max(properties.getRunTimeoutSeconds(), properties.getReviewDeepRunTimeoutSeconds())
@@ -215,7 +221,8 @@ public class WorkflowAgentRunner {
         Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
         try {
             return runLoop(runId, agent, effectiveModelId, input, prompt, allowedTools, deadline, effectiveMaxSteps,
-                WorkflowAgentRunContract.forAgent(agent.code(),
+                singlePassNormalization ? new WorkflowAgentRunContract(List.of("save_asset_normalization"),"save_asset_normalization")
+                    : WorkflowAgentRunContract.forAgent(agent.code(),
                     input.reviewScope() == null ? null : input.reviewScope().phase()));
         } catch (BusinessException exception) {
             runs.fail(runId, exception.getErrorCode().name(), exception.getMessage());
@@ -225,6 +232,11 @@ public class WorkflowAgentRunner {
             throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,
                 "Agent 运行失败：" + safeMessage(exception));
         }
+    }
+
+    private boolean isSinglePassNormalization(WorkflowAgentRunInput input) {
+        return "short-drama-asset-normalization".equals(input.agentCode())
+            && Boolean.TRUE.equals(input.trustedToolState().get("assetNormalizationContextComplete"));
     }
 
     private boolean isDeepReviewPhase(String phase) {
@@ -282,7 +294,7 @@ public class WorkflowAgentRunner {
         messages.add(AiChatMessage.system(prompt));
         messages.add(AiChatMessage.user("CHUNK_FALLBACK".equals(runState.splitMode())
             ? fallbackInstruction(runState.splitFallbackReason()) : input.input()));
-        Set<String> allowlist = new HashSet<>(agent.toolCodes());
+        Set<String> allowlist = new HashSet<>(allowedTools.stream().map(WorkflowToolDefinition::code).toList());
         List<WorkflowAgentModelCall> modelCalls = new ArrayList<>();
         Set<String> trustedPermissions = input.executionId() == null
             ? Set.of()
@@ -354,6 +366,8 @@ public class WorkflowAgentRunner {
             List<AiToolCall> calls = response == null ? List.of() : response.toolCalls();
             String finalContent = response == null ? null : response.content();
             runs.recordModelStep(runId, modelStep, result.aiCallLogId(), calls, finalContent);
+            if (isSinglePassNormalization(input) && (calls.size()!=1 || !"save_asset_normalization".equals(calls.get(0).code())))
+                throw new BusinessException(ErrorCode.REQUIRED_TOOL_NOT_CALLED,"归一必须一次提交完整结果，仅允许一次保存调用。");
             if ("short-drama-asset-recognition".equals(agent.code()) && isTruncated(response)) {
                 throw new WorkflowAgentTruncatedOutputException(runId, finalContent, modelCalls);
             }
@@ -442,6 +456,7 @@ public class WorkflowAgentRunner {
                     BusinessException normalized = normalizeToolFailure(exception);
                     runs.recordFailedToolStep(runId, toolStep, call.code(), call.argumentsJson(),
                         normalized.getErrorCode().name(), normalized.getMessage());
+                    if (isSinglePassNormalization(input)) throw normalized;
                     if ("save_episode_assets".equals(call.code())) {
                         boolean correctable = exception instanceof BusinessException business
                             ? business.getErrorCode() == ErrorCode.VALIDATION_ERROR

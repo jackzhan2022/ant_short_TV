@@ -53,6 +53,21 @@ class AssetNormalizationServiceTest {
           {"assetType":"PROP","retainId":1511,"memberIds":[1511],"evidence":[]}],
          "splits":[{"assetType":"PROP","sourceId":1511,"newName":"陈志国的挎包","bindingIds":[4],"evidence":[{"episodeId":9811,"quote":"陈志国背着自己的挎包"}]}]}
         """); }
+    @Test void normalizesWithAllOriginalTextAndAssetsInOneModelRun() throws Exception {
+        when(runner.runFormal(any())).thenAnswer(call -> {
+            com.antshorttv.workflowagent.run.WorkflowAgentRunInput input=call.getArgument(0);
+            assertThat(input.trustedToolState()).containsEntry("assetNormalizationContextComplete",true);
+            JsonNode payload=json.readTree(input.input().substring(input.input().indexOf('{')));
+            assertThat(payload.path("assets").size()).isEqualTo(3);
+            assertThat(payload.path("episodes").size()).isEqualTo(4);
+            assertThat(payload.path("episodes").findValuesAsText("content"))
+                .contains("陈志国背着自己的挎包。","林嘉欣拿起自己的挎包。");
+            assertThat(payload.toString()).doesNotContain("image-","current_image_url");
+            return new com.antshorttv.workflowagent.run.WorkflowAgentRunResult(1L,service.publish(tools,decision()).toString());
+        });
+        service.normalize(9803,9804,execution);
+        verify(runner,times(1)).runFormal(any());
+    }
     @Test void mergesAndSplitsAtomicallyPreservingImagesBindingsAndRedirects() throws Exception {
         long snapshot=service.prepare(9803,9804,execution);
         JsonNode result=service.publish(tools,decision());

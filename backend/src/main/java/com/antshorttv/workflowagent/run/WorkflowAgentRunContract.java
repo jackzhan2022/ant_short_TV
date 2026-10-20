@@ -63,7 +63,7 @@ public record WorkflowAgentRunContract(
     }
 
     public void requireNext(WorkflowToolRunState state, String toolCode) {
-        if ("save_asset_normalization".equals(terminalToolCode)) {
+        if ("save_asset_normalization".equals(terminalToolCode) && requiredToolSequence.size()>1) {
             var completed=state.successfulToolCodes();
             if (completed.isEmpty() && "read_asset_normalization_inventory".equals(toolCode)) return;
             if (completed.contains("read_asset_normalization_inventory") && !completed.contains(terminalToolCode)

@@ -37,10 +37,6 @@ public class WorkflowAgentProperties {
     @Min(1)
     private int assetRecognitionRequestTimeoutSeconds = 300;
 
-    @Min(24)
-    @Max(200)
-    private int assetNormalizationMaxSteps = 64;
-
     @Min(1)
     private long assetNormalizationRunTimeoutSeconds = 1800L;
 
@@ -128,8 +124,6 @@ public class WorkflowAgentProperties {
     public void setAssetRecognitionRunTimeoutSeconds(long value) { this.assetRecognitionRunTimeoutSeconds = value; }
     public int getAssetRecognitionRequestTimeoutSeconds() { return assetRecognitionRequestTimeoutSeconds; }
     public void setAssetRecognitionRequestTimeoutSeconds(int value) { this.assetRecognitionRequestTimeoutSeconds = value; }
-    public int getAssetNormalizationMaxSteps() { return assetNormalizationMaxSteps; }
-    public void setAssetNormalizationMaxSteps(int value) { this.assetNormalizationMaxSteps = value; }
     public long getAssetNormalizationRunTimeoutSeconds() { return assetNormalizationRunTimeoutSeconds; }
     public void setAssetNormalizationRunTimeoutSeconds(long value) { this.assetNormalizationRunTimeoutSeconds = value; }
     public int getAssetNormalizationRequestTimeoutSeconds() { return assetNormalizationRequestTimeoutSeconds; }

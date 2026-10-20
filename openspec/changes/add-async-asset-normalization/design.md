@@ -10,7 +10,7 @@
 
 ## Decisions
 
-1. 独立归一 Agent 使用 read_asset_normalization_inventory / read_asset_normalization_episodes / save_asset_normalization 工具。复用正式 Agent 调用记录和父异步任务计费，无独立线程池。独立发起使用新的 SCRIPT_AI_OPERATION 类型；提取批次在既有异步任务内增加归一收口。
+1. 服务端一次组装冻结清单和全部剧集原文，归一 Agent 仅一次模型调用并调用 save_asset_normalization 提交完整结果。正式执行只授权保存工具，不允许多轮读取或分批发布。复用正式 Agent 调用记录和父异步任务计费，无独立线程池。独立发起使用新的 SCRIPT_AI_OPERATION 类型；提取批次在既有异步任务内增加归一收口。
 2. 保存执行级快照，完整清单一次输入；模型输出每条资产所属分组（含单例），保留目标 ID。按 binding ID 指定拆分去向，必要时克隆身份及形态。所有变更须提供相关剧集逐字证据。
 3. 原始行、形态、绑定、剧集版本构成指纹；事务内再次验证所有权和指纹，再一次性发布。已提交快照重试直接复用。模型调用不持有数据库事务。
 4. 合并资产保留原行和 merge_target_id，隐藏原行；迁移形态和绑定，修复主形态/首选唯一性，更新结构化分镜引用。形态 ID 和图片结果 ID 不改，历史请求仍可追溯。按剧集拆分时克隆共享形态并仅改对应分镜引用。
