@@ -2,6 +2,7 @@ import { PageContainer } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
 import { Tabs } from 'antd';
 import { useMemo, useState } from 'react';
+import ConcurrencyConfigPage from '../concurrency-config';
 import AiCallLogsPage from '../logs';
 import PlatformModelsPage from '../platform-models';
 import PlatformProvidersPage from '../providers';
@@ -9,6 +10,7 @@ import WorkflowAgentsPage from '../workflow-agents';
 import WorkflowSkillsPage, {
   TenantWorkflowSkillsPage,
 } from '../workflow-skills';
+import { useStyles } from './index.style';
 
 type ModelManagementTab =
   | 'providers'
@@ -20,6 +22,7 @@ type ModelManagementTab =
 
 const ModelManagementPage = () => {
   const access = useAccess();
+  const { styles } = useStyles();
   const items = useMemo(() => {
     const tabs = [] as Array<{
       key: ModelManagementTab;
@@ -81,15 +84,63 @@ const ModelManagementPage = () => {
   const selectedKey = items.some((item) => item.key === activeKey)
     ? activeKey
     : items[0]?.key;
+  const [activeModule, setActiveModule] = useState<string>();
+  const modules = [
+    ...(selectedKey
+      ? [
+          {
+            key: 'model-management',
+            label: '大模型管理',
+            children: (
+              <Tabs
+                aria-label="大模型管理功能"
+                className={styles.functions}
+                activeKey={selectedKey}
+                items={items}
+                tabBarGutter={10}
+                onChange={(tab) => setActiveKey(tab as ModelManagementTab)}
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(access.canViewPlatformAiConcurrency
+      ? [
+          {
+            key: 'system-management',
+            label: '系统管理',
+            children: (
+              <Tabs
+                aria-label="系统管理功能"
+                className={styles.functions}
+                activeKey="concurrency-config"
+                items={[
+                  {
+                    key: 'concurrency-config',
+                    label: '并行配置',
+                    children: <ConcurrencyConfigPage />,
+                  },
+                ]}
+              />
+            ),
+          },
+        ]
+      : []),
+  ];
+  const selectedModule = modules.some((item) => item.key === activeModule)
+    ? activeModule
+    : modules[0]?.key;
 
-  if (!selectedKey) return null;
+  if (!selectedModule) return null;
 
   return (
-    <PageContainer title="模型管理">
+    <PageContainer pageHeaderRender={false} childrenContentStyle={{ paddingTop: 24 }}>
       <Tabs
-        activeKey={selectedKey}
-        items={items}
-        onChange={(tab) => setActiveKey(tab as ModelManagementTab)}
+        aria-label="管理后台模块"
+        className={styles.modules}
+        activeKey={selectedModule}
+        onChange={setActiveModule}
+        items={modules}
       />
     </PageContainer>
   );

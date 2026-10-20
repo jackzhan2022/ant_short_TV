@@ -34,6 +34,7 @@ class VideoTaskReferenceResolverTest {
 
     @Autowired private AiVideoTaskService videoTasks;
     @Autowired private AiVideoTaskMapper videoTaskMapper;
+    @Autowired private AiVideoResultMapper videoResultMapper;
     @Autowired private SeedanceArkVideoProviderAdapter seedance;
 
     @MockBean
@@ -158,8 +159,10 @@ class VideoTaskReferenceResolverTest {
         task.createdAt = java.time.LocalDateTime.now();
         task.updatedAt = task.createdAt;
         videoTaskMapper.insert(task);
-        org.springframework.test.util.ReflectionTestUtils.invokeMethod(serviceTarget, "createGeneratedResult", task,
+        AiVideoResultEntity generated = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+            serviceTarget, "prepareGeneratedResult", task,
             new AiVideoProviderAdapter.VideoResult("SUCCEEDED", null, null));
+        videoResultMapper.insert(generated);
 
         assertThat(jdbc.queryForObject("select first_frame_url from ai_video_task where id = ?", String.class, task.id))
             .isEqualTo(browserDisplay);

@@ -11,11 +11,16 @@ const mocks = vi.hoisted(() => ({
     canViewWorkflowSkills: true,
     canManageTenantWorkflowSkills: false,
     canViewTenantWorkflowSkills: false,
+    canViewPlatformAiConcurrency: false,
   },
 }));
 
 vi.mock('@umijs/max', () => ({
   useAccess: () => mocks.access,
+}));
+
+vi.mock('./index.style', () => ({
+  useStyles: () => ({ styles: { modules: '', functions: '' } }),
 }));
 
 vi.mock('antd', () => ({
@@ -44,6 +49,9 @@ vi.mock('../platform-models', () => ({
   default: () => <div>ai-model-page</div>,
 }));
 vi.mock('../logs', () => ({ default: () => <div>call-log-page</div> }));
+vi.mock('../concurrency-config', () => ({
+  default: () => <div>concurrency-config-page</div>,
+}));
 vi.mock('../workflow-agents', () => ({
   default: () => <div>workflow-agent-page</div>,
 }));
@@ -65,6 +73,34 @@ describe('ModelManagementPage', () => {
     mocks.access.canViewWorkflowSkills = true;
     mocks.access.canManageTenantWorkflowSkills = false;
     mocks.access.canViewTenantWorkflowSkills = false;
+    mocks.access.canViewPlatformAiConcurrency = false;
+  });
+
+  it('opens system management for a configuration-only user without a model module', () => {
+    for (const key of Object.keys(mocks.access)) {
+      mocks.access[key as keyof typeof mocks.access] = false;
+    }
+    mocks.access.canViewPlatformAiConcurrency = true;
+    render(<ModelManagementPage />);
+    expect(screen.getByRole('button', { name: '系统管理' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '并行配置' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '大模型管理' })).not.toBeInTheDocument();
+    expect(screen.getByText('concurrency-config-page')).toBeInTheDocument();
+  });
+
+  it('switches between authorized modules while keeping the existing business tabs', () => {
+    mocks.access.canViewPlatformAiConcurrency = true;
+    render(<ModelManagementPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'AI 大模型' }));
+    fireEvent.click(screen.getByRole('button', { name: '系统管理' }));
+    expect(screen.getByText('concurrency-config-page')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '大模型管理' }));
+    expect(screen.getByText('ai-model-page')).toBeInTheDocument();
+  });
+
+  it('hides system management without its view permission', () => {
+    render(<ModelManagementPage />);
+    expect(screen.queryByRole('button', { name: '系统管理' })).not.toBeInTheDocument();
   });
 
   it('opens the first authorized tab and renders all authorized tabs', () => {

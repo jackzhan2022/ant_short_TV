@@ -86,27 +86,19 @@ public interface AiVideoTaskMapper extends BaseMapper<AiVideoTaskEntity> {
             .last("limit 1"));
     }
 
-    default Long countActiveByTenant(Long tenantId) {
-        return selectCount(new QueryWrapper<AiVideoTaskEntity>()
-            .eq("tenant_id", tenantId)
-            .in("status", List.of(
-                AiVideoTaskStatus.PENDING.name(),
-                AiVideoTaskStatus.SUBMITTING.name(),
-                AiVideoTaskStatus.GENERATING.name()
-            ))
-            .isNull("deleted_at"));
+    default List<AiVideoTaskEntity> selectDueSubmissions(LocalDateTime now, int limit) {
+        return selectList(new QueryWrapper<AiVideoTaskEntity>()
+            .eq("status", "PENDING").isNull("external_task_id").isNull("execution_token")
+            .isNull("deleted_at")
+            .and(query -> query.isNull("next_poll_at").or().le("next_poll_at", now))
+            .orderByAsc("next_poll_at", "id").last("limit " + Math.max(1, limit)));
     }
 
-    default List<AiVideoTaskEntity> selectDueTasks(LocalDateTime now, int limit) {
+    default List<AiVideoTaskEntity> selectDueQueries(LocalDateTime now, int limit) {
         return selectList(new QueryWrapper<AiVideoTaskEntity>()
-            .in("status", List.of(
-                AiVideoTaskStatus.PENDING.name(),
-                AiVideoTaskStatus.SUBMITTING.name(),
-                AiVideoTaskStatus.GENERATING.name()
-            ))
+            .in("status", "PENDING", "SUBMITTING", "GENERATING")
+            .isNotNull("external_task_id").isNull("execution_token").isNull("deleted_at")
             .and(query -> query.isNull("next_poll_at").or().le("next_poll_at", now))
-            .isNull("deleted_at")
-            .orderByAsc("created_at")
-            .last("limit " + limit));
+            .orderByAsc("next_poll_at", "id").last("limit " + Math.max(1, limit)));
     }
 }

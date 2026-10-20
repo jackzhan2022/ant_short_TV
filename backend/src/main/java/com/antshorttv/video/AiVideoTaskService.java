@@ -19,6 +19,11 @@ import com.antshorttv.common.MediaPage;
 import com.antshorttv.common.MediaPageQueries;
 import com.antshorttv.common.PageBounds;
 import com.antshorttv.execution.AiExecutionCreateCommand;
+import com.antshorttv.execution.AiExecutionClaim;
+import com.antshorttv.execution.AiExecutionClaimService;
+import com.antshorttv.execution.AiExecutionPools;
+import com.antshorttv.execution.AiExecutionPoolType;
+import com.antshorttv.execution.AiExecutionLeaseKeeper;
 import com.antshorttv.execution.AiExecutionAttemptEntity;
 import com.antshorttv.execution.AiExecutionAttemptMapper;
 import com.antshorttv.execution.AiExecutionService;
@@ -66,12 +71,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class AiVideoTaskService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AiVideoTaskService.class);
     private static final List<String> CANCELABLE_STATUSES = List.of("PENDING", "SUBMITTING", "GENERATING");
     private static final List<Integer> SUPPORTED_DURATIONS = List.of(5, 8, 10);
     private static final List<String> SUPPORTED_ASPECT_RATIOS = List.of("9:16", "16:9", "1:1");
@@ -106,7 +119,11 @@ public class AiVideoTaskService {
     private final ObjectMapper objectMapper;
     private final AiPointReservationMapper reservationMapper;
     private final AiPointSettlementService pointSettlementService;
-    private final int maxConcurrentPerTenant;
+    private final AiExecutionClaimService claimService;
+    private final AiExecutionPools executionPools;
+    private final AiExecutionLeaseKeeper leaseKeeper;
+    private final TransactionTemplate transactions;
+    private final Duration claimTimeout;
     private final int taskTimeoutMinutes;
     private final int pollRetryLimit;
     private final int dueTaskBatchSize;
@@ -143,7 +160,11 @@ public class AiVideoTaskService {
         ObjectMapper objectMapper,
         AiPointReservationMapper reservationMapper,
         AiPointSettlementService pointSettlementService,
-        @Value("${ai.video.max-concurrent-per-tenant:3}") int maxConcurrentPerTenant,
+        AiExecutionClaimService claimService,
+        AiExecutionPools executionPools,
+        AiExecutionLeaseKeeper leaseKeeper,
+        PlatformTransactionManager transactionManager,
+        @Value("${ai.execution.claim-timeout:PT10M}") Duration claimTimeout,
         @Value("${ai.video.task-timeout-minutes:20}") int taskTimeoutMinutes,
         @Value("${ai.video.poll-retry-limit:3}") int pollRetryLimit,
         @Value("${ai.video.due-task-batch-size:20}") int dueTaskBatchSize,
@@ -179,7 +200,12 @@ public class AiVideoTaskService {
         this.objectMapper = objectMapper;
         this.reservationMapper = reservationMapper;
         this.pointSettlementService = pointSettlementService;
-        this.maxConcurrentPerTenant = maxConcurrentPerTenant;
+        this.claimService = claimService;
+        this.executionPools = executionPools;
+        this.leaseKeeper = leaseKeeper;
+        this.transactions = new TransactionTemplate(transactionManager);
+        this.transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        this.claimTimeout = claimTimeout;
         this.taskTimeoutMinutes = taskTimeoutMinutes;
         this.pollRetryLimit = pollRetryLimit;
         this.dueTaskBatchSize = dueTaskBatchSize;
@@ -258,9 +284,6 @@ public class AiVideoTaskService {
         if (duplicate != null) {
             return response(duplicate);
         }
-        if (aiVideoTaskMapper.countActiveByTenant(tenantId) >= maxConcurrentPerTenant) {
-            throw new BusinessException(ErrorCode.AI_VIDEO_CONCURRENCY_LIMIT_EXCEEDED, "当前团队视频生成并发已达上限，请稍后再试。");
-        }
         LocalDateTime now = LocalDateTime.now();
 
         AiVideoTaskEntity task = new AiVideoTaskEntity();
@@ -307,7 +330,7 @@ public class AiVideoTaskService {
                 task.id,
                 task.modelId,
                 "VIDEO_SUBMIT",
-                requestHash,
+                "video-task:" + task.id,
                 UUID.randomUUID().toString(),
                 true,
                 "{\"storyboardId\":%d}".formatted(task.storyboardId)
@@ -317,52 +340,244 @@ public class AiVideoTaskService {
         );
         task.executionId = execution.id;
         aiVideoTaskMapper.updateById(task);
-        markExecutionRunning(task);
-
-        submitTask(task);
-        aiVideoTaskMapper.updateById(task);
         recordOperation(context, projectId, "CREATE_AI_VIDEO_TASK", task.id, servletRequest);
         recordProjectLog(context, projectId, "AI_VIDEO_TASK_CREATE", "AI_VIDEO_TASK", task.id, null, task.status, servletRequest);
         return response(task);
     }
 
-    @Transactional
     public AiVideoTaskResponse poll(Long tenantId, Long projectId, Long taskId, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         AiVideoTaskEntity task = requireTask(tenantId, projectId, taskId);
-        processTask(task, context.userId());
+        scheduleTask(task, context.userId());
         recordOperation(context, projectId, "POLL_AI_VIDEO_TASK", task.id, servletRequest);
-        return response(task);
+        return response(requireTask(tenantId, projectId, taskId));
     }
 
-    @Transactional
     public void pollDueTasks() {
-        List<AiVideoTaskEntity> dueTasks = aiVideoTaskMapper.selectDueTasks(LocalDateTime.now(), dueTaskBatchSize);
-        for (AiVideoTaskEntity task : dueTasks) {
-            processTask(task, task.createdBy);
+        LocalDateTime now = LocalDateTime.now();
+        recoverExpiredVideoClaims(now);
+        scheduleBatch(aiVideoTaskMapper.selectDueSubmissions(now, dueTaskBatchSize),
+            AiExecutionPoolType.VIDEO_SUBMIT, task -> {
+                AiExecutionClaim claim = admitSubmission(task);
+                if (claim != null) submitTask(task, claim);
+            });
+        scheduleBatch(aiVideoTaskMapper.selectDueQueries(now, dueTaskBatchSize),
+            AiExecutionPoolType.VIDEO_QUERY, task -> runQueryCandidate(task, task.createdBy));
+    }
+
+    private void scheduleTask(AiVideoTaskEntity task, Long userId) {
+        if (!isActiveTask(task)) return;
+        if (blankToNull(task.externalTaskId) == null) {
+            if (AiVideoTaskStatus.PENDING.name().equals(task.status)) scheduleSubmission(task);
+            return;
+        }
+        AiExecutionPools.Slot slot = executionPools.tryAcquire(AiExecutionPoolType.VIDEO_QUERY);
+        if (slot == null) return;
+        try (slot) {
+            AiVideoTaskEntity owned = claimQueryTask(task, false);
+            if (owned == null) return;
+            try {
+                slot.submit(() -> {
+                    try { processTask(owned, userId); }
+                    finally { clearDomainClaim(owned); }
+                });
+            } catch (java.util.concurrent.RejectedExecutionException rejected) {
+                clearDomainClaim(owned);
+                LOGGER.debug("Video query executor unavailable for task {}", task.id, rejected);
+            }
         }
     }
 
-    @Transactional
+    private void scheduleBatch(List<AiVideoTaskEntity> tasks, AiExecutionPoolType type,
+        Consumer<AiVideoTaskEntity> work) {
+        var candidates = new ConcurrentLinkedQueue<>(tasks);
+        for (int worker = 0; worker < tasks.size() && !candidates.isEmpty(); worker++) {
+            AiExecutionPools.Slot slot = executionPools.tryAcquire(type);
+            if (slot == null) return;
+            try (slot) {
+                // Candidates remain unclaimed until a reserved worker reaches them.
+                slot.submit(() -> {
+                    AiVideoTaskEntity task;
+                    while (slot.canContinue() && (task = candidates.poll()) != null) {
+                        try {
+                            work.accept(task);
+                        } catch (RuntimeException exception) {
+                            LOGGER.warn("Video {} processing failed for task {}", type, task.id, exception);
+                        }
+                    }
+                });
+            } catch (java.util.concurrent.RejectedExecutionException rejected) {
+                LOGGER.debug("Video executor unavailable for {}", type, rejected);
+                return;
+            }
+        }
+    }
+
+    private AiVideoTaskEntity claimQueryTask(AiVideoTaskEntity task, boolean respectNextPoll) {
+        AiTaskExecutionSupport.ClaimResult claim = executionSupport.claimAiVideoTask(
+            task.id, task.status, "VIDEO_QUERY", Duration.ofMinutes(taskTimeoutMinutes));
+        if (!claim.claimed()) return null;
+        AiVideoTaskEntity owned = requireOwnedTask(task.id, claim);
+        if (respectNextPoll && owned.nextPollAt != null && owned.nextPollAt.isAfter(LocalDateTime.now())) {
+            clearDomainClaim(owned);
+            return null;
+        }
+        // Move a selected task behind its peers before processing it.
+        aiVideoTaskMapper.update(null, new UpdateWrapper<AiVideoTaskEntity>()
+            .set("next_poll_at", LocalDateTime.now().plusSeconds(10))
+            .eq("id", owned.id).eq("execution_token", owned.executionToken));
+        return owned;
+    }
+
+    private AiVideoTaskEntity requireOwnedTask(Long taskId, AiTaskExecutionSupport.ClaimResult claim) {
+        AiVideoTaskEntity owned = aiVideoTaskMapper.selectById(taskId);
+        if (owned == null || !java.util.Objects.equals(owned.executionToken, claim.executionToken())
+            || !java.util.Objects.equals(owned.executionVersion, claim.executionVersion())) {
+            throw new IllegalStateException("Video task execution claim was lost: " + taskId);
+        }
+        return owned;
+    }
+
+    private void runQueryCandidate(AiVideoTaskEntity task, Long userId) {
+        AiVideoTaskEntity owned = claimQueryTask(task, true);
+        if (owned == null) return;
+        try { processTask(owned, userId); }
+        finally { clearDomainClaim(owned); }
+    }
+
+    private AiExecutionClaim admitSubmission(AiVideoTaskEntity task) {
+        AiExecutionClaim claim = transactions.execute(status -> {
+            // Lock the domain row first, matching cancellation's lock order.
+            AiTaskExecutionSupport.ClaimResult domain = executionSupport.claimAiVideoTask(
+                task.id, "PENDING", "VIDEO_SUBMIT", claimTimeout);
+            if (!domain.claimed()) return null;
+            applyDomainClaim(task, domain, "VIDEO_SUBMIT");
+            AiExecutionClaim admitted = claimService.claim(task.executionId, UUID.randomUUID().toString(),
+                LocalDateTime.now(), claimTimeout);
+            if (admitted == null) {
+                clearDomainClaim(task);
+                return null;
+            }
+            task.status = "SUBMITTING";
+            task.submittedAt = LocalDateTime.now();
+            task.updatedAt = task.submittedAt;
+            saveOwnedTask(task);
+            // An interrupted submission may have reached the provider; never automatically resubmit it.
+            executionTaskMapper.update(null, new UpdateWrapper<AiExecutionTaskEntity>()
+                .set("retryable", false).eq("id", task.executionId)
+                .eq("claim_token", admitted.claimToken()));
+            return admitted;
+        });
+        if (claim == null) {
+            aiVideoTaskMapper.update(null, new UpdateWrapper<AiVideoTaskEntity>()
+                .set("next_poll_at", LocalDateTime.now().plusSeconds(10))
+                .eq("id", task.id).eq("status", "PENDING").isNull("execution_token"));
+            return null;
+        }
+        return claim;
+    }
+
+    private void scheduleSubmission(AiVideoTaskEntity task) {
+        AiExecutionPools.Slot slot = executionPools.tryAcquire(AiExecutionPoolType.VIDEO_SUBMIT);
+        if (slot == null) return;
+        try (slot) {
+            AiExecutionClaim claim = admitSubmission(task);
+            if (claim == null) return;
+            try {
+                slot.submit(() -> submitTask(task, claim));
+            } catch (java.util.concurrent.RejectedExecutionException rejected) {
+                transactions.executeWithoutResult(status -> {
+                    claimService.defer(claim, "Video submission executor unavailable.", LocalDateTime.now());
+                    task.status = "PENDING";
+                    saveOwnedTask(task);
+                    clearDomainClaim(task);
+                });
+                LOGGER.debug("Video submission executor unavailable for task {}", task.id, rejected);
+            }
+        }
+    }
+
+    private void applyDomainClaim(AiVideoTaskEntity task, AiTaskExecutionSupport.ClaimResult claim, String phase) {
+        task.executionToken = claim.executionToken();
+        task.executionVersion = claim.executionVersion();
+        task.executionPhase = phase;
+    }
+
+    private void saveOwnedTask(AiVideoTaskEntity task) {
+        if (aiVideoTaskMapper.update(task, new UpdateWrapper<AiVideoTaskEntity>()
+            .eq("id", task.id).eq("execution_token", task.executionToken)
+            .eq("execution_version", task.executionVersion).isNull("deleted_at")) != 1) {
+            throw new IllegalStateException("Video task execution claim was lost: " + task.id);
+        }
+    }
+
+    private void clearDomainClaim(AiVideoTaskEntity task) {
+        aiVideoTaskMapper.update(null, new UpdateWrapper<AiVideoTaskEntity>()
+            .set("execution_token", null).set("execution_phase", null)
+            .set("heartbeat_at", null).set("execution_timeout_at", null)
+            .eq("id", task.id).eq("execution_token", task.executionToken)
+            .eq("execution_version", task.executionVersion));
+    }
+
+    private void recoverExpiredVideoClaims(LocalDateTime now) {
+        // A queued cancellation can crash after its short claim transaction commits.
+        aiVideoTaskMapper.update(null, new UpdateWrapper<AiVideoTaskEntity>()
+            .set("execution_token", null).set("execution_phase", null)
+            .set("heartbeat_at", null).set("execution_timeout_at", null)
+            .eq("status", "PENDING").isNull("external_task_id").le("execution_timeout_at", now));
+        aiVideoTaskMapper.update(null, new UpdateWrapper<AiVideoTaskEntity>()
+            .set("execution_token", null).set("execution_phase", null)
+            .set("heartbeat_at", null).set("execution_timeout_at", null)
+            .isNotNull("external_task_id").le("execution_timeout_at", now));
+        for (AiVideoTaskEntity task : aiVideoTaskMapper.selectList(new QueryWrapper<AiVideoTaskEntity>()
+            .eq("status", "SUBMITTING").isNull("external_task_id")
+            .le("execution_timeout_at", now).last("limit " + dueTaskBatchSize))) {
+            transactions.executeWithoutResult(status -> {
+                int claimed = aiVideoTaskMapper.update(null, new UpdateWrapper<AiVideoTaskEntity>()
+                    .set("status", "FAILED").set("external_status", "SUBMIT_UNKNOWN")
+                    .set("error_message", "视频提交结果未知，请核查服务商记录后重试。")
+                    .set("completed_at", now).set("execution_token", null)
+                    .set("execution_timeout_at", null).eq("id", task.id)
+                    .eq("status", "SUBMITTING").isNull("external_task_id")
+                    .le("execution_timeout_at", now));
+                if (claimed == 1) settleExecution(task, AiSettlementOutcome.TRANSPORT_UNKNOWN, null, null, "FAILED");
+            });
+        }
+    }
+
     public AiVideoTaskResponse cancel(Long tenantId, Long projectId, Long taskId, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        AiVideoTaskEntity task = requireTask(tenantId, projectId, taskId);
-        if (AiVideoTaskStatus.CANCELED.name().equals(task.status)) {
-            return response(task);
+        AiVideoTaskEntity snapshot = requireTask(tenantId, projectId, taskId);
+        if (AiVideoTaskStatus.CANCELED.name().equals(snapshot.status)) {
+            return response(snapshot);
         }
-        if (!CANCELABLE_STATUSES.contains(task.status)) {
+        if (!CANCELABLE_STATUSES.contains(snapshot.status)) {
             throw new BusinessException(ErrorCode.AI_VIDEO_TASK_STATUS_INVALID, "当前任务状态不可取消。");
         }
-        cancelAcceptedSeedanceTask(task);
+        AiTaskExecutionSupport.ClaimResult claim = executionSupport.claimAiVideoTask(
+            snapshot.id, snapshot.status, "VIDEO_CANCEL", claimTimeout);
+        if (!claim.claimed()) {
+            throw new BusinessException(ErrorCode.AI_VIDEO_TASK_STATUS_INVALID, "任务正在处理，请稍后取消。");
+        }
+        AiVideoTaskEntity task = requireOwnedTask(snapshot.id, claim);
+        try {
+            cancelAcceptedSeedanceTask(task);
+        } catch (RuntimeException exception) {
+            clearDomainClaim(task);
+            throw exception;
+        }
         task.status = AiVideoTaskStatus.CANCELED.name();
         task.externalStatus = "CANCELED";
         task.completedAt = LocalDateTime.now();
         task.updatedAt = task.completedAt;
-        aiVideoTaskMapper.updateById(task);
-        settleExecution(task, task.externalTaskId == null ? AiSettlementOutcome.PRE_CALL_CANCELED
-            : AiSettlementOutcome.TRANSPORT_UNKNOWN, null, null, "CANCELED");
+        transactions.executeWithoutResult(status -> {
+            saveOwnedTask(task);
+            settleExecution(task, task.externalTaskId == null ? AiSettlementOutcome.PRE_CALL_CANCELED
+                : AiSettlementOutcome.TRANSPORT_UNKNOWN, null, null, "CANCELED");
+            clearDomainClaim(task);
+        });
         recordOperation(context, projectId, "CANCEL_AI_VIDEO_TASK", task.id, servletRequest);
         return response(task);
     }
@@ -423,6 +638,9 @@ public class AiVideoTaskService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         AiVideoTaskEntity task = requireTask(tenantId, projectId, taskId);
+        if (isActiveTask(task)) {
+            throw new BusinessException(ErrorCode.AI_VIDEO_TASK_STATUS_INVALID, "请先取消进行中的视频任务再删除。");
+        }
         task.deletedAt = LocalDateTime.now();
         task.updatedAt = task.deletedAt;
         aiVideoTaskMapper.updateById(task);
@@ -732,146 +950,157 @@ public class AiVideoTaskService {
         return aiModelRouter.route(modelId, AiCapability.VIDEO);
     }
 
-    private void submitTask(AiVideoTaskEntity task) {
-        LocalDateTime now = LocalDateTime.now();
-        task.status = AiVideoTaskStatus.SUBMITTING.name();
-        task.updatedAt = now;
-        task.submittedAt = now;
-        AiExecutionAttemptEntity attempt = startExecutionAttempt(task, "VIDEO_SUBMIT");
-        try {
+    private void submitTask(AiVideoTaskEntity task, AiExecutionClaim claim) {
+        AiExecutionAttemptEntity attempt = executionAttemptMapper.selectById(claim.attemptId());
+        try (AiExecutionLeaseKeeper.Lease lease = leaseKeeper.keepAlive(claim)) {
+            claimService.requireActive(claim);
             AiInvocationResult<AiVideoProviderAdapter.VideoResult> invocation = invocationService.invokeProviderNative(
                 invocationRequest(task, attempt),
                 "taskId=%d,storyboardId=%d".formatted(task.id, task.storyboardId),
                 route -> shouldUseLocalMock(route.providerConfig())
                     ? com.antshorttv.ai.AiProviderExecutionOutcome.accepted(
-                        "mock-submit-" + task.id,
-                        "mock-video-" + UUID.randomUUID(),
-                        Duration.ofSeconds(10),
-                        com.antshorttv.ai.AiProviderReconciliationStatus.NOT_REQUIRED
-                    )
+                        "mock-submit-" + task.id, "mock-video-" + UUID.randomUUID(), Duration.ofSeconds(10),
+                        com.antshorttv.ai.AiProviderReconciliationStatus.NOT_REQUIRED)
                     : submitProviderTask(route, task, attempt.idempotencyKey)
             );
-            finishExecutionAttempt(attempt, invocation, "SUCCEEDED", false, null, null);
-            task.externalTaskId = invocation.externalTaskId();
-            task.externalStatus = "ACCEPTED";
-            task.status = AiVideoTaskStatus.GENERATING.name();
-            task.startedAt = now;
-            task.nextPollAt = now;
-            updateExecutionPhase(task.executionId, "VIDEO_QUERY", 10);
-        } catch (AiGatewayException exception) {
-            finishExecutionAttempt(attempt, exception, "FAILED", false);
-            task.status = AiVideoTaskStatus.FAILED.name();
-            task.externalStatus = "SUBMIT_FAILED";
-            task.errorMessage = "服务商提交失败：" + exception.getMessage();
-            task.completedAt = now;
-            settleExecution(task, AiSettlementOutcome.PROVIDER_REJECTION, attempt.id, exception.getAiCallLogId(), "FAILED");
+            lease.assertOwned();
+            transactions.executeWithoutResult(status -> {
+                task.externalTaskId = invocation.externalTaskId();
+                task.externalStatus = "ACCEPTED";
+                task.status = AiVideoTaskStatus.GENERATING.name();
+                task.startedAt = LocalDateTime.now();
+                task.nextPollAt = task.startedAt;
+                task.updatedAt = task.startedAt;
+                saveOwnedTask(task);
+                claimService.handoffExternal(claim, task.startedAt);
+                updateExecutionPhase(task.executionId, "VIDEO_QUERY", 10);
+                finishExecutionAttempt(attempt, invocation, "SUCCEEDED", false, null, null);
+                clearDomainClaim(task);
+            });
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Video submission failed for task {}", task.id, exception);
+            transactions.executeWithoutResult(status -> {
+                task.status = "FAILED";
+                task.externalStatus = "SUBMIT_UNKNOWN";
+                task.errorMessage = "服务商提交失败：" + exception.getMessage();
+                task.completedAt = LocalDateTime.now();
+                task.updatedAt = task.completedAt;
+                saveOwnedTask(task);
+                Long callLogId = exception instanceof AiGatewayException gateway ? gateway.getAiCallLogId() : null;
+                if (exception instanceof AiGatewayException gateway) {
+                    finishExecutionAttempt(attempt, gateway, "FAILED", false);
+                } else {
+                    finishExecutionAttempt(attempt, null, "FAILED", false, "VIDEO_SUBMIT_UNKNOWN", exception.getMessage());
+                }
+                // A timeout or transport failure cannot prove that the provider rejected the request.
+                boolean rejected = exception instanceof AiGatewayException gateway
+                    && gateway.getErrorCode() != ErrorCode.AI_PROVIDER_TIMEOUT
+                    && gateway.getErrorCode() != ErrorCode.AI_RESPONSE_INVALID
+                    && gateway.getErrorCode() != ErrorCode.AI_PROVIDER_ERROR;
+                settleExecution(task, rejected ? AiSettlementOutcome.PROVIDER_REJECTION
+                    : AiSettlementOutcome.TRANSPORT_UNKNOWN, attempt.id, callLogId, "FAILED");
+                clearDomainClaim(task);
+            });
         }
-        task.updatedAt = now;
     }
 
     private void processTask(AiVideoTaskEntity task, Long userId) {
-        if (!isActiveTask(task)) {
-            return;
-        }
-        AiTaskExecutionSupport.ClaimResult claim = executionSupport.claimAiVideoTask(
-            task.id,
-            task.status,
-            "VIDEO_QUERY",
-            Duration.ofMinutes(taskTimeoutMinutes)
-        );
-        if (!claim.claimed()) {
-            return;
-        }
-        task.executionToken = claim.executionToken();
-        task.executionPhase = "VIDEO_QUERY";
-        task.executionVersion = claim.executionVersion();
         AiExecutionAttemptEntity attempt = startExecutionAttempt(task, "VIDEO_QUERY");
         LocalDateTime now = LocalDateTime.now();
         if (isTimedOut(task, now)) {
-            failTask(task, "视频生成超时。", userId, now);
-            finishExecutionAttempt(attempt, null, "TIMED_OUT", false, "AI_PROVIDER_TIMEOUT", "视频生成超时。");
-            settleExecution(task, AiSettlementOutcome.TIMED_OUT, attempt.id, null, "TIMED_OUT");
-            executionSupport.clearAiVideoTaskClaim(task.id, false);
+            transactions.executeWithoutResult(status -> {
+                failTask(task, "视频生成超时。", userId, now);
+                finishExecutionAttempt(attempt, null, "TIMED_OUT", false, "AI_PROVIDER_TIMEOUT", "视频生成超时。");
+                settleExecution(task, AiSettlementOutcome.TIMED_OUT, attempt.id, null, "TIMED_OUT");
+            });
             return;
         }
         AiInvocationResult<AiVideoProviderAdapter.VideoResult> invocation = null;
         try {
             invocation = queryProviderTask(task, attempt);
             task.lastPollAt = now;
-            if (invocation.response() != null && "SUCCEEDED".equals(invocation.response().status())) {
-                AiVideoProviderAdapter.VideoResult providerResult = invocation.response();
-                rememberProviderBilling(task, attempt.id, invocation);
-                recordUsageAndCost(task, attempt.id, invocation);
-                if (providerResult.durationSeconds() != null) {
-                    task.durationSeconds = providerResult.durationSeconds().intValue();
-                }
-                if (aiVideoResultMapper.selectByTask(task.tenantId, task.projectId, task.id).isEmpty()) {
-                    createGeneratedResult(task, providerResult);
-                }
-                task.status = AiVideoTaskStatus.SUCCEEDED.name();
-                task.externalStatus = "SUCCEEDED";
-                task.completedAt = now;
-                task.updatedAt = now;
-                task.nextPollAt = null;
-                aiVideoTaskMapper.updateById(task);
-                finishExecutionAttempt(attempt, invocation, "SUCCEEDED", false, null, null);
-                settleExecution(task, AiSettlementOutcome.SUCCESS, attempt.id, invocation.aiCallLogId(), "SUCCEEDED");
-                executionSupport.clearAiVideoTaskClaim(task.id, false);
-                return;
+            AiVideoProviderAdapter.VideoResult providerResult = invocation.response();
+            boolean succeeded = providerResult != null && "SUCCEEDED".equals(providerResult.status());
+            boolean failed = providerResult != null && "FAILED".equals(providerResult.status());
+            if (succeeded || failed) {
+                AiInvocationResult<AiVideoProviderAdapter.VideoResult> observed = invocation;
+                transactions.executeWithoutResult(status -> {
+                    rememberProviderBilling(task, attempt.id, observed);
+                    recordUsageAndCost(task, attempt.id, observed);
+                });
             }
-            if (invocation.response() != null && "FAILED".equals(invocation.response().status())) {
-                rememberProviderBilling(task, attempt.id, invocation);
-                recordUsageAndCost(task, attempt.id, invocation);
-                failTask(task, invocation.response().errorMessage() == null ? "视频生成失败。" : invocation.response().errorMessage(), userId, now);
-                invocationService.markBusinessFailure(invocation.aiCallLogId(), ErrorCode.AI_PROVIDER_ERROR, task.errorMessage);
-                finishExecutionAttempt(attempt, invocation, "FAILED", false, "AI_PROVIDER_ERROR", task.errorMessage);
-                settleExecution(task, AiSettlementOutcome.PROVIDER_BILLED_FAILURE, attempt.id, invocation.aiCallLogId(), "FAILED");
-                executionSupport.clearAiVideoTaskClaim(task.id, false);
-                return;
-            }
-            task.externalStatus = "RUNNING";
-            task.nextPollAt = now.plusSeconds(10);
-            task.updatedAt = now;
-            aiVideoTaskMapper.updateById(task);
-            finishExecutionAttempt(attempt, invocation, "SUCCEEDED", false, null, null);
-            executionSupport.clearAiVideoTaskClaim(task.id, false);
+            // Download/upload can take minutes and must not hold a database connection.
+            AiVideoResultEntity result = succeeded
+                && aiVideoResultMapper.selectByTask(task.tenantId, task.projectId, task.id).isEmpty()
+                ? prepareGeneratedResult(task, providerResult) : null;
+            AiInvocationResult<AiVideoProviderAdapter.VideoResult> observed = invocation;
+            transactions.executeWithoutResult(status -> {
+                if (succeeded) {
+                    if (providerResult.durationSeconds() != null) {
+                        task.durationSeconds = providerResult.durationSeconds().intValue();
+                    }
+                    task.status = AiVideoTaskStatus.SUCCEEDED.name();
+                    task.externalStatus = "SUCCEEDED";
+                    task.completedAt = now;
+                    task.updatedAt = now;
+                    task.nextPollAt = null;
+                    saveOwnedTask(task);
+                    if (result != null) aiVideoResultMapper.insert(result);
+                    finishExecutionAttempt(attempt, observed, "SUCCEEDED", false, null, null);
+                    settleExecution(task, AiSettlementOutcome.SUCCESS, attempt.id, observed.aiCallLogId(), "SUCCEEDED");
+                } else if (failed) {
+                    failTask(task, providerResult.errorMessage() == null ? "视频生成失败。"
+                        : providerResult.errorMessage(), userId, now);
+                    invocationService.markBusinessFailure(observed.aiCallLogId(), ErrorCode.AI_PROVIDER_ERROR, task.errorMessage);
+                    finishExecutionAttempt(attempt, observed, "FAILED", false, "AI_PROVIDER_ERROR", task.errorMessage);
+                    settleExecution(task, AiSettlementOutcome.PROVIDER_BILLED_FAILURE,
+                        attempt.id, observed.aiCallLogId(), "FAILED");
+                } else {
+                    task.externalStatus = "RUNNING";
+                    task.nextPollAt = now.plusSeconds(10);
+                    task.updatedAt = now;
+                    saveOwnedTask(task);
+                    finishExecutionAttempt(attempt, observed, "SUCCEEDED", false, null, null);
+                }
+            });
         } catch (AiGatewayException exception) {
-            int nextRetryCount = task.pollRetryCount == null ? 1 : task.pollRetryCount + 1;
-            task.pollRetryCount = nextRetryCount;
-            task.lastPollAt = now;
-            task.updatedAt = now;
-            if (nextRetryCount >= pollRetryLimit) {
-                failTask(task, "外部任务查询失败：" + exception.getMessage(), userId, now);
-                finishExecutionAttempt(attempt, exception, "FAILED", false);
-                settleExecution(task, AiSettlementOutcome.PROVIDER_BILLED_FAILURE, attempt.id, exception.getAiCallLogId(), "FAILED");
-                executionSupport.clearAiVideoTaskClaim(task.id, false);
-                return;
-            }
-            task.nextPollAt = now.plusSeconds(10L * nextRetryCount);
-            aiVideoTaskMapper.updateById(task);
-            finishExecutionAttempt(attempt, exception, "FAILED", true);
-            executionSupport.clearAiVideoTaskClaim(task.id, true);
+            transactions.executeWithoutResult(status -> {
+                int nextRetryCount = task.pollRetryCount == null ? 1 : task.pollRetryCount + 1;
+                task.pollRetryCount = nextRetryCount;
+                task.lastPollAt = now;
+                task.updatedAt = now;
+                if (nextRetryCount >= pollRetryLimit) {
+                    failTask(task, "外部任务查询失败：" + exception.getMessage(), userId, now);
+                    finishExecutionAttempt(attempt, exception, "FAILED", false);
+                    settleExecution(task, AiSettlementOutcome.TRANSPORT_UNKNOWN,
+                        attempt.id, exception.getAiCallLogId(), "FAILED");
+                } else {
+                    task.nextPollAt = now.plusSeconds(10L * nextRetryCount);
+                    saveOwnedTask(task);
+                    finishExecutionAttempt(attempt, exception, "FAILED", true);
+                }
+            });
         } catch (Exception exception) {
-            if (invocation != null) {
-                invocationService.markBusinessFailure(invocation.aiCallLogId(), ErrorCode.AI_RESPONSE_INVALID, exception.getMessage());
-                finishExecutionAttempt(attempt, invocation, "FAILED", true, "AI_RESPONSE_INVALID", exception.getMessage());
-            } else {
-                finishExecutionAttempt(attempt, null, "FAILED", true, "AI_RESPONSE_INVALID", exception.getMessage());
-            }
-            int nextRetryCount = task.pollRetryCount == null ? 1 : task.pollRetryCount + 1;
-            task.pollRetryCount = nextRetryCount;
-            task.lastPollAt = now;
-            task.updatedAt = now;
-            if (nextRetryCount >= pollRetryLimit) {
-                failTask(task, "视频结果处理失败：" + exception.getMessage(), userId, now);
-                settleExecution(task, AiSettlementOutcome.BUSINESS_FAILURE, attempt.id,
-                    invocation == null ? null : invocation.aiCallLogId(), "FAILED");
-                executionSupport.clearAiVideoTaskClaim(task.id, false);
-                return;
-            }
-            task.nextPollAt = now.plusSeconds(10L * nextRetryCount);
-            aiVideoTaskMapper.updateById(task);
-            executionSupport.clearAiVideoTaskClaim(task.id, true);
+            AiInvocationResult<AiVideoProviderAdapter.VideoResult> observed = invocation;
+            transactions.executeWithoutResult(status -> {
+                if (observed != null) {
+                    invocationService.markBusinessFailure(observed.aiCallLogId(), ErrorCode.AI_RESPONSE_INVALID, exception.getMessage());
+                }
+                finishExecutionAttempt(attempt, observed, "FAILED", true, "AI_RESPONSE_INVALID", exception.getMessage());
+                int nextRetryCount = task.pollRetryCount == null ? 1 : task.pollRetryCount + 1;
+                task.pollRetryCount = nextRetryCount;
+                task.lastPollAt = now;
+                task.updatedAt = now;
+                if (nextRetryCount >= pollRetryLimit) {
+                    failTask(task, "视频结果处理失败：" + exception.getMessage(), userId, now);
+                    settleExecution(task, AiSettlementOutcome.BUSINESS_FAILURE, attempt.id,
+                        observed == null ? null : observed.aiCallLogId(), "FAILED");
+                } else {
+                    task.status = "GENERATING";
+                    task.nextPollAt = now.plusSeconds(10L * nextRetryCount);
+                    saveOwnedTask(task);
+                }
+            });
         }
     }
 
@@ -925,10 +1154,10 @@ public class AiVideoTaskService {
         task.completedAt = now;
         task.updatedAt = now;
         task.nextPollAt = null;
-        aiVideoTaskMapper.updateById(task);
+        saveOwnedTask(task);
     }
 
-    private void createGeneratedResult(
+    private AiVideoResultEntity prepareGeneratedResult(
         AiVideoTaskEntity task,
         AiVideoProviderAdapter.VideoResult providerResult
     ) throws Exception {
@@ -977,7 +1206,7 @@ public class AiVideoTaskService {
         result.status = AiVideoResultStatus.ACTIVE.name();
         result.createdAt = now;
         result.updatedAt = now;
-        aiVideoResultMapper.insert(result);
+        return result;
     }
 
     private long writeVideoFile(String storagePath, String externalVideoUrl) throws Exception {
@@ -1354,7 +1583,7 @@ public class AiVideoTaskService {
         metadata.put("billingAttemptId", previous.path("billingAttemptId").asLong(attemptId));
         metadata.put("billingCallLogId", previous.path("billingCallLogId").asLong(invocation.aiCallLogId()));
         task.providerResultMetadataJson = metadata.toString();
-        aiVideoTaskMapper.updateById(task);
+        saveOwnedTask(task);
     }
 
     private Long billingCorrelation(AiVideoTaskEntity task, String field, Long fallback) {
@@ -1368,16 +1597,6 @@ public class AiVideoTaskService {
             .set("progress", progress)
             .set("updated_at", LocalDateTime.now())
             .eq("id", executionId));
-    }
-
-    private void markExecutionRunning(AiVideoTaskEntity task) {
-        AiExecutionTaskEntity execution = executionTaskMapper.selectById(task.executionId);
-        execution.status = "RUNNING";
-        execution.phase = "VIDEO_SUBMIT";
-        execution.progress = 5;
-        execution.startedAt = LocalDateTime.now();
-        execution.updatedAt = execution.startedAt;
-        executionTaskMapper.updateById(execution);
     }
 
     private void settleExecution(
@@ -1400,21 +1619,19 @@ public class AiVideoTaskService {
                 "execution:%d:attempt:%s:call:%s:%s".formatted(task.executionId, billedAttemptId, billedCallLogId,
                     billingOutcome.name().toLowerCase()));
         }
-        AiExecutionTaskEntity execution = executionTaskMapper.selectById(task.executionId);
-        execution.status = status;
-        if ("SUCCEEDED".equals(status)) execution.progress = 100;
-        execution.resultType = "AI_VIDEO_TASK";
-        execution.resultId = task.id;
-        execution.completedAt = LocalDateTime.now();
-        execution.updatedAt = execution.completedAt;
+        LocalDateTime now = LocalDateTime.now();
+        UpdateWrapper<AiExecutionTaskEntity> update = new UpdateWrapper<AiExecutionTaskEntity>()
+            .set("status", status).set("result_type", "AI_VIDEO_TASK").set("result_id", task.id)
+            .set("completed_at", now).set("updated_at", now)
+            .set("claim_token", null).set("claim_expires_at", null).eq("id", task.executionId);
+        if ("SUCCEEDED".equals(status)) update.set("progress", 100);
         AiPointReservationEntity settled = reservationMapper.selectByExecutionId(task.executionId);
         if (settled != null) {
-            execution.pointSettlementStatus = settled.status;
-            execution.reservedPoints = settled.reservedPoints;
-            execution.settledPoints = settled.settledPoints;
-            execution.releasedPoints = settled.releasedPoints;
+            update.set("point_settlement_status", settled.status)
+                .set("reserved_points", settled.reservedPoints).set("settled_points", settled.settledPoints)
+                .set("released_points", settled.releasedPoints);
         }
-        executionTaskMapper.updateById(execution);
+        executionTaskMapper.update(null, update);
     }
 
     private void recordOperation(TenantContext context, Long projectId, String operation, Long resourceId, HttpServletRequest request) {

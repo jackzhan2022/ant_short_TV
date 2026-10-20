@@ -92,11 +92,41 @@ class AiVideoBillingTest {
             line.context().attemptId().equals(3L) && line.context().aiCallLogId().equals(4L)));
     }
 
+    @Test
+    void staleQueryCandidateReloadsThePreviousCompletionBillingCorrelation() {
+        Fixture f = new Fixture("{\"OUTPUT_TOKEN\":1000000}");
+        f.task.status = "GENERATING";
+        f.task.externalTaskId = "provider-task";
+        AiVideoTaskEntity fresh = new AiVideoTaskEntity();
+        fresh.id = f.task.id;
+        fresh.executionId = f.task.executionId;
+        fresh.tenantId = f.task.tenantId;
+        fresh.durationSeconds = f.task.durationSeconds;
+        fresh.resolution = f.task.resolution;
+        fresh.aspectRatio = f.task.aspectRatio;
+        fresh.requestSnapshotJson = f.task.requestSnapshotJson;
+        fresh.providerResultMetadataJson = "{\"billingAttemptId\":3,\"billingCallLogId\":4,\"completionTokens\":12345}";
+        fresh.executionToken = "query-token";
+        fresh.executionVersion = 2;
+        AiTaskExecutionSupport domains = mock(AiTaskExecutionSupport.class);
+        when(domains.claimAiVideoTask(eq(10L), eq("GENERATING"), eq("VIDEO_QUERY"), any()))
+            .thenReturn(new AiTaskExecutionSupport.ClaimResult(true, "query-token", 2, "query-key"));
+        when(f.videoTasks.selectById(10L)).thenReturn(fresh);
+        ReflectionTestUtils.setField(f.service, "executionSupport", domains);
+        AiVideoTaskEntity owned = ReflectionTestUtils.invokeMethod(f.service, "claimQueryTask", f.task, true);
+        assertThat(owned).isSameAs(fresh);
+        ReflectionTestUtils.invokeMethod(f.service, "rememberProviderBilling", owned, 9L, f.invocation(12345L));
+        ReflectionTestUtils.invokeMethod(f.service, "recordUsageAndCost", owned, 9L, f.invocation(12345L));
+        verify(f.accounting).recordIfAbsent(org.mockito.ArgumentMatchers.argThat(line ->
+            line.context().attemptId().equals(3L) && line.context().aiCallLogId().equals(4L)));
+    }
+
     private static final class Fixture {
         final AiVideoTaskService service = mock(AiVideoTaskService.class, CALLS_REAL_METHODS);
         final AiUsageAccountingService accounting = mock(AiUsageAccountingService.class);
         final AiPointSettlementService settlements = mock(AiPointSettlementService.class);
         final AiVideoTaskEntity task = new AiVideoTaskEntity();
+        final AiVideoTaskMapper videoTasks = mock(AiVideoTaskMapper.class);
         Fixture(String authorization) {
             AiPointReservationMapper reservations = mock(AiPointReservationMapper.class);
             AiExecutionTaskMapper executions = mock(AiExecutionTaskMapper.class);
@@ -105,7 +135,8 @@ class AiVideoBillingTest {
             ReflectionTestUtils.setField(service, "pointSettlementService", settlements);
             ReflectionTestUtils.setField(service, "reservationMapper", reservations);
             ReflectionTestUtils.setField(service, "executionTaskMapper", executions);
-            ReflectionTestUtils.setField(service, "aiVideoTaskMapper", mock(AiVideoTaskMapper.class));
+            when(videoTasks.update(any(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(1);
+            ReflectionTestUtils.setField(service, "aiVideoTaskMapper", videoTasks);
             task.id = 10L; task.executionId = 1L; task.tenantId = 11L; task.durationSeconds = 5;
             task.resolution = "720p"; task.aspectRatio = "16:9";
             task.requestSnapshotJson = "{\"references\":[{\"reference\":{\"mediaType\":\"VIDEO\"}}]}";

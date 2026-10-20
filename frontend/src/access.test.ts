@@ -2,6 +2,37 @@ import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
+  it('grants the existing management entry to a concurrency-only platform viewer', () => {
+    const result = access({
+      currentUser: { userid: '1' },
+      platformPermissions: ['PLATFORM_AI_CONCURRENCY_VIEW'],
+    });
+    expect(result.canViewAiManagement).toBe(true);
+    expect(result.canViewPlatformAiConcurrency).toBe(true);
+    expect(result.canEditPlatformAiConcurrency).toBe(false);
+    expect(result.canViewPlatformAiProviders).toBe(false);
+    expect(result.canViewTenantWorkflowSkills).toBe(false);
+  });
+
+  it('keeps concurrency platform view and edit permissions independent', () => {
+    const state = { currentUser: { userid: '1' } };
+    const editor = access({
+      ...state,
+      platformPermissions: ['PLATFORM_AI_CONCURRENCY_EDIT'],
+    });
+    expect(editor.canEditPlatformAiConcurrency).toBe(true);
+    expect(editor.canViewPlatformAiConcurrency).toBe(false);
+    expect(editor.canViewAiManagement).toBe(false);
+    const tenantOnly = access({
+      ...state,
+      tenantPermissions: ['PLATFORM_AI_CONCURRENCY_VIEW', 'PLATFORM_AI_CONCURRENCY_EDIT'],
+    });
+    expect(tenantOnly.canViewPlatformAiConcurrency).toBe(false);
+    expect(tenantOnly.canEditPlatformAiConcurrency).toBe(false);
+    expect(access({
+      platformPermissions: ['PLATFORM_AI_CONCURRENCY_VIEW', 'PLATFORM_AI_CONCURRENCY_EDIT'],
+    }).canEditPlatformAiConcurrency).toBe(false);
+  });
   it('limits tenant Skill management to an active owner or administrator', () => {
     const ordinary = access({
       currentUser: { userid: '1' },

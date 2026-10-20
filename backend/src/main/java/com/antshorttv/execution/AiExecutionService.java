@@ -141,6 +141,7 @@ public class AiExecutionService {
         task.projectId = command.projectId();
         task.scene = command.scene();
         task.capability = command.capability();
+        task.taskType = AiExecutionTaskType.classify(command.capability(), command.scene(), command.businessType()).name();
         task.businessType = command.businessType();
         task.businessId = command.businessId();
         task.requestedModelId = command.requestedModelId();
@@ -322,6 +323,7 @@ public class AiExecutionService {
         task.projectId = source.projectId;
         task.scene = source.scene;
         task.capability = source.capability;
+        task.taskType = AiExecutionTaskType.classify(source.capability, source.scene, source.businessType).name();
         task.businessType = source.businessType;
         task.businessId = businessId;
         task.requestedModelId = requestedModelId;

@@ -15,6 +15,7 @@ public class AiExecutionTaskEntity {
     public Long projectId;
     public String scene;
     public String capability;
+    public String taskType;
     public String businessType;
     public Long businessId;
     public Long requestedModelId;

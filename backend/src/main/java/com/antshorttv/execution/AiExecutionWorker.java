@@ -34,6 +34,12 @@ public class AiExecutionWorker {
         if (claim == null) {
             return;
         }
+        runClaimed(claim);
+    }
+
+    public void runClaimed(AiExecutionClaim claim) {
+        Long executionId = claim.executionId();
+        String claimToken = claim.claimToken();
         AiExecutionTaskEntity task = executionService.requireTask(executionId);
         AiExecutionHandler handler = handlerRegistry.require(task.scene);
         try (AiExecutionLeaseKeeper.Lease lease = leaseKeeper.keepAlive(claim)) {

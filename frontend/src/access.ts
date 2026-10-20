@@ -62,6 +62,7 @@ export default function access(
         platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW') ||
+        platformPermissions.includes('PLATFORM_AI_CONCURRENCY_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_WORKFLOW_AGENT_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_WORKFLOW_SKILL_VIEW')),
     canManageBilling:
@@ -85,6 +86,12 @@ export default function access(
       platformPermissions.includes('PLATFORM_TENANT_STATUS_EDIT'),
     canViewPlatformAiProviders:
       currentUser && platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW'),
+    canViewPlatformAiConcurrency:
+      Boolean(currentUser) &&
+      platformPermissions.includes('PLATFORM_AI_CONCURRENCY_VIEW'),
+    canEditPlatformAiConcurrency:
+      Boolean(currentUser) &&
+      platformPermissions.includes('PLATFORM_AI_CONCURRENCY_EDIT'),
     canCreatePlatformAiProviders:
       currentUser &&
       platformPermissions.includes('PLATFORM_AI_PROVIDER_CREATE'),

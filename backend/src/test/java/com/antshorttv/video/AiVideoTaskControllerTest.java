@@ -22,6 +22,13 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import com.antshorttv.execution.AiExecutionPools;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -56,6 +63,37 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
     @Autowired
     private AiSecretCodec aiSecretCodec;
 
+    @MockBean
+    private AiExecutionPools executionPools;
+
+    @SpyBean
+    private AiVideoProviderAdapter providerAdapter;
+
+    @BeforeEach
+    void executeReservedVideoSlotsDeterministically() throws Exception {
+        doAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            return invocation.callRealMethod();
+        }).when(providerAdapter).submit(any(), any(), any(), any());
+        doAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            return invocation.callRealMethod();
+        }).when(providerAdapter).poll(any(), any(), any(), any());
+        doAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            return invocation.callRealMethod();
+        }).when(providerAdapter).downloadTo(any(), any());
+        when(executionPools.tryAcquire(any())).thenAnswer(invocation -> {
+            AiExecutionPools.Slot slot = mock(AiExecutionPools.Slot.class);
+            when(slot.canContinue()).thenReturn(true);
+            doAnswer(submission -> {
+                submission.getArgument(0, Runnable.class).run();
+                return null;
+            }).when(slot).submit(any(Runnable.class));
+            return slot;
+        });
+    }
+
     @Test
     void compilesAndFreezesSeedanceReferencesBeforeCreatingExecution() throws Exception {
         String token = registerUser("13800016021", "Seedance Owner");
@@ -84,9 +122,12 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                     }
                     """.formatted(storyboardId, modelId)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.status", is("GENERATING")))
+            .andExpect(jsonPath("$.data.status", is("PENDING")))
             .andReturn();
         Long taskId = readLong(created, "$.data.id");
+        assertThat(jdbc.queryForObject("select count(*) from ai_execution_attempt where execution_id = (select execution_id from ai_video_task where id = ?)", Integer.class, taskId)).isZero();
+        pollVideoTask(token, tenantId, projectId, taskId)
+            .andExpect(jsonPath("$.data.status", is("GENERATING")));
 
         var task = jdbc.queryForMap("""
             select compiled_prompt, request_snapshot_json, generate_audio, watermark, execution_id
@@ -176,11 +217,17 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id", notNullValue()))
             .andExpect(jsonPath("$.data.executionId", notNullValue()))
-            .andExpect(jsonPath("$.data.status", is("GENERATING")))
-            .andExpect(jsonPath("$.data.externalTaskId", containsString("mock-video-")))
+            .andExpect(jsonPath("$.data.status", is("PENDING")))
             .andReturn();
 
         Long taskId = readLong(createResult, "$.data.id");
+        pollVideoTask(token, tenantId, projectId, taskId)
+            .andExpect(jsonPath("$.data.status", is("GENERATING")));
+        var inflight = jdbc.queryForMap("select status, phase, claim_token, claim_expires_at from ai_execution_task where id = (select execution_id from ai_video_task where id = ?)", taskId);
+        assertThat(inflight.get("status")).isEqualTo("RUNNING");
+        assertThat(inflight.get("phase")).isEqualTo("VIDEO_QUERY");
+        assertThat(inflight.get("claim_token")).isNull();
+        assertThat(inflight.get("claim_expires_at")).isNull();
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/poll".formatted(projectId, taskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -260,7 +307,7 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
     }
 
     @Test
-    void rejectsNewTaskWhenTenantConcurrencyLimitIsReached() throws Exception {
+    void queuesNewTaskWhenTenantConcurrencyLimitIsReached() throws Exception {
         String token = registerUser("13800016005", "Concurrency Owner");
         Long tenantId = createTenant(token, "并发视频团队");
         Long ownerId = userIdByMobile("13800016005");
@@ -268,16 +315,135 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
         Long modelId = createVideoService(token, tenantId);
         Long firstStoryboardId = createStoryboard(tenantId, projectId, ownerId);
         Long secondStoryboardId = createStoryboardWithShot(tenantId, projectId, ownerId, 2);
-        grantTeamPoints(tenantId, 1);
-        createVideoTask(token, tenantId, projectId, firstStoryboardId, modelId, "第一条视频提示词");
+        grantTeamPoints(tenantId, 2);
+        Long firstTaskId = createVideoTask(token, tenantId, projectId, firstStoryboardId, modelId, "第一条视频提示词");
+        jdbc.update("update ai_video_task set next_poll_at = dateadd('minute', 10, now()) where id = ?", firstTaskId);
 
         mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(videoTaskPayload(secondStoryboardId, modelId, "第二条视频提示词")))
-            .andExpect(status().isConflict())
-            .andExpect(jsonPath("$.errorCode", is("AI_VIDEO_CONCURRENCY_LIMIT_EXCEEDED")));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("PENDING")));
+        aiVideoTaskService.pollDueTasks();
+        assertThat(jdbc.queryForObject("select count(*) from ai_execution_task where tenant_id = ? and status = 'RUNNING'", Integer.class, tenantId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from ai_execution_task where tenant_id = ? and status = 'PENDING'", Integer.class, tenantId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from ai_execution_attempt where execution_id in (select execution_id from ai_video_task where tenant_id = ?)", Integer.class, tenantId)).isEqualTo(1);
+    }
+
+    @Test
+    void ambiguousSubmissionFailureIsNotResubmittedByBackgroundPolling() throws Exception {
+        AtomicInteger submissions = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/video/generations", exchange -> {
+            submissions.incrementAndGet();
+            writeJson(exchange, 503, "{\"message\":\"upstream outcome unknown\"}");
+        });
+        server.start();
+        try {
+            String token = registerUser("13800016024", "Unknown Submit Owner");
+            Long tenantId = createTenant(token, "提交结果未知团队");
+            Long ownerId = userIdByMobile("13800016024");
+            Long projectId = createProject(token, tenantId, ownerId, "未知提交项目", "UNKNOWN_SUBMIT");
+            Long modelId = createVideoService(token, tenantId, "http://127.0.0.1:" + server.getAddress().getPort());
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            grantTeamPoints(tenantId, 1);
+            Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "只允许提交一次");
+            aiVideoTaskService.pollDueTasks();
+            aiVideoTaskService.pollDueTasks();
+            assertThat(submissions.get()).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select status from ai_video_task where id = ?", String.class, taskId)).isEqualTo("FAILED");
+            Long executionId = jdbc.queryForObject("select execution_id from ai_video_task where id = ?", Long.class, taskId);
+            assertThat(jdbc.queryForObject("select status from ai_execution_task where id = ?", String.class, executionId)).isEqualTo("FAILED");
+            assertThat(jdbc.queryForObject("select claim_token from ai_execution_task where id = ?", String.class, executionId)).isNull();
+            assertThat(jdbc.queryForObject("select status from ai_point_reservation where execution_id = ?", String.class, executionId)).isEqualTo("SETTLEMENT_REVIEW_REQUIRED");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void cancelingQueuedVideoReleasesReservationWithoutProviderAttempt() throws Exception {
+        String token = registerUser("13800016023", "Queued Cancel Owner");
+        Long tenantId = createTenant(token, "排队取消团队");
+        Long ownerId = userIdByMobile("13800016023");
+        Long projectId = createProject(token, tenantId, ownerId, "排队取消项目", "QUEUED_CANCEL");
+        Long modelId = createVideoService(token, tenantId);
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 1);
+        MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content(videoTaskPayload(storyboardId, modelId, "尚未提交的视频")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.status", is("PENDING"))).andReturn();
+        Long taskId = readLong(created, "$.data.id");
+        mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/cancel".formatted(projectId, taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.status", is("CANCELED")));
+        aiVideoTaskService.pollDueTasks();
+        Long executionId = jdbc.queryForObject("select execution_id from ai_video_task where id = ?", Long.class, taskId);
+        assertThat(jdbc.queryForObject("select count(*) from ai_execution_attempt where execution_id = ?", Integer.class, executionId)).isZero();
+        assertThat(jdbc.queryForObject("select status from ai_point_reservation where execution_id = ?", String.class, executionId)).isEqualTo("RELEASED");
+        assertThat(jdbc.queryForObject("select claim_token from ai_execution_task where id = ?", String.class, executionId)).isNull();
+        MvcResult regenerated = mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/regenerate".formatted(projectId, taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.status", is("PENDING"))).andReturn();
+        Long newTaskId = readLong(regenerated, "$.data.id");
+        Long newExecutionId = readLong(regenerated, "$.data.executionId");
+        assertThat(newTaskId).isNotEqualTo(taskId);
+        assertThat(newExecutionId).isNotEqualTo(executionId);
+        assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id = ?", Integer.class, tenantId)).isEqualTo(2);
+        pollVideoTask(token, tenantId, projectId, newTaskId).andExpect(jsonPath("$.data.status", is("GENERATING")));
+        assertThat(jdbc.queryForObject("select status from ai_execution_task where id = ?", String.class, newExecutionId)).isEqualTo("RUNNING");
+        assertThat(jdbc.queryForObject("select status from ai_point_reservation where execution_id = ?", String.class, newExecutionId)).isEqualTo("RESERVED");
+    }
+
+    @Test
+    void regeneratingSuccessfulVideoCreatesFreshExecutionAndReservation() throws Exception {
+        String token = registerUser("13800016025", "Successful Regenerate Owner");
+        Long tenantId = createTenant(token, "成功重生成团队");
+        Long ownerId = userIdByMobile("13800016025");
+        Long projectId = createProject(token, tenantId, ownerId, "成功重生成项目", "SUCCESS_REGENERATE");
+        Long modelId = createVideoService(token, tenantId);
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 3);
+        Long taskId = createVideoTask(token, tenantId, projectId, storyboardId, modelId, "重生成相同内容");
+        pollVideoTask(token, tenantId, projectId, taskId).andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
+        Long oldExecutionId = jdbc.queryForObject("select execution_id from ai_video_task where id = ?", Long.class, taskId);
+        MvcResult regenerated = mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/regenerate".formatted(projectId, taskId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.status", is("PENDING"))).andReturn();
+        Long newTaskId = readLong(regenerated, "$.data.id");
+        Long newExecutionId = readLong(regenerated, "$.data.executionId");
+        assertThat(newExecutionId).isNotEqualTo(oldExecutionId);
+        assertThat(jdbc.queryForObject("select request_hash from ai_video_task where id = ?", String.class, newTaskId))
+            .isEqualTo(jdbc.queryForObject("select request_hash from ai_video_task where id = ?", String.class, taskId));
+        assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id = ?", Integer.class, tenantId)).isEqualTo(2);
+        pollVideoTask(token, tenantId, projectId, newTaskId).andExpect(jsonPath("$.data.status", is("GENERATING")));
+    }
+
+    @Test
+    void expiredQueuedCancellationClaimDoesNotStrandPendingVideo() throws Exception {
+        String token = registerUser("13800016026", "Expired Cancel Owner");
+        Long tenantId = createTenant(token, "取消恢复团队");
+        Long ownerId = userIdByMobile("13800016026");
+        Long projectId = createProject(token, tenantId, ownerId, "取消恢复项目", "EXPIRED_CANCEL");
+        Long modelId = createVideoService(token, tenantId);
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        grantTeamPoints(tenantId, 1);
+        MvcResult queued = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content(videoTaskPayload(storyboardId, modelId, "恢复取消中断的排队任务")))
+            .andExpect(status().isOk()).andReturn();
+        Long taskId = readLong(queued, "$.data.id");
+        jdbc.update("update ai_video_task set execution_token = 'dead-cancel', execution_phase = 'VIDEO_CANCEL', execution_timeout_at = dateadd('minute', -1, now()) where id = ?", taskId);
+        when(executionPools.tryAcquire(com.antshorttv.execution.AiExecutionPoolType.VIDEO_QUERY)).thenReturn(null);
+        aiVideoTaskService.pollDueTasks();
+        assertThat(jdbc.queryForObject("select status from ai_video_task where id = ?", String.class, taskId)).isEqualTo("GENERATING");
+        assertThat(jdbc.queryForObject("select execution_token from ai_video_task where id = ?", String.class, taskId)).isNull();
+        assertThat(jdbc.queryForObject("select count(*) from ai_execution_attempt where execution_id = (select execution_id from ai_video_task where id = ?)", Integer.class, taskId)).isEqualTo(1);
     }
 
     @Test
@@ -504,12 +670,14 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
         );
 
         try {
-            mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+            MvcResult queued = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
                     .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(videoTaskPayload(storyboardId, modelId, "密钥坏掉的视频提示词")))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status", is("PENDING"))).andReturn();
+            pollVideoTask(token, tenantId, projectId, readLong(queued, "$.data.id"))
                 .andExpect(jsonPath("$.data.status", is("FAILED")))
                 .andExpect(jsonPath("$.data.errorMessage", containsString("AI 服务密钥解密失败")));
             org.junit.jupiter.api.Assertions.assertEquals(0, callCount.get());
@@ -567,9 +735,10 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                 .andReturn();
 
             assertThat(calls.get()).isZero();
-            assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.data.status")).isEqualTo("FAILED");
-            assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.data.errorMessage"))
-                .isNotBlank();
+            assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.data.status")).isEqualTo("PENDING");
+            pollVideoTask(token, tenantId, projectId, readLong(result, "$.data.id"))
+                .andExpect(jsonPath("$.data.status", is("FAILED")));
+            assertThat(calls.get()).isZero();
         } finally {
             server.stop(0);
         }
@@ -895,7 +1064,11 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                 .content(videoTaskPayload(storyboardId, modelId, prompt)))
             .andExpect(status().isOk())
             .andReturn();
-        return readLong(result, "$.data.id");
+        Long id = readLong(result, "$.data.id");
+        if ("PENDING".equals(JsonPath.read(result.getResponse().getContentAsString(), "$.data.status"))) {
+            pollVideoTask(token, tenantId, projectId, id);
+        }
+        return id;
     }
 
     private void grantTeamPoints(Long tenantId, int amount) {
@@ -959,6 +1132,8 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                 .andExpect(status().isOk())
                 .andReturn();
             Long taskId = readLong(createResult, "$.data.id");
+            pollVideoTask(token, tenantId, projectId, taskId)
+                .andExpect(jsonPath("$.data.status", is("GENERATING")));
 
             for (int attempt = 0; attempt < 2; attempt++) {
                 mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/cancel".formatted(projectId, taskId))

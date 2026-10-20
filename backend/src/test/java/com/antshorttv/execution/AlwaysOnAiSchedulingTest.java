@@ -8,9 +8,9 @@ import static org.mockito.Mockito.when;
 import com.antshorttv.video.AiVideoTaskScheduler;
 import com.antshorttv.video.AiVideoTaskService;
 import java.util.List;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.core.task.TaskExecutor;
 
 class AlwaysOnAiSchedulingTest {
     @Test
@@ -18,21 +18,30 @@ class AlwaysOnAiSchedulingTest {
         var tasks = mock(AiExecutionTaskMapper.class);
         var claims = mock(AiExecutionClaimService.class);
         var worker = mock(AiExecutionWorker.class);
+        var pools = mock(AiExecutionPools.class);
+        var slot = mock(AiExecutionPools.Slot.class);
+        var claim = new AiExecutionClaim(42L, 43L, "token", 1, "SUBMIT");
+        when(pools.tryAcquire(AiExecutionPoolType.TEXT)).thenReturn(slot);
+        when(claims.claim(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(Duration.ofMinutes(10)))).thenReturn(claim);
+        org.mockito.Mockito.doAnswer(invocation -> { ((Runnable) invocation.getArgument(0)).run(); return null; })
+            .when(slot).submit(org.mockito.ArgumentMatchers.any());
         var pending = new AiExecutionTaskEntity();
         pending.id = 42L;
-        when(tasks.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(), List.of(pending));
+        when(tasks.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(pending), List.of());
         new ApplicationContextRunner()
+            .withInitializer(context -> context.getBeanFactory().setConversionService(
+                new org.springframework.boot.convert.ApplicationConversionService()))
             .withPropertyValues("ai.execution.dispatcher.enabled=false")
             .withBean(AiExecutionTaskMapper.class, () -> tasks)
             .withBean(AiExecutionClaimService.class, () -> claims)
             .withBean(AiExecutionWorker.class, () -> worker)
-            .withBean("aiExecutionTaskExecutor", TaskExecutor.class, () -> Runnable::run)
-            .withBean("aiImagePublicationExecutor", TaskExecutor.class, () -> Runnable::run)
+            .withBean(AiExecutionPools.class, () -> pools)
             .withUserConfiguration(AiExecutionDispatcher.class)
             .run(context -> {
                 context.getBean(AiExecutionDispatcher.class).dispatchScheduled();
                 verify(claims).recoverExpiredClaims(org.mockito.ArgumentMatchers.any());
-                verify(worker).run(42L);
+                verify(worker).runClaimed(claim);
             });
     }
 
