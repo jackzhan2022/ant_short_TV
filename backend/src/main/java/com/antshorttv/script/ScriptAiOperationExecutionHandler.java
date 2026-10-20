@@ -109,7 +109,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         if(failure instanceof com.antshorttv.common.BusinessException business
             && business.getErrorCode()==com.antshorttv.common.ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED)
             return AiExecutionRetryPolicy.none();
-        return failure instanceof NonRetryableStoryboardException
+        return failure instanceof NonRetryableStoryboardException || failure instanceof NonRetryableAssetNormalizationException
             ? AiExecutionRetryPolicy.none()
             : retryPolicy();
     }

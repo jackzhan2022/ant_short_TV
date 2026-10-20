@@ -68,6 +68,18 @@ class AssetNormalizationServiceTest {
         service.normalize(9803,9804,execution);
         verify(runner,times(1)).runFormal(any());
     }
+    @Test void invalidNormalizationIsNotAutomaticallyRetriedByTheExecutionQueue() {
+        when(runner.runFormal(any())).thenThrow(new com.antshorttv.common.BusinessException(
+            com.antshorttv.common.ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,"原文证据无效"));
+        var handler=new ScriptAiOperationExecutionHandler(mock(ScriptAiOperationMapper.class),mock(ScriptWorkflowService.class),
+            mock(AiExecutionAttemptMapper.class),mock(com.antshorttv.points.AiPointReservationMapper.class),
+            mock(com.antshorttv.points.AiPointSettlementService.class),mock(AiExecutionService.class),
+            mock(com.antshorttv.accounting.AiUsageAccountingService.class),mock(AiExecutionTaskMapper.class),json,
+            mock(com.antshorttv.workflowagent.run.WorkflowAgentRunRepository.class));
+        assertThatThrownBy(()->service.normalize(9803,9804,execution)).hasMessageContaining("原文证据无效")
+            .satisfies(error -> assertThat(handler.retryPolicy(error)).isEqualTo(AiExecutionRetryPolicy.none()));
+        assertThat(jdbc.queryForObject("select merge_target_id from character_asset where id=757",Long.class)).isNull();
+    }
     @Test void mergesAndSplitsAtomicallyPreservingImagesBindingsAndRedirects() throws Exception {
         long snapshot=service.prepare(9803,9804,execution);
         JsonNode result=service.publish(tools,decision());

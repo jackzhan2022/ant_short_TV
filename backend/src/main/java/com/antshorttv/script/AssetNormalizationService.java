@@ -71,6 +71,10 @@ public class AssetNormalizationService {
                 jdbc.update("update script_asset_normalization_snapshot set status='FAILED',error_message=?,updated_at=now() where id=? and status<>'SUCCEEDED'",
                     failure.getMessage(),id);
             });
+            if (failure instanceof BusinessException business && Set.of(
+                ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,ErrorCode.WORKFLOW_AGENT_STEP_LIMIT,
+                ErrorCode.REQUIRED_TOOL_NOT_CALLED,ErrorCode.ANALYSIS_AGENT_INCOMPLETE).contains(business.getErrorCode()))
+                throw new NonRetryableAssetNormalizationException(business);
             throw failure;
         }
     }
