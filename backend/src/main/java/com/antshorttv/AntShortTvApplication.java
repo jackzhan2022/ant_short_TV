@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@MapperScan("com.antshorttv")
+@MapperScan(basePackages = "com.antshorttv", annotationClass = org.apache.ibatis.annotations.Mapper.class)
 @EnableScheduling
 @SpringBootApplication
 @EnableConfigurationProperties(com.antshorttv.auth.TencentSmsProperties.class)
