@@ -35,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProjectService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private static final List<DefaultProjectRole> DEFAULT_ROLES = List.of(
         new DefaultProjectRole("PROJECT_OWNER", "项目负责人", List.of(
             "PROJECT:VIEW",
@@ -903,6 +905,8 @@ public class ProjectService {
         version.setCreatedBy(userId);
         version.setCreatedAt(now);
         scriptVersionMapper.insert(version);
+        queryCache.invalidateProjectAfterCommit(version.getTenantId(),version.getProjectId(),
+            com.antshorttv.querycache.QueryResultCache.Region.SCRIPT);
 
         script.setCurrentVersionId(version.getId());
         scriptMapper.updateById(script);

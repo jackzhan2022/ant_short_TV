@@ -12,6 +12,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @Service
 public class AiExecutionClaimService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private final AiExecutionTaskMapper taskMapper;
     private final AiExecutionAttemptMapper attemptMapper;
     private final AiConcurrencyConfigService config;
@@ -313,6 +315,12 @@ public class AiExecutionClaimService {
                     .set("finished_at", now)
                     .eq("execution_id", task.id)
                     .eq("status", AiExecutionAttemptStatus.STARTED.name()));
+                if(queryCache.isEnabled() && task.tenantId!=null) {
+                    queryCache.invalidateAfterCommit(com.antshorttv.querycache.QueryResultCache.Scope.tenant(task.tenantId),
+                        com.antshorttv.querycache.QueryResultCache.Region.TASKS);
+                    queryCache.invalidateProjectAfterCommit(task.tenantId,task.projectId,
+                        com.antshorttv.querycache.QueryResultCache.Region.ANALYSIS);
+                }
                 recovered++;
             }
         }

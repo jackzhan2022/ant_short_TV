@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProjectAiConfigService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private final TenantContextResolver tenantContextResolver;
     private final ProjectMapper projectMapper;
     private final ProjectAiConfigMapper projectAiConfigMapper;
@@ -48,12 +50,9 @@ public class ProjectAiConfigService {
     public ProjectAiModelsResponse availableModels(Long tenantId, Long projectId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProject(context, projectId);
-        return new ProjectAiModelsResponse(
-            options("TEXT"),
-            options("IMAGE"),
-            options("VIDEO"),
-            options("AUDIO")
-        );
+        return queryCache.read(com.antshorttv.querycache.QueryResultCache.Region.MODELS,
+            "public-options",ProjectAiModelsResponse.class,()->new ProjectAiModelsResponse(
+                options("TEXT"),options("IMAGE"),options("VIDEO"),options("AUDIO")));
     }
 
     public ProjectAiConfigResponse config(Long tenantId, Long projectId) {

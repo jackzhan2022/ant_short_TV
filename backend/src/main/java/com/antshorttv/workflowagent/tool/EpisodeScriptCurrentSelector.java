@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class EpisodeScriptCurrentSelector {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private final JdbcTemplate jdbc;
 
     public EpisodeScriptCurrentSelector(JdbcTemplate jdbc) {
@@ -34,6 +36,8 @@ public class EpisodeScriptCurrentSelector {
         if (changed != 1) {
             throw new IllegalStateException("Episode script version could not become current");
         }
+        queryCache.invalidateProjectAfterCommit(tenantId,projectId,
+            com.antshorttv.querycache.QueryResultCache.Region.SCRIPT);
     }
 
     private String sha256(String content) {

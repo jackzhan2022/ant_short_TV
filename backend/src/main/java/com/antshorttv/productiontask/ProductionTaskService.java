@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class ProductionTaskService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private static final Map<String,String> OPERATION_PERMISSIONS=Map.of(
         "SCRIPT_GENERATE","SCRIPT:AI_GENERATE", "SCRIPT_REWRITE","SCRIPT:AI_REWRITE",
         "ASSET_NORMALIZATION","ELEMENT:AI_EXTRACT", "ELEMENT_EXTRACT","ELEMENT:AI_EXTRACT", "SCOPED_ASSET_REEXTRACTION","ELEMENT:AI_EXTRACT",
@@ -87,6 +89,11 @@ public class ProductionTaskService {
 
     public Summary summary(long tenantId,ProductionTaskQuery query) {
         Access a=access(tenantId);Predicate p=predicate(a,query);
+        return queryCache.read(com.antshorttv.querycache.QueryResultCache.Region.TASKS,
+            com.antshorttv.querycache.QueryResultCache.Scope.tenant(tenantId),Arrays.asList(tenantId,a.context.userId(),p.text,p.params),Summary.class,()->loadSummary(p));
+    }
+
+    private Summary loadSummary(Predicate p) {
         Map<String,Long> counts=new LinkedHashMap<>();
         for(String status:List.of("QUEUED","RUNNING","WAITING_USER","SUCCEEDED","PARTIAL","FAILED","CANCELED")) counts.put(status,0L);
         sql.query("select t.status_group,count(*) amount from ("+ProductionTaskSources.ALL+") t where "+p.text

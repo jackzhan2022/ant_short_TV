@@ -154,3 +154,7 @@ review:
     deep-unit-characters: ${REVIEW_WORKFLOW_DEEP_UNIT_CHARACTERS:24000}
     deep-unit-overlap: ${REVIEW_WORKFLOW_DEEP_UNIT_OVERLAP:1200}
     deep-max-concurrency: ${REVIEW_WORKFLOW_DEEP_MAX_CONCURRENCY:3}
+
+# Optional disposable query caches. Production credentials live outside the release.
+query-cache:
+  enabled: ${QUERY_CACHE_ENABLED:false}

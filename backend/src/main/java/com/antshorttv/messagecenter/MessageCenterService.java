@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MessageCenterService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     public static final List<String> CATEGORIES = List.of("SYSTEM", "SECURITY", "PRODUCT", "FINANCE", "OPERATION", "ACTIVITY");
     private final JdbcTemplate jdbc;
     private final NamedParameterJdbcTemplate sql;
@@ -88,6 +90,13 @@ public class MessageCenterService {
 
     public Summary summary() {
         long user = principal.require().userId();
+        boolean canSend = canSend(user);
+        Map<String,Long> counts = queryCache.read(com.antshorttv.querycache.QueryResultCache.Region.MESSAGES,
+            com.antshorttv.querycache.QueryResultCache.Scope.user(user),user,new com.fasterxml.jackson.core.type.TypeReference<Map<String,Long>>() {},()->unreadCounts(user));
+        return new Summary(counts.values().stream().mapToLong(Long::longValue).sum(),counts,canSend);
+    }
+
+    private Map<String,Long> unreadCounts(long user) {
         Map<String, Long> counts = new LinkedHashMap<>();
         CATEGORIES.forEach(c -> counts.put(c, 0L));
         jdbc.query("""
@@ -95,7 +104,7 @@ public class MessageCenterService {
             join inbox_message m on m.id=r.message_id
             where r.user_id=? and r.deleted_at is null and r.read_at is null group by m.category
             """, rs -> { counts.put(rs.getString("category"), rs.getLong("amount")); }, user);
-        return new Summary(counts.values().stream().mapToLong(Long::longValue).sum(), counts, canSend(user));
+        return counts;
     }
 
     public Message detail(String id) {
@@ -176,6 +185,8 @@ public class MessageCenterService {
         f.params.put("now", Timestamp.from(Instant.now()));
         sql.update("update message_recipient set " + (delete ? "deleted_at=:now" : "read_at=coalesce(read_at,:now)")
             + " where " + f.where + (request.all ? "" : " and message_id in (:ids)"), f.params);
+        queryCache.invalidateAfterCommit(com.antshorttv.querycache.QueryResultCache.Scope.user((Long) f.params.get("user")),
+            com.antshorttv.querycache.QueryResultCache.Region.MESSAGES);
     }
 
     public List<Recipient> recipients(String keyword) {
@@ -202,6 +213,7 @@ public class MessageCenterService {
                 insert into message_recipient(message_id,user_id)
                 select ?,id from app_user where status='ACTIVE' and deleted_at is null
                 """, id);
+            if(count>0) queryCache.invalidateAfterCommit(com.antshorttv.querycache.QueryResultCache.Region.MESSAGES);
             return new Sent(id, count);
         }
         deliver(id, recipients);
@@ -230,6 +242,8 @@ public class MessageCenterService {
     private void deliver(String id, List<Long> recipients) {
         jdbc.batchUpdate("insert into message_recipient(message_id,user_id) values (?,?)",
             recipients, 100, (ps, user) -> { ps.setString(1, id); ps.setLong(2, user); });
+        for(Long user:recipients) queryCache.invalidateAfterCommit(com.antshorttv.querycache.QueryResultCache.Scope.user(user),
+            com.antshorttv.querycache.QueryResultCache.Region.MESSAGES);
     }
 
     private List<Long> validateRecipients(List<Long> recipients) {

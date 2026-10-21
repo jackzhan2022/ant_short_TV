@@ -36,6 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class VideoDecompositionService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private static final BigDecimal MAX_DURATION_SECONDS = BigDecimal.valueOf(1800);
     private static final List<String> SUPPORTED_MIME_TYPES = List.of("video/mp4", "video/quicktime", "video/x-msvideo");
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".mp4", ".mov", ".avi");
@@ -476,6 +478,8 @@ public class VideoDecompositionService {
         version.setCreatedBy(context.userId());
         version.setCreatedAt(now);
         scriptVersionMapper.insert(version);
+        queryCache.invalidateProjectAfterCommit(version.getTenantId(),version.getProjectId(),
+            com.antshorttv.querycache.QueryResultCache.Region.SCRIPT);
         return version;
     }
 

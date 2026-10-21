@@ -54,6 +54,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 @Service
 public class ScriptWorkflowService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationService assetNormalization;
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationGuard normalizationGuard;
     @org.springframework.beans.factory.annotation.Autowired private AssetExtractionCoordination normalizationCoordination;
@@ -231,6 +233,8 @@ public class ScriptWorkflowService {
             created.setCreatedBy(operation.createdBy);
             created.setCreatedAt(now);
             scriptVersionMapper.insert(created);
+            queryCache.invalidateProjectAfterCommit(created.getTenantId(),created.getProjectId(),
+                com.antshorttv.querycache.QueryResultCache.Region.SCRIPT);
             reconcileEpisodes(script, created);
             script.setCurrentVersionId(created.getId());
             scriptMapper.updateById(script);
@@ -287,6 +291,8 @@ public class ScriptWorkflowService {
             );
             created.setExecutionId(executionContext.task().id);
             scriptVersionMapper.updateById(created);
+            queryCache.invalidateProjectAfterCommit(created.getTenantId(),created.getProjectId(),
+                com.antshorttv.querycache.QueryResultCache.Region.SCRIPT);
             script.setCurrentVersionId(created.getId());
             scriptMapper.updateById(script);
             markOperationResult(operation, "SCRIPT_VERSION", created.getId());
@@ -559,10 +565,16 @@ public class ScriptWorkflowService {
         requireProjectAccess(context, projectId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         List<ScriptVersionSummaryResponse> versions = script == null ? List.of()
-            : scriptVersionMapper.selectByScript(tenantId, script.getId()).stream()
-                .map(ScriptVersionSummaryResponse::from).toList();
+            : queryCache.read(com.antshorttv.querycache.QueryResultCache.Region.SCRIPT,
+                com.antshorttv.querycache.QueryResultCache.Scope.project(tenantId,projectId),List.of("versions",tenantId,projectId,script.getId()),
+                new com.fasterxml.jackson.core.type.TypeReference<List<ScriptVersionSummaryResponse>>() {},
+                ()->scriptVersionMapper.selectByScript(tenantId,script.getId()).stream()
+                    .map(ScriptVersionSummaryResponse::from).toList());
         List<ScriptEpisodeNavigation> navigation = script == null ? List.of()
-            : scriptEpisodeService.currentEpisodeNavigation(tenantId, projectId, script.getId());
+            : queryCache.read(com.antshorttv.querycache.QueryResultCache.Region.SCRIPT,
+                com.antshorttv.querycache.QueryResultCache.Scope.project(tenantId,projectId),List.of("navigation",tenantId,projectId,script.getId()),
+                new com.fasterxml.jackson.core.type.TypeReference<List<ScriptEpisodeNavigation>>() {},
+                ()->scriptEpisodeService.currentEpisodeNavigation(tenantId,projectId,script.getId()));
         if (navigation.isEmpty()) {
             navigation = ScriptEpisodeParser.parse(script == null ? null : script.getContent()).stream()
                 .map(item -> new ScriptEpisodeNavigation(item.episodeId(), item.episodeNo(), item.title(), item.summary(),
@@ -665,8 +677,11 @@ public class ScriptWorkflowService {
     public ScriptAnalysisTaskResponse currentAnalysis(Long tenantId, Long projectId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProjectAccess(context, projectId);
-        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, project.id);
-        return analysis(tenantId, projectId, script);
+        return queryCache.read(com.antshorttv.querycache.QueryResultCache.Region.ANALYSIS,
+            com.antshorttv.querycache.QueryResultCache.Scope.project(tenantId,projectId),List.of(tenantId,project.id),ScriptAnalysisTaskResponse.class,()->{
+                ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId,project.id);
+                return analysis(tenantId,projectId,script);
+            });
     }
 
     @Transactional
@@ -1076,6 +1091,8 @@ public class ScriptWorkflowService {
         reconcileEpisodes(script, version);
         version.setStatus("APPLIED");
         scriptVersionMapper.updateById(version);
+        queryCache.invalidateProjectAfterCommit(version.getTenantId(),version.getProjectId(),
+            com.antshorttv.querycache.QueryResultCache.Region.SCRIPT);
         return null;
     }
 
@@ -1750,6 +1767,8 @@ public class ScriptWorkflowService {
         version.setCreatedBy(context.userId());
         version.setCreatedAt(now);
         scriptVersionMapper.insert(version);
+        queryCache.invalidateProjectAfterCommit(version.getTenantId(),version.getProjectId(),
+            com.antshorttv.querycache.QueryResultCache.Region.SCRIPT);
         ScriptEntity script = scriptMapper.selectById(scriptId);
         if (script != null) {
             reconcileEpisodes(script, version);

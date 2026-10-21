@@ -1959,8 +1959,7 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             // Episode agents preload their trusted read on the server; script agents read explicitly.
             if (terminal.equals("save_global_understanding") || terminal.equals("save_episode_splitting"))
                 calls.add(new com.antshorttv.ai.AiToolCall("read","read_current_script","{}"));
-            if (terminal.equals("save_asset_normalization"))
-                calls.add(new com.antshorttv.ai.AiToolCall("read","read_asset_normalization_inventory","{}"));
+            // Normalization inventory is preloaded; its single-pass contract allows only the save call.
             calls.add(new com.antshorttv.ai.AiToolCall("save",terminal,payload));
             return new com.antshorttv.ai.AiTextResponse(null,"controlled-"+java.util.UUID.randomUUID(),10,10,20,1L,
                 Map.of("mode","controlled-test"),"tool_calls",false,calls);
