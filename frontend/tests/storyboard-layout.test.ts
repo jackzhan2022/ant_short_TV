@@ -20,12 +20,12 @@ describe('storyboard layout', () => {
     );
   });
 
-  it('increases the desktop storyboard height by one quarter while keeping a 9:16 preview', () => {
+  it('reserves room for preview controls within the taller desktop storyboard cards', () => {
     expect(stylesheet).toMatch(
       /\.storyboard-card-content\s*{[^}]*height:\s*730px/s,
     );
     expect(stylesheet).toMatch(
-      /\.storyboard-preview-stage\s*{[^}]*height:\s*636px/s,
+      /\.storyboard-preview-stage\s*{[^}]*height:\s*562px/s,
     );
     expect(stylesheet).toMatch(
       /\.storyboard-preview-media\s*{[^}]*width:\s*358px[^}]*height:\s*100%/s,
