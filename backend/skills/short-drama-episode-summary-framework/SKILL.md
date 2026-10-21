@@ -1,6 +1,6 @@
 ---
-name: short-drama-episode-summary-framework
-description: Use when producing the formal editable summary document for one current short-drama episode.
+name: 剧集概要提炼框架
+description: 为当前短剧的单集生成正式、可编辑的概要文档。
 ---
 
 # 剧集概要提炼框架

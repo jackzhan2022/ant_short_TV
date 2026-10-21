@@ -1,6 +1,6 @@
 ---
-name: script-review-execution-framework
-description: Use when executing a frozen Markdown script-review task in a QUICK, DEEP child, or DEEP aggregation phase.
+name: 剧本审核执行框架
+description: 执行剧本审核的 Markdown 快速审核、深度审核子任务、深度审核聚合阶段或旧版结构化审核阶段。
 ---
 
 # 剧本审核执行框架

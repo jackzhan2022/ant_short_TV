@@ -16,6 +16,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class OpenAiAdapterTest {
@@ -223,8 +225,9 @@ class OpenAiAdapterTest {
         }
     }
 
-    @Test
-    void sendsConfiguredReasoningEffortForCompatibleModels() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"gpt-5.6-terra", "gpt-6-astra"})
+    void sendsConfiguredReasoningEffortForCompatibleModels(String modelCode) throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
@@ -239,12 +242,14 @@ class OpenAiAdapterTest {
         server.start();
 
         try {
-            AiModelEntity model = model("gpt-5.6-terra", "TEXT");
+            AiModelEntity model = model(modelCode, "TEXT");
             model.setConfigJson("{\"reasoningEffort\":\"medium\"}");
             adapter.text(provider(), config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-real-123"),
                 model, new AiTextRequest(null, "reason", 0.2, 256, null));
 
-            assertThat(new ObjectMapper().readTree(requestBody.get()).path("reasoning_effort").asText())
+            JsonNode sent = new ObjectMapper().readTree(requestBody.get());
+            assertThat(sent.path("model").asText()).isEqualTo(modelCode);
+            assertThat(sent.path("reasoning_effort").asText())
                 .isEqualTo("medium");
         } finally {
             server.stop(0);

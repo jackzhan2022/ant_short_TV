@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-emotion
-description: Use when a review task selects emotional progression.
+name: 情绪递进审核
+description: 审核任务选择情绪递进维度时使用。
 ---
 # 情绪递进
 ## 检查项

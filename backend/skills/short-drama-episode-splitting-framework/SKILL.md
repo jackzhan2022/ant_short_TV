@@ -1,6 +1,6 @@
 ---
-name: short-drama-episode-splitting-framework
-description: Use when selecting episode boundaries and titles from one current short-drama script.
+name: 剧集智能拆分框架
+description: 从当前短剧剧本中确定剧集边界和标题。
 ---
 
 # 剧集智能拆分框架

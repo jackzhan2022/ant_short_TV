@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-suspense-reversal
-description: Use when a review task selects suspense and reversal setup.
+name: 悬念与反转铺垫审核
+description: 审核任务选择悬念与反转铺垫维度时使用。
 ---
 # 悬念与反转铺垫
 ## 检查项

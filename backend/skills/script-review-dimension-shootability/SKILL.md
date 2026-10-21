@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-shootability
-description: Use when a review task selects storyboard shootability.
+name: 分镜可执行性审核
+description: 审核任务选择分镜可执行性维度时使用。
 ---
 # 分镜可执行性
 ## 检查项

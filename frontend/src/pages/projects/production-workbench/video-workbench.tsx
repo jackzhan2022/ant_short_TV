@@ -82,6 +82,7 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
   const [composeTasks, setComposeTasks] = useState<EpisodeComposeTask[]>([]);
   const [versionId, setVersionId] = useState<number>();
   const [mode, setMode] = useState<'shot' | 'episode'>('shot');
+  const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -237,6 +238,7 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
     if (next === activeEpisode) return;
     ++requestId.current;
     setEpisodeNo(next);
+    setPlaying(false);
     setSelectedId(undefined);
     setMode('shot');
     setFilter('all');
@@ -255,6 +257,7 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
       history.push(storyboardEditPath(projectId, selected, selectedIndex));
   };
   const chooseShot = (id: number) => {
+    setPlaying(false);
     setSelectedId(id);
     setMode('shot');
   };
@@ -369,7 +372,7 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
         <span>
           {selectedState?.kind === 'generating'
             ? '生成完成后自动更新，可先查看其他分镜'
-            : selectedState?.error || '点击「编辑分镜」前往分镜页面生成视频'}
+            : selectedState?.error || '可播放首帧预演，或点击「编辑分镜」生成视频'}
         </span>
       </div>
     </div>
@@ -521,6 +524,15 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
             <VideoPreviewPlayer
               active={!recordsOpen}
               src={src}
+              playbackKey={mode === 'shot' ? `shot:${selected?.id}` : `episode:${version?.id}`}
+              previewDuration={mode === 'shot' && selected ? selected.durationSeconds || 5 : undefined}
+              playing={playing}
+              onPlayingChange={setPlaying}
+              onEnded={() => {
+                if (mode === 'shot' && selectedIndex >= 0 && selectedIndex < shots.length - 1) {
+                  setSelectedId(shots[selectedIndex + 1].id);
+                } else setPlaying(false);
+              }}
               poster={
                 mode === 'episode'
                   ? version?.coverUrl || undefined
@@ -544,7 +556,7 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
                   <button
                     type="button"
                     aria-pressed={mode === 'shot'}
-                    onClick={() => setMode('shot')}
+                    onClick={() => { setPlaying(false); setMode('shot'); }}
                   >
                     单镜头
                   </button>
@@ -553,7 +565,7 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
                     aria-pressed={mode === 'episode'}
                     disabled={!version}
                     title={!version ? '合成整集后可预览成片' : undefined}
-                    onClick={() => setMode('episode')}
+                    onClick={() => { setPlaying(false); setMode('episode'); }}
                   >
                     整集成片
                   </button>
@@ -561,7 +573,7 @@ export default function VideoWorkbench({ projectId, canEdit = false }: Props) {
                     <Select
                       aria-label="成片版本"
                       value={versionId}
-                      onChange={setVersionId}
+                      onChange={(id) => { setPlaying(false); setVersionId(id); }}
                       options={versions.map((item) => ({
                         value: item.id,
                         label: item.versionName || `版本 ${item.versionNo}`,

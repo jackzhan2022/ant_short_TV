@@ -1,6 +1,6 @@
 ---
-name: script-review-foundation
-description: Use when reviewing a trusted immutable script version within a frozen review task scope.
+name: 剧本审核基础规范
+description: 在已冻结的审核任务范围内，对可信且不可变的剧本版本进行审核。
 ---
 
 # 剧本审核基础

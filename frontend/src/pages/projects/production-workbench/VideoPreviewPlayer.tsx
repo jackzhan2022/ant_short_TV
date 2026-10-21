@@ -10,6 +10,11 @@ import { formatVideoTime } from './video-workbench-state';
 type Props = {
   active?: boolean;
   src?: string;
+  playbackKey?: string | number;
+  previewDuration?: number;
+  playing?: boolean;
+  onPlayingChange?: (playing: boolean) => void;
+  onEnded?: () => void;
   poster?: string;
   label: string;
   sourceLabel: string;
@@ -23,22 +28,36 @@ type Props = {
 export default function VideoPreviewPlayer(props: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLElement>(null);
-  const [playing, setPlaying] = useState(false);
+  const [localPlaying, setLocalPlaying] = useState(false);
+  const playing = props.playing ?? localPlaying;
+  const setPlaying = (value: boolean) => {
+    setLocalPlaying(value);
+    props.onPlayingChange?.(value);
+  };
   const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const timeRef = useRef(0);
+  const [mediaDuration, setMediaDuration] = useState(0);
+  const previewDuration = Number.isFinite(props.previewDuration)
+    ? Math.max(0, props.previewDuration || 0) : 0;
+  const duration = props.src ? mediaDuration : previewDuration;
+  const canPlay = Boolean(props.src || previewDuration);
   const [volume, setVolume] = useState(1);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    setPlaying(false);
+    if (props.playing === undefined) setLocalPlaying(false);
+    timeRef.current = 0;
     setTime(0);
-    setDuration(0);
+    setMediaDuration(0);
     setError('');
     const video = videoRef.current;
     if (video) video.volume = volume;
     const pauseWhenHidden = () => {
-      if (document.hidden) video?.pause();
+      if (document.hidden) {
+        video?.pause();
+        setPlaying(false);
+      }
     };
     document.addEventListener('visibilitychange', pauseWhenHidden);
     return () => {
@@ -49,25 +68,62 @@ export default function VideoPreviewPlayer(props: Props) {
         video.load();
       }
     };
-  }, [props.src, retry]);
+  }, [props.src, props.playbackKey, retry]);
 
   useEffect(() => {
-    if (props.active === false) videoRef.current?.pause();
+    if (props.active === false) {
+      videoRef.current?.pause();
+      setPlaying(false);
+    }
   }, [props.active]);
 
-  const togglePlay = async () => {
+  useEffect(() => {
     const video = videoRef.current;
     if (!video || !props.src) return;
-    if (!video.paused) {
-      video.pause();
+    if (!playing || props.active === false) {
+      if (!video.paused) video.pause();
       return;
     }
-    try {
-      await video.play();
-    } catch {
-      if (video === videoRef.current)
+    let active = true;
+    void video.play().catch(() => {
+      if (active && video === videoRef.current) {
+        setPlaying(false);
         setError('视频暂时无法播放，请重试或刷新素材。');
+      }
+    });
+    return () => { active = false; };
+  }, [playing, props.src, props.playbackKey, props.active, retry]);
+
+  const finishPlayback = () => {
+    if (props.onEnded) props.onEnded();
+    else setPlaying(false);
+  };
+
+  useEffect(() => {
+    if (props.src || !playing || props.active === false || !previewDuration) return;
+    let previousTick = performance.now();
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      const next = Math.min(previewDuration, timeRef.current + (now - previousTick) / 1000);
+      previousTick = now;
+      timeRef.current = next;
+      setTime(next);
+      if (next >= previewDuration) {
+        window.clearInterval(timer);
+        finishPlayback();
+      }
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [playing, props.src, props.playbackKey, props.active, previewDuration, props.onEnded]);
+
+  const togglePlay = () => {
+    if (!canPlay || props.active === false) return;
+    if (!playing && duration && timeRef.current >= duration) {
+      timeRef.current = 0;
+      setTime(0);
+      if (videoRef.current) videoRef.current.currentTime = 0;
     }
+    setPlaying(!playing);
   };
 
   return (
@@ -79,7 +135,7 @@ export default function VideoPreviewPlayer(props: Props) {
       <div className="video-preview-stage">
         {props.src ? (
           <video
-            key={`${props.src}-${retry}`}
+            key={`${props.playbackKey}-${props.src}-${retry}`}
             ref={videoRef}
             aria-label="当前视频"
             src={props.src}
@@ -87,11 +143,16 @@ export default function VideoPreviewPlayer(props: Props) {
             preload="metadata"
             playsInline
             onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-            onEnded={() => setPlaying(false)}
-            onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
+            onPause={(event) => {
+              if (event.currentTarget === videoRef.current && !event.currentTarget.ended) setPlaying(false);
+            }}
+            onEnded={finishPlayback}
+            onTimeUpdate={(event) => {
+              timeRef.current = event.currentTarget.currentTime;
+              setTime(event.currentTarget.currentTime);
+            }}
             onLoadedMetadata={(event) =>
-              setDuration(event.currentTarget.duration)
+              setMediaDuration(event.currentTarget.duration)
             }
             onError={() => {
               setPlaying(false);
@@ -109,8 +170,8 @@ export default function VideoPreviewPlayer(props: Props) {
           props.empty
         )}
         <span className="video-preview-label">{props.label}</span>
-        {props.src && (
-          <span className="video-preview-source">{props.sourceLabel}</span>
+        {canPlay && (
+          <span className="video-preview-source">{props.src ? props.sourceLabel : '分镜预演'}</span>
         )}
         {error && (
           <div className="video-preview-error" role="alert">
@@ -132,10 +193,11 @@ export default function VideoPreviewPlayer(props: Props) {
           max={Number.isFinite(duration) ? duration : 0}
           step={0.1}
           value={time}
-          disabled={!props.src || !duration || !!error}
+          disabled={!canPlay || !duration || !!error}
           onChange={(event) => {
             const value = Number(event.target.value);
             if (videoRef.current) videoRef.current.currentTime = value;
+            timeRef.current = value;
             setTime(value);
           }}
         />
@@ -151,8 +213,8 @@ export default function VideoPreviewPlayer(props: Props) {
             className="video-play-button"
             type="button"
             aria-label={playing ? '暂停' : '播放'}
-            disabled={!props.src || !!error}
-            onClick={() => void togglePlay()}
+            disabled={!canPlay || !!error}
+            onClick={togglePlay}
           >
             {playing ? <PauseOutlined /> : <PlayCircleOutlined />}
           </button>

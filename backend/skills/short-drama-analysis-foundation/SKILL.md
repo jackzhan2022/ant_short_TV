@@ -1,6 +1,6 @@
 ---
-name: short-drama-analysis-foundation
-description: Use when analyzing the current trusted short-drama source into formal editable business data.
+name: 短剧解析基础规范
+description: 将当前可信短剧原文解析为正式、可编辑的业务数据。
 ---
 
 # 短剧解析基础约束

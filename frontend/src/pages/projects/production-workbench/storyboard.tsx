@@ -1933,6 +1933,7 @@ const ProductionWorkbenchStoryboard = () => {
   };
   const [storyboardExecution, setStoryboardExecution] =
     useState<API.AiExecutionResponse>();
+  const [storyboardExecutionEpisodeId, setStoryboardExecutionEpisodeId] = useState<number>();
   const [storyboardBusy, setStoryboardBusy] = useState(false);
   const [storyboardBatch, setStoryboardBatch] = useState<StoryboardBatch>();
   const [storyboardBatchBusy, setStoryboardBatchBusy] = useState(false);
@@ -2491,6 +2492,13 @@ const ProductionWorkbenchStoryboard = () => {
       });
     return () => controller.abort();
   }, [projectId, currentEpisodeId]);
+  const currentStoryboardExecution = storyboardExecutionEpisodeId === currentEpisode?.episodeId
+    ? storyboardExecution : undefined;
+  const batchEpisodeStatus = storyboardBatch?.items.find(
+    (item) => item.episodeId === currentEpisode?.episodeId,
+  )?.status;
+  const activeGenerationStatus = [currentStoryboardExecution?.status, batchEpisodeStatus]
+    .find((status): status is 'PENDING' | 'RUNNING' => status === 'PENDING' || status === 'RUNNING');
   const episodeTitle = currentEpisode?.title?.trim();
   const episodeSummary =
     currentEpisode?.formalSummary?.content.summary?.trim() ||
@@ -2718,6 +2726,7 @@ const ProductionWorkbenchStoryboard = () => {
         episodeId: episode.episodeId,
       });
       if (!response.data) throw new Error('missing execution');
+      setStoryboardExecutionEpisodeId(episode.episodeId);
       setStoryboardExecution(response.data);
       const tenantId = currentTenantId();
       if (!tenantId) throw new Error('missing tenant');
@@ -3856,9 +3865,7 @@ const ProductionWorkbenchStoryboard = () => {
               type="primary"
               icon={<ThunderboltOutlined />}
               loading={storyboardBusy}
-              disabled={['PENDING', 'RUNNING'].includes(
-                storyboardExecution?.status || '',
-              )}
+              disabled={Boolean(activeGenerationStatus)}
               onClick={generateEpisodeStoryboards}
             >
               生成本集分镜
@@ -3924,10 +3931,10 @@ const ProductionWorkbenchStoryboard = () => {
               </section>
             ) : null}
           </Modal>
-          {storyboardExecution ? (
-            <AiExecutionStatus task={storyboardExecution} busy={storyboardBusy} />
+          {currentStoryboardExecution ? (
+            <AiExecutionStatus task={currentStoryboardExecution} busy={storyboardBusy} />
           ) : null}
-          {storyboardExecution?.status === 'SUCCEEDED' && storyboardWarnings.length ? (
+          {currentStoryboardExecution?.status === 'SUCCEEDED' && storyboardWarnings.length ? (
             <Tag color="warning" style={{ marginTop: 10 }}>
               生成成功，有 {storyboardWarnings.length} 条质量告警
             </Tag>
@@ -4014,7 +4021,7 @@ const ProductionWorkbenchStoryboard = () => {
           </div>
         ) : (
           <div className="storyboard-empty-workspace">
-            <StoryboardVideoEmptyState />
+            <StoryboardVideoEmptyState generationStatus={activeGenerationStatus} />
           </div>
         )}
         {storyboardTotal > storyboardPageSize ? (

@@ -1,4 +1,8 @@
-export default function StoryboardVideoEmptyState() {
+export default function StoryboardVideoEmptyState({
+  generationStatus,
+}: {
+  generationStatus?: 'PENDING' | 'RUNNING';
+}) {
   return (
     <div className="storyboard-video-empty">
       <svg width="60" height="54" viewBox="0 0 64 56" fill="none" aria-hidden="true">
@@ -6,7 +10,10 @@ export default function StoryboardVideoEmptyState() {
         <path d="m24 17 13 8-13 8V17Z" fill="currentColor" />
         <path d="m49 31 3.5 8.5L61 43l-8.5 3.5L49 55l-3.5-8.5L37 43l8.5-3.5L49 31Z" fill="currentColor" />
       </svg>
-      <span>请先完成分镜视频生成</span>
+      <span role="status" aria-live="polite">
+        {generationStatus === 'RUNNING' ? '正在生成分镜'
+          : generationStatus === 'PENDING' ? '等待生成分镜' : '请先完成分镜视频生成'}
+      </span>
     </div>
   );
 }

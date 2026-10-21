@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-prop-continuity
-description: Use when a review task selects prop continuity and prop form changes.
+name: 道具连续性审核
+description: 审核任务选择道具连续性及道具形态变化维度时使用。
 ---
 # 道具连续性
 ## 检查项

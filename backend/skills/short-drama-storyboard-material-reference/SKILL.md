@@ -1,6 +1,6 @@
 ---
-name: short-drama-storyboard-material-reference
-description: Use when resolving actually used storyboard characters, scenes, and props to stable visual materials.
+name: 分镜素材引用
+description: 将分镜中实际使用的角色、场景和道具匹配到稳定的视觉素材。
 ---
 
 # 分镜素材引用

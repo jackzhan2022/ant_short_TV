@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import VideoWorkbench from './video-workbench';
 
 const mocks = vi.hoisted(() => ({
@@ -76,6 +76,7 @@ const page = (episodeNo = 1, storyboards = shots) => ({
   },
 });
 const empty = { data: { data: [], total: 0, current: 1, pageSize: 100 } };
+afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -107,6 +108,32 @@ beforeEach(() => {
 });
 
 describe('video preview workbench', () => {
+  it('plays missing and real clips in sequence and stops at the final storyboard', async () => {
+    mocks.queryStoryboardWorkspace.mockResolvedValue(page(1, [
+      { ...shots[1], durationSeconds: 1 },
+      shots[0],
+      { ...shots[1], id: 33, shotNo: 3, durationSeconds: 1 },
+    ]));
+    render(<VideoWorkbench projectId={44} canEdit />);
+    await screen.findByRole('button', { name: '分镜2，待生成' });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+    fireEvent.click(screen.getByRole('button', { name: '播放' }));
+    act(() => vi.advanceTimersByTime(1100));
+    const video = screen.getByLabelText('当前视频');
+    expect(video).toHaveAttribute('src', '/composed.mp4');
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '暂停' })).toBeEnabled();
+
+    fireEvent.ended(video);
+    expect(screen.getByRole('button', { name: '分镜3，待生成' }))
+      .toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByLabelText('当前视频')).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1100));
+    expect(screen.getByRole('button', { name: '播放' })).toBeEnabled();
+    expect(screen.getByLabelText('播放进度')).toHaveValue('1');
+    expect(mocks.createEpisodeComposeTask).not.toHaveBeenCalled();
+  });
+
   it('shows a preview and shot strip, not task tables or an inline editor', async () => {
     render(<VideoWorkbench projectId={44} canEdit />);
     expect(

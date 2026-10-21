@@ -1,6 +1,6 @@
 ---
-name: short-drama-storyboard-planning
-description: Use when planning one complete short-drama episode into formal multi-shot storyboard video units.
+name: 短剧整集分镜规划
+description: 将短剧的完整单集规划为正式的多镜头分镜视频单元。
 ---
 
 # 短剧整集分镜规划

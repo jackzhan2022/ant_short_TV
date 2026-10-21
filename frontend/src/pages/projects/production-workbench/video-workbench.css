@@ -349,15 +349,19 @@
   width: 115px;
 }
 .video-shot-cards {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr));
+  align-content: start;
+  flex: 1;
   gap: 10px;
   min-height: 0;
   padding: 0 16px 10px;
-  overflow-x: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   scrollbar-width: thin;
 }
 .video-shot-card {
-  flex: 0 0 168px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -386,6 +390,7 @@
 .video-shot-thumbnail {
   position: relative;
   height: 58px;
+  width: 100%;
   flex: none;
   display: grid;
   place-items: center;
@@ -507,9 +512,6 @@
   }
   .video-shot-strip {
     flex-basis: 188px;
-  }
-  .video-shot-card {
-    flex-basis: 145px;
   }
   .video-episode-title,
   .video-shot-count {

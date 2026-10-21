@@ -1,6 +1,6 @@
 ---
-name: script-review-cross-episode-synthesis
-description: Use when aggregating complete deep-review Markdown fragments across an unchanged script snapshot.
+name: 剧本审核跨集综合
+description: 基于未发生变化的剧本快照，聚合完整的深度审核 Markdown 片段。
 ---
 
 # 跨单元综合审核

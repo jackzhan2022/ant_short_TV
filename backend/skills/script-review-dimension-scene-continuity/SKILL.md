@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-scene-continuity
-description: Use when a review task selects scene continuity.
+name: 场景连续性审核
+description: 审核任务选择场景连续性维度时使用。
 ---
 # 场景连续性
 ## 检查项

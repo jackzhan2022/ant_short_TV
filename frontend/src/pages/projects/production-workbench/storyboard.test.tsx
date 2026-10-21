@@ -3381,6 +3381,50 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.queryByText('分镜1')).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['PENDING', '等待生成分镜'],
+    ['RUNNING', '正在生成分镜'],
+    ['SUCCESS', '请先完成分镜视频生成'],
+    ['FAILED', '请先完成分镜视频生成'],
+  ])('shows the current episode batch state %s in the empty workspace', async (status, text) => {
+    setupWorkspaceResponse({ storyboards: [] });
+    mocks.queryLatestStoryboardBatch.mockResolvedValue({ data: {
+      id: 88, status: 'RUNNING', items: [{ id: 1, episodeId: 1001, episodeNo: 1, status }],
+      succeeded: 0, warning: 0, failed: 0, running: 1, pending: 0,
+    } });
+    mocks.queryStoryboardBatch.mockReturnValue(new Promise(() => {}));
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /生成本集分镜/ }).hasAttribute('disabled'))
+      .toBe(['PENDING', 'RUNNING'].includes(status));
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    expect(await screen.findByText('请先完成分镜视频生成')).toBeInTheDocument();
+    expect(screen.queryByText('等待生成分镜')).not.toBeInTheDocument();
+    expect(screen.queryByText('正在生成分镜')).not.toBeInTheDocument();
+  });
+
+  it('updates the empty workspace as a single episode task waits, runs, and completes', async () => {
+    setupWorkspaceResponse({ storyboards: [] });
+    let updateExecution!: (task: API.AiExecutionResponse) => void;
+    let finishExecution!: (task: API.AiExecutionResponse) => void;
+    mocks.pollExecution.mockImplementation((_tenant, _id, onUpdate) => {
+      updateExecution = onUpdate;
+      return new Promise((resolve) => { finishExecution = resolve; });
+    });
+    render(<ProductionWorkbench />);
+    await screen.findByText('请先完成分镜视频生成');
+    fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
+    expect(await screen.findByText('等待生成分镜')).toBeInTheDocument();
+
+    act(() => updateExecution({ id: 7100, status: 'RUNNING' }));
+    expect(await screen.findByText('正在生成分镜')).toBeInTheDocument();
+    expect(screen.queryByText('请先完成分镜视频生成')).not.toBeInTheDocument();
+    await act(async () => finishExecution({ id: 7100, status: 'SUCCEEDED' }));
+    expect(await screen.findByText('请先完成分镜视频生成')).toBeInTheDocument();
+    expect(screen.queryByText('正在生成分镜')).not.toBeInTheDocument();
+  });
+
 it('shows a persistent load error and retries instead of reporting no storyboards', async () => {
   mocks.queryStoryboardEditorPage.mockRejectedValueOnce(new Error('Response status:500'));
   render(<ProductionWorkbench />);

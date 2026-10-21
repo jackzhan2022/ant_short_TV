@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-timeline
-description: Use when a review task selects timeline continuity.
+name: 时间线连续性审核
+description: 审核任务选择时间线连续性维度时使用。
 ---
 # 时间线连续性
 ## 检查项

@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-character-motivation
-description: Use when a review task selects character motivation.
+name: 人物动机审核
+description: 审核任务选择人物动机维度时使用。
 ---
 # 人物动机
 ## 检查项

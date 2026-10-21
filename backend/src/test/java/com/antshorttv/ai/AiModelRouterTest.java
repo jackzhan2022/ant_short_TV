@@ -37,6 +37,28 @@ class AiModelRouterTest {
     }
 
     @Test
+    void routesSeededGpt6AstraWithMediumReasoning() throws Exception {
+        Long modelId = jdbcTemplate.queryForObject(
+            "select id from ai_model where code = 'gpt-6-astra'", Long.class);
+
+        AiModelRoute route = router.route(modelId, "TEXT");
+
+        assertThat(route.provider().getCode()).isEqualTo("OpenAI");
+        assertThat(route.adapter()).isInstanceOf(XiongXiongAiAdapter.class);
+        assertThat(route.model().getModelCode()).isEqualTo("gpt-6-astra");
+        assertThat(route.model().getName()).isEqualTo("GPT-6 Astra（中度思考）");
+        assertThat(route.model().getIsDefault()).isFalse();
+        assertThat(jdbcTemplate.queryForList(
+            "select capability from ai_model_capability where model_id = ? and status = 'ENABLED' order by capability",
+            String.class, modelId)).containsExactly("TEXT_GENERATION", "TOOL_CALLING");
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(route.model().getConfigJson()).path("reasoningEffort").asText()).isEqualTo("medium");
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_model_parameter_profile where model_id = ? and published = true and status = 'ENABLED'",
+            Integer.class, modelId)).isEqualTo(1);
+    }
+
+    @Test
     void rejectsExplicitModelWithoutEnabledCapability() {
         Long modelId = insertModel("ROUTER_NO_CAPABILITY", "TEXT", false, 990);
 

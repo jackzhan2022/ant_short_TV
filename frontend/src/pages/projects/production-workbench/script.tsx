@@ -49,6 +49,7 @@ type EpisodeBlock = {
 };
 
 type ProjectLite = {
+  name?: string;
   tenantId?: number;
   coverUrl?: string | null;
   coverStatus?: ProjectCoverStatus;
@@ -905,7 +906,7 @@ const ProductionWorkbenchScript = () => {
                     level={3}
                     style={{ margin: 0, fontSize: 24 }}
                   >
-                    {script?.title || '未命名剧本'}
+                    {project?.name || script?.title || '未命名剧本'}
                   </Typography.Title>
                 </Flex>
                 <div

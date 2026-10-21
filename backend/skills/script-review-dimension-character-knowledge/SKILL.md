@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-character-knowledge
-description: Use when a review task selects character knowledge consistency.
+name: 人物认知一致性审核
+description: 审核任务选择人物认知一致性维度时使用。
 ---
 # 人物认知一致性
 ## 检查项

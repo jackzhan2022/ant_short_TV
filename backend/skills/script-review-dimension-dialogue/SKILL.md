@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-dialogue
-description: Use when a review task selects dialogue rationality.
+name: 台词合理性审核
+description: 审核任务选择台词合理性维度时使用。
 ---
 # 台词合理性
 ## 检查项

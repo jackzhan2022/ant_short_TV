@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-character-relationship
-description: Use when a review task selects character relationship consistency.
+name: 人物关系一致性审核
+description: 审核任务选择人物关系一致性维度时使用。
 ---
 # 人物关系一致性
 ## 检查项

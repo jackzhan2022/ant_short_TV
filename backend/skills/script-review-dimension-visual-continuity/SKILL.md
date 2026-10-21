@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-visual-continuity
-description: Use when a review task selects visual continuity.
+name: 视觉连续性审核
+description: 审核任务选择视觉连续性维度时使用。
 ---
 # 视觉连续性
 ## 检查项

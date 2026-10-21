@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-plot-logic
-description: Use when a review task selects plot logic and causality.
+name: 剧情逻辑与因果审核
+description: 审核任务选择剧情逻辑与因果维度时使用。
 ---
 # 剧情逻辑与因果
 ## 检查项

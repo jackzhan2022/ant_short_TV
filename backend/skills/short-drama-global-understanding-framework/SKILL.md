@@ -1,6 +1,6 @@
 ---
-name: short-drama-global-understanding-framework
-description: Use when producing the version-one global-understanding document for a short-drama script.
+name: 剧情全局理解框架
+description: 为短剧剧本生成第一版结构的剧情全局理解文档。
 ---
 
 # 剧情全局理解框架

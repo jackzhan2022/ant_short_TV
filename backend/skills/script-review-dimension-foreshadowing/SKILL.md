@@ -1,6 +1,6 @@
 ---
-name: script-review-dimension-foreshadowing
-description: Use when a review task selects foreshadowing payoff.
+name: 伏笔回收审核
+description: 审核任务选择伏笔回收维度时使用。
 ---
 # 伏笔回收
 ## 检查项

@@ -1,6 +1,6 @@
 ---
-name: short-drama-seedance-video-prompt
-description: Use when expressing structured short-drama shots as clear Seedance-compatible video directions.
+name: Seedance 视频提示词表达
+description: 将结构化短剧镜头转化为清晰且兼容 Seedance 的视频生成指令。
 ---
 
 # Seedance 视频提示词表达
