@@ -1235,7 +1235,7 @@ export type AiVideoTask = {
   model: string;
   prompt: string;
   negativePrompt?: string | null;
-  firstFrameUrl: string;
+  firstFrameUrl: string | null;
   durationSeconds: number;
   aspectRatio: string;
   resolution?: string | null;
@@ -1282,6 +1282,7 @@ export type CreateAiVideoTaskValues = {
   cameraMovement?: string;
   motionStrength?: string;
   randomSeed?: number;
+  textOnly?: boolean;
 };
 
 export const queryAiVideoTasks = async (

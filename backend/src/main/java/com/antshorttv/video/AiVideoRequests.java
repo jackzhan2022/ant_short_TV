@@ -20,6 +20,7 @@ record CreateAiVideoTaskRequest(
     Boolean watermark,
     @Size(max = 64) String cameraMovement,
     @Size(max = 32) String motionStrength,
-    Long randomSeed
+    Long randomSeed,
+    Boolean textOnly
 ) {
 }

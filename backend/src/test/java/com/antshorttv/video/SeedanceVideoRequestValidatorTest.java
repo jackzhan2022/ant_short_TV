@@ -33,7 +33,9 @@ class SeedanceVideoRequestValidatorTest {
         assertInvalid(() -> validator.validate(mini(), 3, "720p", List.of(image("png", 1000L, 720, 1280))));
         assertInvalid(() -> validator.validate(mini(), 16, "720p", List.of(image("png", 1000L, 720, 1280))));
         assertInvalid(() -> validator.validate(mini(), 5, "1080p", List.of(image("png", 1000L, 720, 1280))));
-        assertInvalid(() -> validator.validate(mini(), 5, "720p", List.of()));
+        assertThatCode(() -> validator.validate(mini(), 5, "720p", List.of())).doesNotThrowAnyException();
+        assertInvalid(() -> validator.validate(mini(), 3, "720p", List.of()));
+        assertInvalid(() -> validator.validate(mini(), 5, "1080p", List.of()));
         List<VideoTaskReferenceResolver.ResolvedReference> images = new ArrayList<>();
         for (int index = 0; index < 10; index++) images.add(image("png", 1000L, 720, 1280));
         assertInvalid(() -> validator.validate(mini(), 5, "720p", images));

@@ -134,6 +134,36 @@ describe('point estimates before submission', () => {
     expect(mocks.request).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['http', 'business'])(
+    'preserves the backend reason for a %s estimate failure',
+    async (kind) => {
+      const reason =
+        '当前分镜没有可用的参考图片，请先在「设定」中生成资产图片，或绑定一张已生成的参考图片。';
+      const error = Object.assign(
+        new Error('Request failed with status code 400'),
+        kind === 'http'
+          ? {
+              response: {
+                status: 400,
+                data: { success: false, errorMessage: reason },
+              },
+            }
+          : { info: { errorMessage: reason } },
+      );
+      mocks.request.mockReset().mockRejectedValueOnce(error);
+
+      await expect(
+        pointEstimatedRequest('/api/projects/56/ai-video-tasks', {
+          method: 'POST',
+          data: { storyboardId: 3454 },
+        }),
+      ).rejects.toThrow(`积分预估失败，未提交任务：${reason}`);
+      expect(mocks.request).toHaveBeenCalledTimes(1);
+      expect(mocks.destroy).toHaveBeenCalledTimes(1);
+      expect(mocks.update).not.toHaveBeenCalled();
+    },
+  );
+
   it('sends every batch item in one estimate and only rounds points for display', async () => {
     const operations = [
       { url: '/api/projects/3/ai-video-tasks', data: { storyboardId: 1 } },

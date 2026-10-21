@@ -1,6 +1,7 @@
 package com.antshorttv.video;
 
 import com.antshorttv.ai.AiModelEntity;
+import com.antshorttv.ai.AiGatewayException;
 import com.antshorttv.ai.AiImageRequest;
 import com.antshorttv.ai.AiImageResponse;
 import com.antshorttv.ai.AiProviderAdapter;
@@ -288,7 +289,14 @@ public class SeedanceArkVideoProviderAdapter extends AiProviderAdapter {
                     .filter(value -> value != null && !value.isBlank())
                     .map(this::sanitizeDiagnostic)
                     .toList());
-            throw new IllegalStateException(
+            ErrorCode errorCode = switch (response.statusCode()) {
+                case 400, 404, 405, 413, 415, 422 -> ErrorCode.VALIDATION_ERROR;
+                case 401, 403 -> ErrorCode.AI_AUTH_FAILED;
+                case 429 -> ErrorCode.AI_RATE_LIMIT;
+                case 408 -> ErrorCode.AI_PROVIDER_TIMEOUT;
+                default -> ErrorCode.AI_PROVIDER_ERROR;
+            };
+            throw new AiGatewayException(errorCode,
                 "火山方舟请求失败，HTTP " + response.statusCode() + (detail.isBlank() ? "" : "：" + detail));
         }
         return body;
