@@ -139,7 +139,7 @@ class VideoTaskReferenceResolverTest {
             serviceTarget, "prepareSeedanceRequest", project, storyboard,
             new com.antshorttv.ai.AiModelRoute(model, null, null, null),
             new CreateAiVideoTaskRequest(storyboard.id, 99L, "Prompt", null, null, null, null, null,
-                5, "9:16", "720p", true, false, null, null, null));
+                5, "9:16", "720p", true, false, null, null, null, null));
         AiVideoTaskEntity task = new AiVideoTaskEntity();
         task.tenantId = TENANT_ID;
         task.projectId = PROJECT_ID;

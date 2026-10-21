@@ -95,6 +95,132 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
     }
 
     @Test
+    void pendingFormalImagesExplainHowToUnblockVideoWithoutSubmittingOrReservingPoints() throws Exception {
+        String token = registerUser("13800016023", "Pending Image Owner");
+        Long tenantId = createTenant(token, "待生成参考图片团队");
+        Long ownerId = userIdByMobile("13800016023");
+        Long projectId = createProject(token, tenantId, ownerId, "待生成参考图片项目", "SEEDANCE_PENDING_IMAGE");
+        Long modelId = enableSeedanceMini();
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        long variantId = seedStoryboardImageReference(tenantId, projectId, storyboardId, ownerId);
+        Long imageId = jdbc.queryForObject(
+            "select current_image_result_id from asset_visual_variant where id = ?", Long.class, variantId);
+        jdbc.update("update asset_visual_variant set current_image_result_id = null, current_image_url = null where id = ?", variantId);
+        jdbc.update("""
+            insert into storyboard_asset_reference
+              (tenant_id, project_id, storyboard_id, asset_type, asset_id, variant_id,
+               reference_role, sort_order, resolution_status, source_type, source_name,
+               created_by, created_at, updated_at)
+            values (?, ?, ?, 'CHARACTER', 1, ?, 'VISIBLE', 0, 'ASSET_PENDING', 'MANUAL', '林晚', ?, now(), now())
+            """, tenantId, projectId, storyboardId, variantId, ownerId);
+        String document = jdbc.queryForObject("select prompt_document_json from storyboard where id = ?", String.class, storyboardId)
+            .replace("\"displayName\":\"林晚\"", "\"displayName\":\"林晚\",\"bindingSource\":\"FORMAL\"");
+        jdbc.update("update storyboard set prompt_document_json = ? where id = ?", document, storyboardId);
+        String data = """
+            {"storyboardId":%d,"modelId":%d,"prompt":"林晚完成广告","durationSeconds":11,
+             "aspectRatio":"9:16","resolution":"720p"}
+            """.formatted(storyboardId, modelId);
+        String operationUrl = "/api/projects/%d/ai-video-tasks".formatted(projectId);
+        String reason = "参考图片尚不可用，请先生成或重新绑定图片，或确认继续纯文生视频。";
+        String estimate = "{\"operations\":[{\"url\":\"" + operationUrl + "\",\"data\":" + data + "}]}";
+        for (Long pendingVariantId : java.util.Arrays.asList(variantId, null)) {
+            jdbc.update("update storyboard_asset_reference set variant_id=? where storyboard_id=?", pendingVariantId, storyboardId);
+            jdbc.update("update storyboard set prompt_document_json=? where id=?", pendingVariantId == null
+                ? "{\"version\":2,\"nodes\":[{\"type\":\"text\",\"text\":\"林晚完成广告\"}]}" : document, storyboardId);
+            for (String url : java.util.List.of("/api/tenants/%d/points/estimate".formatted(tenantId), operationUrl)) {
+                mockMvc.perform(post(url)
+                        .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                        .header("X-Tenant-Id", tenantId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(url.equals(operationUrl) ? data : estimate))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode", is("AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED")))
+                    .andExpect(jsonPath("$.errorMessage", is(reason)));
+            }
+        }
+        jdbc.update("update storyboard_asset_reference set variant_id=? where storyboard_id=?", variantId, storyboardId);
+        jdbc.update("update storyboard set prompt_document_json=? where id=?", document, storyboardId);
+        assertThat(jdbc.queryForObject("select count(*) from ai_video_task where tenant_id = ?", Integer.class, tenantId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id = ?", Integer.class, tenantId)).isZero();
+        grantTeamPoints(tenantId, 5);
+        String fallbackData = data.trim().replaceFirst("\\}\\s*$", ",\"textOnly\":true}");
+        mockMvc.perform(post("/api/tenants/%d/points/estimate".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"operations\":[{\"url\":\"" + operationUrl + "\",\"data\":" + fallbackData + "}]}"))
+            .andExpect(status().isOk());
+        MvcResult fallback = mockMvc.perform(post(operationUrl)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON).content(fallbackData))
+            .andExpect(status().isOk()).andReturn();
+        Long fallbackId = readLong(fallback, "$.data.id");
+        assertThat(jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?", String.class, fallbackId))
+            .contains("\"textOnly\":true", "\"references\":[]").doesNotContain("图片1");
+        assertThat(jdbc.queryForObject("select prompt_document_json from storyboard where id=?", String.class, storyboardId)).isEqualTo(document);
+        assertThat(jdbc.queryForObject("select resolution_status from storyboard_asset_reference where storyboard_id=?", String.class, storyboardId))
+            .isEqualTo("ASSET_PENDING");
+        mockMvc.perform(post(operationUrl + "/" + fallbackId + "/regenerate")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk());
+        jdbc.update("update ai_video_task set status='CANCELED' where id=?", fallbackId);
+        int taskCount = jdbc.queryForObject("select count(*) from ai_video_task where tenant_id=?", Integer.class, tenantId);
+        int reservationCount = jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id=?", Integer.class, tenantId);
+        jdbc.update("update asset_visual_variant set current_image_result_id = ?, current_image_url = 'https://cdn.example/seedance-frame.png' where id = ?", imageId, variantId);
+        jdbc.update("update storyboard_asset_reference set resolution_status = 'RESOLVED' where storyboard_id = ?", storyboardId);
+        mockMvc.perform(post("/api/tenants/%d/points/estimate".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(estimate))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.lines[0].label", is("生成分镜视频")));
+        assertThat(jdbc.queryForObject("select count(*) from ai_video_task where tenant_id = ?", Integer.class, tenantId)).isEqualTo(taskCount);
+        assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id = ?", Integer.class, tenantId)).isEqualTo(reservationCount);
+    }
+
+    @Test
+    void estimatesAndCreatesTextOnlySeedanceVideoWithoutAnAssetOrFirstFrame() throws Exception {
+        String token = registerUser("13800016024", "Text Only Owner");
+        Long tenantId = createTenant(token, "纯文生视频团队");
+        Long ownerId = userIdByMobile("13800016024");
+        Long projectId = createProject(token, tenantId, ownerId, "纯文生视频项目", "SEEDANCE_TEXT_ONLY");
+        Long modelId = enableSeedanceMini();
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        jdbc.update("update storyboard set first_frame_url = null, prompt_document_json = null where id = ?", storyboardId);
+        grantTeamPoints(tenantId, 5);
+        String data = """
+            {"storyboardId":%d,"modelId":%d,"prompt":"王大山在卧室醒来","durationSeconds":11,
+             "aspectRatio":"9:16","resolution":"720p"}
+            """.formatted(storyboardId, modelId);
+        mockMvc.perform(post("/api/tenants/%d/points/estimate".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"operations\":[{\"url\":\"/api/projects/" + projectId + "/ai-video-tasks\",\"data\":" + data + "}]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.lines[0].label", is("生成分镜视频")));
+        assertThat(jdbc.queryForObject("select count(*) from ai_video_task where tenant_id=?", Integer.class, tenantId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id=?", Integer.class, tenantId)).isZero();
+        for (String invalid : java.util.List.of(data.replace("\"durationSeconds\":11", "\"durationSeconds\":3"),
+                data.replace("\"resolution\":\"720p\"", "\"resolution\":\"1080p\""))) {
+            mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON).content(invalid))
+                .andExpect(status().isBadRequest());
+        }
+        MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON).content(data))
+            .andExpect(status().isOk()).andReturn();
+        Long taskId = readLong(created, "$.data.id");
+        assertThat(jdbc.queryForObject("select first_frame_url from ai_video_task where id=?", String.class, taskId)).isNull();
+        String snapshot = jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?", String.class, taskId);
+        assertThat(snapshot).contains("\"textOnly\":true", "\"references\":[]", "王大山在卧室醒来");
+        assertThat(jdbc.queryForObject("select count(*) from ai_video_task_reference where task_id=?", Integer.class, taskId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id=?", Integer.class, tenantId)).isEqualTo(1);
+        pollVideoTask(token, tenantId, projectId, taskId).andExpect(jsonPath("$.data.status", is("GENERATING")));
+    }
+
+    @Test
     void compilesAndFreezesSeedanceReferencesBeforeCreatingExecution() throws Exception {
         String token = registerUser("13800016021", "Seedance Owner");
         Long tenantId = createTenant(token, "Seedance 多模态团队");
@@ -622,6 +748,19 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                     """.formatted(storyboardId)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errorCode", is("AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED")));
+        Long readyStoryboardId = createStoryboardWithShot(tenantId, projectId, ownerId, 2);
+        grantTeamPoints(tenantId, 5);
+        mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"storyboardId":%d,"prompt":"女主走入大厅","durationSeconds":5,
+                     "aspectRatio":"9:16","textOnly":true}
+                    """.formatted(readyStoryboardId)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode", is("VALIDATION_ERROR")))
+            .andExpect(jsonPath("$.errorMessage", is("所选视频模型暂不支持纯文生视频，请选择 Seedance 模型。")));
+
     }
 
     @Test
@@ -1093,6 +1232,69 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
               "motionStrength":"MEDIUM"
             }
             """.formatted(storyboardId, modelId, prompt);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"400,true", "403,true", "408,false", "500,false"})
+    void rejectedSeedanceSubmissionReleasesPointsWhileUnknownSubmissionStaysForReview(
+        int providerStatus, boolean releaseExpected
+    ) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v3/contents/generations/tasks", exchange -> writeJson(exchange,
+            providerStatus, "{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\","
+                + "\"message\":\"input image may contain real person\"}}"));
+        server.start();
+        try {
+            String mobile = "13800017" + providerStatus;
+            String token = registerUser(mobile, "Rejected Video Owner");
+            Long tenantId = createTenant(token, "Video rejection team " + providerStatus);
+            Long ownerId = userIdByMobile(mobile);
+            Long projectId = createProject(token, tenantId, ownerId, "Rejected video", "REJECT_" + providerStatus);
+            Long modelId = enableSeedanceMini("http://127.0.0.1:%d/api/v3".formatted(server.getAddress().getPort()));
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            seedStoryboardImageReference(tenantId, projectId, storyboardId, ownerId);
+            grantTeamPoints(tenantId, 5);
+            java.math.BigDecimal before = jdbc.queryForObject(
+                "select balance from team_point_account where tenant_id=?", java.math.BigDecimal.class, tenantId);
+            MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"storyboardId":%d,"modelId":%d,"prompt":"Rejected reference image",
+                         "durationSeconds":5,"aspectRatio":"9:16","resolution":"720p"}
+                        """.formatted(storyboardId, modelId)))
+                .andExpect(status().isOk()).andReturn();
+            Long taskId = readLong(created, "$.data.id");
+            pollVideoTask(token, tenantId, projectId, taskId)
+                .andExpect(jsonPath("$.data.status", is("FAILED")));
+            String settlement = releaseExpected ? "RELEASED" : "SETTLEMENT_REVIEW_REQUIRED";
+            assertThat(jdbc.queryForObject("""
+                select r.status from ai_point_reservation r join ai_video_task v on v.execution_id=r.execution_id
+                 where v.id=?
+                """, String.class, taskId)).isEqualTo(settlement);
+            assertThat(jdbc.queryForObject("""
+                select e.point_settlement_status from ai_execution_task e join ai_video_task v on v.execution_id=e.id
+                 where v.id=?
+                """, String.class, taskId)).isEqualTo(settlement);
+            java.math.BigDecimal reserved = jdbc.queryForObject(
+                "select reserved_balance from team_point_account where tenant_id=?", java.math.BigDecimal.class, tenantId);
+            java.math.BigDecimal after = jdbc.queryForObject(
+                "select balance from team_point_account where tenant_id=?", java.math.BigDecimal.class, tenantId);
+            if (releaseExpected) {
+                assertThat(reserved).isZero();
+                assertThat(after).isEqualByComparingTo(before);
+                aiVideoTaskService.pollDueTasks();
+                assertThat(jdbc.queryForObject("""
+                    select count(*) from point_ledger l join ai_video_task v on v.execution_id=l.execution_id
+                     where v.id=? and l.entry_type='RELEASE'
+                    """, Integer.class, taskId)).isEqualTo(1);
+            } else {
+                assertThat(reserved).isPositive();
+                assertThat(after.add(reserved)).isEqualByComparingTo(before);
+            }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test

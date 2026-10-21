@@ -71,7 +71,7 @@ public class SeedanceVideoRequestValidator {
     }
 
     private void validateImages(List<VideoTaskReferenceResolver.ResolvedReference> images, JsonNode rules) {
-        validateCount(images.size(), rules, "图片");
+        if (!images.isEmpty()) validateCount(images.size(), rules, "图片");
         for (var image : images) {
             validateFormatAndSize(image, rules, "图片");
             validateDimensions(image, rules, false);

@@ -42,6 +42,7 @@ import type { MediaPage } from '@/services/media/paging';
 import {
   confirmPointEstimates,
   isPointEstimateCancelled,
+  PointEstimateCancelledError,
 } from '@/services/point-estimate';
 import { readStoryboardTarget, STORYBOARD_PAGE_SIZE } from './video-workbench-state';
 import './storyboard.css';
@@ -69,6 +70,7 @@ import type {
   AiVoiceTask,
   AssetVisualWorkspace,
   CharacterAsset,
+  CreateAiVideoTaskValues,
   ProductionWorkspaceState,
   PropAsset,
   SaveStoryboardValues,
@@ -129,6 +131,11 @@ type PromptReferenceOption = Extract<
   StoryboardPromptNode,
   { type: 'mention' }
 >;
+type VideoSubmission = {
+  storyboard: StoryboardShot;
+  promptDocument: StoryboardPromptDocument;
+  values: CreateAiVideoTaskValues;
+};
 type VideoGenerationSettings = {
   durationSeconds: number;
   resolution: string;
@@ -1846,7 +1853,7 @@ const ProductionWorkbenchStoryboard = () => {
   const navigationTarget = readStoryboardTarget(location.search);
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [imageTasks, setImageTasks] = useState<AiImageTask[]>([]);
   const [videoTasks, setVideoTasks] = useState<AiVideoTask[]>([]);
   const [voiceTasks, setVoiceTasks] = useState<AiVoiceTask[]>([]);
@@ -2840,12 +2847,10 @@ const ProductionWorkbenchStoryboard = () => {
   };
 
 
-  const videoTaskValues = (storyboard: StoryboardShot) => {
-    const promptDocument = promptFor(storyboard);
-    if (!hasImageReference(promptDocument) && !storyboard.assetReferences?.some((reference) =>
-      reference.resolutionStatus === 'RESOLVED' && reference.variantId != null)) {
-      throw new Error('请先为分镜绑定至少一张可用的参考图片');
-    }
+  const videoTaskValues = (
+    storyboard: StoryboardShot,
+    promptDocument: StoryboardPromptDocument = promptFor(storyboard),
+  ): CreateAiVideoTaskValues => {
     if (!selectedModelId) throw new Error('请先选择视频生成模型');
     const prompt = promptText(promptDocument);
     if (!prompt.trim() || prompt.length > 3000) {
@@ -2865,19 +2870,58 @@ const ProductionWorkbenchStoryboard = () => {
     };
   };
 
-  const createVideoTaskForStoryboard = async (
-    storyboard: StoryboardShot,
-    pointEstimateConfirmed = false,
-  ) => {
-    const values = videoTaskValues(storyboard);
-    if (!pointEstimateConfirmed)
-      await confirmPointEstimates([
-        {
-          url: `/api/projects/${projectId}/ai-video-tasks`,
-          data: { ...values, promptDocument: promptFor(storyboard) },
-        },
-      ]);
-    const promptDocument = promptFor(storyboard);
+  const prepareVideoSubmissions = async (storyboards: StoryboardShot[]): Promise<VideoSubmission[]> => {
+    const submissions = storyboards.map((storyboard) => {
+      const promptDocument = promptFor(storyboard);
+      return { storyboard, promptDocument, values: videoTaskValues(storyboard, promptDocument) };
+    });
+    const imageKey = (reference: PromptReferenceOption) =>
+      `${reference.sourceType}:${reference.sourceId}`;
+    const availableImages = new Set(referenceOptions.IMAGE.map(imageKey));
+    for (const { storyboard } of submissions) {
+      if (storyboard.firstFrameUrl || selectedFirstFrame(storyboard.id)) {
+        availableImages.add(`STORYBOARD_FIRST_FRAME:${storyboard.id}`);
+      }
+    }
+    const missing = submissions.flatMap(({ storyboard, promptDocument }) => {
+      const bindings = storyboard.assetReferences || [];
+      const names = new Set(bindings
+        .filter((binding) => binding.resolutionStatus !== 'RESOLVED' || !binding.variantId || !binding.imageUrl?.trim())
+        .map((binding) => binding.sourceName || binding.assetName || '参考图片'));
+      for (const node of promptDocument.nodes) {
+        if (node.type !== 'mention' || node.mediaType !== 'IMAGE') continue;
+        const resolvedBinding = node.sourceType === 'ASSET_VISUAL_VARIANT' && bindings.some(
+          (binding) => binding.variantId === node.sourceId && binding.resolutionStatus === 'RESOLVED' && binding.imageUrl,
+        );
+        if (!availableImages.has(imageKey(node)) && !resolvedBinding) names.add(node.displayName);
+      }
+      return names.size ? [{ storyboard, names: [...names] }] : [];
+    });
+    if (!missing.length) return submissions;
+    const confirmed = await new Promise<boolean>((resolve) => {
+      modal.confirm({
+        title: '参考图片尚不可用',
+        content: <>
+          <p>以下分镜引用的图片尚未生成或已不可用：</p>
+          <ul>{missing.map(({ storyboard, names }) => <li key={storyboard.id}>
+            分镜{storyboard.storyboardNo || storyboard.shotNo}：{names.join('、')}
+          </li>)}</ul>
+          <p>继续后，这些分镜将仅根据文字提示词生成视频，本次不使用参考素材。人物和场景的外观可能变化，原有素材绑定会保留。</p>
+        </>,
+        okText: '继续纯文生视频',
+        cancelText: '返回检查素材',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+    if (!confirmed) throw new PointEstimateCancelledError();
+    const textOnlyIds = new Set(missing.map(({ storyboard }) => storyboard.id));
+    return submissions.map((submission) => textOnlyIds.has(submission.storyboard.id)
+      ? { ...submission, values: { ...submission.values, firstFrameUrl: undefined, textOnly: true } }
+      : submission);
+  };
+
+  const submitVideoTask = async ({ storyboard, values, promptDocument }: VideoSubmission) => {
     const prompt = values.prompt;
     const scriptText = drafts[storyboard.id]?.scriptText;
     const latestStoryboard = scriptText && scriptText !== getStoryboardScriptText(storyboard)
@@ -2898,7 +2942,12 @@ const ProductionWorkbenchStoryboard = () => {
 
   const generateVideo = async (storyboard: StoryboardShot) => {
     try {
-      const task = await createVideoTaskForStoryboard(storyboard);
+      const [submission] = await prepareVideoSubmissions([storyboard]);
+      await confirmPointEstimates([{
+        url: `/api/projects/${projectId}/ai-video-tasks`,
+        data: { ...submission.values, promptDocument: submission.promptDocument },
+      }]);
+      const task = await submitVideoTask(submission);
       if (task) {
         setVideoTasks((previous) => [...previous, task]);
         void followVideoExecution(task).catch(() =>
@@ -2992,16 +3041,16 @@ const ProductionWorkbenchStoryboard = () => {
     videoBatchSubmission.current = true;
     setVideoBatchSubmitting(true);
     try {
+      const submissions = await prepareVideoSubmissions(selected);
       await confirmPointEstimates(
-        selected.map((item) => ({
+        submissions.map(({ values, promptDocument }) => ({
           url: `/api/projects/${projectId}/ai-video-tasks`,
-          data: { ...videoTaskValues(item), promptDocument: promptFor(item) },
+          data: { ...values, promptDocument },
         })),
       );
       const outcomes: PromiseSettledResult<AiVideoTask | undefined>[] = [];
       for (let offset = 0; offset < selected.length; offset += 4) {
-        outcomes.push(...await Promise.allSettled(selected.slice(offset, offset + 4)
-          .map((item) => createVideoTaskForStoryboard(item, true))));
+        outcomes.push(...await Promise.allSettled(submissions.slice(offset, offset + 4).map(submitVideoTask)));
       }
       let created = 0;
       const failedIds: number[] = [];

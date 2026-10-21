@@ -23,6 +23,29 @@ class SeedanceArkVideoProviderAdapterTest {
     private final AiSecretCodec secretCodec = new AiSecretCodec("seedance-test-secret");
 
     @Test
+    void submitsTextOnlySnapshotWithoutSendingAStaleFirstFrame() throws Exception {
+        AtomicReference<JsonNode> requestBody = new AtomicReference<>();
+        HttpServer server = server(exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody().readAllBytes()));
+            writeJson(exchange, 200, "{\"id\":\"ark-text-only\",\"status\":\"queued\"}");
+        });
+        try {
+            AiVideoTaskEntity task = multimodalTask();
+            task.compiledPrompt = "王大山在卧室醒来";
+            task.firstFrameUrl = "https://cdn.example/stale-first-frame.png";
+            task.requestSnapshotJson = "{\"textOnly\":true,\"references\":[]}";
+            var adapter = new SeedanceArkVideoProviderAdapter(secretCodec, objectMapper);
+            var outcome = adapter.submit(config(server), model("ep-seedance-mini"), task, "text-only-1");
+            assertThat(outcome.externalTaskId()).isEqualTo("ark-text-only");
+            assertThat(requestBody.get().path("content")).hasSize(1);
+            assertThat(requestBody.get().at("/content/0/type").asText()).isEqualTo("text");
+            assertThat(requestBody.get().at("/content/0/text").asText()).isEqualTo("王大山在卧室醒来");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void submitsFrozenMultimodalTaskUsingArkContentContract() throws Exception {
         AtomicReference<JsonNode> requestBody = new AtomicReference<>();
         AtomicReference<String> authorization = new AtomicReference<>();
@@ -168,6 +191,27 @@ class SeedanceArkVideoProviderAdapterTest {
             assertThat(expired.response().errorMessage()).isEqualTo("result expired");
             assertThat(queued.externalTaskId()).isEqualTo("queued-1");
             assertThat(queued.response()).isNull();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        "400,VALIDATION_ERROR", "403,AI_AUTH_FAILED", "429,AI_RATE_LIMIT",
+        "408,AI_PROVIDER_TIMEOUT", "500,AI_PROVIDER_ERROR"
+    })
+    void preservesSubmissionRejectionCategoryForPointSettlement(int httpStatus, String expectedCode) throws Exception {
+        HttpServer server = server(exchange -> writeJson(exchange, httpStatus,
+            "{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\","
+                + "\"message\":\"input image may contain real person\"}}"));
+        try {
+            var adapter = new SeedanceArkVideoProviderAdapter(secretCodec, objectMapper);
+            assertThatThrownBy(() -> adapter.submit(config(server), model("ep-seedance-mini"), task(null), "rejected"))
+                .isInstanceOfSatisfying(com.antshorttv.ai.AiGatewayException.class, exception -> {
+                    assertThat(exception.getErrorCode().name()).isEqualTo(expectedCode);
+                    assertThat(exception.getMessage()).contains("HTTP " + httpStatus, "PrivacyInformation");
+                });
         } finally {
             server.stop(0);
         }

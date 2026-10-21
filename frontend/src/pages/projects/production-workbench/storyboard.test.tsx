@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   createAiVoiceTask: vi.fn(),
   createAiVideoTask: vi.fn(),
   confirmPointEstimates: vi.fn(),
+  confirmMissingImages: vi.fn(),
   cancelAiVideoTask: vi.fn(),
   regenerateAiVideoTask: vi.fn(),
   replaceStoryboardAssetReferences: vi.fn(),
@@ -175,6 +176,7 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({
       message: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+      modal: { confirm: mocks.confirmMissingImages },
     }),
   },
   Button: ({
@@ -722,6 +724,18 @@ const setupWorkspaceResponse = (
   );
   mocks.deleteStoryboard.mockResolvedValue({ data: {} });
 };
+
+const pendingImageStoryboard = () => ({
+  id: 301, shotNo: 1, episodeNo: 1, visualDescription: '王大山在卧室', durationSeconds: 11,
+  videoPrompt: '王大山在卧室',
+  promptDocument: { version: 2, nodes: [
+    { type: 'mention', mediaType: 'IMAGE', sourceType: 'ASSET_VISUAL_VARIANT', sourceId: 4422,
+      variantId: 4422, assetType: 'CHARACTER', assetId: 810, displayName: '王大山', bindingSource: 'FORMAL' },
+    { type: 'text', text: '在卧室' },
+  ] },
+  assetReferences: [{ assetType: 'CHARACTER', assetId: 810, variantId: 4422, sourceName: '王大山',
+    referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'ASSET_PENDING', sourceType: 'AI', lockedByUser: false }],
+});
 
 describe('ProductionWorkbench script page', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -1651,15 +1665,79 @@ describe('ProductionWorkbench script page', () => {
     }));
   });
 
-  it('blocks paid video creation without a usable image reference', async () => {
+  it('allows text-only video creation without any image reference', async () => {
     setupWorkspaceResponse({ storyboards: [{
       id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5,
       videoPrompt: '没有图片', promptDocument: { version: 2, nodes: [{ type: 'text', text: '没有图片' }] },
     }] });
     render(<ProductionWorkbench />);
     fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
-    await waitFor(() => expect(mocks.createAiVideoTask).not.toHaveBeenCalled());
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1,
+      expect.objectContaining({ storyboardId: 301, prompt: '没有图片' }), true));
+    expect(mocks.confirmPointEstimates).toHaveBeenCalledTimes(1);
+    expect(mocks.confirmMissingImages).not.toHaveBeenCalled();
+  });
+
+  it.each([[4422, 'ASSET_PENDING'], [null, 'ASSET_PENDING'], [4422, 'RESOLVED']] as const)('asks before using text-only generation for unavailable image variant %s (%s) and keeps the bindings', async (variantId, resolutionStatus) => {
+    const original = pendingImageStoryboard();
+    const shot = { ...original,
+      assetReferences: [{ ...original.assetReferences[0], variantId, resolutionStatus, imageUrl: null }],
+      promptDocument: variantId && resolutionStatus === 'ASSET_PENDING' ? original.promptDocument
+        : { version: 2, nodes: [{ type: 'text', text: '王大山在卧室' }] },
+    };
+    setupWorkspaceResponse({ storyboards: [shot] });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(mocks.confirmMissingImages).toHaveBeenCalledTimes(1));
+    expect(mocks.confirmPointEstimates).not.toHaveBeenCalled();
     expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    const dialog = mocks.confirmMissingImages.mock.calls[0][0];
+    expect(dialog.okText).toBe('继续纯文生视频');
+    await act(async () => dialog.onOk());
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1,
+      expect.objectContaining({ storyboardId: 301, textOnly: true }), true));
+    const operation = mocks.confirmPointEstimates.mock.calls[0][0][0];
+    expect(operation.data).toEqual({ ...mocks.createAiVideoTask.mock.calls[0][1], promptDocument: shot.promptDocument });
+    expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 301,
+      expect.objectContaining({ promptDocument: shot.promptDocument }));
+    expect(mocks.replaceStoryboardAssetReferences).not.toHaveBeenCalled();
+  });
+
+  it('cancels the pending-image choice without estimating or submitting a video', async () => {
+    setupWorkspaceResponse({ storyboards: [pendingImageStoryboard()] });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(mocks.confirmMissingImages).toHaveBeenCalledTimes(1));
+    await act(async () => mocks.confirmMissingImages.mock.calls[0][0].onCancel());
+    expect(mocks.confirmPointEstimates).not.toHaveBeenCalled();
+    expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+  });
+
+  it('estimates a mixed batch once and applies text-only only to affected storyboards', async () => {
+    const pending = pendingImageStoryboard();
+    const ready = { ...pendingImageStoryboard(), id: 302, shotNo: 2, assetReferences: [],
+      firstFrameUrl: '/ready.png', promptDocument: { version: 2, nodes: [{ type: 'text', text: '已有首帧' }] } };
+    setupWorkspaceResponse({ storyboards: [pending, ready] });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: /批量生成视频/ }));
+    const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
+    await within(picker).findByRole('checkbox', { name: '选择分镜1' });
+    fireEvent.click(within(picker).getByRole('button', { name: '全选' }));
+    fireEvent.click(within(picker).getByRole('button', { name: '生成所选视频' }));
+    await waitFor(() => expect(mocks.confirmMissingImages).toHaveBeenCalledTimes(1));
+    expect(mocks.confirmPointEstimates).not.toHaveBeenCalled();
+    await act(async () => mocks.confirmMissingImages.mock.calls[0][0].onOk());
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(2));
+    expect(mocks.confirmPointEstimates).toHaveBeenCalledTimes(1);
+    const operations = mocks.confirmPointEstimates.mock.calls[0][0];
+    for (const [, values] of mocks.createAiVideoTask.mock.calls) {
+      expect(operations.find((op: any) => op.data.storyboardId === values.storyboardId).data)
+        .toEqual(expect.objectContaining(values));
+    }
+    expect(operations.find((op: any) => op.data.storyboardId === 301).data.textOnly).toBe(true);
+    expect(operations.find((op: any) => op.data.storyboardId === 302).data.textOnly).not.toBe(true);
   });
 
   it('uses a newly selected first-frame result without reloading the storyboard page', async () => {
@@ -2712,7 +2790,7 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '批量生成视频' })).not.toBeInTheDocument());
   });
 
-  it('disables missing references and excludes them from select all, while cancel submits nothing', async () => {
+  it('allows text-only storyboards in select all, while cancel submits nothing', async () => {
     const response = await mocks.queryStoryboardWorkspace();
     setupWorkspaceResponse({ storyboards: [response.data.storyboards[0], {
       id: 102, shotNo: 2, episodeNo: 1, characters: '', scene: '', props: '',
@@ -2722,11 +2800,10 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
     fireEvent.click(await screen.findByRole('button', { name: /批量生成视频/ }));
     const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
-    expect(await within(picker).findByRole('checkbox', { name: '选择分镜2' })).toBeDisabled();
-    expect(within(picker).getByText('请先为分镜绑定至少一张可用的参考图片')).toBeInTheDocument();
+    expect(await within(picker).findByRole('checkbox', { name: '选择分镜2' })).not.toBeDisabled();
     fireEvent.click(within(picker).getByRole('button', { name: '全选' }));
     expect(within(picker).getByRole('checkbox', { name: '选择分镜1' })).toBeChecked();
-    expect(within(picker).getByRole('checkbox', { name: '选择分镜2' })).not.toBeChecked();
+    expect(within(picker).getByRole('checkbox', { name: '选择分镜2' })).toBeChecked();
     fireEvent.click(within(picker).getByRole('button', { name: '取消全选' }));
     expect(within(picker).getByRole('button', { name: '生成所选视频' })).toBeDisabled();
     fireEvent.click(within(picker).getByRole('button', { name: '取消' }));
@@ -2757,7 +2834,7 @@ describe('ProductionWorkbench script page', () => {
     const submit = within(picker).getByRole('button', { name: '生成所选视频' });
     fireEvent.click(submit);
     fireEvent.click(submit);
-    expect(mocks.confirmPointEstimates).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mocks.confirmPointEstimates).toHaveBeenCalledTimes(1));
     expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
     await act(async () => confirmEstimate({ estimatedPoints: 10 }));
     await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(1));

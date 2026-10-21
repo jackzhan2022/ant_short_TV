@@ -625,7 +625,8 @@ public class AiVideoTaskService {
             source.watermark,
             source.cameraMovement,
             source.motionStrength,
-            source.randomSeed
+            source.randomSeed,
+            videoSnapshot(source).path("textOnly").asBoolean(false)
         );
         AiVideoTaskResponse response = create(tenantId, projectId, request, servletRequest);
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
@@ -753,6 +754,10 @@ public class AiVideoTaskService {
         AiModelRoute route,
         CreateAiVideoTaskRequest request
     ) {
+        if (Boolean.TRUE.equals(request.textOnly())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                "所选视频模型暂不支持纯文生视频，请选择 Seedance 模型。");
+        }
         validateLegacyCreateRequest(request);
         String firstFrameUrl = resolveFirstFrameUrl(storyboard, request);
         int duration = request.durationSeconds() == null ? 5 : request.durationSeconds();
@@ -779,35 +784,44 @@ public class AiVideoTaskService {
         AiModelRoute route,
         CreateAiVideoTaskRequest request
     ) {
-        if (storyboard.promptDocumentJson == null || storyboard.promptDocumentJson.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请先为分镜重新绑定 version 2 参考素材。");
-        }
-        List<StoryboardAssetReferenceEntity> formalRows = storyboardReferenceRepository.listActive(
+        boolean textOnly = Boolean.TRUE.equals(request.textOnly());
+        List<StoryboardAssetReferenceEntity> formalRows = textOnly ? List.of() : storyboardReferenceRepository.listActive(
             storyboard.tenantId, storyboard.projectId, storyboard.id);
         List<Map<String, Object>> omittedReferences = new ArrayList<>();
         List<StoryboardPromptCompiler.BindingReference> formalBindings = new ArrayList<>();
         for (StoryboardAssetReferenceEntity row : formalRows) {
-            if ("RESOLVED".equals(row.resolutionStatus) && row.variantId != null) {
-                formalBindings.add(new StoryboardPromptCompiler.BindingReference(
-                    row.assetType, row.assetId, row.variantId, row.sourceName,
-                    row.referenceRole, row.sortOrder));
-            } else {
-                Map<String, Object> omitted = new LinkedHashMap<>();
-                omitted.put("assetType", row.assetType);
-                omitted.put("assetId", row.assetId);
-                omitted.put("variantId", row.variantId);
-                omitted.put("displayName", row.sourceName);
-                omitted.put("referenceRole", row.referenceRole);
-                omitted.put("sortOrder", row.sortOrder);
-                omitted.put("reason", "UNRESOLVED".equals(row.resolutionStatus)
-                    ? "UNRESOLVED_BINDING" : "ASSET_IMAGE_PENDING");
-                omittedReferences.add(omitted);
+            if (!"RESOLVED".equals(row.resolutionStatus) || row.variantId == null) {
+                throw new BusinessException(ErrorCode.AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED,
+                    "参考图片尚不可用，请先生成或重新绑定图片，或确认继续纯文生视频。");
             }
+            formalBindings.add(new StoryboardPromptCompiler.BindingReference(
+                row.assetType, row.assetId, row.variantId, row.sourceName,
+                row.referenceRole, row.sortOrder));
         }
         StoryboardPromptCompiler.CompiledPrompt compiled;
         try {
-            compiled = promptCompiler.compile(
-                objectMapper.readTree(storyboard.promptDocumentJson), formalBindings);
+            if (textOnly) {
+                compiled = new StoryboardPromptCompiler.CompiledPrompt(request.prompt(), List.of());
+            } else {
+                JsonNode document;
+                if (storyboard.promptDocumentJson == null || storyboard.promptDocumentJson.isBlank()) {
+                    var textDocument = objectMapper.createObjectNode().put("version", 2);
+                    textDocument.putArray("nodes").addObject().put("type", "text").put("text", request.prompt());
+                    document = textDocument;
+                } else {
+                    document = objectMapper.readTree(storyboard.promptDocumentJson);
+                }
+                for (JsonNode node : document.path("nodes")) {
+                    if ("mention".equals(node.path("type").asText())
+                        && "IMAGE".equals(node.path("mediaType").asText())
+                        && "FORMAL".equals(node.path("bindingSource").asText())
+                        && formalBindings.stream().noneMatch(binding -> binding.variantId() == node.path("sourceId").asLong())) {
+                        throw new BusinessException(ErrorCode.AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED,
+                            "参考图片尚不可用，请先生成或重新绑定图片，或确认继续纯文生视频。");
+                    }
+                }
+                compiled = promptCompiler.compile(document, formalBindings);
+            }
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -837,17 +851,16 @@ public class AiVideoTaskService {
             .map(item -> objectMapper.convertValue(item,
                 new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}))
             .toList());
-        seedanceValidator.validate(route.model(), duration, resolution, references);
-        int billingDuration = duration == -1
-            ? constraints.path("duration").path("max").asInt()
-            : duration;
         String firstFrameUrl = references.stream()
             .filter(item -> "IMAGE".equals(item.reference().mediaType()))
             .findFirst()
             .map(VideoTaskReferenceResolver.ResolvedReference::browserDisplayUrl)
             .filter(value -> value != null && !value.isBlank())
-            .orElseThrow(() -> new BusinessException(
-                ErrorCode.AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED, "请至少绑定一张参考图片。"));
+            .orElse(null);
+        seedanceValidator.validate(route.model(), duration, resolution, references);
+        int billingDuration = duration == -1
+            ? constraints.path("duration").path("max").asInt()
+            : duration;
 
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("modelId", route.model().getId());
@@ -863,6 +876,7 @@ public class AiVideoTaskService {
             "image", constraints.path("image").path("maxCount").asInt(0),
             "video", constraints.path("video").path("maxCount").asInt(0),
             "audio", constraints.path("audio").path("maxCount").asInt(0)));
+        snapshot.put("textOnly", references.isEmpty());
         snapshot.put("references", references);
         snapshot.put("omittedReferences", omittedReferences);
         String snapshotJson;

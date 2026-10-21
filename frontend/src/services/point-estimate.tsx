@@ -177,11 +177,15 @@ export function confirmPointEstimates(
         if (closed) return;
         closed = true;
         dialog.destroy();
-        reject(
-          new Error(
-            `积分预估失败，未提交任务：${error instanceof Error ? error.message : '请稍后重试'}`,
-          ),
-        );
+        const failure = error as {
+          response?: { data?: { errorMessage?: string } };
+          info?: { errorMessage?: string };
+        };
+        const reason =
+          failure?.response?.data?.errorMessage ||
+          failure?.info?.errorMessage ||
+          (error instanceof Error ? error.message : '请稍后重试');
+        reject(new Error(`积分预估失败，未提交任务：${reason}`));
       });
   });
 }
