@@ -107,7 +107,7 @@ const ProductionWorkbench = () => {
     return matched?.key || 'storyboard';
   }, [location.pathname]);
 
-  const boundedWorkspace = activeStep === 'storyboard' || activeStep === 'video';
+  const boundedWorkspace = activeStep === 'settings' || activeStep === 'storyboard' || activeStep === 'video';
 
   const nextStep = activeStep === 'script' ? 'settings' : activeStep === 'settings' ? 'storyboard' : undefined;
 

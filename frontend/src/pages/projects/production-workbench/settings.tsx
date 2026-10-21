@@ -1203,15 +1203,8 @@ const ProductionWorkbenchSettings = () => {
 
   if (loading) {
     return (
-      <div
-        style={{
-          minHeight: 'calc(100vh - 100px)',
-          padding: '24px 64px 96px',
-          background: 'var(--app-color-bg-layout)',
-          boxSizing: 'border-box',
-        }}
-      >
-        <div style={{ width: '100%', margin: '0 auto' }}>
+      <div className={styles.settings}>
+        <div className={styles.settingsContent}>
           {notice}
           <section aria-label="资产设定加载中" style={{ paddingTop: 20 }}>
             <Skeleton active paragraph={{ rows: 2 }} />
@@ -1228,15 +1221,8 @@ const ProductionWorkbenchSettings = () => {
 
   if (loadFailed) {
     return (
-      <div
-        style={{
-          minHeight: 'calc(100vh - 100px)',
-          padding: '24px 64px 96px',
-          background: 'var(--app-color-bg-layout)',
-          boxSizing: 'border-box',
-        }}
-      >
-        <div style={{ width: '100%', margin: '0 auto' }}>
+      <div className={styles.settings}>
+        <div className={styles.settingsContent}>
           {notice}
           <Empty description="设定页加载失败">
             <Button onClick={() => setLoadVersion((version) => version + 1)}>
@@ -1251,13 +1237,8 @@ const ProductionWorkbenchSettings = () => {
   return (
     <div
       className={`${styles.settings} ${visualAsset ? styles.settingsOpen : ''}`}
-      style={{
-        minHeight: 'calc(100vh - 100px)',
-        background: 'var(--app-color-bg-layout)',
-        boxSizing: 'border-box',
-      }}
     >
-      <div style={{ width: '100%', margin: '0 auto' }}>
+      <div className={styles.settingsContent}>
         {notice}
         {activeExecution ? (
           <div
