@@ -20,6 +20,7 @@ import {
 } from 'antd';
 import { useRef, useState } from 'react';
 import { formatPoints } from '@/utils/points';
+import GrantPackageModal from './GrantPackageModal';
 import {
   assignPlatformTenantTrial,
   getPlatformTenant,
@@ -52,6 +53,7 @@ const PlatformTenantManagementPage = () => {
   const actionRef = useRef<ActionType>(undefined);
   const [detail, setDetail] = useState<PlatformTenantDetail>();
   const [detailLoading, setDetailLoading] = useState(false);
+  const [grantTenant, setGrantTenant] = useState<PlatformTenantSummary>();
 
   const loadDetail = async (tenantId: number) => {
     setDetailLoading(true);
@@ -165,11 +167,16 @@ const PlatformTenantManagementPage = () => {
     {
       title: '操作',
       valueType: 'option',
-      width: 290,
+      width: 420,
       render: (_, record) => [
         <Button key="detail" type="link" onClick={() => void loadDetail(record.id)}>
           查看详情
         </Button>,
+        access.canGrantPlatformTenantPackage ? (
+          <Button key="grant" type="link" disabled={record.status !== 'ACTIVE'} onClick={() => setGrantTenant(record)}>
+            添加套餐/积分包
+          </Button>
+        ) : null,
         access.canAssignPlatformTenantTrial && !record.currentPackage && !record.trialAssigned ? (
           <Popconfirm
             key="trial"
@@ -291,6 +298,15 @@ const PlatformTenantManagementPage = () => {
           </>
         )}
       </Drawer>
+      {access.canGrantPlatformTenantPackage && grantTenant && (
+        <GrantPackageModal tenant={grantTenant} onClose={() => setGrantTenant(undefined)} onGranted={() => {
+          const tenantId = grantTenant.id;
+          setGrantTenant(undefined);
+          message.success('发放成功，套餐或积分包已生效');
+          actionRef.current?.reload();
+          if (detail?.id === tenantId) void loadDetail(tenantId);
+        }} />
+      )}
     </PageContainer>
   );
 };

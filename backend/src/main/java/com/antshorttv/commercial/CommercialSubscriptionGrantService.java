@@ -17,19 +17,22 @@ public class CommercialSubscriptionGrantService {
     private final CommercialEntitlementGrantMapper grantMapper;
     private final CommercialOrderMapper orderMapper;
     private final PointAccountingService accounting;
+    private final AdminTenantGrantMapper adminGrants;
 
     public CommercialSubscriptionGrantService(
         TeamSubscriptionMapper subscriptionMapper,
         CommercialEntitlementMapper entitlementMapper,
         CommercialEntitlementGrantMapper grantMapper,
         CommercialOrderMapper orderMapper,
-        PointAccountingService accounting
+        PointAccountingService accounting,
+        AdminTenantGrantMapper adminGrants
     ) {
         this.subscriptionMapper = subscriptionMapper;
         this.entitlementMapper = entitlementMapper;
         this.grantMapper = grantMapper;
         this.orderMapper = orderMapper;
         this.accounting = accounting;
+        this.adminGrants = adminGrants;
     }
 
     public void processDue(LocalDateTime now) {
@@ -109,14 +112,17 @@ public class CommercialSubscriptionGrantService {
                 .eq("package_version_id", subscription.packageVersionId)
                 .eq("entitlement_type", "PERIODIC_POINTS"));
         if (entitlement == null) return true;
-        CommercialOrderEntity order = orderMapper.selectById(subscription.sourceOrderId);
+        CommercialOrderEntity order = subscription.sourceOrderId == null ? null : orderMapper.selectById(subscription.sourceOrderId);
+        AdminTenantGrantEntity adminGrant = subscription.sourceAdminGrantId == null ? null : adminGrants.selectById(subscription.sourceAdminGrantId);
+        Long operatorId = adminGrant != null ? adminGrant.operatorId : order == null ? null : order.userId;
+        if (operatorId == null) throw new IllegalStateException("Subscription fulfillment source is missing");
         String key = "subscription:" + subscription.id + ":period:" + periodNo;
         CommercialEntitlementGrantEntity grant = grantMapper.selectOne(
             new QueryWrapper<CommercialEntitlementGrantEntity>()
                 .eq("tenant_id", subscription.tenantId)
                 .eq("idempotency_key", key));
         try {
-            if (entitlement.numericValue.signum() > 0) accounting.grant(subscription.tenantId, order.userId, entitlement.numericValue, key, "会员周期积分发放");
+            if (entitlement.numericValue.signum() > 0) accounting.grant(subscription.tenantId, operatorId, entitlement.numericValue, key, "会员周期积分发放");
             if (grant == null) grant = newGrant(subscription, order, periodNo, key);
             grant.amount = entitlement.numericValue;
             grant.status = "GRANTED";
@@ -145,7 +151,8 @@ public class CommercialSubscriptionGrantService {
     ) {
         CommercialEntitlementGrantEntity grant = new CommercialEntitlementGrantEntity();
         grant.tenantId = subscription.tenantId;
-        grant.orderId = order.id;
+        grant.orderId = order == null ? null : order.id;
+        grant.adminGrantId = subscription.sourceAdminGrantId;
         grant.subscriptionId = subscription.id;
         grant.periodNo = periodNo;
         grant.entitlementType = "PERIODIC_POINTS";

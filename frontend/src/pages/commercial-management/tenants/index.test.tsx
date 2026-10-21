@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     canViewPlatformTenants: true,
     canEditPlatformTenantStatus: true,
     canAssignPlatformTenantTrial: false,
+    canGrantPlatformTenantPackage: false,
   },
   queryTenants: vi.fn(),
   getTenant: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   reload: vi.fn(),
 }));
 
+vi.mock('./GrantPackageModal', () => ({ default: ({ tenant }: any) => <div>发放至：{tenant.name}</div> }));
 vi.mock('@umijs/max', () => ({ useAccess: () => mocks.access }));
 vi.mock('./service', () => ({
   queryPlatformTenants: mocks.queryTenants,
@@ -74,10 +76,21 @@ describe('PlatformTenantManagementPage', () => {
     vi.clearAllMocks();
     mocks.access.canViewPlatformTenants = true;
     mocks.access.canAssignPlatformTenantTrial = false;
+    mocks.access.canGrantPlatformTenantPackage = false;
     mocks.access.canEditPlatformTenantStatus = true;
     mocks.queryTenants.mockResolvedValue({ data: { records: [tenant], total: 1, current: 2, pageSize: 20 } });
     mocks.getTenant.mockResolvedValue({ data: { ...tenant, description: '运营租户', queuedPackages: [{ subscriptionId: 11, name: '专业版', packageType: 'SUBSCRIPTION', subscriptionStatus: 'QUEUED', startsAt: '2026-10-01T00:00:00', endsAt: '2026-11-01T00:00:00' }] } });
     mocks.updateStatus.mockResolvedValue({ data: { ...tenant, status: 'DISABLED' } });
+  });
+
+  it('shows grant entry only for platform administrators', async () => {
+    const view = render(<PlatformTenantManagementPage />);
+    await screen.findByText('Alpha Studio');
+    expect(screen.queryByRole('button', { name: '添加套餐/积分包' })).not.toBeInTheDocument();
+    mocks.access.canGrantPlatformTenantPackage = true;
+    view.rerender(<PlatformTenantManagementPage />);
+    fireEvent.click(screen.getByRole('button', { name: '添加套餐/积分包' }));
+    expect(screen.getByText('发放至：Alpha Studio')).toBeInTheDocument();
   });
 
   it('assigns trial after confirmation and refreshes list and open detail', async () => {

@@ -2,6 +2,14 @@ import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
+  it('requires the platform administrator role for tenant package grants', () => {
+    const user = { currentUser: { userid: '1' } };
+    expect(access({ ...user, bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } } }).canGrantPlatformTenantPackage).toBe(true);
+    expect(access({ ...user, selectedTenant: { membership: { status: 'ACTIVE', memberType: 'OWNER' }, roles: ['ADMIN'] } }).canGrantPlatformTenantPackage).toBe(false);
+    expect(access({ ...user, platformPermissions: ['PLATFORM_TENANT_VIEW', 'PLATFORM_TENANT_TRIAL_ASSIGN'] }).canGrantPlatformTenantPackage).toBe(false);
+    expect(access({ bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } } }).canGrantPlatformTenantPackage).toBe(false);
+  });
+
   it('grants the existing management entry to a concurrency-only platform viewer', () => {
     const result = access({
       currentUser: { userid: '1' },
