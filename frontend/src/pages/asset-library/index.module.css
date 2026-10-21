@@ -1,0 +1,39 @@
+.page { padding: 24px 30px 40px; min-height: calc(100vh - 100px); }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 8px; }
+.heading h1 { margin: 0; font-size: 23px; font-weight: 600; }
+.heading p { margin: 6px 0 0; color: var(--app-color-text-secondary, #878ba0); font-size: 13px; }
+.breadcrumb { display: flex; gap: 12px; align-items: center; margin: 16px 0 22px; }
+.breadcrumb button { border: 0; padding: 0; background: none; color: var(--app-color-text-secondary, #878ba0); cursor: pointer; }
+.categories { display: flex; gap: 16px; margin: 20px 0; }
+.categories button { display: flex; align-items: center; gap: 8px; border: 0; padding: 8px 18px; border-radius: 8px; background: none; color: var(--app-color-text-secondary, #878ba0); cursor: pointer; font-size: 16px; }
+.categories button[aria-pressed='true'] { color: var(--app-color-primary, #6956ff); background: var(--app-color-primary-bg, #f0edff); }
+.categoryCount { font-size: 12px; }
+.toolbar { display: flex; gap: 16px; margin: 20px 0 28px; }
+.toolbar > :first-child { flex: 1; }
+.toolbar select { min-width: 160px; padding: 0 12px; border: 1px solid var(--app-color-border, #dddfea); border-radius: 8px; color: var(--app-color-text, #303347); background: var(--app-color-bg-container, white); font: inherit; }
+.sectionHeading { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--app-color-border-secondary, #e8e9f0); padding-bottom: 12px; margin-bottom: 22px; font-size: 16px; }
+.total { color: var(--app-color-text-tertiary, #a0a4b5); font-size: 12px; }
+.folderGrid, .mediaGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px 22px; }
+.videoGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.card { min-width: 0; border-radius: 12px; transition: background 160ms ease, box-shadow 160ms ease; }
+.card:hover { background: var(--app-color-fill-secondary, #f0f1f6); box-shadow: 0 2px 12px rgb(40 44 80 / 5%); }
+.cardEntry { width: 100%; text-align: left; padding: 6px; border: 0; border-radius: 12px; background: none; color: inherit; cursor: pointer; }
+.cardEntry:focus-visible { outline: 2px solid var(--app-color-primary, #6956ff); outline-offset: 2px; }
+.cover { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 9px; border: 1px solid var(--app-color-border-secondary, #e0e2ef); background: var(--app-color-fill-secondary, #f1f2f8); }
+.folderCover { display: grid; place-items: center; color: #46c5ed; font-size: 56px; }
+.cardBody { padding: 16px 0 12px; }
+.cardTitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cardTitle > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 15px; font-weight: 500; }
+.cardTitle em { flex-shrink: 0; border-radius: 4px; padding: 2px 5px; background: var(--app-color-primary-bg, #efecff); color: var(--app-color-primary, #6956ff); font-style: normal; font-size: 10px; }
+.cardMeta { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--app-color-text-tertiary, #a9adbd); font-size: 11px; }
+.cardMeta > span { color: var(--app-color-success, #4d9c71); }
+.play { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); color: rgb(255 255 255 / 95%); font-size: 48px; filter: drop-shadow(0 2px 6px rgb(0 0 0 / 35%)); }
+.duration { position: absolute; right: 8px; bottom: 8px; padding: 2px 6px; border-radius: 4px; color: white; background: rgb(0 0 0 / 55%); font-size: 12px; }
+.placeholder { display: grid; place-items: center; height: 100%; color: var(--app-color-text-tertiary, #a0a4b5); }
+.loading, .empty { display: grid; justify-items: center; gap: 18px; padding: 80px 0; color: var(--app-color-text-tertiary, #a0a4b5); }
+.pagination { display: flex; justify-content: center; margin-top: 30px; }
+.preview { overflow: hidden; border-radius: 10px; background: var(--app-color-fill-secondary, #f1f2f8); }
+.preview video { display: block; width: 100%; max-height: 70vh; background: #111; }
+@media (max-width: 1400px) { .folderGrid, .mediaGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .folderGrid, .mediaGrid, .videoGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .page { padding: 20px; } }
+@media (max-width: 640px) { .folderGrid, .mediaGrid, .videoGrid { grid-template-columns: minmax(0, 1fr); } .page { padding: 16px; } .categories { gap: 4px; } .categories button { padding: 8px 14px; } .toolbar { flex-wrap: wrap; } .toolbar select { min-height: 34px; } }

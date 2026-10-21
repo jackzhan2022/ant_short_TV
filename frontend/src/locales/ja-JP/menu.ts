@@ -1,4 +1,5 @@
 export default {
+  'menu.asset-library': 'アセットライブラリ',
   'menu.messages': 'メッセージセンター',
   'menu.drama-library': 'ドラマ管理',
   'menu.tasks': 'タスクセンター',

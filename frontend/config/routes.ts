@@ -11,6 +11,8 @@
  * @doc https://umijs.org/docs/guides/routes
  */
 export default [
+  { path: '/asset-library', name: 'asset-library', icon: 'folderOpen', access: 'canUseProjectCenter', component: './asset-library' },
+  { path: '/asset-library/projects/:projectId', hideInMenu: true, access: 'canUseProjectCenter', component: './asset-library' },
   { path: '/messages', name: 'messages', hideInMenu: true, component: './messages' },
   { path: '/tasks', name: 'tasks', icon: 'schedule', access: 'canUseProjectCenter', component: './tasks' },
   {

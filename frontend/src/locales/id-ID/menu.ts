@@ -1,4 +1,5 @@
 export default {
+  'menu.asset-library': 'Pustaka Aset',
   'menu.messages': 'Pusat Pesan',
   'menu.drama-library': 'Perpustakaan Drama',
   'menu.tasks': 'Pusat Tugas',

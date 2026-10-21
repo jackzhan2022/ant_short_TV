@@ -148,7 +148,7 @@ export const layout: RunTimeLayoutConfig = ({
           '/video-script-decomposition',
           '/script-review-library',
         ]),
-        group('mine', '我的', ['/projects/list', '/tasks']),
+        group('mine', '我的', ['/projects/list', '/asset-library', '/tasks']),
         group('management', hasNoTeams ? '工作空间' : '管理', [
           '/drama-library',
           '/team/my',
@@ -192,7 +192,7 @@ export const layout: RunTimeLayoutConfig = ({
         return;
       }
       if (hasNoTeams && [
-        '/projects', '/tasks', '/short-drama-creation', '/video-script-decomposition',
+        '/projects', '/asset-library', '/tasks', '/short-drama-creation', '/video-script-decomposition',
         '/script-review-library', '/recharge', '/team/settings', '/team/select',
       ].some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))) {
         history.replace('/team/my');

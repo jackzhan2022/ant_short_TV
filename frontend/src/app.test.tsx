@@ -174,19 +174,21 @@ describe('app bootstrap state', () => {
     expect(config.menu).toBeUndefined();
   });
 
-  it('hides the standalone style library from the sidebar and keeps project and task entries', async () => {
+  it('hides the standalone style library and groups the project asset library under mine', async () => {
     const { layout } = await import('./app');
     const config = layout({ initialState: {}, setInitialState: vi.fn() } as any);
     if (typeof config.menuDataRender !== 'function') throw new Error('menuDataRender missing');
     const menu = config.menuDataRender([
       { path: '/short-drama-creation', name: '短剧创作' },
       { path: '/projects/list', name: '项目列表' },
+      { path: '/asset-library', name: '资产库' },
       { path: '/tasks', name: '任务中心' },
       { path: '/style-library', name: '风格库' },
     ] as any);
 
     expect(menu.find((group) => group.key === 'mine')?.children).toEqual([
       expect.objectContaining({ path: '/projects/list' }),
+      expect.objectContaining({ path: '/asset-library' }),
       expect.objectContaining({ path: '/tasks' }),
     ]);
     expect(menu.flatMap((group) => group.children || []))
