@@ -13,11 +13,15 @@ import com.antshorttv.security.TenantContext;
 import com.antshorttv.storage.DeliveryGrant;
 import com.antshorttv.storage.DeliveryGrantRequest;
 import com.antshorttv.storage.MediaDeliveryGrantService;
+import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.MediaObjectIdentity;
+import com.antshorttv.storage.RegisteredMediaObject;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class AiImageDeliveryServiceTest {
+    private final ImageDisplayRenditionService renditions = mock(ImageDisplayRenditionService.class);
 
     @Test
     void authorizesAndIssuesDisplayRendition() {
@@ -31,7 +35,7 @@ class AiImageDeliveryServiceTest {
         when(grants.issue(any())).thenReturn(
             new DeliveryGrant("https://antvcdn.aixmax.cn/display.png?sign=x&t=y", Instant.now())
         );
-        AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants);
+        AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants, renditions);
 
         DeliveryGrant delivered = service.issue(22L, 44L, ImageRendition.DISPLAY);
 
@@ -55,7 +59,7 @@ class AiImageDeliveryServiceTest {
         when(grants.issue(any())).thenReturn(
             new DeliveryGrant("https://antvcdn.aixmax.cn/display.png?sign=x&t=y", Instant.now())
         );
-        AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants);
+        AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants, renditions);
 
         service.issue(22L, 44L, ImageRendition.THUMBNAIL);
 
@@ -73,7 +77,7 @@ class AiImageDeliveryServiceTest {
         AiImageResultEntity result = result();
         result.setStatus(AiImageResultStatus.PROCESSING.name());
         when(mapper.selectById(44L)).thenReturn(result);
-        AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants);
+        AiImageDeliveryService service = new AiImageDeliveryService(mapper, permissions, grants, renditions);
 
         assertThatThrownBy(() -> service.issue(22L, 44L, ImageRendition.DISPLAY))
             .isInstanceOf(com.antshorttv.common.BusinessException.class);
@@ -83,11 +87,36 @@ class AiImageDeliveryServiceTest {
         verify(grants, never()).issue(any());
     }
 
+    @Test
+    void servesUploadedOriginalUntilItsDisplayIsReady() {
+        var mapper = mock(AiImageResultMapper.class);
+        var permissions = mock(ProjectPermissionGuard.class);
+        var grants = mock(MediaDeliveryGrantService.class);
+        var result = result();
+        result.setTaskId(null);
+        when(mapper.selectById(44L)).thenReturn(result);
+        when(permissions.require(11L, 22L, "AI_IMAGE_TASK:VIEW"))
+            .thenReturn(new TenantContext(33L, 11L, 55L, "MEMBER"));
+        var service = new AiImageDeliveryService(mapper, permissions, grants, renditions);
+        service.issue(22L, 44L, ImageRendition.THUMBNAIL);
+        var request = ArgumentCaptor.forClass(DeliveryGrantRequest.class);
+        verify(grants).issue(request.capture());
+        assertThat(request.getValue().objectKey()).isEqualTo(result.getStoragePath());
+        org.mockito.Mockito.clearInvocations(grants);
+        when(renditions.display(any())).thenReturn(new RegisteredMediaObject(1L,
+            new MediaObjectIdentity(11L, 22L, "AI_IMAGE_RESULT", 44L, "result-44"),
+            "DISPLAY_IMAGE_SLIM", result.getDisplayPath(), "READY"));
+        service.issue(22L, 44L, ImageRendition.THUMBNAIL);
+        verify(grants).issue(request.capture());
+        assertThat(request.getValue().objectKey()).isEqualTo(result.getDisplayPath());
+    }
+
     private AiImageResultEntity result() {
         AiImageResultEntity value = new AiImageResultEntity();
         value.setId(44L);
         value.setTenantId(11L);
         value.setProjectId(22L);
+        value.setTaskId(7L);
         value.setStoragePath("materials/11/22/images/44/original.png");
         value.setDisplayPath("materials/11/22/images/44/derived/display.png");
         value.setThumbnailPath("materials/11/22/images/44/derived/legacy-thumbnail.png");

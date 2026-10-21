@@ -114,7 +114,7 @@ public class AssetVisualUploadService {
                 new MediaObjectIdentity(tenantId, projectId, "AI_IMAGE_RESULT", image.getId(), "result-" + image.getId()),
                 original, width, height, "asset-upload:" + image.getId());
             String base = "/api/projects/" + projectId + "/ai-image-results/" + image.getId();
-            image.setImageUrl(base + "/image");
+            image.setImageUrl(base + "/display");
             image.setThumbnailUrl(base + "/thumbnail");
             image.setDisplayPath(registered.displayKey());
             image.setThumbnailPath(registered.displayKey());

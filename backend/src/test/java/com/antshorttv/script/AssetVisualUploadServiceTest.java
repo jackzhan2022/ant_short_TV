@@ -57,7 +57,7 @@ class AssetVisualUploadServiceTest {
         verify(uploads).requireCompleted(4L, 1L, 2L, "token");
         verify(renditions).registerOriginalAndSubmit(eq(new MediaObjectIdentity(1L, 2L, "AI_IMAGE_RESULT", 99L, "result-99")),
             any(), eq(20), eq(30), anyString());
-        verify(variants).bindUploadedImage(1L, 2L, 3L, 99L, "/api/projects/2/ai-image-results/99/image");
+        verify(variants).bindUploadedImage(1L, 2L, 3L, 99L, "/api/projects/2/ai-image-results/99/display");
     }
 
     @Test

@@ -7,6 +7,8 @@ import com.antshorttv.security.TenantContext;
 import com.antshorttv.storage.DeliveryGrant;
 import com.antshorttv.storage.DeliveryGrantRequest;
 import com.antshorttv.storage.MediaDeliveryGrantService;
+import com.antshorttv.storage.ImageDisplayRenditionService;
+import com.antshorttv.storage.MediaObjectIdentity;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -14,15 +16,18 @@ public class AiImageDeliveryService {
     private final AiImageResultMapper resultMapper;
     private final ProjectPermissionGuard permissions;
     private final MediaDeliveryGrantService grants;
+    private final ImageDisplayRenditionService renditions;
 
     public AiImageDeliveryService(
         AiImageResultMapper resultMapper,
         ProjectPermissionGuard permissions,
-        MediaDeliveryGrantService grants
+        MediaDeliveryGrantService grants,
+        ImageDisplayRenditionService renditions
     ) {
         this.resultMapper = resultMapper;
         this.permissions = permissions;
         this.grants = grants;
+        this.renditions = renditions;
     }
 
     public DeliveryGrant issue(Long projectId, Long resultId, ImageRendition rendition) {
@@ -35,6 +40,12 @@ public class AiImageDeliveryService {
             case ORIGINAL -> result.getStoragePath();
             case DISPLAY, THUMBNAIL -> result.getDisplayPath();
         };
+        if (result.getTaskId() == null && rendition != ImageRendition.ORIGINAL) {
+            var display = renditions.display(new MediaObjectIdentity(result.getTenantId(), projectId,
+                "AI_IMAGE_RESULT", resultId, "result-" + resultId));
+            // Uploaded originals are usable immediately while the display version is being processed.
+            if (display == null || !"READY".equals(display.status())) objectKey = result.getStoragePath();
+        }
         if (objectKey == null || objectKey.isBlank()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "图片资源尚未就绪。");
         }
