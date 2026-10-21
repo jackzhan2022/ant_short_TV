@@ -201,6 +201,9 @@ vi.mock('antd', () => ({
       {children}
     </button>
   ),
+  Progress: ({ percent, 'aria-label': label }: any) => (
+    <progress aria-label={label} value={percent} max={100} />
+  ),
   Cascader: ({
     'aria-label': ariaLabel,
     options = [],
@@ -2024,6 +2027,73 @@ describe('ProductionWorkbench script page', () => {
     expect(operations.find((op: any) => op.data.storyboardId === 302).data.textOnly).not.toBe(true);
   });
 
+  it('shows a newly created video task in the right preview before polling returns, updates progress, and displays the result', async () => {
+    let updateExecution!: (task: API.AiExecutionResponse) => void;
+    let finishExecution!: (task: API.AiExecutionResponse) => void;
+    mocks.pollExecution.mockImplementation((_tenant, _id, onUpdate) => {
+      updateExecution = onUpdate;
+      return new Promise((resolve) => { finishExecution = resolve; });
+    });
+    render(<ProductionWorkbench />);
+    const generate = await screen.findByRole('button', { name: '生成分镜1视频' });
+    fireEvent.click(generate);
+    const progress = await screen.findByRole('region', { name: '分镜1视频生成进度' });
+    const preview = screen.getByRole('region', { name: '分镜1视频预览区' });
+    expect(preview).toContainElement(progress);
+    expect(generate.closest('.storyboard-prompt-panel')).not.toContainElement(progress);
+    expect(within(progress).getByText('正在生成')).toBeInTheDocument();
+    expect(within(progress).getByText('0%')).toBeInTheDocument();
+    expect(within(progress).getByText('任务已创建，正在排队')).toBeInTheDocument();
+    expect(generate).toBeDisabled();
+    expect(within(screen.getByRole('region', { name: '分镜2视频预览区' })).queryByText('正在生成')).not.toBeInTheDocument();
+
+    act(() => updateExecution({ id: 7002, status: 'RUNNING', phase: 'VIDEO_QUERY', progress: 42 }));
+    expect(within(progress).getByText('42%')).toBeInTheDocument();
+    expect(within(progress).getByText('视频正在生成，请稍候')).toBeInTheDocument();
+    expect(within(progress).getByRole('progressbar')).toHaveAttribute('value', '42');
+    expect(generate.closest('.storyboard-prompt-panel')).not.toHaveTextContent('execution:RUNNING');
+    mocks.queryAiVideoTasks.mockResolvedValue({ data: [{
+      id: 9002, projectId: 1, storyboardId: 101, status: 'SUCCEEDED', results: [{
+        id: 9102, taskId: 9002, storyboardId: 101, videoUrl: '/ready-video.mp4',
+        coverUrl: '/ready-cover.png', isSelected: true, status: 'SUCCEEDED',
+      }],
+    }] });
+    await act(async () => { finishExecution({ id: 7002, status: 'SUCCEEDED', progress: 100 }); });
+    await waitFor(() => expect(screen.queryByRole('region', { name: '分镜1视频生成进度' })).not.toBeInTheDocument());
+    fireEvent.click(await screen.findByRole('button', { name: '播放分镜1成片预览' }));
+    expect(await screen.findByLabelText('分镜1成片预览')).toHaveAttribute('src', '/ready-video.mp4');
+    expect(generate).not.toBeDisabled();
+  });
+
+  it.each(['PENDING', 'SUBMITTING', 'GENERATING'])('restores the %s video task in its right preview without an execution snapshot', async (status) => {
+    mocks.pollExecution.mockReturnValue(new Promise(() => {}));
+    setupWorkspaceResponse({ videoTasks: [{
+      id: 9003, projectId: 1, storyboardId: 101, status, executionId: 7003, results: [],
+    }] });
+    render(<ProductionWorkbench />);
+    const progress = await screen.findByRole('region', { name: '分镜1视频生成进度' });
+    expect(screen.getByRole('region', { name: '分镜1视频预览区' })).toContainElement(progress);
+    expect(within(progress).getByText('正在生成')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成分镜1视频' })).toBeDisabled();
+  });
+
+  it('stops showing generation when the execution fails even before the video task refreshes', async () => {
+    let updateExecution!: (task: API.AiExecutionResponse) => void;
+    mocks.pollExecution.mockImplementation((_tenant, _id, onUpdate) => {
+      updateExecution = onUpdate;
+      return new Promise(() => {});
+    });
+    setupWorkspaceResponse({ videoTasks: [{
+      id: 9003, projectId: 1, storyboardId: 101, status: 'GENERATING', executionId: 7003, results: [],
+    }] });
+    render(<ProductionWorkbench />);
+    await screen.findByRole('region', { name: '分镜1视频生成进度' });
+    act(() => updateExecution({ id: 7003, status: 'FAILED', errorMessage: '视频生成失败' }));
+    expect(screen.queryByRole('region', { name: '分镜1视频生成进度' })).not.toBeInTheDocument();
+    expect(screen.getByText('execution:FAILED')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成分镜1视频' })).not.toBeDisabled();
+  });
+
   it('uses a newly selected first-frame result without reloading the storyboard page', async () => {
     setupWorkspaceResponse({
       storyboards: [{ id: 301, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头提示', promptDocument: { version: 2, nodes: [{ type: 'text', text: '镜头提示' }] }, firstFrameUrl: null }],
@@ -2827,7 +2897,7 @@ describe('ProductionWorkbench script page', () => {
 
     render(<ProductionWorkbench />);
     fireEvent.click(
-      await screen.findByRole('button', { name: 'execution-cancel-7003' }),
+      await screen.findByRole('button', { name: '取消分镜1视频生成' }),
     );
 
     await waitFor(() => {

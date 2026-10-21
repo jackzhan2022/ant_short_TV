@@ -64,6 +64,7 @@ import BatchVideoGenerationModal from './BatchVideoGenerationModal';
 import StoryboardVideoStrip from './StoryboardVideoStrip';
 import StoryboardPositionRail from './StoryboardPositionRail';
 import StoryboardVideoEmptyState from './StoryboardVideoEmptyState';
+import StoryboardVideoGenerationStatus, { isVideoGenerationActive } from './StoryboardVideoGenerationStatus';
 import type {
   AiImageResult,
   AiImageTask,
@@ -1106,7 +1107,14 @@ const StoryboardCard = ({
     .find((result) => !result.selected && result.status === 'ACTIVE' && result.thumbnailUrl);
   const videoTask = videoTasks
     .filter((task) => task.storyboardId === item.id)
-    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+    .sort((a, b) => b.id - a.id)[0];
+  const videoGenerating = isVideoGenerationActive(videoTask);
+  useEffect(() => {
+    if (videoGenerating) {
+      setPreviewKey('VIDEO');
+      setPreviewVersion(undefined);
+    }
+  }, [videoGenerating, videoTask?.id]);
   return (
     <article
       className="storyboard-card"
@@ -1562,9 +1570,7 @@ const StoryboardCard = ({
                 type="primary"
                 onClick={() => onGenerate(item)}
                 aria-label={`生成分镜${index + 1}视频`}
-                disabled={['PENDING', 'RUNNING'].includes(
-                  videoTask?.execution?.status || '',
-                )}
+                disabled={videoGenerating}
                 style={{
                   width: 92,
                   background: '#5b50ff',
@@ -1575,7 +1581,7 @@ const StoryboardCard = ({
                 <ThunderboltOutlined /> 生成视频
               </Button>
             </Flex>
-            {videoTask?.execution ? (
+            {videoTask?.execution && !videoGenerating ? (
               <div style={{ marginTop: 10 }}>
                 <AiExecutionStatus
                   task={videoTask.execution}
@@ -1594,6 +1600,7 @@ const StoryboardCard = ({
 
         <section
           className="storyboard-preview-section"
+          aria-label={`分镜${index + 1}视频预览区`}
           style={{
             position: 'relative',
             background: '#f7f9fd',
@@ -1604,7 +1611,7 @@ const StoryboardCard = ({
           <div
             className="storyboard-preview-stage"
             style={{
-              background: previewKey === 'VIDEO' && !video.videoUrl ? '#f7f8fc' : '#2c333f',
+              background: videoGenerating || (previewKey === 'VIDEO' && !video.videoUrl) ? '#f7f8fc' : '#2c333f',
               display: 'flex',
               justifyContent: 'center',
             }}
@@ -1613,7 +1620,13 @@ const StoryboardCard = ({
               className="storyboard-preview-media"
               style={{ position: 'relative' }}
             >
-              {previewKey === 'VIDEO' && video.videoUrl ? (
+              {videoGenerating && videoTask ? (
+                <StoryboardVideoGenerationStatus
+                  storyboardNo={index + 1}
+                  task={videoTask}
+                  onCancel={() => onCancelVideo(videoTask)}
+                />
+              ) : previewKey === 'VIDEO' && video.videoUrl ? (
                 <ClickToPlayVideo
                   alt={`分镜${index + 1}成片预览`}
                   src={video.videoUrl}
