@@ -19,7 +19,6 @@ import {
   Radio,
   Skeleton,
   Spin,
-  Tag,
   Typography,
 } from 'antd';
 import {
@@ -40,6 +39,7 @@ import {
   queryProjectAiModels,
 } from './ai-config/service';
 import StableImage from './StableImage';
+import styles from './settings.module.css';
 import {
   type AssetImageBatch,
   type AssetImageBatchPreflight,
@@ -203,6 +203,7 @@ const AssetCard = ({
   onSave,
   onManageVisual,
   selected,
+  visualActive,
   readOnly,
   onSelectedChange,
 }: {
@@ -212,6 +213,7 @@ const AssetCard = ({
   onSave: (type: ElementType, item: AssetRecord) => void;
   onManageVisual: (type: ElementType, item: AssetRecord) => void;
   selected: boolean;
+  visualActive: boolean;
   readOnly: boolean;
   onSelectedChange: (selected: boolean) => void;
 }) => {
@@ -253,7 +255,13 @@ const AssetCard = ({
   const visualLabel = type === 'CHARACTER' ? '变装' : '视觉形象';
 
   return (
-    <article style={{ minWidth: 0 }}>
+    <article
+      style={{ minWidth: 0, cursor: 'pointer' }}
+      onClick={(event) => {
+        if (event.target instanceof Element && event.target.closest('button, input, label, a')) return;
+        onManageVisual(type, item);
+      }}
+    >
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div
           data-testid={`asset-image-${type}-${item.id}`}
@@ -268,7 +276,9 @@ const AssetCard = ({
             position: 'relative',
             aspectRatio: '2 / 1',
             padding: thumbnailUrl ? 0 : '16px 18px',
-            border: '1px solid var(--app-color-border-secondary)',
+            border: visualActive
+              ? '2px solid var(--app-color-primary)'
+              : '1px solid var(--app-color-border-secondary)',
             borderRadius: 8,
             overflow: 'hidden',
             background: 'var(--app-color-fill-secondary)',
@@ -277,6 +287,13 @@ const AssetCard = ({
             fontWeight: 700,
           }}
         >
+          <button
+            type="button"
+            className={styles.imageTrigger}
+            aria-label={`查看${item.name}视觉形象`}
+            aria-expanded={visualActive}
+            onClick={() => onManageVisual(type, item)}
+          />
           <StableImage
             src={thumbnailUrl}
             alt={`${item.name}当前视觉形象`}
@@ -296,6 +313,7 @@ const AssetCard = ({
               fontSize: 12,
               fontWeight: 500,
               opacity: 0.7,
+              pointerEvents: 'none',
             }}
           >
             {item.status === 'CONFIRMED' ? '已确认' : '待确认'}
@@ -424,6 +442,7 @@ const AssetCard = ({
               size="small"
               onClick={() => onManageVisual(type, item)}
               aria-label={`管理${item.name}视觉形象`}
+              aria-expanded={visualActive}
               style={{ padding: 0, color: 'var(--app-color-primary)' }}
             >
               视觉形象
@@ -895,6 +914,7 @@ const ProductionWorkbenchSettings = () => {
 
   const addVariant = async () => {
     if (!visualAsset || !newVariantName.trim()) return;
+    const requestId = visualRequestIdRef.current;
     try {
       await createVisualVariant(
         projectId,
@@ -906,9 +926,11 @@ const ProductionWorkbenchSettings = () => {
           generationStatus: 'NOT_STARTED',
         },
       );
-      setNewVariantName('');
-      setAddingVariant(false);
-      await mutateVariant(async () => undefined, '视觉形象已新增');
+      if (visualRequestIdRef.current === requestId) {
+        setNewVariantName('');
+        setAddingVariant(false);
+      }
+      await mutateVariant(async () => undefined, '视觉形象已新增', requestId);
     } catch {
       message.error('新增视觉形象失败');
     }
@@ -930,10 +952,10 @@ const ProductionWorkbenchSettings = () => {
   const mutateVariant = async (
     action: () => Promise<unknown>,
     successText: string,
+    requestId = visualRequestIdRef.current,
   ) => {
     try {
       await action();
-      const requestId = visualRequestIdRef.current;
       const [summaryResponse, detailResponse] = await Promise.all([
         queryAssetSettingsSummary(projectId),
         visualAsset
@@ -1011,6 +1033,11 @@ const ProductionWorkbenchSettings = () => {
     const requestId = visualRequestIdRef.current + 1;
     visualRequestIdRef.current = requestId;
     setVisualAsset({ type, item });
+    setGenerationVariantId(undefined);
+    setAddingVariant(false);
+    setNewVariantName('');
+    setHoveredThumbnailId(undefined);
+    if (thumbnailViewportRef.current) thumbnailViewportRef.current.scrollLeft = 0;
     setSelectedVisualVariantId(undefined);
     setVisualLoading(true);
     setVisualError(false);
@@ -1083,6 +1110,7 @@ const ProductionWorkbenchSettings = () => {
       return;
     }
     const primaryImage = visualAsset.item.visual?.resolvedImageUrl;
+    const requestId = visualRequestIdRef.current;
     setGenerationSubmitting(true);
     try {
       if (prompt !== (variant.prompt || '')) {
@@ -1105,8 +1133,8 @@ const ProductionWorkbenchSettings = () => {
         imageCount: generationImageCount,
       });
       setImageGenerationVersion((version) => version + 1);
-      await mutateVariant(async () => undefined, '已提交生成');
-      setGenerationVariantId(undefined);
+      await mutateVariant(async () => undefined, '已提交生成', requestId);
+      if (visualRequestIdRef.current === requestId) setGenerationVariantId(undefined);
     } catch (error) {
       if (isPointEstimateCancelled(error)) return;
       message.error(error instanceof Error ? error.message : '提交生成失败');
@@ -1119,6 +1147,8 @@ const ProductionWorkbenchSettings = () => {
     setProcessingAction(`delete-${type}-${id}`);
     try {
       await deleteScriptElement(projectId, type, id);
+      const currentVisual = visualRefreshContext.current.visualAsset;
+      if (currentVisual?.type === type && currentVisual.item.id === id) closeVisualGallery();
       await reload();
       message.success('设定已删除');
     } catch {
@@ -1220,9 +1250,9 @@ const ProductionWorkbenchSettings = () => {
 
   return (
     <div
+      className={`${styles.settings} ${visualAsset ? styles.settingsOpen : ''}`}
       style={{
         minHeight: 'calc(100vh - 100px)',
-        padding: '24px 64px 96px',
         background: 'var(--app-color-bg-layout)',
         boxSizing: 'border-box',
       }}
@@ -1401,508 +1431,10 @@ const ProductionWorkbenchSettings = () => {
               ) : null}
           </div>
         ) : null}
-
-        {visualAsset
-          ? (() => {
-              const visual = visualAsset.item.visual;
-              const variants = [...new Map([
-                visual?.primaryVariant,
-                visual?.selectedVariant,
-                ...(visual?.variants ?? []),
-              ].filter((variant): variant is VisualVariant => Boolean(variant))
-                .map((variant) => [variant.id, variant])).values()];
-              const selectedVariant =
-                variants.find(
-                  (variant) => variant.id === selectedVisualVariantId,
-                ) ??
-                variants.find((variant) => variant.primary) ??
-                variants[0];
-              const selectedVariantEpisodes = selectedVariant
-                ? (visualAsset.item.visual?.episodeBindings ?? [])
-                    .filter(
-                      (binding) =>
-                        binding.variantId === selectedVariant.id &&
-                        binding.status === 'ACTIVE',
-                    )
-                    .sort((left, right) => left.episodeNo - right.episodeNo)
-                : [];
-              const episodeNumberLabel = selectedVariantEpisodes
-                .map((binding) => binding.episodeNo)
-                .join(' ');
-              const episodeTooltip = selectedVariantEpisodes
-                .map(
-                  (binding) =>
-                    `第${binding.episodeNo}集${binding.episodeTitle ? ` ${binding.episodeTitle}` : ''}`,
-                )
-                .join('、');
-              const generationVariant = variants.find(
-                (variant) => variant.id === generationVariantId,
-              );
-              const selectedVariantIndex = variants.findIndex(
-                (variant) => variant.id === selectedVariant?.id,
-              );
-              return (
-                <>
-                  <Modal
-                    title="视觉形象画廊"
-                    open
-                    width={1040}
-                    footer={null}
-                    styles={{ body: { maxHeight: '88vh', overflowY: 'auto' } }}
-                    onCancel={closeVisualGallery}
-                  >
-                    <Typography.Title level={5} style={{ margin: '0 0 16px' }}>
-                      {visualAsset.item.name} · 视觉形象管理
-                    </Typography.Title>
-                    {visualLoading ? (
-                      <div role="status">视觉形象加载中</div>
-                    ) : null}
-                    {visualError ? (
-                      <div role="alert">
-                        视觉形象加载失败{' '}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void openVisualGallery(
-                              visualAsset.type,
-                              visualAsset.item,
-                            )
-                          }
-                        >
-                          重试视觉形象
-                        </button>
-                      </div>
-                    ) : null}
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 18,
-                      }}
-                    >
-                      <aside
-                        style={{
-                          order: 2,
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: 12,
-                          paddingTop: 14,
-                          borderTop:
-                            '1px solid var(--app-color-border-secondary)',
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: 10,
-                            flex: 1,
-                            minWidth: 0,
-                          }}
-                        >
-                          <section
-                            ref={thumbnailViewportRef}
-                            aria-label="视觉形象缩略图列表"
-                            onWheel={scrollVisualThumbnails}
-                            style={{
-                              display: 'flex',
-                              flex: 1,
-                              minWidth: 0,
-                              gap: 10,
-                              overflowX: 'auto',
-                              paddingBottom: 2,
-                            }}
-                          >
-                            {variants.map((variant) => {
-                              const selected =
-                                variant.id === selectedVariant?.id;
-                              return (
-                                <div
-                                  key={variant.id}
-                                  data-testid={`视觉形象缩略图-${variant.name}`}
-                                  onMouseEnter={() =>
-                                    setHoveredThumbnailId(variant.id)
-                                  }
-                                  onMouseLeave={() =>
-                                    setHoveredThumbnailId(undefined)
-                                  }
-                                  style={{
-                                    flex: '0 0 92px',
-                                    width: 92,
-                                    height: 118,
-                                    position: 'relative',
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    aria-label={`选择${variant.name}`}
-                                    onClick={() =>
-                                      setSelectedVisualVariantId(variant.id)
-                                    }
-                                    style={{
-                                      width: '100%',
-                                      height: '100%',
-                                      padding: 0,
-                                      overflow: 'hidden',
-                                      border: selected
-                                        ? '2px solid var(--app-color-primary)'
-                                        : '1px solid var(--app-color-border-secondary)',
-                                      borderRadius: 6,
-                                      background:
-                                        'var(--app-color-bg-container)',
-                                      textAlign: 'left',
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        display: 'grid',
-                                        position: 'relative',
-                                        aspectRatio: '1 / 1',
-                                        placeItems: 'center',
-                                        overflow: 'hidden',
-                                        background:
-                                          'var(--app-color-fill-secondary)',
-                                        color: 'var(--app-color-text-tertiary)',
-                                        fontSize: 22,
-                                      }}
-                                    >
-                                      <StableImage
-                                        src={variant.currentImageThumbnailUrl}
-                                        alt={`${variant.name}缩略图`}
-                                        fallback={
-                                          <AssetImagePlaceholder compact />
-                                        }
-                                        imageStyle={{ objectFit: 'cover' }}
-                                      />
-                                      <GenerationStatusOverlay
-                                        compact
-                                        status={variant.generationStatus}
-                                        label={`${variant.name}缩略图生成状态`}
-                                      />
-                                    </div>
-                                    <span
-                                      style={{
-                                        display: 'block',
-                                        padding: '5px 6px',
-                                        overflow: 'hidden',
-                                        color: 'var(--app-color-text)',
-                                        fontSize: 12,
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                      }}
-                                    >
-                                      {variant.name}
-                                      {variant.primary ? ' · 主图' : ''}
-                                    </span>
-                                  </button>
-                                  <Popconfirm
-                                    title={`确认删除${variant.name}`}
-                                    description="删除后无法恢复，确定继续吗？"
-                                    okText="删除"
-                                    cancelText="取消"
-                                    onConfirm={() =>
-                                      mutateVariant(
-                                        () =>
-                                          deleteVisualVariant(
-                                            projectId,
-                                            variant.id,
-                                          ),
-                                        '视觉形象已删除',
-                                      )
-                                    }
-                                  >
-                                    <Button
-                                      size="small"
-                                      danger
-                                      icon={<DeleteOutlined />}
-                                      aria-label={`删除${variant.name}`}
-                                      onClick={(event) =>
-                                        event.stopPropagation()
-                                      }
-                                      style={{
-                                        position: 'absolute',
-                                        top: 4,
-                                        right: 4,
-                                        zIndex: 2,
-                                        opacity:
-                                          hoveredThumbnailId === variant.id
-                                            ? 1
-                                            : 0,
-                                        pointerEvents:
-                                          hoveredThumbnailId === variant.id
-                                            ? 'auto'
-                                            : 'none',
-                                      }}
-                                    />
-                                  </Popconfirm>
-                                </div>
-                              );
-                            })}
-                          </section>
-                          <section
-                            aria-label="视觉形象新增入口"
-                            style={{ flex: '0 0 92px' }}
-                          >
-                            {addingVariant ? (
-                              <div
-                                style={{
-                                  width: '100%',
-                                  height: 118,
-                                  display: 'grid',
-                                  gap: 8,
-                                }}
-                              >
-                                <Input
-                                  aria-label="新视觉形象名称"
-                                  value={newVariantName}
-                                  onChange={(event) =>
-                                    setNewVariantName(event.target.value)
-                                  }
-                                  placeholder="新增变装名称"
-                                />
-                                <Button
-                                  type="primary"
-                                  aria-label="确认新增视觉形象"
-                                  onClick={addVariant}
-                                >
-                                  新增
-                                </Button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                aria-label="新增变装"
-                                onClick={() => setAddingVariant(true)}
-                                style={{
-                                  width: '100%',
-                                  height: 118,
-                                  display: 'grid',
-                                  placeItems: 'center',
-                                  gap: 6,
-                                  minHeight: 118,
-                                  border: '1px dashed var(--app-color-border)',
-                                  borderRadius: 6,
-                                  background: 'transparent',
-                                  color: 'var(--app-color-text-secondary)',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <PlusOutlined />
-                                新增变装
-                              </button>
-                            )}
-                          </section>
-                          {(visual?.total ?? 0) > (visual?.pageSize ?? 20) ? (
-                            <Pagination
-                              current={visual?.current || 1}
-                              pageSize={visual?.pageSize || 20}
-                              total={visual?.total || 0}
-                              showSizeChanger
-                              size="small"
-                              onChange={(page, size) => void loadVisualPage(page, size)}
-                              style={{ marginTop: 12 }}
-                            />
-                          ) : null}
-                        </div>
-                      </aside>
-                      {selectedVariant ? (
-                        <section style={{ order: 1 }}>
-                          <div
-                            data-testid="视觉形象主图预览"
-                            style={{
-                              display: 'grid',
-                              placeItems: 'center',
-                              position: 'relative',
-                              height: 'clamp(260px, 48vh, 430px)',
-                              overflow: 'hidden',
-                              border:
-                                '1px solid var(--app-color-border-secondary)',
-                              borderRadius: 8,
-                              background: 'var(--app-color-fill-secondary)',
-                              color: 'var(--app-color-text-tertiary)',
-                              fontSize: 48,
-                            }}
-                          >
-                            <StableImage
-                              src={selectedVariant.currentImageThumbnailUrl}
-                              alt={`${selectedVariant.name}预览图`}
-                              fallback={<AssetImagePlaceholder />}
-                              loading="eager"
-                              imageStyle={{ objectFit: 'contain' }}
-                            />
-                            <GenerationStatusOverlay
-                              status={selectedVariant.generationStatus}
-                              label={`${selectedVariant.name}主预览生成状态`}
-                            />
-                            {variants.length > 1 ? (
-                              <>
-                                <Button
-                                  aria-label="查看上一个视觉形象"
-                                  onClick={() =>
-                                    setSelectedVisualVariantId(
-                                      variants[
-                                        (selectedVariantIndex -
-                                          1 +
-                                          variants.length) %
-                                          variants.length
-                                      ]?.id,
-                                    )
-                                  }
-                                  style={{
-                                    position: 'absolute',
-                                    left: 16,
-                                    zIndex: 2,
-                                    borderRadius: 999,
-                                  }}
-                                >
-                                  ‹
-                                </Button>
-                                <Button
-                                  aria-label="查看下一个视觉形象"
-                                  onClick={() =>
-                                    setSelectedVisualVariantId(
-                                      variants[
-                                        (selectedVariantIndex + 1) %
-                                          variants.length
-                                      ]?.id,
-                                    )
-                                  }
-                                  style={{
-                                    position: 'absolute',
-                                    right: 16,
-                                    zIndex: 2,
-                                    borderRadius: 999,
-                                  }}
-                                >
-                                  ›
-                                </Button>
-                              </>
-                            ) : null}
-                            <span
-                              role="status"
-                              aria-label={`${selectedVariant.name}关联剧集`}
-                              title={episodeTooltip || '暂未关联剧集'}
-                              style={{
-                                position: 'absolute',
-                                top: 10,
-                                left: 10,
-                                zIndex: 2,
-                                maxWidth: 'calc(100% - 20px)',
-                                overflow: 'hidden',
-                                padding: '4px 8px',
-                                borderRadius: 4,
-                                background: 'rgb(0 0 0 / 52%)',
-                                color: 'var(--app-color-bg-container)',
-                                fontSize: 12,
-                                lineHeight: '18px',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {episodeNumberLabel || '未关联'}
-                            </span>
-                          </div>
-                          <Flex
-                            justify="space-between"
-                            align="center"
-                            style={{ marginTop: 14 }}
-                          >
-                            <div>
-                              <Typography.Text strong>
-                                {selectedVariant.name}
-                              </Typography.Text>
-                              {selectedVariant.primary ? (
-                                <Tag color="blue">主形象</Tag>
-                              ) : null}
-                            </div>
-                            <Flex gap={8}>
-                              {!selectedVariant.primary ? (
-                                <Button
-                                  size="small"
-                                  onClick={() =>
-                                    mutateVariant(
-                                      () =>
-                                        selectPrimaryVisualVariant(
-                                          projectId,
-                                          selectedVariant.id,
-                                        ),
-                                      '主形象已更新',
-                                    )
-                                  }
-                                >
-                                  设为主形象
-                                </Button>
-                              ) : null}
-                              <Button
-                                size="small"
-                                aria-label={`${selectedVariant.generationStatus === 'FAILED' ? '重新生成' : '生成图片'}${selectedVariant.name}`}
-                                onClick={() =>
-                                  openVariantGenerator(selectedVariant)
-                                }
-                              >
-                                {selectedVariant.generationStatus === 'FAILED'
-                                  ? '重新生成'
-                                  : '生成图片'}
-                              </Button>
-                            </Flex>
-                          </Flex>
-                          {selectedVariant.errorMessage ? (
-                            <Typography.Text
-                              type="danger"
-                              style={{ display: 'block', marginTop: 6 }}
-                            >
-                              {selectedVariant.errorMessage}
-                            </Typography.Text>
-                          ) : null}
-                        </section>
-                      ) : (
-                        <Empty description="暂无视觉形象" />
-                      )}
-                    </div>
-                  </Modal>
-                  <AssetVariantGenerationModal
-                    open={Boolean(generationVariant)}
-                    variant={generationVariant}
-                    assetType={visualAsset.type}
-                    primaryImageUrl={visualAsset.item.visual?.primaryVariant?.currentImageThumbnailUrl}
-                    imageModels={imageModels}
-                    values={{
-                      prompt: generationPrompt,
-                      modelId: generationModelId,
-                      aspectRatio: generationAspectRatio,
-                      imageCount: generationImageCount,
-                    }}
-                    submitting={generationSubmitting}
-                    onChange={(values) => {
-                      if (values.prompt !== undefined) setGenerationPrompt(values.prompt);
-                      if ('modelId' in values) setGenerationModelId(values.modelId);
-                      if (values.aspectRatio !== undefined) {
-                        setGenerationAspectRatio(values.aspectRatio);
-                      }
-                      if (values.imageCount !== undefined) {
-                        setGenerationImageCount(values.imageCount);
-                      }
-                    }}
-                    onCancel={() => setGenerationVariantId(undefined)}
-                    onSubmit={submitVariantGeneration}
-                  />
-                </>
-              );
-            })()
-          : null}
-
         </fieldset>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 32,
-            minHeight: 60,
-            margin: '20px 0 16px',
-            padding: '0 2px',
-          }}
-        >
+        <div className={`${styles.workspace} ${visualAsset ? styles.workspaceOpen : ''}`}>
+        <section aria-label="资产列表" className={styles.assetList}>
+        <div className={styles.toolbarRow}>
           <div
             role="tablist"
             style={{ display: 'flex', alignSelf: 'stretch', gap: 28 }}
@@ -1922,6 +1454,7 @@ const ProductionWorkbenchSettings = () => {
                   onClick={() => {
                     setActiveType(section.type);
                     setSelectedAssetIds([]);
+                    closeVisualGallery();
                   }}
                   style={{
                     border: 0,
@@ -2059,20 +1592,14 @@ const ProductionWorkbenchSettings = () => {
           return (
             <section>
               {items.length ? (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns:
-                      'repeat(auto-fill, minmax(360px, 1fr))',
-                    gap: 20,
-                  }}
-                >
+                <div className={styles.assetGrid}>
                   {items.map((item: AssetRecord) => (
                     <AssetCard
                       key={`${section.type}-${item.id}`}
                       item={item}
                       type={section.type}
                       selected={selectedAssetIds.includes(item.id)}
+                      visualActive={visualAsset?.type === section.type && visualAsset.item.id === item.id}
                       readOnly={normalizationBlocked}
                       onSelectedChange={(selected) =>
                         setSelectedAssetIds((current) =>
@@ -2106,6 +1633,309 @@ const ProductionWorkbenchSettings = () => {
             </section>
           );
         })()}
+        </section>
+        {visualAsset
+          ? (() => {
+              const visual = visualAsset.item.visual;
+              const variants = [...new Map([
+                visual?.primaryVariant,
+                visual?.selectedVariant,
+                ...(visual?.variants ?? []),
+              ].filter((variant): variant is VisualVariant => Boolean(variant))
+                .map((variant) => [variant.id, variant])).values()];
+              const selectedVariant =
+                variants.find(
+                  (variant) => variant.id === selectedVisualVariantId,
+                ) ??
+                variants.find((variant) => variant.primary) ??
+                variants[0];
+              const selectedVariantEpisodes = selectedVariant
+                ? (visualAsset.item.visual?.episodeBindings ?? [])
+                    .filter(
+                      (binding) =>
+                        binding.variantId === selectedVariant.id &&
+                        binding.status === 'ACTIVE',
+                    )
+                    .sort((left, right) => left.episodeNo - right.episodeNo)
+                : [];
+              const episodeNumberLabel = selectedVariantEpisodes
+                .map((binding) => binding.episodeNo)
+                .join('、');
+              const episodeTooltip = selectedVariantEpisodes
+                .map(
+                  (binding) =>
+                    `第${binding.episodeNo}集${binding.episodeTitle ? ` ${binding.episodeTitle}` : ''}`,
+                )
+                .join('、');
+              const generationVariant = variants.find(
+                (variant) => variant.id === generationVariantId,
+              );
+              const selectedVariantIndex = variants.findIndex(
+                (variant) => variant.id === selectedVariant?.id,
+              );
+              return (
+                <>
+                  <section aria-label="视觉形象画廊" className={styles.visualPanel}>
+                    <header className={styles.visualHeader}>
+                      <div className={styles.visualHeading}>
+                        <Typography.Title level={5} style={{ margin: 0 }}>
+                          {visualAsset.item.name}
+                          {selectedVariant && !selectedVariant.primary ? ` · ${selectedVariant.name}` : ''}
+                        </Typography.Title>
+                        <div className={styles.episodeInfo}>
+                          <span>出镜剧集</span>
+                          <span
+                            role="status"
+                            aria-label={selectedVariant ? `${selectedVariant.name}关联剧集` : '关联剧集'}
+                            title={episodeTooltip || '暂未关联剧集'}
+                          >
+                            {episodeNumberLabel ? `第 ${episodeNumberLabel} 集` : '暂未关联剧集'}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        type="text"
+                        aria-label="关闭视觉形象"
+                        onClick={closeVisualGallery}
+                        className={styles.closeVisual}
+                      >
+                        ×
+                      </Button>
+                    </header>
+                    <fieldset disabled={normalizationBlocked} className={styles.panelContent}>
+                      <div className={styles.visualContent}>
+                        {visualLoading ? (
+                          <div role="status">视觉形象加载中</div>
+                        ) : null}
+                        {visualError ? (
+                          <div role="alert">
+                            视觉形象加载失败{' '}
+                            <button
+                              type="button"
+                              onClick={() => void openVisualGallery(visualAsset.type, visualAsset.item)}
+                            >
+                              重试视觉形象
+                            </button>
+                          </div>
+                        ) : null}
+                        {selectedVariant ? (
+                          <div data-testid="视觉形象主图预览" className={styles.visualPreview}>
+                            <StableImage
+                              src={selectedVariant.currentImageThumbnailUrl}
+                              alt={`${selectedVariant.name}预览图`}
+                              fallback={<AssetImagePlaceholder />}
+                              loading="eager"
+                              imageStyle={{ objectFit: 'contain' }}
+                            />
+                            <GenerationStatusOverlay
+                              status={selectedVariant.generationStatus}
+                              label={`${selectedVariant.name}主预览生成状态`}
+                            />
+                            {variants.length > 1 ? (
+                              <>
+                                <Button
+                                  aria-label="查看上一个视觉形象"
+                                  className={`${styles.previewNav} ${styles.previewPrevious}`}
+                                  onClick={() => setSelectedVisualVariantId(
+                                    variants[(selectedVariantIndex - 1 + variants.length) % variants.length]?.id,
+                                  )}
+                                >
+                                  ‹
+                                </Button>
+                                <Button
+                                  aria-label="查看下一个视觉形象"
+                                  className={`${styles.previewNav} ${styles.previewNext}`}
+                                  onClick={() => setSelectedVisualVariantId(
+                                    variants[(selectedVariantIndex + 1) % variants.length]?.id,
+                                  )}
+                                >
+                                  ›
+                                </Button>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <Empty description="暂无视觉形象" />
+                        )}
+                        <div className={styles.variantArea}>
+                          <div className={styles.variantRow}>
+                            <section
+                              ref={thumbnailViewportRef}
+                              aria-label="视觉形象缩略图列表"
+                              onWheel={scrollVisualThumbnails}
+                              className={styles.variantThumbnails}
+                            >
+                              {variants.map((variant) => {
+                                const selected = variant.id === selectedVariant?.id;
+                                return (
+                                  <div
+                                    key={variant.id}
+                                    data-testid={`视觉形象缩略图-${variant.name}`}
+                                    className={`${styles.variantThumbnail} ${variant.primary ? styles.primaryThumbnail : ''}`}
+                                    onMouseEnter={() => setHoveredThumbnailId(variant.id)}
+                                    onMouseLeave={() => setHoveredThumbnailId(undefined)}
+                                  >
+                                    <button
+                                      type="button"
+                                      aria-label={`选择${variant.name}`}
+                                      aria-pressed={selected}
+                                      onClick={() => setSelectedVisualVariantId(variant.id)}
+                                      className={styles.variantButton}
+                                    >
+                                      <span className={`${styles.variantImage} ${selected ? styles.variantImageSelected : ''}`}>
+                                        <StableImage
+                                          src={variant.currentImageThumbnailUrl}
+                                          alt={`${variant.name}缩略图`}
+                                          fallback={<AssetImagePlaceholder compact />}
+                                          imageStyle={{ objectFit: 'contain' }}
+                                        />
+                                        <GenerationStatusOverlay
+                                          compact
+                                          status={variant.generationStatus}
+                                          label={`${variant.name}缩略图生成状态`}
+                                        />
+                                      </span>
+                                      <span className={styles.variantName} title={variant.name}>
+                                        {variant.name}
+                                      </span>
+                                    </button>
+                                    <Popconfirm
+                                      title={`确认删除${variant.name}`}
+                                      description="删除后无法恢复，确定继续吗？"
+                                      okText="删除"
+                                      cancelText="取消"
+                                      onConfirm={() => mutateVariant(
+                                        () => deleteVisualVariant(projectId, variant.id),
+                                        '视觉形象已删除',
+                                      )}
+                                    >
+                                      <Button
+                                        size="small"
+                                        danger
+                                        icon={<DeleteOutlined />}
+                                        aria-label={`删除${variant.name}`}
+                                        onClick={(event) => event.stopPropagation()}
+                                        className={styles.deleteVariant}
+                                        style={{
+                                          opacity: hoveredThumbnailId === variant.id ? 1 : 0,
+                                          pointerEvents: hoveredThumbnailId === variant.id ? 'auto' : 'none',
+                                        }}
+                                      />
+                                    </Popconfirm>
+                                  </div>
+                                );
+                              })}
+                            </section>
+                            <section aria-label="视觉形象新增入口" className={styles.addVariantEntry}>
+                              {addingVariant ? (
+                                <div className={styles.addVariantForm}>
+                                  <Input
+                                    aria-label="新视觉形象名称"
+                                    value={newVariantName}
+                                    onChange={(event) => setNewVariantName(event.target.value)}
+                                    placeholder="新形象名称"
+                                  />
+                                  <Button
+                                    type="primary"
+                                    aria-label="确认新增视觉形象"
+                                    onClick={addVariant}
+                                  >
+                                    新增
+                                  </Button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  aria-label="新增变装"
+                                  onClick={() => setAddingVariant(true)}
+                                  className={styles.addVariantButton}
+                                >
+                                  <span className={styles.addVariantIcon}><PlusOutlined /></span>
+                                  <span className={styles.variantName}>
+                                    {visualAsset.type === 'CHARACTER' ? '添加变装' : '添加形象'}
+                                  </span>
+                                </button>
+                              )}
+                            </section>
+                          </div>
+                          {(visual?.total ?? 0) > (visual?.pageSize ?? 20) ? (
+                            <Pagination
+                              current={visual?.current || 1}
+                              pageSize={visual?.pageSize || 20}
+                              total={visual?.total || 0}
+                              showSizeChanger
+                              size="small"
+                              onChange={(page, size) => void loadVisualPage(page, size)}
+                              className={styles.variantPagination}
+                            />
+                          ) : null}
+                        </div>
+                        <p className={styles.assetDescription}>
+                          {getDescription(visualAsset.type, visualAsset.item) ||
+                            getSummary(visualAsset.type, visualAsset.item) ||
+                            '暂无设定描述'}
+                        </p>
+                        {selectedVariant?.errorMessage ? (
+                          <Typography.Text type="danger">{selectedVariant.errorMessage}</Typography.Text>
+                        ) : null}
+                      </div>
+                      {selectedVariant ? (
+                        <section aria-label="视觉形象操作" className={styles.visualActions}>
+                          <Button
+                            icon={<EditOutlined />}
+                            aria-label={`${selectedVariant.generationStatus === 'FAILED' ? '重新生成' : '生成图片'}${selectedVariant.name}`}
+                            onClick={() => openVariantGenerator(selectedVariant)}
+                          >
+                            {selectedVariant.generationStatus === 'COMPLETED'
+                              ? selectedVariant.primary ? '重绘主形象' : '重绘当前变装'
+                              : selectedVariant.generationStatus === 'FAILED' ? '重新生成' : '生成图片'}
+                          </Button>
+                          {!selectedVariant.primary ? (
+                            <Button
+                              onClick={() => mutateVariant(
+                                () => selectPrimaryVisualVariant(projectId, selectedVariant.id),
+                                '主形象已更新',
+                              )}
+                            >
+                              设为主形象
+                            </Button>
+                          ) : null}
+                        </section>
+                      ) : null}
+                    </fieldset>
+                  </section>
+                  <AssetVariantGenerationModal
+                    open={Boolean(generationVariant)}
+                    variant={generationVariant}
+                    assetType={visualAsset.type}
+                    primaryImageUrl={visualAsset.item.visual?.primaryVariant?.currentImageThumbnailUrl}
+                    imageModels={imageModels}
+                    values={{
+                      prompt: generationPrompt,
+                      modelId: generationModelId,
+                      aspectRatio: generationAspectRatio,
+                      imageCount: generationImageCount,
+                    }}
+                    submitting={generationSubmitting}
+                    onChange={(values) => {
+                      if (values.prompt !== undefined) setGenerationPrompt(values.prompt);
+                      if ('modelId' in values) setGenerationModelId(values.modelId);
+                      if (values.aspectRatio !== undefined) {
+                        setGenerationAspectRatio(values.aspectRatio);
+                      }
+                      if (values.imageCount !== undefined) {
+                        setGenerationImageCount(values.imageCount);
+                      }
+                    }}
+                    onCancel={() => setGenerationVariantId(undefined)}
+                    onSubmit={submitVariantGeneration}
+                  />
+                </>
+              );
+            })()
+          : null}
+
+        </div>
       </div>
     </div>
   );

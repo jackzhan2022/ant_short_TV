@@ -554,6 +554,88 @@ describe('ProductionWorkbenchSettings', () => {
     });
   });
 
+  it('opens image details beside the browsable list and closes them when changing category', async () => {
+    render(<ProductionWorkbenchSettings />);
+    const image = await screen.findByRole('button', { name: '查看斌斌视觉形象' });
+    fireEvent.click(screen.getByText('斌斌', { exact: true }));
+
+    const panel = screen.getByRole('region', { name: '视觉形象画廊' });
+    const list = screen.getByRole('region', { name: '资产列表' });
+    expect(panel.parentElement).toBe(list.parentElement);
+    expect(panel.closest('.ant-modal')).toBeNull();
+    expect(image).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByLabelText('选择斌斌'));
+    expect(screen.getByLabelText('选择斌斌')).toBeChecked();
+    expect(panel).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭视觉形象' }));
+    expect(screen.queryByRole('region', { name: '视觉形象画廊' })).not.toBeInTheDocument();
+    expect(image).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('tab', { name: /场景/ }));
+    expect(screen.queryByRole('region', { name: '视觉形象画廊' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看地下停车场视觉形象' }));
+    expect(mocks.queryAssetVisualWorkspace).toHaveBeenLastCalledWith(
+      1, 'SCENE', 2, { current: 1, pageSize: 20 },
+    );
+    expect(screen.getByRole('heading', { name: '地下停车场' })).toBeInTheDocument();
+  });
+
+  it('switches asset details without applying a late response or keeping the previous add form', async () => {
+    const secondCharacter = { ...workspace.characters[0], id: 4, name: '林夏', visual: undefined };
+    mocks.queryAssetSettingsSummary.mockResolvedValue({
+      data: { ...workspace, characters: [...workspace.characters, secondCharacter] },
+    });
+    let resolveFirst!: (value: unknown) => void;
+    mocks.queryAssetVisualWorkspace.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveFirst = resolve;
+    }));
+    mocks.queryAssetVisualWorkspace.mockResolvedValueOnce({
+      data: {
+        ...workspace.characters[0].visual,
+        primaryVariant: undefined,
+        variants: [{ ...workspace.characters[0].visual.variants[0], id: 41, name: '林夏日常' }],
+      },
+    });
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '新增变装' }));
+    fireEvent.change(screen.getByLabelText('新视觉形象名称'), { target: { value: '未保存造型' } });
+    fireEvent.click(screen.getByRole('button', { name: '查看林夏视觉形象' }));
+    expect(await screen.findByAltText('林夏日常预览图')).toBeInTheDocument();
+    expect(screen.queryByLabelText('新视觉形象名称')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看斌斌视觉形象' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: '查看林夏视觉形象' })).toHaveAttribute('aria-expanded', 'true');
+
+    await act(async () => { resolveFirst({ data: workspace.characters[0].visual }); });
+    expect(screen.getByRole('heading', { name: '林夏' })).toBeInTheDocument();
+    expect(screen.getByAltText('林夏日常预览图')).toBeInTheDocument();
+    expect(screen.queryByAltText('日常形象预览图')).not.toBeInTheDocument();
+  });
+
+  it('keeps the current asset and its add form when an earlier asset mutation finishes', async () => {
+    const secondCharacter = { ...workspace.characters[0], id: 4, name: '林夏' };
+    mocks.queryAssetSettingsSummary.mockResolvedValue({
+      data: { ...workspace, characters: [...workspace.characters, secondCharacter] },
+    });
+    let finishCreate!: (value: unknown) => void;
+    mocks.createVisualVariant.mockImplementationOnce(() => new Promise((resolve) => {
+      finishCreate = resolve;
+    }));
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '新增变装' }));
+    fireEvent.change(screen.getByLabelText('新视觉形象名称'), { target: { value: '斌斌雨衣' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认新增视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看林夏视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '新增变装' }));
+    fireEvent.change(screen.getByLabelText('新视觉形象名称'), { target: { value: '林夏礼服' } });
+
+    await act(async () => { finishCreate({ data: {} }); });
+    expect(screen.getByRole('heading', { name: '林夏' })).toBeInTheDocument();
+    expect(screen.getByLabelText('新视觉形象名称')).toHaveValue('林夏礼服');
+  });
+
   it('manages visual variants and shows their existing episode bindings on the preview', async () => {
     render(<ProductionWorkbenchSettings />);
 
@@ -576,9 +658,14 @@ describe('ProductionWorkbenchSettings', () => {
     expect(
       screen.getByRole('region', { name: '视觉形象画廊' }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId('视觉形象主图预览')).toHaveStyle({
-      height: 'clamp(260px, 48vh, 430px)',
-    });
+    expect(screen.getByRole('heading', { name: '斌斌' })).toBeInTheDocument();
+    expect(screen.getByText('出镜剧集')).toBeInTheDocument();
+    expect(screen.getByTestId('视觉形象主图预览')).not.toContainElement(
+      screen.getByLabelText('日常形象关联剧集'),
+    );
+    expect(screen.getByLabelText('视觉形象操作')).toContainElement(
+      screen.getByRole('button', { name: '生成图片日常形象' }),
+    );
     expect(screen.getByAltText('日常形象缩略图')).toHaveAttribute(
       'src',
       '/daily-thumb.png',
@@ -1067,7 +1154,7 @@ describe('ProductionWorkbenchSettings', () => {
     mocks.queryAssetVisualWorkspace.mockImplementationOnce(() => new Promise((resolve) => { resolveDetail = resolve; }));
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(resolveDetail).toBeDefined();
-    fireEvent.click(within(screen.getByRole('region', { name: '视觉形象画廊' })).getByRole('button', { name: '取消' }));
+    fireEvent.click(within(screen.getByRole('region', { name: '视觉形象画廊' })).getByRole('button', { name: '关闭视觉形象' }));
     snapshot = imageGenerationSnapshot('COMPLETED');
     await act(async () => { resolveDetail({ data: snapshot.characters[0].visual }); });
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
