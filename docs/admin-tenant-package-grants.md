@@ -36,7 +36,7 @@
 
 数据库迁移：backend/src/main/resources/db/migration/V144__admin_tenant_package_grants.sql。
 
-新增 admin_authenticator、admin_tenant_package_grant；订阅增加人工发放来源，原支付订单来源允许为空；权益记录增加人工发放来源。实际支付仍使用原订单来源。迁移已通过测试数据库验证，运行环境需随代码发布执行 Flyway 迁移。
+新增 admin_authenticator、admin_tenant_package_grant；订阅增加人工发放来源，原支付订单来源允许为空；权益记录增加人工发放来源。实际支付仍使用原订单来源。迁移已通过测试数据库验证，并于 2026-10-21 在生产环境完成 Flyway V144 迁移。
 
 核心实现：backend/src/main/java/com/antshorttv/adminauth/、commercial/AdminTenantGrantService.java、commercial/CommercialBenefitFulfillmentService.java。
 前端：frontend/src/pages/commercial-management/tenants/GrantPackageModal.tsx、AuthenticatorBinding.tsx、grantService.ts。
@@ -59,4 +59,4 @@ npx antd lint ./src
 
 验证结果：后端上述 5 个测试类共 37 项全部通过；前端租户管理及权限测试共 39 项全部通过。npm run lint（Biome + TypeScript）通过，存在原有的 3 条 document.cookie 提示；antd 检查通过，存在原有的 10 条静态反馈 API 提示，本次新增组件未产生此类提示。
 
-测试结果记录在 outputs/admin-grant/。未对运行环境执行部署或真实租户发放。
+以上为功能实现阶段验证；发布阶段扩大回归范围，后端 38 项、前端 88 项全部通过。2026-10-21 已推送远程并部署生产，未执行真实租户发放。发布记录见 [管理员租户套餐发放上线记录](admin-tenant-package-grants-release-2026-10-21.md)，发布证据位于原工作区 .release/admin-tenant-grants-20261021/。
