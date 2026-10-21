@@ -66,6 +66,22 @@ class ScriptWorkflowReadBoundaryTest {
         verify(episodes, never()).currentEpisodes(anyLong(), anyLong(), anyLong());
     }
 
+    @Test
+    void assetSummaryDoesNotReadTheFullScriptBody() throws Exception {
+        Map<Class<?>,Object> dependencies = new HashMap<>();
+        var constructor = ScriptWorkflowService.class.getConstructors()[0];
+        var service = (ScriptWorkflowService)constructor.newInstance(Arrays.stream(constructor.getParameterTypes())
+            .map(type -> dependencies.computeIfAbsent(type, org.mockito.Mockito::mock)).toArray());
+        when(((TenantContextResolver)dependencies.get(TenantContextResolver.class)).requireActiveMember(10L))
+            .thenReturn(new TenantContext(1L,10L,1L,"OWNER"));
+        var access=org.mockito.Mockito.mock(ProjectAccessContext.class);
+        var project=new ProjectEntity();project.id=33L;
+        when(access.project()).thenReturn(project);
+        when(((ProjectAccessResolver)dependencies.get(ProjectAccessResolver.class)).requireView(10L,33L)).thenReturn(access);
+        service.assetSettingsSummary(10L,33L);
+        verify(((ScriptMapper)dependencies.get(ScriptMapper.class)),never()).selectCurrentByProject(anyLong(),anyLong());
+    }
+
     private void set(Object target, String fieldName, Object value) throws ReflectiveOperationException {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);

@@ -1,0 +1,308 @@
+{
+  "date": "2026-10-21",
+  "timezone": "Asia/Shanghai",
+  "workspace": "D:\\需求文档\\ant_short_TV",
+  "baseline_head": "b708a20",
+  "validated_head": "7b0f114f281b1eb131ddf57d96b3dfead551111e",
+  "status": "Integrated and locally verified; verification completed before Git publication; not deployed",
+  "source_unchanged": true,
+  "original_backups_verified": true,
+  "protected_features": [
+    "asset normalization",
+    "all-shot navigation",
+    "video history and inline previews",
+    "bulk estimation/cancel/generation",
+    "stable episode identity on save"
+  ],
+  "tests": {
+    "frontend_files": 8,
+    "frontend_passed": 146,
+    "backend_passed": 45,
+    "additional_migration_passed": 1,
+    "failures": 0
+  },
+  "checks": {
+    "typescript": "passed",
+    "biome": "passed;3 existing warnings",
+    "frontend_build": "passed",
+    "backend_package": "passed",
+    "diff_check": "passed"
+  },
+  "performance": {
+    "fixture": {
+      "episodes": 85,
+      "storyboards": 851,
+      "first_episode": 33,
+      "page_size": 20,
+      "mentions_per_editor": 32
+    },
+    "environment": "Root production Umi build, real Spring HTTP, H2 memory, query cache disabled, Chromium1280x720,localhost images,single session",
+    "readiness": "Editable script/prompt + metadata/models/config/assets/page responses + all33 navigation controls, then animation frame",
+    "samples": [
+      {
+        "cache": "disabled",
+        "ready_ms": 1181.3,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1142.2,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1148.3,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1138.8,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1141.1,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1116.7,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1143.6,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1143.6,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1140.1,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "disabled",
+        "ready_ms": 1157.3,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1217.1,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1245.7,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1253.9,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1249.1,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1250.4,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1232.1,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1240.8,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1256.0,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1227.0,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      },
+      {
+        "cache": "enabled",
+        "ready_ms": 1256.7,
+        "editors": 2,
+        "slots": 20,
+        "navigation": 33,
+        "metadata_reads": 1,
+        "full_project_reads": 0,
+        "legacy_workspace_reads": 0
+      }
+    ],
+    "stats": {
+      "disabled": {
+        "n": 10,
+        "p95_ms": 1181.3,
+        "max_ms": 1181.3,
+        "all_under_5s": true
+      },
+      "enabled": {
+        "n": 10,
+        "p95_ms": 1256.7,
+        "max_ms": 1256.7,
+        "all_under_5s": true
+      },
+      "all": {
+        "n": 20,
+        "p95_ms": 1256.0,
+        "max_ms": 1256.7,
+        "all_under_5s": true
+      }
+    }
+  },
+  "functional": [
+    "cross-page navigation25 and return1",
+    "save marker retained through episode2 and return",
+    "wrong-page link corrected and target25 mounted",
+    "browser error logs empty"
+  ],
+  "source_sha256": {
+    "backend/src/main/java/com/antshorttv/project/ProjectController.java": "18342000c0cf8f67e735a8e54c59c5680b95805b92aaedbc2e5d31a9d6c8e2cc",
+    "backend/src/main/java/com/antshorttv/project/ProjectService.java": "ed6ca8941802ec959a6fb5de607a3067424444d36db74b842ffa052f437bc9fa",
+    "backend/src/main/java/com/antshorttv/script/ScriptWorkflowService.java": "485018a943e73e96e9c5a53d315344f00bc843f67fff99b8b12bc0f3c6403399",
+    "backend/src/main/java/com/antshorttv/script/StoryboardBatchService.java": "69b6dc28926780a2549cf7cb57a7469653fc2d2d1f1d78afc0b5ff029ab6861c",
+    "backend/src/main/resources/application.yml": "8ed70ab3523301437a0aa0be255aa508fdd12856244ff66fb8a1651645aaa837",
+    "backend/src/test/java/com/antshorttv/script/ScriptWorkflowControllerTest.java": "c87a24e11667fecf1ffb0bc18a087af4ed86af90f4c08785cfc3d56f2aa47d7a",
+    "backend/src/test/java/com/antshorttv/script/ScriptWorkflowReadBoundaryTest.java": "4988bc2b9412fcef245984105b9e0f71c52352dbda5be051f522e678ac396cda",
+    "backend/src/test/java/com/antshorttv/script/StoryboardBatchServiceTest.java": "581d8462e4253c41c2f5dea9a5f4d2193ba070b07968b5479cabdafc9064efd5",
+    "frontend/src/pages/projects/production-workbench/index.tsx": "8e7aa0780f6f7fdb7de346343a85e0d52f41a1d5122074246ecef39da7b53c62",
+    "frontend/src/pages/projects/production-workbench/index.test.tsx": "797b330397cb3ff029f13824491549fda95112a9fa52de68950acc351b381a02",
+    "frontend/src/pages/projects/production-workbench/service.ts": "3bc65515a1ffab40d8c1ab4a8271bcb60b023931aacae22821fd8722bc49d4ce",
+    "frontend/src/pages/projects/production-workbench/service.test.ts": "d7fadbed89e96fc0dd0ed1870ed7ef3657ab3b4555e84d1a5e49ee670fc5ae71",
+    "frontend/src/pages/projects/production-workbench/storyboard.tsx": "75be03f9a08325027d1d7fd26fb69667ccc6c4e4aafe3ebb08962b45a4c4abf4",
+    "frontend/src/pages/projects/production-workbench/storyboard.test.tsx": "3691acea27ac0b2a6ebc4c4e87902bf55d911cc97b80d25c8a0c567f8d71e622",
+    "frontend/src/services/account-team/project.ts": "27588470ac4f9cd3bfd0887b6eb083a8e900c7cbd0d44734b9e0727952fb38df",
+    "frontend/src/services/account-team/project.test.ts": "ffed2586650b1035927d0c3f447b1a220b0a20195ee8e1e16f498b2d6106432b",
+    "backend/src/main/java/com/antshorttv/script/StoryboardEditorQueryService.java": "2634362c662c643813504c722261f21268d10e71f8b3c008c978e9e12a927375",
+    "backend/src/main/java/com/antshorttv/script/StoryboardEditorController.java": "66130fe7f77877497d586ae670e40335830259c2a21965eaf009b80be971b802",
+    "backend/src/main/java/com/antshorttv/script/StoryboardBatchQuery.java": "44fb243edb4a07c715f31292d98cc1f0c00639a6612424217668368f6321adfc",
+    "backend/src/test/java/com/antshorttv/project/ProjectMetadataReadTest.java": "65fe346a8538953b39be44be5a236dac7551feaec57da3ec7d6186c2c17469e9",
+    "backend/src/test/java/com/antshorttv/script/StoryboardEditorQueryServiceTest.java": "80f42557875874f1ef053135dd69b76a0bb04e15a6ba010915a067595df93dcf",
+    "backend/src/test/java/com/antshorttv/script/StoryboardBatchReadIntegrationTest.java": "a39074dbc68c0faa05fc6ac441171008497e685c7d6398d71a9d402a48c5d2e7",
+    "backend/src/test/java/com/antshorttv/script/StoryboardBenchmarkServer.java": "ca7a9c47dd22e3b43b404ce6065968c82f9dfd676ba179e9e1fb7aa2b0b31b6b",
+    "frontend/src/pages/projects/production-workbench/ViewportMount.tsx": "ae04d126faf9bd505dc18f5a4df4b2ec8ed16e9d37a6e4a39010a284d11e4efb",
+    "frontend/src/pages/projects/production-workbench/ViewportMount.test.tsx": "79241fe7f3e960447e5f6aee818d0354e8d8bfd6dd6b30c20815a9c41c4f3f0b",
+    "scripts/storyboard-benchmark-preview.mjs": "83bff4da5493e74311aa255b743f2660ce49595febb833364e1bc2e1f4d48285"
+  },
+  "preserved_files_sha256": {
+    "backend/src/main/java/com/antshorttv/script/ScriptWorkflowResponses.java": "27bc9cea11fa47cd2e2c59e8dafc8351e5afdd006911eda32d7ebf8d52e00cb5",
+    "backend/src/main/java/com/antshorttv/script/StoryboardMediaQueryService.java": "970f6c468b53225754c81e0e257cf4534de822419170727b7528be8e470650d0",
+    "backend/src/main/java/com/antshorttv/script/AssetNormalizationService.java": "ef11c60c765802d77c1a5502f04800f648ab91d1418d3ff337285694d1efe625"
+  },
+  "limits": [
+    "Not production MySQL/CDN/concurrency acceptance",
+    "No actual AI-generation or production billing request",
+    "Only independent benchmark ports18189/18190 used"
+  ]
+}

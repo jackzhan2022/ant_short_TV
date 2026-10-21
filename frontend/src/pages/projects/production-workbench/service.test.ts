@@ -5,6 +5,9 @@ const request = vi.hoisted(() => vi.fn());
 vi.mock('@umijs/max', () => ({ request }));
 
 import {
+  queryStoryboardEditorPage,
+  queryStoryboardEpisodeDetails,
+  queryStoryboardWorkspace,
   createAssetImageBatch,
   downloadEpisodeVideoVersion,
   queryAssetImageBatch,
@@ -118,5 +121,36 @@ describe('downloadEpisodeVideoVersion', () => {
     expect(click).toHaveBeenCalled();
     expect(URL.createObjectURL).toHaveBeenCalled();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:episode');
+  });
+});
+
+describe('focused storyboard editor transport', () => {
+  beforeEach(() => request.mockReset());
+
+  it('requests the focused editor page with episode pagination', async () => {
+    await queryStoryboardEditorPage(5, { episodeNo: 2, current: 3, pageSize: 20 });
+    expect(request).toHaveBeenCalledWith('/api/projects/5/storyboard-editor-page', {
+      params: { episodeNo: 2, current: 3, pageSize: 20 },
+    });
+  });
+
+  it('forwards the optional deep-link shot for current-script page resolution', async () => {
+    await queryStoryboardEditorPage(5, { episodeNo: 2, current: 4, pageSize: 20, storyboardId: 201 });
+    expect(request).toHaveBeenCalledWith('/api/projects/5/storyboard-editor-page', {
+      params: { episodeNo: 2, current: 4, pageSize: 20, storyboardId: 201 },
+    });
+  });
+
+  it('requests independent episode details with cancellation support', async () => {
+    const controller = new AbortController();
+    await queryStoryboardEpisodeDetails(5, 12, controller.signal);
+    expect(request).toHaveBeenCalledWith('/api/projects/5/storyboard-episodes/12/details', {
+      signal: controller.signal,
+    });
+  });
+
+  it('preserves the original workspace endpoint for other consumers', async () => {
+    await queryStoryboardWorkspace(5);
+    expect(request).toHaveBeenCalledWith('/api/projects/5/storyboard-workspace', { params: {} });
   });
 });

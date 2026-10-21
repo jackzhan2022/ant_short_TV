@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
 import type { Project } from '@/services/account-team/types';
-import { queryProject, updateProject } from '@/services/account-team/project';
+import { queryProjectMetadata, updateProject } from '@/services/account-team/project';
 import { formatPoints } from '@/utils/points';
 import { queryScriptContent } from './service';
 import ProjectAiConfigPage from './ai-config';
@@ -32,6 +32,8 @@ const stepPaths = {
   storyboard: 'storyboard',
   video: 'video',
 } as const;
+
+export type ProductionWorkbenchOutletContext = { project?: Project };
 
 const ProductionWorkbench = () => {
   const params = useParams<{ id: string }>();
@@ -54,7 +56,9 @@ const ProductionWorkbench = () => {
       return;
     }
     let active = true;
-    queryProject(projectId)
+    setProject(undefined);
+    setForbidden(false);
+    queryProjectMetadata(projectId)
       .then((response) => {
         if (active) {
           setProject(response.data);
@@ -72,7 +76,7 @@ const ProductionWorkbench = () => {
     return () => {
       active = false;
     };
-  }, [message, projectId]);
+  }, [projectId]);
 
   useEffect(() => {
     const tenantId = getCurrentTenantId();

@@ -617,8 +617,10 @@ public class ScriptWorkflowService {
     public AssetSettingsSummaryResponse assetSettingsSummary(Long tenantId, Long projectId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
-        Long scriptId = script == null ? null : script.getId();
+        Long scriptId = jdbcTemplate.queryForList("""
+            select id from script where tenant_id = ? and project_id = ? and deleted_at is null
+             order by updated_at desc limit 1
+            """, Long.class, tenantId, projectId).stream().findFirst().orElse(null);
         return new AssetSettingsSummaryResponse(projectId,
             characterSummaries(tenantId, projectId, scriptId), sceneSummaries(tenantId, projectId, scriptId),
             propSummaries(tenantId, projectId, scriptId));
@@ -1375,9 +1377,24 @@ public class ScriptWorkflowService {
         StoryboardPromptDocuments.validate(request.promptDocument());
         StoryboardUpdateState existing = lockStoryboardForUpdate(tenantId, projectId, storyboardId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
-        Integer episodeNo = request.episodeNo() == null ? existing.episodeNo() : request.episodeNo();
+        Integer episodeNo;
+        Long episodeId;
+        if (request.episodeNo() == null && existing.episodeId() != null) {
+            List<Integer> canonicalNumbers = jdbcTemplate.queryForList("""
+                select episode_no from script_episode
+                 where tenant_id=? and project_id=? and script_id=? and id=? and retired_at is null
+                 for update
+                """, Integer.class, tenantId, projectId, script == null ? null : script.getId(), existing.episodeId());
+            if (canonicalNumbers.isEmpty()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜所属剧集已变更，请刷新后重试。");
+            }
+            episodeNo = canonicalNumbers.get(0);
+            episodeId = existing.episodeId();
+        } else {
+            episodeNo = request.episodeNo() == null ? existing.episodeNo() : request.episodeNo();
+            episodeId = lockStoryboardEpisode(tenantId, projectId, script == null ? null : script.getId(), episodeNo);
+        }
         Integer shotNo = request.shotNo() == null ? existing.shotNo() : request.shotNo();
-        Long episodeId = lockStoryboardEpisode(tenantId, projectId, script == null ? null : script.getId(), episodeNo);
         jdbcTemplate.update("""
             update storyboard
                set episode_no = ?, episode_id = ?, shot_no = ?, storyboard_no = ?,
@@ -1403,7 +1420,7 @@ public class ScriptWorkflowService {
 
     private StoryboardUpdateState lockStoryboardForUpdate(Long tenantId, Long projectId, Long storyboardId) {
         List<StoryboardUpdateState> rows = jdbcTemplate.query("""
-            select episode_no, shot_no, storyboard_no, scene_no, shot_type, characters, actions,
+            select episode_id, episode_no, shot_no, storyboard_no, scene_no, shot_type, characters, actions,
                    dialogue, scene, props, mood, duration_seconds, image_prompt, video_prompt, status
               from storyboard
              where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
@@ -1414,7 +1431,8 @@ public class ScriptWorkflowService {
                 rs.getString("shot_type"), rs.getString("characters"), rs.getString("actions"),
                 rs.getString("dialogue"), rs.getString("scene"), rs.getString("props"),
                 rs.getString("mood"), rs.getObject("duration_seconds", Integer.class),
-                rs.getString("image_prompt"), rs.getString("video_prompt"), rs.getString("status")),
+                rs.getString("image_prompt"), rs.getString("video_prompt"), rs.getString("status"),
+                rs.getObject("episode_id", Long.class)),
             tenantId, projectId, storyboardId);
         if (rows.isEmpty()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "分镜不存在。");
@@ -1919,7 +1937,8 @@ public class ScriptWorkflowService {
         Integer durationSeconds,
         String imagePrompt,
         String videoPrompt,
-        String status
+        String status,
+        Long episodeId
     ) {
     }
 

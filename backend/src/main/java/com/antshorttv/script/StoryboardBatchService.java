@@ -4,11 +4,9 @@ import com.antshorttv.ai.AiBusinessScene;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.execution.AiExecutionResponse;
-import com.antshorttv.execution.AiExecutionTaskEntity;
 import com.antshorttv.execution.AiExecutionTaskMapper;
 import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.security.TenantContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -28,9 +26,8 @@ class StoryboardBatchService {
     private final ScriptAiOperationService operationService;
     private final StoryboardBatchMapper batchMapper;
     private final StoryboardBatchItemMapper itemMapper;
-    private final AiExecutionTaskMapper executionMapper;
+    private final StoryboardBatchQuery batchQuery;
     private final JdbcTemplate jdbc;
-    private final ObjectMapper json;
 
     StoryboardBatchService(
         ProjectPermissionGuard permissionGuard,
@@ -47,9 +44,8 @@ class StoryboardBatchService {
         this.operationService = operationService;
         this.batchMapper = batchMapper;
         this.itemMapper = itemMapper;
-        this.executionMapper = executionMapper;
+        this.batchQuery = new StoryboardBatchQuery(jdbc, json);
         this.jdbc = jdbc;
-        this.json = json;
     }
 
     @Transactional
@@ -143,11 +139,7 @@ class StoryboardBatchService {
     }
 
     private StoryboardBatchResponse response(StoryboardBatchEntity batch) {
-        List<StoryboardBatchItemResponse> items = itemMapper
-            .selectByBatch(batch.tenantId, batch.projectId, batch.id)
-            .stream()
-            .map(this::itemResponse)
-            .toList();
+        List<StoryboardBatchItemResponse> items = batchQuery.selectItems(batch);
         int pending = count(items, "PENDING");
         int running = count(items, "RUNNING");
         int succeeded = count(items, "SUCCESS");
@@ -172,58 +164,6 @@ class StoryboardBatchService {
             items,
             batch.createdAt
         );
-    }
-
-    private StoryboardBatchItemResponse itemResponse(StoryboardBatchItemEntity item) {
-        AiExecutionTaskEntity execution = executionMapper.selectById(item.executionId);
-        if (execution == null) {
-            throw new IllegalStateException("Storyboard batch execution is missing: " + item.executionId);
-        }
-        int warningCount = "SUCCEEDED".equals(execution.status)
-            ? warningCount(item, execution.id)
-            : 0;
-        String status = itemStatus(execution.status, warningCount);
-        return new StoryboardBatchItemResponse(
-            item.id,
-            item.episodeId,
-            item.episodeNo,
-            item.executionId,
-            status,
-            warningCount,
-            valueOrZero(execution.businessCallCount),
-            valueOrZero(execution.technicalRetryCount),
-            execution.settledPoints == null ? BigDecimal.ZERO : execution.settledPoints,
-            execution.errorCode,
-            execution.errorMessage
-        );
-    }
-
-    private int warningCount(StoryboardBatchItemEntity item, Long executionId) {
-        List<String> plans = jdbc.queryForList("""
-            select storyboard.shot_plan_json
-              from storyboard
-             where storyboard.tenant_id = ? and storyboard.project_id = ?
-               and storyboard.episode_id = ? and storyboard.deleted_at is null
-               and storyboard.generated_by_run_id in (
-                   select distinct step.run_id
-                     from ai_workflow_agent_run_step step
-                     join ai_call_log call_log on call_log.id = step.ai_call_log_id
-                    where call_log.execution_id = ?
-               )
-            """, String.class, item.tenantId, item.projectId, item.episodeId, executionId);
-        int warnings = 0;
-        for (String plan : plans) {
-            try {
-                JsonNode parsed = json.readTree(plan);
-                warnings += parsed.path("warnings").isArray() ? parsed.path("warnings").size() : 0;
-                warnings += parsed.path("diagnostics").path("classificationWarnings").isArray()
-                    ? parsed.path("diagnostics").path("classificationWarnings").size()
-                    : 0;
-            } catch (Exception ignored) {
-                // A malformed historical plan is not a generated quality warning.
-            }
-        }
-        return warnings;
     }
 
     static String itemStatus(String executionStatus, int warningCount) {
@@ -252,10 +192,6 @@ class StoryboardBatchService {
 
     private static String valueOrUuid(String value) {
         return value == null || value.isBlank() ? UUID.randomUUID().toString() : value.trim();
-    }
-
-    private static int valueOrZero(Integer value) {
-        return value == null ? 0 : value;
     }
 
     private static String placeholders(int size) {

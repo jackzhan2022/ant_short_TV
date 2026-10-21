@@ -4,6 +4,7 @@ import ProductionWorkbench from './index';
 
 const mocks = vi.hoisted(() => ({
   historyPush: vi.fn(),
+  queryProjectMetadata: vi.fn(),
   queryProject: vi.fn(),
   updateProject: vi.fn(),
   queryTeamPointAccount: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('@umijs/max', () => ({
 
 vi.mock('@/services/account-team/project', () => ({
   hasProjectPermission: () => true,
+  queryProjectMetadata: mocks.queryProjectMetadata,
   queryProject: mocks.queryProject,
   updateProject: mocks.updateProject,
 }));
@@ -94,9 +96,16 @@ vi.mock('@ant-design/icons', () => ({
 }));
 
 describe('ProductionWorkbench shell', () => {
+  it('loads metadata for the shell without fetching the project script body', async () => {
+    render(<ProductionWorkbench />);
+    await screen.findByTestId('outlet');
+    expect(mocks.queryProjectMetadata).toHaveBeenCalledWith(1);
+    expect(mocks.queryProject).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.queryProject.mockResolvedValue({
+    mocks.queryProjectMetadata.mockResolvedValue({
       data: {
         id: 1,
         name: '最危险的捉迷藏',
@@ -238,7 +247,7 @@ describe('ProductionWorkbench shell', () => {
   });
 
   it('renders the backend authorization failure for a forbidden dynamic route', async () => {
-    mocks.queryProject.mockRejectedValue({ response: { status: 403 } });
+    mocks.queryProjectMetadata.mockRejectedValue({ response: { status: 403 } });
 
     render(<ProductionWorkbench />);
 

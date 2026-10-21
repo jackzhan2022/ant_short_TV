@@ -291,6 +291,13 @@ public class ProjectService {
         return toProjectResponse(project, tenantId);
     }
 
+    public ProjectResponse metadata(Long tenantId, Long id) {
+        ProjectAccessContext access = projectAccessResolver.requireView(tenantId, id);
+        ProjectEntity project = access.project();
+        return toProjectResponse(project, access, userMapper.selectById(project.ownerId),
+            projectMemberMapper.countActiveByProjectId(tenantId, id));
+    }
+
     public ProjectResponse detail(Long tenantId, Long id) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProject(tenantId, id);

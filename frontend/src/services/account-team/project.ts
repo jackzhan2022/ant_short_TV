@@ -63,6 +63,10 @@ export async function queryProject(projectId: number) {
   return request<ApiResponse<Project>>(`/api/projects/${projectId}`);
 }
 
+export async function queryProjectMetadata(projectId: number) {
+  return request<ApiResponse<Project>>(`/api/projects/${projectId}/metadata`);
+}
+
 export async function updateProject(projectId: number, values: ProjectFormValues) {
   return request<ApiResponse<Project>>(`/api/projects/${projectId}`, {
     method: 'PUT',

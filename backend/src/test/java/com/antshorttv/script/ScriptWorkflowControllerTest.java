@@ -334,6 +334,21 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             .andExpect(jsonPath("$.data.current", is(1)))
             .andExpect(jsonPath("$.data.pageSize", is(100)))
             .andExpect(jsonPath("$.data.storyboards", hasSize(0)));
+        mockMvc.perform(get("/api/projects/%d/storyboard-editor-page?episodeNo=1&current=1&pageSize=999".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.pageSize",is(100)))
+            .andExpect(jsonPath("$.data.episodes[0].formalSummary").doesNotExist())
+            .andExpect(jsonPath("$.data.episodes[0].content").doesNotExist());
+        mockMvc.perform(get("/api/projects/%d/storyboard-episodes/%d/details".formatted(projectId,episodeId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.episodeId",is(episodeId.intValue())))
+            .andExpect(jsonPath("$.data.content").doesNotExist());
+        mockMvc.perform(get("/api/projects/%d/metadata".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.initialScriptContent").doesNotExist())
+            .andExpect(jsonPath("$.data.effectivePermissions").isArray());
+        mockMvc.perform(get("/api/projects/%d/storyboard-editor-page".formatted(projectId)))
+            .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -391,6 +406,43 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
 
         assertThat(jdbcTemplate.queryForObject(
             "select characters from storyboard where id = ?", String.class, storyboardId)).isNull();
+    }
+
+    @Test
+    void savingReorderedStoryboardKeepsStableEpisodeUnlessExplicitlyMoved() throws Exception {
+        String token=registerUser("13800013058","Reordered Storyboard Owner");
+        Long tenantId=createTenant(token,"稳定剧集保存团队");
+        Long ownerId=userIdByMobile("13800013058");
+        Long projectId=createProject(token,tenantId,ownerId,"稳定剧集保存项目","STABLE_EPISODE_SAVE",
+            "第1集\n第一集正文。\n第2集\n第二集正文。");
+        mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(Map.of(
+                    "title","稳定剧集保存项目","content","第1集\n第一集正文。\n第2集\n第二集正文。","status","DRAFT"))))
+            .andExpect(status().isOk());
+        Long scriptId=jdbcTemplate.queryForObject("select id from script where tenant_id=? and project_id=?",Long.class,tenantId,projectId);
+        List<Long> episodes=jdbcTemplate.queryForList("select id from script_episode where tenant_id=? and project_id=? and retired_at is null order by episode_no",Long.class,tenantId,projectId);
+        assertThat(episodes).hasSize(2);
+        Long first=episodes.get(0),second=episodes.get(1);
+        jdbcTemplate.update("update script_episode set episode_no=case when id=? then 2 else 1 end where tenant_id=? and project_id=?",first,tenantId,projectId);
+        jdbcTemplate.update("""
+            insert into storyboard(tenant_id,project_id,script_id,episode_id,episode_no,shot_no,
+                visual_description,status,created_by,created_at,updated_at)
+            values (?,?,?,?,1,1,'重排前分镜','CONFIRMED',?,now(),now())
+            """,tenantId,projectId,scriptId,first,ownerId);
+        Long shotId=jdbcTemplate.queryForObject("select id from storyboard where tenant_id=? and project_id=?",Long.class,tenantId,projectId);
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d".formatted(projectId,shotId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"visualDescription\":\"保持稳定归属\"}"))
+            .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("select episode_id from storyboard where id=?",Long.class,shotId)).isEqualTo(first);
+        assertThat(jdbcTemplate.queryForObject("select episode_no from storyboard where id=?",Integer.class,shotId)).isEqualTo(2);
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d".formatted(projectId,shotId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"episodeNo\":1,\"visualDescription\":\"显式移动剧集\"}"))
+            .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("select episode_id from storyboard where id=?",Long.class,shotId)).isEqualTo(second);
+        assertThat(jdbcTemplate.queryForObject("select episode_no from storyboard where id=?",Integer.class,shotId)).isEqualTo(1);
     }
 
     @Test
@@ -580,6 +632,13 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             .andExpect(jsonPath("$.data.storyboards", hasSize(1)))
             .andExpect(jsonPath("$.data.storyboardNavigation", hasSize(3)))
             .andExpect(jsonPath("$.data.storyboards[0].shotNo", is(3)));
+        mockMvc.perform(get("/api/projects/%d/storyboard-editor-page?episodeNo=1&current=1&pageSize=2".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.storyboardNavigation",hasSize(3)))
+            .andExpect(jsonPath("$.data.storyboardNavigation[0].hasVideo",is(true)))
+            .andExpect(jsonPath("$.data.storyboards",hasSize(2)))
+            .andExpect(jsonPath("$.data.storyboards[0].currentVideoUrl",is("/api/projects/"+projectId+"/ai-video-results/6401/playback")));
+
     }
 
     @Test
@@ -602,6 +661,9 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             "/script-content",
             "/asset-settings-summary",
             "/storyboard-workspace",
+            "/storyboard-editor-page",
+            "/metadata",
+            "/storyboard-episodes/999999999/details",
             "/script-versions/" + versionId,
             "/script-episodes/999999999"
         )) {

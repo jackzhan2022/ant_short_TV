@@ -41,6 +41,12 @@ public class ProjectController {
         return ApiResponse.success(projectService.create(tenantId(request), body, request));
     }
 
+    @GetMapping("/{id}/metadata")
+    @RequireProjectPermission(value = "PROJECT:VIEW", projectIdParameter = "id")
+    public ApiResponse<ProjectResponse> metadata(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResponse.success(projectService.metadata(tenantId(request), id));
+    }
+
     @GetMapping("/{id}")
     @RequireProjectPermission(value = "PROJECT:VIEW", projectIdParameter = "id")
     public ApiResponse<ProjectResponse> detail(@PathVariable Long id, HttpServletRequest request) {

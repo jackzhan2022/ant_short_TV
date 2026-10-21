@@ -9,7 +9,7 @@ import {
   ReloadOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { useLocation, useParams } from '@umijs/max';
+import { useLocation, useOutletContext, useParams } from '@umijs/max';
 import {
   App,
   Button,
@@ -35,7 +35,9 @@ import {
   type ReactNode,
 } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
-import { queryProject } from '@/services/account-team/project';
+import type { ProductionWorkbenchOutletContext } from './index';
+import ViewportMount from './ViewportMount';
+import { queryProjectMetadata } from '@/services/account-team/project';
 import type { Project } from '@/services/account-team/types';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import type { MediaPage } from '@/services/media/paging';
@@ -105,7 +107,8 @@ import {
   queryLatestStoryboardBatch,
   queryStoryboardBatch,
   queryStoryboardMedia,
-  queryStoryboardWorkspace,
+  queryStoryboardEditorPage,
+  queryStoryboardEpisodeDetails,
   regenerateAiImageTask,
   regenerateAiVideoTask,
   replaceStoryboardAssetReferences,
@@ -1106,8 +1109,6 @@ const StoryboardCard = ({
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
   return (
     <article
-      id={`storyboard-${item.id}`}
-      tabIndex={-1}
       className="storyboard-card"
       style={{
         border: '1px solid #e4e9f2',
@@ -1865,11 +1866,21 @@ const ProductionWorkbenchStoryboard = () => {
   const [storyboardLoadAttempt, setStoryboardLoadAttempt] = useState(0);
   const [episodeDetailsOpen, setEpisodeDetailsOpen] = useState(false);
   const [mutationRefreshFailed, setMutationRefreshFailed] = useState(false);
-  const [project, setProject] = useState<Project>();
+  const outletContext = useOutletContext<ProductionWorkbenchOutletContext | null | undefined>();
+  const [standaloneProject, setStandaloneProject] = useState<Project>();
+  const project = outletContext
+    ? (outletContext.project?.id === projectId ? outletContext.project : undefined)
+    : (standaloneProject?.id === projectId ? standaloneProject : undefined);
+  const [episodeDetails, setEpisodeDetails] = useState<{
+    projectId: number;
+    episodeId: number;
+    episode: ScriptEpisode;
+  }>();
   const [videoModels, setVideoModels] = useState<ProjectModelOption[]>([]);
   const [imageModels, setImageModels] = useState<ProjectModelOption[]>([]);
   const [configuredImageModelId, setConfiguredImageModelId] = useState<number>();
   const [selectedModelId, setSelectedModelId] = useState<number>();
+  const explicitVideoModelSelection = useRef(false);
   const [videoSettings, setVideoSettings] = useState<
     Record<number, VideoGenerationSettings>
   >({});
@@ -1897,6 +1908,29 @@ const ProductionWorkbenchStoryboard = () => {
   const storyboardSaves = useRef<Record<number, Promise<unknown>>>({});
   const referenceSaveStates = useRef(new Map<number, StoryboardReferenceSaveState>());
   const [drafts, setDrafts] = useState<StoryboardDraft>({});
+  const draftSources = useRef<StoryboardDraft>({});
+  const loadDrafts = (shots: StoryboardShot[]) => {
+    const sources = draftSources.current;
+    const incoming = Object.fromEntries(shots.map((item) => [item.id, {
+      scriptText: getStoryboardScriptText(item),
+      videoPrompt: getStoryboardPrompt(item),
+      promptDocument: item.promptDocument,
+    }]));
+    draftSources.current = { ...sources, ...incoming };
+    setDrafts((previous) => ({
+      ...previous,
+      ...Object.fromEntries(shots.map((item) => {
+        const draft = previous[item.id];
+        const source = sources[item.id];
+        const edited = draft && source && (
+          draft.scriptText !== source.scriptText || draft.videoPrompt !== source.videoPrompt ||
+          (draft.promptDocument !== source.promptDocument &&
+            JSON.stringify(draft.promptDocument ?? null) !== JSON.stringify(source.promptDocument ?? null))
+        );
+        return [item.id, edited ? draft : incoming[item.id]];
+      })),
+    }));
+  };
   const [storyboardExecution, setStoryboardExecution] =
     useState<API.AiExecutionResponse>();
   const [storyboardBusy, setStoryboardBusy] = useState(false);
@@ -2050,30 +2084,49 @@ const ProductionWorkbenchStoryboard = () => {
   };
 
   useEffect(() => {
-    if (!projectId) {
-      return;
-    }
+    if (!projectId || outletContext != null) return;
     let active = true;
-    const requestId = storyboardRequestId.current + 1;
-    storyboardRequestId.current = requestId;
-    setStoryboardLoading(true);
-    setStoryboardLoadFailed(false);
-    void queryProject(projectId).then((response) => {
-      if (active) setProject(response.data);
+    void queryProjectMetadata(projectId).then((response) => {
+      if (active) setStandaloneProject(response.data);
     }).catch(() => {
       if (active) message.error('项目信息加载失败');
     });
-    void Promise.all([queryProjectAiModels(projectId), queryProjectAiConfig(projectId)])
-      .then(([modelResponse, configResponse]) => {
-        if (!active) return;
-        const models = modelResponse.data?.videoModels || [];
-        setVideoModels(models);
-        setSelectedModelId(configResponse.data?.videoModelId || models[0]?.id);
-        setImageModels(modelResponse.data?.imageModels || []);
-        setConfiguredImageModelId(configResponse.data?.imageModelId || undefined);
-      }).catch(() => {
-        if (active) message.error('视频模型加载失败');
-      });
+    return () => { active = false; };
+  }, [projectId, outletContext != null]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let active = true;
+    setDrafts({});
+    draftSources.current = {};
+    setWorkspace((previous) => previous.projectId === projectId ? previous : {
+      projectId, script: null, versions: [], characters: [], scenes: [], props: [], storyboards: [],
+    });
+    setVideoModels([]);
+    setImageModels([]);
+    setSelectedModelId(undefined);
+    explicitVideoModelSelection.current = false;
+    setConfiguredImageModelId(undefined);
+    const modelsRequest = queryProjectAiModels(projectId);
+    const configRequest = queryProjectAiConfig(projectId);
+    void modelsRequest.then((response) => {
+      if (!active) return;
+      const models = response.data?.videoModels || [];
+      setVideoModels(models);
+      setImageModels(response.data?.imageModels || []);
+    }).catch(() => {
+      if (active) message.error('视频模型加载失败');
+    });
+    void configRequest.then((response) => {
+      if (!active) return;
+      setConfiguredImageModelId(response.data?.imageModelId || undefined);
+    }).catch(() => {
+      if (active) message.error('视频模型加载失败');
+    });
+    void Promise.all([modelsRequest, configRequest]).then(([modelsResponse, configResponse]) => {
+      if (!active || explicitVideoModelSelection.current) return;
+      setSelectedModelId(configResponse.data?.videoModelId || modelsResponse.data?.videoModels?.[0]?.id);
+    }).catch(() => undefined);
     void queryAssetSettingsSummary(projectId).then((response) => {
       if (!active) return;
       setWorkspace((previous) => ({
@@ -2088,24 +2141,34 @@ const ProductionWorkbenchStoryboard = () => {
     void queryLatestStoryboardBatch(projectId).then((response) => {
       if (active) setStoryboardBatch(response.data || undefined);
     }).catch(() => undefined);
+    return () => { active = false; };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let active = true;
+    const requestId = ++storyboardRequestId.current;
+    setStoryboardLoading(true);
+    setStoryboardLoadFailed(false);
     const initialPage = navigationTarget.episodeNo
-      ? queryStoryboardWorkspace(projectId, { episodeNo: navigationTarget.episodeNo, current: navigationTarget.current, pageSize: storyboardPageSize })
-      : queryStoryboardWorkspace(projectId);
+      ? queryStoryboardEditorPage(projectId, {
+        episodeNo: navigationTarget.episodeNo,
+        current: navigationTarget.current,
+        pageSize: storyboardPageSize,
+        ...(navigationTarget.storyboardId ? { storyboardId: navigationTarget.storyboardId } : {}),
+      })
+      : queryStoryboardEditorPage(projectId);
     void initialPage
       .then((storyboardResponse) => {
         if (!active || storyboardRequestId.current !== requestId) return;
         const shots = storyboardResponse.data?.storyboards || [];
         const episodes = storyboardResponse.data?.episodes || [];
-        setWorkspace((previous) => ({ ...previous, storyboards: shots, episodes }));
+        setWorkspace((previous) => ({ ...previous, projectId, storyboards: shots, episodes }));
         setStoryboardPage(storyboardResponse.data?.current || 1);
         setStoryboardTotal(storyboardResponse.data?.total ?? shots.length);
         setStoryboardNavigation(navigationFromPage(storyboardResponse.data));
         setActiveEpisode(storyboardResponse.data?.episodeNo || episodes[0]?.episodeNo || shots[0]?.episodeNo || 1);
-        setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
-          scriptText: getStoryboardScriptText(item),
-          videoPrompt: getStoryboardPrompt(item),
-          promptDocument: item.promptDocument,
-        }])));
+        loadDrafts(shots);
         setStoryboardLoading(false);
       })
       .catch(() => {
@@ -2118,10 +2181,10 @@ const ProductionWorkbenchStoryboard = () => {
     return () => {
       active = false;
     };
-  }, [projectId, storyboardLoadAttempt, navigationTarget.episodeNo, navigationTarget.current]);
+  }, [projectId, storyboardLoadAttempt, navigationTarget.episodeNo, navigationTarget.current, navigationTarget.storyboardId]);
 
   useEffect(() => {
-    if (storyboardLoading || !navigationTarget.storyboardId || activeEpisode !== navigationTarget.episodeNo) return;
+    if (storyboardLoading || !navigationTarget.storyboardId) return;
     const target = document.getElementById(`storyboard-${navigationTarget.storyboardId}`);
     target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     target?.focus({ preventScroll: true });
@@ -2366,6 +2429,7 @@ const ProductionWorkbenchStoryboard = () => {
       watermark: project?.videoWatermark === true,
     };
   const changeSelectedModel = (value: number | string) => {
+    explicitVideoModelSelection.current = true;
     const nextId = Number(value);
     const nextModel = videoModels.find((model) => model.id === nextId);
     const supported = nextModel?.constraints?.resolutions || ['720p'];
@@ -2406,9 +2470,27 @@ const ProductionWorkbenchStoryboard = () => {
       ),
     ).sort((a, b) => a - b);
   }, [workspace.episodes, workspace.storyboards]);
-  const currentEpisode = workspace.episodes?.find(
-    (episode) => episode.episodeNo === activeEpisode,
-  );
+  const episodeNavigation = workspace.projectId === projectId
+    ? workspace.episodes?.find((episode) => episode.episodeNo === activeEpisode)
+    : undefined;
+  const currentEpisodeId = episodeNavigation?.episodeId;
+  const currentEpisode = episodeDetails?.projectId === projectId && episodeDetails.episodeId === currentEpisodeId
+    ? { ...episodeNavigation, ...episodeDetails.episode }
+    : episodeNavigation;
+
+  useEffect(() => {
+    if (!projectId || !currentEpisodeId) return;
+    const controller = new AbortController();
+    void queryStoryboardEpisodeDetails(projectId, currentEpisodeId, controller.signal)
+      .then((response) => {
+        if (!controller.signal.aborted && response.data) {
+          setEpisodeDetails({ projectId, episodeId: currentEpisodeId, episode: response.data });
+        }
+      }).catch(() => {
+        // The summary is optional; keep the page editable if it is unavailable.
+      });
+    return () => controller.abort();
+  }, [projectId, currentEpisodeId]);
   const episodeTitle = currentEpisode?.title?.trim();
   const episodeSummary =
     currentEpisode?.formalSummary?.content.summary?.trim() ||
@@ -2534,41 +2616,31 @@ const ProductionWorkbenchStoryboard = () => {
   ) => {
     const requestId = storyboardRequestId.current + 1;
     storyboardRequestId.current = requestId;
-    const [assetResponse, storyboardResponse] = await Promise.all([
-      queryAssetSettingsSummary(projectId),
-      queryStoryboardWorkspace(projectId, {
-        episodeNo,
-        current,
-        pageSize: storyboardPageSize,
-      }),
-    ]);
+    void queryAssetSettingsSummary(projectId).then((response) => {
+      if (storyboardRequestId.current !== requestId) return;
+      setWorkspace((previous) => ({
+        ...previous,
+        characters: response.data?.characters || [],
+        scenes: response.data?.scenes || [],
+        props: response.data?.props || [],
+      }));
+    }).catch(() => {
+      if (storyboardRequestId.current === requestId) message.error('分镜素材加载失败');
+    });
+    const storyboardResponse = await queryStoryboardEditorPage(projectId, {
+      episodeNo, current, pageSize: storyboardPageSize,
+    });
     if (storyboardRequestId.current === requestId && storyboardResponse.data) {
-      const nextWorkspace: ProductionWorkspaceState = {
-        projectId, script: null, versions: [],
-        characters: assetResponse.data?.characters || [],
-        scenes: assetResponse.data?.scenes || [],
-        props: assetResponse.data?.props || [],
-        storyboards: storyboardResponse.data.storyboards || [],
+      const shots = storyboardResponse.data.storyboards || [];
+      setWorkspace((previous) => ({
+        ...previous,
+        storyboards: shots,
         episodes: storyboardResponse.data.episodes || [],
-      };
-      setWorkspace(nextWorkspace);
-      setStoryboardPage(storyboardResponse.data?.current || current);
-      setStoryboardTotal(
-        storyboardResponse.data?.total ?? nextWorkspace.storyboards.length,
-      );
+      }));
+      setStoryboardPage(storyboardResponse.data.current || current);
+      setStoryboardTotal(storyboardResponse.data.total ?? shots.length);
       setStoryboardNavigation(navigationFromPage(storyboardResponse.data));
-      setDrafts(
-        Object.fromEntries(
-          nextWorkspace.storyboards.map((item) => [
-            item.id,
-            {
-              scriptText: getStoryboardScriptText(item),
-              videoPrompt: getStoryboardPrompt(item),
-              promptDocument: item.promptDocument,
-            },
-          ]),
-        ),
-      );
+      loadDrafts(shots);
     }
   };
 
@@ -2577,16 +2649,14 @@ const ProductionWorkbenchStoryboard = () => {
     setStoryboardLoading(true);
     setStoryboardLoadFailed(false);
     try {
-      const response = await queryStoryboardWorkspace(projectId, { episodeNo, current, pageSize: storyboardPageSize });
+      const response = await queryStoryboardEditorPage(projectId, { episodeNo, current, pageSize: storyboardPageSize });
       if (requestId !== storyboardRequestId.current) return;
       const shots = response.data.storyboards || [];
       setWorkspace((previous) => ({ ...previous, episodes: response.data.episodes || previous.episodes, storyboards: shots }));
       setStoryboardPage(response.data.current || current);
       setStoryboardTotal(response.data.total ?? shots.length);
       setStoryboardNavigation(navigationFromPage(response.data));
-      setDrafts(Object.fromEntries(shots.map((item) => [item.id, {
-        scriptText: getStoryboardScriptText(item), videoPrompt: getStoryboardPrompt(item), promptDocument: item.promptDocument,
-      }])));
+      loadDrafts(shots);
     } catch (error) {
       if (requestId === storyboardRequestId.current) setStoryboardLoadFailed(true);
       throw error;
@@ -2971,7 +3041,7 @@ const ProductionWorkbenchStoryboard = () => {
     setVideoBatchCandidates([]);
     const isCurrent = () => videoBatchRequestId.current === requestId;
     try {
-      const firstPage = await queryStoryboardWorkspace(projectId, {
+      const firstPage = await queryStoryboardEditorPage(projectId, {
         episodeNo: activeEpisode, current: 1, pageSize: storyboardPageSize,
       });
       if (!isCurrent()) return;
@@ -2979,7 +3049,7 @@ const ProductionWorkbenchStoryboard = () => {
       const shots = [...firstPage.data.storyboards];
       const pageCount = Math.ceil((firstPage.data.total ?? shots.length) / storyboardPageSize);
       for (let current = 2; current <= pageCount; current += 1) {
-        const page = await queryStoryboardWorkspace(projectId, {
+        const page = await queryStoryboardEditorPage(projectId, {
           episodeNo: activeEpisode, current, pageSize: storyboardPageSize,
         });
         if (!isCurrent()) return;
@@ -3225,6 +3295,9 @@ const ProductionWorkbenchStoryboard = () => {
         imagePrompt: storyboard.imagePrompt,
         videoPrompt,
       });
+      draftSources.current[storyboard.id] = {
+        ...draftSources.current[storyboard.id], scriptText, videoPrompt,
+      };
       setWorkspace((previous) => ({
         ...previous,
         storyboards: previous.storyboards.map((item) =>
@@ -3253,15 +3326,12 @@ const ProductionWorkbenchStoryboard = () => {
         item.id === storyboard.id ? nextStoryboard : item,
       ),
     }));
-    setDrafts((previous) => ({
-      ...previous,
-      [storyboard.id]: {
-        scriptText: getStoryboardScriptText(nextStoryboard),
-        videoPrompt: nextVideoPrompt,
-        promptDocument:
-          values.promptDocument || storyboard.promptDocument || undefined,
-      },
-    }));
+    const savedDraft = {
+      scriptText: getStoryboardScriptText(nextStoryboard),
+      videoPrompt: nextVideoPrompt,
+      promptDocument: values.promptDocument || storyboard.promptDocument || undefined,
+    };
+    setDrafts((previous) => ({ ...previous, [storyboard.id]: savedDraft }));
 
     try {
       await persistStoryboard(
@@ -3270,6 +3340,7 @@ const ProductionWorkbenchStoryboard = () => {
           videoPrompt: nextVideoPrompt,
         }),
       );
+      draftSources.current[storyboard.id] = savedDraft;
       message.success('分镜已保存');
     } catch {
       setWorkspace((previous) => ({
@@ -3879,61 +3950,66 @@ const ProductionWorkbenchStoryboard = () => {
         ) : visibleStoryboards.length ? (
           <div style={{ display: 'grid', gap: 16 }}>
             {visibleStoryboards.map((item, index) => (
-              <StoryboardCard
-                key={item.id}
-                item={item}
-                index={(item.storyboardNo || item.shotNo || index + 1) - 1}
-                characters={characters}
-                scenes={scenes}
-                props={props}
-                episodes={workspace?.episodes ?? []}
-                imageTasks={imageTasks}
-                videoTasks={videoTasks}
-                videoHistory={videoHistories[item.id]}
-                referenceOptions={referenceOptions}
-                referenceThumbnails={referenceThumbnails}
-                draft={
-                  {
-                    ...(drafts[item.id] || {
-                      scriptText: getStoryboardScriptText(item),
-                      videoPrompt: getStoryboardPrompt(item),
-                    }),
-                    promptDocument: promptFor(item),
+              <ViewportMount
+                key={`${projectId}:${item.id}`}
+                id={`storyboard-${item.id}`}
+                eager={index < 2 || item.id === navigationTarget.storyboardId || item.id === activeStoryboardId}
+              >
+                <StoryboardCard
+                  item={item}
+                  index={(item.storyboardNo || item.shotNo || index + 1) - 1}
+                  characters={characters}
+                  scenes={scenes}
+                  props={props}
+                  episodes={workspace?.episodes ?? []}
+                  imageTasks={imageTasks}
+                  videoTasks={videoTasks}
+                  videoHistory={videoHistories[item.id]}
+                  referenceOptions={referenceOptions}
+                  referenceThumbnails={referenceThumbnails}
+                  draft={
+                    {
+                      ...(drafts[item.id] || {
+                        scriptText: getStoryboardScriptText(item),
+                        videoPrompt: getStoryboardPrompt(item),
+                      }),
+                      promptDocument: promptFor(item),
+                    }
                   }
-                }
-                model={selectedVideoModel?.name || '未配置视频模型'}
-                modelConstraints={selectedVideoModel?.constraints}
-                generationSettings={settingsFor(item)}
-                onDraftChange={updateDraft}
-                onGenerationSettingsChange={(values) =>
-                  setVideoSettings((previous) => ({
-                    ...previous,
-                    [item.id]: { ...settingsFor(item), ...values },
-                  }))
-                }
-                onGenerate={generateVideo}
-                onBindVideoResult={bindVideoResult}
-                bindingVideoId={bindingVideoId}
-                onCancelVideo={cancelVideo}
-                onRetryVideo={retryVideo}
-                onGenerateImage={generateImage}
-                onSelectFirstFrame={selectFirstFrame}
-                selectingFirstFrameId={selectingFirstFrameId}
-                onRegenerateImage={regenerateImage}
-                onCancelImage={cancelImage}
-                onGenerateVoice={generateVoice}
-                onReplaceReferences={replaceStoryboardReferences}
-                onGenerateReferenceImage={generateReferenceImage}
-                onLoadVariants={loadAssetVariants}
-                onLoadImageCandidates={loadImageCandidates}
-                onLoadVideoCandidates={loadVideoCandidates}
-                generatingReferenceKeys={generatingReferenceKeys}
-                onSaveScript={saveStoryboardScript}
-                onUpdateStoryboard={saveStoryboardFields}
-                onAddStoryboard={addStoryboardAfter}
-                onCopyStoryboard={copyStoryboard}
-                onDelete={removeStoryboard}
-              />
+                  model={selectedVideoModel?.name || '未配置视频模型'}
+                  modelConstraints={selectedVideoModel?.constraints}
+                  generationSettings={settingsFor(item)}
+                  onDraftChange={updateDraft}
+                  onGenerationSettingsChange={(values) =>
+                    setVideoSettings((previous) => ({
+                      ...previous,
+                      [item.id]: { ...settingsFor(item), ...values },
+                    }))
+                  }
+                  onGenerate={generateVideo}
+                  onBindVideoResult={bindVideoResult}
+                  bindingVideoId={bindingVideoId}
+                  onCancelVideo={cancelVideo}
+                  onRetryVideo={retryVideo}
+                  onGenerateImage={generateImage}
+                  onSelectFirstFrame={selectFirstFrame}
+                  selectingFirstFrameId={selectingFirstFrameId}
+                  onRegenerateImage={regenerateImage}
+                  onCancelImage={cancelImage}
+                  onGenerateVoice={generateVoice}
+                  onReplaceReferences={replaceStoryboardReferences}
+                  onGenerateReferenceImage={generateReferenceImage}
+                  onLoadVariants={loadAssetVariants}
+                  onLoadImageCandidates={loadImageCandidates}
+                  onLoadVideoCandidates={loadVideoCandidates}
+                  generatingReferenceKeys={generatingReferenceKeys}
+                  onSaveScript={saveStoryboardScript}
+                  onUpdateStoryboard={saveStoryboardFields}
+                  onAddStoryboard={addStoryboardAfter}
+                  onCopyStoryboard={copyStoryboard}
+                  onDelete={removeStoryboard}
+                />
+              </ViewportMount>
             ))}
           </div>
         ) : (

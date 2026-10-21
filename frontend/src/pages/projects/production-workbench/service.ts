@@ -34,7 +34,7 @@ export type ScriptEpisode = {
   episodeId?: number;
   episodeNo: number;
   title: string;
-  content?: string;
+  content?: string | null;
   summary?: string | null;
   contentFingerprint?: string | null;
   generatedByRunId?: number | null;
@@ -628,6 +628,25 @@ export const queryStoryboardWorkspace = async (
   request<ApiResponse<StoryboardWorkspacePage>>(
     `/api/projects/${projectId}/storyboard-workspace`,
     { params },
+  );
+
+export const queryStoryboardEditorPage = async (
+  projectId: number,
+  params: { episodeNo?: number; current?: number; pageSize?: number; storyboardId?: number } = {},
+) =>
+  request<ApiResponse<StoryboardWorkspacePage>>(
+    `/api/projects/${projectId}/storyboard-editor-page`,
+    { params },
+  );
+
+export const queryStoryboardEpisodeDetails = async (
+  projectId: number,
+  episodeId: number,
+  signal?: AbortSignal,
+) =>
+  request<ApiResponse<ScriptEpisode>>(
+    `/api/projects/${projectId}/storyboard-episodes/${episodeId}/details`,
+    { signal },
   );
 
 export type StoryboardMediaSummary = {

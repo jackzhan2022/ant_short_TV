@@ -11,6 +11,11 @@ import { PointEstimateCancelledError } from '@/services/point-estimate';
 
 const mocks = vi.hoisted(() => ({
   locationSearch: '',
+  projectId: '1',
+  outletContext: undefined as { project?: any } | undefined,
+  queryProjectMetadata: vi.fn(),
+  queryStoryboardEditorPage: vi.fn(),
+  queryStoryboardEpisodeDetails: vi.fn(),
   queryProject: vi.fn(),
   queryProjectAiModels: vi.fn(),
   queryProjectAiConfig: vi.fn(),
@@ -56,7 +61,8 @@ vi.mock('@umijs/max', () => ({
   history: {
     push: vi.fn(),
   },
-  useParams: () => ({ id: '1' }),
+  useParams: () => ({ id: mocks.projectId }),
+  useOutletContext: () => mocks.outletContext,
   useLocation: () => ({ search: mocks.locationSearch }),
 }));
 
@@ -67,6 +73,7 @@ vi.mock('@/services/point-estimate', async (original) => ({
 
 vi.mock('@/services/account-team/project', () => ({
   queryProject: mocks.queryProject,
+  queryProjectMetadata: mocks.queryProjectMetadata,
 }));
 
 vi.mock('./ai-config/service', () => ({
@@ -109,6 +116,8 @@ vi.mock('./service', () => ({
   queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
   queryAssetVisualWorkspace: mocks.queryAssetVisualWorkspace,
   queryStoryboardWorkspace: mocks.queryStoryboardWorkspace,
+  queryStoryboardEditorPage: mocks.queryStoryboardEditorPage,
+  queryStoryboardEpisodeDetails: mocks.queryStoryboardEpisodeDetails,
   queryStoryboardMedia: mocks.queryStoryboardMedia,
   queryAiImageTasks: mocks.queryAiImageTasks,
   queryAiImageTask: mocks.queryAiImageTask,
@@ -444,7 +453,7 @@ const setupWorkspaceResponse = (
       prompt: '玩具汽车提示词',
     },
   ];
-  mocks.queryProject.mockResolvedValue({
+  const projectResponse = {
     data: {
       id: 1,
       name: '最危险的捉迷藏',
@@ -456,7 +465,9 @@ const setupWorkspaceResponse = (
       videoGenerateAudio: false,
       videoWatermark: true,
     },
-  });
+  };
+  mocks.queryProject.mockResolvedValue(projectResponse);
+  mocks.queryProjectMetadata.mockResolvedValue(projectResponse);
   mocks.queryProjectAiModels.mockResolvedValue({
     data: {
       textModels: [],
@@ -569,6 +580,15 @@ const setupWorkspaceResponse = (
   });
   mocks.queryAssetSettingsSummary.mockResolvedValue({
     data: { characters: workspaceData.characters, scenes: workspaceData.scenes, props: workspaceData.props },
+  });
+  mocks.queryStoryboardEpisodeDetails.mockImplementation(async (_projectId: number, episodeId: number) => ({
+    data: { ...workspaceData.episodes.find((episode) => episode.episodeId === episodeId), content: null },
+  }));
+  mocks.queryStoryboardEditorPage.mockResolvedValue({
+    data: {
+      episodes: workspaceData.episodes.map((episode) => ({ ...episode, content: null, formalSummary: null, summary: null })),
+      episodeNo: 1, current: 1, pageSize: 20, total: workspaceData.storyboards.length, storyboards: workspaceData.storyboards,
+    },
   });
   mocks.queryStoryboardWorkspace.mockResolvedValue({
     data: { episodes: workspaceData.episodes, episodeNo: 1, current: 1, pageSize: 20, total: workspaceData.storyboards.length, storyboards: workspaceData.storyboards },
@@ -796,6 +816,8 @@ describe('ProductionWorkbench script page', () => {
   beforeEach(() => {
     mocks.confirmPointEstimates.mockResolvedValue({ estimatedPoints: 10 });
     mocks.locationSearch = '';
+    mocks.projectId = '1';
+    mocks.outletContext = undefined;
     vi.stubGlobal('IntersectionObserver', class {
       constructor(private callback: IntersectionObserverCallback) {}
       observe() {
@@ -850,17 +872,279 @@ describe('ProductionWorkbench script page', () => {
     mocks.queryAssetVisualWorkspace.mockResolvedValue({ data: { variants: [], episodeBindings: [] } });
   });
 
+  it('uses parent project metadata without a duplicate project request, including while parent is pending', async () => {
+    mocks.outletContext = { project: undefined };
+    const { rerender } = render(<ProductionWorkbench />);
+    await screen.findByText('分镜1');
+    expect(mocks.queryProjectMetadata).not.toHaveBeenCalled();
+    expect(mocks.queryProject).not.toHaveBeenCalled();
+    mocks.outletContext = { project: { id: 1, aspectRatio: '16:9', videoResolution: '1080p' } };
+    rerender(<ProductionWorkbench />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /视频参数/ })[0]).toHaveTextContent('1080p'));
+    expect(mocks.queryProjectMetadata).not.toHaveBeenCalled();
+  });
+
+  it('loads standalone metadata and focused cards while episode details and AI config are pending', async () => {
+    mocks.queryStoryboardEpisodeDetails.mockReturnValue(new Promise(() => {}));
+    mocks.queryProjectAiConfig.mockReturnValue(new Promise(() => {}));
+    render(<ProductionWorkbench />);
+    await screen.findByText('分镜1');
+    await waitFor(() => expect(mocks.queryStoryboardEpisodeDetails).toHaveBeenCalledWith(1, 1001, expect.any(AbortSignal)));
+    expect(mocks.queryProjectMetadata).toHaveBeenCalledWith(1);
+    expect(mocks.queryProject).not.toHaveBeenCalled();
+    expect(screen.getAllByDisplayValue(/停车场，灰色轿车的车主卸下货物/).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText('Seedance 2.0 Standard').length).toBeGreaterThan(0));
+    expect(screen.getByText('暂无本集概要')).toBeInTheDocument();
+  });
+
+  it.each([11, undefined])('waits for config before selecting configured or fallback model %s', async (configuredModelId) => {
+    let resolveConfig!: (value: any) => void;
+    mocks.queryProjectAiConfig.mockReturnValue(new Promise((resolve) => { resolveConfig = resolve; }));
+    render(<ProductionWorkbench />);
+    await screen.findByRole('option', { name: 'Seedance 2.0 Fast' });
+    await screen.findByLabelText('分镜1视频提示词');
+    expect(screen.getAllByText('未配置视频模型').length).toBeGreaterThan(0);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' })));
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    await act(async () => resolveConfig({ data: { projectId: 1, videoModelId: configuredModelId } }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '视频生成模型' })).toHaveValue(String(configuredModelId || 10)));
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1,
+      expect.objectContaining({ modelId: configuredModelId || 10 }), true));
+  });
+
+  it('waits for the model catalog when config resolves first', async () => {
+    const catalog = await mocks.queryProjectAiModels();
+    let resolveCatalog!: (value: any) => void;
+    mocks.queryProjectAiModels.mockReturnValue(new Promise((resolve) => { resolveCatalog = resolve; }));
+    mocks.queryProjectAiConfig.mockResolvedValue({ data: { projectId: 1, videoModelId: 11 } });
+    render(<ProductionWorkbench />);
+    await screen.findByLabelText('分镜1视频提示词');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' })));
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    await act(async () => resolveCatalog(catalog));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '视频生成模型' })).toHaveValue('11'));
+  });
+
+  it('keeps an explicit model selection and normalized settings when config arrives late', async () => {
+    let resolveConfig!: (value: any) => void;
+    mocks.queryProjectAiConfig.mockReturnValue(new Promise((resolve) => { resolveConfig = resolve; }));
+    render(<ProductionWorkbench />);
+    await screen.findByRole('option', { name: 'Seedance 2.0 Fast' });
+    await screen.findByLabelText('分镜1视频提示词');
+    fireEvent.change(screen.getByRole('combobox', { name: '视频生成模型' }), { target: { value: '11' } });
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /视频参数/ })[0]).toHaveTextContent('720p'));
+    await act(async () => resolveConfig({ data: { projectId: 1, videoModelId: 10 } }));
+    expect(screen.getByRole('combobox', { name: '视频生成模型' })).toHaveValue('11');
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1,
+      expect.objectContaining({ modelId: 11, resolution: '720p' }), true));
+  });
+
+  it('resets explicit model selection on project switch and ignores the old project config', async () => {
+    let resolveOldConfig!: (value: any) => void;
+    mocks.queryProjectAiConfig.mockImplementation((projectId: number) => projectId === 1
+      ? new Promise((resolve) => { resolveOldConfig = resolve; })
+      : Promise.resolve({ data: { projectId: 2, videoModelId: 10 } }));
+    const { rerender } = render(<ProductionWorkbench />);
+    await screen.findByRole('option', { name: 'Seedance 2.0 Fast' });
+    fireEvent.change(screen.getByRole('combobox', { name: '视频生成模型' }), { target: { value: '11' } });
+    mocks.projectId = '2';
+    rerender(<ProductionWorkbench />);
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '视频生成模型' })).toHaveValue('10'));
+    await act(async () => resolveOldConfig({ data: { projectId: 1, videoModelId: 11 } }));
+    expect(screen.getByRole('combobox', { name: '视频生成模型' })).toHaveValue('10');
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(2,
+      expect.objectContaining({ modelId: 10 }), true));
+  });
+
+  it('keeps editing available when current episode details fail', async () => {
+    mocks.queryStoryboardEpisodeDetails.mockRejectedValue(new Error('summary unavailable'));
+    render(<ProductionWorkbench />);
+    await screen.findByText('分镜1');
+    expect(screen.getByText('暂无本集概要')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新加载分镜' })).not.toBeInTheDocument();
+  });
+
+  it('ignores episode details that finish after switching to another episode', async () => {
+    let resolveFirst!: (value: any) => void;
+    mocks.queryStoryboardEpisodeDetails.mockImplementation((_projectId: number, episodeId: number) => episodeId === 1001
+      ? new Promise((resolve) => { resolveFirst = resolve; })
+      : Promise.resolve({ data: { episodeId: 1002, episodeNo: 2, title: '夜色警报', summary: '当前第二集概要' } }));
+    render(<ProductionWorkbench />);
+    await waitFor(() => expect(resolveFirst).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    await screen.findByText('当前第二集概要');
+    await act(async () => resolveFirst({ data: { episodeId: 1001, episodeNo: 1, summary: '过期概要' } }));
+    expect(screen.queryByText('过期概要')).not.toBeInTheDocument();
+    expect(screen.getByText('当前第二集概要')).toBeInTheDocument();
+  });
+
+  it('ignores episode details that finish after navigating to another project', async () => {
+    let resolveFirst!: (value: any) => void;
+    mocks.queryStoryboardEpisodeDetails.mockImplementation((projectId: number) => projectId === 1
+      ? new Promise((resolve) => { resolveFirst = resolve; })
+      : Promise.resolve({ data: { episodeId: 1001, episodeNo: 1, title: '新项目第一集', summary: '新项目概要' } }));
+    const { rerender } = render(<ProductionWorkbench />);
+    await waitFor(() => expect(resolveFirst).toBeDefined());
+    mocks.projectId = '2';
+    rerender(<ProductionWorkbench />);
+    await screen.findByText('新项目概要');
+    await act(async () => resolveFirst({ data: { episodeId: 1001, episodeNo: 1, summary: '旧项目概要' } }));
+    expect(screen.queryByText('旧项目概要')).not.toBeInTheDocument();
+    expect(screen.getByText('新项目概要')).toBeInTheDocument();
+  });
+
+  it('initially mounts only the first two of twenty editors while keeping every jump target', async () => {
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() {}
+      disconnect() {}
+    });
+    const response = await mocks.queryStoryboardEditorPage();
+    setupWorkspaceResponse({ storyboards: Array.from({ length: 20 }, (_, index) => ({
+      ...response.data.storyboards[0], id: 301 + index, shotNo: index + 1,
+    })) });
+    render(<ProductionWorkbench />);
+    await screen.findByText('分镜1');
+    expect(screen.getByText('分镜2')).toBeInTheDocument();
+    expect(screen.queryByText('分镜3')).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText(/分镜\d+视频提示词/)).toHaveLength(2);
+    for (let index = 0; index < 20; index += 1) {
+      expect(document.getElementById(`storyboard-${301 + index}`)).toBeInTheDocument();
+    }
+  });
+
+  it('retains unsaved script drafts across episode navigation', async () => {
+    render(<ProductionWorkbench />);
+    const script = await screen.findByLabelText('分镜1剧本原文');
+    fireEvent.change(script, { target: { value: '尚未保存的分镜原文' } });
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    await screen.findByText('第二集概要');
+    fireEvent.click(screen.getByRole('button', { name: '1' }));
+    await screen.findByText('第一集概要');
+    expect(await screen.findByLabelText('分镜1剧本原文')).toHaveValue('尚未保存的分镜原文');
+  });
+
+  it('refreshes generated cards without waiting for refreshed asset summaries', async () => {
+    render(<ProductionWorkbench />);
+    await screen.findByText('分镜1');
+    const response = await mocks.queryStoryboardEditorPage();
+    mocks.queryStoryboardEditorPage.mockResolvedValue({ data: { ...response.data, storyboards: [{
+      ...response.data.storyboards[0], id: 301, visualDescription: '新生成的分镜正文',
+    }] } });
+    mocks.queryAssetSettingsSummary.mockReturnValue(new Promise(() => {}));
+    fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
+    await waitFor(() => expect((screen.getByLabelText('分镜1剧本原文') as HTMLTextAreaElement).value).toContain('新生成的分镜正文'));
+  });
+
+  it('replaces saved prompt drafts with newly generated content', async () => {
+    render(<ProductionWorkbench />);
+    const editor = await screen.findByLabelText('分镜1视频提示词');
+    editor.textContent = '已经保存的提示词';
+    fireEvent.input(editor);
+    fireEvent.blur(editor);
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101,
+      expect.objectContaining({ videoPrompt: expect.stringContaining('已经保存的提示词') })));
+    const response = await mocks.queryStoryboardEditorPage();
+    mocks.queryStoryboardEditorPage.mockResolvedValue({ data: { ...response.data, storyboards: [{
+      ...response.data.storyboards[0], videoPrompt: '重新生成的提示词',
+      promptDocument: { version: 2, nodes: [{ type: 'text', text: '重新生成的提示词' }] },
+    }] } });
+    fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
+    await waitFor(() => expect(screen.getByLabelText('分镜1视频提示词')).toHaveTextContent('重新生成的提示词'));
+  });
+
   it('opens and focuses the episode page targeted by the video workbench', async () => {
     mocks.locationSearch = '?episodeNo=2&current=2&storyboardId=201';
-    const response = await mocks.queryStoryboardWorkspace();
-    mocks.queryStoryboardWorkspace.mockResolvedValue({ data: {
+    const response = await mocks.queryStoryboardEditorPage();
+    mocks.queryStoryboardEditorPage.mockResolvedValue({ data: {
       ...response.data, episodeNo: 2, current: 2, total: 21,
       storyboards: response.data.storyboards.filter((shot: any) => shot.id === 201),
     } });
     render(<ProductionWorkbench />);
-    await waitFor(() => expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, { episodeNo: 2, current: 2, pageSize: 20 }));
+    await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1, { episodeNo: 2, current: 2, pageSize: 20, storyboardId: 201 }));
     await waitFor(() => expect(document.getElementById('storyboard-201')).toHaveFocus());
     expect(screen.getByText('第 2 / 2 页，共 21 个镜头')).toBeInTheDocument();
+  });
+
+  it('focuses a deep-link target after the backend resolves its reordered episode number', async () => {
+    mocks.locationSearch = '?episodeNo=1&current=2&storyboardId=201';
+    const response = await mocks.queryStoryboardEditorPage();
+    mocks.queryStoryboardEditorPage.mockResolvedValue({ data: {
+      ...response.data, episodeNo: 2, current: 1, total: 1,
+      storyboards: response.data.storyboards.filter((shot: any) => shot.id === 201),
+    } });
+    render(<ProductionWorkbench />);
+    await waitFor(() => expect(document.getElementById('storyboard-201')).toHaveFocus());
+  });
+
+  it('forwards a deep-link shot only initially and uses the resolved page for subsequent paging', async () => {
+    mocks.locationSearch = '?episodeNo=2&current=4&storyboardId=201';
+    const response = await mocks.queryStoryboardEditorPage();
+    mocks.queryStoryboardEditorPage.mockClear();
+    mocks.queryStoryboardEditorPage.mockResolvedValue({ data: {
+      ...response.data, episodeNo: 2, current: 2, total: 61,
+      storyboards: response.data.storyboards.filter((shot: any) => shot.id === 201),
+    } });
+    render(<ProductionWorkbench />);
+    await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1, {
+      episodeNo: 2, current: 4, pageSize: 20, storyboardId: 201,
+    }));
+    expect(screen.getByText('第 2 / 4 页，共 61 个镜头')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, {
+      episodeNo: 2, current: 3, pageSize: 20,
+    }));
+    fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
+    await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(3));
+    expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 2, current: 2, pageSize: 20 });
+    expect(mocks.queryStoryboardWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('keeps all-shot navigation and inline video history while focused editors mount lazily', async () => {
+    vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
+    const response = await mocks.queryStoryboardEditorPage();
+    const navigation = Array.from({ length: 41 }, (_, index) => ({ id: 501 + index, shotNo: index + 1, hasVideo: index === 40 }));
+    const shots = Array.from({ length: 20 }, (_, index) => ({ ...response.data.storyboards[0], id: 501 + index, shotNo: index + 1 }));
+    mocks.queryStoryboardEditorPage.mockImplementation(async (_project, params) => ({ data: {
+      ...response.data, current: params?.current || 1, total: 41, storyboardNavigation: navigation,
+      storyboards: params?.current === 3 ? [{ ...shots[0], id: 541, shotNo: 41 }] : shots,
+    } }));
+    mocks.queryStoryboardMedia.mockResolvedValue({ data: {
+      imageTasks: [], videoTasks: [], voiceTasks: [], assetVisuals: [],
+      videoHistory: [{ storyboardId: 501, current: 1, pageSize: 20, total: 2, data: [
+        { id: 900, taskId: 90, storyboardId: 501, videoUrl: '/old.mp4', status: 'ACTIVE', createdAt: '2026-01-01' },
+        { id: 902, taskId: 92, storyboardId: 501, videoUrl: '/new.mp4', status: 'ACTIVE', createdAt: '2026-03-01' },
+      ] }],
+    } });
+    render(<ProductionWorkbench />);
+    await screen.findByRole('button', { name: '预览分镜1视频版本900' });
+    expect(screen.getByRole('button', { name: '预览分镜1视频版本902' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '跳转到分镜41' })).toHaveAttribute('title', '分镜41 · 已有视频');
+    expect(screen.getAllByLabelText(/分镜\d+视频提示词/)).toHaveLength(2);
+    expect(document.getElementById('storyboard-520')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '跳转到分镜3' }));
+    expect(await screen.findByRole('textbox', { name: '分镜3视频提示词' })).toBeInTheDocument();
+    expect(document.getElementById('storyboard-503')).toHaveFocus();
+    expect(mocks.queryStoryboardWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '跳转到分镜41' }));
+    await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 3, pageSize: 20 }));
+    await waitFor(() => expect(document.getElementById('storyboard-541')).toHaveFocus());
+    expect(screen.getByRole('textbox', { name: '分镜41视频提示词' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '跳转到分镜1' })).toBeInTheDocument();
+  });
+
+  it('preserves all-shot navigation when generation reloads the focused editor page', async () => {
+    const response = await mocks.queryStoryboardEditorPage();
+    render(<ProductionWorkbench />);
+    await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    mocks.queryStoryboardEditorPage.mockResolvedValue({ data: { ...response.data,
+      storyboardNavigation: [{ id: 101, shotNo: 1, hasVideo: false }, { id: 141, shotNo: 41, hasVideo: true }],
+    } });
+    fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
+    expect(await screen.findByRole('button', { name: '跳转到分镜41' })).toHaveAttribute('title', '分镜41 · 已有视频');
+    expect(mocks.queryStoryboardWorkspace).not.toHaveBeenCalled();
   });
 
   it('navigates between storyboard cards and updates the position marker while scrolling', async () => {
@@ -888,9 +1172,9 @@ describe('ProductionWorkbench script page', () => {
   });
 
   it('uses the episode navigation index to focus a storyboard on another page', async () => {
-    const response = await mocks.queryStoryboardWorkspace();
+    const response = await mocks.queryStoryboardEditorPage();
     const navigation = Array.from({ length: 21 }, (_, index) => ({ id: 101 + index, shotNo: index + 1, hasVideo: index === 20 }));
-    mocks.queryStoryboardWorkspace.mockImplementation(async (_project, params) => ({ data: {
+    mocks.queryStoryboardEditorPage.mockImplementation(async (_project, params) => ({ data: {
       ...response.data, current: params?.current || 1, total: 21, storyboardNavigation: navigation,
       storyboards: params?.current === 2
         ? [{ ...response.data.storyboards[0], id: 121, shotNo: 21, storyboardNo: 21 }]
@@ -898,7 +1182,7 @@ describe('ProductionWorkbench script page', () => {
     } }));
     render(<ProductionWorkbench />);
     fireEvent.click(await screen.findByRole('button', { name: '跳转到分镜21' }));
-    await waitFor(() => expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, { episodeNo: 1, current: 2, pageSize: 20 }));
+    await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1, { episodeNo: 1, current: 2, pageSize: 20 }));
     await waitFor(() => expect(document.getElementById('storyboard-121')).toHaveFocus());
     expect(screen.getByRole('button', { name: '跳转到分镜21' })).toHaveAttribute('aria-current', 'location');
     expect(screen.getByRole('textbox', { name: '分镜21视频提示词' })).toBeInTheDocument();
@@ -910,7 +1194,7 @@ describe('ProductionWorkbench script page', () => {
       { id: 901, taskId: 91, storyboardId: 101, videoUrl: '/middle.mp4', coverUrl: '/middle.jpg', status: 'ACTIVE', createdAt: '2026-02-01', isSelected: false },
       { id: 900, taskId: 90, storyboardId: 101, videoUrl: '/old.mp4', coverUrl: '/old.jpg', status: 'ACTIVE', createdAt: '2026-01-01', isSelected: true },
     ];
-    const response = await mocks.queryStoryboardWorkspace();
+    const response = await mocks.queryStoryboardEditorPage();
     setupWorkspaceResponse({ storyboards: [{ ...response.data.storyboards[0], currentVideoResultId: 900, currentVideoUrl: '/old.mp4' }] });
     mocks.queryStoryboardMedia.mockResolvedValue({ data: { imageTasks: [], voiceTasks: [], assetVisuals: [],
       videoTasks: [{ id: 90, storyboardId: 101, status: 'SUCCEEDED', results: [versions[2]] }],
@@ -1313,12 +1597,12 @@ describe('ProductionWorkbench script page', () => {
     mocks.replaceStoryboardAssetReferences.mockRejectedValueOnce(new Error('save failed'));
     render(<ProductionWorkbench />);
     await screen.findByLabelText('分镜1角色1资产形态');
-    const pageCalls = mocks.queryStoryboardWorkspace.mock.calls.length;
+    const pageCalls = mocks.queryStoryboardEditorPage.mock.calls.length;
 
     fireEvent.click(screen.getByRole('button', { name: '移除分镜1角色1' }));
 
     await waitFor(() => expect(screen.getByLabelText('分镜1角色1资产形态')).toBeInTheDocument());
-    expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(pageCalls);
+    expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(pageCalls);
   });
 
   it('opens the shared variant generator and shows loading on the submitted thumbnail', async () => {
@@ -1890,7 +2174,7 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => {
       expect(mocks.queryScriptPageWorkspace).not.toHaveBeenCalled();
       expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledWith(1);
-      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1);
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1);
       expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
       expect(mocks.queryStoryboardMedia).toHaveBeenCalledWith(1, [101, 102, 201], expect.anything());
     });
@@ -1923,7 +2207,7 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(screen.getByRole('button', { name: '2' }));
 
     await waitFor(() => {
-      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, {
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1, {
         episodeNo: 2,
         current: 1,
         pageSize: 20,
@@ -2147,7 +2431,7 @@ describe('ProductionWorkbench script page', () => {
   });
 
   it('loads the requested shot page independently from the selected episode', async () => {
-    mocks.queryStoryboardWorkspace.mockResolvedValue({
+    mocks.queryStoryboardEditorPage.mockResolvedValue({
       data: {
         current: 1,
         pageSize: 20,
@@ -2169,7 +2453,7 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
 
     await waitFor(() => {
-      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, {
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1, {
         episodeNo: 1,
         current: 2,
         pageSize: 20,
@@ -2184,7 +2468,7 @@ describe('ProductionWorkbench script page', () => {
     mocks.queryAiVideoTasks.mockRejectedValue(new Error('video unavailable'));
     render(<ProductionWorkbench />);
     expect(await screen.findByLabelText('分镜1剧本原文')).toBeInTheDocument();
-    expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1);
+    expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1);
     expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
   });
 
@@ -2199,14 +2483,14 @@ describe('ProductionWorkbench script page', () => {
     });
     render(<ProductionWorkbench />);
     await screen.findByText('分镜表');
-    mocks.queryStoryboardWorkspace
+    mocks.queryStoryboardEditorPage
       .mockImplementationOnce(() => episodeTwo)
       .mockImplementationOnce(() => episodeOne);
 
     fireEvent.click(screen.getByRole('button', { name: '2' }));
     fireEvent.click(screen.getByRole('button', { name: '1' }));
     await waitFor(() => {
-      expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(3);
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(3);
     });
     resolveEpisodeOne({
       data: {
@@ -2282,7 +2566,7 @@ describe('ProductionWorkbench script page', () => {
         7100,
         expect.any(Function),
       );
-      expect(mocks.queryStoryboardWorkspace.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(mocks.queryStoryboardEditorPage.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -2626,7 +2910,7 @@ describe('ProductionWorkbench script page', () => {
         imagePrompt: '停车场首帧提示词',
         videoPrompt: '画风：写实都市。镜头1 1s 远景摇镜停车场内灰色轿车。',
       });
-      expect(mocks.queryStoryboardWorkspace).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 1, pageSize: 20 });
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 1, pageSize: 20 });
       expect(mocks.queryScriptPageWorkspace).not.toHaveBeenCalled();
       expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(1);
     });
@@ -2638,7 +2922,7 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('分镜1出镜角色')).toBeInTheDocument();
     });
-    mocks.queryStoryboardWorkspace.mockClear();
+    mocks.queryStoryboardEditorPage.mockClear();
 
     fireEvent.change(screen.getByLabelText('分镜1出镜角色'), {
       target: { value: '斌斌' },
@@ -2675,7 +2959,7 @@ describe('ProductionWorkbench script page', () => {
         101,
         expect.objectContaining({ props: '棒棒糖' }),
       );
-      expect(mocks.queryStoryboardWorkspace).not.toHaveBeenCalled();
+      expect(mocks.queryStoryboardEditorPage).not.toHaveBeenCalled();
     });
   });
 
@@ -2683,15 +2967,15 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
     await screen.findByText('分镜1');
     mocks.createStoryboard.mockResolvedValueOnce({ data: null });
-    mocks.queryStoryboardWorkspace.mockRejectedValueOnce(new Error('offline'));
+    mocks.queryStoryboardEditorPage.mockRejectedValueOnce(new Error('offline'));
     fireEvent.click(screen.getAllByRole('button', { name: '新增分镜' })[0]);
     fireEvent.click(await screen.findByRole('button', { name: '重试加载分镜' }));
-    await waitFor(() => expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(3));
     expect(mocks.createStoryboard).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to 720p when the selected model does not support the current resolution', async () => {
-    mocks.queryProject.mockResolvedValue({
+    mocks.queryProjectMetadata.mockResolvedValue({
       data: {
         id: 1,
         name: '4k 项目',
@@ -2791,7 +3075,7 @@ describe('ProductionWorkbench script page', () => {
   });
 
   it('allows text-only storyboards in select all, while cancel submits nothing', async () => {
-    const response = await mocks.queryStoryboardWorkspace();
+    const response = await mocks.queryStoryboardEditorPage();
     setupWorkspaceResponse({ storyboards: [response.data.storyboards[0], {
       id: 102, shotNo: 2, episodeNo: 1, characters: '', scene: '', props: '',
       visualDescription: '镜头', durationSeconds: 5, videoPrompt: '镜头',
@@ -2840,13 +3124,38 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(1));
   });
 
+  it('excludes historical legacy candidates from focused batch selection and paid generation', async () => {
+    const response = await mocks.queryStoryboardEditorPage();
+    const current = response.data.storyboards[0];
+    const historical = { ...current, id: 9991, episodeId: 9001, shotNo: 99, storyboardNo: 99 };
+    mocks.queryStoryboardEditorPage.mockResolvedValue({ data: { ...response.data, total: 1, storyboards: [current] } });
+    mocks.queryStoryboardWorkspace.mockResolvedValue({ data: { ...response.data, total: 1, storyboards: [historical] } });
+    render(<ProductionWorkbench />);
+    const displayedEditor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    fireEvent.click(screen.getByRole('button', { name: /批量生成视频/ }));
+    const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
+    fireEvent.click(await within(picker).findByRole('checkbox', { name: '选择分镜1' }));
+    expect(within(picker).queryByRole('checkbox', { name: '选择分镜99' })).not.toBeInTheDocument();
+    expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 1, pageSize: 20 });
+    expect(mocks.queryStoryboardMedia).toHaveBeenLastCalledWith(1, [current.id]);
+    expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toBe(displayedEditor);
+    expect(mocks.queryStoryboardWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(within(picker).getByRole('button', { name: '生成所选视频' }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(1));
+    expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1, expect.objectContaining({ storyboardId: current.id }), true);
+    expect(mocks.confirmPointEstimates).toHaveBeenCalledTimes(1);
+    expect(mocks.confirmPointEstimates.mock.calls[0][0].map((operation: any) => operation.data.storyboardId)).toEqual([current.id]);
+    expect(mocks.queryStoryboardWorkspace).not.toHaveBeenCalled();
+  });
+
   it('ignores a batch candidate page that arrives after the selection modal is cancelled', async () => {
     render(<ProductionWorkbench />);
     await screen.findByRole('textbox', { name: '分镜1视频提示词' });
     let resolvePage!: (value: any) => void;
-    mocks.queryStoryboardWorkspace.mockReturnValueOnce(new Promise((resolve) => { resolvePage = resolve; }));
+    mocks.queryStoryboardEditorPage.mockReturnValue(new Promise((resolve) => { resolvePage = resolve; }));
     fireEvent.click(screen.getByRole('button', { name: /批量生成视频/ }));
     const picker = screen.getByRole('dialog', { name: '批量生成视频' });
+    expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 1, pageSize: 20 });
     expect(within(picker).getByText('正在加载本集分镜…')).toBeInTheDocument();
     fireEvent.click(within(picker).getByRole('button', { name: '取消' }));
     const mediaReads = mocks.queryStoryboardMedia.mock.calls.length;
@@ -2857,21 +3166,24 @@ describe('ProductionWorkbench script page', () => {
   });
 
   it('loads the rest of the active episode for batch selection without navigating away from the current page', async () => {
-    const response = await mocks.queryStoryboardWorkspace();
+    const response = await mocks.queryStoryboardEditorPage();
     const first = response.data.storyboards[0];
     const later = { ...first, id: 121, shotNo: 21, storyboardNo: 21 };
-    mocks.queryStoryboardWorkspace.mockImplementation(async (_projectId, params) => ({ data: {
+    mocks.queryStoryboardEditorPage.mockImplementation(async (_projectId, params) => ({ data: {
       ...response.data, current: params?.current || 1, total: 21,
       storyboards: params?.current === 2 ? [later] : [first],
     } }));
     render(<ProductionWorkbench />);
-    await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    const displayedEditor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
     fireEvent.click(screen.getByRole('button', { name: /批量生成视频/ }));
     const picker = await screen.findByRole('dialog', { name: '批量生成视频' });
     fireEvent.click(await within(picker).findByRole('checkbox', { name: '选择分镜21' }));
-    expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledWith(1, { episodeNo: 1, current: 2, pageSize: 20 });
+    expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1, { episodeNo: 1, current: 2, pageSize: 20 });
     expect(mocks.queryStoryboardMedia).toHaveBeenCalledWith(1, [101, 121]);
-    expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toBe(displayedEditor);
+    expect(screen.getByText('第 1 / 2 页，共 21 个镜头')).toBeInTheDocument();
+    expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(1, { episodeNo: 1, current: 1, pageSize: 20 });
+    expect(mocks.queryStoryboardWorkspace).not.toHaveBeenCalled();
     fireEvent.click(within(picker).getByRole('button', { name: '生成所选视频' }));
     await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(
       1, expect.objectContaining({ storyboardId: 121 }), true,
@@ -3070,14 +3382,14 @@ describe('ProductionWorkbench script page', () => {
   });
 
 it('shows a persistent load error and retries instead of reporting no storyboards', async () => {
-  mocks.queryStoryboardWorkspace.mockRejectedValueOnce(new Error('Response status:500'));
+  mocks.queryStoryboardEditorPage.mockRejectedValueOnce(new Error('Response status:500'));
   render(<ProductionWorkbench />);
   expect(await screen.findByRole('alert')).toHaveTextContent('分镜数据加载失败');
   expect(screen.queryByText('请先完成分镜视频生成')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '重新加载分镜' }));
   expect(await screen.findByRole('textbox', { name: '分镜1视频提示词' })).toBeInTheDocument();
   await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
-  expect(mocks.queryStoryboardWorkspace).toHaveBeenCalledTimes(2);
+  expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(2);
 });
 
 });
