@@ -1097,8 +1097,9 @@ const ProductionWorkbenchSettings = () => {
 
   const submitVariantGeneration = async () => {
     if (!visualAsset || !generationVariantId) return;
-    const variant = visualAsset.item.visual?.variants?.find(
-      (item) => item.id === generationVariantId,
+    const visual = visualAsset.item.visual;
+    const variant = [...(visual?.variants || []), visual?.selectedVariant, visual?.primaryVariant].find(
+      (item) => item?.id === generationVariantId,
     );
     if (!variant) return;
     const prompt = generationPrompt;
@@ -1135,7 +1136,6 @@ const ProductionWorkbenchSettings = () => {
       });
       setImageGenerationVersion((version) => version + 1);
       await mutateVariant(async () => undefined, '已提交生成', requestId);
-      if (visualRequestIdRef.current === requestId) setGenerationVariantId(undefined);
     } catch (error) {
       if (isPointEstimateCancelled(error)) return;
       message.error(error instanceof Error ? error.message : '提交生成失败');
@@ -1895,7 +1895,10 @@ const ProductionWorkbenchSettings = () => {
                   </section>
                   <AssetVariantGenerationModal
                     open={Boolean(generationVariant)}
+                    projectId={projectId}
                     variant={generationVariant}
+                    disabled={normalizationBlocked}
+                    onImageSelected={() => mutateVariant(async () => undefined, '已选用配图')}
                     assetType={visualAsset.type}
                     primaryImageUrl={visualAsset.item.visual?.primaryVariant?.currentImageThumbnailUrl}
                     imageModels={imageModels}

@@ -90,6 +90,56 @@ class AiImageTaskControllerTest extends com.antshorttv.support.RegistrationTestS
     private AiSecretCodec aiSecretCodec;
 
     @Test
+    void browsesAndSelectsLocalVariantHistoryWithProjectIsolation() throws Exception {
+        String token = registerUser("13800014801", "Image History Creator");
+        Long tenant = createTenant(token, "历史配图团队");
+        Long owner = userIdByMobile("13800014801");
+        Long project = createProject(token, tenant, owner, "历史配图项目", "IMAGE_HISTORY");
+        Long otherProject = createProject(token, tenant, owner, "其他配图项目", "OTHER_IMAGE_HISTORY");
+        jdbcTemplate.update("""
+            insert into character_asset
+                (tenant_id,project_id,name,role_type,prompt,status,created_by,created_at,updated_at)
+            values (?,?,'历史角色','LEAD','角色形象','CONFIRMED',?,now(),now())
+            """, tenant, project, owner);
+        Long asset = jdbcTemplate.queryForObject("select id from character_asset where project_id=?", Long.class, project);
+        MvcResult created = mockMvc.perform(post("/api/projects/%d/script-elements/CHARACTER/%d/visual-variants".formatted(project, asset))
+            .with(authenticated(token)).header("X-Tenant-Id", tenant)
+            .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"主形象\"}"))
+            .andExpect(status().isOk()).andReturn();
+        Long variant = readLong(created, "$.data.id");
+        for (int index = 0; index < 3; index++) {
+            jdbcTemplate.update("""
+                insert into ai_image_result
+                    (tenant_id,project_id,target_type,target_id,image_url,thumbnail_url,is_selected,status,created_at,updated_at)
+                values (?,?,'VISUAL_VARIANT',?,?,?,false,'ACTIVE',now(),now())
+                """, tenant, project, index == 2 ? variant + 10000 : variant,
+                "/history-" + index, "/history-thumb-" + index);
+        }
+        String history = "/api/projects/%d/ai-image-results?targetType=VISUAL_VARIANT&targetId=%d&current=1&pageSize=1".formatted(project, variant);
+        MvcResult page = mockMvc.perform(get(history).with(authenticated(token)).header("X-Tenant-Id", tenant))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total", is(2)))
+            .andExpect(jsonPath("$.data.data", hasSize(1))).andReturn();
+        Long result = readLong(page, "$.data.data[0].id");
+        mockMvc.perform(get(history.replace("current=1", "current=2"))
+            .with(authenticated(token)).header("X-Tenant-Id", tenant))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.data[0].imageUrl", is("/history-0")));
+        mockMvc.perform(get(history.replace("/projects/" + project + "/", "/projects/" + otherProject + "/"))
+            .with(authenticated(token)).header("X-Tenant-Id", tenant))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total", is(0)));
+        mockMvc.perform(put("/api/projects/%d/ai-image-results/%d/selected".formatted(project, result))
+            .with(authenticated(token)).header("X-Tenant-Id", tenant)).andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("select current_image_result_id from asset_visual_variant where id=?", Long.class, variant))
+            .isEqualTo(result);
+        assertThat(jdbcTemplate.queryForObject("select main_image_result_id from character_asset where id=?", Long.class, asset))
+            .isEqualTo(result);
+        jdbcTemplate.update("update asset_visual_variant set generation_status='GENERATING' where id=?", variant);
+        mockMvc.perform(put("/api/projects/%d/ai-image-results/%d/selected".formatted(project, result))
+            .with(authenticated(token)).header("X-Tenant-Id", tenant)).andExpect(status().isBadRequest());
+        mockMvc.perform(put("/api/projects/%d/ai-image-results/%d/selected".formatted(otherProject, result))
+            .with(authenticated(token)).header("X-Tenant-Id", tenant)).andExpect(status().isNotFound());
+    }
+
+    @Test
     void resolvesEpisodePreferredCharacterAndPrimarySceneForStoryboardGeneration() throws Exception {
         String token = registerUser("13800014017", "Episode Reference Creator");
         Long tenantId = createTenant(token, "剧集参考团队");

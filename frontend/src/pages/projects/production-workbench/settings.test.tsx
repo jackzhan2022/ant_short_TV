@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   queryAssetSettingsWorkspace: vi.fn(),
   queryAssetSettingsSummary: vi.fn(),
   queryAssetVisualWorkspace: vi.fn(),
+  queryAiImageResults: vi.fn(),
+  selectAiImageResult: vi.fn(),
   updateScriptElement: vi.fn(),
   pollExecution: vi.fn(),
   queryAssetCandidates: vi.fn(),
@@ -56,6 +58,8 @@ vi.mock('./service', () => ({
   queryScriptWorkspace: mocks.queryScriptWorkspace,
   queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
   queryAssetVisualWorkspace: mocks.queryAssetVisualWorkspace,
+  queryAiImageResults: mocks.queryAiImageResults,
+  selectAiImageResult: mocks.selectAiImageResult,
   updateScriptElement: mocks.updateScriptElement,
   queryAssetCandidates: mocks.queryAssetCandidates,
   decideAssetCandidate: mocks.decideAssetCandidate,
@@ -346,6 +350,7 @@ describe('ProductionWorkbenchSettings', () => {
     });
     sessionStorage.clear();
     vi.clearAllMocks();
+    mocks.queryAiImageResults.mockResolvedValue({ success: true, data: { data: [], total: 0 } });
     mocks.queryAssetSettingsSummary.mockReset();
     mocks.queryAssetVisualWorkspace.mockReset();
     workspace.characters[0].visual.variants[0].prompt = '6岁男孩，写实都市风格';

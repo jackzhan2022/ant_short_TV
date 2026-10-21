@@ -143,7 +143,12 @@ public class AiImageTaskService {
         if (taskId != null) query.eq("task_id", taskId);
         if (targetType != null && !targetType.isBlank()) query.eq("target_type", targetType);
         if (targetId != null) query.eq("target_id", targetId);
-        query.inSql("task_id", "select id from ai_image_task where deleted_at is null");
+        if ("VISUAL_VARIANT".equals(targetType) && targetId != null && taskId == null) {
+            query.and(q -> q.isNull("task_id").or()
+                .inSql("task_id", "select id from ai_image_task where deleted_at is null"));
+        } else {
+            query.inSql("task_id", "select id from ai_image_task where deleted_at is null");
+        }
         return MediaPageQueries.select(resultMapper, query, PageBounds.of(current, pageSize)).map(AiImageResultResponse::from);
     }
 
@@ -433,6 +438,8 @@ public class AiImageTaskService {
     public AiImageResultResponse selectResult(Long tenantId, Long projectId, Long resultId, HttpServletRequest servletRequest) {
         TenantContext context = requireProject(tenantId, projectId);
         AiImageResultEntity selected = requireResult(tenantId, projectId, resultId);
+        if ("VISUAL_VARIANT".equals(selected.getTargetType()) && normalizationGuard != null)
+            normalizationGuard.requireReady(tenantId, projectId);
         for (AiImageResultEntity item : resultMapper.selectActiveByTarget(tenantId, projectId, selected.getTargetType(), selected.getTargetId())) {
             item.setIsSelected(item.getId().equals(selected.getId()));
             item.setUpdatedAt(LocalDateTime.now());
@@ -479,7 +486,7 @@ public class AiImageTaskService {
                  where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
                 """, result.getImageUrl(), result.getId(), result.getTenantId(), result.getProjectId(), result.getTargetId());
             case "VISUAL_VARIANT" -> {
-                AssetVisualVariantService.VariantResponse variant = assetVisualVariantService.generationSucceeded(
+                AssetVisualVariantService.VariantResponse variant = assetVisualVariantService.bindUploadedImage(
                     result.getTenantId(), result.getProjectId(), result.getTargetId(), result.getId(), result.getImageUrl());
                 if (variant.primary()) {
                     bindLegacyPrimary(variant, result);

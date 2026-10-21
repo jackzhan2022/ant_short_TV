@@ -4060,6 +4060,18 @@ const ProductionWorkbenchStoryboard = () => {
         ) : null}
         <AssetVariantGenerationModal
           open={Boolean(referenceGenerationTarget)}
+          projectId={projectId}
+          onImageSelected={async () => {
+            const target = referenceGenerationTarget;
+            if (!target) return;
+            const response = await queryAssetVisualWorkspace(projectId, target.assetType, target.assetId);
+            if (visualProjectId.current !== projectId) return;
+            setAssetVisuals((previous) => ({
+              ...previous,
+              [`${target.assetType}:${target.assetId}`]: response.data,
+            }));
+            await refreshAfterMutation();
+          }}
           variant={referenceGenerationTarget?.variant}
           assetType={referenceGenerationTarget?.assetType}
           primaryImageUrl={referenceGenerationTarget?.primaryImageThumbnailUrl}
