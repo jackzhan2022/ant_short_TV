@@ -316,11 +316,38 @@ public class AssetVisualVariantService {
         return previousTaskId;
     }
 
+    void requireUploadTarget(Long tenantId, Long projectId, Long variantId) {
+        jdbc.queryForList("select id from asset_visual_variant where id = ? and tenant_id = ? and project_id = ? for update",
+            variantId, tenantId, projectId);
+        var variant = requireVariant(tenantId, projectId, variantId, true);
+        if ("GENERATING".equals(variant.getGenerationStatus())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "图片正在生成，请等待完成后再上传。");
+        }
+    }
+
+    @Transactional
+    public VariantResponse bindUploadedImage(Long tenantId, Long projectId, Long variantId, Long imageResultId, String imageUrl) {
+        requireUploadTarget(tenantId, projectId, variantId);
+        var entity = requireVariant(tenantId, projectId, variantId, true);
+        jdbc.update("""
+            update asset_visual_variant set generation_task_id = null, source_type = 'MANUAL',
+                generation_error_code = null, generation_error_message = null
+             where id = ? and tenant_id = ? and project_id = ? and deleted_at is null
+            """, variantId, tenantId, projectId);
+        entity.setGenerationTaskId(null);
+        entity.setSourceType("MANUAL");
+        return completeImage(entity, imageResultId, imageUrl);
+    }
+
     @Transactional
     public VariantResponse generationSucceeded(
         Long tenantId, Long projectId, Long variantId, Long imageResultId, String imageUrl
     ) {
         AssetVisualVariantEntity entity = requireVariant(tenantId, projectId, variantId, true);
+        return completeImage(entity, imageResultId, imageUrl);
+    }
+
+    private VariantResponse completeImage(AssetVisualVariantEntity entity, Long imageResultId, String imageUrl) {
         entity.setGenerationStatus("COMPLETED");
         entity.setCurrentImageResultId(imageResultId);
         entity.setCurrentImageUrl(blankToNull(imageUrl));
@@ -328,7 +355,7 @@ public class AssetVisualVariantService {
         entity.setGenerationErrorMessage(null);
         entity.setUpdatedAt(LocalDateTime.now());
         variantMapper.updateById(entity);
-        resolveStoryboardReferences(tenantId, projectId, variantId);
+        resolveStoryboardReferences(entity.getTenantId(), entity.getProjectId(), entity.getId());
         if (Boolean.TRUE.equals(entity.getIsPrimary())) publishLegacyIfUsable(entity);
         return response(entity);
     }

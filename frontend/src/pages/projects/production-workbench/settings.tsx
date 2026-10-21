@@ -31,6 +31,7 @@ import {
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
 import AssetImagePlaceholder from './AssetImagePlaceholder';
+import AssetLocalImageUpload from './AssetLocalImageUpload';
 import AssetNormalizationPanel from './AssetNormalizationPanel';
 import AssetVariantGenerationModal from './AssetVariantGenerationModal';
 import {
@@ -1881,6 +1882,13 @@ const ProductionWorkbenchSettings = () => {
                               设为主形象
                             </Button>
                           ) : null}
+                          <AssetLocalImageUpload
+                            key={`${projectId}-${selectedVariant.id}`}
+                            projectId={projectId}
+                            variantId={selectedVariant.id}
+                            disabled={normalizationBlocked || selectedVariant.generationStatus === 'GENERATING'}
+                            onUploaded={() => mutateVariant(async () => undefined, '本地图片已更新')}
+                          />
                         </section>
                       ) : null}
                     </fieldset>

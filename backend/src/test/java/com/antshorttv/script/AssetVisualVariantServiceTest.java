@@ -82,6 +82,26 @@ class AssetVisualVariantServiceTest {
     }
 
     @Test
+    void bindsLocalImagesToAllAssetTypesAndClearsPreviousGenerationOwner() {
+        String[] types = {"CHARACTER", "SCENE", "PROP"};
+        String[] tables = {"character_asset", "scene_asset", "prop_asset"};
+        for (int i = 0; i < types.length; i++) {
+            var variant = service.create(9901L, 9902L, types[i], 9910L + i, 9999L,
+                new AssetVisualVariantService.VariantCommand("本地形象", null, null, "MANUAL", "NOT_STARTED", null, null, true));
+            service.generationStarted(9901L, 9902L, variant.id(), 9920L);
+            assertThatThrownBy(() -> service.bindUploadedImage(9901L, 9902L, variant.id(), 9930L, "local.png"))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("正在生成");
+            service.generationFailed(9901L, 9902L, variant.id(), "FAILED", "old error");
+            var local = service.bindUploadedImage(9901L, 9902L, variant.id(), 9930L, "local.png");
+            assertThat(local.generationTaskId()).isNull();
+            assertThat(local.errorMessage()).isNull();
+            assertThat(local.usable()).isTrue();
+            assertThat(jdbc.queryForObject("select main_image_url from " + tables[i] + " where id = ?", String.class, 9910L + i))
+                .isEqualTo("local.png");
+        }
+    }
+
+    @Test
     void completingImageResolvesOnlyActiveReferencesToThatVariant() {
         var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
             new AssetVisualVariantService.VariantCommand(

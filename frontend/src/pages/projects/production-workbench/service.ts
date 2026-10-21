@@ -841,6 +841,16 @@ export const updateVisualVariant = async (
     },
   );
 
+export const bindVisualVariantImageUpload = async (
+  projectId: number,
+  variantId: number,
+  sessionToken: string,
+) =>
+  request<ApiResponse<VisualVariant>>(
+    `/api/projects/${projectId}/visual-variants/${variantId}/image-upload`,
+    { method: 'POST', data: { sessionToken } },
+  );
+
 export const selectPrimaryVisualVariant = async (
   projectId: number,
   variantId: number,

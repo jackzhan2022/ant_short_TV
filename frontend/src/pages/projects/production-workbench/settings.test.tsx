@@ -105,6 +105,7 @@ vi.mock('@ant-design/icons', () => ({
   PlusOutlined: () => <span>plus</span>,
   RobotOutlined: () => <span>robot</span>,
   SearchOutlined: () => <span>search</span>,
+  UploadOutlined: () => <span>upload</span>,
 }));
 
 vi.mock('antd', () => ({
