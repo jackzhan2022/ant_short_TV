@@ -2090,8 +2090,75 @@ describe('ProductionWorkbench script page', () => {
     await screen.findByRole('region', { name: '分镜1视频生成进度' });
     act(() => updateExecution({ id: 7003, status: 'FAILED', errorMessage: '视频生成失败' }));
     expect(screen.queryByRole('region', { name: '分镜1视频生成进度' })).not.toBeInTheDocument();
-    expect(screen.getByText('execution:FAILED')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '分镜1视频预览区' })).getByRole('alert')).toHaveTextContent('视频生成失败');
+    expect(screen.queryByText('execution:FAILED')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '生成分镜1视频' })).not.toBeDisabled();
+  });
+
+  it('shows the detailed video failure only in the right preview and lets the user close it', async () => {
+    const failure = '服务商提交失败：HTTP 400，参考图片未通过检测。Request id: failed-video-9003';
+    setupWorkspaceResponse({ videoTasks: [{
+      id: 9003, storyboardId: 101, status: 'FAILED', errorMessage: failure, results: [],
+      execution: { id: 7003, status: 'FAILED', errorMessage: '本次任务未完成', retryable: true },
+    }] });
+    render(<ProductionWorkbench />);
+    const error = await screen.findByRole('region', { name: '分镜1视频生成错误' });
+    const preview = screen.getByRole('region', { name: '分镜1视频预览区' });
+    const generate = screen.getByRole('button', { name: '生成分镜1视频' });
+    expect(preview).toContainElement(error);
+    expect(within(error).getByRole('alert')).toHaveTextContent(failure);
+    expect(generate.closest('.storyboard-prompt-panel')).not.toHaveTextContent(failure);
+    expect(screen.queryByText('本次任务未完成')).not.toBeInTheDocument();
+    expect(within(error).getByRole('button', { name: '重新生成分镜1视频' })).toBeInTheDocument();
+    expect(generate).not.toBeDisabled();
+
+    fireEvent.click(within(error).getByRole('button', { name: '关闭分镜1视频错误' }));
+    expect(error).not.toBeInTheDocument();
+    expect(screen.queryByText(failure)).not.toBeInTheDocument();
+    expect(within(preview).getByRole('button', { name: '播放分镜1成片预览' })).toBeInTheDocument();
+    expect(generate).not.toBeDisabled();
+    expect(mocks.cancelAiVideoTask).not.toHaveBeenCalled();
+    expect(mocks.regenerateAiVideoTask).not.toHaveBeenCalled();
+  });
+
+  it('keeps a closed failure hidden during polling but shows the same error for a new video task', async () => {
+    const updates = new Map<number, (task: API.AiExecutionResponse) => void>();
+    const failure = '服务商提交失败：HTTP 400';
+    mocks.pollExecution.mockImplementation((_tenant, id, onUpdate) => {
+      updates.set(id, onUpdate);
+      return new Promise(() => {});
+    });
+    setupWorkspaceResponse({ videoTasks: [{
+      id: 9003, storyboardId: 101, status: 'GENERATING', executionId: 7003, results: [],
+    }] });
+    render(<ProductionWorkbench />);
+    await screen.findByRole('region', { name: '分镜1视频生成进度' });
+    act(() => updates.get(7003)?.({ id: 7003, status: 'FAILED', errorMessage: failure }));
+    fireEvent.click(await screen.findByRole('button', { name: '关闭分镜1视频错误' }));
+    act(() => updates.get(7003)?.({ id: 7003, status: 'FAILED', errorMessage: failure }));
+    expect(screen.queryByRole('region', { name: '分镜1视频生成错误' })).not.toBeInTheDocument();
+
+    mocks.createAiVideoTask.mockResolvedValueOnce({ data: {
+      id: 9004, storyboardId: 101, status: 'PENDING', executionId: 7004, results: [],
+    } });
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+    await screen.findByRole('region', { name: '分镜1视频生成进度' });
+    act(() => updates.get(7004)?.({ id: 7004, status: 'FAILED', errorMessage: failure }));
+    expect(await screen.findByRole('region', { name: '分镜1视频生成错误' })).toHaveTextContent(failure);
+  });
+
+  it('closes only the corresponding storyboard error and restores its empty preview', async () => {
+    setupWorkspaceResponse({ videoTasks: [
+      { id: 9003, storyboardId: 101, status: 'FAILED', errorMessage: '分镜1失败原因', results: [] },
+      { id: 9004, storyboardId: 102, status: 'FAILED', errorMessage: '分镜2失败原因', results: [] },
+    ] });
+    render(<ProductionWorkbench />);
+    await screen.findByRole('region', { name: '分镜1视频生成错误' });
+    const secondError = await screen.findByRole('region', { name: '分镜2视频生成错误' });
+    fireEvent.click(within(secondError).getByRole('button', { name: '关闭分镜2视频错误' }));
+    expect(secondError).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '分镜1视频生成错误' })).toHaveTextContent('分镜1失败原因');
+    expect(within(screen.getByRole('region', { name: '分镜2视频预览区' })).getByText('请先完成分镜视频生成')).toBeInTheDocument();
   });
 
   it('uses a newly selected first-frame result without reloading the storyboard page', async () => {

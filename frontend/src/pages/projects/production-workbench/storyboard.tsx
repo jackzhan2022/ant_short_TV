@@ -64,6 +64,7 @@ import BatchVideoGenerationModal from './BatchVideoGenerationModal';
 import StoryboardVideoStrip from './StoryboardVideoStrip';
 import StoryboardPositionRail from './StoryboardPositionRail';
 import StoryboardVideoEmptyState from './StoryboardVideoEmptyState';
+import StoryboardVideoFailure, { videoGenerationError } from './StoryboardVideoFailure';
 import StoryboardVideoGenerationStatus, { isVideoGenerationActive } from './StoryboardVideoGenerationStatus';
 import type {
   AiImageResult,
@@ -1109,6 +1110,9 @@ const StoryboardCard = ({
     .filter((task) => task.storyboardId === item.id)
     .sort((a, b) => b.id - a.id)[0];
   const videoGenerating = isVideoGenerationActive(videoTask);
+  const [dismissedVideoErrorTaskId, setDismissedVideoErrorTaskId] = useState<number>();
+  const videoError = videoGenerationError(videoTask);
+  const visibleVideoError = videoTask?.id === dismissedVideoErrorTaskId ? undefined : videoError;
   useEffect(() => {
     if (videoGenerating) {
       setPreviewKey('VIDEO');
@@ -1581,20 +1585,6 @@ const StoryboardCard = ({
                 <ThunderboltOutlined /> 生成视频
               </Button>
             </Flex>
-            {videoTask?.execution && !videoGenerating ? (
-              <div style={{ marginTop: 10 }}>
-                <AiExecutionStatus
-                  task={videoTask.execution}
-                  onCancel={() => onCancelVideo(videoTask)}
-                  onRetry={() => onRetryVideo(videoTask)}
-                />
-              </div>
-            ) : null}
-            {videoTask?.status === 'FAILED' && videoTask.errorMessage ? (
-              <div role="alert" style={{ marginTop: 8, overflowWrap: 'anywhere' }}>
-                {videoTask.errorMessage}
-              </div>
-            ) : null}
           </div>
         </section>
 
@@ -1611,7 +1601,7 @@ const StoryboardCard = ({
           <div
             className="storyboard-preview-stage"
             style={{
-              background: videoGenerating || (previewKey === 'VIDEO' && !video.videoUrl) ? '#f7f8fc' : '#2c333f',
+              background: videoGenerating || visibleVideoError || (previewKey === 'VIDEO' && !video.videoUrl) ? '#f7f8fc' : '#2c333f',
               display: 'flex',
               justifyContent: 'center',
             }}
@@ -1625,6 +1615,14 @@ const StoryboardCard = ({
                   storyboardNo={index + 1}
                   task={videoTask}
                   onCancel={() => onCancelVideo(videoTask)}
+                />
+              ) : visibleVideoError && videoTask ? (
+                <StoryboardVideoFailure
+                  storyboardNo={index + 1}
+                  message={visibleVideoError}
+                  timedOut={videoTask.execution?.status === 'TIMED_OUT'}
+                  onClose={() => setDismissedVideoErrorTaskId(videoTask.id)}
+                  onRetry={videoTask.execution?.retryable ? () => onRetryVideo(videoTask) : undefined}
                 />
               ) : previewKey === 'VIDEO' && video.videoUrl ? (
                 <ClickToPlayVideo
