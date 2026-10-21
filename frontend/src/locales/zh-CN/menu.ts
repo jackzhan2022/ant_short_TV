@@ -1,4 +1,5 @@
 export default {
+  'menu.messages': '消息中心',
   'menu.drama-library': '剧集管理',
   'menu.tasks': '任务中心',
   'menu.welcome': '欢迎',

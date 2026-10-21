@@ -1,0 +1,40 @@
+.message-center {
+  padding: 24px;
+  color: #262639;
+}
+.message-center-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+  p { margin: 0; color: #858599; font-size: 13px; }
+}
+.message-center-actions, .message-center-filters, .message-center-batch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.message-center-panel { padding: 8px 24px 24px; background: #fff; border: 1px solid #ececf4; border-radius: 12px; }
+.message-center-filters { margin: 12px 0 24px; label { color: #737386; } }
+.message-tab { display: inline-flex; align-items: center; gap: 8px; }
+.message-tab .ant-badge-count { background: #f0edff; color: #6354ff; box-shadow: none; }
+.message-center-batch { color: #858599; font-size: 13px; }
+.message-title-button {
+  max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit;
+  font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer;
+  &:hover, &:focus-visible { color: #6354ff; text-decoration: underline; }
+}
+.message-row-unread .message-title-button { font-weight: 500; }
+.message-row-read { color: #9292a2; }
+.message-detail-meta { color: #858599; font-size: 13px; margin-bottom: 24px; }
+.message-content { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.message-send-preview { margin-top: 20px; }
+.message-center > .ant-alert { margin-bottom: 16px; }
+@media (max-width: 640px) {
+  .message-center { padding: 12px; }
+  .message-center-panel { padding: 4px 12px 16px; }
+  .message-center-header { align-items: flex-start; }
+}

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentTenantId: vi.fn(),
   push: vi.fn(),
   queryTeamPointAccount: vi.fn(),
+  messageSummary: vi.fn(async () => ({ unread: 0, categories: {}, canSend: false })),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -20,6 +21,8 @@ vi.mock('@/services/account-team/points', () => ({
   queryTeamPointAccount: mocks.queryTeamPointAccount,
 }));
 
+vi.mock('@/pages/messages/service', () => ({ messageSummary: mocks.messageSummary }));
+
 vi.mock('../RightContent/AvatarDropdown', () => ({
   AvatarDropdown: ({ placement, triggerClassName }: any) => (
     <button
@@ -33,6 +36,21 @@ vi.mock('../RightContent/AvatarDropdown', () => ({
 }));
 
 describe('SidebarAccount', () => {
+  it('refreshes the unread badge after message changes', async () => {
+    mocks.messageSummary.mockResolvedValueOnce({ unread: 120, categories: {}, canSend: false });
+    render(<SidebarAccount currentUser={{ name: 'Test User' }} />);
+    expect(await screen.findByRole('button', { name: '消息中心，120 条未读' })).toHaveTextContent('99+');
+    fireEvent(window, new Event('message-center-change'));
+    await screen.findByRole('button', { name: '消息中心' });
+    expect(screen.queryByText('99+')).not.toBeInTheDocument();
+  });
+  it('opens the message center from above the points entry', () => {
+    render(<SidebarAccount currentTenantId={7} currentUser={{ name: 'Test User' }} />);
+    const entry = screen.getByRole('button', { name: /消息中心/ });
+    expect(entry.compareDocumentPosition(screen.getByText('团队积分'))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    fireEvent.click(entry);
+    expect(mocks.push).toHaveBeenCalledWith('/messages');
+  });
   afterEach(() => {
     vi.clearAllMocks();
   });

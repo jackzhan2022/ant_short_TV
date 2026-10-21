@@ -1,4 +1,5 @@
 export default {
+  'menu.messages': 'Message Center',
   'menu.drama-library': 'Drama Library',
   'menu.tasks': 'Task Center',
   'menu.welcome': 'Welcome',

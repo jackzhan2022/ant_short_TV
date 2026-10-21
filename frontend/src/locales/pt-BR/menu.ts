@@ -1,4 +1,5 @@
 export default {
+  'menu.messages': 'Central de mensagens',
   'menu.drama-library': 'Biblioteca de dramas',
   'menu.tasks': 'Central de tarefas',
   'menu.welcome': 'Welcome',

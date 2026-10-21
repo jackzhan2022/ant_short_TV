@@ -11,6 +11,7 @@
  * @doc https://umijs.org/docs/guides/routes
  */
 export default [
+  { path: '/messages', name: 'messages', hideInMenu: true, component: './messages' },
   { path: '/tasks', name: 'tasks', icon: 'schedule', access: 'canUseProjectCenter', component: './tasks' },
   {
     path: '/user',

@@ -1,4 +1,5 @@
 export default {
+  'menu.messages': 'বার্তা কেন্দ্র',
   'menu.drama-library': 'নাটক ব্যবস্থাপনা',
   'menu.tasks': 'টাস্ক কেন্দ্র',
   'menu.welcome': 'স্বাগতম',

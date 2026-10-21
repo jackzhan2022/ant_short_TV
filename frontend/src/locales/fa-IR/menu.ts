@@ -1,4 +1,5 @@
 export default {
+  'menu.messages': 'مرکز پیام',
   'menu.drama-library': 'مدیریت سریال',
   'menu.tasks': 'مرکز وظایف',
   'menu.welcome': 'خوش آمدید',

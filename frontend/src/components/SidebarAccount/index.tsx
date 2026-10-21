@@ -5,6 +5,7 @@ import { queryTeamPointAccount } from '@/services/account-team/points';
 import type { LayoutCurrentUser } from '@/services/account-team/types';
 import { formatPoints } from '@/utils/points';
 import { AvatarDropdown } from '../RightContent/AvatarDropdown';
+import MessageCenterEntry from './MessageCenterEntry';
 
 type SidebarAccountProps = {
   currentUser?: LayoutCurrentUser;
@@ -48,6 +49,7 @@ const SidebarAccount = ({ currentUser, currentTenantId }: SidebarAccountProps) =
 
   return (
     <div className="ant-short-sidebar-account">
+      <MessageCenterEntry key={currentUser.userid} />
       {currentTenantId && <button
         aria-label={`团队积分 ${formattedBalance}，前往充值中心`}
         className="ant-short-sidebar-points"
