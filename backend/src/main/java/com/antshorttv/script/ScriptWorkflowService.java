@@ -1651,21 +1651,49 @@ public class ScriptWorkflowService {
     }
 
 
+    private String assetImagePreviewColumns(String assetType) {
+        // Keep the summary at three projected queries; never expand every asset's visual workspace.
+        return """
+            (select v.generation_status from asset_visual_variant v
+              where v.tenant_id = asset.tenant_id and v.project_id = asset.project_id
+                and v.asset_type = '%1$s' and v.asset_id = asset.id and v.deleted_at is null
+              order by case v.generation_status when 'GENERATING' then 0 when 'FAILED' then 1
+                       when 'NOT_STARTED' then 2 else 3 end, v.is_primary desc, v.id
+              limit 1) as image_generation_status,
+            (select image.id from asset_visual_variant v
+              join ai_image_result image on image.tenant_id = v.tenant_id and image.project_id = v.project_id
+                and image.target_type = 'VISUAL_VARIANT' and image.target_id = v.id
+                and image.status = 'ACTIVE' and image.is_selected = false
+              where v.tenant_id = asset.tenant_id and v.project_id = asset.project_id
+                and v.asset_type = '%1$s' and v.asset_id = asset.id and v.deleted_at is null
+                and ((image.task_id = v.generation_task_id and v.generation_status = 'COMPLETED')
+                     or image.id = v.current_image_result_id)
+                and not exists (select 1 from ai_image_result confirmed
+                  where confirmed.tenant_id = v.tenant_id and confirmed.project_id = v.project_id
+                    and confirmed.target_type = 'VISUAL_VARIANT' and confirmed.target_id = v.id
+                    and confirmed.task_id = image.task_id and confirmed.status = 'ACTIVE'
+                    and confirmed.is_selected = true)
+              order by v.is_primary desc, image.id desc limit 1) as pending_image_result_id
+            """.formatted(assetType);
+    }
+
     private List<CharacterAssetSummaryResponse> characterSummaries(Long tenantId, Long projectId, Long scriptId) {
         return jdbcTemplate.query("""
             select asset.id, asset.name, asset.role_type, asset.gender, asset.age_range, asset.identity,
                    asset.personality, asset.appearance, asset.prompt, asset.status, asset.merge_target_id,
-                   asset.main_image_url, asset.main_image_result_id
+                   asset.main_image_url, asset.main_image_result_id, %s
               from character_asset asset
              where asset.tenant_id = ? and asset.project_id = ? and asset.deleted_at is null
                and (asset.script_id = ? or asset.script_id is null)
              order by asset.id
-            """, (rs, rowNum) -> new CharacterAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
+            """.formatted(assetImagePreviewColumns("CHARACTER")), (rs, rowNum) -> new CharacterAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
                 rs.getString("role_type"), rs.getString("gender"), rs.getString("age_range"),
                 rs.getString("identity"), splitTags(rs.getString("personality")), rs.getString("appearance"),
                 rs.getString("prompt"), rs.getString("status"), rs.getObject("merge_target_id", Long.class),
                 materialFileAccessService.publicUrl(rs.getString("main_image_url")),
-                mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class))),
+                mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class)),
+                new AssetImagePreview(rs.getString("image_generation_status"),
+                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class)))),
             tenantId, projectId, scriptId);
     }
 
@@ -1673,32 +1701,36 @@ public class ScriptWorkflowService {
         return jdbcTemplate.query("""
             select asset.id, asset.name, asset.scene_type, asset.time_atmosphere, asset.description,
                    asset.visual_style, asset.prompt, asset.status, asset.merge_target_id, asset.main_image_url,
-                   asset.main_image_result_id
+                   asset.main_image_result_id, %s
               from scene_asset asset
              where asset.tenant_id = ? and asset.project_id = ? and asset.deleted_at is null
                and (asset.script_id = ? or asset.script_id is null)
              order by asset.id
-            """, (rs, rowNum) -> new SceneAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
+            """.formatted(assetImagePreviewColumns("SCENE")), (rs, rowNum) -> new SceneAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
                 rs.getString("scene_type"), rs.getString("time_atmosphere"), rs.getString("description"),
                 rs.getString("visual_style"), rs.getString("prompt"), rs.getString("status"),
                 rs.getObject("merge_target_id", Long.class), materialFileAccessService.publicUrl(rs.getString("main_image_url")),
-                mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class))),
+                mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class)),
+                new AssetImagePreview(rs.getString("image_generation_status"),
+                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class)))),
             tenantId, projectId, scriptId);
     }
 
     private List<PropAssetSummaryResponse> propSummaries(Long tenantId, Long projectId, Long scriptId) {
         return jdbcTemplate.query("""
             select asset.id, asset.name, asset.prop_type, asset.appearance, asset.plot_function, asset.prompt,
-                   asset.status, asset.merge_target_id, asset.main_image_url, asset.main_image_result_id
+                   asset.status, asset.merge_target_id, asset.main_image_url, asset.main_image_result_id, %s
               from prop_asset asset
              where asset.tenant_id = ? and asset.project_id = ? and asset.deleted_at is null
                and (asset.script_id = ? or asset.script_id is null)
              order by asset.id
-            """, (rs, rowNum) -> new PropAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
+            """.formatted(assetImagePreviewColumns("PROP")), (rs, rowNum) -> new PropAssetSummaryResponse(rs.getLong("id"), rs.getString("name"),
                 rs.getString("prop_type"), rs.getString("appearance"), rs.getString("plot_function"),
                 rs.getString("prompt"), rs.getString("status"), rs.getObject("merge_target_id", Long.class),
                 materialFileAccessService.publicUrl(rs.getString("main_image_url")),
-                mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class))),
+                mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class)),
+                new AssetImagePreview(rs.getString("image_generation_status"),
+                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class)))),
             tenantId, projectId, scriptId);
     }
 

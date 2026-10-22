@@ -53,6 +53,7 @@ class AssetSummaryQueryBoundaryTest {
         verify(jdbc, times(3)).query(queries.capture(), any(RowMapper.class), eq(10L), eq(33L), isNull());
         assertThat(queries.getAllValues()).allSatisfy(query ->
             assertThat(query).contains("main_image_result_id"));
+        verify(jdbc).queryForList(contains("select id from script"), eq(Long.class), eq(10L), eq(33L));
         verifyNoMoreInteractions(jdbc);
         verify((ProjectAccessResolver) dependencies.get(ProjectAccessResolver.class)).requireView(10L, 33L);
         for (Class<?> type : List.of(AssetVisualVariantService.class, AssetVisualBindingService.class,

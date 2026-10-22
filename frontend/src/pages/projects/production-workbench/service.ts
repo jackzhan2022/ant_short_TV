@@ -96,6 +96,11 @@ export type AssetVisualWorkspace = {
   resolvedImageSource?: string | null;
 };
 
+export type AssetImagePreview = {
+  generationStatus?: string | null;
+  pendingImageThumbnailUrl?: string | null;
+};
+
 export type CharacterAsset = {
   id: number;
   name: string;
@@ -109,6 +114,7 @@ export type CharacterAsset = {
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
   mainImageThumbnailUrl?: string | null;
+  imagePreview?: AssetImagePreview;
   visual?: AssetVisualWorkspace;
 };
 
@@ -123,6 +129,7 @@ export type SceneAsset = {
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
   mainImageThumbnailUrl?: string | null;
+  imagePreview?: AssetImagePreview;
   visual?: AssetVisualWorkspace;
 };
 
@@ -136,6 +143,7 @@ export type PropAsset = {
   status: 'DRAFT' | 'CONFIRMED' | 'PENDING_REVIEW';
   mergeTargetId?: number | null;
   mainImageThumbnailUrl?: string | null;
+  imagePreview?: AssetImagePreview;
   visual?: AssetVisualWorkspace;
 };
 

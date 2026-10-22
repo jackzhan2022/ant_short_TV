@@ -7,6 +7,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AssetSettingsWorkspace } from './service';
 import ProductionWorkbenchSettings from './settings';
 vi.mock('./AssetNormalizationPanel', () => ({
   default: ({ onBlocked }: { onBlocked: (blocked: boolean) => void }) => (
@@ -945,21 +946,98 @@ describe('ProductionWorkbenchSettings', () => {
     ).not.toHaveTextContent('暂无图片');
   });
 
-  it('shows Chinese generation statuses on the asset card, main preview, and thumbnails', async () => {
+  it('shows generation progress from the lightweight summary when the asset has no image', async () => {
+    const snapshot = structuredClone(workspace) as unknown as AssetSettingsWorkspace;
+    const asset = snapshot.characters[0];
+    delete asset.visual;
+    asset.mainImageThumbnailUrl = null;
+    asset.imagePreview = { generationStatus: 'GENERATING', pendingImageThumbnailUrl: null };
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: snapshot });
+    render(<ProductionWorkbenchSettings />);
+    expect(await screen.findByLabelText('斌斌视觉形象生成状态')).toHaveTextContent('生成中');
+    expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('shows a pending image on an empty cover and refreshes without opening the gallery', async () => {
+    const snapshot = structuredClone(workspace) as unknown as AssetSettingsWorkspace;
+    const asset = snapshot.characters[0];
+    delete asset.visual;
+    asset.mainImageThumbnailUrl = null;
+    asset.imagePreview = { generationStatus: 'GENERATING', pendingImageThumbnailUrl: null };
+    mocks.queryAssetSettingsSummary.mockImplementation(async () => ({ data: structuredClone(snapshot) }));
+    vi.useFakeTimers();
+    await act(async () => { render(<ProductionWorkbenchSettings />); });
+    expect(screen.getByLabelText('斌斌视觉形象生成状态')).toHaveTextContent('生成中');
+    asset.imagePreview = { generationStatus: 'COMPLETED', pendingImageThumbnailUrl: '/pending-thumb.png' };
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    const cover = screen.getByTestId('asset-image-CHARACTER-1');
+    expect(within(cover).getByAltText('斌斌当前视觉形象')).toHaveAttribute('src', '/pending-thumb.png');
+    expect(within(cover).getByText('待确认')).toBeInTheDocument();
+    expect(screen.queryByLabelText('斌斌视觉形象生成状态')).not.toBeInTheDocument();
+    const calls = mocks.queryAssetSettingsSummary.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+    expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(calls);
+    expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
+    expect(mocks.selectAiImageResult).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { key: 'characters' as const, name: '斌斌', tab: '角色', type: 'CHARACTER' },
+    { key: 'scenes' as const, name: '地下停车场', tab: '场景', type: 'SCENE' },
+    { key: 'props' as const, name: '灰色轿车后备箱', tab: '道具', type: 'PROP' },
+  ])('shows an already generated $type cover immediately with a pending confirmation label', async ({ key, name, tab, type }) => {
+    const snapshot = structuredClone(workspace) as unknown as AssetSettingsWorkspace;
+    const asset = snapshot[key][0];
+    delete asset.visual;
+    asset.mainImageThumbnailUrl = null;
+    asset.status = 'CONFIRMED';
+    asset.imagePreview = { generationStatus: 'COMPLETED', pendingImageThumbnailUrl: '/pending-thumb.png' };
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: snapshot });
+    render(<ProductionWorkbenchSettings />);
+    await screen.findByText('斌斌');
+    fireEvent.click(screen.getByRole('tab', { name: new RegExp(`^${tab}`) }));
+    await waitFor(() => expect(screen.getByAltText(`${name}当前视觉形象`)).toHaveAttribute('src', '/pending-thumb.png'));
+    expect(within(screen.getByTestId(`asset-image-${type}-${asset.id}`)).getByText('待确认')).toBeInTheDocument();
+    expect(screen.queryByLabelText(`${name}视觉形象生成状态`)).not.toBeInTheDocument();
+    expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
+    expect(mocks.selectAiImageResult).not.toHaveBeenCalled();
+  });
+
+  it('prefers the formal cover over a pending image and never obscures it with generation progress', async () => {
+    const snapshot = structuredClone(workspace) as unknown as AssetSettingsWorkspace;
+    const asset = snapshot.characters[0];
+    delete asset.visual;
+    asset.imagePreview = { generationStatus: 'GENERATING', pendingImageThumbnailUrl: '/pending-thumb.png' };
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: snapshot });
+    render(<ProductionWorkbenchSettings />);
+    await waitFor(() => expect(screen.getByAltText('斌斌当前视觉形象')).toHaveAttribute('src', '/daily-thumb.png'));
+    expect(screen.queryByLabelText('斌斌视觉形象生成状态')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('asset-image-CHARACTER-1')).getByText('已确认')).toBeInTheDocument();
+  });
+
+  it('keeps a pending cover visible when another generation is running', async () => {
+    const snapshot = structuredClone(workspace) as unknown as AssetSettingsWorkspace;
+    const asset = snapshot.characters[0];
+    delete asset.visual;
+    asset.mainImageThumbnailUrl = null;
+    asset.imagePreview = { generationStatus: 'GENERATING', pendingImageThumbnailUrl: '/pending-thumb.png' };
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: snapshot });
+    render(<ProductionWorkbenchSettings />);
+    await waitFor(() => expect(screen.getByAltText('斌斌当前视觉形象')).toHaveAttribute('src', '/pending-thumb.png'));
+    expect(screen.queryByLabelText('斌斌视觉形象生成状态')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('asset-image-CHARACTER-1')).getByText('待确认')).toBeInTheDocument();
+  });
+
+  it('shows generation statuses in the gallery without covering an existing asset image', async () => {
     workspace.characters[0].visual.variants[1].generationStatus = 'GENERATING';
     workspace.characters[0].visual.generationSummary.GENERATING = 1;
     workspace.characters[0].visual.generationSummary.FAILED = 0;
 
     render(<ProductionWorkbenchSettings />);
 
-    expect(
-      await screen.findByLabelText('斌斌视觉形象生成状态'),
-    ).toHaveTextContent('生成中 1');
-    expect(
-      within(screen.getByLabelText('斌斌视觉形象生成状态')).getByRole(
-        'progressbar',
-      ),
-    ).toBeInTheDocument();
+    await screen.findByText('斌斌');
+    expect(screen.queryByLabelText('斌斌视觉形象生成状态')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByAltText('斌斌当前视觉形象')).toHaveAttribute('src', '/daily-thumb.png'));
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
     fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));

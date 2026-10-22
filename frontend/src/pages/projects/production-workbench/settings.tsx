@@ -109,7 +109,7 @@ const hasGeneratingVisualImages = (visual?: AssetVisualWorkspace) =>
 
 const hasGeneratingAssetImages = (workspace: AssetSettingsWorkspace) =>
   [...workspace.characters, ...workspace.scenes, ...workspace.props].some(
-    (asset) => hasGeneratingVisualImages(asset.visual),
+    (asset) => asset.imagePreview?.generationStatus === 'GENERATING' || hasGeneratingVisualImages(asset.visual),
   );
 
 const GenerationStatusOverlay = ({
@@ -220,7 +220,9 @@ const AssetCard = ({
 }) => {
   const [imageHovered, setImageHovered] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const thumbnailUrl = item.mainImageThumbnailUrl;
+  const pendingThumbnailUrl = item.imagePreview?.pendingImageThumbnailUrl;
+  const thumbnailUrl = item.mainImageThumbnailUrl || pendingThumbnailUrl;
+  const showingPendingImage = !item.mainImageThumbnailUrl && Boolean(pendingThumbnailUrl);
   const bindings = item.visual?.episodeBindings ?? [];
   const variantEpisodes = (item.visual?.variants ?? []).flatMap((variant) => {
     const episodeNos = [
@@ -247,12 +249,14 @@ const AssetCard = ({
       .filter((binding) => binding.status === 'ACTIVE')
       .map((binding) => binding.episodeId),
   ).size;
-  const assetGenerationStatus = ['GENERATING', 'FAILED', 'NOT_STARTED']
-    .map((status) => ({
-      status,
-      count: item.visual?.generationSummary?.[status] ?? 0,
-    }))
-    .find(({ count }) => count > 0);
+  const assetGenerationStatus = item.imagePreview?.generationStatus
+    ? { status: item.imagePreview.generationStatus, count: undefined }
+    : ['GENERATING', 'FAILED', 'NOT_STARTED']
+        .map((status) => ({
+          status,
+          count: item.visual?.generationSummary?.[status] ?? 0,
+        }))
+        .find(({ count }) => count > 0);
   const visualLabel = type === 'CHARACTER' ? '变装' : '视觉形象';
 
   return (
@@ -317,7 +321,7 @@ const AssetCard = ({
               pointerEvents: 'none',
             }}
           >
-            {item.status === 'CONFIRMED' ? '已确认' : '待确认'}
+            {!showingPendingImage && item.status === 'CONFIRMED' ? '已确认' : '待确认'}
           </span>
           {imageHovered || actionMenuOpen ? (
             <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
@@ -371,7 +375,7 @@ const AssetCard = ({
               ) : null}
             </div>
           ) : null}
-          {assetGenerationStatus ? (
+          {!thumbnailUrl && assetGenerationStatus ? (
             <GenerationStatusOverlay
               status={assetGenerationStatus.status}
               count={assetGenerationStatus.count}
