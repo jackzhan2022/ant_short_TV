@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.*;
 public class FreeCreationController {
     private final FreeCreationService service;
     public FreeCreationController(FreeCreationService service) {this.service=service;}
+    @GetMapping("/models") public ApiResponse<FreeCreationService.ModelCatalog> models(HttpServletRequest request) {
+        return ApiResponse.success(service.models(TenantRequestSupport.tenantId(request)));
+    }
     @GetMapping public ApiResponse<Map<String,Object>> list(HttpServletRequest request,
         @RequestParam(defaultValue="mine") String scope,@RequestParam(required=false) String mediaType,
         @RequestParam(required=false) String status,@RequestParam(required=false) String keyword,

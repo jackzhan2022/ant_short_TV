@@ -348,7 +348,7 @@ export default function FreeCreationPage() {
   const { initialState } = useModel('@@initialState');
   const access = useAccess();
   if (!access.canUseFreeCreation)
-    return <Alert type="info" title="自由创作仅对平台管理员开放" />;
+    return <Alert type="info" title="请先登录并选择有效的创作团队" />;
   if (!initialState?.currentTenantId)
     return <Alert type="info" title="请先选择创作团队" />;
   return (

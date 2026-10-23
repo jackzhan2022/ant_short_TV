@@ -210,34 +210,26 @@ describe('creation model metadata', () => {
 describe('loadCreationModels', () => {
   beforeEach(() => vi.resetAllMocks());
 
-  it('reads only the two listing endpoints and forwards abort and local error handling', async () => {
-    vi.mocked(request).mockImplementation(async (url) => ({
+  it('reads the member model catalog and forwards abort and local error handling', async () => {
+    vi.mocked(request).mockResolvedValue({
       success: true,
-      data: url === '/api/platform/ai/models' ? [model()] : providers,
-    }));
+      data: { models: [model()], providers },
+    });
     const signal = new AbortController().signal;
     expect(await loadCreationModels(signal)).toHaveLength(1);
-    expect(request).toHaveBeenCalledTimes(2);
-    for (const path of [
-      '/api/platform/ai/models',
-      '/api/platform/ai/providers',
-    ]) {
-      expect(request).toHaveBeenCalledWith(path, {
-        method: 'GET',
-        skipErrorHandler: true,
-        signal,
-      });
-    }
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith('/api/free-creations/models', {
+      method: 'GET',
+      skipErrorHandler: true,
+      signal,
+    });
   });
 
-  it.each([
-    '/api/platform/ai/models',
-    '/api/platform/ai/providers',
-  ])('fails when %s reports business failure', async (path) => {
-    vi.mocked(request).mockImplementation(async (url) => ({
-      success: url !== path,
-      data: url === '/api/platform/ai/models' ? [model()] : providers,
-    }));
+  it('fails when the model catalog reports business failure', async () => {
+    vi.mocked(request).mockResolvedValue({
+      success: false,
+      data: { models: [model()], providers },
+    });
     await expect(loadCreationModels()).rejects.toThrow(
       '模型列表加载失败，请稍后重试',
     );

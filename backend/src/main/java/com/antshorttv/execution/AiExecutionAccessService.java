@@ -12,8 +12,6 @@ public class AiExecutionAccessService {
     private final AiExecutionService executionService;
     private final TenantContextResolver tenantContextResolver;
     private final ProjectAccessResolver projectAccessResolver;
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.antshorttv.platform.PlatformPermissionGuard platform;
 
     public AiExecutionAccessService(
         AiExecutionService executionService,
@@ -31,10 +29,6 @@ public class AiExecutionAccessService {
         if (!tenantId.equals(task.tenantId)) {
             throw denied();
         }
-        if ("FREE_CREATION".equals(task.businessType)) {
-            if (platform == null) throw denied();
-            platform.requireAdministrator();
-        }
         if (task.projectId != null) {
             projectAccessResolver.requireView(tenantId, task.projectId);
         }
@@ -46,10 +40,6 @@ public class AiExecutionAccessService {
         AiExecutionTaskEntity task = executionService.requireTask(executionId);
         if (!tenantId.equals(task.tenantId)) {
             throw denied();
-        }
-        if ("FREE_CREATION".equals(task.businessType)) {
-            if (platform == null) throw denied();
-            platform.requireAdministrator();
         }
         if (task.projectId != null) {
             projectAccessResolver.requireView(tenantId, task.projectId);

@@ -36,9 +36,7 @@ export default function access(
     canViewTenantWorkflowSkills: hasActiveTenant,
     canManageRoles: currentUser && tenantPermissions.includes('ROLE:VIEW'),
     canUseProjectCenter: hasActiveTenant,
-    canUseFreeCreation:
-      hasActiveTenant &&
-      initialState?.bootstrap?.platform.roles.includes('PLATFORM_ADMIN') === true,
+    canUseFreeCreation: hasActiveTenant,
     canViewStyleLibrary: Boolean(currentUser),
     canUseVideoScriptDecomposition:
       currentUser &&

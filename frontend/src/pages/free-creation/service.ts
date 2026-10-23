@@ -252,22 +252,17 @@ export async function loadCreationModels(
 ): Promise<CreationModel[]> {
   try {
     const options = { method: 'GET', skipErrorHandler: true, signal };
-    const [models, providers] = await Promise.all([
-      request<ApiResponse<ModelResponse[]>>('/api/platform/ai/models', options),
-      request<ApiResponse<ProviderResponse[]>>(
-        '/api/platform/ai/providers',
-        options,
-      ),
-    ]);
+    const response = await request<
+      ApiResponse<{ models: ModelResponse[]; providers: ProviderResponse[] }>
+    >('/api/free-creations/models', options);
     if (
-      !models?.success ||
-      !providers?.success ||
-      !Array.isArray(models.data) ||
-      !Array.isArray(providers.data)
+      !response?.success ||
+      !Array.isArray(response.data?.models) ||
+      !Array.isArray(response.data?.providers)
     ) {
       throw new Error('Invalid model list response');
     }
-    return normalizeCreationModels(models.data, providers.data);
+    return normalizeCreationModels(response.data.models, response.data.providers);
   } catch (error) {
     if (signal?.aborted || (isObject(error) && error.name === 'AbortError'))
       throw error;

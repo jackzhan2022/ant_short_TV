@@ -2,7 +2,7 @@ import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
-  it('自由创作仅允许有效团队中的平台管理员访问', () => {
+  it('自由创作允许所有有效团队成员访问', () => {
     const state = {
       currentUser: { userid: '1', access: 'user' },
       selectedTenant: { membership: { status: 'ACTIVE' } },
@@ -18,11 +18,10 @@ describe('access', () => {
     for (const roles of [[], ['ADMIN'], ['OWNER'], ['PLATFORM_OPERATOR']]) {
       expect(access({
         ...state,
-        currentUser: { userid: '2', access: 'admin' },
-        platformPermissions: ['PLATFORM_INSPIRATION_MANAGE'],
-        selectedTenant: { membership: { status: 'ACTIVE', memberType: 'OWNER' }, roles: ['ADMIN'] },
+        currentUser: { userid: '2', access: 'user' },
+        selectedTenant: { membership: { status: 'ACTIVE', memberType: 'MEMBER' }, roles: [] },
         bootstrap: { platform: { roles } },
-      }).canUseFreeCreation).toBe(false);
+      }).canUseFreeCreation).toBe(true);
     }
     expect(access(undefined).canUseFreeCreation).toBe(false);
     expect(routes.find((route) => route.path === '/free-creation')).toMatchObject({

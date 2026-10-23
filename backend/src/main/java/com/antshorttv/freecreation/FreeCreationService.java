@@ -4,7 +4,6 @@ import com.antshorttv.accounting.AiUsageMetric;
 import com.antshorttv.ai.*;
 import com.antshorttv.common.*;
 import com.antshorttv.execution.*;
-import com.antshorttv.platform.PlatformPermissionGuard;
 import com.antshorttv.points.AiPointEstimatePlan;
 import com.antshorttv.script.StoryboardPromptCompiler;
 import com.antshorttv.security.*;
@@ -29,7 +28,6 @@ public class FreeCreationService {
     private final FreeCreationMediaMapper mediaMapper;
     private final FreeCreationMediaService media;
     private final TenantContextResolver tenants;
-    private final PlatformPermissionGuard platform;
     private final AiModelRouter router;
     private final AiExecutionService executions;
     private final AiVideoTaskService videos;
@@ -40,15 +38,49 @@ public class FreeCreationService {
     private final Validator validator;
 
     public FreeCreationService(FreeCreationMapper creations,FreeCreationMediaMapper mediaMapper,FreeCreationMediaService media,
-        TenantContextResolver tenants,PlatformPermissionGuard platform,AiModelRouter router,AiExecutionService executions,
+        TenantContextResolver tenants,AiModelRouter router,AiExecutionService executions,
         AiVideoTaskService videos,SeedanceVideoRequestValidator videoValidator,ObjectStorageService storage,
         ObjectMapper json,JdbcTemplate jdbc,Validator validator) {
-        this.creations=creations; this.mediaMapper=mediaMapper; this.media=media; this.tenants=tenants; this.platform=platform;
+        this.creations=creations; this.mediaMapper=mediaMapper; this.media=media; this.tenants=tenants;
         this.router=router; this.executions=executions; this.videos=videos; this.videoValidator=videoValidator;
         this.storage=storage; this.json=json; this.jdbc=jdbc; this.validator=validator;
     }
 
-    public TenantContext authorize(Long tenantId) { platform.requireAdministrator(); return tenants.requireActiveMember(tenantId); }
+    public TenantContext authorize(Long tenantId) { return tenants.requireActiveMember(tenantId); }
+
+    public record ModelOption(Long id,Long providerId,String providerName,String name,String description,
+        String serviceType,String status,Boolean isDefault,Integer sort,List<String> capabilities,String configJson) {}
+    public record ProviderOption(Long id,String code,String status) {}
+    public record ModelCatalog(List<ModelOption> models,List<ProviderOption> providers) {}
+
+    public ModelCatalog models(Long tenantId) {
+        authorize(tenantId);
+        List<ModelOption> models=new ArrayList<>();
+        Map<Long,ProviderOption> providers=new LinkedHashMap<>();
+        var candidates=jdbc.queryForList("select id,service_type from ai_model where status='ENABLED' and service_type in ('IMAGE','VIDEO') order by sort desc,id desc");
+        for(var candidate:candidates) {
+            AiModelRoute route;
+            try { route=router.route(((Number)candidate.get("id")).longValue(),(String)candidate.get("service_type")); }
+            catch(AiGatewayException unavailable) { continue; }
+            var model=route.model(); var provider=route.provider();
+            models.add(new ModelOption(model.getId(),provider.getId(),provider.getName(),model.getName(),model.getDescription(),
+                model.getServiceType(),model.getStatus(),model.getIsDefault(),model.getSort(),
+                List.of(model.getServiceType()+"_GENERATION"),creationConfig(model.getConfigJson())));
+            providers.put(provider.getId(),new ProviderOption(provider.getId(),provider.getCode(),provider.getStatus()));
+        }
+        return new ModelCatalog(models,List.copyOf(providers.values()));
+    }
+
+    private String creationConfig(String value) {
+        if(value==null || value.isBlank()) return value;
+        try {
+            JsonNode config=json.readTree(value);
+            if(!config.isObject()) return "null";
+            ObjectNode safe=json.createObjectNode();
+            for(String key:List.of("quality","outputFormat","videoGeneration")) if(config.has(key)) safe.set(key,config.get(key));
+            return safe.toString();
+        } catch(Exception invalidConfig) { return "null"; }
+    }
 
     @Transactional
     public Map<String,Object> create(Long tenantId,FreeCreationRequest request) {

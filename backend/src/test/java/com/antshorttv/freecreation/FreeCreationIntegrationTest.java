@@ -70,9 +70,15 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
     @AfterAll static void stop() {server.stop(0);}
 
     @Test void generatesAndBillsOnceAndSupportsTeamReuseWithoutProjectOrPermissionLeaks() throws Exception {
-        User author=register("13800781001","自由作者",true);User colleague=register("13800781002","团队作者",true);User member=register("13800781003","普通成员",false);
+        User author=register("13800781001","自由作者",false);User colleague=register("13800781002","团队作者",false);User member=register("13800781003","普通成员",false);
         long tenant=team(author,"自由创作测试团队");join(tenant,colleague);join(tenant,member);long other=team(author,"隔离团队");
         long model=imageModel();
+        JsonNode catalog=getJson(member,tenant,"/api/free-creations/models").path("data");
+        assertThat(catalog.path("models").findValues("id").stream().map(JsonNode::asLong).toList()).contains(model);
+        assertThat(catalog.path("providers").toString()).doesNotContain("apiKey","baseUrl","cipher");
+        mvc.perform(get("/api/platform/ai/models").with(authenticated(member.token))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/platform/ai/providers").with(authenticated(member.token))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/free-creations/models").with(authenticated(member.token)).header("X-Tenant-Id",other)).andExpect(status().isForbidden());
         jdbc.update("insert into team_point_account(tenant_id,balance,total_granted,total_consumed,created_at,updated_at) values (?,100,100,0,now(),now()) on duplicate key update balance=100,total_granted=100",tenant);
         String upload=data(completeMediaUpload(mvc,author.token,tenant,"参考.png","image/png",png)).path("sessionToken").asText();
         Map<String,Object> body=request(model,"首次生成测试",List.of(Map.of("kind","IMAGE","uploadSessionToken",upload)));
@@ -108,8 +114,8 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         mvc.perform(get("/api/free-creations/"+id).with(authenticated(author.token)).header("X-Tenant-Id",other)).andExpect(status().isNotFound());
         mvc.perform(post("/api/free-creations").with(authenticated(author.token)).header("X-Tenant-Id",other).contentType(MediaType.APPLICATION_JSON)
             .content(json.writeValueAsBytes(request(model,"不能跨团队复用",List.of(Map.of("kind","IMAGE","referenceId",reference)))))).andExpect(status().isNotFound());
-        mvc.perform(get("/api/free-creations").with(authenticated(member.token)).header("X-Tenant-Id",tenant)).andExpect(status().isForbidden());
-        mvc.perform(get("/api/tenants/"+tenant+"/ai-executions/"+execution).with(authenticated(member.token))).andExpect(status().isForbidden());
+        assertThat(getJson(member,tenant,"/api/free-creations?scope=team").path("data").path("total").asInt()).isEqualTo(2);
+        mvc.perform(get("/api/tenants/"+tenant+"/ai-executions/"+execution).with(authenticated(member.token))).andExpect(status().isOk());
         for(String operation:List.of("retry","cancel","regenerate")) mvc.perform(post("/api/tenants/"+tenant+"/ai-executions/"+execution+"/"+operation)
             .with(authenticated(colleague.token)).contentType(MediaType.APPLICATION_JSON).content("{\"clientIdempotencyKey\":\"cannot-regenerate\",\"traceId\":\"free-control-denied\"}")).andExpect(status().isForbidden());
         jdbc.update("update ai_execution_task set status='RUNNING' where id=?",execution);
@@ -117,6 +123,11 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         jdbc.update("update ai_execution_task set status='SUCCEEDED' where id=?",execution);
         completePendingImageJobs(mvc);
         assertThat(getJson(author,tenant,"/api/free-creations/"+id).path("data").path("outputs").get(0).path("previewUrl").asText()).contains("/derived/");
+        jdbc.update("update tenant_member set status='REMOVED' where tenant_id=? and user_id=?",tenant,member.id);
+        for(String path:List.of("/api/free-creations","/api/free-creations/models","/api/free-creations/"+id,
+            "/api/tenants/"+tenant+"/ai-executions/"+execution,"/api/tenants/"+tenant+"/production-tasks/FREE_CREATION:"+id)) {
+            mvc.perform(get(path).with(authenticated(member.token)).header("X-Tenant-Id",tenant)).andExpect(status().isForbidden());
+        }
     }
 
     @Test void ambiguousProviderSubmissionDoesNotResubmitOrRefundAsUnused() throws Exception {
@@ -171,8 +182,8 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
     }
 
     @Test void taskCenterUnifiesVisibilityContentControlsAndIdempotentBilling() throws Exception {
-        User author=register("13800781006","统一任务作者",true);
-        User colleague=register("13800781007","只读管理员",true);
+        User author=register("13800781006","统一任务作者",false);
+        User colleague=register("13800781007","只读成员",false);
         User member=register("13800781008","普通团队所有者",false);
         long tenant=team(member,"统一任务团队");join(tenant,author);join(tenant,colleague);
         long other=team(author,"统一任务隔离团队"),model=imageModel();
@@ -186,10 +197,11 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         JsonNode detail=getJson(author,tenant,path).path("data");
         assertThat(detail.path("allowedActions").toString()).contains("CANCEL");
         assertThat(detail.path("destination").asText()).isEqualTo("/free-creation?creation="+id);
-        // Even a team owner cannot discover administrator-only creation records or counts.
-        assertThat(getJson(member,tenant,base+"?scope=team&type=FREE_CREATION").path("data").path("total").asInt()).isZero();
-        assertThat(getJson(member,tenant,base+"/summary?scope=team&type=FREE_CREATION").path("data").path("total").asInt()).isZero();
-        for(String suffix:List.of("","/content","/content/references-IMAGE")) mvc.perform(get(path+suffix).with(authenticated(member.token))).andExpect(status().isForbidden());
+        assertThat(getJson(member,tenant,base+"?scope=team&type=FREE_CREATION").path("data").path("total").asInt()).isEqualTo(1);
+        assertThat(getJson(member,tenant,base+"/summary?scope=team&type=FREE_CREATION").path("data").path("total").asInt()).isEqualTo(1);
+        assertThat(getJson(colleague,tenant,base+"?type=FREE_CREATION").path("data").path("total").asInt()).isZero();
+        mvc.perform(get(base+"?scope=team&type=FREE_CREATION").with(authenticated(colleague.token))).andExpect(status().isForbidden());
+        for(String suffix:List.of("","/content","/content/references-IMAGE")) mvc.perform(get(path+suffix).with(authenticated(member.token))).andExpect(status().isOk());
         mvc.perform(get("/api/tenants/"+other+"/production-tasks/"+key).with(authenticated(author.token))).andExpect(status().isForbidden());
         mvc.perform(post(path+"/cancel").with(authenticated(colleague.token))).andExpect(status().isForbidden());
         assertThat(getJson(colleague,tenant,path).path("data").path("allowedActions").toString()).doesNotContain("CANCEL","RETRY","REGENERATE");

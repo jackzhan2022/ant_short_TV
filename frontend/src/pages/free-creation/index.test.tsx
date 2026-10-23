@@ -256,10 +256,10 @@ describe('自由创作页面', () => {
     }
   });
 
-  it('退出管理员权限或缺少团队时不请求模型', async () => {
+  it('没有有效团队访问权限或缺少团队时不请求模型', async () => {
     mocks.allowed = false;
     const view = render(<FreeCreationPage />);
-    expect(screen.getByText('自由创作仅对平台管理员开放')).toBeInTheDocument();
+    expect(screen.getByText('请先登录并选择有效的创作团队')).toBeInTheDocument();
     mocks.allowed = true;
     mocks.tenant = undefined;
     view.rerender(<FreeCreationPage />);
