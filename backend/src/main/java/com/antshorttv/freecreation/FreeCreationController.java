@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
 
+@com.antshorttv.rbac.RequirePermission("MENU:FREE_CREATION")
 @RestController
 @RequestMapping("/api/free-creations")
 public class FreeCreationController {

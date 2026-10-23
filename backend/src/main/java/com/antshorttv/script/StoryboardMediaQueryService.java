@@ -1,5 +1,6 @@
 package com.antshorttv.script;
 
+import com.antshorttv.rbac.MenuAuthorization;
 import com.antshorttv.project.ProjectAccessResolver;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
@@ -40,15 +41,15 @@ public class StoryboardMediaQueryService {
         }
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
         var permissions = context.effectivePermissions();
-        result.put("imageTasks", permissions.contains("AI_IMAGE_TASK:VIEW")
+        result.put("imageTasks", MenuAuthorization.allows(permissions, "AI_IMAGE_TASK:VIEW")
             ? tasks(tenantId, projectId, ids, shots, "image", "first_frame_image_id") : List.of());
-        result.put("videoTasks", permissions.contains("AI_VIDEO_TASK:VIEW")
+        result.put("videoTasks", MenuAuthorization.allows(permissions, "AI_VIDEO_TASK:VIEW")
             ? tasks(tenantId, projectId, ids, shots, "video", "current_video_result_id") : List.of());
-        result.put("videoHistory", permissions.contains("AI_VIDEO_TASK:VIEW")
+        result.put("videoHistory", MenuAuthorization.allows(permissions, "AI_VIDEO_TASK:VIEW")
             ? videoHistory(tenantId, projectId, ids) : List.of());
-        result.put("voiceTasks", permissions.contains("AI_VOICE_TASK:VIEW")
+        result.put("voiceTasks", MenuAuthorization.allows(permissions, "AI_VOICE_TASK:VIEW")
             ? tasks(tenantId, projectId, ids, shots, "voice", "current_voice_result_id") : List.of());
-        result.put("assetVisuals", permissions.contains("ELEMENT:VIEW") ? assetVisuals(tenantId, projectId, ids, shots) : List.of());
+        result.put("assetVisuals", MenuAuthorization.allows(permissions, "ELEMENT:VIEW") ? assetVisuals(tenantId, projectId, ids, shots) : List.of());
         return result;
     }
 

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@com.antshorttv.rbac.RequirePermission("MENU:VIDEO_DECOMPOSITION")
 @RestController
 @RequestMapping("/api/video-script-decomposition")
 public class VideoDecompositionController {

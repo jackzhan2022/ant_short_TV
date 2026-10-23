@@ -338,7 +338,7 @@ export default [
   },
   {
     path: '/',
-    redirect: '/team/my',
+    component: './workspace-entry',
   },
   {
     component: './exception/404',

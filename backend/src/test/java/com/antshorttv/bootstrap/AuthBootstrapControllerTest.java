@@ -51,7 +51,7 @@ class AuthBootstrapControllerTest extends com.antshorttv.support.RegistrationTes
         mockMvc.perform(get("/api/auth/bootstrap").cookie(user.session()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.selectedTenant.tenant.id", is((int) tenantId)))
-            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("PROJECT:VIEW_ALL")))
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("MENU:PROJECTS")))
             .andExpect(jsonPath("$.data.nextAction", is("ENTER_WORKSPACE")));
     }
 

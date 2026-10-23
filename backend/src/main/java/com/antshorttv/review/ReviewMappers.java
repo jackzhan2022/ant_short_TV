@@ -33,7 +33,7 @@ interface ReviewProjectMapper extends BaseMapper<ReviewProjectEntity> {
                   and pm.project_id = rp.main_project_id
                   and pm.user_id = #{userId}
                   and pm.status = 'ACTIVE'
-                  and permission.code = 'PROJECT:VIEW'
+                  and permission.code = 'MENU:PROJECTS'
              )
            )
          order by rp.updated_at desc, rp.id desc

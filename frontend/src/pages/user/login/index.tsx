@@ -19,14 +19,14 @@ const loginPath = '/user/login';
 
 const getSafeRedirectUrl = (redirect: string | null): string => {
   if (!redirect?.startsWith('/') || redirect.startsWith('//'))
-    return '/team/my';
+    return '/';
 
   try {
     const parsed = new URL(redirect, window.location.origin);
-    if (parsed.origin !== window.location.origin) return '/team/my';
+    if (parsed.origin !== window.location.origin) return '/';
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
-    return '/team/my';
+    return '/';
   }
 };
 
@@ -40,7 +40,7 @@ const nextPathForSession = (session: Pick<AuthSession, 'nextAction'>, redirectUr
   if (session.nextAction === 'CREATE_OR_JOIN_TEAM') {
     return '/team/my';
   }
-  return redirectUrl === loginPath ? '/team/my' : redirectUrl;
+  return redirectUrl === loginPath ? '/' : redirectUrl;
 };
 
 const Login: React.FC = () => {
@@ -104,7 +104,7 @@ const Login: React.FC = () => {
 
       const urlParams = new URL(window.location.href).searchParams;
       const redirectUrl = getSafeRedirectUrl(urlParams.get('redirect'));
-      history.replace(redirectUrl === loginPath ? '/team/my' : redirectUrl);
+      history.replace(redirectUrl === loginPath ? '/' : redirectUrl);
     } finally {
       setSelectingTenant(false);
     }

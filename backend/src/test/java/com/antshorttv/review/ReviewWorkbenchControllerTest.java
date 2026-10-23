@@ -37,6 +37,7 @@ import org.mockito.ArgumentCaptor;
 @SpringBootTest
 @AutoConfigureMockMvc
 class ReviewWorkbenchControllerTest extends com.antshorttv.support.RegistrationTestSupport {
+    @Autowired private com.antshorttv.rbac.RbacService menuRoles;
 
     @Autowired
     private MockMvc mockMvc;
@@ -1065,6 +1066,7 @@ class ReviewWorkbenchControllerTest extends com.antshorttv.support.RegistrationT
             insert into tenant_member (tenant_id, user_id, member_type, status, joined_at, created_at, updated_at)
             values (?, ?, 'MEMBER', 'ACTIVE', now(), now(), now())
             """, tenantId, userId);
+        menuRoles.initializeTenant(tenantId);
         return jdbcTemplate.queryForObject(
             "select id from tenant_member where tenant_id = ? and user_id = ?", Long.class, tenantId, userId);
     }
@@ -1077,8 +1079,9 @@ class ReviewWorkbenchControllerTest extends com.antshorttv.support.RegistrationT
             """, tenantId, creatorId);
         Long roleId = jdbcTemplate.queryForObject(
             "select id from `role` where tenant_id = ? and code = 'REVIEW_LIST_VIEWER'", Long.class, tenantId);
+        jdbcTemplate.update("update `role` set project_access_all=true where id=?", roleId);
         Long permissionId = jdbcTemplate.queryForObject(
-            "select id from permission where code = 'PROJECT:VIEW_ALL'", Long.class);
+            "select id from permission where code = 'MENU:SCRIPT_REVIEW'", Long.class);
         jdbcTemplate.update("insert into role_permission (role_id, permission_id, created_at) values (?, ?, now())",
             roleId, permissionId);
         jdbcTemplate.update("insert into member_role (member_id, role_id, created_by, created_at) values (?, ?, ?, now())",

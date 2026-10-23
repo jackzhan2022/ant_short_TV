@@ -73,7 +73,7 @@ class ScopedPermissionGuardTest {
         project.tenantId = 11L;
         ProjectAccessContext tenantWide = new ProjectAccessContext(
             context, project, ProjectAccessSource.TENANT_WIDE, null, null,
-            java.util.Set.of("PROJECT:VIEW_ALL"),
+            java.util.Set.of("MENU:PROJECTS"),
             new ProjectCapabilities(true, false, false, false, false)
         );
         when(projectAccessResolver.requireView(11L, 23L)).thenReturn(tenantWide);
@@ -99,7 +99,7 @@ class ScopedPermissionGuardTest {
         project.tenantId = 11L;
         ProjectAccessContext access = new ProjectAccessContext(
             context, project, ProjectAccessSource.PROJECT_MEMBER, null, null,
-            java.util.Set.of("ELEMENT:VIEW"),
+            java.util.Set.of("MENU:PROJECTS"),
             new ProjectCapabilities(false, false, false, false, false)
         );
 

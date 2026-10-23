@@ -44,8 +44,8 @@ export type ProjectRoleFormValues = {
   permissionCodes?: string[];
 };
 
-export const hasProjectPermission = (project: Project, permission: string) =>
-  project.effectivePermissions.includes(permission);
+export const canUseProjectFeatures = (project: Project) =>
+  project.effectivePermissions.some((code) => ['MENU:PROJECTS', 'MENU:SHORT_DRAMA_CREATION'].includes(code));
 
 export async function queryProjects(params: MediaPageParams & { keyword?: string } = {}, signal?: AbortSignal) {
   return request<ApiResponse<MediaPage<Project>>>('/api/projects', { params, signal });

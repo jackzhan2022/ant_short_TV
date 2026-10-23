@@ -5,7 +5,6 @@ import com.antshorttv.common.ErrorCode;
 import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
-import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -28,22 +27,21 @@ public class ReviewAccessGuard {
             || !context.tenantId().equals(reviewProject.getTenantId())) {
             throw forbidden();
         }
+        String menu = permissionService.hasPermission(context, "MENU:SCRIPT_REVIEW")
+            ? "MENU:SCRIPT_REVIEW" : "MENU:PRODUCTION_TASKS";
+        if (!permissionService.hasPermission(context, menu)) throw forbidden();
         if (reviewProject.getMainProjectId() != null) {
             projectPermissionGuard.require(
                 context.tenantId(),
                 reviewProject.getMainProjectId(),
-                permissionCode
+                menu
             );
             return;
         }
         if (context.userId().equals(reviewProject.getCreatedBy())) {
             return;
         }
-        Set<String> tenantPermissions = permissionService.permissionCodes(context);
-        String tenantWidePermission = "PROJECT:VIEW".equals(permissionCode)
-            ? "PROJECT:VIEW_ALL"
-            : "PROJECT:EDIT_ALL";
-        if (!tenantPermissions.contains(tenantWidePermission)) {
+        if (!permissionService.canAccessAllProjects(context)) {
             throw forbidden();
         }
     }
@@ -66,7 +64,7 @@ public class ReviewAccessGuard {
         if (reviewProject.getMainProjectId() != null || targetMainProjectId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "审阅稿已绑定项目，不能重新绑定。");
         }
-        projectPermissionGuard.require(context.tenantId(), targetMainProjectId, "SCRIPT:EDIT");
+        projectPermissionGuard.require(context.tenantId(), targetMainProjectId, "MENU:SCRIPT_REVIEW");
     }
 
     private BusinessException forbidden() {

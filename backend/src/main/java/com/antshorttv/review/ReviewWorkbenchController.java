@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+@com.antshorttv.rbac.RequirePermission("MENU:SCRIPT_REVIEW")
 @RestController
 @RequestMapping("/api/script-review")
 public class ReviewWorkbenchController {

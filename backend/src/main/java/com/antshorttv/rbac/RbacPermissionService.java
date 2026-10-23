@@ -52,18 +52,15 @@ public class RbacPermissionService {
     }
 
     public boolean hasPermission(TenantContext context, String permissionCode) {
-        return permissionCodes(context).contains(permissionCode);
+        return MenuAuthorization.allows(permissionCodes(context), permissionCode);
     }
 
     public boolean hasPermission(TenantContext context, String permissionCode, Long projectId) {
-        if (hasPermission(context, permissionCode)) {
-            return true;
-        }
         return hasProjectPermission(context, projectId, permissionCode);
     }
 
     public boolean hasProjectPermission(TenantContext context, Long projectId, String permissionCode) {
-        return projectPermissionCodes(context, projectId).contains(permissionCode);
+        return MenuAuthorization.allows(projectPermissionCodes(context, projectId), permissionCode);
     }
 
     public Set<String> projectPermissionCodes(TenantContext context, Long projectId) {
@@ -74,6 +71,7 @@ public class RbacPermissionService {
         if (project == null) {
             return Set.of();
         }
+        if (canAccessAllProjects(context)) return permissionCodes(context);
         ProjectMemberEntity member = projectMemberMapper.selectActiveByProjectIdAndUserId(
             context.tenantId(),
             projectId,
@@ -90,7 +88,8 @@ public class RbacPermissionService {
         if (role == null || !ProjectRoleStatus.ACTIVE.name().equals(role.status)) {
             return Set.of();
         }
-        return projectRolePermissionCodes(context.tenantId(), projectId, member.roleId);
+        return projectRolePermissionCodes(context.tenantId(), projectId, member.roleId).contains("MENU:PROJECTS")
+            ? permissionCodes(context) : Set.of();
     }
 
     // The caller must validate active project membership and role before using this lookup.
@@ -114,6 +113,7 @@ public class RbacPermissionService {
     }
 
     public Set<String> permissionCodes(TenantContext context) {
+        if (context == null) return Set.of();
         if (MemberType.OWNER.name().equals(context.memberType())) {
             return RbacPermissions.ALL.stream()
                 .map(RbacPermissionDefinition::code)
@@ -149,7 +149,18 @@ public class RbacPermissionService {
         return permissionMapper.selectBatchIds(permissionIds)
             .stream()
             .map(PermissionEntity::getCode)
+            .filter(MenuAuthorization.MENUS::contains)
             .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    public boolean canAccessAllProjects(TenantContext context) {
+        if (context == null) return false;
+        if (MemberType.OWNER.name().equals(context.memberType())) return true;
+        List<Long> roleIds = memberRoleMapper.selectByMemberId(context.memberId()).stream()
+            .map(MemberRoleEntity::getRoleId).toList();
+        return !roleIds.isEmpty() && roleMapper.selectBatchIds(roleIds).stream().anyMatch(role ->
+            role != null && context.tenantId().equals(role.getTenantId()) && role.getDeletedAt() == null
+                && RoleStatus.ACTIVE.name().equals(role.getStatus()) && Boolean.TRUE.equals(role.getProjectAccessAll()));
     }
 
     public Set<String> roleCodes(TenantContext context) {

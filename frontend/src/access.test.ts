@@ -70,58 +70,17 @@ describe('access', () => {
       platformPermissions: ['PLATFORM_AI_CONCURRENCY_VIEW', 'PLATFORM_AI_CONCURRENCY_EDIT'],
     }).canEditPlatformAiConcurrency).toBe(false);
   });
-  it('limits tenant Skill management to an active owner or administrator', () => {
-    const ordinary = access({
+  it('uses the management menu for tenant Skills without granting platform access', () => {
+    const state = {
       currentUser: { userid: '1' },
+      selectedTenant: { membership: { status: 'ACTIVE', memberType: 'MEMBER' }, roles: ['MEMBER'] },
       tenantPermissions: ['MENU:AI_MANAGEMENT'],
-      selectedTenant: {
-        membership: { status: 'ACTIVE', memberType: 'MEMBER' },
-        roles: ['MEMBER'],
-      },
-    });
-    expect(ordinary.canViewTenantWorkflowSkills).toBe(true);
-    expect(ordinary.canViewAiManagement).toBe(true);
-    expect(ordinary.canManageTenantWorkflowSkills).toBe(false);
-    expect(ordinary.canViewWorkflowSkills).toBe(false);
-    expect(ordinary.canEditWorkflowSkills).toBe(false);
-    const base = {
-      currentUser: { userid: '1' },
-      tenantPermissions: ['MENU:AI_MANAGEMENT'],
-      platformPermissions: ['PLATFORM_AI_WORKFLOW_SKILL_EDIT'],
     };
-    expect(access(base).canManageTenantWorkflowSkills).toBe(false);
-    for (const membership of [
-      { status: 'ACTIVE', memberType: 'OWNER' },
-      { status: 'ACTIVE', memberType: 'MEMBER' },
-    ]) {
-      const state = {
-        ...base,
-        selectedTenant: {
-          membership,
-          roles: membership.memberType === 'MEMBER' ? ['ADMIN'] : [],
-        },
-      };
-      expect(access(state).canManageTenantWorkflowSkills).toBe(true);
-      expect(access(state).canViewAiManagement).toBe(true);
-      expect(
-        access({
-          ...state,
-          selectedTenant: {
-            membership: { ...membership, status: 'REMOVED' },
-            roles: ['ADMIN'],
-          },
-        }).canManageTenantWorkflowSkills,
-      ).toBe(false);
-    }
-    expect(
-      access({
-        ...base,
-        selectedTenant: {
-          membership: { status: 'ACTIVE', memberType: 'MEMBER' },
-          roles: ['MEMBER'],
-        },
-      }).canManageTenantWorkflowSkills,
-    ).toBe(false);
+    expect(access(state).canManageTenantWorkflowSkills).toBe(true);
+    expect(access(state).canViewTenantWorkflowSkills).toBe(true);
+    expect(access(state).canEditWorkflowSkills).toBe(false);
+    expect(access({ ...state, tenantPermissions: [] }).canManageTenantWorkflowSkills).toBe(false);
+    expect(access({ ...state, selectedTenant: null }).canManageTenantWorkflowSkills).toBe(false);
   });
   it('剧集管理菜单与直达路由使用同一权限门禁', () => {
     expect(routes.find((route) => route.path === '/drama-library')).toMatchObject({
@@ -201,7 +160,7 @@ describe('access', () => {
     expect(result.canAdmin).toBe(true);
   });
 
-  it('should allow role management when ROLE:VIEW is present', () => {
+  it('should allow role management when the team management menu is present', () => {
     const initialState = {
       currentUser: {
         userid: '1',
@@ -209,7 +168,8 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      tenantPermissions: ['ROLE:VIEW'],
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      tenantPermissions: ['MENU:TEAM_MANAGEMENT'],
     };
 
     const result = access(initialState);
@@ -256,7 +216,8 @@ describe('access', () => {
         'PLATFORM_AI_MODEL_EDIT',
         'PLATFORM_AI_MODEL_ENABLE',
       ],
-      tenantPermissions: ['PROJECT_AI_CONFIG_VIEW', 'PROJECT_AI_CONFIG_EDIT'],
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      tenantPermissions: ['MENU:PROJECTS'],
     };
 
     const result = access(initialState);
@@ -337,24 +298,15 @@ describe('access', () => {
     expect(access({ ...initialState, tenantPermissions: [] }).canViewProjects).toBe(false);
   });
 
-  it('requires AI usage permission for provider-backed task creation', () => {
-    const withoutUsage = access({
-      currentUser: { userid: '1', name: 'Workflow Creator', access: 'user' },
-      tenantPermissions: ['AI_IMAGE_TASK:CREATE', 'AI_VIDEO_TASK:CREATE'],
-    });
-    const withUsage = access({
-      currentUser: { userid: '1', name: 'AI Creator', access: 'user' },
-      tenantPermissions: [
-        'AI_IMAGE_TASK:CREATE',
-        'AI_VIDEO_TASK:CREATE',
-        'AI_SERVICE:USE',
-      ],
-    });
-
-    expect(withoutUsage.canCreateAiImageTasks).toBe(false);
-    expect(withoutUsage.canCreateAiVideoTasks).toBe(false);
-    expect(withUsage.canCreateAiImageTasks).toBe(true);
-    expect(withUsage.canCreateAiVideoTasks).toBe(true);
+  it('uses project menu grants for all project features and rejects old operation grants', () => {
+    const state = { currentUser: { userid: '1' }, selectedTenant: { membership: { status: 'ACTIVE' } } };
+    const denied = access({ ...state, tenantPermissions: ['AI_IMAGE_TASK:CREATE', 'AI_VIDEO_TASK:CREATE', 'AI_SERVICE:USE'] });
+    const allowed = access({ ...state, tenantPermissions: ['MENU:PROJECTS'] });
+    expect(denied.canCreateAiImageTasks).toBe(false);
+    expect(denied.canCreateAiVideoTasks).toBe(false);
+    expect(allowed.canCreateAiImageTasks).toBe(true);
+    expect(allowed.canCreateAiVideoTasks).toBe(true);
+    expect(allowed.canEditStoryboards).toBe(true);
   });
 
   it('does not grant tenant project navigation to a platform-only user', () => {
@@ -379,11 +331,11 @@ describe('access', () => {
     expect(result.canViewPlatformAiProviders).toBe(false);
   });
 
-  it('uses tenant PROJECT:CREATE only for the project creation entry', () => {
+  it('uses the creation menu for the project creation entry', () => {
     const result = access({
       currentUser: { userid: '1', name: 'Creator', access: 'user' },
       selectedTenant: { membership: { status: 'ACTIVE' } },
-      tenantPermissions: ['PROJECT:CREATE'],
+      tenantPermissions: ['MENU:SHORT_DRAMA_CREATION'],
       platformPermissions: [],
     });
 

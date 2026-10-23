@@ -148,7 +148,7 @@ public class VideoDecompositionService {
     public MediaPage<VideoDecompositionBatchResponse> list(Long tenantId, Long projectId, Integer current, Integer pageSize) {
         var context = tenantContextResolver.requireActiveMember(tenantId);
         if (projectId != null) requireProjectAccess(context, projectId, "PROJECT:VIEW");
-        boolean wide = permissionService.permissionCodes(context).contains("PROJECT:VIEW_ALL");
+        boolean wide = permissionService.canAccessAllProjects(context);
         var bounds = PageBounds.of(current, pageSize);
         long total = batchMapper.countVisible(tenantId, context.userId(), wide, projectId);
         if (bounds.offset() >= total) return new MediaPage<>(List.of(), bounds.current(), bounds.pageSize(), total);

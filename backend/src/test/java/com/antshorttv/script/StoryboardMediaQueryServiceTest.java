@@ -25,7 +25,7 @@ public class StoryboardMediaQueryServiceTest {
         when(access.requireView(1L, 2L)).thenReturn(new com.antshorttv.project.ProjectAccessContext(
             new com.antshorttv.security.TenantContext(1L, 1L, 1L, "OWNER"), new com.antshorttv.project.ProjectEntity(),
             com.antshorttv.project.ProjectAccessSource.TENANT_WIDE, null, null,
-            java.util.Set.of("PROJECT:VIEW", "ELEMENT:VIEW", "AI_IMAGE_TASK:VIEW", "AI_VIDEO_TASK:VIEW", "AI_VOICE_TASK:VIEW"), null));
+            java.util.Set.of("MENU:PROJECTS"), null));
         service = new StoryboardMediaQueryService(jdbc, access);
         jdbc.execute("create table storyboard(id bigint,tenant_id bigint,project_id bigint,episode_id bigint,characters varchar(300),scene varchar(300),props varchar(300),first_frame_image_id bigint,current_video_result_id bigint,current_voice_result_id bigint,deleted_at timestamp)");
         jdbc.execute("create table script_episode(id bigint,tenant_id bigint,project_id bigint,episode_no int,title varchar(100),status varchar(30),retired_at timestamp)");

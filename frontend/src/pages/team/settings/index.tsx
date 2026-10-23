@@ -35,7 +35,8 @@ const tenantTypeOptions = [
 const TeamSettings = () => {
   const tenantId = getCurrentTenantId();
   const { message } = App.useApp();
-  const { setInitialState } = useModel('@@initialState');
+  const { initialState, setInitialState } = useModel('@@initialState');
+  const canManage = initialState?.tenantPermissions?.includes('MENU:TEAM_MANAGEMENT') === true;
   const [tenant, setTenant] = useState<TenantSummary>();
   const [members, setMembers] = useState<TenantMember[]>([]);
 
@@ -77,7 +78,7 @@ const TeamSettings = () => {
             <Tag color={tenant.status === 'ACTIVE' ? 'green' : 'red'}>
               {tenant.status === 'ACTIVE' ? '正常' : '停用'}
             </Tag>
-            {isOwner && (
+            {canManage && (
               <Button
                 onClick={async () => {
                   await updateTenantStatus(
@@ -135,9 +136,9 @@ const TeamSettings = () => {
         }>
           key={tenant.id}
           layout="vertical"
-          readonly={!isOwner}
+          readonly={!canManage}
           initialValues={tenant}
-          submitter={isOwner ? undefined : false}
+          submitter={canManage ? undefined : false}
           onFinish={async (values) => {
             const response = await updateTenant(tenant.id, values);
             await setInitialState((state) => ({
@@ -174,7 +175,7 @@ const TeamSettings = () => {
                 : undefined
             }
           >
-            <TeamIconPicker disabled={!isOwner} />
+            <TeamIconPicker disabled={!canManage} />
           </Form.Item>
           <ProFormTextArea name="description" label="团队简介" />
         </ProForm>

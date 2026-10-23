@@ -26,7 +26,7 @@ class AssetDetailFallbackTest {
 
     private ToolExecutionContext context() {
         var c = new ToolExecutionContext(1L, 2L, 3L, 4L, 5L, 6L, null, 7L,
-            Set.of("SCRIPT:VIEW"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
         c.runState().put("assetScope", "PROP");
         return c;
     }

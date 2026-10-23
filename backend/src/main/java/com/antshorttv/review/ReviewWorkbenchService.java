@@ -982,7 +982,7 @@ public class ReviewWorkbenchService {
     }
 
     private List<ReviewProjectListRow> visibleProjectRows(TenantContext context) {
-        boolean tenantWide = permissionService.permissionCodes(context).contains("PROJECT:VIEW_ALL");
+        boolean tenantWide = permissionService.canAccessAllProjects(context);
         return projectMapper.selectVisibleListRows(context.tenantId(), context.userId(), tenantWide);
     }
 

@@ -235,7 +235,7 @@ const ProductionWorkbench = () => {
               >
                   查看原文
               </Button>
-              {project?.effectivePermissions?.includes('PROJECT_AI_CONFIG_VIEW') && (
+              {project?.effectivePermissions?.some((code) => ['MENU:PROJECTS', 'MENU:SHORT_DRAMA_CREATION'].includes(code)) && (
                 <Button
                   type="link"
                   size="small"

@@ -58,6 +58,7 @@ vi.mock('@/services/account-team/auth', () => ({
 vi.mock('@umijs/max', () => ({
   useModel: () => ({
     initialState: {
+      tenantPermissions: mocks.memberType === 'OWNER' ? ['MENU:TEAM_MANAGEMENT'] : [],
       selectedTenant: { membership: { memberType: mocks.memberType } },
     },
   }),
@@ -100,7 +101,7 @@ describe('TeamMembers', () => {
     expect(screen.getByText('请先在我的团队中选择当前创作团队')).toBeInTheDocument();
   });
 
-  it('hides owner-only invite action for normal members', async () => {
+  it('hides invite action without the team management menu for normal members', async () => {
     mocks.memberType = 'MEMBER';
 
     render(<TeamMembers />);

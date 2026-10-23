@@ -28,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class TenantInvitationService {
 
     private final SecureRandom secureRandom = new SecureRandom();
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.rbac.TenantPermissionGuard menuGuard;
 
     private final TenantInvitationMapper tenantInvitationMapper;
     private final TenantMemberMapper tenantMemberMapper;
@@ -163,7 +165,7 @@ public class TenantInvitationService {
         if (invitation == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "邀请不存在。");
         }
-        TenantContext context = tenantContextResolver.requireOwner(invitation.getTenantId());
+        TenantContext context = menuGuard.require(invitation.getTenantId(), "MENU:TEAM_MANAGEMENT");
         if (!InvitationStatus.PENDING.name().equals(invitation.getStatus())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "仅待处理邀请可以取消。");
         }

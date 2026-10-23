@@ -21,7 +21,7 @@ class ProjectAssetLibraryServiceTest {
     @Autowired private ProjectAssetLibraryService service;
     @Autowired private JdbcTemplate jdbc;
     @MockBean private ProjectAccessResolver access;
-    private static final Set<String> ALL = Set.of("AI_IMAGE_TASK:VIEW", "AI_VIDEO_TASK:VIEW", "SHOT_COMPOSE:VIEW", "EPISODE_VERSION:VIEW", "AI_VIDEO_RESULT:DOWNLOAD");
+    private static final Set<String> ALL = Set.of("MENU:ASSET_LIBRARY");
 
     private void grant(long tenant, long project, Set<String> codes) {
         ProjectEntity entity = new ProjectEntity(); entity.id=project; entity.tenantId=tenant;
@@ -126,7 +126,7 @@ class ProjectAssetLibraryServiceTest {
     }
 
     @Test
-    void includesVideoKindsAndFiltersEpisodesWithoutLeakingOtherPermissions() {
+    void assetMenuIncludesAllVideoKindsAndDownloadsWithEpisodeFiltering() {
         var all=service.list(91001L,91002L,"VIDEO",null,null,null,1,24);
         assertThat(all.items().total()).isEqualTo(4);
         assertThat(all.episodeNumbers()).containsExactly(1,2);
@@ -134,19 +134,19 @@ class ProjectAssetLibraryServiceTest {
             .contains("AI_VIDEO_RESULT","SHOT_COMPOSE_RESULT","EPISODE_VIDEO_VERSION");
         assertThat(service.list(91001L,91002L,"VIDEO",null,2,null,1,24).items().data())
             .singleElement().satisfies(item -> assertThat(item.id()).isEqualTo(91602L));
-        grant(91001,91002,Set.of("AI_VIDEO_TASK:VIEW"));
+        grant(91001,91002,Set.of("MENU:ASSET_LIBRARY"));
         var generated=service.list(91001L,91002L,"VIDEO",null,null,null,1,24);
-        assertThat(generated.items().total()).isEqualTo(2);
-        assertThat(generated.items().data()).allSatisfy(item -> assertThat(item.downloadUrl()).isNull());
+        assertThat(generated.items().total()).isEqualTo(4);
+        assertThat(generated.items().data()).anySatisfy(item -> assertThat(item.downloadUrl()).isNotBlank());
         jdbc.update("update ai_video_task set deleted_at=now() where id=91501");
-        assertThat(service.list(91001L,91002L,"VIDEO",null,null,null,1,24).items().total()).isEqualTo(1);
+        assertThat(service.list(91001L,91002L,"VIDEO",null,null,null,1,24).items().total()).isEqualTo(3);
     }
 
     @Test
     void rejectsUnavailableProjectsAndMissingMediaPermissions() {
         when(access.requireView(99999L,91002L)).thenThrow(new BusinessException(ErrorCode.FORBIDDEN,"denied"));
         assertThatThrownBy(() -> service.list(99999L,91002L,"IMAGE",null,null,null,1,24)).hasMessage("denied");
-        grant(91001,91002,Set.of("PROJECT:VIEW"));
+        grant(91001,91002,Set.of());
         assertThatThrownBy(() -> service.list(91001L,91002L,"IMAGE",null,null,null,1,24)).isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> service.list(91001L,91002L,"VIDEO",null,null,null,1,24)).isInstanceOf(BusinessException.class);
     }

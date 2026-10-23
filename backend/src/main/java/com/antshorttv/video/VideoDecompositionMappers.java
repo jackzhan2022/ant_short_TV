@@ -21,7 +21,7 @@ interface VideoDecompositionBatchMapper extends BaseMapper<VideoDecompositionBat
                 and pr.tenant_id = p.tenant_id and pr.status = 'ACTIVE'
               join project_role_permission rp on rp.role_id = pr.id and rp.project_id = p.id
                 and rp.tenant_id = p.tenant_id
-              join permission perm on perm.id = rp.permission_id and perm.code = 'PROJECT:VIEW'
+              join permission perm on perm.id = rp.permission_id and perm.code = 'MENU:PROJECTS'
               where pm.project_id = p.id and pm.tenant_id = p.tenant_id
                 and pm.user_id = #{userId} and pm.status = 'ACTIVE'))))
         """;

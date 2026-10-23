@@ -47,18 +47,17 @@ class ProjectAccessResolverTest {
         ProjectEntity project = project();
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project);
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of(
-            "PROJECT:VIEW_ALL", "PROJECT:EDIT_ALL"
-        ));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
 
         ProjectAccessContext access = resolver.requireView(11L, 23L);
 
         assertThat(access.source()).isEqualTo(ProjectAccessSource.TENANT_WIDE);
         assertThat(access.capabilities().canView()).isTrue();
         assertThat(access.capabilities().canEdit()).isTrue();
-        assertThat(access.capabilities().canDelete()).isFalse();
-        assertThat(access.capabilities().canManageMembers()).isFalse();
-        assertThat(access.capabilities().canManageRoles()).isFalse();
+        assertThat(access.capabilities().canDelete()).isTrue();
+        assertThat(access.capabilities().canManageMembers()).isTrue();
+        assertThat(access.capabilities().canManageRoles()).isTrue();
         assertThat(access.projectRole()).isNull();
     }
 
@@ -67,12 +66,8 @@ class ProjectAccessResolverTest {
         TenantContext tenant = tenantContext();
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project());
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of(
-            "PROJECT:VIEW_ALL",
-            "PROJECT:EDIT_ALL",
-            "PROJECT_MEMBER:VIEW",
-            "PROJECT_ROLE:VIEW"
-        ));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
 
         ProjectCapabilities capabilities = resolver.requireView(11L, 23L).capabilities();
 
@@ -93,16 +88,16 @@ class ProjectAccessResolverTest {
         role.code = "WRITER";
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project);
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of());
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
         when(memberMapper.selectActiveByProjectIdAndUserId(11L, 23L, 7L)).thenReturn(member);
         when(roleMapper.selectByTenantProjectAndId(11L, 23L, 37L)).thenReturn(role);
-        when(permissionService.projectRolePermissionCodes(11L, 23L, 37L)).thenReturn(Set.of("PROJECT:VIEW", "SCRIPT:EDIT"));
+        when(permissionService.projectRolePermissionCodes(11L, 23L, 37L)).thenReturn(Set.of("MENU:PROJECTS"));
 
         ProjectAccessContext access = resolver.requireView(11L, 23L);
 
         assertThat(access.source()).isEqualTo(ProjectAccessSource.PROJECT_MEMBER);
         assertThat(access.projectRole()).isSameAs(role);
-        assertThat(access.effectivePermissions()).containsExactlyInAnyOrder("PROJECT:VIEW", "SCRIPT:EDIT");
+        assertThat(access.effectivePermissions()).containsExactly("MENU:PROJECTS");
 
         when(projectMapper.selectAccessibleByMember(11L, 7L)).thenReturn(List.of(project));
         assertThat(resolver.accessibleProjectContexts(11L)).singleElement()
@@ -153,13 +148,15 @@ class ProjectAccessResolverTest {
     void listsAllProjectsForTenantWideViewerAndMembershipProjectsForOrdinaryMember() {
         TenantContext tenant = tenantContext();
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
         when(projectMapper.selectByTenantId(11L)).thenReturn(List.of(project()));
 
         assertThat(resolver.accessibleProjects(11L)).hasSize(1);
         verify(projectMapper).selectByTenantId(11L);
 
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of());
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(false);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
         when(projectMapper.selectAccessibleByMember(11L, 7L)).thenReturn(List.of(project()));
 
         assertThat(resolver.accessibleProjects(11L)).hasSize(1);
@@ -173,7 +170,8 @@ class ProjectAccessResolverTest {
         ProjectEntity second = project();
         second.id = 24L;
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL", "PROJECT:EDIT_ALL"));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
         when(projectMapper.selectByTenantId(11L)).thenReturn(List.of(first, second));
 
         assertThat(resolver.accessibleProjectContexts(11L)).hasSize(2).allSatisfy(access -> {
@@ -183,6 +181,7 @@ class ProjectAccessResolverTest {
         verify(tenantContextResolver).requireActiveMember(11L);
         verify(permissionService).permissionCodes(tenant);
         verify(projectMapper).selectByTenantId(11L);
+        verify(permissionService).canAccessAllProjects(tenant);
         verifyNoMoreInteractions(tenantContextResolver, permissionService, projectMapper);
         verifyNoInteractions(memberMapper, roleMapper);
     }
@@ -193,7 +192,8 @@ class ProjectAccessResolverTest {
         TenantContext tenant = tenantContext();
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project());
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
 
         ProjectAccessContext first = resolver.requireView(11L, 23L);
         ProjectAccessContext second = resolver.requireView(11L, 23L);
@@ -209,7 +209,8 @@ class ProjectAccessResolverTest {
         TenantContext tenant = tenantContext();
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project());
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest("GET", "/api/projects/23")));
         resolver.requireView(11L, 23L);
 
@@ -224,7 +225,8 @@ class ProjectAccessResolverTest {
         TenantContext otherUser = new TenantContext(8L, 11L, 14L, "MEMBER");
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(owner, otherUser);
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project());
-        when(permissionService.permissionCodes(owner)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissionService.canAccessAllProjects(owner)).thenReturn(true);
+        when(permissionService.permissionCodes(owner)).thenReturn(Set.of("MENU:PROJECTS"));
         when(permissionService.permissionCodes(otherUser)).thenReturn(Set.of());
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest("GET", "/api/projects/23")));
         resolver.requireView(11L, 23L);
@@ -237,7 +239,8 @@ class ProjectAccessResolverTest {
         TenantContext tenant = tenantContext();
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project());
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest("GET", "/api/projects/23")));
         resolver.requireView(11L, 23L);
 
@@ -251,7 +254,8 @@ class ProjectAccessResolverTest {
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
         when(tenantContextResolver.requireActiveMember(12L)).thenReturn(new TenantContext(7L, 12L, 14L, "MEMBER"));
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project());
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest("GET", "/api/projects/23")));
         resolver.requireView(11L, 23L);
 
@@ -265,7 +269,8 @@ class ProjectAccessResolverTest {
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant)
             .thenThrow(new BusinessException(ErrorCode.MEMBER_REMOVED, "成员已移除"));
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project());
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest("GET", "/api/projects/23")));
         resolver.requireView(11L, 23L);
 
@@ -278,7 +283,8 @@ class ProjectAccessResolverTest {
         TenantContext tenant = tenantContext();
         when(tenantContextResolver.requireActiveMember(11L)).thenReturn(tenant);
         when(projectMapper.selectMetadataByTenantIdAndId(11L, 23L)).thenReturn(project());
-        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL"), Set.of());
+        when(permissionService.canAccessAllProjects(tenant)).thenReturn(true);
+        when(permissionService.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"), Set.of());
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest("PUT", "/api/projects/23")));
         resolver.requireView(11L, 23L);
 

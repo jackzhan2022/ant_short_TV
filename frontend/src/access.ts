@@ -25,18 +25,15 @@ export default function access(
     initialState?.selectedTenant?.membership?.status === 'ACTIVE';
   const hasMenu = (name: string) =>
     hasActiveTenant && tenantPermissions.includes(`MENU:${name}`);
+  const canUseProjectFeatures = hasMenu('PROJECTS') || hasMenu('SHORT_DRAMA_CREATION');
   const canUseDramaAdministration =
     hasActiveTenant &&
     initialState?.bootstrap?.platform.roles.includes('PLATFORM_ADMIN') === true;
-  const canManageTenantWorkflowSkills =
-    hasActiveTenant &&
-    (initialState?.selectedTenant?.membership?.memberType === 'OWNER' ||
-      initialState?.selectedTenant?.roles?.includes('ADMIN') === true);
   return {
     canAdmin: currentUser && currentUser.access === 'admin',
-    canManageTenantWorkflowSkills,
-    canViewTenantWorkflowSkills: hasActiveTenant,
-    canManageRoles: currentUser && tenantPermissions.includes('ROLE:VIEW'),
+    canManageTenantWorkflowSkills: hasMenu('AI_MANAGEMENT'),
+    canViewTenantWorkflowSkills: hasMenu('AI_MANAGEMENT'),
+    canManageRoles: currentUser && hasMenu('TEAM_MANAGEMENT'),
     canUseProjectCenter: hasMenu('PROJECTS'),
     canUseShortDramaCreation: hasMenu('SHORT_DRAMA_CREATION'),
     canViewAssetLibrary: hasMenu('ASSET_LIBRARY'),
@@ -48,22 +45,21 @@ export default function access(
     canViewStyleLibrary: Boolean(currentUser),
     canUseVideoScriptDecomposition:
       currentUser &&
-      hasMenu('VIDEO_DECOMPOSITION') &&
-      tenantPermissions.includes('AI_SERVICE:USE'),
+      hasMenu('VIDEO_DECOMPOSITION'),
     canViewScriptReview: hasMenu('SCRIPT_REVIEW'),
     canViewProjects: hasMenu('PROJECTS'),
     canViewDramas:
-      canUseDramaAdministration && hasMenu('DRAMA_LIBRARY') && tenantPermissions.includes('DRAMA:VIEW'),
+      canUseDramaAdministration && hasMenu('DRAMA_LIBRARY'),
     canManageDramas:
-      canUseDramaAdministration && tenantPermissions.includes('DRAMA:MANAGE'),
+      canUseDramaAdministration && hasMenu('DRAMA_LIBRARY'),
     canPublishDramas:
-      canUseDramaAdministration && tenantPermissions.includes('DRAMA:PUBLISH'),
+      canUseDramaAdministration && hasMenu('DRAMA_LIBRARY'),
     canManageMiniapps:
-      canUseDramaAdministration && tenantPermissions.includes('MINIAPP:MANAGE'),
+      canUseDramaAdministration && hasMenu('DRAMA_LIBRARY'),
     canCreateProject:
-      hasActiveTenant && tenantPermissions.includes('PROJECT:CREATE'),
+      hasActiveTenant && canUseProjectFeatures,
     canViewAiCallLogs:
-      currentUser && tenantPermissions.includes('AI_CALL_LOG:VIEW'),
+      currentUser && hasMenu('AI_MANAGEMENT'),
     canViewAiManagement:
       currentUser &&
       (hasMenu('AI_MANAGEMENT') ||
@@ -74,7 +70,7 @@ export default function access(
         platformPermissions.includes('PLATFORM_AI_WORKFLOW_AGENT_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_WORKFLOW_SKILL_VIEW')),
     canManageBilling:
-      currentUser && tenantPermissions.includes('BILLING:MANAGE'),
+      currentUser && hasMenu('TEAM_MANAGEMENT'),
     canViewCommercial: hasActiveTenant,
     canViewCommercialPackages:
       currentUser &&
@@ -140,75 +136,68 @@ export default function access(
       currentUser &&
       platformPermissions.includes('PLATFORM_AI_WORKFLOW_SKILL_EDIT'),
     canViewProjectAiConfig:
-      currentUser && tenantPermissions.includes('PROJECT_AI_CONFIG_VIEW'),
+      currentUser && canUseProjectFeatures,
     canEditProjectAiConfig:
-      currentUser && tenantPermissions.includes('PROJECT_AI_CONFIG_EDIT'),
+      currentUser && canUseProjectFeatures,
     canViewAiImageTasks:
-      currentUser && tenantPermissions.includes('AI_IMAGE_TASK:VIEW'),
+      currentUser && canUseProjectFeatures,
     canCreateAiImageTasks:
       currentUser &&
-      tenantPermissions.includes('AI_IMAGE_TASK:CREATE') &&
-      tenantPermissions.includes('AI_SERVICE:USE'),
+      canUseProjectFeatures,
     canAiGenerateScript:
       currentUser &&
-      tenantPermissions.includes('SCRIPT:AI_GENERATE') &&
-      tenantPermissions.includes('AI_SERVICE:USE'),
+      canUseProjectFeatures,
     canAiRewriteScript:
       currentUser &&
-      tenantPermissions.includes('SCRIPT:AI_REWRITE') &&
-      tenantPermissions.includes('AI_SERVICE:USE'),
-    canViewElements: currentUser && tenantPermissions.includes('ELEMENT:VIEW'),
+      canUseProjectFeatures,
+    canViewElements: currentUser && canUseProjectFeatures,
     canAiExtractElements:
       currentUser &&
-      tenantPermissions.includes('ELEMENT:AI_EXTRACT') &&
-      tenantPermissions.includes('AI_SERVICE:USE'),
-    canEditElements: currentUser && tenantPermissions.includes('ELEMENT:EDIT'),
+      canUseProjectFeatures,
+    canEditElements: currentUser && canUseProjectFeatures,
     canViewStoryboards:
-      currentUser && tenantPermissions.includes('STORYBOARD:VIEW'),
+      currentUser && canUseProjectFeatures,
     canAiBreakdownStoryboards:
       currentUser &&
-      tenantPermissions.includes('STORYBOARD:AI_BREAKDOWN') &&
-      tenantPermissions.includes('AI_SERVICE:USE'),
+      canUseProjectFeatures,
     canEditStoryboards:
-      currentUser && tenantPermissions.includes('STORYBOARD:EDIT'),
+      currentUser && canUseProjectFeatures,
     canAiGeneratePrompts:
       currentUser &&
-      tenantPermissions.includes('PROMPT:AI_GENERATE') &&
-      tenantPermissions.includes('AI_SERVICE:USE'),
+      canUseProjectFeatures,
     canViewAiVideoTasks:
-      currentUser && tenantPermissions.includes('AI_VIDEO_TASK:VIEW'),
+      currentUser && canUseProjectFeatures,
     canCreateAiVideoTasks:
       currentUser &&
-      tenantPermissions.includes('AI_VIDEO_TASK:CREATE') &&
-      tenantPermissions.includes('AI_SERVICE:USE'),
+      canUseProjectFeatures,
     canCancelAiVideoTasks:
-      currentUser && tenantPermissions.includes('AI_VIDEO_TASK:CANCEL'),
+      currentUser && canUseProjectFeatures,
     canDeleteAiVideoTasks:
-      currentUser && tenantPermissions.includes('AI_VIDEO_TASK:DELETE'),
+      currentUser && canUseProjectFeatures,
     canSaveAiVideoResults:
-      currentUser && tenantPermissions.includes('AI_VIDEO_RESULT:SAVE'),
+      currentUser && canUseProjectFeatures,
     canBindAiVideoResults:
-      currentUser && tenantPermissions.includes('AI_VIDEO_RESULT:BIND'),
+      currentUser && canUseProjectFeatures,
     canDownloadAiVideoResults:
-      currentUser && tenantPermissions.includes('AI_VIDEO_RESULT:DOWNLOAD'),
+      currentUser && canUseProjectFeatures,
     canViewEpisodeComposeTasks:
-      currentUser && tenantPermissions.includes('EPISODE_COMPOSE:VIEW'),
+      currentUser && canUseProjectFeatures,
     canCreateEpisodeComposeTasks:
-      currentUser && tenantPermissions.includes('EPISODE_COMPOSE:CREATE'),
+      currentUser && canUseProjectFeatures,
     canCancelEpisodeComposeTasks:
-      currentUser && tenantPermissions.includes('EPISODE_COMPOSE:CANCEL'),
+      currentUser && canUseProjectFeatures,
     canDeleteEpisodeComposeTasks:
-      currentUser && tenantPermissions.includes('EPISODE_COMPOSE:DELETE'),
+      currentUser && canUseProjectFeatures,
     canViewEpisodeVersions:
-      currentUser && tenantPermissions.includes('EPISODE_VERSION:VIEW'),
+      currentUser && canUseProjectFeatures,
     canSetCurrentEpisodeVersion:
-      currentUser && tenantPermissions.includes('EPISODE_VERSION:SET_CURRENT'),
+      currentUser && canUseProjectFeatures,
     canDownloadEpisodeVersions:
-      currentUser && tenantPermissions.includes('EPISODE_VERSION:DOWNLOAD'),
+      currentUser && canUseProjectFeatures,
     canDeleteEpisodeVersions:
-      currentUser && tenantPermissions.includes('EPISODE_VERSION:DELETE'),
+      currentUser && canUseProjectFeatures,
     canSaveEpisodeVersions:
       currentUser &&
-      tenantPermissions.includes('EPISODE_VERSION:SAVE_MATERIAL'),
+      canUseProjectFeatures,
   };
 }

@@ -46,9 +46,8 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [preview, setPreview] = useState<AssetLibraryItem>();
-  const canViewImages = Boolean(project?.effectivePermissions.includes('AI_IMAGE_TASK:VIEW'));
-  const canViewVideos = Boolean(project?.effectivePermissions.some((permission) =>
-    ['AI_VIDEO_TASK:VIEW', 'SHOT_COMPOSE:VIEW', 'EPISODE_VERSION:VIEW'].includes(permission)));
+  const canViewImages = Boolean(project?.effectivePermissions.includes('MENU:ASSET_LIBRARY'));
+  const canViewVideos = canViewImages;
   const denied = Boolean(project && !(mediaType === 'IMAGE' ? canViewImages : canViewVideos));
   const invalidProject = routeProjectId !== undefined && (!Number.isSafeInteger(projectId) || !projectId || projectId < 1);
 

@@ -25,7 +25,7 @@ public class TenantMemberController {
     }
 
     @GetMapping("/members")
-    @RequirePermission("MEMBER:VIEW")
+    @RequirePermission("PROJECT_MEMBER:CANDIDATES")
     public ApiResponse<List<TenantMemberResponse>> list(@PathVariable Long tenantId) {
         return ApiResponse.success(tenantMemberService.list(tenantId));
     }

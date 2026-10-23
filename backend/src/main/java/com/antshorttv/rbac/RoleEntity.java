@@ -17,6 +17,7 @@ public class RoleEntity {
     private String roleType;
     private String status;
     private Boolean isDefault;
+    private Boolean projectAccessAll;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -25,6 +26,10 @@ public class RoleEntity {
     public Long getId() {
         return id;
     }
+
+    public Boolean getProjectAccessAll() { return projectAccessAll; }
+
+    public void setProjectAccessAll(Boolean projectAccessAll) { this.projectAccessAll = projectAccessAll; }
 
     public void setId(Long id) {
         this.id = id;

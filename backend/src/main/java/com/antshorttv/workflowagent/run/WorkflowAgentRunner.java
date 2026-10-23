@@ -298,7 +298,7 @@ public class WorkflowAgentRunner {
         List<WorkflowAgentModelCall> modelCalls = new ArrayList<>();
         Set<String> trustedPermissions = input.executionId() == null
             ? Set.of()
-            : Set.of("SCRIPT:VIEW", "SCRIPT:EDIT");
+            : Set.of("MENU:PROJECTS");
         ToolExecutionContext context = new ToolExecutionContext(
             input.tenantId(), input.userId(), input.projectId(), input.episodeId(), input.scriptId(),
             input.taskId(), input.analysisStageId(), runId, input.executionId(), input.attemptId(),

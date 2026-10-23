@@ -33,8 +33,8 @@ class VideoDecompositionPagingTest {
         assertThat(mapper.countVisible(992L, 1L, true, null)).isZero();
         jdbc.update("insert into project_role (tenant_id,project_id,name,code,is_system,status,created_by,created_at,updated_at) values (991,?,'Viewer','VIEWER',false,'ACTIVE',1,now(),now())", project);
         Long role = jdbc.queryForObject("select max(id) from project_role", Long.class);
-        jdbc.update("insert ignore into permission (code,name,type,resource,action,created_at,updated_at) values ('PROJECT:VIEW','View project','PAGE','PROJECT','VIEW',now(),now())");
-        Long permission = jdbc.queryForObject("select id from permission where code = 'PROJECT:VIEW'", Long.class);
+        jdbc.update("insert ignore into permission (code,name,type,resource,action,created_at,updated_at) values ('MENU:PROJECTS','View project','PAGE','PROJECT','VIEW',now(),now())");
+        Long permission = jdbc.queryForObject("select id from permission where code = 'MENU:PROJECTS'", Long.class);
         jdbc.update("insert into project_role_permission (tenant_id,project_id,role_id,permission_id,created_at) values (991,?,?,?,now())", project, role, permission);
         jdbc.update("insert into project_member (tenant_id,project_id,user_id,role_id,joined_at,status,created_by,created_at,updated_at) values (991,?,1,?,now(),'ACTIVE',1,now(),now())", project, role);
         assertThat(mapper.countVisible(991L, 1L, false, null)).isEqualTo(26);

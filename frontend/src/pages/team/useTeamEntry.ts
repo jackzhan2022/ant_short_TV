@@ -1,6 +1,8 @@
 import { history, useModel } from '@umijs/max';
 import { useCallback, useEffect, useState } from 'react';
 import { applyBootstrapSelection } from '@/services/account-team/bootstrap';
+import access from '@/access';
+import { workspaceLandingPath } from '@/services/account-team/navigation';
 
 export const useTeamEntry = () => {
   const { initialState, setInitialState } = useModel('@@initialState');
@@ -9,6 +11,7 @@ export const useTeamEntry = () => {
   const selectedTenantId = initialState?.selectedTenant?.tenant.id;
   const membershipStatus = initialState?.selectedTenant?.membership.status;
   const tenants = initialState?.tenants;
+  const destination = workspaceLandingPath(access(initialState));
 
   useEffect(() => {
     if (
@@ -22,13 +25,14 @@ export const useTeamEntry = () => {
 
     // Umi publishes model updates through effects. Navigate only from a committed subscriber.
     setPendingTenantId(undefined);
-    history.push('/projects/list');
+    history.push(destination);
   }, [
     currentTenantId,
     membershipStatus,
     pendingTenantId,
     selectedTenantId,
     tenants,
+    destination,
   ]);
 
   return useCallback(

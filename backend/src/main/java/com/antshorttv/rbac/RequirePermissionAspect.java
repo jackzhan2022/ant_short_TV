@@ -32,6 +32,11 @@ public class RequirePermissionAspect {
         tenantPermissionGuard.require(tenantId, requirePermission.value());
     }
 
+    @Before("@within(requirePermission) && !@annotation(com.antshorttv.rbac.RequirePermission)")
+    public void requireController(JoinPoint joinPoint, RequirePermission requirePermission) {
+        require(joinPoint, requirePermission);
+    }
+
     private Long resolveDeclaredTenantId(JoinPoint joinPoint, String parameterName) {
         if (parameterName == null || parameterName.isBlank()) {
             return null;

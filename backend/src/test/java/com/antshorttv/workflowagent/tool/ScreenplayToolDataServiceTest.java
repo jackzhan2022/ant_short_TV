@@ -79,7 +79,7 @@ class ScreenplayToolDataServiceTest {
             select id from script_episode where project_id = ? and episode_no = 2
             """, Long.class, projectId);
         context = new ToolExecutionContext(tenantId, userId, projectId, episodeId, null,
-            Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"));
+            Set.of("MENU:PROJECTS"));
     }
 
     @Test
@@ -171,7 +171,7 @@ class ScreenplayToolDataServiceTest {
         runState.beginSplitFallback("CONTEXT_PREFLIGHT");
         ToolExecutionContext scoped = new ToolExecutionContext(
             tenantId, context.userId(), projectId, null, scriptId, null, null, runId,
-            Set.of("SCRIPT:VIEW"), null, runState);
+            Set.of("MENU:PROJECTS"), null, runState);
 
         JsonNode result = service.readScriptStructure(scoped);
 
@@ -308,7 +308,7 @@ class ScreenplayToolDataServiceTest {
     void episodeAssetsRequireAnActiveEpisodeInTheTrustedScript() {
         ToolExecutionContext foreign = new ToolExecutionContext(
             tenantId, context.userId(), projectId, episodeId, scriptId + 99999, null, null, null,
-            Set.of("SCRIPT:VIEW"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
         assertThatThrownBy(() -> service.readScriptAssets(foreign))
             .isInstanceOf(com.antshorttv.common.BusinessException.class).hasMessageContaining("剧集");
 
@@ -485,7 +485,7 @@ class ScreenplayToolDataServiceTest {
             values (?,?,?,?,?,?,now())
             """,tenantId,projectId,scriptId,executionId,1,attemptId);
         ToolExecutionContext assetContext = new ToolExecutionContext(tenantId,context.userId(),projectId,
-            episodeId,scriptId,taskId,null,null,executionId,attemptId,1,Set.of("SCRIPT:VIEW","SCRIPT:EDIT"),null,new WorkflowToolRunState());
+            episodeId,scriptId,taskId,null,null,executionId,attemptId,1,Set.of("MENU:PROJECTS"),null,new WorkflowToolRunState());
         service.readCurrentEpisode(assetContext);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"schemaVersion":1,"characters":[],"scenes":[],"props":[],"characterLooks":[],"propVariants":[]}
@@ -908,7 +908,7 @@ class ScreenplayToolDataServiceTest {
             }
             ToolExecutionContext analysisContext = new ToolExecutionContext(
                 tenantId, context.userId(), projectId, episodeId, scriptId, 100L, 101L, 777L,
-                Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
+                Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
             JsonNode episode = service.readCurrentEpisode(analysisContext);
             assertThat(episode.path("content").asText()).isEqualTo(source);
             assertThat(episode.path("sourceSegments")).extracting(value -> value.path("type").asText())
@@ -923,7 +923,7 @@ class ScreenplayToolDataServiceTest {
     void trustedStoryboardExecutionReadsCurrentEpisodeWithoutHttpPrincipalPermissionLookup() {
         ToolExecutionContext storyboardContext = new ToolExecutionContext(
             tenantId, context.userId(), projectId, episodeId, scriptId, 9001L, null, 8001L,
-            7001L, 6001L, 1, Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null,
+            7001L, 6001L, 1, Set.of("MENU:PROJECTS"), null,
             new WorkflowToolRunState());
 
         JsonNode episode = service.readCurrentEpisode(storyboardContext);
@@ -938,7 +938,7 @@ class ScreenplayToolDataServiceTest {
     void currentEpisodeReadRejectsCrossScriptAndInactiveEpisodes() {
         ToolExecutionContext wrongScript = new ToolExecutionContext(
             tenantId, context.userId(), projectId, episodeId, scriptId + 999, null, null, 777L,
-            Set.of("SCRIPT:VIEW"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
         assertThatThrownBy(() -> service.readCurrentEpisode(wrongScript))
             .isInstanceOf(com.antshorttv.common.BusinessException.class);
 
@@ -998,7 +998,7 @@ class ScreenplayToolDataServiceTest {
     void rollsBackFormalDocumentWhenAnalysisStageCannotBeCommitted() throws Exception {
         ToolExecutionContext invalidStageContext = new ToolExecutionContext(
             tenantId, context.userId(), projectId, null, scriptId, 999999L, 888888L, null,
-            Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
         service.readCurrentScript(invalidStageContext);
         JsonNode content = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
             {"storyOverview":"概要","mainConflict":"冲突","worldSetting":"世界",
@@ -1171,7 +1171,7 @@ class ScreenplayToolDataServiceTest {
         jdbc.update("update script set content = ? where id = ?", source, scriptId);
         ToolExecutionContext invalidStage = new ToolExecutionContext(
             tenantId, context.userId(), projectId, null, scriptId, 999999L, 888888L, null,
-            Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
         service.readCurrentScript(invalidStage);
         assertThatThrownBy(() -> service.saveEpisodeSplitting(invalidStage, 1, splitBoundaries()))
             .isInstanceOf(com.antshorttv.common.BusinessException.class)
@@ -1233,19 +1233,19 @@ class ScreenplayToolDataServiceTest {
     private ToolExecutionContext scriptContext() {
         return new ToolExecutionContext(
             tenantId, context.userId(), projectId, null, scriptId, null, null, null,
-            Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
     }
 
     private ToolExecutionContext episodeContext() {
         return new ToolExecutionContext(
             tenantId, context.userId(), projectId, episodeId, scriptId, null, null, 777L,
-            Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
     }
 
     private ToolExecutionContext summaryContext() {
         return new ToolExecutionContext(
             tenantId, context.userId(), projectId, episodeId, scriptId, null, null, null,
-            Set.of("SCRIPT:VIEW", "SCRIPT:EDIT"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
     }
 
     private JsonNode splitBoundaries() throws Exception {

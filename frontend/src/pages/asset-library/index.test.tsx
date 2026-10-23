@@ -17,7 +17,7 @@ vi.mock('@/services/account-team/project', () => ({ queryProjects: mocks.project
 vi.mock('./service', () => ({ queryProjectAssetLibrary: mocks.library }));
 
 const project = { id: 1, tenantId: 10, name: '长夜未央', updatedAt: '2026-10-22T01:00:00',
-  effectivePermissions: ['AI_IMAGE_TASK:VIEW', 'AI_VIDEO_TASK:VIEW'] };
+  effectivePermissions: ['MENU:ASSET_LIBRARY'] };
 const image = { id: 51, resourceType: 'AI_IMAGE_RESULT', name: '林夏 · 主形象', category: 'CHARACTER',
   sourceType: '本地上传', thumbnailUrl: '/image-thumb', previewUrl: '/image-display', downloadUrl: '/download', current: true, updatedAt: '2026-10-22T01:00:00' };
 const video = { ...image, id: 52, resourceType: 'AI_VIDEO_RESULT', name: 'EP1 · 镜头 1', episodeNo: 1,
@@ -106,7 +106,7 @@ it('clears the previous team folders immediately when the team changes', async (
 
 it('does not request media without the matching project permission', async () => {
   route('/asset-library/projects/1');
-  mocks.metadata.mockResolvedValue({ success: true, data: { ...project, effectivePermissions: ['PROJECT:VIEW'] } });
+  mocks.metadata.mockResolvedValue({ success: true, data: { ...project, effectivePermissions: [] } });
   render(<AssetLibrary />);
   await screen.findByText('暂无查看此类资产的权限');
   expect(mocks.library).not.toHaveBeenCalled();

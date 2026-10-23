@@ -178,6 +178,7 @@ class ProductionTaskControllerTest extends com.antshorttv.support.RegistrationTe
         String first=register("13800019807"), second=register("13800019808");
         long tenant=tenant(first), a=user("13800019807"), b=user("13800019808");
         jdbc.update("insert into tenant_member(tenant_id,user_id,member_type,status,joined_at,created_at,updated_at) values (?,?,'MEMBER','ACTIVE',now(),now(),now())",tenant,b);
+        rbac.initializeTenant(tenant);
         jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'shared','shared',?,'ACTIVE',?,now(),now())",tenant,a,a);
         long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
         var execution=executions.create(new com.antshorttv.execution.AiExecutionCreateCommand(tenant,a,project,"storyboard_breakdown","TEXT","SCRIPT_AI_OPERATION",1L,null,"SUBMIT","shared-center","trace",true,"{}"));
@@ -374,6 +375,7 @@ class ProductionTaskControllerTest extends com.antshorttv.support.RegistrationTe
         long tenant = tenant(owner);
         long ownerId = user("13800019801"), memberId = user("13800019802");
         jdbc.update("insert into tenant_member (tenant_id,user_id,member_type,status,joined_at,created_at,updated_at) values (?,?,'MEMBER','ACTIVE',now(),now(),now())",tenant,memberId);
+        rbac.initializeTenant(tenant);
         long ownTask = batch(tenant,ownerId,"owner batch"), memberTask = batch(tenant,memberId,"member batch");
         String base = "/api/tenants/"+tenant+"/production-tasks";
         mvc.perform(get(base)).andExpect(status().isUnauthorized());

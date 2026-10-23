@@ -38,103 +38,11 @@ public class ProjectService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private static final List<DefaultProjectRole> DEFAULT_ROLES = List.of(
-        new DefaultProjectRole("PROJECT_OWNER", "项目负责人", List.of(
-            "PROJECT:VIEW",
-            "PROJECT:EDIT",
-            "PROJECT_MEMBER:VIEW",
-            "PROJECT_MEMBER:ADD",
-            "PROJECT_MEMBER:UPDATE",
-            "PROJECT_MEMBER:REMOVE",
-            "PROJECT_ROLE:VIEW",
-            "PROJECT_ROLE:CREATE",
-            "PROJECT_ROLE:UPDATE",
-            "PROJECT_ROLE:DELETE",
-            "PROJECT_ROLE:PERMISSION",
-            "SCRIPT:VIEW",
-            "SCRIPT:CREATE",
-            "SCRIPT:EDIT",
-            "SCRIPT:DELETE",
-            "SCRIPT:AI_GENERATE",
-            "SCRIPT:AI_REWRITE",
-            "ELEMENT:VIEW",
-            "ELEMENT:AI_EXTRACT",
-            "ELEMENT:EDIT",
-            "STORYBOARD:VIEW",
-            "STORYBOARD:AI_BREAKDOWN",
-            "STORYBOARD:EDIT",
-            "PROMPT:AI_GENERATE",
-            "AI_SERVICE:USE",
-            "AI_VIDEO_TASK:VIEW",
-            "AI_VIDEO_TASK:CREATE",
-            "AI_VIDEO_TASK:CANCEL",
-            "AI_VIDEO_TASK:DELETE",
-            "AI_VIDEO_RESULT:SAVE",
-            "AI_VIDEO_RESULT:BIND",
-            "AI_VIDEO_RESULT:DOWNLOAD",
-            "AI_VOICE_TASK:VIEW",
-            "AI_VOICE_TASK:CREATE",
-            "AI_VOICE_TASK:CANCEL",
-            "AI_VOICE_TASK:DELETE",
-            "AI_VOICE_RESULT:SAVE",
-            "AI_VOICE_RESULT:BIND",
-            "AI_VOICE_RESULT:DOWNLOAD",
-            "SUBTITLE:VIEW",
-            "SUBTITLE:EDIT",
-            "SUBTITLE:DELETE",
-            "SHOT_COMPOSE:VIEW",
-            "SHOT_COMPOSE:CREATE",
-            "SHOT_COMPOSE:SAVE",
-            "SHOT_COMPOSE:DOWNLOAD",
-            "SHOT_COMPOSE:DELETE",
-            "SHOT_COMPOSE:BIND",
-            "EPISODE_COMPOSE:VIEW",
-            "EPISODE_COMPOSE:CREATE",
-            "EPISODE_COMPOSE:CANCEL",
-            "EPISODE_COMPOSE:DELETE",
-            "EPISODE_VERSION:VIEW",
-            "EPISODE_VERSION:SET_CURRENT",
-            "EPISODE_VERSION:DOWNLOAD",
-            "EPISODE_VERSION:DELETE",
-            "EPISODE_VERSION:SAVE_MATERIAL"
-        )),
-        new DefaultProjectRole("WRITER", "编剧", List.of("PROJECT:VIEW")),
-        new DefaultProjectRole("DIRECTOR", "导演", List.of(
-            "PROJECT:VIEW",
-            "AI_VIDEO_TASK:VIEW",
-            "AI_VIDEO_TASK:CREATE",
-            "AI_VIDEO_TASK:CANCEL",
-            "AI_VIDEO_RESULT:BIND",
-            "AI_VOICE_TASK:VIEW",
-            "AI_VOICE_TASK:CREATE",
-            "AI_VOICE_TASK:CANCEL",
-            "AI_VOICE_RESULT:BIND",
-            "SUBTITLE:VIEW",
-            "SUBTITLE:EDIT",
-            "SHOT_COMPOSE:VIEW",
-            "SHOT_COMPOSE:CREATE",
-            "SHOT_COMPOSE:BIND",
-            "EPISODE_COMPOSE:VIEW",
-            "EPISODE_COMPOSE:CREATE",
-            "EPISODE_VERSION:VIEW",
-            "EPISODE_VERSION:SET_CURRENT"
-        )),
-        new DefaultProjectRole("PRODUCER", "制片", List.of(
-            "PROJECT:VIEW",
-            "AI_VIDEO_TASK:VIEW",
-            "AI_VIDEO_RESULT:SAVE",
-            "AI_VIDEO_RESULT:DOWNLOAD",
-            "AI_VOICE_TASK:VIEW",
-            "AI_VOICE_RESULT:SAVE",
-            "AI_VOICE_RESULT:DOWNLOAD",
-            "SHOT_COMPOSE:VIEW",
-            "SHOT_COMPOSE:SAVE",
-            "SHOT_COMPOSE:DOWNLOAD",
-            "EPISODE_COMPOSE:VIEW",
-            "EPISODE_VERSION:VIEW",
-            "EPISODE_VERSION:DOWNLOAD",
-            "EPISODE_VERSION:SAVE_MATERIAL"
-        )),
-        new DefaultProjectRole("MEMBER", "项目成员", List.of("PROJECT:VIEW"))
+        new DefaultProjectRole("PROJECT_OWNER", "项目负责人", List.of("MENU:PROJECTS")),
+        new DefaultProjectRole("WRITER", "编剧", List.of("MENU:PROJECTS")),
+        new DefaultProjectRole("DIRECTOR", "导演", List.of("MENU:PROJECTS")),
+        new DefaultProjectRole("PRODUCER", "制片", List.of("MENU:PROJECTS")),
+        new DefaultProjectRole("MEMBER", "项目成员", List.of("MENU:PROJECTS"))
     );
 
     private final ProjectMapper projectMapper;
@@ -620,38 +528,7 @@ public class ProjectService {
 
     private void ensureProjectPermissions(LocalDateTime now) {
         List<ProjectPermissionSeed> seeds = List.of(
-            new ProjectPermissionSeed("PROJECT:VIEW", "查看项目", "PROJECT", "VIEW"),
-            new ProjectPermissionSeed("PROJECT:EDIT", "编辑项目", "PROJECT", "EDIT"),
-            new ProjectPermissionSeed("PROJECT_MEMBER:VIEW", "查看项目成员", "PROJECT_MEMBER", "VIEW"),
-            new ProjectPermissionSeed("PROJECT_MEMBER:ADD", "添加项目成员", "PROJECT_MEMBER", "ADD"),
-            new ProjectPermissionSeed("PROJECT_MEMBER:UPDATE", "修改项目成员", "PROJECT_MEMBER", "UPDATE"),
-            new ProjectPermissionSeed("PROJECT_MEMBER:REMOVE", "移除项目成员", "PROJECT_MEMBER", "REMOVE"),
-            new ProjectPermissionSeed("PROJECT_ROLE:VIEW", "查看项目角色", "PROJECT_ROLE", "VIEW"),
-            new ProjectPermissionSeed("PROJECT_ROLE:CREATE", "创建项目角色", "PROJECT_ROLE", "CREATE"),
-            new ProjectPermissionSeed("PROJECT_ROLE:UPDATE", "编辑项目角色", "PROJECT_ROLE", "UPDATE"),
-            new ProjectPermissionSeed("PROJECT_ROLE:DELETE", "删除项目角色", "PROJECT_ROLE", "DELETE"),
-            new ProjectPermissionSeed("PROJECT_ROLE:PERMISSION", "配置项目角色权限", "PROJECT_ROLE", "PERMISSION"),
-            new ProjectPermissionSeed("SCRIPT:VIEW", "查看剧本", "SCRIPT", "VIEW"),
-            new ProjectPermissionSeed("SCRIPT:CREATE", "创建剧本", "SCRIPT", "CREATE"),
-            new ProjectPermissionSeed("SCRIPT:EDIT", "编辑剧本", "SCRIPT", "EDIT"),
-            new ProjectPermissionSeed("SCRIPT:DELETE", "删除剧本", "SCRIPT", "DELETE"),
-            new ProjectPermissionSeed("SCRIPT:AI_GENERATE", "AI生成剧本", "SCRIPT", "AI_GENERATE"),
-            new ProjectPermissionSeed("SCRIPT:AI_REWRITE", "AI改写剧本", "SCRIPT", "AI_REWRITE"),
-            new ProjectPermissionSeed("ELEMENT:VIEW", "查看元素库", "ELEMENT", "VIEW"),
-            new ProjectPermissionSeed("ELEMENT:AI_EXTRACT", "AI提取元素", "ELEMENT", "AI_EXTRACT"),
-            new ProjectPermissionSeed("ELEMENT:EDIT", "编辑元素", "ELEMENT", "EDIT"),
-            new ProjectPermissionSeed("STORYBOARD:VIEW", "查看分镜", "STORYBOARD", "VIEW"),
-            new ProjectPermissionSeed("STORYBOARD:AI_BREAKDOWN", "AI拆解分镜", "STORYBOARD", "AI_BREAKDOWN"),
-            new ProjectPermissionSeed("STORYBOARD:EDIT", "编辑分镜", "STORYBOARD", "EDIT"),
-            new ProjectPermissionSeed("PROMPT:AI_GENERATE", "AI生成提示词", "PROMPT", "AI_GENERATE"),
-            new ProjectPermissionSeed("AI_SERVICE:USE", "使用AI服务", "AI_SERVICE", "USE"),
-            new ProjectPermissionSeed("AI_VIDEO_TASK:VIEW", "查看视频生成任务", "AI_VIDEO_TASK", "VIEW"),
-            new ProjectPermissionSeed("AI_VIDEO_TASK:CREATE", "创建视频生成任务", "AI_VIDEO_TASK", "CREATE"),
-            new ProjectPermissionSeed("AI_VIDEO_TASK:CANCEL", "取消视频生成任务", "AI_VIDEO_TASK", "CANCEL"),
-            new ProjectPermissionSeed("AI_VIDEO_TASK:DELETE", "删除视频生成记录", "AI_VIDEO_TASK", "DELETE"),
-            new ProjectPermissionSeed("AI_VIDEO_RESULT:SAVE", "保存生成视频", "AI_VIDEO_RESULT", "SAVE"),
-            new ProjectPermissionSeed("AI_VIDEO_RESULT:BIND", "设置分镜视频", "AI_VIDEO_RESULT", "BIND"),
-            new ProjectPermissionSeed("AI_VIDEO_RESULT:DOWNLOAD", "下载生成视频", "AI_VIDEO_RESULT", "DOWNLOAD")
+            new ProjectPermissionSeed("MENU:PROJECTS", "项目中心", "MENU_WORKSPACE", "PROJECTS")
         );
         for (ProjectPermissionSeed seed : seeds) {
             if (permissionMapper.selectByCode(seed.code()) != null) {
@@ -660,7 +537,7 @@ public class ProjectService {
             PermissionEntity permission = new PermissionEntity();
             permission.setCode(seed.code());
             permission.setName(seed.name());
-            permission.setType(PermissionType.BUTTON.name());
+            permission.setType(PermissionType.MENU.name());
             permission.setResource(seed.resource());
             permission.setAction(seed.action());
             permission.setCreatedAt(now);

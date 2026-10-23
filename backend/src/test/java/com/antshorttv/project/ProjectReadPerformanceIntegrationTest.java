@@ -48,7 +48,8 @@ class ProjectReadPerformanceIntegrationTest {
     void setUp() {
         TenantContext tenant = new TenantContext(1L, TENANT, 1L, "OWNER");
         when(tenants.requireActiveMember(TENANT)).thenReturn(tenant);
-        when(permissions.permissionCodes(tenant)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissions.permissionCodes(tenant)).thenReturn(Set.of("MENU:PROJECTS"));
+        when(permissions.canAccessAllProjects(tenant)).thenReturn(true);
         queries.sql.get().clear();
     }
 

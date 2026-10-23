@@ -3,6 +3,7 @@ package com.antshorttv.project;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.rbac.RbacPermissionService;
+import com.antshorttv.rbac.MenuAuthorization;
 import com.antshorttv.security.TenantContext;
 import com.antshorttv.security.TenantContextResolver;
 import java.util.Set;
@@ -51,7 +52,7 @@ public class ProjectAccessResolver {
         }
 
         Set<String> tenantPermissions = permissionService.permissionCodes(tenant);
-        ProjectAccessContext access = requireView(tenant, project, tenantPermissions);
+        ProjectAccessContext access = requireView(tenant, project, tenantPermissions, permissionService.canAccessAllProjects(tenant));
         if (request != null) request.setAttribute(cacheKey, access);
         return access;
     }
@@ -63,11 +64,12 @@ public class ProjectAccessResolver {
     }
 
     private ProjectAccessContext requireView(
-        TenantContext tenant, ProjectEntity project, Set<String> tenantPermissions
+        TenantContext tenant, ProjectEntity project, Set<String> tenantPermissions, boolean wide
     ) {
+        if (!MenuAuthorization.canReadProject(tenantPermissions)) throw denied();
         Long tenantId = tenant.tenantId();
         Long projectId = project.id;
-        if (tenantPermissions.contains("PROJECT:VIEW_ALL")) {
+        if (wide) {
             return context(tenant, project, ProjectAccessSource.TENANT_WIDE, null, null, tenantPermissions);
         }
 
@@ -84,15 +86,16 @@ public class ProjectAccessResolver {
             throw denied();
         }
         Set<String> projectPermissions = permissionService.projectRolePermissionCodes(tenantId, projectId, member.roleId);
-        if (!projectPermissions.contains("PROJECT:VIEW")) {
+        if (!projectPermissions.contains("MENU:PROJECTS")) {
             throw denied();
         }
-        return context(tenant, project, ProjectAccessSource.PROJECT_MEMBER, member, role, projectPermissions);
+        return context(tenant, project, ProjectAccessSource.PROJECT_MEMBER, member, role, tenantPermissions);
     }
 
     public List<ProjectEntity> accessibleProjects(Long tenantId) {
         TenantContext tenant = tenantContextResolver.requireActiveMember(tenantId);
-        if (permissionService.permissionCodes(tenant).contains("PROJECT:VIEW_ALL")) {
+        if (!MenuAuthorization.canReadProject(permissionService.permissionCodes(tenant))) throw denied();
+        if (permissionService.canAccessAllProjects(tenant)) {
             return projectMapper.selectByTenantId(tenantId);
         }
         return projectMapper.selectAccessibleByMember(tenantId, tenant.userId());
@@ -101,17 +104,20 @@ public class ProjectAccessResolver {
     public List<ProjectAccessContext> accessibleProjectContexts(Long tenantId) {
         TenantContext tenant = tenantContextResolver.requireActiveMember(tenantId);
         Set<String> permissions = permissionService.permissionCodes(tenant);
-        List<ProjectEntity> projects = permissions.contains("PROJECT:VIEW_ALL")
+        if (!MenuAuthorization.canReadProject(permissions)) throw denied();
+        boolean wide = permissionService.canAccessAllProjects(tenant);
+        List<ProjectEntity> projects = wide
             ? projectMapper.selectByTenantId(tenantId)
             : projectMapper.selectAccessibleByMember(tenantId, tenant.userId());
-        return projects.stream().map(project -> requireView(tenant, project, permissions)).toList();
+        return projects.stream().map(project -> requireView(tenant, project, permissions, wide)).toList();
     }
 
     public MediaPage<ProjectAccessContext> accessibleProjectPage(Long tenantId, Integer current,
         Integer pageSize, String keyword) {
         TenantContext tenant = tenantContextResolver.requireActiveMember(tenantId);
         Set<String> permissions = permissionService.permissionCodes(tenant);
-        boolean wide = permissions.contains("PROJECT:VIEW_ALL");
+        if (!MenuAuthorization.canReadProject(permissions)) throw denied();
+        boolean wide = permissionService.canAccessAllProjects(tenant);
         PageBounds bounds = PageBounds.of(current, pageSize);
         String search = keyword == null || keyword.isBlank() ? null : keyword.trim();
         long total = projectMapper.countVisible(tenantId, tenant.userId(), wide, search);
@@ -124,7 +130,7 @@ public class ProjectAccessResolver {
             if (wide) return context(tenant, project, ProjectAccessSource.TENANT_WIDE, null, null, permissions);
             List<ProjectBrowsePermission> entries = rows.getOrDefault(project.id, List.of());
             Set<String> codes = entries.stream().map(row -> row.permissionCode).collect(Collectors.toSet());
-            if (!codes.contains("PROJECT:VIEW")) return null;
+            if (!codes.contains("MENU:PROJECTS")) return null;
             ProjectBrowsePermission row = entries.get(0);
             ProjectMemberEntity member = new ProjectMemberEntity();
             member.id = row.memberId;
@@ -140,7 +146,7 @@ public class ProjectAccessResolver {
             role.projectId = project.id;
             role.tenantId = tenantId;
             role.status = "ACTIVE";
-            return context(tenant, project, ProjectAccessSource.PROJECT_MEMBER, member, role, codes);
+            return context(tenant, project, ProjectAccessSource.PROJECT_MEMBER, member, role, permissions);
         }).filter(java.util.Objects::nonNull).toList();
         return new MediaPage<>(contexts, bounds.current(), bounds.pageSize(), total);
     }

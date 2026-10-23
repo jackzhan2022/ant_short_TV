@@ -15,7 +15,7 @@ class AssetCatalogServiceTest {
     private final com.antshorttv.rbac.ProjectPermissionGuard permissionGuard=mock(com.antshorttv.rbac.ProjectPermissionGuard.class);
     private final AssetCatalogService service=new AssetCatalogService(jdbc,json,permissionGuard);
     private ToolExecutionContext context() {
-        var c=new ToolExecutionContext(1L,2L,3L,4L,5L,6L,null,7L,Set.of("SCRIPT:VIEW"),null,new WorkflowToolRunState());
+        var c=new ToolExecutionContext(1L,2L,3L,4L,5L,6L,null,7L,Set.of("MENU:PROJECTS"),null,new WorkflowToolRunState());
         c.runState().put("assetScope","PROP");
         return c;
     }
@@ -53,7 +53,7 @@ class AssetCatalogServiceTest {
 
     @Test void completeTrustedBackgroundExecutionKeepsItsServerGrantedPermission() {
         when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(props());
-        var c=new ToolExecutionContext(1L,2L,3L,4L,5L,6L,null,7L,100L,101L,1,Set.of("SCRIPT:VIEW"),null,new WorkflowToolRunState());
+        var c=new ToolExecutionContext(1L,2L,3L,4L,5L,6L,null,7L,100L,101L,1,Set.of("MENU:PROJECTS"),null,new WorkflowToolRunState());
         c.runState().put("assetScope","PROP");
         assertThat(service.search(c,json.createObjectNode().put("assetType","PROP")).path("items").isEmpty()).isFalse();
         verifyNoInteractions(permissionGuard);

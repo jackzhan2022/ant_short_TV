@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamSettings from './index';
 
 const mocks = vi.hoisted(() => ({
+  canManage: true,
   getCurrentTenantId: vi.fn(),
   queryTenant: vi.fn(),
   queryTenantMembers: vi.fn(),
@@ -23,7 +24,7 @@ vi.mock('@/services/account-team/auth', () => ({
 }));
 
 vi.mock('@umijs/max', () => ({
-  useModel: () => ({ setInitialState: mocks.setInitialState }),
+  useModel: () => ({ setInitialState: mocks.setInitialState, initialState: { tenantPermissions: mocks.canManage ? ['MENU:TEAM_MANAGEMENT'] : [] } }),
 }));
 vi.mock('@/components/TeamIconPicker', () => ({
   default: ({ value, onChange, disabled }: any) =>
@@ -149,6 +150,7 @@ vi.mock('./service', () => ({
 describe('TeamSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canManage = true;
     mocks.getCurrentTenantId.mockReturnValue(10);
     mocks.queryTenant.mockResolvedValue({
       success: true,
@@ -236,7 +238,8 @@ describe('TeamSettings', () => {
     expect(state.tenantPermissions).toEqual(['PROJECT:CREATE']);
   });
 
-  it('keeps the icon read-only for non-owner members', async () => {
+  it('keeps the icon read-only without the management menu', async () => {
+    mocks.canManage = false;
     const response = await mocks.queryTenant();
     mocks.queryTenant.mockResolvedValue({
       data: { ...response.data, memberType: 'MEMBER', logo: 'icon:star' },

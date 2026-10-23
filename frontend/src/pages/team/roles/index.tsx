@@ -9,6 +9,8 @@ import {
 } from '@ant-design/pro-components';
 import { App, Button, Empty, Form, Popconfirm, Space, Tabs, Tag, Tree } from 'antd';
 import type { TreeProps } from 'antd';
+import { useModel } from '@umijs/max';
+import { applyBootstrapSelection } from '@/services/account-team/bootstrap';
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { RoleFormValues } from '@/services/account-team/rbac';
@@ -47,7 +49,7 @@ const PermissionTreeField = ({ treeData }: { treeData: PermissionTreeNode[] }) =
   const value = Form.useWatch('permissionCodes', form) ?? [];
 
   return (
-    <Form.Item name="permissionCodes" label="权限">
+    <Form.Item name="permissionCodes" label="菜单权限">
       <Tree
         checkable
         defaultExpandAll
@@ -70,7 +72,7 @@ const RoleEditor = ({
   role?: Role;
   tenantId: number;
   permissionTree: PermissionTreeNode[];
-  onDone: () => void;
+  onDone: () => void | Promise<void>;
 }) => {
   const [form] = Form.useForm<RoleFormValues>();
   const [open, setOpen] = useState(false);
@@ -131,7 +133,7 @@ const RoleEditor = ({
           await createTenantRole(tenantId, payload);
           message.success('角色已创建');
         }
-        onDone();
+        await onDone();
         return true;
       }}
     >
@@ -165,6 +167,7 @@ type RoleManagementProps = { mode?: 'roles' | 'permissions' };
 export const RoleManagement = ({ mode }: RoleManagementProps = {}) => {
   const tenantId = getCurrentTenantId();
   const actionRef = useRef<ActionType | null>(null);
+  const { setInitialState } = useModel('@@initialState');
   const { message } = App.useApp();
   const [permissionTree, setPermissionTree] = useState<PermissionTreeNode[]>([]);
 
@@ -182,7 +185,10 @@ export const RoleManagement = ({ mode }: RoleManagementProps = {}) => {
     );
   }
 
-  const reload = () => actionRef.current?.reload();
+  const reload = async () => {
+    await actionRef.current?.reload();
+    if (getCurrentTenantId() === tenantId) await applyBootstrapSelection(tenantId, setInitialState);
+  };
 
   const columns: ProColumns<Role>[] = [
     { title: '角色名称', dataIndex: 'name' },
@@ -241,7 +247,7 @@ export const RoleManagement = ({ mode }: RoleManagementProps = {}) => {
                   record.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE',
                 );
                 message.success('角色状态已更新');
-                reload();
+                await reload();
               }}
             >
               {record.status === 'ACTIVE' ? '停用' : '启用'}
@@ -253,7 +259,7 @@ export const RoleManagement = ({ mode }: RoleManagementProps = {}) => {
               onConfirm={async () => {
                 await deleteTenantRole(tenantId, record.id);
                 message.success('角色已删除');
-                reload();
+                await reload();
               }}
             >
               <Button type="link" danger icon={<DeleteOutlined />}>
@@ -270,7 +276,7 @@ export const RoleManagement = ({ mode }: RoleManagementProps = {}) => {
     <ProTable<Role>
       actionRef={actionRef}
       rowKey="id"
-      headerTitle="权限与角色"
+      headerTitle="角色与菜单权限"
       search={false}
       columns={columns}
       request={async () => {
@@ -305,7 +311,7 @@ export const RoleManagement = ({ mode }: RoleManagementProps = {}) => {
           },
           {
             key: 'permissions',
-            label: '权限资源树',
+            label: '菜单权限树',
             children: permissionsContent,
           },
         ]}

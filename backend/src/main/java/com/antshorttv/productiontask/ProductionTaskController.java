@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
 
+@com.antshorttv.rbac.RequirePermission("MENU:PRODUCTION_TASKS")
 @RestController
 @RequestMapping("/api/tenants/{tenantId}/production-tasks")
 public class ProductionTaskController {
@@ -54,8 +55,11 @@ public class ProductionTaskController {
     @GetMapping("/{taskKey}/children") public ApiResponse<ProductionTaskService.Page> children(@PathVariable long tenantId,@PathVariable String taskKey,@ModelAttribute ProductionTaskQuery query) {
         return ApiResponse.success(service.children(tenantId,taskKey,query));
     }
+    @com.antshorttv.rbac.RequirePermission("PRODUCTION_TASK:CONTROL")
     @PostMapping("/{taskKey}/{action}") public ApiResponse<Map<String,Object>> control(@PathVariable long tenantId,@PathVariable String taskKey,
         @PathVariable String action,HttpServletRequest request) {
+        if (!service.access(tenantId).permissions().contains("MENU:PRODUCTION_TASKS")
+            && !taskKey.startsWith("FREE_CREATION:")) throw ProductionTaskService.denied();
         Map<String,Object> task=service.detail(tenantId,taskKey);
         if("FREE_CREATION".equals(task.get("type")) && List.of("cancel","retry","regenerate").contains(action)) {
             var created=freeCreations.control(tenantId,Long.parseLong(taskKey.split(":")[1]),action.toUpperCase(java.util.Locale.ROOT),request.getHeader("Idempotency-Key"));

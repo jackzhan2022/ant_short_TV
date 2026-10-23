@@ -1,5 +1,6 @@
 package com.antshorttv.workflowagent.tool;
 
+import com.antshorttv.rbac.MenuAuthorization;
 import com.antshorttv.script.ScriptSourceSegmentIndex;
 
 import com.antshorttv.common.BusinessException;
@@ -986,7 +987,7 @@ public class ScreenplayToolDataService {
             && context.executionId() != null
             && context.attemptId() != null
             && context.executionVersion() != null;
-        if (!trustedBackgroundRun || !context.permissions().contains(permission)) {
+        if (!trustedBackgroundRun || !MenuAuthorization.allows(context.permissions(), permission)) {
             permissionGuard.require(context.tenantId(), context.projectId(), permission);
         }
     }

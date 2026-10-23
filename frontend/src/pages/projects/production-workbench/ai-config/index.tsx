@@ -11,7 +11,7 @@ import { App, Button, Empty, Flex, Spin, Tag, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  hasProjectPermission,
+  canUseProjectFeatures,
   queryProject,
 } from '@/services/account-team/project';
 import type {
@@ -153,10 +153,7 @@ const ProjectAiConfigPage = () => {
         setModels(modelsResponse.data || emptyModels);
         setConfig(configResponse.data);
         setCanEdit(
-          hasProjectPermission(
-            projectResponse.data,
-            'PROJECT_AI_CONFIG_EDIT',
-          ),
+          canUseProjectFeatures(projectResponse.data),
         );
       })
       .catch(() => {

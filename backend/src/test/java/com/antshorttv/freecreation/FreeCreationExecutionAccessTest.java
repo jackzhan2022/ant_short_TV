@@ -16,7 +16,9 @@ class FreeCreationExecutionAccessTest {
         task.id = 12L; task.tenantId = 1L; task.userId = 9L; task.businessType = "FREE_CREATION";
         when(executions.requireTask(12L)).thenReturn(task);
         when(tenants.requireActiveMember(1L)).thenReturn(new TenantContext(8L,1L,3L,"MEMBER"));
-        var access = new AiExecutionAccessService(executions, tenants, mock(ProjectAccessResolver.class));
+        var menus = mock(com.antshorttv.rbac.RbacPermissionService.class);
+        when(menus.permissionCodes(any())).thenReturn(java.util.Set.of("MENU:FREE_CREATION"));
+        var access = new AiExecutionAccessService(executions, tenants, mock(ProjectAccessResolver.class), menus);
         assertThat(access.requireView(1L,12L)).isSameAs(task);
         assertThatThrownBy(() -> access.requireControl(1L,12L)).isInstanceOf(BusinessException.class);
         when(tenants.requireActiveMember(1L)).thenReturn(new TenantContext(9L,1L,4L,"MEMBER"));
@@ -24,5 +26,8 @@ class FreeCreationExecutionAccessTest {
         when(tenants.requireActiveMember(2L)).thenReturn(new TenantContext(9L,2L,5L,"MEMBER"));
         assertThatThrownBy(() -> access.requireView(2L,12L)).isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> access.requireControl(2L,12L)).isInstanceOf(BusinessException.class);
+        when(menus.permissionCodes(any())).thenReturn(java.util.Set.of());
+        assertThatThrownBy(() -> access.requireControl(1L,12L)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> access.requireView(1L,12L)).isInstanceOf(BusinessException.class);
     }
 }

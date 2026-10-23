@@ -44,7 +44,7 @@ const bootstrap = {
     tenant,
     membership: { id: 1, memberType: 'OWNER', status: 'ACTIVE' },
     roles: ['OWNER'],
-    permissions: ['PROJECT:CREATE'],
+    permissions: ['MENU:PROJECTS'],
   },
   nextAction: 'ENTER_WORKSPACE',
 };

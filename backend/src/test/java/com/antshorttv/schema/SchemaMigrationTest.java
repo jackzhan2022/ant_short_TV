@@ -912,7 +912,7 @@ class SchemaMigrationTest {
                             'PLATFORM_COMMERCIAL_SUBSCRIPTION_ADJUST')
             """, Integer.class);
         Integer billingPermissionCount = jdbc.queryForObject("""
-            select count(*) from permission where code = 'BILLING:MANAGE'
+            select count(*) from permission where code = 'MENU:TEAM_MANAGEMENT'
             """, Integer.class);
         assertThat(platformPermissionCount).isEqualTo(3);
         assertThat(billingPermissionCount).isEqualTo(1);

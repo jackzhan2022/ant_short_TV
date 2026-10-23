@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@com.antshorttv.rbac.RequirePermission("MEDIA:UPLOAD")
 @RestController
 @RequestMapping("/api/media-uploads")
 public class MediaUploadController {
@@ -40,7 +41,7 @@ public class MediaUploadController {
         Long tenantId = TenantRequestSupport.tenantId(request);
         TenantContext context = body.projectId() == null
             ? tenants.requireActiveMember(tenantId)
-            : projects.require(tenantId, body.projectId(), "PROJECT:EDIT");
+            : projects.require(tenantId, body.projectId(), "MEDIA:UPLOAD");
         return ApiResponse.success(service.create(new CreateMediaUploadSession(
             tenantId,
             body.projectId(),

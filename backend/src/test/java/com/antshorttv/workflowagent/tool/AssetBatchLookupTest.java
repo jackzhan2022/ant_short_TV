@@ -21,7 +21,7 @@ class AssetBatchLookupTest {
     private final AssetCatalogService service = new AssetCatalogService(jdbc, json, permissions);
     private ToolExecutionContext context() {
         return new ToolExecutionContext(1L, 2L, 3L, 4L, 5L, 6L, null, 7L,
-            Set.of("SCRIPT:VIEW"), null, new WorkflowToolRunState());
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
     }
     private Map<String, Object> row(long id, String name, String aliases) {
         return Map.of("id", id, "name", name, "normalized_name", name,

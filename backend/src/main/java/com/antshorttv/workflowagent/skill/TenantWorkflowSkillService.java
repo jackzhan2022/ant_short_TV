@@ -37,8 +37,8 @@ public class TenantWorkflowSkillService {
 
     private TenantContext requireManager(Long tenantId) {
         TenantContext context = contexts.requireActiveMember(tenantId);
-        if (!"OWNER".equals(context.memberType()) && !permissions.roleCodes(context).contains("ADMIN")) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "仅当前团队所有者或管理员可管理团队 Skill。");
+        if (!permissions.hasPermission(context, "MENU:AI_MANAGEMENT")) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问团队 Skill 管理。");
         }
         return context;
     }

@@ -74,7 +74,7 @@ const MemberRoleEditor = ({
         label="角色"
         mode="multiple"
         options={roles
-          .filter((role) => role.status === 'ACTIVE')
+          .filter((role) => role.status === 'ACTIVE' && role.code !== 'OWNER')
           .map((role) => ({
             label: `${role.name} (${role.code})`,
             value: role.id,
@@ -90,7 +90,7 @@ export const MemberTabContent = () => {
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
   const { initialState } = useModel('@@initialState');
-  const isOwner = initialState?.selectedTenant?.membership.memberType === 'OWNER';
+  const canManage = initialState?.tenantPermissions?.includes('MENU:TEAM_MANAGEMENT') === true;
 
   if (!tenantId) {
     return (
@@ -123,7 +123,7 @@ export const MemberTabContent = () => {
       valueType: 'option',
       render: (_, record) => (
         <Space>
-          {isOwner && record.memberType === 'MEMBER' && (
+          {canManage && record.memberType === 'MEMBER' && (
             <>
               <MemberRoleEditor
                 tenantId={tenantId}
@@ -162,7 +162,7 @@ export const MemberTabContent = () => {
         }}
         columns={columns}
         toolBarRender={() =>
-          isOwner
+          canManage
             ? [
                 <ModalForm<{ mobile: string }>
                   key="invite"

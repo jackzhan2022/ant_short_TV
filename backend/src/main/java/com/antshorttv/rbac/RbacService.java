@@ -83,6 +83,7 @@ public class RbacService {
         role.setName(validateRoleName(request.name()));
         role.setDescription(blankToNull(request.description()));
         role.setRoleType(RoleType.CUSTOM.name());
+        role.setProjectAccessAll(false);
         role.setStatus(RoleStatus.ACTIVE.name());
         role.setIsDefault(false);
         role.setCreatedBy(context.userId());
@@ -165,6 +166,7 @@ public class RbacService {
         }
         return permissionMapper.selectBatchIds(permissionIds)
             .stream()
+            .filter(permission -> MenuAuthorization.MENUS.contains(permission.getCode()))
             .sorted(Comparator.comparing(PermissionEntity::getResource).thenComparing(PermissionEntity::getAction))
             .map(PermissionResponse::from)
             .toList();
@@ -209,12 +211,18 @@ public class RbacService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         initializeTenant(tenantId);
         TenantMemberEntity member = requireMemberInTenant(tenantId, memberId);
+        if (MemberType.OWNER.name().equals(member.getMemberType())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "团队所有者的角色只能随所有权转让调整。");
+        }
         List<Long> roleIds = request.roleIds() == null ? List.of() : request.roleIds().stream().distinct().toList();
         List<RoleEntity> roles = roleIds.isEmpty() ? List.of() : roleMapper.selectBatchIds(roleIds);
         if (roles.size() != roleIds.size()) {
             throw new BusinessException(ErrorCode.ROLE_NOT_FOUND, "角色不存在。");
         }
         for (RoleEntity role : roles) {
+            if ("OWNER".equals(role.getCode())) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "请通过转让所有权变更团队所有者。");
+            }
             if (!tenantId.equals(role.getTenantId()) || role.getDeletedAt() != null) {
                 throw new BusinessException(ErrorCode.ROLE_NOT_FOUND, "角色不存在。");
             }
@@ -240,6 +248,7 @@ public class RbacService {
         ensurePermissions();
         Map<String, List<PermissionEntity>> byResource = permissionMapper.selectList(null)
             .stream()
+            .filter(permission -> MenuAuthorization.MENUS.contains(permission.getCode()))
             .sorted(Comparator.comparing(PermissionEntity::getResource).thenComparing(PermissionEntity::getAction))
             .collect(Collectors.groupingBy(PermissionEntity::getResource, LinkedHashMap::new, Collectors.toList()));
         List<PermissionTreeNodeResponse> nodes = new ArrayList<>();
@@ -281,10 +290,7 @@ public class RbacService {
         ensureSystemRole(tenantId, "ADMIN", "Admin", "团队管理员", true, now);
         RoleEntity memberRole = ensureSystemRole(tenantId, "MEMBER", "Member", "普通成员", true, now);
         ensureRolePermissions(ownerRole, RbacPermissions.ALL.stream().map(RbacPermissionDefinition::code).toList());
-        ensureRolePermissions(roleMapper.selectActiveByTenantIdAndCode(tenantId, "ADMIN"),
-            RbacPermissions.ALL.stream()
-                .filter(permission -> permission.type() != PermissionType.MENU)
-                .map(RbacPermissionDefinition::code).filter(code -> !"ROLE:DELETE".equals(code)).toList());
+
 
         for (TenantMemberEntity member : tenantMemberMapper.selectActiveByTenantId(tenantId)) {
             if (!memberRoleMapper.selectByMemberId(member.getId()).isEmpty()) {
@@ -338,13 +344,14 @@ public class RbacService {
         role.setName(name);
         role.setDescription(description);
         role.setRoleType(RoleType.SYSTEM.name());
+        role.setProjectAccessAll("OWNER".equals(code) || "ADMIN".equals(code));
         role.setStatus(RoleStatus.ACTIVE.name());
         role.setIsDefault(isDefault);
         role.setCreatedAt(now);
         role.setUpdatedAt(now);
         try {
             roleMapper.insert(role);
-            ensureRolePermissions(role, RbacMenuPermissions.ALL.stream().map(RbacPermissionDefinition::code).toList());
+            ensureRolePermissions(role, RbacMenuPermissions.defaultsFor(code));
             return role;
         } catch (DuplicateKeyException | PessimisticLockingFailureException ignored) {
             return reactivateSystemRole(tenantId, code, name, description, isDefault, now);
@@ -363,6 +370,7 @@ public class RbacService {
         if (role == null) {
             throw new BusinessException(ErrorCode.ROLE_NOT_FOUND, "系统角色初始化失败。");
         }
+        if (role.getDeletedAt() == null) return role;
         roleMapper.update(null, new LambdaUpdateWrapper<RoleEntity>()
             .eq(RoleEntity::getId, role.getId())
             .set(RoleEntity::getName, name)
@@ -370,9 +378,12 @@ public class RbacService {
             .set(RoleEntity::getRoleType, RoleType.SYSTEM.name())
             .set(RoleEntity::getStatus, RoleStatus.ACTIVE.name())
             .set(RoleEntity::getIsDefault, isDefault)
+            .set(RoleEntity::getProjectAccessAll, "OWNER".equals(code) || "ADMIN".equals(code))
             .set(RoleEntity::getDeletedAt, null)
             .set(RoleEntity::getUpdatedAt, now));
-        return roleMapper.selectActiveByTenantIdAndCode(tenantId, code);
+        RoleEntity restored = roleMapper.selectActiveByTenantIdAndCode(tenantId, code);
+        ensureRolePermissions(restored, RbacMenuPermissions.defaultsFor(code));
+        return restored;
     }
 
     private void ensureRolePermissions(RoleEntity role, List<String> permissionCodes) {
@@ -383,6 +394,9 @@ public class RbacService {
             .map(String::trim)
             .filter(code -> !code.isBlank())
             .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!MenuAuthorization.MENUS.containsAll(codes)) {
+            throw new BusinessException(ErrorCode.PERMISSION_NOT_FOUND, "仅支持当前菜单权限。");
+        }
         List<PermissionEntity> permissions = permissionMapper.selectByCodes(codes);
         if (permissions.size() != codes.size()) {
             throw new BusinessException(ErrorCode.PERMISSION_NOT_FOUND, "权限不存在。");
@@ -409,6 +423,9 @@ public class RbacService {
             .map(String::trim)
             .filter(code -> !code.isBlank())
             .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!MenuAuthorization.MENUS.containsAll(codes)) {
+            throw new BusinessException(ErrorCode.PERMISSION_NOT_FOUND, "仅支持当前菜单权限。");
+        }
         List<PermissionEntity> permissions = permissionMapper.selectByCodes(codes);
         if (permissions.size() != codes.size()) {
             throw new BusinessException(ErrorCode.PERMISSION_NOT_FOUND, "权限不存在。");

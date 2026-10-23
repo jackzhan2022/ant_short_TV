@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import org.springframework.web.bind.annotation.*;
 
+@com.antshorttv.rbac.RequirePermission("MENU:AI_MANAGEMENT")
 @RestController
 @RequestMapping("/api/tenants/{tenantId}/workflow-skills")
 public class TenantWorkflowSkillController {

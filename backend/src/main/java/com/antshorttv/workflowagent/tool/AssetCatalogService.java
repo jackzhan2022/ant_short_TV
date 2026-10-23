@@ -1,5 +1,6 @@
 package com.antshorttv.workflowagent.tool;
 
+import com.antshorttv.rbac.MenuAuthorization;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.rbac.ProjectPermissionGuard;
@@ -401,7 +402,7 @@ public class AssetCatalogService {
             || c.projectId()==null || c.scriptId()==null || !included(c,type)) throw invalid("资产检索作用域未授权。");
         boolean trustedBackgroundRun=c.agentRunId()!=null && c.taskId()!=null && c.executionId()!=null
             && c.attemptId()!=null && c.executionVersion()!=null;
-        if(!trustedBackgroundRun || !c.permissions().contains("SCRIPT:VIEW")) {
+        if(!trustedBackgroundRun || !MenuAuthorization.allows(c.permissions(), "SCRIPT:VIEW")) {
             permissionGuard.require(c.tenantId(),c.projectId(),"SCRIPT:VIEW");
         }
     }

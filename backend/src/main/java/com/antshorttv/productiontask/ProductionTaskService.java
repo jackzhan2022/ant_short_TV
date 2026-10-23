@@ -1,5 +1,6 @@
 package com.antshorttv.productiontask;
 
+import com.antshorttv.rbac.MenuAuthorization;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.rbac.RbacPermissionService;
@@ -50,7 +51,9 @@ public class ProductionTaskService {
             where mr.member_id=? and r.tenant_id=? and r.code='ADMIN' and r.role_type='SYSTEM'
               and r.status='ACTIVE' and r.deleted_at is null
             """,Long.class,c.memberId(),tenantId)>0;
-        return new Access(c,team,permissions.permissionCodes(c));
+        Set<String> menus = permissions.permissionCodes(c);
+        if (!menus.contains("MENU:PRODUCTION_TASKS") && !menus.contains("MENU:FREE_CREATION")) throw denied();
+        return new Access(c,team,menus);
     }
 
     private Predicate predicate(Access a,ProductionTaskQuery q) {
@@ -252,18 +255,18 @@ public class ProductionTaskService {
         if(project==null) return Objects.equals(number(row,"created_by"),a.context.userId());
         Set<String> codes=projectPermissions(a,project);
         String type=String.valueOf(row.get("type"));
-        if(type.equals("IMAGE")) return codes.contains("AI_IMAGE_TASK:VIEW");
-        if(type.equals("VIDEO")) return codes.contains("AI_VIDEO_TASK:VIEW");
-        if(type.equals("SCRIPT_ANALYSIS")) return codes.contains("SCRIPT:VIEW");
-        if(type.equals("STORYBOARD_BATCH") || type.equals("STORYBOARD_ITEM")) return codes.contains("STORYBOARD:VIEW");
+        if(type.equals("IMAGE")) return MenuAuthorization.allows(codes, "AI_IMAGE_TASK:VIEW");
+        if(type.equals("VIDEO")) return MenuAuthorization.allows(codes, "AI_VIDEO_TASK:VIEW");
+        if(type.equals("SCRIPT_ANALYSIS")) return MenuAuthorization.allows(codes, "SCRIPT:VIEW");
+        if(type.equals("STORYBOARD_BATCH") || type.equals("STORYBOARD_ITEM")) return MenuAuthorization.allows(codes, "STORYBOARD:VIEW");
         if(type.equals("SCRIPT_OPERATION")) {
             String subtype=String.valueOf(row.get("subtype"));
-            if(!codes.contains(scriptOperationContentPermission(subtype))) return false;
-            if(List.of("ELEMENT_EXTRACT","SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION").contains(subtype)) return codes.contains("ELEMENT:VIEW");
-            if("STORYBOARD_BREAKDOWN".equals(subtype)) return codes.contains("STORYBOARD:VIEW");
+            if(!MenuAuthorization.allows(codes, scriptOperationContentPermission(subtype))) return false;
+            if(List.of("ELEMENT_EXTRACT","SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION").contains(subtype)) return MenuAuthorization.allows(codes, "ELEMENT:VIEW");
+            if("STORYBOARD_BREAKDOWN".equals(subtype)) return MenuAuthorization.allows(codes, "STORYBOARD:VIEW");
             return true;
         }
-        return codes.contains("PROJECT:VIEW") || codes.contains("PROJECT:VIEW_ALL");
+        return MenuAuthorization.allows(codes, "PROJECT:VIEW");
     }
 
     static String scriptOperationContentPermission(String operation) {
@@ -294,7 +297,7 @@ public class ProductionTaskService {
     }
 
     private Set<String> projectPermissions(Access a,long project) {
-        if(a.permissions.contains("PROJECT:VIEW_ALL")) return a.permissions;
+        if(permissions.canAccessAllProjects(a.context)) return a.permissions;
         Set<String> codes=new HashSet<>();
         sql.query("""
             select p.code from project_member pm
@@ -304,7 +307,7 @@ public class ProductionTaskService {
             where pm.tenant_id=:tenant and pm.user_id=:user and pm.status='ACTIVE' and pm.project_id=:project
             """,Map.of("tenant",a.context.tenantId(),"user",a.context.userId(),"project",project),
             (org.springframework.jdbc.core.RowCallbackHandler) rs->codes.add(rs.getString(1)));
-        return codes;
+        return codes.contains("MENU:PROJECTS") ? a.permissions : Set.of();
     }
 
     private List<Map<String,Object>> sections(Access a,Map<String,Object> row) {
@@ -578,12 +581,13 @@ public class ProductionTaskService {
         rows.forEach(r->{if(number(r,"project_id")!=null) projectIds.add(number(r,"project_id"));userIds.add(number(r,"created_by"));});
         Map<Long,String> projectNames=new HashMap<>(),userNames=new HashMap<>();
         Map<Long,Set<String>> projectPermissions=new HashMap<>();
+        boolean wide = permissions.canAccessAllProjects(a.context);
         Map<String,Object> params=new HashMap<>();params.put("tenant",a.context.tenantId());params.put("user",a.context.userId());
         if(!projectIds.isEmpty()) {
             params.put("projects",projectIds);
             sql.query("select id,name from project where tenant_id=:tenant and id in (:projects) and deleted_at is null",params,
                 rs->{projectNames.put(rs.getLong(1),rs.getString(2));});
-            if(a.permissions.contains("PROJECT:VIEW_ALL")) projectNames.keySet().forEach(id->projectPermissions.put(id,a.permissions));
+            if(wide) projectNames.keySet().forEach(id->projectPermissions.put(id,a.permissions));
             else sql.query("""
                 select pm.project_id,p.code from project_member pm
                 join project_role pr on pr.id=pm.role_id and pr.tenant_id=pm.tenant_id and pr.project_id=pm.project_id and pr.status='ACTIVE'
@@ -592,6 +596,8 @@ public class ProductionTaskService {
                 where pm.tenant_id=:tenant and pm.user_id=:user and pm.status='ACTIVE' and pm.project_id in (:projects)
                 """,params,rs->{projectPermissions.computeIfAbsent(rs.getLong(1),id->new HashSet<>()).add(rs.getString(2));});
         }
+        projectPermissions.replaceAll((id, grants) -> wide
+            || grants.contains("MENU:PROJECTS") ? a.permissions : Set.of());
         params.put("users",userIds);
         sql.query("""
             select u.id,u.nickname,m.status from app_user u
@@ -603,7 +609,7 @@ public class ProductionTaskService {
         for(Map<String,Object> row:rows) {
             Long project=number(row,"project_id"),creator=number(row,"created_by");
             Set<String> effective=project==null?a.permissions:projectPermissions.getOrDefault(project,Set.of());
-            boolean view=project==null || (projectNames.containsKey(project) && (effective.contains("PROJECT:VIEW")||effective.contains("PROJECT:VIEW_ALL")));
+            boolean view=project==null || (projectNames.containsKey(project) && (MenuAuthorization.allows(effective, "PROJECT:VIEW")));
             String type=(String)row.get("type"), state=(String)row.get("status_group");
             Map<String,Object> item=new LinkedHashMap<>();
             item.put("taskKey",type+":"+number(row,"id"));item.put("type",type);
@@ -621,11 +627,11 @@ public class ProductionTaskService {
             item.put("rootExecutionId",view?number(row,"root_execution_id"):null);
             item.put("sourceExecutionId",view?number(row,"source_execution_id"):null);
             String destination=view?destination(type,number(row,"id"),project,(String)row.get("subtype")):null;
-            if(type.equals("IMAGE") && (!effective.contains("AI_IMAGE_TASK:VIEW") || !mediaDestinations.contains((String)item.get("taskKey")))) destination=null;
-            if(type.equals("VIDEO") && (!effective.contains("AI_VIDEO_TASK:VIEW") || !mediaDestinations.contains((String)item.get("taskKey")))) destination=null;
-            if(List.of("STORYBOARD_BATCH","STORYBOARD_ITEM").contains(type) && !effective.contains("STORYBOARD:VIEW")) destination=null;
+            if(type.equals("IMAGE") && (!MenuAuthorization.allows(effective, "AI_IMAGE_TASK:VIEW") || !mediaDestinations.contains((String)item.get("taskKey")))) destination=null;
+            if(type.equals("VIDEO") && (!MenuAuthorization.allows(effective, "AI_VIDEO_TASK:VIEW") || !mediaDestinations.contains((String)item.get("taskKey")))) destination=null;
+            if(List.of("STORYBOARD_BATCH","STORYBOARD_ITEM").contains(type) && !MenuAuthorization.allows(effective, "STORYBOARD:VIEW")) destination=null;
             boolean ownReviewProject=String.valueOf(a.context.userId()).equals(row.get("subtype"));
-            if(project==null && "REVIEW".equals(type) && !ownReviewProject && !a.permissions.contains("PROJECT:VIEW_ALL")) destination=null;
+            if(project==null && "REVIEW".equals(type) && !ownReviewProject && !wide) destination=null;
             item.put("destination",destination);
             item.put("resultSummary",view && "SUCCEEDED".equals(state)?(destination==null?"已完成，当前结果入口不可用":"已完成，可返回业务查看结果"):null);
             boolean warning=String.valueOf(row.get("domain_status")).contains("WARNING") || warnings.contains("E:"+number(row,"execution_id")) || (type.equals("STORYBOARD_BATCH") && warnings.contains("B:"+number(row,"id")));
@@ -636,20 +642,20 @@ public class ProductionTaskService {
                 if(type.equals("FREE_CREATION")) actions.addAll(com.antshorttv.freecreation.FreeCreationService.controlActions(
                     "QUEUED".equals(state)?"PENDING":String.valueOf(row.get("domain_status"))));
                 boolean active=List.of("QUEUED","RUNNING").contains(state);
-                if(type.equals("IMAGE") && active && number(row,"execution_id")!=null && effective.contains("AI_IMAGE_TASK:CANCEL")) actions.add("CANCEL");
-                if(type.equals("VIDEO") && active && effective.contains("AI_VIDEO_TASK:CANCEL")) actions.add("CANCEL");
+                if(type.equals("IMAGE") && active && number(row,"execution_id")!=null && MenuAuthorization.allows(effective, "AI_IMAGE_TASK:CANCEL")) actions.add("CANCEL");
+                if(type.equals("VIDEO") && active && MenuAuthorization.allows(effective, "AI_VIDEO_TASK:CANCEL")) actions.add("CANCEL");
                 if(type.equals("IMAGE") && state.equals("SUCCEEDED") && number(row,"execution_id")!=null
                     && !"VISUAL_VARIANT".equals(row.get("subtype"))
-                    && effective.containsAll(Set.of("AI_IMAGE_TASK:CREATE","AI_SERVICE:USE"))) actions.add("REGENERATE");
+                    && MenuAuthorization.allows(effective, "AI_IMAGE_TASK:CREATE")) actions.add("REGENERATE");
                 String operationPermission=type.equals("STORYBOARD_ITEM")?"STORYBOARD:AI_BREAKDOWN":OPERATION_PERMISSIONS.get(String.valueOf(row.get("subtype")));
                 if(List.of("SCRIPT_OPERATION","STORYBOARD_ITEM").contains(type) && Objects.equals(number(row,"execution_user"),creator)
-                    && effective.contains("AI_SERVICE:USE") && operationPermission!=null && effective.contains(operationPermission)) {
+                    && MenuAuthorization.allows(effective, "AI_SERVICE:USE") && operationPermission!=null && MenuAuthorization.allows(effective, operationPermission)) {
                     if(active) actions.add("CANCEL");
                     if(List.of("FAILED","TIMED_OUT").contains(String.valueOf(row.get("domain_status"))) && truth(row.get("retryable"))) actions.add("RETRY");
                 }
                 if(type.equals("VIDEO_EPISODE") && state.equals("FAILED") && number(row,"execution_id")!=null && truth(row.get("retryable"))
-                    && (project==null || effective.contains("AI_SERVICE:USE"))) actions.add("RETRY");
-                if(type.equals("REVIEW") && (project==null ? ownReviewProject || effective.contains("PROJECT:EDIT_ALL") : effective.contains("AI_SERVICE:USE"))) {
+                    && (project==null || MenuAuthorization.allows(effective, "AI_SERVICE:USE"))) actions.add("RETRY");
+                if(type.equals("REVIEW") && (project==null ? ownReviewProject || wide : MenuAuthorization.allows(effective, "AI_SERVICE:USE"))) {
                     if(active && number(row,"execution_id")!=null) actions.add("CANCEL");
                     if("FAILED".equals(row.get("domain_status")) && number(row,"execution_id")!=null && truth(row.get("retryable"))) actions.add("RETRY");
                 }

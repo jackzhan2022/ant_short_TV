@@ -2,16 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 const request = vi.hoisted(() => vi.fn());
 vi.mock('@/services/point-estimate', () => ({ pointEstimatedRequest: request }));
-import { hasProjectPermission, queryProjectMetadata } from './project';
+import { canUseProjectFeatures, queryProjectMetadata } from './project';
 
-describe('hasProjectPermission', () => {
+describe('canUseProjectFeatures', () => {
   it('uses only the effective permissions returned for that project', () => {
     const project = {
-      effectivePermissions: ['PROJECT_AI_CONFIG_VIEW'],
+      effectivePermissions: ['MENU:PROJECTS'],
     } as any;
 
-    expect(hasProjectPermission(project, 'PROJECT_AI_CONFIG_VIEW')).toBe(true);
-    expect(hasProjectPermission(project, 'PROJECT_AI_CONFIG_EDIT')).toBe(false);
+    expect(canUseProjectFeatures(project)).toBe(true);
+    expect(canUseProjectFeatures({ ...project, effectivePermissions: [] })).toBe(false);
   });
 });
 

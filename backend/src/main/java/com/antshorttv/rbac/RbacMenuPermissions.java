@@ -2,7 +2,7 @@ package com.antshorttv.rbac;
 
 import java.util.List;
 
-/** Navigation permissions; business operations and data access keep their existing guards. */
+/** The only assignable tenant permissions. Data access is checked independently. */
 final class RbacMenuPermissions {
     static final List<RbacPermissionDefinition> ALL = List.of(
         menu("SHORT_DRAMA_CREATION", "短剧创作", "MENU_CREATION"),
@@ -19,6 +19,13 @@ final class RbacMenuPermissions {
 
     private static RbacPermissionDefinition menu(String action, String name, String resource) {
         return new RbacPermissionDefinition("MENU:" + action, name, PermissionType.MENU, resource, action);
+    }
+
+    static List<String> defaultsFor(String roleCode) {
+        return ALL.stream().map(RbacPermissionDefinition::code)
+            .filter(code -> !"MEMBER".equals(roleCode) || !List.of(
+                "MENU:TEAM_MANAGEMENT", "MENU:AI_MANAGEMENT", "MENU:DRAMA_LIBRARY").contains(code))
+            .toList();
     }
 
     private RbacMenuPermissions() {

@@ -333,13 +333,7 @@ export default function ImportEpisode({
                       setVersionPage(1);
                     },
                     getCheckboxProps: (row) => ({
-                      disabled:
-                        !row.effectivePermissions.includes(
-                          'EPISODE_VERSION:VIEW',
-                        ) ||
-                        !row.effectivePermissions.includes(
-                          'EPISODE_VERSION:DOWNLOAD',
-                        ),
+                      disabled: !row.effectivePermissions.includes('MENU:DRAMA_LIBRARY'),
                     }),
                   }}
                 />

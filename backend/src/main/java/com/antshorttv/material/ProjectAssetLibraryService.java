@@ -1,5 +1,6 @@
 package com.antshorttv.material;
 
+import com.antshorttv.rbac.MenuAuthorization;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.common.MediaPage;
@@ -48,15 +49,15 @@ public class ProjectAssetLibraryService {
             args.add(projectId);
         } else {
             List<String> queries = new ArrayList<>();
-            if (codes.contains("AI_VIDEO_TASK:VIEW")) {
+            if (MenuAuthorization.allows(codes, "AI_VIDEO_TASK:VIEW")) {
                 queries.add(shotVideoQuery("AI_VIDEO_RESULT", "ai_video_result", "ai_video_task", "项目生成"));
                 args.add(tenantId); args.add(projectId);
             }
-            if (codes.contains("SHOT_COMPOSE:VIEW")) {
+            if (MenuAuthorization.allows(codes, "SHOT_COMPOSE:VIEW")) {
                 queries.add(shotVideoQuery("SHOT_COMPOSE_RESULT", "shot_compose_result", "shot_compose_task", "镜头合成"));
                 args.add(tenantId); args.add(projectId);
             }
-            if (codes.contains("EPISODE_VERSION:VIEW")) {
+            if (MenuAuthorization.allows(codes, "EPISODE_VERSION:VIEW")) {
                 queries.add("""
                     select r.id, 'EPISODE_VIDEO_VERSION' as resource_type, 'OTHER' as category,
                            r.version_name as asset_name, '' as variant_name, '剧集合成' as source_type,
@@ -164,7 +165,7 @@ public class ProjectAssetLibraryService {
         String variant = row.getString("variant_name");
         if (variant != null && !variant.isBlank()) name += " · " + variant;
         String download = image ? base + "/download"
-            : "AI_VIDEO_RESULT".equals(kind) && permissions.contains("AI_VIDEO_RESULT:DOWNLOAD") ? base + "/download-file" : null;
+            : "AI_VIDEO_RESULT".equals(kind) && MenuAuthorization.allows(permissions, "AI_VIDEO_RESULT:DOWNLOAD") ? base + "/download-file" : null;
         return new LibraryItem(id, kind, name, row.getString("category"), row.getString("source_type"),
             base + (image ? "/thumbnail" : "/cover"), base + (image ? "/display" : "/playback"), download,
             row.getObject("episode_no", Integer.class), row.getObject("shot_no", Integer.class),

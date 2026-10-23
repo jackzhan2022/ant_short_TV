@@ -20,7 +20,7 @@ export const InvitationTabContent = () => {
   const { message } = App.useApp();
   const tenantId = getCurrentTenantId();
   const { initialState } = useModel('@@initialState');
-  const isOwner = initialState?.selectedTenant?.membership.memberType === 'OWNER';
+  const canManage = initialState?.tenantPermissions?.includes('MENU:TEAM_MANAGEMENT') === true;
 
   const columns: ProColumns<TenantInvitation>[] = [
     { title: '团队', dataIndex: 'tenantName' },
@@ -129,7 +129,7 @@ export const InvitationTabContent = () => {
           }}
           columns={columns}
         />
-        {tenantId && isOwner && (
+        {tenantId && canManage && (
           <ProTable<TenantInvitation>
             actionRef={sentActionRef}
             rowKey="id"

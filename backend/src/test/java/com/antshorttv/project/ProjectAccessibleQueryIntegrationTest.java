@@ -29,10 +29,10 @@ class ProjectAccessibleQueryIntegrationTest {
     @Test
     void browseCountAndPageFilterViewPermissionBeforeLimit() {
         long tenantId = 881001L, userId = 881002L;
-        if (jdbc.queryForObject("select count(*) from permission where code='PROJECT:VIEW'", Long.class) == 0)
+        if (jdbc.queryForObject("select count(*) from permission where code='MENU:PROJECTS'", Long.class) == 0)
             jdbc.update("""
                 insert into permission (code,name,type,resource,action,created_at,updated_at)
-                values ('PROJECT:VIEW','View','BUTTON','PROJECT','VIEW',current_timestamp,current_timestamp)
+                values ('MENU:PROJECTS','View','BUTTON','PROJECT','VIEW',current_timestamp,current_timestamp)
                 """);
         for (int i = 0; i < 4; i++) {
             jdbc.update("""
@@ -52,7 +52,7 @@ class ProjectAccessibleQueryIntegrationTest {
                 """, tenantId, id, userId, role, userId);
             if (i != 3) jdbc.update("""
                 insert into project_role_permission (tenant_id,project_id,role_id,permission_id,created_at)
-                select ?,?,?,id,current_timestamp from permission where code='PROJECT:VIEW'
+                select ?,?,?,id,current_timestamp from permission where code='MENU:PROJECTS'
                 """, tenantId, id, role);
         }
         assertThat(projectMapper.countVisible(tenantId, userId, false, null)).isEqualTo(3);
@@ -125,6 +125,10 @@ class ProjectAccessibleQueryIntegrationTest {
             Long.class,
             projectId
         );
+        jdbc.update("""
+            insert into project_role_permission (tenant_id,project_id,role_id,permission_id,created_at)
+            select ?,?,?,id,current_timestamp from permission where code='MENU:PROJECTS'
+            """, tenantId, projectId, roleId);
         jdbc.update("""
             insert into project_member
               (tenant_id, project_id, user_id, role_id, joined_at, status,

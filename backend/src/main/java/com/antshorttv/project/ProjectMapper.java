@@ -21,7 +21,7 @@ public interface ProjectMapper extends BaseMapper<ProjectEntity> {
                 and pr.tenant_id = p.tenant_id and pr.status = 'ACTIVE'
             join project_role_permission rp on rp.role_id = pr.id and rp.project_id = p.id
                 and rp.tenant_id = p.tenant_id
-            join permission perm on perm.id = rp.permission_id and perm.code = 'PROJECT:VIEW'
+            join permission perm on perm.id = rp.permission_id and perm.code = 'MENU:PROJECTS'
             where pm.project_id = p.id and pm.tenant_id = p.tenant_id
                 and pm.user_id = #{userId} and pm.status = 'ACTIVE'))
         """;
@@ -164,6 +164,11 @@ public interface ProjectMapper extends BaseMapper<ProjectEntity> {
          and pr.status = 'ACTIVE'
         where p.tenant_id = #{tenantId}
           and p.deleted_at is null
+          and exists (
+            select 1 from project_role_permission rp
+            join permission perm on perm.id = rp.permission_id and perm.code = 'MENU:PROJECTS'
+            where rp.tenant_id = p.tenant_id and rp.project_id = p.id and rp.role_id = pr.id
+          )
         order by p.created_at desc
         """)
     List<ProjectEntity> selectAccessibleByMember(

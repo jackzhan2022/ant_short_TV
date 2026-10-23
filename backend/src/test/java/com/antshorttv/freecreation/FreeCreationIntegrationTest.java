@@ -33,6 +33,7 @@ import org.springframework.test.web.servlet.*;
 @AutoConfigureMockMvc
 class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTestSupport {
     @Autowired MockMvc mvc;
+    @Autowired com.antshorttv.rbac.RbacService rbac;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
     @Autowired AiSecretCodec secrets;
@@ -253,6 +254,20 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         long rows=jdbc.queryForObject("select count(*) from free_creation where tenant_id=?",Long.class,tenant);
         mvc.perform(post(failedPath+"/retry").with(authenticated(author.token)).header("Idempotency-Key","insufficient-points")).andExpect(status().is4xxClientError());
         assertThat(jdbc.queryForObject("select count(*) from free_creation where tenant_id=?",Long.class,tenant)).isEqualTo(rows);
+        // The free-creation menu alone must retain its own controls through the shared task endpoint.
+        jdbc.update("insert into `role` (tenant_id,code,name,role_type,status,is_default,created_at,updated_at) values (?,'FREE_ONLY','Free only','CUSTOM','ACTIVE',false,now(),now())",tenant);
+        long freeRole=jdbc.queryForObject("select id from `role` where tenant_id=? and code='FREE_ONLY'",Long.class,tenant);
+        long authorMember=jdbc.queryForObject("select id from tenant_member where tenant_id=? and user_id=?",Long.class,tenant,author.id);
+        jdbc.update("insert into role_permission(role_id,permission_id,created_at) select ?,id,now() from permission where code='MENU:FREE_CREATION'",freeRole);
+        jdbc.update("delete from member_role where member_id=?",authorMember);
+        jdbc.update("insert into member_role(member_id,role_id,created_at) values (?,?,now())",authorMember,freeRole);
+        mvc.perform(get(base).with(authenticated(author.token))).andExpect(status().isForbidden());
+        control(author,tenant,base+"/"+retried.path("taskKey").asText(),"cancel","free-only-cancel");
+        getJson(author,tenant,"/api/tenants/"+tenant+"/ai-executions/"+execution);
+        mvc.perform(post(base+"/IMAGE:999/cancel").with(authenticated(author.token))).andExpect(status().isForbidden());
+        jdbc.update("delete from role_permission where role_id=?",freeRole);
+        mvc.perform(get("/api/free-creations/"+id).header("X-Tenant-Id",tenant).with(authenticated(author.token))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/tenants/"+tenant+"/ai-executions/"+execution).with(authenticated(author.token))).andExpect(status().isForbidden());
     }
 
     private JsonNode control(User user,long tenant,String path,String action,String key) throws Exception {
@@ -282,7 +297,7 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         return new User(id,SessionTestSupport.sessionCredential(result));
     }
     private long team(User user,String name) throws Exception {return postJson(user,1,"/api/tenants",Map.of("name",name,"type","STUDIO","description","自由创作测试")).path("data").path("id").asLong();}
-    private void join(long tenant,User user) {jdbc.update("insert into tenant_member(tenant_id,user_id,member_type,status,joined_at,created_at,updated_at) values (?,?,'MEMBER','ACTIVE',now(),now(),now())",tenant,user.id);}
+    private void join(long tenant,User user) {jdbc.update("insert into tenant_member(tenant_id,user_id,member_type,status,joined_at,created_at,updated_at) values (?,?,'MEMBER','ACTIVE',now(),now(),now())",tenant,user.id);rbac.initializeTenant(tenant);}
     private long imageModel() {
         long provider=jdbc.queryForObject("select id from ai_provider where code='OpenAI'",Long.class);
         jdbc.update("update ai_provider set status='ENABLED' where id=?",provider);

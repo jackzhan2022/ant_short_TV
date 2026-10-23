@@ -5,6 +5,7 @@ import com.antshorttv.common.TenantRequestSupport;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
+@com.antshorttv.rbac.RequirePermission("MENU:ASSET_LIBRARY")
 @RestController
 @RequestMapping("/api/projects/{projectId}/asset-library")
 public class ProjectAssetLibraryController {

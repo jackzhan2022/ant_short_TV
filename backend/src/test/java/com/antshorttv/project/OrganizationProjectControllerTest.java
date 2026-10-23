@@ -34,6 +34,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @SpringBootTest
 @AutoConfigureMockMvc
 class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSupport {
+    @Autowired private com.antshorttv.rbac.RbacService menuRoles;
 
     @Autowired
     private MockMvc mockMvc;
@@ -100,10 +101,7 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[*].code", hasItems(
-                "SCRIPT:VIEW",
-                "SCRIPT:AI_GENERATE",
-                "SCRIPT:AI_REWRITE",
-                "AI_SERVICE:USE"
+                "MENU:PROJECTS"
             )));
         grantTeamPoints(tenantId, 1);
         mockMvc.perform(post("/api/projects/%d/scripts/ai-generate".formatted(projectId))
@@ -347,7 +345,7 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
     }
 
     @Test
-    void transferredProjectOwnerLosesProjectOwnerRoleAndCannotManageMembers() throws Exception {
+    void transferredProjectOwnerKeepsMenuActionsOnlyWhileStillAProjectMember() throws Exception {
         String tenantOwnerToken = registerUser("13800011009", "Transfer Tenant Owner");
         Long tenantId = createTenant(tenantOwnerToken, "负责人转移团队");
         String oldOwnerToken = registerUser("13800011010", "Old Project Owner");
@@ -373,12 +371,21 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"userId\":%d}".formatted(lateUserId)))
-            .andExpect(status().isForbidden())
-            .andExpect(jsonPath("$.errorCode", is("FORBIDDEN")));
+            .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/projects/%d/members/%d".formatted(projectId, oldOwnerUserId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(tenantOwnerToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/api/projects/%d/members".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(oldOwnerToken))
+                .header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":%d}".formatted(lateUserId)))
+            .andExpect(status().isForbidden());
     }
 
     @Test
-    void projectRoleCannotUnarchiveProjectOrDeleteRoleStillAssignedToMember() throws Exception {
+    void projectMenuCanUnarchiveButCannotDeleteAnAssignedRole() throws Exception {
         String tenantOwnerToken = registerUser("13800011013", "Archive Tenant Owner");
         Long tenantId = createTenant(tenantOwnerToken, "归档与角色团队");
         String projectOwnerToken = registerUser("13800011014", "Archive Project Owner");
@@ -394,7 +401,7 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"code":"CUSTOM_WRITER","name":"自定义编剧","permissionCodes":["PROJECT:VIEW"]}
+                    {"code":"CUSTOM_WRITER","name":"自定义编剧","permissionCodes":["MENU:PROJECTS"]}
                     """))
             .andExpect(status().isOk())
             .andReturn();
@@ -426,8 +433,8 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                 .header("X-Tenant-Id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"IN_PROGRESS\"}"))
-            .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.errorCode", is("PROJECT_ARCHIVED")));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status", is("IN_PROGRESS")));
     }
 
     private Long createProject(String token, Long tenantId, Long ownerId, String name, String code) throws Exception {
@@ -478,6 +485,7 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
         member.setCreatedAt(LocalDateTime.now());
         member.setUpdatedAt(LocalDateTime.now());
         tenantMemberMapper.insert(member);
+        menuRoles.initializeTenant(tenantId);
     }
 
     private void insertDefaultTextService(Long tenantId, Long userId) {

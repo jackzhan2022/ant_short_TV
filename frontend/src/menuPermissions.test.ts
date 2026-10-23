@@ -49,15 +49,15 @@ describe('team menu permissions', () => {
     expect(access(member).canViewTeamManagement).toBe(false);
   });
 
-  it('does not grant operation or platform permissions from a menu', () => {
+  it('grants menu functions while retaining platform restrictions', () => {
     const permissions = access({
       ...member, tenantPermissions: [...menus.map(([code]) => `MENU:${code}`), 'MENU:DRAMA_LIBRARY'],
     });
-    expect(permissions.canCreateProject).toBe(false);
-    expect(permissions.canManageRoles).toBe(false);
+    expect(permissions.canCreateProject).toBe(true);
+    expect(permissions.canManageRoles).toBe(true);
     expect(permissions.canViewPlatformAiProviders).toBe(false);
     expect(permissions.canViewDramas).toBe(false);
-    expect(permissions.canUseVideoScriptDecomposition).toBe(false);
+    expect(permissions.canUseVideoScriptDecomposition).toBe(true);
   });
 
   it('retains both menu and platform restrictions for drama management', () => {

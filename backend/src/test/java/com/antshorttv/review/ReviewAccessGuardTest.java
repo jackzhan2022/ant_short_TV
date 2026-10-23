@@ -2,6 +2,9 @@ package com.antshorttv.review;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -9,7 +12,6 @@ import com.antshorttv.common.BusinessException;
 import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.security.TenantContext;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +32,7 @@ class ReviewAccessGuardTest {
     @BeforeEach
     void setUp() {
         guard = new ReviewAccessGuard(projectPermissionGuard, permissionService);
+        lenient().when(permissionService.hasPermission(any(), eq("MENU:SCRIPT_REVIEW"))).thenReturn(true);
     }
 
     @Test
@@ -39,7 +42,7 @@ class ReviewAccessGuardTest {
 
         guard.require(context, review, "SCRIPT:EDIT");
 
-        verify(projectPermissionGuard).require(20L, 30L, "SCRIPT:EDIT");
+        verify(projectPermissionGuard).require(20L, 30L, "MENU:SCRIPT_REVIEW");
     }
 
     @Test
@@ -56,7 +59,7 @@ class ReviewAccessGuardTest {
     void allowsTenantWideAdministratorToViewAnotherUsersUnboundDraft() {
         TenantContext context = context(10L, 20L);
         ReviewProjectEntity review = review(20L, 99L, null);
-        when(permissionService.permissionCodes(context)).thenReturn(Set.of("PROJECT:VIEW_ALL"));
+        when(permissionService.canAccessAllProjects(context)).thenReturn(true);
 
         guard.require(context, review, "PROJECT:VIEW");
     }
@@ -66,7 +69,6 @@ class ReviewAccessGuardTest {
         TenantContext context = context(10L, 20L);
         ReviewProjectEntity otherUsersDraft = review(20L, 99L, null);
         ReviewProjectEntity crossTenantDraft = review(21L, 10L, null);
-        when(permissionService.permissionCodes(context)).thenReturn(Set.of());
 
         assertThatThrownBy(() -> guard.require(context, otherUsersDraft, "PROJECT:VIEW"))
             .isInstanceOf(BusinessException.class);
@@ -81,7 +83,7 @@ class ReviewAccessGuardTest {
 
         guard.requireBinding(context, review, 30L);
 
-        verify(projectPermissionGuard).require(20L, 30L, "SCRIPT:EDIT");
+        verify(projectPermissionGuard).require(20L, 30L, "MENU:SCRIPT_REVIEW");
     }
 
     @Test

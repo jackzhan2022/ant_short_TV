@@ -42,11 +42,11 @@ class MediaUploadControllerTest {
     }
 
     @Test
-    void requiresProjectEditBeforeProjectUpload() {
+    void requiresUploadMenuAndProjectAccessBeforeProjectUpload() {
         MediaUploadSessionService service = mock(MediaUploadSessionService.class);
         TenantContextResolver tenants = mock(TenantContextResolver.class);
         ProjectPermissionGuard projects = mock(ProjectPermissionGuard.class);
-        when(projects.require(11L, 22L, "PROJECT:EDIT"))
+        when(projects.require(11L, 22L, "MEDIA:UPLOAD"))
             .thenReturn(new TenantContext(33L, 11L, 44L, "MEMBER"));
         when(service.create(org.mockito.ArgumentMatchers.any())).thenReturn(session());
         MediaUploadController controller = new MediaUploadController(service, tenants, projects);
@@ -55,7 +55,7 @@ class MediaUploadControllerTest {
 
         controller.create(new CreateMediaUploadRequest(22L, "image.png", "image/png", 10L), servletRequest);
 
-        verify(projects).require(11L, 22L, "PROJECT:EDIT");
+        verify(projects).require(11L, 22L, "MEDIA:UPLOAD");
         verify(service).create(org.mockito.ArgumentMatchers.argThat(value ->
             value.tenantId().equals(11L) && value.projectId().equals(22L) && value.userId().equals(33L)
         ));

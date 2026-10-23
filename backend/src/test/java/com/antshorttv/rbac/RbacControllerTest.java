@@ -54,6 +54,76 @@ class RbacControllerTest extends com.antshorttv.support.RegistrationTestSupport 
     private PermissionMapper permissionMapper;
 
     @Test
+    void menuOnlyRoleControlsApisAndRevocationImmediately() throws Exception {
+        String owner = registerUser("13800009021", "Menu API Owner");
+        Long tenant = createTenant(owner, "菜单接口团队");
+        String member = registerUser("13800009022", "Menu API Member");
+        Long memberId = addMember(tenant, "13800009022");
+        findRoleId(owner, tenant, "MEMBER");
+        mockMvc.perform(get("/api/tenants/%d/roles".formatted(tenant))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(member)))
+            .andExpect(status().isForbidden());
+        Long role = createRole(owner, tenant, "MENU_MANAGER", "菜单管理员", List.of("MENU:TEAM_MANAGEMENT"));
+        mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenant, memberId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(owner))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"roleIds\":[%d]}".formatted(role)))
+            .andExpect(status().isOk());
+        createRole(member, tenant, "MENU_CHILD", "菜单子角色", List.of("MENU:FREE_CREATION"));
+        mockMvc.perform(get("/api/free-creations").header("X-Tenant-Id", tenant)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(member)))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/tenants/%d/roles/%d/permissions".formatted(tenant, role))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(owner))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"permissionCodes\":[]}"))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/tenants/%d/roles".formatted(tenant))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(member)))
+            .andExpect(status().isForbidden());
+        assertThat(permissionMapper.selectList(null)).hasSize(10)
+            .allSatisfy(permission -> assertThat(permission.getType()).isEqualTo("MENU"));
+        mockMvc.perform(post("/api/tenants/%d/roles".formatted(tenant))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(owner))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"LEGACY\",\"name\":\"旧权限\",\"permissionCodes\":[\"ROLE:VIEW\"]}"))
+            .andExpect(status().is4xxClientError())
+            .andExpect(jsonPath("$.errorCode", is("PERMISSION_NOT_FOUND")));
+    }
+
+    @Test
+    void projectMenuAllowsActionsWithoutGrantingOtherProjects() throws Exception {
+        String owner = registerUser("13800009023", "Project Menu Owner");
+        Long tenant = createTenant(owner, "项目菜单隔离团队");
+        String member = registerUser("13800009024", "Project Menu Member");
+        Long memberId = addMember(tenant, "13800009024");
+        Long role = createRole(owner, tenant, "MENU_PROJECT", "项目菜单", List.of("MENU:PROJECTS"));
+        mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenant, memberId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(owner))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"roleIds\":[%d]}".formatted(role)))
+            .andExpect(status().isOk());
+        Long memberUser = userMapper.selectByMobile("13800009024").getId();
+        Long ownerUser = userMapper.selectByMobile("13800009023").getId();
+        Long mine = createMenuProject(member, tenant, memberUser, "MENU_MY_PROJECT");
+        Long other = createMenuProject(owner, tenant, ownerUser, "MENU_OTHER_PROJECT");
+        mockMvc.perform(put("/api/projects/" + mine).header("X-Tenant-Id", tenant)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(member))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"菜单直接编辑项目\"}"))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/projects/" + other + "/metadata").header("X-Tenant-Id", tenant)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(member)))
+            .andExpect(status().isForbidden());
+        assertThat(permissionMapper.selectList(null)).hasSize(10);
+    }
+
+    private Long createMenuProject(String token, Long tenant, Long user, String code) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/projects").header("X-Tenant-Id", tenant)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"菜单项目\",\"code\":\"%s\",\"ownerId\":%d}".formatted(code, user)))
+            .andExpect(status().isOk()).andReturn();
+        return ((Number) JsonPath.read(result.getResponse().getContentAsString(), "$.data.id")).longValue();
+    }
+
+    @Test
     void exposesTenTypedMenuPermissionsMatchingTheDatabaseCatalog() throws Exception {
         String token = registerUser("13800009016", "Menu Owner");
         mockMvc.perform(get("/api/permissions/tree")
@@ -169,8 +239,8 @@ class RbacControllerTest extends com.antshorttv.support.RegistrationTestSupport 
         String memberToken = registerUser("13800009003", "Writer");
         Long memberId = addMember(tenantId, "13800009003");
 
-        Long writerRoleId = createRole(ownerToken, tenantId, "SCRIPT_WRITER", "短剧编剧", List.of("SCRIPT:VIEW", "SCRIPT:CREATE"));
-        Long projectRoleId = createRole(ownerToken, tenantId, "PROJECT_MANAGER", "项目管理员", List.of("PROJECT:VIEW", "PROJECT:EDIT"));
+        Long writerRoleId = createRole(ownerToken, tenantId, "SCRIPT_WRITER", "短剧编剧", List.of("MENU:SCRIPT_REVIEW", "MENU:SHORT_DRAMA_CREATION"));
+        Long projectRoleId = createRole(ownerToken, tenantId, "PROJECT_MANAGER", "项目管理员", List.of("MENU:PROJECTS", "MENU:ASSET_LIBRARY"));
 
         mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenantId, memberId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
@@ -185,10 +255,10 @@ class RbacControllerTest extends com.antshorttv.support.RegistrationTestSupport 
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("SCRIPT:VIEW")))
-            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("SCRIPT:CREATE")))
-            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("PROJECT:VIEW")))
-            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("PROJECT:EDIT")));
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("MENU:SCRIPT_REVIEW")))
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("MENU:SHORT_DRAMA_CREATION")))
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("MENU:PROJECTS")))
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("MENU:ASSET_LIBRARY")));
     }
 
     @Test
@@ -197,7 +267,7 @@ class RbacControllerTest extends com.antshorttv.support.RegistrationTestSupport 
         Long tenantId = createTenant(ownerToken, "角色停用团队");
         String memberToken = registerUser("13800009005", "Editor");
         Long memberId = addMember(tenantId, "13800009005");
-        Long roleId = createRole(ownerToken, tenantId, "SCRIPT_EDITOR", "剧本编辑", List.of("SCRIPT:EDIT"));
+        Long roleId = createRole(ownerToken, tenantId, "SCRIPT_EDITOR", "剧本编辑", List.of("MENU:PROJECTS"));
 
         mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenantId, memberId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
@@ -238,7 +308,7 @@ class RbacControllerTest extends com.antshorttv.support.RegistrationTestSupport 
 
         String memberToken = registerUser("13800009007", "Assigned Member");
         Long memberId = addMember(tenantId, "13800009007");
-        Long roleId = createRole(ownerToken, tenantId, "ASSIGNED_ROLE", "已分配角色", List.of("PROJECT:VIEW"));
+        Long roleId = createRole(ownerToken, tenantId, "ASSIGNED_ROLE", "已分配角色", List.of("MENU:PROJECTS"));
 
         mockMvc.perform(put("/api/tenants/%d/members/%d/roles".formatted(tenantId, memberId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
@@ -258,7 +328,7 @@ class RbacControllerTest extends com.antshorttv.support.RegistrationTestSupport 
     void blocksCrossTenantRoleAndMemberAccess() throws Exception {
         String firstOwnerToken = registerUser("13800009008", "First Owner");
         Long firstTenantId = createTenant(firstOwnerToken, "第一租户");
-        Long firstRoleId = createRole(firstOwnerToken, firstTenantId, "FIRST_ONLY", "第一租户角色", List.of("PROJECT:VIEW"));
+        Long firstRoleId = createRole(firstOwnerToken, firstTenantId, "FIRST_ONLY", "第一租户角色", List.of("MENU:PROJECTS"));
 
         String secondOwnerToken = registerUser("13800009009", "Second Owner");
         Long secondTenantId = createTenant(secondOwnerToken, "第二租户");
@@ -298,7 +368,7 @@ class RbacControllerTest extends com.antshorttv.support.RegistrationTestSupport 
                 .header("X-Tenant-Id", secondTenantId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"code":"SHOULD_NOT_CREATE","name":"不应创建","description":"越权测试","permissionCodes":["PROJECT:VIEW"]}
+                    {"code":"SHOULD_NOT_CREATE","name":"不应创建","description":"越权测试","permissionCodes":["MENU:PROJECTS"]}
                     """))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.errorCode", is("FORBIDDEN")));

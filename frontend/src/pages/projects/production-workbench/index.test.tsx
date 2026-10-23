@@ -117,7 +117,7 @@ describe('ProductionWorkbench shell', () => {
         scriptType: 'PREMIUM_DRAMA',
         breakdownStrength: 'MEDIUM',
         visualStyle: '写实都市',
-        effectivePermissions: ['PROJECT_AI_CONFIG_VIEW'],
+        effectivePermissions: ['MENU:PROJECTS'],
         capabilities: { canView: true, canEdit: true },
       },
     });
@@ -140,7 +140,7 @@ describe('ProductionWorkbench shell', () => {
         name: '新项目名',
         aspectRatio: '9:16',
         visualStyle: '写实都市',
-        effectivePermissions: ['PROJECT_AI_CONFIG_VIEW'],
+        effectivePermissions: ['MENU:PROJECTS'],
         capabilities: { canView: true, canEdit: true },
       },
     });

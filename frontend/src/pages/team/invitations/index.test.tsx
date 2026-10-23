@@ -84,6 +84,7 @@ vi.mock('@umijs/max', () => ({
   useParams: () => ({ token: 'test-invitation' }),
   useModel: () => ({
     initialState: {
+      tenantPermissions: mocks.memberType === 'OWNER' ? ['MENU:TEAM_MANAGEMENT'] : [],
       selectedTenant: { tenant: { id: 10 }, membership: { memberType: mocks.memberType, status: 'ACTIVE' } },
     },
   }),
@@ -112,7 +113,7 @@ describe('TeamInvitations', () => {
     mocks.queryTenantInvitations.mockResolvedValue({ success: true, data: [] });
   });
 
-  it('loads sent invitations for the current owner team', async () => {
+  it('loads sent invitations for the current authorized team', async () => {
     render(<TeamInvitations />);
 
     expect(screen.getByText('收到的团队邀请')).toBeInTheDocument();
