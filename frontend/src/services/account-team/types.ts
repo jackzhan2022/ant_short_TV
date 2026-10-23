@@ -174,6 +174,7 @@ export type PermissionTreeNode = {
   title: string;
   resource: string;
   permissionCode?: string | null;
+  type?: PermissionType | null;
   children?: PermissionTreeNode[];
 };
 

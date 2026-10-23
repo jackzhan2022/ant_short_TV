@@ -1,10 +1,11 @@
 package com.antshorttv.rbac;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 final class RbacPermissions {
 
-    static final List<RbacPermissionDefinition> ALL = List.of(
+    private static final List<RbacPermissionDefinition> OPERATIONS = List.of(
         new RbacPermissionDefinition("DRAMA:VIEW", "查看独立剧库", PermissionType.PAGE, "DRAMA", "VIEW"),
         new RbacPermissionDefinition("DRAMA:MANAGE", "管理独立剧库", PermissionType.BUTTON, "DRAMA", "MANAGE"),
         new RbacPermissionDefinition("DRAMA:PUBLISH", "发布小程序剧集", PermissionType.BUTTON, "DRAMA", "PUBLISH"),
@@ -91,6 +92,9 @@ final class RbacPermissions {
         new RbacPermissionDefinition("AI_IMAGE_RESULT:SAVE", "保存生成图片", PermissionType.BUTTON, "AI_IMAGE_RESULT", "SAVE"),
         new RbacPermissionDefinition("AI_IMAGE_RESULT:BIND", "设置业务主图", PermissionType.BUTTON, "AI_IMAGE_RESULT", "BIND")
     );
+
+    static final List<RbacPermissionDefinition> ALL = Stream.concat(
+        RbacMenuPermissions.ALL.stream(), OPERATIONS.stream()).toList();
 
     private RbacPermissions() {
     }

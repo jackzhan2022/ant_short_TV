@@ -79,7 +79,7 @@ describe('menu routes visibility', () => {
     expect(findRoute('/short-drama-creation', routes)).toMatchObject({
       path: '/short-drama-creation',
       name: 'short-drama-creation',
-      access: 'canUseProjectCenter',
+      access: 'canUseShortDramaCreation',
     });
     expect(zhCNMenu['menu.short-drama-creation']).toBe('短剧创作');
   });

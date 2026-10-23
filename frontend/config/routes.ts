@@ -11,10 +11,10 @@
  * @doc https://umijs.org/docs/guides/routes
  */
 export default [
-  { path: '/asset-library', name: 'asset-library', icon: 'folderOpen', access: 'canUseProjectCenter', component: './asset-library' },
-  { path: '/asset-library/projects/:projectId', hideInMenu: true, access: 'canUseProjectCenter', component: './asset-library' },
+  { path: '/asset-library', name: 'asset-library', icon: 'folderOpen', access: 'canViewAssetLibrary', component: './asset-library' },
+  { path: '/asset-library/projects/:projectId', hideInMenu: true, access: 'canViewAssetLibrary', component: './asset-library' },
   { path: '/messages', name: 'messages', hideInMenu: true, component: './messages' },
-  { path: '/tasks', name: 'tasks', icon: 'schedule', access: 'canUseProjectCenter', component: './tasks' },
+  { path: '/tasks', name: 'tasks', icon: 'schedule', access: 'canViewProductionTasks', component: './tasks' },
   {
     path: '/user',
     layout: false,
@@ -60,6 +60,7 @@ export default [
         path: '/team/my',
         name: 'my',
         icon: 'profile',
+        access: 'canViewTeamManagement',
         component: './team/my',
       },
       {
@@ -100,6 +101,7 @@ export default [
         name: 'settings',
         icon: 'setting',
         hideInMenu: true,
+        access: 'canViewTeamManagement',
         component: './team/settings',
       },
     ],
@@ -242,7 +244,7 @@ export default [
     path: '/short-drama-creation',
     name: 'short-drama-creation',
     icon: 'videoCamera',
-    access: 'canUseProjectCenter',
+    access: 'canUseShortDramaCreation',
     component: './short-drama-creation',
   },
   {

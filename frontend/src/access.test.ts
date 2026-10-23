@@ -2,13 +2,15 @@ import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
-  it('自由创作允许所有有效团队成员访问', () => {
+  it('自由创作需要有效团队身份和菜单权限', () => {
     const state = {
       currentUser: { userid: '1', access: 'user' },
       selectedTenant: { membership: { status: 'ACTIVE' } },
+      tenantPermissions: ['MENU:FREE_CREATION'],
       bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } },
     };
     expect(access(state).canUseFreeCreation).toBe(true);
+    expect(access({ ...state, tenantPermissions: [] }).canUseFreeCreation).toBe(false);
     expect(access({ ...state, currentUser: undefined }).canUseFreeCreation).toBe(false);
     expect(access({ ...state, selectedTenant: null }).canUseFreeCreation).toBe(false);
     expect(access({
@@ -71,6 +73,7 @@ describe('access', () => {
   it('limits tenant Skill management to an active owner or administrator', () => {
     const ordinary = access({
       currentUser: { userid: '1' },
+      tenantPermissions: ['MENU:AI_MANAGEMENT'],
       selectedTenant: {
         membership: { status: 'ACTIVE', memberType: 'MEMBER' },
         roles: ['MEMBER'],
@@ -83,6 +86,7 @@ describe('access', () => {
     expect(ordinary.canEditWorkflowSkills).toBe(false);
     const base = {
       currentUser: { userid: '1' },
+      tenantPermissions: ['MENU:AI_MANAGEMENT'],
       platformPermissions: ['PLATFORM_AI_WORKFLOW_SKILL_EDIT'],
     };
     expect(access(base).canManageTenantWorkflowSkills).toBe(false);
@@ -125,7 +129,7 @@ describe('access', () => {
     });
   });
 
-  const dramaPermissions = ['DRAMA:VIEW', 'DRAMA:MANAGE', 'DRAMA:PUBLISH', 'MINIAPP:MANAGE'];
+  const dramaPermissions = ['MENU:DRAMA_LIBRARY', 'DRAMA:VIEW', 'DRAMA:MANAGE', 'DRAMA:PUBLISH', 'MINIAPP:MANAGE'];
   const dramaKeys = ['canViewDramas', 'canManageDramas', 'canPublishDramas', 'canManageMiniapps'] as const;
 
   it('仅真实平台管理员在有效团队内拥有剧库管理能力', () => {
@@ -221,7 +225,8 @@ describe('access', () => {
         avatar: 'https://example.com/avatar.png',
         access: 'user',
       },
-      tenantPermissions: ['AI_CALL_LOG:VIEW'],
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      tenantPermissions: ['MENU:AI_MANAGEMENT', 'AI_CALL_LOG:VIEW'],
     };
 
     const result = access(initialState);
@@ -313,7 +318,7 @@ describe('access', () => {
     expect(result.canViewWorkflowSkills).toBe(false);
   });
 
-  it('should allow authenticated users to enter project center routes', () => {
+  it('requires the project center menu permission for project navigation', () => {
     const initialState = {
       currentUser: {
         userid: '1',
@@ -322,13 +327,14 @@ describe('access', () => {
         access: 'user',
       },
       selectedTenant: { membership: { status: 'ACTIVE' } },
-      tenantPermissions: [],
+      tenantPermissions: ['MENU:PROJECTS'],
     };
 
     const result = access(initialState);
 
     expect(result.canUseProjectCenter).toBe(true);
     expect(result.canViewProjects).toBe(true);
+    expect(access({ ...initialState, tenantPermissions: [] }).canViewProjects).toBe(false);
   });
 
   it('requires AI usage permission for provider-backed task creation', () => {

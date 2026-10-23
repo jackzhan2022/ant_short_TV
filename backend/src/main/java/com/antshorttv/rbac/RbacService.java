@@ -251,10 +251,11 @@ public class RbacService {
                     permission.getName(),
                     permission.getResource(),
                     permission.getCode(),
+                    permission.getType(),
                     List.of()
                 ))
                 .toList();
-            nodes.add(new PermissionTreeNodeResponse(entry.getKey(), resourceName(entry.getKey()), entry.getKey(), null, children));
+            nodes.add(new PermissionTreeNodeResponse(entry.getKey(), resourceName(entry.getKey()), entry.getKey(), null, null, children));
         }
         return nodes;
     }
@@ -281,7 +282,9 @@ public class RbacService {
         RoleEntity memberRole = ensureSystemRole(tenantId, "MEMBER", "Member", "普通成员", true, now);
         ensureRolePermissions(ownerRole, RbacPermissions.ALL.stream().map(RbacPermissionDefinition::code).toList());
         ensureRolePermissions(roleMapper.selectActiveByTenantIdAndCode(tenantId, "ADMIN"),
-            RbacPermissions.ALL.stream().map(RbacPermissionDefinition::code).filter(code -> !"ROLE:DELETE".equals(code)).toList());
+            RbacPermissions.ALL.stream()
+                .filter(permission -> permission.type() != PermissionType.MENU)
+                .map(RbacPermissionDefinition::code).filter(code -> !"ROLE:DELETE".equals(code)).toList());
 
         for (TenantMemberEntity member : tenantMemberMapper.selectActiveByTenantId(tenantId)) {
             if (!memberRoleMapper.selectByMemberId(member.getId()).isEmpty()) {
@@ -341,6 +344,7 @@ public class RbacService {
         role.setUpdatedAt(now);
         try {
             roleMapper.insert(role);
+            ensureRolePermissions(role, RbacMenuPermissions.ALL.stream().map(RbacPermissionDefinition::code).toList());
             return role;
         } catch (DuplicateKeyException | PessimisticLockingFailureException ignored) {
             return reactivateSystemRole(tenantId, code, name, description, isDefault, now);
@@ -524,6 +528,9 @@ public class RbacService {
 
     private String resourceName(String resource) {
         return switch (resource) {
+            case "MENU_CREATION" -> "菜单 · 创作";
+            case "MENU_WORKSPACE" -> "菜单 · 我的";
+            case "MENU_MANAGEMENT" -> "菜单 · 管理";
             case "TENANT" -> "团队管理";
             case "MEMBER" -> "成员管理";
             case "ROLE" -> "角色管理";

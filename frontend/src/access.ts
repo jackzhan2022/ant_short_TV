@@ -23,6 +23,8 @@ export default function access(
   const hasActiveTenant =
     Boolean(currentUser) &&
     initialState?.selectedTenant?.membership?.status === 'ACTIVE';
+  const hasMenu = (name: string) =>
+    hasActiveTenant && tenantPermissions.includes(`MENU:${name}`);
   const canUseDramaAdministration =
     hasActiveTenant &&
     initialState?.bootstrap?.platform.roles.includes('PLATFORM_ADMIN') === true;
@@ -35,17 +37,23 @@ export default function access(
     canManageTenantWorkflowSkills,
     canViewTenantWorkflowSkills: hasActiveTenant,
     canManageRoles: currentUser && tenantPermissions.includes('ROLE:VIEW'),
-    canUseProjectCenter: hasActiveTenant,
-    canUseFreeCreation: hasActiveTenant,
+    canUseProjectCenter: hasMenu('PROJECTS'),
+    canUseShortDramaCreation: hasMenu('SHORT_DRAMA_CREATION'),
+    canViewAssetLibrary: hasMenu('ASSET_LIBRARY'),
+    canViewProductionTasks: hasMenu('PRODUCTION_TASKS'),
+    canViewTeamManagement:
+      Boolean(currentUser) &&
+      (!initialState?.selectedTenant || hasMenu('TEAM_MANAGEMENT')),
+    canUseFreeCreation: hasMenu('FREE_CREATION'),
     canViewStyleLibrary: Boolean(currentUser),
     canUseVideoScriptDecomposition:
       currentUser &&
-      hasActiveTenant &&
+      hasMenu('VIDEO_DECOMPOSITION') &&
       tenantPermissions.includes('AI_SERVICE:USE'),
-    canViewScriptReview: hasActiveTenant,
-    canViewProjects: hasActiveTenant,
+    canViewScriptReview: hasMenu('SCRIPT_REVIEW'),
+    canViewProjects: hasMenu('PROJECTS'),
     canViewDramas:
-      canUseDramaAdministration && tenantPermissions.includes('DRAMA:VIEW'),
+      canUseDramaAdministration && hasMenu('DRAMA_LIBRARY') && tenantPermissions.includes('DRAMA:VIEW'),
     canManageDramas:
       canUseDramaAdministration && tenantPermissions.includes('DRAMA:MANAGE'),
     canPublishDramas:
@@ -58,8 +66,7 @@ export default function access(
       currentUser && tenantPermissions.includes('AI_CALL_LOG:VIEW'),
     canViewAiManagement:
       currentUser &&
-      (hasActiveTenant ||
-        tenantPermissions.includes('AI_CALL_LOG:VIEW') ||
+      (hasMenu('AI_MANAGEMENT') ||
         platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_MODEL_VIEW') ||
         platformPermissions.includes('PLATFORM_AI_ACCOUNTING_VIEW') ||

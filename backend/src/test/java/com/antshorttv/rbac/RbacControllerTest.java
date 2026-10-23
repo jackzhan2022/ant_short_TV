@@ -50,6 +50,71 @@ class RbacControllerTest extends com.antshorttv.support.RegistrationTestSupport 
     @Autowired
     private RoleMapper roleMapper;
 
+    @Autowired
+    private PermissionMapper permissionMapper;
+
+    @Test
+    void exposesTenTypedMenuPermissionsMatchingTheDatabaseCatalog() throws Exception {
+        String token = registerUser("13800009016", "Menu Owner");
+        mockMvc.perform(get("/api/permissions/tree")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[*].children[?(@.type=='MENU')]", hasSize(10)))
+            .andExpect(jsonPath("$.data[*].children[?(@.type=='MENU')].permissionCode",
+                containsInAnyOrder(RbacMenuPermissions.ALL.stream().map(RbacPermissionDefinition::code).toArray())));
+        for (RbacPermissionDefinition definition : RbacMenuPermissions.ALL) {
+            PermissionEntity permission = permissionMapper.selectByCode(definition.code());
+            assertThat(permission.getType()).isEqualTo("MENU");
+            assertThat(permission.getName()).isEqualTo(definition.name());
+            assertThat(permission.getResource()).isEqualTo(definition.resource());
+        }
+    }
+
+    @Test
+    void defaultMemberReceivesMenusButMenuRevocationSurvivesBootstrap() throws Exception {
+        String ownerToken = registerUser("13800009017", "Menu Default Owner");
+        Long tenantId = createTenant(ownerToken, "菜单默认团队");
+        String memberToken = registerUser("13800009018", "Menu Member");
+        addMember(tenantId, "13800009018");
+        Long memberRoleId = findRoleId(ownerToken, tenantId, "MEMBER");
+
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.selectedTenant.permissions", hasItem("MENU:FREE_CREATION")));
+
+        mockMvc.perform(put("/api/tenants/%d/roles/%d/permissions".formatted(tenantId, memberRoleId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"permissionCodes\":[\"MENU:PROJECTS\"]}"))
+            .andExpect(status().isOk());
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(get("/api/auth/bootstrap")
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(memberToken))
+                    .header("X-Tenant-Id", tenantId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.selectedTenant.permissions", containsInAnyOrder("MENU:PROJECTS")));
+        }
+    }
+
+    @Test
+    void administratorMenuRevocationIsNotUndoneByRoleInitialization() throws Exception {
+        String token = registerUser("13800009019", "Menu Admin Owner");
+        Long tenantId = createTenant(token, "管理员菜单团队");
+        Long adminId = findRoleId(token, tenantId, "ADMIN");
+        mockMvc.perform(put("/api/tenants/%d/roles/%d/permissions".formatted(tenantId, adminId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"permissionCodes\":[\"MENU:PROJECTS\"]}"))
+            .andExpect(status().isOk());
+        MvcResult result = mockMvc.perform(get("/api/tenants/%d/roles/%d/permissions".formatted(tenantId, adminId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isOk()).andReturn();
+        List<String> menus = JsonPath.read(result.getResponse().getContentAsString(), "$.data[?(@.type=='MENU')].code");
+        assertThat(menus).containsExactly("MENU:PROJECTS");
+    }
+
     @Test
     void initializesDefaultRolesWhenListingTenantRoles() throws Exception {
         String ownerToken = registerUser("13800009001", "RBAC Owner");

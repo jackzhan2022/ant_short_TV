@@ -7,6 +7,7 @@ public record PermissionTreeNodeResponse(
     String title,
     String resource,
     String permissionCode,
+    String type,
     List<PermissionTreeNodeResponse> children
 ) {
 }

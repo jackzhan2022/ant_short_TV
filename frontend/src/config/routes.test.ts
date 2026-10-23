@@ -41,7 +41,7 @@ describe('short drama creation route', () => {
       path: '/short-drama-creation',
       name: 'short-drama-creation',
       component: './short-drama-creation',
-      access: 'canUseProjectCenter',
+      access: 'canUseShortDramaCreation',
     });
     expect(route?.path).not.toContain('/projects/');
     expect(route?.hideInMenu).not.toBe(true);
