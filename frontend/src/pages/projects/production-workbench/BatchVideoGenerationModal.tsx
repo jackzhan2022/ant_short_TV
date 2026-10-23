@@ -1,11 +1,13 @@
 import { ThunderboltOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Empty, Modal, Spin } from 'antd';
 import type { StoryboardShot } from './service';
+import PointEstimateButton from '@/components/PointEstimateButton';
+import type { PointEstimateOperation } from '@/services/point-estimate';
 
 export type BatchVideoCandidate = { storyboard: StoryboardShot; disabledReason?: string };
 
 export default function BatchVideoGenerationModal({
-  open, loading, submitting, error, candidates, selectedIds,
+  open, loading, submitting, error, candidates, selectedIds, operations,
   onSelectionChange, onCancel, onRetry, onSubmit,
 }: {
   open: boolean;
@@ -14,6 +16,7 @@ export default function BatchVideoGenerationModal({
   error: boolean;
   candidates: BatchVideoCandidate[];
   selectedIds: number[];
+  operations?: PointEstimateOperation[];
   onSelectionChange: (ids: number[]) => void;
   onCancel: () => void;
   onRetry: () => void;
@@ -45,7 +48,8 @@ export default function BatchVideoGenerationModal({
           <span className="storyboard-batch-video-count">已选 {selected.size} 个</span>
           <span className="storyboard-batch-video-spacer" />
           <Button disabled={submitting} onClick={onCancel}>取消</Button>
-          <Button
+          <PointEstimateButton
+            operations={operations} estimateEnabled={open}
             type="primary"
             aria-label="生成所选视频"
             icon={<ThunderboltOutlined />}
@@ -54,7 +58,7 @@ export default function BatchVideoGenerationModal({
             onClick={onSubmit}
           >
             生成视频（{selected.size}）
-          </Button>
+          </PointEstimateButton>
         </div>
       )}
     >

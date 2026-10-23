@@ -463,9 +463,18 @@ public class AssetVisualVariantService {
     @Transactional
     public GenerationInput prepareGeneration(Long tenantId, Long projectId, Long variantId) {
         AssetVisualVariantEntity variant = requireVariant(tenantId, projectId, variantId, true);
+        return generationInput(tenantId, projectId, variant, effectivePrompt(variant));
+    }
+
+    @Transactional(readOnly = true)
+    public GenerationInput previewGeneration(Long tenantId, Long projectId, Long variantId, String draftPrompt) {
+        AssetVisualVariantEntity variant = requireVariant(tenantId, projectId, variantId, true);
+        return generationInput(tenantId, projectId, variant, draftPrompt);
+    }
+
+    private GenerationInput generationInput(Long tenantId, Long projectId, AssetVisualVariantEntity variant, String prompt) {
         AssetType type = AssetType.fromStorageValue(variant.getAssetType());
         boolean primaryVariant = Boolean.TRUE.equals(variant.getIsPrimary());
-        String prompt = effectivePrompt(variant);
         if (prompt == null || prompt.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, primaryVariant
                 ? "请先完成资产主体提示词后再生成图片。"

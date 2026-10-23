@@ -1,6 +1,8 @@
 import { Button } from 'antd';
 import type { AiVideoTask } from './service';
 import styles from './StoryboardVideoFailure.module.css';
+import PointEstimateButton from '@/components/PointEstimateButton';
+import type { PointEstimateOperation } from '@/services/point-estimate';
 
 export const videoGenerationError = (task?: AiVideoTask) => {
   if (!task || ['SUCCEEDED', 'CANCELED'].includes(task.status))
@@ -23,12 +25,14 @@ export default function StoryboardVideoFailure({
   timedOut = false,
   onClose,
   onRetry,
+  retryOperations,
 }: {
   storyboardNo: number;
   message: string;
   timedOut?: boolean;
   onClose: () => void;
   onRetry?: () => void;
+  retryOperations?: PointEstimateOperation[];
 }) {
   return (
     <section
@@ -68,13 +72,13 @@ export default function StoryboardVideoFailure({
         <p className={styles.details}>{message}</p>
       </div>
       {onRetry ? (
-        <Button
+        <PointEstimateButton operations={retryOperations}
           className={styles.retry}
           onClick={onRetry}
           aria-label={`重新生成分镜${storyboardNo}视频`}
         >
           重新生成
-        </Button>
+        </PointEstimateButton>
       ) : null}
     </section>
   );

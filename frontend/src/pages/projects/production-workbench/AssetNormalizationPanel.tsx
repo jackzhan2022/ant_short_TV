@@ -1,6 +1,7 @@
 import { App, Button } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import {
   type AssetNormalizationStatus,
   queryAssetNormalization,
@@ -71,9 +72,9 @@ export default function AssetNormalizationPanel(props: Props) {
 
   return (
     <section aria-label="全剧资产归一" style={{ marginBottom: 16 }}>
-      <Button loading={submitting} disabled={!status || readFailed || busy} onClick={() => void submit()}>
+      <PointEstimateButton operations={[{ url: `/api/projects/${projectId}/asset-normalization` }]} loading={submitting} disabled={!status || readFailed || busy} onClick={() => void submit()}>
         {status?.status === 'FAILED' ? '重试资产归一' : '全剧资产归一'}
-      </Button>
+      </PointEstimateButton>
       <span role="status" style={{ marginLeft: 12 }}>
         {readFailed ? '归一状态读取失败，正在重试' : busy ? '正在提取或归一资产，可继续浏览；完成后可编辑和生成。'
           : status?.status === 'FAILED' ? '归一尚未完成，可重试；完成后可编辑和生成。'

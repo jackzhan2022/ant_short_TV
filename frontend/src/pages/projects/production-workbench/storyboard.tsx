@@ -1,3 +1,5 @@
+import PointEstimateButton from '@/components/PointEstimateButton';
+import type { PointEstimateOperation } from '@/services/point-estimate';
 import {
   AppstoreOutlined,
   BarsOutlined,
@@ -784,6 +786,8 @@ const PreviewPoster = ({ src, title }: { src?: string; title: string }) =>
 
 const StoryboardCard = ({
   item,
+  projectId,
+  videoEstimateOperations,
   index,
   characters,
   scenes,
@@ -824,6 +828,8 @@ const StoryboardCard = ({
   onDelete,
 }: {
   item: StoryboardShot;
+  projectId: number;
+  videoEstimateOperations?: PointEstimateOperation[];
   index: number;
   characters: CharacterAsset[];
   scenes: SceneAsset[];
@@ -1218,7 +1224,7 @@ const StoryboardCard = ({
             分镜信息
           </Typography.Text>
           <Flex align="center" gap={8} style={{ marginTop: 14 }}>
-            <Button
+            <PointEstimateButton operations={(item.imagePrompt || item.visualDescription)?.trim() ? [{ url: `/api/projects/${projectId}/ai-image-tasks`, data: { taskType: 'STORYBOARD_FIRST_FRAME', targetType: 'STORYBOARD', targetId: item.id, prompt: item.imagePrompt || item.visualDescription, aspectRatio: '9:16', imageCount: 1, quality: 'STANDARD' } }] : undefined}
               size="small"
               onClick={() => onGenerateImage(item)}
               disabled={['PENDING', 'RUNNING'].includes(
@@ -1226,7 +1232,7 @@ const StoryboardCard = ({
               )}
             >
               生成首帧
-            </Button>
+            </PointEstimateButton>
             <Button size="small" onClick={() => openCandidates('IMAGE')}>
               选择历史首帧
             </Button>
@@ -1235,6 +1241,7 @@ const StoryboardCard = ({
                 task={imageTask.execution}
                 onCancel={() => onCancelImage(imageTask)}
                 onRetry={() => onRegenerateImage(imageTask)}
+                retryOperations={[{ url: `/api/projects/${projectId}/ai-image-tasks/${imageTask.id}/regenerate` }]}
               />
             ) : null}
           </Flex>
@@ -1570,20 +1577,20 @@ const StoryboardCard = ({
                   <Button size="small" aria-label="选择提示词素材">@</Button>
                 </Popover>
               </Flex>
-              <Button
+              <PointEstimateButton operations={videoEstimateOperations}
                 type="primary"
                 onClick={() => onGenerate(item)}
                 aria-label={`生成分镜${index + 1}视频`}
                 disabled={videoGenerating}
                 style={{
-                  width: 92,
+                  minWidth: 92,
                   background: '#5b50ff',
                   borderColor: '#5b50ff',
                   fontWeight: 700,
                 }}
               >
                 <ThunderboltOutlined /> 生成视频
-              </Button>
+              </PointEstimateButton>
             </Flex>
           </div>
         </section>
@@ -1623,6 +1630,7 @@ const StoryboardCard = ({
                   timedOut={videoTask.execution?.status === 'TIMED_OUT'}
                   onClose={() => setDismissedVideoErrorTaskId(videoTask.id)}
                   onRetry={videoTask.execution?.retryable ? () => onRetryVideo(videoTask) : undefined}
+                  retryOperations={[{ url: `/api/projects/${projectId}/ai-video-tasks/${videoTask.id}/regenerate` }]}
                 />
               ) : previewKey === 'VIDEO' && video.videoUrl ? (
                 <ClickToPlayVideo
@@ -2960,11 +2968,7 @@ const ProductionWorkbenchStoryboard = () => {
     };
   };
 
-  const prepareVideoSubmissions = async (storyboards: StoryboardShot[]): Promise<VideoSubmission[]> => {
-    const submissions = storyboards.map((storyboard) => {
-      const promptDocument = promptFor(storyboard);
-      return { storyboard, promptDocument, values: videoTaskValues(storyboard, promptDocument) };
-    });
+  const missingVideoReferences = (submissions: VideoSubmission[]) => {
     const imageKey = (reference: PromptReferenceOption) =>
       `${reference.sourceType}:${reference.sourceId}`;
     const availableImages = new Set(referenceOptions.IMAGE.map(imageKey));
@@ -2987,6 +2991,30 @@ const ProductionWorkbenchStoryboard = () => {
       }
       return names.size ? [{ storyboard, names: [...names] }] : [];
     });
+    return missing;
+  };
+
+  const previewVideoOperations = (storyboards: StoryboardShot[]): PointEstimateOperation[] | undefined => {
+    if (!storyboards.length) return undefined;
+    try {
+      const submissions = storyboards.map((storyboard) => {
+        const promptDocument = promptFor(storyboard);
+        return { storyboard, promptDocument, values: videoTaskValues(storyboard, promptDocument) };
+      });
+      const missingIds = new Set(missingVideoReferences(submissions).map(({ storyboard }) => storyboard.id));
+      return submissions.map(({ storyboard, values, promptDocument }) => ({
+        url: `/api/projects/${projectId}/ai-video-tasks`,
+        data: { ...values, promptDocument, ...(missingIds.has(storyboard.id) ? { firstFrameUrl: undefined, textOnly: true } : {}) },
+      }));
+    } catch { return undefined; }
+  };
+
+  const prepareVideoSubmissions = async (storyboards: StoryboardShot[]): Promise<VideoSubmission[]> => {
+    const submissions = storyboards.map((storyboard) => {
+      const promptDocument = promptFor(storyboard);
+      return { storyboard, promptDocument, values: videoTaskValues(storyboard, promptDocument) };
+    });
+    const missing = missingVideoReferences(submissions);
     if (!missing.length) return submissions;
     const confirmed = await new Promise<boolean>((resolve) => {
       modal.confirm({
@@ -3813,14 +3841,14 @@ const ProductionWorkbenchStoryboard = () => {
               批量生成视频
             </Button>
             {failedVisibleVideoTasks.length ? (
-              <Button
+              <PointEstimateButton operations={failedVisibleVideoTasks.length ? failedVisibleVideoTasks.map((task) => ({ url: `/api/projects/${projectId}/ai-video-tasks/${task.id}/regenerate` })) : undefined}
                 icon={<ReloadOutlined />}
                 aria-label="重试失败视频"
                 loading={videoBatchRetryBusy}
                 onClick={() => void retryFailedVideos()}
               >
                 重试失败视频
-              </Button>
+              </PointEstimateButton>
             ) : null}
           </Flex>
         </Flex>
@@ -3840,17 +3868,18 @@ const ProductionWorkbenchStoryboard = () => {
             ))}
             {storyboardBatch.failed > 0 &&
               ['FAILED', 'COMPLETED_WITH_FAILURES'].includes(storyboardBatch.status) ? (
-                <Button
+                <PointEstimateButton operations={(storyboardBatch?.items || []).some((item) => item.status === 'FAILED') ? [{ url: `/api/projects/${projectId}/storyboard-batches`, data: { episodeIds: (storyboardBatch?.items || []).filter((item) => item.status === 'FAILED').map((item) => item.episodeId) } }] : undefined}
                   size="small"
                   loading={storyboardBatchBusy}
                   onClick={() => void retryFailedStoryboards()}
                 >
                   重试失败分镜
-                </Button>
+                </PointEstimateButton>
               ) : null}
           </Flex>
         ) : null}
         <BatchVideoGenerationModal
+          operations={previewVideoOperations(batchVideoOptions.filter((item) => !item.disabledReason && videoBatchSelectedIds.includes(item.storyboard.id)).map((item) => item.storyboard))}
           open={videoBatchOpen}
           loading={videoBatchLoading}
           submitting={videoBatchSubmitting}
@@ -3872,7 +3901,7 @@ const ProductionWorkbenchStoryboard = () => {
             <Typography.Title level={4} style={{ margin: 0, fontSize: 16 }}>
               第{activeEpisode}集{episodeTitle ? ` ${episodeTitle}` : ''}
             </Typography.Title>
-            <Button
+            <PointEstimateButton operations={workspace.episodes?.find((item) => item.episodeNo === activeEpisode)?.episodeId ? [{ url: `/api/projects/${projectId}/storyboards/ai-breakdown`, data: { episodeId: workspace.episodes.find((item) => item.episodeNo === activeEpisode)?.episodeId } }] : undefined}
               type="primary"
               icon={<ThunderboltOutlined />}
               loading={storyboardBusy}
@@ -3880,7 +3909,7 @@ const ProductionWorkbenchStoryboard = () => {
               onClick={generateEpisodeStoryboards}
             >
               生成本集分镜
-            </Button>
+            </PointEstimateButton>
           </Flex>
           <div className="storyboard-episode-summary-row">
             <p className="storyboard-episode-summary">{episodeSummary}</p>
@@ -3974,6 +4003,8 @@ const ProductionWorkbenchStoryboard = () => {
                 eager={index < 2 || item.id === navigationTarget.storyboardId || item.id === activeStoryboardId}
               >
                 <StoryboardCard
+                  projectId={projectId}
+                  videoEstimateOperations={previewVideoOperations([item])}
                   item={item}
                   index={(item.storyboardNo || item.shotNo || index + 1) - 1}
                   characters={characters}
@@ -4075,6 +4106,7 @@ const ProductionWorkbenchStoryboard = () => {
           variant={referenceGenerationTarget?.variant}
           assetType={referenceGenerationTarget?.assetType}
           primaryImageUrl={referenceGenerationTarget?.primaryImageThumbnailUrl}
+          referenceImageUrl={referenceGenerationTarget?.primaryImageUrl}
           imageModels={imageModels}
           values={referenceGenerationValues}
           submitting={referenceGenerationSubmitting}

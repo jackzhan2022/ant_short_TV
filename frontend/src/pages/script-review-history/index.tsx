@@ -7,7 +7,6 @@ import {
   Checkbox,
   Empty,
   List,
-  Modal,
   Progress,
   Select,
   Space,
@@ -16,6 +15,8 @@ import {
 } from 'antd';
 import { useEffect, useState } from 'react';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
+import PointEstimateButton from '@/components/PointEstimateButton';
+import PointEstimateModal from '@/components/PointEstimateButton/Modal';
 import {
   DEFAULT_REVIEW_DIMENSIONS,
   REVIEW_DIMENSIONS,
@@ -171,13 +172,14 @@ const ScriptReviewHistoryPage = () => {
                     : []),
                   ...(task.status === 'FAILED'
                     ? [
-                        <Button
+                        <PointEstimateButton
+                          operations={[{ url: `/api/script-review/tasks/${task.id}/retry` }]}
                           key="retry"
                           type="link"
                           onClick={() => runTaskAction(task.id, 'retry')}
                         >
                           重试
-                        </Button>,
+                        </PointEstimateButton>,
                       ]
                     : []),
                 ]}
@@ -244,7 +246,10 @@ const ScriptReviewHistoryPage = () => {
           </Space>
         )}
       </Card>
-      <Modal
+      <PointEstimateModal
+        operations={projectId && versionId && dimensions.length ? [{ url: `/api/script-review/projects/${projectId}/tasks`, data: {
+          versionId, reviewMode, selectedDimensions: dimensions, reviewScopeType: 'ALL', reviewScope: {},
+        } }] : undefined}
         open={createOpen}
         title="新建审核任务"
         onCancel={() => setCreateOpen(false)}
@@ -273,7 +278,7 @@ const ScriptReviewHistoryPage = () => {
             onChange={(values) => setDimensions(values as string[])}
           />
         </Space>
-      </Modal>
+      </PointEstimateModal>
     </PageContainer>
   );
 };

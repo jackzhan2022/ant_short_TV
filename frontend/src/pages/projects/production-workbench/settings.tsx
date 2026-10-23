@@ -1,3 +1,5 @@
+import PointEstimateButton from '@/components/PointEstimateButton';
+import PointEstimateModal from '@/components/PointEstimateButton/Modal';
 import {
   DeleteOutlined,
   EditOutlined,
@@ -13,7 +15,6 @@ import {
   Empty,
   Flex,
   Input,
-  Modal,
   Pagination,
   Popconfirm,
   Radio,
@@ -783,10 +784,6 @@ const ProductionWorkbenchSettings = () => {
       if (!preflight) {
         throw new Error('资产影响预检失败');
       }
-      if (!preflight.requiresConfirmation) {
-        await submitReextraction(targetType, 'FILL_EMPTY');
-        return;
-      }
       setReextractionPolicy('FILL_EMPTY');
       setReextractionPreflight(preflight);
       setProcessingAction(undefined);
@@ -1269,7 +1266,7 @@ const ProductionWorkbenchSettings = () => {
         <AssetNormalizationPanel projectId={projectId} onTrack={follow} onBlocked={setNormalizationBlocked} onRefresh={reload} />
         <fieldset disabled={normalizationBlocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
-        <Modal
+        <PointEstimateModal operations={reextractionPreflight ? [{ url: `/api/projects/${projectId}/asset-reextraction`, data: { targetType: reextractionPreflight.targetType, promptPolicy: reextractionPolicy } }] : undefined}
           title={`确认重新提取${reextractionPreflight ? scopeLabels[reextractionPreflight.targetType] : ''}`}
           open={Boolean(reextractionPreflight)}
           okText="确认提交"
@@ -1310,9 +1307,9 @@ const ProductionWorkbenchSettings = () => {
               ) : null}
             </Flex>
           ) : null}
-        </Modal>
+        </PointEstimateModal>
 
-        <Modal
+        <PointEstimateModal operations={batchPreflight && selectedAssetIds.length ? [{ url: `/api/projects/${projectId}/asset-image-batches`, data: assetImageBatchValues(batchMode) }] : undefined}
           title={`批量生成${batchPreflight ? elementLabels[batchPreflight.assetType] : elementLabels[activeType]}图`}
           open={Boolean(batchPreflight)}
           okText="确认提交"
@@ -1393,7 +1390,7 @@ const ProductionWorkbenchSettings = () => {
               </Flex>
             </Flex>
           ) : null}
-        </Modal>
+        </PointEstimateModal>
 
         {activeImageBatch ? (
           <div role="status" aria-label="资产图批次状态">
@@ -1407,13 +1404,13 @@ const ProductionWorkbenchSettings = () => {
             ))}
             {activeImageBatch.failed > 0 &&
               ['FAILED', 'COMPLETED_WITH_FAILURES'].includes(activeImageBatch.status) ? (
-                <Button
+                <PointEstimateButton operations={[{ url: `/api/projects/${projectId}/asset-image-batches/${activeImageBatch.id}/retry-failed` }]}
                   size="small"
                   loading={batchSubmitting}
                   onClick={() => void retryFailedAssetImages()}
                 >
                   重试失败资产图
-                </Button>
+                </PointEstimateButton>
               ) : null}
           </div>
         ) : null}
@@ -1905,6 +1902,7 @@ const ProductionWorkbenchSettings = () => {
                     onImageSelected={() => mutateVariant(async () => undefined, '已选用配图')}
                     assetType={visualAsset.type}
                     primaryImageUrl={visualAsset.item.visual?.primaryVariant?.currentImageThumbnailUrl}
+                    referenceImageUrl={visualAsset.item.visual?.resolvedImageUrl}
                     imageModels={imageModels}
                     values={{
                       prompt: generationPrompt,

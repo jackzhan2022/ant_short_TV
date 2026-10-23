@@ -1,3 +1,4 @@
+import PointEstimateButton from '@/components/PointEstimateButton';
 import {
   ClockCircleOutlined,
   DownloadOutlined,
@@ -579,9 +580,29 @@ export default function Records({
                 复用参数
               </Button>
               {(detail.allowedActions || []).map((operation) => (
-                <Button key={operation} disabled={busy} onClick={() => control(detail, operation)}>
-                  {{ CANCEL: '取消任务', RETRY: '重试', REGENERATE: '重新生成' }[operation]}
-                </Button>
+                <PointEstimateButton
+                  key={operation}
+                  tenantId={tenantId}
+                  operations={
+                    operation === 'CANCEL'
+                      ? []
+                      : [
+                          {
+                            url: `/api/tenants/${tenantId}/production-tasks/${encodeURIComponent(detail.taskKey || `FREE_CREATION:${detail.id}`)}/${operation.toLowerCase()}`,
+                          },
+                        ]
+                  }
+                  disabled={busy}
+                  onClick={() => control(detail, operation)}
+                >
+                  {
+                    {
+                      CANCEL: '取消任务',
+                      RETRY: '重试',
+                      REGENERATE: '重新生成',
+                    }[operation]
+                  }
+                </PointEstimateButton>
               ))}
               <Button onClick={() => history.push(`/tasks?task=${encodeURIComponent(detail.taskKey || `FREE_CREATION:${detail.id}`)}`)}>
                 在任务中心查看

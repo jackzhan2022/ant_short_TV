@@ -1,3 +1,4 @@
+import '@root/tests/mockPointEstimate';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ScriptReviewPage from './index';
@@ -66,6 +67,7 @@ vi.mock('antd', () => {
     },
   );
   return {
+    Tooltip: ({ children }: any) => <>{children}</>,
     App: {
       useApp: () => ({
         message: mocks.message,

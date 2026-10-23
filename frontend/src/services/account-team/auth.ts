@@ -25,7 +25,7 @@ export function saveAuthSession(session: {
   currentTenantId?: number;
 }) {
   if (session.currentTenantId) {
-    localStorage.setItem(CURRENT_TENANT_ID_KEY, String(session.currentTenantId));
+    setCurrentTenantId(session.currentTenantId);
   }
 }
 
@@ -36,10 +36,12 @@ export function getCurrentTenantId() {
 
 export function setCurrentTenantId(tenantId: number) {
   localStorage.setItem(CURRENT_TENANT_ID_KEY, String(tenantId));
+  window.dispatchEvent(new Event('current-tenant-changed'));
 }
 
 export function clearCurrentTenantId() {
   localStorage.removeItem(CURRENT_TENANT_ID_KEY);
+  window.dispatchEvent(new Event('current-tenant-changed'));
 }
 
 export function clearAuthSession() {

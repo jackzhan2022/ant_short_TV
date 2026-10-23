@@ -1,3 +1,5 @@
+import PointEstimateButton from '@/components/PointEstimateButton';
+import PointEstimateModal from '@/components/PointEstimateButton/Modal';
 import {
   CheckOutlined,
   LeftOutlined,
@@ -125,11 +127,13 @@ const labelStyle = {
 } as const;
 
 type ScriptAnalysisStateContainerProps = {
+  projectId?: number;
   analysis: NonNullable<ProductionWorkspaceState['analysis']>;
   onRetryStage: (stageCode: string) => void;
 };
 
 export const ScriptAnalysisStateContainer = ({
+  projectId,
   analysis,
   onRetryStage,
 }: ScriptAnalysisStateContainerProps) => {
@@ -267,7 +271,7 @@ export const ScriptAnalysisStateContainer = ({
               ) : null}
               {isFailed && stage.status === 'FAILED' && stage.retryable ? (
                 <div>
-                  <Button
+                  <PointEstimateButton operations={projectId ? [{ url: `/api/projects/${projectId}/script-analysis/current/retry/${stage.stageCode}` }] : undefined}
                     type="link"
                     size="small"
                     icon={<ReloadOutlined />}
@@ -275,7 +279,7 @@ export const ScriptAnalysisStateContainer = ({
                     className="script-analysis-retry"
                   >
                     重试此步骤
-                  </Button>
+                  </PointEstimateButton>
                 </div>
               ) : null}
             </div>
@@ -381,6 +385,7 @@ const ProductionWorkbenchScript = () => {
   const [versionLoading, setVersionLoading] = useState(false);
   const [versionError, setVersionError] = useState(false);
   const [versionRetry, setVersionRetry] = useState(0);
+  const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
   useEffect(() => {
     setSelectedVersionId(undefined);
     setVersionContent('');
@@ -652,16 +657,7 @@ const ProductionWorkbenchScript = () => {
     }
   };
 
-  const showReanalyzeConfirm = () => {
-    Modal.confirm({
-      title: '重新AI分析',
-      content: '重新分析会覆盖对应正式数据；用户后续仍可继续编辑。',
-      okText: '确认重分析',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: reanalyzeCurrent,
-    });
-  };
+  const showReanalyzeConfirm = () => setReanalyzeOpen(true);
   const currentEpisode = workspace?.episodes?.find(
     (item) => item.episodeNo === currentEpisodeNo,
   );
@@ -800,7 +796,7 @@ const ProductionWorkbenchScript = () => {
             </Typography.Text>
           </div>
           {analysis?.status === 'COMPLETED' ? (
-            <Button onClick={showReanalyzeConfirm}>重新AI分析</Button>
+            <PointEstimateButton operations={[{ url: `/api/projects/${projectId}/script-analysis/current/reanalyze` }]} onClick={showReanalyzeConfirm}>重新AI分析</PointEstimateButton>
           ) : null}
         </Flex>
 
@@ -818,8 +814,16 @@ const ProductionWorkbenchScript = () => {
           </section>
         ) : null}
 
+        <PointEstimateModal open={reanalyzeOpen} title="重新AI分析" okText="确认重分析" cancelText="取消"
+          operations={[{ url: `/api/projects/${projectId}/script-analysis/current/reanalyze` }]}
+          okButtonProps={{ danger: true }} onCancel={() => setReanalyzeOpen(false)}
+          onOk={() => { setReanalyzeOpen(false); void reanalyzeCurrent(); }}>
+          重新分析会覆盖对应正式数据；用户后续仍可继续编辑。
+        </PointEstimateModal>
+
         {analysis && analysis.status !== 'COMPLETED' ? (
           <ScriptAnalysisStateContainer
+            projectId={projectId}
             analysis={analysis}
             onRetryStage={(stageCode) => void retryAnalysis(stageCode)}
           />
@@ -1305,7 +1309,7 @@ const ProductionWorkbenchScript = () => {
                 分集剧情
               </Typography.Title>
               {analysis?.status === 'COMPLETED' ? (
-                <Button
+                <PointEstimateButton operations={[{ url: `/api/projects/${projectId}/script-analysis/current/regenerate-episodes` }]}
                   loading={executionBusy || undefined}
                   onClick={() =>
                     void runDirectAgent(
@@ -1315,7 +1319,7 @@ const ProductionWorkbenchScript = () => {
                   }
                 >
                   单独重跑剧集拆分
-                </Button>
+                </PointEstimateButton>
               ) : null}
             </Flex>
             {workspace.episodeWarnings?.length ? (
@@ -1508,7 +1512,7 @@ const ProductionWorkbenchScript = () => {
                       <Button size="small" onClick={beginSummaryEdit}>
                         编辑概要
                       </Button>
-                      <Button
+                      <PointEstimateButton operations={currentEpisode.episodeId ? [{ url: `/api/projects/${projectId}/episodes/${currentEpisode.episodeId}/summary/regenerate`, data: { overwrite: true } }] : undefined}
                         size="small"
                         loading={executionBusy || undefined}
                         onClick={() =>
@@ -1524,8 +1528,8 @@ const ProductionWorkbenchScript = () => {
                         }
                       >
                         AI 重生成本集概要
-                      </Button>
-                      <Button
+                      </PointEstimateButton>
+                      <PointEstimateButton operations={currentEpisode.episodeId ? [{ url: `/api/projects/${projectId}/episodes/${currentEpisode.episodeId}/assets/regenerate` }] : undefined}
                         size="small"
                         loading={executionBusy || undefined}
                         onClick={() =>
@@ -1541,7 +1545,7 @@ const ProductionWorkbenchScript = () => {
                         }
                       >
                         AI 重识别本集资产
-                      </Button>
+                      </PointEstimateButton>
                     </Flex>
                   </>
                 )}

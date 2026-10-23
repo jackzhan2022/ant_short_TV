@@ -301,4 +301,24 @@ class AssetVisualVariantServiceTest {
             .isEqualTo(new AssetVisualVariantService.GenerationInput(
                 "雨夜地下停车场，地面积水反光", java.util.List.of()));
     }
+
+    @Test
+    void previewsUnsavedPromptWithoutChangingCanonicalOrVariantData() {
+        var primary = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "主形象", null, null, "MANUAL", "NOT_STARTED", null, null, true));
+        assertThat(service.previewGeneration(9901L, 9902L, primary.id(), "尚未保存的主形象提示词"))
+            .isEqualTo(new AssetVisualVariantService.GenerationInput("尚未保存的主形象提示词", java.util.List.of()));
+        assertThat(jdbc.queryForObject("select prompt from character_asset where id=9910", String.class)).isNull();
+        assertThat(jdbc.queryForObject("select prompt from asset_visual_variant where id=?", String.class, primary.id())).isNull();
+        assertThatThrownBy(() -> service.prepareGeneration(9901L, 9902L, primary.id())).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.previewGeneration(9903L, 9902L, primary.id(), "无权预估"))
+            .isInstanceOf(BusinessException.class);
+
+        var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "新变装", null, null, "MANUAL", "NOT_STARTED", null, null, false));
+        assertThatThrownBy(() -> service.previewGeneration(9901L, 9902L, variant.id(), "尚未保存的变装提示词"))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("主体主图");
+    }
 }

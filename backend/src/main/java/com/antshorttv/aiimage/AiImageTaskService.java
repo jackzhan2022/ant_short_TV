@@ -755,7 +755,7 @@ public class AiImageTaskService {
         requireProject(tenantId, projectId);
         ResolvedImageModel model = resolveImageModel(tenantId, projectId, request.modelId());
         var references = "VISUAL_VARIANT".equals(request.targetType())
-            ? assetVisualVariantService.prepareGeneration(tenantId, projectId, request.targetId()).referenceImages()
+            ? assetVisualVariantService.previewGeneration(tenantId, projectId, request.targetId(), request.prompt()).referenceImages()
             : resolveReferenceImages(tenantId, projectId, request);
         return new com.antshorttv.points.AiPointEstimatePlan("生成图片", model.modelId(), Map.of(
             AiUsageMetric.CALL, BigDecimal.ONE,

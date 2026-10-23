@@ -78,16 +78,18 @@ public class AiPointEstimateService {
     @Transactional(readOnly = true)
     public Estimate estimate(Long tenantId, List<Operation> operations) {
         tenants.requireActiveMember(tenantId);
+        var planning = new PlanningSession();
+        var pricing = new AiPointEstimateCalculator.Context(tenantId);
         List<AiPointEstimatePlan> plans = new ArrayList<>();
         List<AiPointEstimateCalculator.Line> lines = new ArrayList<>();
         Map<String, BigDecimal> remainingByProject = new HashMap<>();
         int operationIndex = 0;
         for (var operation : operations) {
-            var operationPlans = plan(tenantId, operation);
+            var operationPlans = planning.plan(tenantId, operation);
             plans.addAll(operationPlans);
             String newProjectScope = "new:" + operationIndex++;
             for (var plan : operationPlans) {
-                var line = calculator.calculate(tenantId, plan);
+                var line = calculator.calculate(tenantId, plan, pricing);
                 if (plan.workbench()) {
                     String scope = plan.projectId() == null ? newProjectScope : "project:" + plan.projectId();
                     BigDecimal remaining = remainingByProject.computeIfAbsent(scope,
@@ -112,6 +114,22 @@ public class AiPointEstimateService {
                 + (plans.stream().anyMatch(AiPointEstimatePlan::workbench)
                     ? "工作台剧本分析与分镜按套餐折扣后积分的20%计费，同一项目本阶段累计最多1000积分（含已扣费与重试）；达到上限后不再追加扣费。" : ""));
     }
+
+    /** All memoized reads live only for the current estimate invocation. */
+    private final class PlanningSession {
+        private final Map<String, com.antshorttv.ai.AiModelRoute> routes = new HashMap<>();
+        private final Map<String, com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan> agentPlans = new HashMap<>();
+        private final Map<Long, Long> effectivePointVersions = new HashMap<>();
+        private final Map<Long, List<AiModelPointPriceComponentEntity>> priceComponents = new HashMap<>();
+        private final LocalDateTime at = LocalDateTime.now();
+        private final Map<String,Long> configuredModels = new HashMap<>();
+        private final Map<String,String> projectScripts = new HashMap<>();
+        private final Map<String,Set<Long>> storyboardEpisodes = new HashMap<>();
+
+        private Long resolveModel(Long tenant,Long project,String capability) {
+            return configuredModels.computeIfAbsent(tenant+":"+project+":"+capability,
+                ignored -> configs.resolveModelId(tenant,project,capability));
+        }
 
     private List<AiPointEstimatePlan> plan(Long tenant, Operation operation) {
         String path = operation.url();
@@ -185,7 +203,7 @@ public class AiPointEstimateService {
         if (path.matches("ai-video-tasks/\\d+/regenerate")) return List.of(videos.pointEstimateExisting(tenant, project, pathId(path, 1)));
         if ("asset-image-batches".equals(path)) return imageBatches.pointEstimateRequest(tenant, project, data);
         if (path.matches("asset-image-batches/\\d+/retry-failed")) return imageBatches.pointEstimatesRetry(tenant, project, pathId(path, 1));
-        Long model = frozenModel == null ? configs.resolveModelId(tenant, project, "TEXT") : frozenModel;
+        Long model = frozenModel == null ? resolveModel(tenant, project, "TEXT") : frozenModel;
         String content = scriptContent(tenant, project);
         if (path.startsWith("script-analysis/current/retry/")) {
             var tasks = jdbc.queryForList("select execution_id from script_analysis_task where tenant_id=? and project_id=? order by id desc limit 1", tenant, project);
@@ -227,7 +245,7 @@ public class AiPointEstimateService {
     }
 
     private List<AiPointEstimatePlan> analysis(Long tenant, Long project, String content) {
-        return analysis(tenant, project, content, configs.resolveModelId(tenant, project, "TEXT"), null);
+        return analysis(tenant, project, content, resolveModel(tenant, project, "TEXT"), null);
     }
 
     private List<AiPointEstimatePlan> analysis(Long tenant, Long project, String content, Long model,
@@ -282,11 +300,11 @@ public class AiPointEstimateService {
 
     private AiPointEstimatePlan textPlan(Long tenant, String label, Long model, String content, String agentCode, int calls,
                                          AiPointReservationEntity reservation) {
-        router.route(model, "TEXT");
+        routes.computeIfAbsent(model+":TEXT", ignored -> router.route(model, "TEXT"));
         int output = 8192;
         String context = content;
         if (agentCode != null) {
-            var plan = agents.freezeFormal(agentCode, tenant);
+            var plan = agentPlans.computeIfAbsent(tenant+":"+agentCode, ignored -> agents.freezeFormal(agentCode, tenant));
             output = plan.agent().maxTokens();
             context += plan.agent().systemPrompt();
             for (var skill : plan.skillSnapshots()) context += skill.content();
@@ -304,14 +322,16 @@ public class AiPointEstimateService {
     private AiPointEstimatePlan tokenPlan(String label, Long model, long input, long output, int calls, Long frozenVersion) {
         Long version = frozenVersion;
         if (version == null) {
-            var current = pointVersions.selectEffective(model, LocalDateTime.now());
-            if (current == null) throw invalid("所选模型尚未配置有效积分价格。");
-            version = current.id;
+            version = effectivePointVersions.computeIfAbsent(model, ignored -> {
+                var current = pointVersions.selectEffective(model, at);
+                if (current == null) throw invalid("所选模型尚未配置有效积分价格。");
+                return current.id;
+            });
         }
         Set<String> metrics = new HashSet<>();
         AiUsageMetric inputMetric = AiUsageMetric.INPUT_TOKEN;
         BigDecimal highestInputRate = BigDecimal.valueOf(-1);
-        for (var component : components.selectByVersion(version)) {
+        for (var component : priceComponents.computeIfAbsent(version, components::selectByVersion)) {
             if (!AiAccountingJson.read(component.dimensionsJson).isEmpty()) continue;
             if (component.pointRate.signum() > 0) metrics.add(component.metric);
             if (Set.of("INPUT_TOKEN","CACHED_INPUT_TOKEN","CACHE_WRITE_TOKEN").contains(component.metric)) {
@@ -369,9 +389,9 @@ public class AiPointEstimateService {
 
     private List<AiPointEstimatePlan> decomposition(Long tenant, Long project, Long model) {
         if (model == null) throw invalid("请先选择视频理解模型。");
-        router.route(model, "VIDEO_UNDERSTANDING");
+        routes.computeIfAbsent(model+":VIDEO_UNDERSTANDING", ignored -> router.route(model, "VIDEO_UNDERSTANDING"));
         return List.of(tokenPlan("视频理解", model, 1_000_000, 8192, 1),
-            textPlan(tenant, "视频剧本草稿生成", configs.resolveModelId(tenant, project, "TEXT"), "", null, 1));
+            textPlan(tenant, "视频剧本草稿生成", resolveModel(tenant, project, "TEXT"), "", null, 1));
     }
 
     private List<AiPointEstimatePlan> retryDecomposition(Long tenant, Long episode) {
@@ -414,19 +434,24 @@ public class AiPointEstimateService {
     }
 
     private String scriptContent(Long tenant, Long project) {
-        var rows = jdbc.queryForList("select content from script where tenant_id=? and project_id=? and deleted_at is null order by id desc limit 1", tenant, project);
-        return rows.isEmpty() ? "" : text(rows.get(0), "content");
+        return projectScripts.computeIfAbsent(tenant+":"+project, ignored -> {
+            var rows = jdbc.queryForList("select content from script where tenant_id=? and project_id=? and deleted_at is null order by id desc limit 1", tenant, project);
+            return rows.isEmpty() ? "" : text(rows.get(0), "content");
+        });
     }
     private String episodeContent(Long tenant, Long project, Long episode) {
         return text(row("select content from script_episode where tenant_id=? and project_id=? and id=? and status='ACTIVE' and retired_at is null", tenant, project, episode), "content");
     }
     private boolean hasStoryboard(Long tenant, Long project, Long episode) {
-        return jdbc.queryForObject("select count(*) from storyboard where tenant_id=? and project_id=? and episode_id=? and deleted_at is null", Integer.class, tenant, project, episode) > 0;
+        return storyboardEpisodes.computeIfAbsent(tenant+":"+project, ignored -> new HashSet<>(jdbc.queryForList(
+            "select distinct episode_id from storyboard where tenant_id=? and project_id=? and deleted_at is null and episode_id is not null",
+            Long.class,tenant,project))).contains(episode);
     }
     private Map<String,Object> row(String sql, Object... args) {
         var rows = jdbc.queryForList(sql, args);
         if (rows.isEmpty()) throw new BusinessException(ErrorCode.NOT_FOUND, "预估对象不存在或无权访问。");
         return rows.get(0);
+    }
     }
     private static String text(Map<String,Object> row, String key) { return Objects.toString(row.get(key), ""); }
     private static Long number(Map<String,Object> row, String key) { return row.get(key) instanceof Number n ? n.longValue() : null; }

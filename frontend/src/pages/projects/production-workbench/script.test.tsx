@@ -1,3 +1,4 @@
+import '@root/tests/mockPointEstimate';
 import {
   fireEvent,
   act,
@@ -41,8 +42,8 @@ vi.mock('antd', () => ({
     useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
   },
   Modal: Object.assign(
-    ({ open, title, children }: any) =>
-      open ? <div role="dialog" aria-label={title}>{children}</div> : null,
+    ({ open, title, children, onOk, okText }: any) =>
+      open ? <div role="dialog" aria-label={title}>{children}{onOk ? <button type="button" onClick={onOk}>{okText}</button> : null}</div> : null,
     { confirm: mocks.confirm },
   ),
   Button: ({ children, ...props }: any) => (
@@ -873,13 +874,9 @@ describe('ProductionWorkbenchScript', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('当前第1集')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '重新AI分析' }));
-    expect(mocks.confirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: '重新AI分析',
-        content: '重新分析会覆盖对应正式数据；用户后续仍可继续编辑。',
-      }),
-    );
-    await mocks.confirm.mock.calls[0][0].onOk();
+    const dialog = await screen.findByRole('dialog', { name: '重新AI分析' });
+    expect(within(dialog).getByText('重新分析会覆盖对应正式数据；用户后续仍可继续编辑。')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认重分析' }));
 
     await waitFor(() => {
       expect(mocks.pollExecution).toHaveBeenCalledWith(

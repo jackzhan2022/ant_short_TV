@@ -19,11 +19,13 @@ const mocks = vi.hoisted(() => ({
   upload: vi.fn(),
   control: vi.fn(),
   navigate: vi.fn(),
+  estimate: vi.fn(),
   tenant: 10 as number | undefined,
   user: '1',
   allowed: true,
 }));
 vi.mock('@umijs/max', () => ({
+  request: mocks.estimate,
   history: { push: mocks.navigate },
   useModel: () => ({
     initialState: {
@@ -82,12 +84,26 @@ const models = [
   },
 ];
 
+async function readyButton(name: string | RegExp, scope: Pick<typeof screen, 'getByRole'> = screen) {
+  const button = scope.getByRole('button', { name });
+  await waitFor(() => {
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveClass('ant-btn-loading');
+  }, { timeout: 3000 });
+  return button;
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   window.history.replaceState({}, '', '/free-creation');
   mocks.tenant = 10;
   mocks.user = '1';
   mocks.allowed = true;
+  localStorage.setItem('currentTenantId', '10');
+  mocks.estimate.mockResolvedValue({ success: true, data: {
+    estimatedPoints: 10, availablePoints: 100, paidAvailablePoints: 100, sufficient: true,
+    lines: [{ label: '生成', points: 10, estimated: true, trialEligible: true }], notice: '',
+  } });
   mocks.load.mockResolvedValue(models);
   mocks.list.mockResolvedValue({
     records: [],
@@ -132,7 +148,7 @@ describe('自由创作页面', () => {
     expect(screen.getByRole('textbox', { name: '创意描述' })).toHaveValue(
       '我的图片灵感',
     );
-    expect(screen.getByRole('button', { name: '生成图片' })).toBeEnabled();
+    await readyButton('生成图片');
   });
 
   it('个人与团队范围以及媒体筛选按真实契约查询', async () => {
@@ -274,12 +290,13 @@ describe('自由创作页面', () => {
     );
     await screen.findByRole('option', { name: '系统图片模型' });
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }));
-    expect(await screen.findByText('请先输入创意描述')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成图片' })).toBeDisabled();
     expect(mocks.create).not.toHaveBeenCalled();
     fireEvent.change(screen.getByRole('textbox', { name: '创意描述' }), {
       target: { value: '生成我的场景' },
     });
     mocks.create.mockRejectedValueOnce(new Error('网络连接中断'));
+    await readyButton('生成图片');
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }));
     await screen.findByText('网络连接中断');
     const first = mocks.create.mock.calls[0][0];
@@ -292,7 +309,9 @@ describe('自由创作页面', () => {
     });
     expect(mocks.create.mock.calls[0][1].aborted).toBe(false);
     mocks.create.mockReturnValueOnce(new Promise(() => undefined));
+    await readyButton('生成图片');
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
     expect(mocks.create.mock.calls[1][0].requestId).toBe(first.requestId);
     const signal = mocks.create.mock.calls[1][1];
     mocks.tenant = 99;
@@ -346,6 +365,7 @@ describe('自由创作页面', () => {
     );
     expect(mocks.detail).toHaveBeenCalledWith(12, expect.any(AbortSignal));
     expect(mocks.create).not.toHaveBeenCalled();
+    await readyButton('生成图片');
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }));
     await waitFor(() =>
       expect(mocks.create).toHaveBeenCalledWith(
@@ -408,8 +428,10 @@ describe('自由创作页面', () => {
     mocks.control.mockRejectedValueOnce(new Error('响应中断')).mockResolvedValue({ taskKey: 'FREE_CREATION:13' });
     render(<FreeCreationPage />);
     const modal = await screen.findByRole('dialog');
+    await readyButton(/重\s*试/, within(modal));
     fireEvent.click(await within(modal).findByRole('button', { name: /重\s*试/ }));
     await within(modal).findByText('响应中断');
+    await readyButton(/重\s*试/, within(modal));
     fireEvent.click(within(modal).getByRole('button', { name: /重\s*试/ }));
     await within(modal).findByRole('button', { name: '取消任务' });
     expect(mocks.control).toHaveBeenCalledTimes(2);
@@ -432,5 +454,28 @@ describe('自由创作页面', () => {
     await within(modal).findByRole('button', { name: '复用参数' });
     expect(within(modal).queryByRole('button', { name: /重试|取消任务|重新生成/ })).not.toBeInTheDocument();
     expect(mocks.control).not.toHaveBeenCalled();
+  });
+
+  it('keeps generation disabled until a quote for the current prompt and count returns', async () => {
+    const pending: { data: any; resolve: (value: unknown) => void }[] = [];
+    mocks.estimate.mockImplementation((_url, options) => new Promise((resolve) => pending.push({ data: options.data, resolve })));
+    render(<FreeCreationPage />);
+    await screen.findByRole('option', { name: '系统图片模型' });
+    fireEvent.change(screen.getByRole('textbox', { name: '创意描述' }), { target: { value: '草稿一' } });
+    const submit = screen.getByRole('button', { name: '生成图片' });
+    expect(submit).toBeDisabled();
+    await waitFor(() => expect(pending).toHaveLength(1));
+    fireEvent.change(screen.getByRole('textbox', { name: '创意描述' }), { target: { value: '草稿二' } });
+    fireEvent.click(screen.getByRole('button', { name: '生成4张' }));
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[1].data.operations[0]).toMatchObject({ url: '/api/free-creations', data: { prompt: '草稿二', parameters: { count: 4 } } });
+    await act(async () => pending[0].resolve({ success: true, data: { estimatedPoints: 10, sufficient: true, lines: [] } }));
+    expect(submit).toBeDisabled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    await act(async () => pending[1].resolve({ success: true, data: { estimatedPoints: 40, sufficient: true, lines: [] } }));
+    expect(submit).toBeEnabled();
+    expect(submit).toHaveAccessibleDescription(/预计 40 积分/);
+    fireEvent.click(submit);
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ prompt: '草稿二', parameters: expect.objectContaining({ count: 4 }) }), expect.any(AbortSignal)));
   });
 });

@@ -10,7 +10,7 @@ import { useModel } from '@umijs/max';
 import { App, Button, Empty, Form, Popconfirm, Space, Tag } from 'antd';
 import { useEffect, useState } from 'react';
 import TeamIconPicker from '@/components/TeamIconPicker';
-import { getCurrentTenantId } from '@/services/account-team/auth';
+import { clearCurrentTenantId, getCurrentTenantId } from '@/services/account-team/auth';
 import type {
   TenantMember,
   TenantSummary,
@@ -116,7 +116,7 @@ const TeamSettings = () => {
               onConfirm={async () => {
                 await leaveTenant(tenant.id);
                 message.success('已退出团队');
-                localStorage.removeItem('currentTenantId');
+                clearCurrentTenantId();
                 setTenant(undefined);
               }}
             >

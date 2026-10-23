@@ -1,11 +1,14 @@
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Alert, Button, Progress } from 'antd';
+import PointEstimateButton from '@/components/PointEstimateButton';
+import type { PointEstimateOperation } from '@/services/point-estimate';
 
 export interface AiExecutionStatusProps {
   task: API.AiExecutionResponse;
   busy?: boolean;
   onCancel?: () => void;
   onRetry?: () => void;
+  retryOperations?: PointEstimateOperation[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -22,6 +25,7 @@ export default function AiExecutionStatus({
   busy = false,
   onCancel,
   onRetry,
+  retryOperations,
 }: AiExecutionStatusProps) {
   const status = task.status ?? 'PENDING';
   const canCancel = (status === 'PENDING' || status === 'RUNNING') && onCancel;
@@ -37,7 +41,9 @@ export default function AiExecutionStatus({
         description={task.errorMessage || '本次任务未完成'}
         action={
           canRetry ? (
-            <Button
+            <PointEstimateButton
+              tenantId={task.tenantId}
+              operations={retryOperations ?? (task.tenantId && task.id ? [{ url: `/api/tenants/${task.tenantId}/ai-executions/${task.id}/retry` }] : undefined)}
               aria-label="重试"
               icon={<ReloadOutlined />}
               loading={busy}
@@ -45,7 +51,7 @@ export default function AiExecutionStatus({
               size="small"
             >
               重试
-            </Button>
+            </PointEstimateButton>
           ) : undefined
         }
       />

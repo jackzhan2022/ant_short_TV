@@ -1,3 +1,4 @@
+import { recordedPointEstimates } from '@root/tests/mockPointEstimate';
 import {
   act,
   fireEvent,
@@ -114,6 +115,7 @@ vi.mock('@ant-design/icons', () => ({
 }));
 
 vi.mock('antd', () => ({
+  Tooltip: ({ children }: any) => <>{children}</>,
   App: {
     useApp: () => ({
       message: { error: mocks.messageError, success: vi.fn() },
@@ -1088,6 +1090,9 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.change(screen.getByLabelText('婚礼礼服生成提示词'), {
       target: { value: '婚礼礼服，电影感' },
     });
+    const preview = recordedPointEstimates().flatMap((call) => call.operations || [])
+      .filter((operation) => operation.url === '/api/projects/1/ai-image-tasks').at(-1);
+    expect(preview?.data).toMatchObject({ targetId: 12, modelId: 8, prompt: '婚礼礼服，电影感', referenceImages: ['/daily.png'] });
     fireEvent.click(screen.getByRole('button', { name: '提交婚礼礼服生成' }));
 
     await waitFor(() => {
@@ -1108,6 +1113,7 @@ describe('ProductionWorkbenchSettings', () => {
         }),
       );
     });
+    expect(preview?.data).toEqual(mocks.createAiImageTask.mock.calls[0][1]);
   });
 
   it('submits the existing prompt without an unnecessary visual variant update', async () => {
@@ -1350,6 +1356,7 @@ describe('ProductionWorkbenchSettings', () => {
 
     await screen.findAllByText('斌斌');
     fireEvent.click(screen.getByRole('button', { name: '提取当前分类' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认提交' }));
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
     fireEvent.click(screen.getByRole('button', { name: '保存斌斌' }));
@@ -1482,6 +1489,7 @@ describe('ProductionWorkbenchSettings', () => {
     render(<ProductionWorkbenchSettings />);
     await screen.findAllByText('斌斌');
     fireEvent.click(screen.getByRole('button', { name: '提取当前分类' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认提交' }));
     await screen.findByText('execution-700-SUCCEEDED');
     expect(screen.getByText(/本次未创建新任务/)).toBeInTheDocument();
     expect(mocks.submitAssetReextraction).toHaveBeenCalledTimes(1);
@@ -1493,6 +1501,7 @@ describe('ProductionWorkbenchSettings', () => {
     await screen.findAllByText('斌斌');
     const button = screen.getByRole('button', { name: '提取当前分类' });
     fireEvent.click(button);
+    fireEvent.click(await screen.findByRole('button', { name: '确认提交' }));
     await waitFor(() => expect(button).toBeDisabled());
     fireEvent.click(button);
     fireEvent.click(screen.getByRole('button', { name: '提取全部资产' }));
@@ -1522,6 +1531,7 @@ describe('ProductionWorkbenchSettings', () => {
 
     await screen.findAllByText('斌斌');
     fireEvent.click(screen.getByRole('button', { name: '提取当前分类' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认提交' }));
 
     await waitFor(() => {
       expect(mocks.messageError).toHaveBeenCalledWith(

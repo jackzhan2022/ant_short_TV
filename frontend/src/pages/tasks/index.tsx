@@ -21,6 +21,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import ClickToPlayVideo from '@/components/ClickToPlayVideo';
 import LazyMediaImage from '@/components/LazyMediaImage';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
 import {
   type ContentSection,
@@ -601,13 +602,15 @@ function TasksForTeam({ tenant }: { tenant: number }) {
               {detail.allowedActions
                 .filter((a) => actions[a])
                 .map((action) => (
-                  <Button
+                  <PointEstimateButton
+                    tenantId={tenant}
+                    operations={action === 'CANCEL' ? [] : [{ url: `/api/tenants/${tenant}/production-tasks/${encodeURIComponent(detail.taskKey)}/${action.toLowerCase()}` }]}
                     key={action}
                     loading={busy}
                     onClick={() => void run(detail, action)}
                   >
                     {actions[action]}
-                  </Button>
+                  </PointEstimateButton>
                 ))}
             </div>
             {contentError && <Alert type="warning" title={contentError} />}

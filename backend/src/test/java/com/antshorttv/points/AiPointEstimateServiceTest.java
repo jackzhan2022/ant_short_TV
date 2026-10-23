@@ -48,7 +48,7 @@ class AiPointEstimateServiceTest {
         when(tenants.requireActiveMember(7L)).thenReturn(new TenantContext(1L,7L,2L,"OWNER"));
         when(jdbc.queryForList(contains("team_point_account"),eq(7L))).thenReturn(List.of(
             Map.of("balance",new BigDecimal("100"),"trial_balance",new BigDecimal("90"))));
-        when(calculator.calculate(eq(7L),any())).thenAnswer(call->{
+        when(calculator.calculate(eq(7L),any(),any(AiPointEstimateCalculator.Context.class))).thenAnswer(call->{
             AiPointEstimatePlan plan=call.getArgument(1);
             return new AiPointEstimateCalculator.Line(plan.label(),plan.modelId(),20L,
                 plan.usage().get(AiUsageMetric.CALL),plan.estimated(),plan.trialEligible());
@@ -86,6 +86,8 @@ class AiPointEstimateServiceTest {
     @Test
     void separateNewProjectPlansDoNotShareOneNullProjectCeiling() {
         var configs = (ProjectAiConfigService) org.springframework.test.util.ReflectionTestUtils.getField(service, "configs");
+        var router = (AiModelRouter) org.springframework.test.util.ReflectionTestUtils.getField(service, "router");
+        when(router.route(9L,"TEXT")).thenReturn(mock(com.antshorttv.ai.AiModelRoute.class));
         when(configs.resolveModelId(7L, null, "TEXT")).thenReturn(9L);
         var versions = (AiModelPointPriceVersionMapper) org.springframework.test.util.ReflectionTestUtils.getField(service, "pointVersions");
         var version = new AiModelPointPriceVersionEntity(); version.id = 20L;
@@ -99,7 +101,7 @@ class AiPointEstimateServiceTest {
         var runner = (WorkflowAgentRunner) org.springframework.test.util.ReflectionTestUtils.getField(service, "agents");
         when(runner.freezeFormal(anyString(), eq(7L))).thenReturn(
             new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent, List.of()));
-        when(calculator.calculate(eq(7L), any())).thenAnswer(call -> {
+        when(calculator.calculate(eq(7L), any(),any(AiPointEstimateCalculator.Context.class))).thenAnswer(call -> {
             AiPointEstimatePlan plan = call.getArgument(1);
             return new AiPointEstimateCalculator.Line(plan.label(), plan.modelId(), 20L,
                 new BigDecimal("800"), true, true);
@@ -110,6 +112,18 @@ class AiPointEstimateServiceTest {
         assertThat(result.estimatedPoints()).isEqualByComparingTo("2000");
         assertThat(result.lines().stream().map(AiPointEstimateCalculator.Line::points).reduce(BigDecimal.ZERO, BigDecimal::add))
             .isEqualByComparingTo("2000");
+        verify(versions,times(1)).selectEffective(eq(9L),any());
+        verify(components,times(1)).selectByVersion(20L);
+        verify(router,times(1)).route(9L,"TEXT");
+        verify(runner,times(1)).freezeFormal("short-drama-global-understanding",7L);
+        when(jdbc.queryForList(contains("team_point_account"),eq(7L))).thenReturn(List.of(
+            Map.of("balance",new BigDecimal("3000"),"trial_balance",BigDecimal.ZERO)));
+        var next=service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/projects",data)));
+        assertThat(next.sufficient()).isTrue();
+        verify(versions,times(2)).selectEffective(eq(9L),any());
+        verify(components,times(2)).selectByVersion(20L);
+        verify(router,times(2)).route(9L,"TEXT");
+        verify(jdbc,times(2)).queryForList(contains("team_point_account"),eq(7L));
     }
 
     AiPointEstimatePlan plan(String label, String points) {
@@ -189,7 +203,7 @@ class AiPointEstimateServiceTest {
             new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent,List.of()));
         service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/tenants/7/ai-executions/51/retry",null)));
         var captured=org.mockito.ArgumentCaptor.forClass(AiPointEstimatePlan.class);
-        verify(calculator).calculate(eq(7L),captured.capture());
+        verify(calculator).calculate(eq(7L),captured.capture(),any(AiPointEstimateCalculator.Context.class));
         assertThat(captured.getValue().modelId()).isEqualTo(9L);
         assertThat(captured.getValue().frozenPointPriceVersionId()).isEqualTo(30L);
         assertThat(captured.getValue().frozenDiscountRate()).isEqualByComparingTo("0.5");
@@ -206,5 +220,37 @@ class AiPointEstimateServiceTest {
         assertThatThrownBy(()->service.estimate(7L,List.of(new AiPointEstimateService.Operation(
             "/api/projects/3/ai-image-tasks",null)))).isInstanceOf(BusinessException.class);
         verifyNoInteractions(images,calculator);
+    }
+
+    @Test
+    void twentyEpisodesReuseConfigurationAndOneStoryboardQueryWithoutDroppingAnyCharges() {
+        var configs=(ProjectAiConfigService)org.springframework.test.util.ReflectionTestUtils.getField(service,"configs");
+        var router=(AiModelRouter)org.springframework.test.util.ReflectionTestUtils.getField(service,"router");
+        var versions=(AiModelPointPriceVersionMapper)org.springframework.test.util.ReflectionTestUtils.getField(service,"pointVersions");
+        var components=(AiModelPointPriceComponentMapper)org.springframework.test.util.ReflectionTestUtils.getField(service,"components");
+        var runner=(WorkflowAgentRunner)org.springframework.test.util.ReflectionTestUtils.getField(service,"agents");
+        when(configs.resolveModelId(7L,3L,"TEXT")).thenReturn(9L);
+        when(router.route(9L,"TEXT")).thenReturn(mock(com.antshorttv.ai.AiModelRoute.class));
+        var version=new AiModelPointPriceVersionEntity();version.id=20L;
+        when(versions.selectEffective(eq(9L),any())).thenReturn(version);
+        var component=new AiModelPointPriceComponentEntity();component.metric="CALL";component.pointRate=BigDecimal.ONE;component.unitSize=BigDecimal.ONE;
+        when(components.selectByVersion(20L)).thenReturn(List.of(component));
+        var agent=mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);
+        when(agent.maxTokens()).thenReturn(1024);when(agent.systemPrompt()).thenReturn("system");
+        when(runner.freezeFormal(anyString(),eq(7L))).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent,List.of()));
+        when(jdbc.queryForList(contains("select content from script where"),eq(7L),eq(3L))).thenReturn(List.of(Map.of("content","完整剧本")));
+        var episodes=java.util.stream.LongStream.rangeClosed(1,20).mapToObj(id->Map.<String,Object>of("id",id,"content","第"+id+"集剧情")).toList();
+        when(jdbc.queryForList(contains("select id, content from script_episode"),eq(7L),eq(3L))).thenReturn(episodes);
+        when(jdbc.queryForList(contains("select distinct episode_id"),eq(Long.class),eq(7L),eq(3L))).thenReturn(List.of(1L));
+        var result=service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/projects/3/asset-reextraction",json.createObjectNode())));
+        assertThat(result.lines()).hasSize(40);
+        assertThat(result.estimatedPoints()).isEqualByComparingTo("101");
+        verify(router,times(1)).route(9L,"TEXT");
+        verify(versions,times(1)).selectEffective(eq(9L),any());
+        verify(components,times(1)).selectByVersion(20L);
+        verify(runner,times(1)).freezeFormal("short-drama-asset-recognition",7L);
+        verify(runner,times(1)).freezeFormal("short-drama-storyboard",7L);
+        verify(jdbc,times(1)).queryForList(contains("select distinct episode_id"),eq(Long.class),eq(7L),eq(3L));
+        verify(jdbc,times(1)).queryForList(contains("select content from script where"),eq(7L),eq(3L));
     }
 }

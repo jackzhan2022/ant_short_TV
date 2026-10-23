@@ -1,3 +1,4 @@
+import '@root/tests/mockPointEstimate';
 import {
   act,
   fireEvent,

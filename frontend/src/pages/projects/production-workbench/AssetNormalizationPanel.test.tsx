@@ -1,3 +1,4 @@
+import '@root/tests/mockPointEstimate';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AssetNormalizationPanel from './AssetNormalizationPanel';
@@ -7,6 +8,7 @@ vi.mock('./normalization-service', () => ({
   queryAssetNormalization: vi.fn(), submitAssetNormalization: vi.fn(),
 }));
 vi.mock('antd', () => ({
+  Tooltip: ({ children }: any) => <>{children}</>,
   App: { useApp: () => ({ message: { error: vi.fn() } }) },
   Button: ({ children, loading: _loading, ...props }: any) => <button {...props}>{children}</button>,
 }));

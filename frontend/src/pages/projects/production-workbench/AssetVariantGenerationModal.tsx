@@ -1,6 +1,7 @@
 import { App, Button, Input, Modal, Pagination } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import LazyMediaImage from '@/components/LazyMediaImage';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import type { ProjectModelOption } from './ai-config/service';
 import {
   type AiImageResult,
@@ -23,6 +24,7 @@ type Props = {
   variant?: VisualVariant;
   assetType?: VisualVariant['assetType'];
   primaryImageUrl?: string | null;
+  referenceImageUrl?: string | null;
   imageModels: ProjectModelOption[];
   values: AssetVariantGenerationValues;
   submitting: boolean;
@@ -42,7 +44,7 @@ export default function AssetVariantGenerationModal(props: Props) {
 }
 
 function GenerationDialog({
-  projectId, variant, assetType, primaryImageUrl, imageModels, values, submitting,
+  projectId, variant, assetType, primaryImageUrl, referenceImageUrl, imageModels, values, submitting,
   disabled, onChange, onCancel, onSubmit, onImageSelected,
 }: Props & { variant: VisualVariant }) {
   const { message } = App.useApp();
@@ -210,9 +212,12 @@ function GenerationDialog({
               </select>
               <span className={styles.priceNote}>积分按所选模型实时结算</span>
             </div>
-            <Button type="primary" aria-label={`提交${variant.name}生成`} loading={submitting || generating} disabled={Boolean(busy)} onClick={onSubmit}>
+            <PointEstimateButton operations={values.prompt.trim() ? [{ url: `/api/projects/${projectId}/ai-image-tasks`, data: {
+              taskType: assetType || variant.assetType, targetType: 'VISUAL_VARIANT', targetId: variant.id,
+              ...values, referenceImages: (assetType || variant.assetType) === 'CHARACTER' && !variant.primary && (referenceImageUrl || primaryImageUrl) ? [referenceImageUrl || primaryImageUrl] : undefined,
+            } }] : undefined} type="primary" aria-label={`提交${variant.name}生成`} loading={submitting || generating} disabled={Boolean(busy)} onClick={onSubmit}>
               {generating ? '正在生成' : '生成图片'}
-            </Button>
+            </PointEstimateButton>
           </div>
         </section>
       </div>

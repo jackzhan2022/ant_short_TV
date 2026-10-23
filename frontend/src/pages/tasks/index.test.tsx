@@ -1,3 +1,4 @@
+import '@root/tests/mockPointEstimate';
 import '@testing-library/jest-dom/vitest';
 import {
   act,

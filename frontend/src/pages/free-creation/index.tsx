@@ -1,3 +1,4 @@
+import PointEstimateButton from '@/components/PointEstimateButton';
 import {
   BulbOutlined,
   PictureOutlined,
@@ -304,7 +305,10 @@ function Workspace({ teamName, tenantId }: { teamName: string; tenantId: number 
                 {submitError}
               </p>
             ) : null}
-            <Button
+            <PointEstimateButton
+              tenantId={tenantId}
+              operations={draftError(drafts[mode], models.find((item) => item.id === drafts[mode].modelId && item.serviceType === mode))
+                ? undefined : [{ url: '/api/free-creations', data: requestFromDraft(drafts[mode], mode, 'button-point-estimate') }]}
               type="primary"
               block
               size="large"
@@ -314,7 +318,7 @@ function Workspace({ teamName, tenantId }: { teamName: string; tenantId: number 
               onClick={() => void submit()}
             >
               生成{labels[mode]}
-            </Button>
+            </PointEstimateButton>
             <p>生成前确认预计积分，提交后在右侧查看结果</p>
           </div>
         </section>

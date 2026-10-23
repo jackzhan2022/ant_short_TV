@@ -47,6 +47,26 @@ export class PointEstimateCancelledError extends Error {
 export const isPointEstimateCancelled = (error: unknown) =>
   error instanceof PointEstimateCancelledError;
 
+/** Read-only quote; never reserves points, submits work or opens a confirmation. */
+export async function fetchPointEstimate(
+  operations: PointEstimateOperation[],
+  tenantId: number,
+  signal?: AbortSignal,
+): Promise<PointEstimate> {
+  if (!operations.length) throw new Error('没有可预估的任务');
+  if (!tenantId) throw new Error('请先选择当前团队');
+  const response = await request<{ success: boolean; data: PointEstimate; errorMessage?: string }>(
+    `/api/tenants/${tenantId}/points/estimate`,
+    { method: 'POST', data: { operations }, skipErrorHandler: true, signal, timeout: 15000 },
+  );
+  if (!response.success || !response.data) throw new Error(response.errorMessage || '积分预估失败');
+  if (typeof response.data.estimatedPoints !== 'number' || !Number.isFinite(response.data.estimatedPoints) || response.data.estimatedPoints < 0
+    || !Array.isArray(response.data.lines) || typeof response.data.sufficient !== 'boolean') {
+    throw new Error('积分预估结果不完整');
+  }
+  return response.data;
+}
+
 type Options = RequestOptions & { pointEstimateConfirmed?: boolean };
 
 export function requiresPointEstimate(url: string, options: Options = {}) {
@@ -147,28 +167,10 @@ export function confirmPointEstimates(
         reject(new PointEstimateCancelledError());
       },
     });
-    void request<{
-      success: boolean;
-      data: PointEstimate;
-      errorMessage?: string;
-    }>(`/api/tenants/${tenant}/points/estimate`, {
-      method: 'POST',
-      data: { operations },
-      skipErrorHandler: true,
-    })
+    void fetchPointEstimate(operations, tenant)
       .then((response) => {
         if (closed) return;
-        if (!response.success || !response.data)
-          throw new Error(response.errorMessage || '积分预估失败');
-        if (
-          !Number.isFinite(Number(response.data.estimatedPoints)) ||
-          Number(response.data.estimatedPoints) < 0 ||
-          !Array.isArray(response.data.lines) ||
-          typeof response.data.sufficient !== 'boolean'
-        ) {
-          throw new Error('积分预估结果不完整');
-        }
-        estimate = response.data;
+        estimate = response;
         dialog.update({
           content: <EstimateContent estimate={estimate} />,
           okButtonProps: { disabled: !estimate.sufficient },
@@ -205,5 +207,7 @@ export async function pointEstimatedRequest<T>(
     );
   }
   if (requestOptions.signal?.aborted) throw new DOMException('操作已取消', 'AbortError');
-  return request<T>(url, requestOptions);
+  const response = await request<T>(url, requestOptions);
+  if (requiresPointEstimate(url, options)) window.dispatchEvent(new Event('point-estimate-invalidated'));
+  return response;
 }

@@ -76,4 +76,42 @@ class AiPointEstimateCalculatorTest {
             .isInstanceOf(ModelBillingMissingException.class);
         verifyNoInteractions(settlements);
     }
+
+    @Test
+    void thirtyIdenticalBatchItemsSharePricingReadsButTheNextRequestSeesNewPricesAndDiscounts() {
+        var billing=mock(AiModelBillingResolver.class);
+        var settlements=mock(AiPointSettlementService.class);
+        var entitlements=mock(CommercialEntitlementResolver.class);
+        var usage=Map.of(AiUsageMetric.IMAGE,new BigDecimal("4"));
+        var dimensions=Map.of("quality","STANDARD");
+        when(billing.requireComplete(eq(9L),anySet(),anyMap(),any()))
+            .thenReturn(new ModelBillingSnapshot(10L,20L,Map.of(),Map.of()));
+        when(settlements.calculateModelPoints(20L,usage,dimensions)).thenReturn(new BigDecimal("31.25"));
+        when(entitlements.resolveGlobalDiscount(eq(7L),any())).thenReturn(
+            new CommercialEntitlementResolver.CommercialDiscountSnapshot(1L,2L,new BigDecimal("0.8")));
+        var calculator=new AiPointEstimateCalculator(billing,settlements,entitlements);
+        var context=new AiPointEstimateCalculator.Context(7L);
+        BigDecimal total=BigDecimal.ZERO;
+        for(int i=0;i<30;i++) {
+            var line=calculator.calculate(7L,new AiPointEstimatePlan("图片"+i,9L,usage,dimensions,false),context);
+            assertThat(line.label()).isEqualTo("图片"+i);
+            total=total.add(line.points());
+        }
+        assertThat(total).isEqualByComparingTo("750");
+        verify(billing,times(1)).requireComplete(eq(9L),anySet(),eq(dimensions),any());
+        verify(settlements,times(1)).calculateModelPoints(20L,usage,dimensions);
+        verify(entitlements,times(1)).resolveGlobalDiscount(eq(7L),any());
+
+        when(billing.requireComplete(eq(9L),anySet(),anyMap(),any()))
+            .thenReturn(new ModelBillingSnapshot(10L,21L,Map.of(),Map.of()));
+        when(settlements.calculateModelPoints(21L,usage,dimensions)).thenReturn(new BigDecimal("40"));
+        when(entitlements.resolveGlobalDiscount(eq(7L),any())).thenReturn(
+            new CommercialEntitlementResolver.CommercialDiscountSnapshot(1L,2L,new BigDecimal("0.5")));
+        var next=calculator.calculate(7L,new AiPointEstimatePlan("下一次",9L,usage,dimensions,false),new AiPointEstimateCalculator.Context(7L));
+        assertThat(next.pointPriceVersionId()).isEqualTo(21L);
+        assertThat(next.points()).isEqualByComparingTo("20");
+        verify(entitlements,times(2)).resolveGlobalDiscount(eq(7L),any());
+        assertThatThrownBy(()->calculator.calculate(8L,new AiPointEstimatePlan("其它团队",9L,usage,dimensions,false),context))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
 }

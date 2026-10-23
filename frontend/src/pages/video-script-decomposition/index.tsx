@@ -31,6 +31,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MediaUploadHandle } from '@/services/mediaUpload';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import { statusText } from '@/utils/fieldDictionary';
 import type {
   VideoDecompositionBatch,
@@ -444,7 +445,12 @@ const VideoScriptDecompositionPage = () => {
             },
           ]}
           toolBarRender={() => [
-            <Button
+            <PointEstimateButton
+              operations={modelId && canCreateVideoDecompositionBatch(episodes) ? [{ url: '/api/video-script-decomposition/batches', data: {
+                name: batchName.trim(), modelId, videos: episodes.map((episode) => ({
+                  fileName: episode.fileName, storagePath: episode.storagePath || '', uploadSessionToken: episode.uploadSessionToken || '', mimeType: episode.mimeType, fileSize: episode.size,
+                })),
+              } }] : undefined}
               key="create"
               type="primary"
               icon={<PlayCircleOutlined />}
@@ -482,7 +488,7 @@ const VideoScriptDecompositionPage = () => {
               }}
             >
               开始生成剧本
-            </Button>,
+            </PointEstimateButton>,
           ]}
         />
 
@@ -619,7 +625,7 @@ const VideoScriptDecompositionPage = () => {
                   extra:
                     item.episode.status === 'FAILED' &&
                     item.episode.retryable ? (
-                      <Button
+                      <PointEstimateButton operations={[{ url: `/api/video-script-decomposition/episodes/${item.episode.id}/retry` }]}
                         size="small"
                         icon={<ReloadOutlined />}
                         loading={retryingEpisodeId === item.episode.id}
@@ -629,7 +635,7 @@ const VideoScriptDecompositionPage = () => {
                         }}
                       >
                         重试
-                      </Button>
+                      </PointEstimateButton>
                     ) : null,
                   children: item.screenplayContent ? (
                     <XMarkdown>{item.screenplayContent}</XMarkdown>

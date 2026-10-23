@@ -1,3 +1,4 @@
+import '@root/tests/mockPointEstimate';
 import {
   act,
   fireEvent,
@@ -39,6 +40,7 @@ vi.mock('@ant-design/x-markdown', () => ({
   default: ({ children }: any) => <article>{children}</article>,
 }));
 vi.mock('antd', () => ({
+  Tooltip: ({ children }: any) => <>{children}</>,
   App: {
     useApp: () => ({
       message: {

@@ -112,7 +112,7 @@ public class FreeCreationService {
     public AiPointEstimatePlan pointEstimate(Long tenantId,JsonNode data) {
         TenantContext context=authorize(tenantId); FreeCreationRequest request;
         try { request=json.treeToValue(data,FreeCreationRequest.class); } catch(Exception ex) { throw invalid("自由创作参数格式不正确。"); }
-        validate(request); Prepared prepared=prepare(context,request);
+        validate(request); Prepared prepared=prepare(context,request,true);
         var plan=new AiPointEstimatePlan("自由创作"+("IMAGE".equals(request.mediaType())?"图片":"视频"),request.modelId(),
             prepared.usage(),prepared.dimensions(),"VIDEO".equals(request.mediaType()));
         return "VIDEO".equals(request.mediaType())?plan.paidOnly():plan;
@@ -180,11 +180,16 @@ public class FreeCreationService {
     }
 
     Prepared prepare(TenantContext context,FreeCreationRequest request) {
+        return prepare(context,request,false);
+    }
+
+    private Prepared prepare(TenantContext context,FreeCreationRequest request,boolean estimate) {
         AiModelRoute route=router.route(request.modelId(),request.mediaType());
         ObjectNode params=request.parameters()==null?json.createObjectNode():json.valueToTree(request.parameters());
         JsonNode config=read(route.model().getConfigJson());
         List<FreeCreationMediaEntity> refs=new ArrayList<>();
-        for(var ref:request.references()==null?List.<FreeCreationRequest.Reference>of():request.references()) refs.add(media.reference(context,ref));
+        for(var ref:request.references()==null?List.<FreeCreationRequest.Reference>of():request.references())
+            refs.add(estimate && "IMAGE".equals(request.mediaType()) ? media.referenceForImageEstimate(context,ref) : media.reference(context,ref));
         Map<AiUsageMetric,BigDecimal> usage; Map<String,String> dimensions;
         if("IMAGE".equals(request.mediaType())) {
             allow(params,Set.of("count","aspectRatio","quality","outputFormat","size","negativePrompt"));

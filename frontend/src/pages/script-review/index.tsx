@@ -17,7 +17,6 @@ import {
   Empty,
   Input,
   List,
-  Modal,
   Progress,
   Radio,
   Select,
@@ -29,6 +28,8 @@ import { useEffect, useMemo, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
+import PointEstimateButton from '@/components/PointEstimateButton';
+import PointEstimateModal from '@/components/PointEstimateButton/Modal';
 import { statusText } from '@/utils/fieldDictionary';
 import { DEFAULT_REVIEW_DIMENSIONS, REVIEW_DIMENSIONS } from './dimensions';
 import styles from './index.module.css';
@@ -722,7 +723,8 @@ const ScriptReviewPage = () => {
                       </Button>
                     )}
                     {task.status === 'FAILED' && (
-                      <Button
+                      <PointEstimateButton
+                        operations={[{ url: `/api/script-review/tasks/${task.id}/retry` }]}
                         size="small"
                         onClick={() => {
                           retryReviewTask(task.id).then((response) =>
@@ -745,7 +747,7 @@ const ScriptReviewPage = () => {
                               ? '重试失败维度'
                               : '重试失败单元'
                             : '重试'}
-                      </Button>
+                      </PointEstimateButton>
                     )}
                   </Space>
                 </div>
@@ -805,7 +807,13 @@ const ScriptReviewPage = () => {
           </Drawer>
         </>
       )}
-      <Modal
+      <PointEstimateModal
+        operations={selectedProjectId && selectedVersionId && dimensions.length && (scopeType === 'ALL' || scopeValues.trim()) ? [{
+          url: `/api/script-review/projects/${selectedProjectId}/tasks`, data: {
+            versionId: selectedVersionId, reviewMode, selectedDimensions: dimensions, reviewScopeType: scopeType,
+            reviewScope: scopeType === 'ALL' ? {} : { [scopeType === 'EPISODES' ? 'episodeNos' : 'sceneKeys']: scopeValues.split(/[,，\n]/).map((value) => value.trim()).filter(Boolean) },
+          },
+        }] : undefined}
         centered
         confirmLoading={saving}
         okText="开始审核"
@@ -858,7 +866,7 @@ const ScriptReviewPage = () => {
             />
           ) : null}
         </Space>
-      </Modal>
+      </PointEstimateModal>
     </PageContainer>
   );
 };

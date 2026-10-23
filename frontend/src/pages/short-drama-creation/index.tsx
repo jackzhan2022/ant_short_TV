@@ -39,6 +39,7 @@ import type { ProjectFormValues } from '@/services/account-team/project';
 import type { TenantMember } from '@/services/account-team/types';
 import type { MediaUploadHandle } from '@/services/mediaUpload';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import {
   type PublicStyle,
   queryStyleCategories,
@@ -578,9 +579,12 @@ const ShortDramaCreationPage = () => {
           初始设定
         </Button>
         <div className={styles.costNote}>
-          点击开始创作后，将预估自动分析及分镜的积分消耗
+          预计积分包含自动分析及分镜，实际按模型用量结算
           <InfoCircleOutlined />
-          <Button
+          <PointEstimateButton
+            tenantId={tenantId}
+            operations={scriptDraft.trim() ? [{ url: '/api/projects', data: { ...projectForm, initialScriptContent: scriptDraft.trim() } }] : []}
+            estimateEnabled={step === 2}
             className={styles.startButton}
             icon={<PlayCircleOutlined />}
             loading={submitting}
@@ -588,7 +592,7 @@ const ShortDramaCreationPage = () => {
             type="primary"
           >
             开始创作
-          </Button>
+          </PointEstimateButton>
         </div>
       </header>
 

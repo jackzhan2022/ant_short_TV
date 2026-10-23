@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -48,22 +49,25 @@ public class AiModelBillingResolver {
         }
         Map<AiUsageMetric, AiModelPriceComponentEntity> costs = new EnumMap<>(AiUsageMetric.class);
         Map<AiUsageMetric, AiModelPointPriceComponentEntity> points = new EnumMap<>(AiUsageMetric.class);
+        var costComponents = costComponentMapper.selectByVersion(costVersion.id);
+        var pointComponents = pointComponentMapper.selectByVersion(pointVersion.id);
         for (AiUsageMetric metric : metrics) {
-            costs.put(metric, bestCost(costVersion.id, metric, dimensions));
-            points.put(metric, bestPoint(pointVersion.id, metric, dimensions));
+            costs.put(metric, bestCost(costComponents, metric, dimensions));
+            points.put(metric, bestPoint(pointComponents, metric, dimensions));
         }
         return new ModelBillingSnapshot(costVersion.id, pointVersion.id, Map.copyOf(costs), Map.copyOf(points));
     }
 
-    private AiModelPriceComponentEntity bestCost(Long versionId, AiUsageMetric metric, Map<String, String> dimensions) {
-        return costComponentMapper.selectByVersionAndMetric(versionId, metric.name()).stream()
+    private AiModelPriceComponentEntity bestCost(List<AiModelPriceComponentEntity> components, AiUsageMetric metric, Map<String, String> dimensions) {
+        return components.stream()
+            .filter(component -> metric.name().equals(component.metric))
             .filter(component -> matches(component.dimensionsJson, dimensions))
             .max(Comparator.comparingInt(component -> AiAccountingJson.read(component.dimensionsJson).size()))
             .orElseThrow(() -> new ModelBillingMissingException("No effective model cost price for " + metric));
     }
 
-    private AiModelPointPriceComponentEntity bestPoint(Long versionId, AiUsageMetric metric, Map<String, String> dimensions) {
-        return pointComponentMapper.selectByVersion(versionId).stream()
+    private AiModelPointPriceComponentEntity bestPoint(List<AiModelPointPriceComponentEntity> components, AiUsageMetric metric, Map<String, String> dimensions) {
+        return components.stream()
             .filter(component -> metric.name().equals(component.metric))
             .filter(component -> matches(component.dimensionsJson, dimensions))
             .max(Comparator.comparingInt(component -> AiAccountingJson.read(component.dimensionsJson).size()))

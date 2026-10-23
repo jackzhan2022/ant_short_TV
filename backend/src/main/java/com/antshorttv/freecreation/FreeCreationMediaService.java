@@ -36,6 +36,14 @@ public class FreeCreationMediaService {
     private final AiExecutionService executions;
     private final org.springframework.transaction.support.TransactionTemplate transactions;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
+    // Completed uploads are promoted to immutable original keys. Cache metadata, never authorization or prices.
+    private record UploadIdentity(Long tenant, String key, String etag, String type, long size) {}
+    private record Metadata(Integer width,Integer height,BigDecimal duration,BigDecimal fps,String format,long loadedAt) {}
+    private final Map<UploadIdentity,Metadata> uploadMetadata=Collections.synchronizedMap(
+        new LinkedHashMap<UploadIdentity,Metadata>(32,0.75f,true) {
+            @Override protected boolean removeEldestEntry(Map.Entry<UploadIdentity,Metadata> eldest) {return size()>256;}
+        });
+    private final Object[] probeLocks=java.util.stream.IntStream.range(0,32).mapToObj(ignored->new Object()).toArray();
 
     public FreeCreationMediaService(FreeCreationMediaMapper media, FreeCreationMapper creations,
         MediaUploadSessionService uploads, ObjectStorageService storage, ObjectStorageKeyFactory keys,
@@ -48,6 +56,16 @@ public class FreeCreationMediaService {
     }
 
     public FreeCreationMediaEntity reference(TenantContext context, FreeCreationRequest.Reference request) {
+        return reference(context, request, true);
+    }
+
+    /** Image pricing uses reference count, not pixel dimensions. Ownership and completed-upload checks still run. */
+    public FreeCreationMediaEntity referenceForImageEstimate(TenantContext context, FreeCreationRequest.Reference request) {
+        if (!"IMAGE".equals(request.kind())) throw invalid("图片生成仅支持图片参考素材。");
+        return reference(context, request, false);
+    }
+
+    private FreeCreationMediaEntity reference(TenantContext context, FreeCreationRequest.Reference request, boolean inspectMetadata) {
         boolean token=request.uploadSessionToken()!=null && !request.uploadSessionToken().isBlank();
         if (token == (request.referenceId()!=null)) throw invalid("参考素材必须指定上传会话或已授权素材之一。");
         FreeCreationMediaEntity result;
@@ -59,8 +77,9 @@ public class FreeCreationMediaService {
                 throw invalid("参考素材类型与已验证文件不一致。");
             result=new FreeCreationMediaEntity(); result.tenantId=context.tenantId(); result.kind=request.kind();
             result.objectKey=verified.objectKey(); result.mimeType=verified.contentType(); result.fileSize=verified.size();
-            result.fileName=jdbc.queryForObject("select file_name from media_upload_session where session_token=?",String.class,request.uploadSessionToken());
-            result.format=format(result.mimeType); probe(result);
+            if (inspectMetadata) result.fileName=jdbc.queryForObject("select file_name from media_upload_session where session_token=?",String.class,request.uploadSessionToken());
+            result.format=format(result.mimeType);
+            if (inspectMetadata) probeUpload(result,verified);
         } else {
             result=media.selectById(request.referenceId());
             FreeCreationEntity owner=result==null?null:creations.selectById(result.creationId);
@@ -71,13 +90,24 @@ public class FreeCreationMediaService {
                 String state=jdbc.queryForObject("select status from ai_execution_task where id=?",String.class,owner.executionId);
                 if (!"SUCCEEDED".equals(state)) throw invalid("仅已完成作品可用作参考素材。");
             }
+            // MyBatis may return the same instance again in this read transaction.
+            result=copyReference(result);
         }
-        if ("OUTPUT".equals(result.role) && "IMAGE".equals(result.kind)) {
+        if (inspectMetadata && "OUTPUT".equals(result.role) && "IMAGE".equals(result.kind)) {
             var display=images.display(identity(result));
             result.thumbnailKey=display!=null && "READY".equals(display.status())?display.objectKey():result.objectKey;
         }
         result.id=null; result.creationId=null; result.role="REFERENCE"; result.createdAt=LocalDateTime.now();
         return result;
+    }
+
+    private static FreeCreationMediaEntity copyReference(FreeCreationMediaEntity source) {
+        var copy=new FreeCreationMediaEntity();
+        copy.id=source.id;copy.tenantId=source.tenantId;copy.creationId=source.creationId;copy.role=source.role;copy.position=source.position;
+        copy.kind=source.kind;copy.fileName=source.fileName;copy.objectKey=source.objectKey;copy.thumbnailKey=source.thumbnailKey;
+        copy.mimeType=source.mimeType;copy.format=source.format;copy.fileSize=source.fileSize;
+        copy.width=source.width;copy.height=source.height;copy.durationSeconds=source.durationSeconds;copy.fps=source.fps;
+        return copy;
     }
 
     private void probe(FreeCreationMediaEntity item) {
@@ -107,6 +137,21 @@ public class FreeCreationMediaService {
             }
         } catch (BusinessException ex) { throw ex; }
         catch (Exception ex) { throw invalid("无法读取参考素材元数据，请检查文件格式后重新上传。"); }
+    }
+
+    private void probeUpload(FreeCreationMediaEntity item,VerifiedMediaUpload upload) {
+        if(upload.eTag()==null || upload.eTag().isBlank()) {probe(item);return;}
+        var identity=new UploadIdentity(item.tenantId,upload.objectKey(),upload.eTag(),upload.contentType(),upload.size());
+        synchronized(probeLocks[Math.floorMod(identity.hashCode(),probeLocks.length)]) {
+            var metadata=uploadMetadata.get(identity);
+            if(metadata==null || System.nanoTime()-metadata.loadedAt()>=Duration.ofMinutes(10).toNanos()) {
+                probe(item);
+                metadata=new Metadata(item.width,item.height,item.durationSeconds,item.fps,item.format,System.nanoTime());
+                uploadMetadata.put(identity,metadata);
+            }
+            item.width=metadata.width();item.height=metadata.height();item.durationSeconds=metadata.duration();
+            item.fps=metadata.fps();item.format=metadata.format();
+        }
     }
 
     static BigDecimal decimalRate(String value) {
