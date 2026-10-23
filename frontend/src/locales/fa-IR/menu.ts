@@ -1,4 +1,5 @@
 export default {
+  'menu.free-creation': 'آفرینش آزاد',
   'menu.asset-library': 'کتابخانه دارایی',
   'menu.messages': 'مرکز پیام',
   'menu.drama-library': 'مدیریت سریال',

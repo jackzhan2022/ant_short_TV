@@ -53,6 +53,8 @@ public class AiPointEstimateService {
     private final AiPointEstimateCalculator calculator;
     private final ObjectMapper json;
     private final WorkbenchPointPolicy workbenchPolicy;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.freecreation.FreeCreationService freeCreations;
     @org.springframework.beans.factory.annotation.Value("${review.workflow.deep-unit-characters:24000}")
     private int reviewUnitCharacters = 24000;
     @org.springframework.beans.factory.annotation.Value("${review.workflow.deep-unit-overlap:1200}")
@@ -113,6 +115,7 @@ public class AiPointEstimateService {
 
     private List<AiPointEstimatePlan> plan(Long tenant, Operation operation) {
         String path = operation.url();
+        if ("/api/free-creations".equals(path)) return List.of(freeCreations.pointEstimate(tenant, operation.data()));
         JsonNode data = operation.data() == null ? json.createObjectNode() : operation.data();
         var project = Pattern.compile("^/api/projects/(\\d+)/(.*)$").matcher(path);
         if (project.matches()) return projectPlan(tenant, Long.valueOf(project.group(1)), project.group(2), data);

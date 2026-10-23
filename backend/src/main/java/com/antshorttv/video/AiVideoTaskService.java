@@ -1509,7 +1509,7 @@ public class AiVideoTaskService {
             videoAuthorizedUsage(task, maximumDuration), videoDimensions(task), true).paidOnly();
     }
 
-    private Map<AiUsageMetric, BigDecimal> videoAuthorizedUsage(AiVideoTaskEntity task, int maximumDuration) {
+    public Map<AiUsageMetric, BigDecimal> videoAuthorizedUsage(AiVideoTaskEntity task, int maximumDuration) {
         if (!"VOLCENGINE_ARK".equalsIgnoreCase(task.providerCode)) {
             return Map.of(AiUsageMetric.CALL, BigDecimal.ONE,
                 AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(maximumDuration));
@@ -1553,7 +1553,7 @@ public class AiVideoTaskService {
             pixelFrames.divide(BigDecimal.valueOf(1024), 0, java.math.RoundingMode.CEILING));
     }
 
-    private Map<String, String> videoDimensions(AiVideoTaskEntity task) {
+    public Map<String, String> videoDimensions(AiVideoTaskEntity task) {
         boolean referenceVideo = false;
         for (JsonNode item : videoSnapshot(task).path("references")) {
             if ("VIDEO".equalsIgnoreCase(item.path("reference").path("mediaType").asText())) referenceVideo = true;

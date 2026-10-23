@@ -43,8 +43,10 @@ public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
         try {
             JsonNode options = model.getConfigJson() == null || model.getConfigJson().isBlank()
                 ? objectMapper.createObjectNode() : objectMapper.readTree(model.getConfigJson());
-            String quality = option(options, "quality", "auto", qualities(model.getModelCode()));
-            String outputFormat = option(options, "outputFormat", "png", Set.of("png", "jpeg", "webp"));
+            String quality = request.quality() == null || "STANDARD".equalsIgnoreCase(request.quality())
+                ? option(options, "quality", "auto", supportedQualities(model.getModelCode())) : request.quality();
+            if (!supportedQualities(model.getModelCode()).contains(quality)) throw new AiGatewayException(ErrorCode.VALIDATION_ERROR, "所选模型不支持此图片质量。");
+            String outputFormat = request.outputFormat() == null ? option(options, "outputFormat", "png", Set.of("png", "jpeg", "webp")) : request.outputFormat();
             boolean hasReferences = request.referenceImages() != null && !request.referenceImages().isEmpty();
 
             Map<String, Object> tool = new LinkedHashMap<>();
@@ -111,7 +113,7 @@ public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
         return configured.isBlank() ? DEFAULT_RESPONSES_MODEL : configured;
     }
 
-    private Set<String> qualities(String modelCode) {
+    public static Set<String> supportedQualities(String modelCode) {
         return "gpt-image-2".equals(modelCode) ? Set.of("auto", "low", "medium", "high")
             : Set.of("auto", "low", "medium", "high", "xhigh", "max");
     }

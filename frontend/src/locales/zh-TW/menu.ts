@@ -1,4 +1,5 @@
 export default {
+  'menu.free-creation': '自由創作',
   'menu.asset-library': '資產庫',
   'menu.messages': '訊息中心',
   'menu.drama-library': '劇集管理',

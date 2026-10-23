@@ -25,7 +25,7 @@ class AiExecutionDispatcherTest {
         when(tasks.selectList(any())).thenAnswer(call -> {
             com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<AiExecutionTaskEntity> q = call.getArgument(0);
             String sql = q.getSqlSegment();
-            if (q.getParamNameValuePairs().containsValue("TEXT")) return List.of();
+            if (q.getParamNameValuePairs().containsValue("TEXT") || q.getParamNameValuePairs().containsValue("VIDEO")) return List.of();
             return sql.contains("not ") ? List.of(image) : List.of(publication);
         });
         var claim = new AiExecutionClaim(2L,3L,"publication",1,"SUBMIT");

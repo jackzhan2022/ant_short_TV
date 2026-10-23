@@ -12,6 +12,8 @@ public class AiExecutionAccessService {
     private final AiExecutionService executionService;
     private final TenantContextResolver tenantContextResolver;
     private final ProjectAccessResolver projectAccessResolver;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.platform.PlatformPermissionGuard platform;
 
     public AiExecutionAccessService(
         AiExecutionService executionService,
@@ -29,6 +31,10 @@ public class AiExecutionAccessService {
         if (!tenantId.equals(task.tenantId)) {
             throw denied();
         }
+        if ("FREE_CREATION".equals(task.businessType)) {
+            if (platform == null) throw denied();
+            platform.requireAdministrator();
+        }
         if (task.projectId != null) {
             projectAccessResolver.requireView(tenantId, task.projectId);
         }
@@ -41,8 +47,15 @@ public class AiExecutionAccessService {
         if (!tenantId.equals(task.tenantId)) {
             throw denied();
         }
+        if ("FREE_CREATION".equals(task.businessType)) {
+            if (platform == null) throw denied();
+            platform.requireAdministrator();
+        }
         if (task.projectId != null) {
             projectAccessResolver.requireView(tenantId, task.projectId);
+        }
+        if ("FREE_CREATION".equals(task.businessType)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "请在自由创作中重新提交或管理任务。");
         }
         if (!context.userId().equals(task.userId)) {
             throw denied();

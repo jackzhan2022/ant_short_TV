@@ -59,6 +59,7 @@ export function requiresPointEstimate(url: string, options: Options = {}) {
     );
   }
   return (
+    url === '/api/free-creations' ||
     /^\/api\/projects\/\d+\/(?:ai-(?:image|video)-tasks(?:\/\d+\/regenerate)?|asset-image-batches(?:\/\d+\/retry-failed)?|asset-(?:reextraction|normalization)|scripts\/ai-(?:generate|rewrite)|prompts\/ai-generate|storyboards\/ai-breakdown|storyboard-batches|script-analysis\/(?:current\/(?:reanalyze|regenerate-episodes|retry\/[^/]+)|versions\/\d+\/reanalyze)|episodes\/\d+\/(?:summary|assets)\/regenerate)$/.test(
       url,
     ) ||
@@ -203,5 +204,6 @@ export async function pointEstimatedRequest<T>(
       tenantMatch ? Number(tenantMatch[1]) : undefined,
     );
   }
+  if (requestOptions.signal?.aborted) throw new DOMException('操作已取消', 'AbortError');
   return request<T>(url, requestOptions);
 }

@@ -246,6 +246,13 @@ export default [
     component: './short-drama-creation',
   },
   {
+    path: '/free-creation',
+    name: 'free-creation',
+    icon: 'edit',
+    access: 'canUseFreeCreation',
+    component: './free-creation',
+  },
+  {
     path: '/drama-library',
     name: 'drama-library',
     icon: 'playSquare',

@@ -47,7 +47,7 @@ public class AiExecutionDispatcher {
         LocalDateTime now = LocalDateTime.now();
         claimService.recoverExpiredClaims(now);
         int dispatched = 0;
-        for (var type : List.of(AiExecutionPoolType.TEXT, AiExecutionPoolType.IMAGE, AiExecutionPoolType.IMAGE_PUBLICATION)) {
+        for (var type : List.of(AiExecutionPoolType.TEXT, AiExecutionPoolType.IMAGE, AiExecutionPoolType.IMAGE_PUBLICATION, AiExecutionPoolType.VIDEO_SUBMIT, AiExecutionPoolType.VIDEO_QUERY)) {
             List<AiExecutionTaskEntity> candidates = candidates(now, type, cursors.get(type));
             if (candidates.isEmpty()) {
                 boolean scanned = cursors.remove(type) != null;
@@ -90,6 +90,11 @@ public class AiExecutionDispatcher {
     }
 
     private QueryWrapper<AiExecutionTaskEntity> typedPending(LocalDateTime now, AiExecutionPoolType type) {
+        if (type == AiExecutionPoolType.VIDEO_SUBMIT || type == AiExecutionPoolType.VIDEO_QUERY) {
+            return pending(now).eq("task_type", "VIDEO").eq("business_type", "FREE_CREATION")
+                .apply("exists (select 1 from free_creation f where f.execution_id = ai_execution_task.id and f.external_task_id is "
+                    + (type == AiExecutionPoolType.VIDEO_QUERY ? "not " : "") + "null)");
+        }
         return pending(now).eq("task_type", type == AiExecutionPoolType.IMAGE_PUBLICATION ? "IMAGE" : type.name())
             .apply((type == AiExecutionPoolType.IMAGE_PUBLICATION ? "" : "not ") + AiExecutionTaskMapper.IMAGE_PUBLICATION);
     }

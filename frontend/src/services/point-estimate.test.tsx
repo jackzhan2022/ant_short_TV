@@ -134,7 +134,8 @@ describe('point estimates before submission', () => {
     expect(mocks.request).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['http', 'business'])(
+  it.each([
+    '/api/free-creations','http', 'business'])(
     'preserves the backend reason for a %s estimate failure',
     async (kind) => {
       const reason =
@@ -184,6 +185,7 @@ describe('point estimates before submission', () => {
   });
 
   it.each([
+    '/api/free-creations',
     '/api/projects/1/script-analysis/current/reanalyze',
     '/api/projects/1/script-analysis/current/retry/EPISODE_SUMMARY',
     '/api/projects/1/script-analysis/versions/2/reanalyze',
@@ -209,6 +211,7 @@ describe('point estimates before submission', () => {
 
   it('does not estimate viewing, polling, uploads, local composition or cancellation', () => {
     for (const url of [
+      '/api/free-creations/1/reuse',
       '/api/projects/1/ai-video-tasks/2/poll',
       '/api/projects/1/ai-image-tasks/2/cancel',
       '/api/projects/1/episode-compose-tasks',
@@ -227,4 +230,14 @@ describe('point estimates before submission', () => {
       }),
     ).toBe(true);
   });
-});
+  it('free creation waits for explicit confirmation and aborts after a team switch', async () => {
+    const abort = new AbortController();
+    const pending = pointEstimatedRequest('/api/free-creations', { method: 'POST', data: { prompt: '自由创作' }, signal: abort.signal });
+    await flush();
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+    expect(mocks.request.mock.calls[0][1].data.operations[0].url).toBe('/api/free-creations');
+    abort.abort();
+    mocks.confirm.mock.calls[0][0].onOk();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+  });});

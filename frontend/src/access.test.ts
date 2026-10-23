@@ -2,6 +2,34 @@ import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
+  it('自由创作仅允许有效团队中的平台管理员访问', () => {
+    const state = {
+      currentUser: { userid: '1', access: 'user' },
+      selectedTenant: { membership: { status: 'ACTIVE' } },
+      bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } },
+    };
+    expect(access(state).canUseFreeCreation).toBe(true);
+    expect(access({ ...state, currentUser: undefined }).canUseFreeCreation).toBe(false);
+    expect(access({ ...state, selectedTenant: null }).canUseFreeCreation).toBe(false);
+    expect(access({
+      ...state,
+      selectedTenant: { membership: { status: 'REMOVED' } },
+    }).canUseFreeCreation).toBe(false);
+    for (const roles of [[], ['ADMIN'], ['OWNER'], ['PLATFORM_OPERATOR']]) {
+      expect(access({
+        ...state,
+        currentUser: { userid: '2', access: 'admin' },
+        platformPermissions: ['PLATFORM_INSPIRATION_MANAGE'],
+        selectedTenant: { membership: { status: 'ACTIVE', memberType: 'OWNER' }, roles: ['ADMIN'] },
+        bootstrap: { platform: { roles } },
+      }).canUseFreeCreation).toBe(false);
+    }
+    expect(access(undefined).canUseFreeCreation).toBe(false);
+    expect(routes.find((route) => route.path === '/free-creation')).toMatchObject({
+      access: 'canUseFreeCreation', component: './free-creation',
+    });
+  });
+
   it('requires the platform administrator role for tenant package grants', () => {
     const user = { currentUser: { userid: '1' } };
     expect(access({ ...user, bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } } }).canGrantPlatformTenantPackage).toBe(true);

@@ -14,6 +14,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class AiExecutionClaimService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
+    // Accepted remote videos remain in flight while the local worker waits for the next poll.
+    private static final String OCCUPIES_CAPACITY = """
+        (status='RUNNING' or (status='PENDING' and business_type='FREE_CREATION'
+          and exists (select 1 from free_creation f where f.execution_id=ai_execution_task.id
+            and f.external_task_id is not null)))
+        """;
     private final AiExecutionTaskMapper taskMapper;
     private final AiExecutionAttemptMapper attemptMapper;
     private final AiConcurrencyConfigService config;
@@ -39,7 +45,11 @@ public class AiExecutionClaimService {
         }
         boolean publication = "ai_image_generate".equals(candidate.scene)
             && taskMapper.countImagePublication(executionId) == 1L;
-        if (!publication) {
+        // Polling an accepted task does not create remote work. It must also drain after limits decrease.
+        boolean remoteContinuation = "FREE_CREATION".equals(candidate.businessType)
+            && jdbc.queryForObject("select count(*) from free_creation where execution_id=? and external_task_id is not null",
+                Long.class, executionId) == 1L;
+        if (!publication && !remoteContinuation) {
             String type = candidate.taskType == null
                 ? AiExecutionTaskType.classify(candidate.capability, candidate.scene, candidate.businessType).name()
                 : candidate.taskType;
@@ -53,14 +63,15 @@ public class AiExecutionClaimService {
             Long running = taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
                 .eq("tenant_id", candidate.tenantId)
                 .eq("task_type", type)
-                .eq("status", AiExecutionStatus.RUNNING.name())
+                .apply(OCCUPIES_CAPACITY)
+                .ne("id", executionId)
                 .apply("not " + AiExecutionTaskMapper.IMAGE_PUBLICATION));
             if (running >= tenantLimit) {
                 return null;
             }
             Long modelId = candidate.resolvedModelId == null
                 ? candidate.requestedModelId : candidate.resolvedModelId;
-            if (modelId != null && modelCapacityReached(modelId, settings.modelLimit())) {
+            if (modelId != null && modelCapacityReached(modelId, settings.modelLimit(), executionId)) {
                 return null;
             }
         }
@@ -107,7 +118,7 @@ public class AiExecutionClaimService {
             Long.class, tenantId, type);
     }
 
-    private boolean modelCapacityReached(Long modelId, int maxConcurrentPerModel) {
+    private boolean modelCapacityReached(Long modelId, int maxConcurrentPerModel, Long executionId) {
         jdbc.update("""
                 insert into ai_model_execution_quota(model_id, concurrency_limit, updated_at)
                 values (?, ?, now())
@@ -118,7 +129,8 @@ public class AiExecutionClaimService {
              where model_id = ? for update
             """, Integer.class, modelId);
         Long running = taskMapper.selectCount(new QueryWrapper<AiExecutionTaskEntity>()
-            .eq("status", AiExecutionStatus.RUNNING.name())
+            .apply(OCCUPIES_CAPACITY)
+            .ne("id", executionId)
             .apply("not " + AiExecutionTaskMapper.IMAGE_PUBLICATION)
             .and(scope -> scope.eq("resolved_model_id", modelId)
                 .or(nested -> nested.isNull("resolved_model_id").eq("requested_model_id", modelId))));

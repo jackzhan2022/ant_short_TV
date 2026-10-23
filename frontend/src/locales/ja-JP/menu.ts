@@ -1,4 +1,5 @@
 export default {
+  'menu.free-creation': '自由創作',
   'menu.asset-library': 'アセットライブラリ',
   'menu.messages': 'メッセージセンター',
   'menu.drama-library': 'ドラマ管理',

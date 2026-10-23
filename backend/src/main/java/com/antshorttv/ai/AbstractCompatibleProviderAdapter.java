@@ -387,6 +387,8 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
         payload.put("model", model.getModelCode());
         payload.put("prompt", request.prompt() == null ? "" : request.prompt());
         payload.put("n", request.count() == null ? 1 : request.count());
+        if (request.quality() != null && !"STANDARD".equalsIgnoreCase(request.quality())) payload.put("quality", request.quality());
+        if (request.outputFormat() != null) payload.put("output_format", request.outputFormat());
         payload.put("size", request.size() == null || request.size().isBlank() ? sizeFromAspectRatio(request.aspectRatio()) : request.size());
         if (request.negativePrompt() != null && !request.negativePrompt().isBlank()) {
             payload.put("negative_prompt", request.negativePrompt());

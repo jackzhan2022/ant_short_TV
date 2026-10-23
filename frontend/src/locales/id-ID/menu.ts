@@ -1,4 +1,5 @@
 export default {
+  'menu.free-creation': 'Kreasi Bebas',
   'menu.asset-library': 'Pustaka Aset',
   'menu.messages': 'Pusat Pesan',
   'menu.drama-library': 'Perpustakaan Drama',

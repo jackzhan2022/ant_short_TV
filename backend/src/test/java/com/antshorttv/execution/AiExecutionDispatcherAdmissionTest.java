@@ -59,8 +59,17 @@ class AiExecutionDispatcherAdmissionTest {
             }
             return null;
         });
-        when(tasks.selectList(any())).thenReturn(List.of(first), List.of(), List.of(), List.of(second), List.of(), List.of(),
-            List.of(), List.of(first), List.of(), List.of());
+        var textPages = new java.util.concurrent.atomic.AtomicInteger();
+        when(tasks.selectList(any())).thenAnswer(invocation -> {
+            com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<AiExecutionTaskEntity> query = invocation.getArgument(0);
+            query.getSqlSegment();
+            if (!query.getParamNameValuePairs().containsValue("TEXT")) return List.of();
+            return switch(textPages.getAndIncrement()) {
+                case 0, 3 -> List.of(first);
+                case 1 -> List.of(second);
+                default -> List.of();
+            };
+        });
         when(pools.tryAcquire(AiExecutionPoolType.TEXT)).thenAnswer(ignored -> mock(AiExecutionPools.Slot.class));
         dispatcher.dispatchOnce();
         dispatcher.dispatchOnce();

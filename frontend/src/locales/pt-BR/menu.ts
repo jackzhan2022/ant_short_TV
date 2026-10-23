@@ -1,4 +1,5 @@
 export default {
+  'menu.free-creation': 'Criação Livre',
   'menu.asset-library': 'Biblioteca de ativos',
   'menu.messages': 'Central de mensagens',
   'menu.drama-library': 'Biblioteca de dramas',
