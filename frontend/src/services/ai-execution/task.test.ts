@@ -41,7 +41,7 @@ describe('AiExecutionTaskService', () => {
     await service.retry(7, 21);
     await service.cancel(7, 22);
 
-    expect(client.retry).toHaveBeenCalledWith(7, 21);
+    expect(client.retry).toHaveBeenCalledWith(7, 21, expect.any(String));
     expect(client.cancel).toHaveBeenCalledWith(7, 22);
     expect(service.recoverable(7)).toEqual([21]);
   });
@@ -61,6 +61,17 @@ describe('AiExecutionTaskService', () => {
       { id: 31, status: 'SUCCEEDED', progress: 100 },
     ]);
     expect(restored.recoverable(7)).toEqual([]);
+  });
+
+  it('reuses a retry key after a lost response and tracks the new free-creation execution', async () => {
+    const client = clientWithDetails([]);
+    client.retry.mockRejectedValueOnce(new Error('response lost')).mockResolvedValue({ id: 42, status: 'PENDING' });
+    localStorage.setItem('ai-execution:pending:7', '[41]');
+    const service = new AiExecutionTaskService(client, localStorage);
+    await expect(service.retry(7, 41)).rejects.toThrow('response lost');
+    await service.retry(7, 41);
+    expect(client.retry.mock.calls[0][2]).toBe(client.retry.mock.calls[1][2]);
+    expect(service.recoverable(7)).toEqual([42]);
   });
 });
 

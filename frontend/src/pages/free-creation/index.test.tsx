@@ -17,11 +17,14 @@ const mocks = vi.hoisted(() => ({
   detail: vi.fn(),
   download: vi.fn(),
   upload: vi.fn(),
+  control: vi.fn(),
+  navigate: vi.fn(),
   tenant: 10 as number | undefined,
   user: '1',
   allowed: true,
 }));
 vi.mock('@umijs/max', () => ({
+  history: { push: mocks.navigate },
   useModel: () => ({
     initialState: {
       currentTenantId: mocks.tenant,
@@ -38,6 +41,7 @@ vi.mock('./api', () => ({
   getCreationDownload: mocks.download,
 }));
 vi.mock('@/services/mediaUpload', () => ({ startMediaUpload: mocks.upload }));
+vi.mock('@/pages/tasks/service', () => ({ controlTask: mocks.control }));
 
 const models = [
   {
@@ -80,6 +84,7 @@ const models = [
 
 beforeEach(() => {
   vi.resetAllMocks();
+  window.history.replaceState({}, '', '/free-creation');
   mocks.tenant = 10;
   mocks.user = '1';
   mocks.allowed = true;
@@ -391,5 +396,41 @@ describe('自由创作页面', () => {
     expect(
       screen.queryByRole('button', { name: '生成4张' }),
     ).not.toBeInTheDocument();
+  });
+  it('opens task-center deep links and reuses one control key after a lost retry response', async () => {
+    window.history.replaceState({}, '', '/free-creation?creation=12');
+    const record = {
+      id: 12, taskKey: 'FREE_CREATION:12', mediaType: 'IMAGE', status: 'FAILED',
+      prompt: '失败的自由创作', creatorId: 1, creatorName: '作者', createdAt: '2026-10-23T10:00:00',
+      modelId: 1, modelName: '系统图片模型', parameters: {}, references: [], outputs: [], allowedActions: ['RETRY'],
+    };
+    mocks.detail.mockImplementation(async (id: number) => id === 12 ? record : { ...record, id, taskKey: `FREE_CREATION:${id}`, status: 'QUEUED', allowedActions: ['CANCEL'] });
+    mocks.control.mockRejectedValueOnce(new Error('响应中断')).mockResolvedValue({ taskKey: 'FREE_CREATION:13' });
+    render(<FreeCreationPage />);
+    const modal = await screen.findByRole('dialog');
+    fireEvent.click(await within(modal).findByRole('button', { name: /重\s*试/ }));
+    await within(modal).findByText('响应中断');
+    fireEvent.click(within(modal).getByRole('button', { name: /重\s*试/ }));
+    await within(modal).findByRole('button', { name: '取消任务' });
+    expect(mocks.control).toHaveBeenCalledTimes(2);
+    expect(mocks.control.mock.calls[0]).toEqual([10, 'FREE_CREATION:12', 'RETRY', expect.any(String), expect.any(AbortSignal)]);
+    expect(mocks.control.mock.calls[0][3]).toBe(mocks.control.mock.calls[1][3]);
+    expect(mocks.detail).toHaveBeenCalledWith(13, expect.any(AbortSignal));
+    fireEvent.click(within(modal).getByRole('button', { name: '在任务中心查看' }));
+    expect(mocks.navigate).toHaveBeenCalledWith('/tasks?task=FREE_CREATION%3A13');
+  });
+
+  it('does not offer control actions for another creator', async () => {
+    window.history.replaceState({}, '', '/free-creation?creation=19');
+    mocks.detail.mockResolvedValue({
+      id: 19, mediaType: 'IMAGE', status: 'FAILED', prompt: '其他人的创作', creatorId: 9,
+      creatorName: '其他作者', createdAt: '2026-10-23T10:00:00', modelId: 1, modelName: '系统图片模型',
+      parameters: {}, references: [], outputs: [], allowedActions: [],
+    });
+    render(<FreeCreationPage />);
+    const modal = await screen.findByRole('dialog');
+    await within(modal).findByRole('button', { name: '复用参数' });
+    expect(within(modal).queryByRole('button', { name: /重试|取消任务|重新生成/ })).not.toBeInTheDocument();
+    expect(mocks.control).not.toHaveBeenCalled();
   });
 });

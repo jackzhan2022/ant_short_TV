@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/tenants/{tenantId}/production-tasks")
 public class ProductionTaskController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.freecreation.FreeCreationService freeCreations;
     private final ProductionTaskService service;
     private final AiImageTaskService images;
     private final AiVideoTaskService videos;
@@ -55,6 +57,10 @@ public class ProductionTaskController {
     @PostMapping("/{taskKey}/{action}") public ApiResponse<Map<String,Object>> control(@PathVariable long tenantId,@PathVariable String taskKey,
         @PathVariable String action,HttpServletRequest request) {
         Map<String,Object> task=service.detail(tenantId,taskKey);
+        if("FREE_CREATION".equals(task.get("type")) && List.of("cancel","retry","regenerate").contains(action)) {
+            var created=freeCreations.control(tenantId,Long.parseLong(taskKey.split(":")[1]),action.toUpperCase(java.util.Locale.ROOT),request.getHeader("Idempotency-Key"));
+            return ApiResponse.success(service.detail(tenantId,"FREE_CREATION:"+created.get("id")));
+        }
         if(!List.of("cancel","retry","regenerate").contains(action) || !((List<?>)task.get("allowedActions")).contains(action.toUpperCase(java.util.Locale.ROOT))) throw ProductionTaskService.denied();
         long id=Long.parseLong(taskKey.split(":")[1]); Long project=(Long)task.get("projectId");
         switch((String)task.get("type")) {

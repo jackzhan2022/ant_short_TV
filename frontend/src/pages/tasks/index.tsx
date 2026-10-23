@@ -56,6 +56,7 @@ const types: Record<string, string> = {
   REVIEW: '剧本审核',
   IMAGE: '图片生成',
   VIDEO: '视频生成',
+  FREE_CREATION: '自由创作',
 };
 const actions: Record<string, string> = {
   CANCEL: '取消任务',
@@ -80,7 +81,7 @@ const resultLabels: Record<string, string> = {
   duration_seconds: '时长（秒）', file_size: '文件大小', name: '名称', id: '编号',
 };
 function ContentSectionView({ section, tenant, taskKey }: { section: ContentSection; tenant: number; taskKey: string }) {
-  const media = section.kind === 'IMAGE' || section.kind === 'VIDEO';
+  const media = ['IMAGE', 'VIDEO', 'AUDIO'].includes(section.kind);
   const [copying, setCopying] = useState(false);
   const [items, setItems] = useState(section.items);
   const [itemsPage, setItemsPage] = useState(1);
@@ -152,7 +153,7 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
     {section.hasMore && !textMore && <Typography.Text type="secondary">仅展示前 20 项结果。</Typography.Text>}
     {section.fields.length > 0 && <Descriptions size="small" column={1} items={section.fields.map((field) => ({ key: field.label, label: field.label, children: field.value }))} />}
     {media && items.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-      {items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><LazyMediaImage width={160} height={90} src={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} />{typeof item.role === 'string' && <Tag>{item.role}</Tag>}{item.selected && <Tag color="success">当前采用</Tag>}<a href={String(item.downloadUrl ?? '')} download>下载</a></div> : <div key={String(item.id ?? index)}><ClickToPlayVideo src={String(item.url ?? '')} poster={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} style={{ width: 320, maxWidth: '100%' }} /><a href={String(item.downloadUrl ?? '')} download>下载</a></div>)}
+      {items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><LazyMediaImage width={160} height={90} src={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} />{typeof item.role === 'string' && <Tag>{item.role}</Tag>}{item.selected && <Tag color="success">当前采用</Tag>}<a href={String(item.downloadUrl ?? '')} download>下载</a></div> : section.kind === 'AUDIO' ? <div key={String(item.id ?? index)}><audio controls preload="none" src={String(item.url ?? '')} aria-label={String(item.fileName ?? section.title)}><track kind="captions" /></audio><a href={String(item.downloadUrl ?? '')} download>下载音频</a></div> : <div key={String(item.id ?? index)}><ClickToPlayVideo src={String(item.url ?? '')} poster={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} style={{ width: 320, maxWidth: '100%' }} /><a href={String(item.downloadUrl ?? '')} download>下载</a></div>)}
     </div>}
     {itemsMore && !textMore && <Button type="link" loading={loadingItems} onClick={loadMoreItems}>加载更多结果</Button>}
     {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl', 'downloadUrl'].includes(key)).map(([key, value]) => `${resultLabels[key] ?? key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
@@ -585,6 +586,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
               创建时间：{detail.createdAt} · 完成时间：
               {detail.completedAt || '—'}
             </p>
+            {detail.type === 'FREE_CREATION' && <p>重试和重新生成会按原参数新建任务并确认积分。取消后停止跟踪结果，供应商已产生的用量仍会结算。</p>}
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               {parentTask && <Button onClick={() => { setSelected(parentTask); setParentTask(null); }}>返回批次</Button>}
               {detail.destination && (

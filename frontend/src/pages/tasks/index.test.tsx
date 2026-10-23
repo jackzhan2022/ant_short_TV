@@ -369,3 +369,24 @@ it('reuses regeneration idempotency after a lost response', async () => {
   await waitFor(() => expect(mocks.control).toHaveBeenCalledTimes(2));
   expect(mocks.control.mock.calls[0][3]).toBe(mocks.control.mock.calls[1][3]);
 });
+
+it('controls free creations and follows the newly created task with audio references', async () => {
+  window.history.replaceState({}, '', '/tasks?task=FREE_CREATION:12');
+  mocks.detail.mockImplementation(async (_tenant, key) => ({
+    taskKey: key, type: 'FREE_CREATION', title: key === 'FREE_CREATION:12' ? '失败创作' : '重试创作',
+    statusGroup: key === 'FREE_CREATION:12' ? 'FAILED' : 'QUEUED', childCounts: { total: 0 },
+    allowedActions: key === 'FREE_CREATION:12' ? ['RETRY'] : ['CANCEL'],
+  }));
+  mocks.content.mockResolvedValue({ schemaVersion: 1, taskKey: 'FREE_CREATION:12', contentRevision: '1', sections: [{
+    key: 'references-AUDIO', title: '参考音频', kind: 'AUDIO', availability: 'AVAILABLE', fields: [], hasMore: false,
+    items: [{ id: 7, fileName: '声音参考', url: '/signed/audio', downloadUrl: '/signed/download' }],
+  }] });
+  mocks.control.mockResolvedValue({ taskKey: 'FREE_CREATION:13' });
+  render(<Tasks />);
+  const audio = await screen.findByLabelText('声音参考');
+  expect(audio).toHaveAttribute('preload', 'none');
+  fireEvent.click(await screen.findByRole('button', { name: /重\s*试/ }));
+  await screen.findByRole('button', { name: '取消任务' });
+  expect(mocks.control).toHaveBeenCalledWith(1, 'FREE_CREATION:12', 'RETRY', expect.any(String));
+  expect(new URLSearchParams(window.location.search).get('task')).toBe('FREE_CREATION:13');
+});

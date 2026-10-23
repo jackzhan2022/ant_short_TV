@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/tenants/{tenantId}/ai-executions")
 public class AiExecutionController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.freecreation.FreeCreationService freeCreations;
     private final AiExecutionService executionService;
     private final AiExecutionAccessService accessService;
     private final AiExecutionResponseMapper responseMapper;
@@ -39,16 +41,19 @@ public class AiExecutionController {
         @PathVariable Long tenantId,
         @PathVariable Long executionId
     ) {
-        accessService.requireControl(tenantId, executionId);
+        var task=accessService.requireControl(tenantId, executionId);
+        if ("FREE_CREATION".equals(task.businessType)) return freeControl(tenantId,task,"CANCEL",null);
         return ApiResponse.success(responseMapper.toResponse(executionService.cancel(executionId)));
     }
 
     @PostMapping("/{executionId}/retry")
     public ApiResponse<AiExecutionResponse> retry(
         @PathVariable Long tenantId,
-        @PathVariable Long executionId
+        @PathVariable Long executionId,
+        @org.springframework.web.bind.annotation.RequestHeader(value="Idempotency-Key",required=false) String idempotencyKey
     ) {
-        accessService.requireControl(tenantId, executionId);
+        var task=accessService.requireControl(tenantId, executionId);
+        if ("FREE_CREATION".equals(task.businessType)) return freeControl(tenantId,task,"RETRY",idempotencyKey);
         return ApiResponse.success(responseMapper.toResponse(executionService.retry(executionId)));
     }
 
@@ -58,11 +63,18 @@ public class AiExecutionController {
         @PathVariable Long executionId,
         @Valid @RequestBody AiExecutionRegenerateRequest request
     ) {
-        accessService.requireControl(tenantId, executionId);
+        var task=accessService.requireControl(tenantId, executionId);
+        if ("FREE_CREATION".equals(task.businessType)) return freeControl(tenantId,task,"REGENERATE",request.clientIdempotencyKey());
         return ApiResponse.success(responseMapper.toResponse(executionService.regenerate(
             executionId,
             request.clientIdempotencyKey(),
             request.traceId()
         )));
+    }
+
+    private ApiResponse<AiExecutionResponse> freeControl(Long tenantId,AiExecutionTaskEntity task,String action,String key) {
+        var result=freeCreations.control(tenantId,task.businessId,action,key);
+        Long executionId=((Number)result.get("executionId")).longValue();
+        return ApiResponse.success(responseMapper.toResponse(executionService.requireTask(executionId)));
     }
 }

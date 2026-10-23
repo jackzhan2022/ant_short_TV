@@ -10,7 +10,7 @@ const STORAGE_PREFIX = 'ai-execution:pending:';
 export interface AiExecutionClient {
   detail(tenantId: number, executionId: number): Promise<API.AiExecutionResponse>;
   cancel(tenantId: number, executionId: number): Promise<API.AiExecutionResponse>;
-  retry(tenantId: number, executionId: number): Promise<API.AiExecutionResponse>;
+  retry(tenantId: number, executionId: number, idempotencyKey: string): Promise<API.AiExecutionResponse>;
   regenerate(
     tenantId: number,
     executionId: number,
@@ -25,6 +25,7 @@ export function isTerminalExecution(task: Pick<API.AiExecutionResponse, 'status'
 }
 
 export class AiExecutionTaskService {
+  private readonly retryKeys = new Map<string, string>();
   constructor(
     private readonly client: AiExecutionClient = generatedClient,
     private readonly storage: Storage = localStorage,
@@ -60,7 +61,12 @@ export class AiExecutionTaskService {
   }
 
   async retry(tenantId: number, executionId: number) {
-    const task = await this.client.retry(tenantId, executionId);
+    const identity = `${tenantId}:${executionId}`;
+    const key = this.retryKeys.get(identity) || crypto.randomUUID();
+    this.retryKeys.set(identity, key);
+    const task = await this.client.retry(tenantId, executionId, key);
+    this.retryKeys.delete(identity);
+    if (task.id !== undefined && task.id !== executionId) this.forget(tenantId, executionId);
     this.track(tenantId, task);
     return task;
   }
@@ -141,9 +147,9 @@ const generatedClient: AiExecutionClient = {
     responseData(await detail4({ tenantId, executionId })),
   cancel: async (tenantId, executionId) =>
     responseData(await cancel1({ tenantId, executionId })),
-  retry: async (tenantId, executionId) =>
+  retry: async (tenantId, executionId, idempotencyKey) =>
     responseData(await pointEstimatedRequest<API.ApiResponseAiExecutionResponse>(
-      `/api/tenants/${tenantId}/ai-executions/${executionId}/retry`, { method: 'POST' })),
+      `/api/tenants/${tenantId}/ai-executions/${executionId}/retry`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey } })),
   regenerate: async (tenantId, executionId, request) =>
     responseData(await pointEstimatedRequest<API.ApiResponseAiExecutionResponse>(
       `/api/tenants/${tenantId}/ai-executions/${executionId}/regenerate`, { method: 'POST', data: request },

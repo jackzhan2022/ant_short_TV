@@ -60,7 +60,7 @@ function navigateTabs(event: KeyboardEvent<HTMLButtonElement>) {
     target.click();
   }
 }
-function Workspace({ teamName }: { teamName: string }) {
+function Workspace({ teamName, tenantId }: { teamName: string; tenantId: number }) {
   const [mode, setMode] = useState<CreationMode>('IMAGE');
   const [models, setModels] = useState<CreationModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -320,6 +320,7 @@ function Workspace({ teamName }: { teamName: string }) {
         </section>
         <div className={styles.resultColumn}>
           <Records
+            tenantId={tenantId}
             revision={recordsRevision}
             onReuse={reuse}
             teamName={teamName}
@@ -352,6 +353,7 @@ export default function FreeCreationPage() {
     return <Alert type="info" title="请先选择创作团队" />;
   return (
     <Workspace
+      tenantId={initialState.currentTenantId}
       key={`${initialState.currentTenantId}-${initialState.currentUser?.userid}`}
       teamName={
         initialState.tenants?.find(

@@ -26,6 +26,11 @@ public class QueryCacheInvalidationAspect {
     @AfterReturning("execution(public * com.antshorttv.ai.PlatformAiManagementService.*(..)) && @annotation(org.springframework.transaction.annotation.Transactional)")
     public void modelsChanged() { cache.invalidateAfterCommit(MODELS); }
 
+    @AfterReturning("execution(public * com.antshorttv.freecreation.FreeCreationService.*(..)) && @annotation(org.springframework.transaction.annotation.Transactional)")
+    public void freeCreationChanged(JoinPoint point) {
+        cache.invalidateAfterCommit(tenant((Long)point.getArgs()[0]),TASKS);
+    }
+
     @AfterReturning("(execution(public * com.antshorttv.script.ScriptWorkflowService.*(..)) || execution(public * com.antshorttv.script.ScriptEpisodeService.*(..)) || execution(public * com.antshorttv.script.ScriptAnalysisTaskService.*(..))) && @annotation(org.springframework.transaction.annotation.Transactional)")
     public void scriptChanged(JoinPoint point) {
         if(!cache.isEnabled()) return;

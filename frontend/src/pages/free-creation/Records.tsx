@@ -7,7 +7,10 @@ import {
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import { Button, Image, Modal, Pagination, Spin } from 'antd';
+import { history } from '@umijs/max';
 import { useEffect, useRef, useState } from 'react';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
+import { controlTask } from '@/pages/tasks/service';
 import VideoPreviewPlayer from '@/pages/projects/production-workbench/VideoPreviewPlayer';
 import {
   type CreationPage,
@@ -57,10 +60,12 @@ const formatTime = (value: string) => {
 const pending = (record: CreationRecord) =>
   record.status === 'QUEUED' || record.status === 'RUNNING';
 export default function Records({
+  tenantId,
   revision,
   onReuse,
   teamName,
 }: {
+  tenantId: number;
   revision: number;
   onReuse: (record: CreationRecord) => Promise<void>;
   teamName: string;
@@ -81,10 +86,14 @@ export default function Records({
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
   const [detail, setDetail] = useState<CreationRecord>();
-  const [detailId, setDetailId] = useState<number>();
+  const [detailId, setDetailId] = useState<number | undefined>(() => {
+    const value = Number(new URLSearchParams(window.location.search).get('creation'));
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  });
   const [detailError, setDetailError] = useState('');
   const [busy, setBusy] = useState(false);
   const lifetime = useRef(new AbortController());
+  const controlKeys = useRef(new Map<string, string>());
   useEffect(() => {
     if (lifetime.current.signal.aborted)
       lifetime.current = new AbortController();
@@ -172,7 +181,7 @@ export default function Records({
       abort.abort();
       clearTimeout(timer);
     };
-  }, [detailId]);
+  }, [detailId, reload]);
   const action = async (work: (signal: AbortSignal) => Promise<void>) => {
     if (busy) return;
     const signal = lifetime.current.signal;
@@ -181,6 +190,7 @@ export default function Records({
     try {
       await work(signal);
     } catch (failure) {
+      if (isPointEstimateCancelled(failure)) return;
       if (!signal.aborted)
         setError(
           failure instanceof Error ? failure.message : '操作失败，请重试',
@@ -189,6 +199,17 @@ export default function Records({
       if (!signal.aborted) setBusy(false);
     }
   };
+  const control = (record: CreationRecord, operation: string) =>
+    void action(async (signal) => {
+      const identity = `${record.id}:${operation}`;
+      const key = controlKeys.current.get(identity) || crypto.randomUUID();
+      controlKeys.current.set(identity, key);
+      const result = await controlTask(tenantId, record.taskKey || `FREE_CREATION:${record.id}`, operation, key, signal);
+      if (signal.aborted) return;
+      controlKeys.current.delete(identity);
+      setDetailId(Number(result.taskKey.split(':')[1]));
+      setReload((value) => value + 1);
+    });
   const reuse = (id: number) =>
     void action(async (signal) => {
       const latest = await getCreation(id, signal);
@@ -557,8 +578,19 @@ export default function Records({
               >
                 复用参数
               </Button>
+              {(detail.allowedActions || []).map((operation) => (
+                <Button key={operation} disabled={busy} onClick={() => control(detail, operation)}>
+                  {{ CANCEL: '取消任务', RETRY: '重试', REGENERATE: '重新生成' }[operation]}
+                </Button>
+              ))}
+              <Button onClick={() => history.push(`/tasks?task=${encodeURIComponent(detail.taskKey || `FREE_CREATION:${detail.id}`)}`)}>
+                在任务中心查看
+              </Button>
               <p className={styles.help}>
                 回填参数后可继续编辑，生成前会再次确认积分。
+              </p>
+              <p className={styles.help}>
+                重试和重新生成会按原参数新建任务并确认积分。取消后停止跟踪结果，供应商已产生的用量仍会结算。
               </p>
             </div>
           </div>

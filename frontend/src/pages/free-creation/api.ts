@@ -38,6 +38,8 @@ export type CreationStatus =
 export type CreationRecord = {
   id: number;
   executionId?: number;
+  taskKey?: string;
+  allowedActions?: ('CANCEL' | 'RETRY' | 'REGENERATE')[];
   mediaType: CreationMode;
   status: CreationStatus;
   prompt: string;

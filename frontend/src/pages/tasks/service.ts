@@ -33,7 +33,7 @@ export type ContentItem = { id?: number; url?: string; thumbnailUrl?: string; wi
 export type ContentSection = {
   key: string;
   title: string;
-  kind: 'TEXT' | 'FIELDS' | 'IMAGE' | 'VIDEO' | 'STRUCTURED' | 'BUSINESS_STAGE';
+  kind: 'TEXT' | 'FIELDS' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'STRUCTURED' | 'BUSINESS_STAGE';
   availability: 'AVAILABLE' | 'PENDING' | 'NOT_RECORDED' | 'DELETED' | 'RESTRICTED' | 'UNSUPPORTED';
   sourceVersion?: string;
   preview?: string | null;
@@ -99,8 +99,9 @@ export const controlTask = (
   key: string,
   action: string,
   idempotencyKey: string,
+  signal?: AbortSignal,
 ) =>
   read<Task>(
     `${base(tenant)}/${encodeURIComponent(key)}/${action.toLowerCase()}`,
-    { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey } },
+    { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, signal },
   );

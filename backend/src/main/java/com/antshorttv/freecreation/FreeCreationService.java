@@ -86,6 +86,63 @@ public class FreeCreationService {
         return "VIDEO".equals(request.mediaType())?plan.paidOnly():plan;
     }
 
+    public static List<String> controlActions(String status) {
+        return switch(status) {
+            case "PENDING", "RUNNING" -> List.of("CANCEL");
+            case "FAILED", "TIMED_OUT" -> List.of("RETRY");
+            case "SUCCEEDED", "CANCELED" -> List.of("REGENERATE");
+            default -> List.of();
+        };
+    }
+
+    private FreeCreationEntity requireControl(TenantContext context,Long id) {
+        var item=require(context,id);
+        if(!context.userId().equals(item.creatorId)) throw new BusinessException(ErrorCode.FORBIDDEN,"只能操作自己提交的自由创作任务。");
+        return item;
+    }
+
+    private void requireAction(AiExecutionTaskEntity task,String action) {
+        if(!controlActions(task.status).contains(action)) throw invalid("当前任务状态不支持此操作。");
+    }
+
+    private FreeCreationRequest resubmission(FreeCreationEntity source,String requestId) {
+        Map<String,Object> parameters=json.convertValue(read(source.parametersJson),new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        var references=media.items(source.id,"REFERENCE").stream()
+            .map(ref->new FreeCreationRequest.Reference(ref.kind,null,ref.id)).toList();
+        return new FreeCreationRequest(requestId,source.mediaType,source.modelId,source.prompt,parameters,references);
+    }
+
+    public AiPointEstimatePlan pointEstimateControl(Long tenantId,Long id,String action) {
+        var source=requireControl(authorize(tenantId),id);
+        requireAction(executions.requireTask(source.executionId),action);
+        if(!Set.of("RETRY","REGENERATE").contains(action)) throw invalid("该操作无需积分预估。");
+        return pointEstimate(tenantId,json.valueToTree(resubmission(source,"free-creation-estimate")));
+    }
+
+    /** A user-requested retry is a new, separately reserved generation; the old provider attempt stays immutable. */
+    @Transactional
+    public Map<String,Object> control(Long tenantId,Long id,String action,String idempotencyKey) {
+        TenantContext context=authorize(tenantId);
+        // Use the same lock order as create: team, then execution. It also serializes duplicate control requests.
+        jdbc.queryForObject("select id from tenant where id=? for update",Long.class,tenantId);
+        var source=requireControl(context,id);
+        var task=executions.requireTaskForUpdate(source.executionId);
+        if("CANCEL".equals(action)) {
+            if("CANCELED".equals(task.status)) return present(context,source);
+            requireAction(task,action);
+            executions.cancel(task.id);
+            return present(context,source);
+        }
+        if(!Set.of("RETRY","REGENERATE").contains(action)) throw invalid("任务操作无效。");
+        if(idempotencyKey==null || idempotencyKey.isBlank() || idempotencyKey.length()>128) throw invalid("请提供有效操作标识。");
+        String requestId="control-"+UUID.nameUUIDFromBytes((tenantId+":"+context.userId()+":"+id+":"+action+":"+idempotencyKey).getBytes(StandardCharsets.UTF_8));
+        var existing=creations.selectOne(new QueryWrapper<FreeCreationEntity>().eq("tenant_id",tenantId)
+            .eq("creator_id",context.userId()).eq("request_id",requestId));
+        if(existing!=null) return present(context,existing);
+        requireAction(task,action);
+        return create(tenantId,resubmission(source,requestId));
+    }
+
     private void validate(FreeCreationRequest request) {
         if(request==null || !validator.validate(request).isEmpty()) throw invalid("请检查媒体类型、模型、提示词与参考素材参数。");
     }
@@ -206,6 +263,8 @@ public class FreeCreationService {
         result.put("creatorName",jdbc.queryForObject("select nickname from app_user where id=?",String.class,item.creatorId));
         result.put("createdAt",item.createdAt); result.put("modelId",item.modelId); result.put("modelName",item.modelName);
         result.put("parameters",read(item.parametersJson)); result.put("references",media.items(item.id,"REFERENCE").stream().map(ref->media.present(context,ref)).toList());
+        result.put("taskKey","FREE_CREATION:"+item.id);
+        result.put("allowedActions",context.userId().equals(item.creatorId)?controlActions(task.status):List.of());
         result.put("outputs","SUCCEEDED".equals(task.status)?media.items(item.id,"OUTPUT").stream().map(output->media.present(context,output)).toList():List.of());
         result.put("errorMessage",Set.of("FAILED","TIMED_OUT").contains(task.status)?safeError(task.errorMessage):null); return result;
     }

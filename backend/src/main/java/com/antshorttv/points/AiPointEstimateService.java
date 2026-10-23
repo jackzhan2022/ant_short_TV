@@ -154,6 +154,7 @@ public class AiPointEstimateService {
             long id = Long.parseLong(key.split(":")[1]);
             Long projectId = number(detail, "projectId");
             return switch (String.valueOf(detail.get("type"))) {
+                case "FREE_CREATION" -> List.of(freeCreations.pointEstimateControl(tenant,id,action));
                 case "IMAGE" -> List.of(images.pointEstimateExisting(tenant, projectId, id));
                 case "REVIEW" -> retryReview(tenant, id);
                 case "VIDEO_EPISODE" -> retryDecomposition(tenant, id);
@@ -382,6 +383,7 @@ public class AiPointEstimateService {
     private List<AiPointEstimatePlan> execution(Long tenant, Long executionId, boolean frozen) {
         executionAccess.requireControl(tenant, executionId);
         var task = executions.requireTask(executionId);
+        if("FREE_CREATION".equals(task.businessType)) return List.of(freeCreations.pointEstimateControl(tenant,task.businessId,frozen?"RETRY":"REGENERATE"));
         var reservation = frozen ? reservations.selectByExecutionId(executionId) : null;
         List<AiPointEstimatePlan> plans;
         if ("AI_IMAGE_TASK".equals(task.businessType)) plans = List.of(images.pointEstimateExisting(tenant, task.projectId, task.businessId));

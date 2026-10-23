@@ -8,7 +8,7 @@ final class ProductionTaskSources {
         "FAILED","TIMED_OUT","VALIDATION_FAILED","CANCELED","CANCELLED","RUNNING","PROCESSING","ANALYZING","DRAFT_GENERATING",
         "PENDING","PENDING_ANALYSIS","PENDING_DRAFT","QUEUED","PENDING_REVIEW","WAITING_CONFIRMATION","PARTIAL","COMPLETED_WITH_FAILURES");
     static final List<String> TYPES = List.of("VIDEO_DECOMPOSITION", "VIDEO_EPISODE", "STORYBOARD_BATCH", "STORYBOARD_ITEM",
-        "SCRIPT_OPERATION", "SCRIPT_ANALYSIS", "REVIEW", "IMAGE", "VIDEO");
+        "SCRIPT_OPERATION", "SCRIPT_ANALYSIS", "REVIEW", "IMAGE", "VIDEO", "FREE_CREATION");
 
     static String group(String status) {
         return "case when " + status + " in ('SUCCEEDED','SUCCESS','SUCCEEDED_WITH_WARNING','SUCCESS_WITH_WARNING','COMPLETED','CONFIRMED') then 'SUCCEEDED' "
@@ -22,11 +22,11 @@ final class ProductionTaskSources {
 
     private static String source(String type, String table, String title, String project, String state,
         String progress, String phase, String finished, String parentType, String parentId, String join, String filter) {
-        return "select '"+type+"' type, t.id, t.tenant_id, "+project+" project_id, "+(type.equals("STORYBOARD_ITEM")?"b.created_by":"t.created_by")+" created_by, "+title+" title, "
+        return "select '"+type+"' type, t.id, t.tenant_id, "+project+" project_id, "+(type.equals("STORYBOARD_ITEM")?"b.created_by":type.equals("FREE_CREATION")?"t.creator_id":"t.created_by")+" created_by, "+title+" title, "
             + state+" domain_status, "+group(state)+" status_group, "+progress+" progress, "+phase+" phase, "
             + "t.created_at, "+finished+" completed_at, "+parentType+" parent_type, "+parentId+" parent_id, "
             + "e.id execution_id, " + (type.equals("VIDEO_EPISODE") ? "(t.retryable=true and t.execution_token is null and not exists (select 1 from video_decomposition_script_result vr where vr.tenant_id=t.tenant_id and vr.episode_id=t.id))" : "e.retryable") + " retryable, e.root_execution_id, e.source_execution_id, "
-            + (type.equals("SCRIPT_OPERATION") ? "t.operation_type" : type.equals("IMAGE") ? "t.target_type" : type.equals("REVIEW") ? "concat('',rp.created_by)" : "null") + " subtype, e.user_id execution_user, "
+            + (type.equals("SCRIPT_OPERATION") ? "t.operation_type" : type.equals("IMAGE") ? "t.target_type" : type.equals("FREE_CREATION") ? "t.media_type" : type.equals("REVIEW") ? "concat('',rp.created_by)" : "null") + " subtype, e.user_id execution_user, "
             + (type.equals("SCRIPT_OPERATION") ? "not exists (select 1 from storyboard_batch_item bi join storyboard_batch sb on sb.id=bi.batch_id and sb.tenant_id=bi.tenant_id where bi.execution_id=t.execution_id and bi.tenant_id=t.tenant_id and sb.created_by=t.created_by)" : "true") + " root_visible, "
             + "0 child_total, 0 child_success, 0 child_failed, 0 child_canceled, 0 child_running, 0 child_queued, 0 child_waiting "
             + "from "+table+" t left join ai_execution_task e on e.id=t.execution_id and e.tenant_id=t.tenant_id "+join+" where t.tenant_id=:tenant and "+filter;
@@ -35,6 +35,9 @@ final class ProductionTaskSources {
     private static final String STORYBOARD_CHILD=source("STORYBOARD_ITEM", "storyboard_batch_item", "concat('第',t.episode_no,'集分镜')", "t.project_id", "coalesce(e.status,'FAILED')", "e.progress", "e.phase", "e.completed_at", "'STORYBOARD_BATCH'", "t.batch_id", "join storyboard_batch b on b.id=t.batch_id and b.tenant_id=t.tenant_id", "1=1");
     private static final String VIDEO_CHILD=source("VIDEO_EPISODE", "video_decomposition_episode", "concat('第',t.episode_no,'集')", "t.project_id", "t.status", "e.progress", "e.phase", "e.completed_at", "'VIDEO_DECOMPOSITION'", "t.batch_id", "join video_decomposition_batch b on b.id=t.batch_id and b.tenant_id=t.tenant_id", "b.deleted_at is null");
     static final String LEAVES = String.join(" union all ",
+        source("FREE_CREATION", "free_creation", "concat('自由创作',case when t.media_type='IMAGE' then '图片' else '视频' end,' #',t.id)", "null",
+            "case when e.status='PENDING' and t.provider_started_at is not null then 'RUNNING' else coalesce(e.status,'FAILED') end",
+            "e.progress", "e.phase", "e.completed_at", "null", "null", "", "1=1"),
         source("IMAGE", "ai_image_task", "concat('图片生成 #',t.id)", "t.project_id", "coalesce(e.status,t.status)", "e.progress", "e.phase", "coalesce(e.completed_at,t.completed_at)", "null", "null", "", "t.deleted_at is null"),
         source("VIDEO", "ai_video_task", "concat('视频生成 #',t.id)", "t.project_id", "coalesce(e.status,t.status)", "e.progress", "e.phase", "coalesce(e.completed_at,t.completed_at)", "null", "null", "", "t.deleted_at is null"),
         source("SCRIPT_ANALYSIS", "script_analysis_task", "concat('剧本分析 #',t.id)", "t.project_id", "t.status", "t.overall_progress", "t.current_stage", "t.completed_at", "null", "null", "", "1=1"),

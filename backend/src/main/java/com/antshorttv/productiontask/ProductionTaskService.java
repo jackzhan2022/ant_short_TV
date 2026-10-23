@@ -14,6 +14,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class ProductionTaskService {
     @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.platform.PlatformAuthorizationService platformAuthorization;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.freecreation.FreeCreationService freeCreations;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.freecreation.FreeCreationMediaService freeCreationMedia;
+    @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private static final Map<String,String> OPERATION_PERMISSIONS=Map.of(
         "SCRIPT_GENERATE","SCRIPT:AI_GENERATE", "SCRIPT_REWRITE","SCRIPT:AI_REWRITE",
@@ -35,7 +41,7 @@ public class ProductionTaskService {
 
     public record Page(List<Map<String,Object>> items, long total, int page, int pageSize, boolean canViewTeamTasks) {}
     public record Summary(long total, Map<String,Long> counts) {}
-    record Access(TenantContext context, boolean team, Set<String> permissions) {}
+    record Access(TenantContext context, boolean team, Set<String> permissions, boolean platformAdmin) {}
     record Predicate(String text, Map<String,Object> params) {}
     record TextChunk(String text, boolean hasMore) {}
 
@@ -46,12 +52,13 @@ public class ProductionTaskService {
             where mr.member_id=? and r.tenant_id=? and r.code='ADMIN' and r.role_type='SYSTEM'
               and r.status='ACTIVE' and r.deleted_at is null
             """,Long.class,c.memberId(),tenantId)>0;
-        return new Access(c,team,permissions.permissionCodes(c));
+        return new Access(c,team,permissions.permissionCodes(c),platformAuthorization.roleCodes(c.userId()).contains("PLATFORM_ADMIN"));
     }
 
     private Predicate predicate(Access a,ProductionTaskQuery q) {
         Map<String,Object> p=new HashMap<>(); p.put("tenant",a.context.tenantId());
         StringBuilder where=new StringBuilder(" t.tenant_id=:tenant");
+        if(!a.platformAdmin) where.append(" and t.type<>'FREE_CREATION'");
         if (q.effectiveScope().equals("team")) { if(!a.team) throw denied(); }
         else {
             if(q.creatorId()!=null && !q.creatorId().equals(a.context.userId())) throw denied();
@@ -108,7 +115,9 @@ public class ProductionTaskService {
             Map.of("tenant",a.context.tenantId(),"type",parts[0],"id",Long.parseLong(parts[1])));
         if(rows.size()!=1) throw denied();
         Map<String,Object> row=rows.get(0);
-        if(!a.team && !Objects.equals(number(row,"created_by"),a.context.userId())) throw denied();
+        if("FREE_CREATION".equals(row.get("type")) && !a.platformAdmin) throw denied();
+        // Free creations are shared with administrator members of the team in their business page too.
+        if(!a.team && !"FREE_CREATION".equals(row.get("type")) && !Objects.equals(number(row,"created_by"),a.context.userId())) throw denied();
         return row;
     }
 
@@ -152,6 +161,15 @@ public class ProductionTaskService {
         String type=String.valueOf(row.get("type"));
         if(page<1 || pageSize<1) throw invalid();
         int size=Math.min(pageSize,100); long offset=(long)(page-1)*size;
+        if(type.equals("FREE_CREATION") && (sectionKey.equals("results") || sectionKey.startsWith("references-"))) {
+            var context=freeCreations.authorize(tenant);
+            String role=sectionKey.equals("results")?"OUTPUT":"REFERENCE";
+            String kind=sectionKey.equals("results")?String.valueOf(row.get("subtype")):sectionKey.substring("references-".length());
+            if(!Set.of("IMAGE","VIDEO","AUDIO").contains(kind)) throw invalid();
+            var items=freeCreationItems(context,row,role,kind);
+            int from=(int)Math.min(offset,items.size()),to=Math.min(from+size,items.size());
+            return collection(key,sectionKey,items.subList(from,to),page,size,items.isEmpty()?"PENDING":"AVAILABLE",to<items.size());
+        }
         if(type.equals("VIDEO_DECOMPOSITION") && sectionKey.equals("submission")) {
             return collection(key,sectionKey,sql.queryForList("select episode_no,source_file_name,mime_type,file_size,duration_seconds,status from video_decomposition_episode where tenant_id=:tenant and batch_id=:batch order by episode_no,id limit :limit offset :offset",
                 Map.of("tenant",tenant,"batch",number(row,"id"),"limit",size+1,"offset",offset)),page,size,"AVAILABLE");
@@ -186,6 +204,7 @@ public class ProductionTaskService {
         long id=Objects.requireNonNull(number(row,"id"));
         int start=offset+1;
         return switch(String.valueOf(row.get("type"))) {
+            case "FREE_CREATION" -> sectionKey.equals("submission") ? textChunk("select substring(prompt,?,32001) body,char_length(prompt) total_length from free_creation where tenant_id=? and id=?",offset,start,tenant,id) : null;
             case "IMAGE" -> sectionKey.equals("submission") ? textChunk("select substring(prompt,?,32001) body,char_length(prompt) total_length from ai_image_task where tenant_id=? and id=?",offset,start,tenant,id) : null;
             case "VIDEO" -> sectionKey.equals("submission") ? textChunk("select substring(prompt,?,32001) body,char_length(prompt) total_length from ai_video_task where tenant_id=? and id=?",offset,start,tenant,id) : null;
             case "SCRIPT_ANALYSIS" -> sectionKey.equals("submission") ? textChunk("select substring(v.content,?,32001) body,char_length(v.content) total_length from script_analysis_task t join script_version v on v.id=t.script_version_id and v.tenant_id=t.tenant_id where t.tenant_id=? and t.id=?",offset,start,tenant,id) : null;
@@ -232,6 +251,7 @@ public class ProductionTaskService {
     }
 
     private boolean canReadContent(Access a,Map<String,Object> row) {
+        if("FREE_CREATION".equals(row.get("type"))) return a.platformAdmin;
         Long project=number(row,"project_id");
         if(project==null) return Objects.equals(number(row,"created_by"),a.context.userId());
         Set<String> codes=projectPermissions(a,project);
@@ -255,6 +275,10 @@ public class ProductionTaskService {
     }
 
     private String contentRevision(long tenant, Map<String,Object> row) {
+        if("FREE_CREATION".equals(row.get("type"))) {
+            var revision=one("select e.updated_at revision from free_creation f join ai_execution_task e on e.id=f.execution_id where f.tenant_id=? and f.id=?",tenant,number(row,"id"));
+            return text(revision.get("revision"));
+        }
         String table=switch(String.valueOf(row.get("type"))) {
             case "IMAGE" -> "ai_image_task";
             case "VIDEO" -> "ai_video_task";
@@ -290,6 +314,7 @@ public class ProductionTaskService {
     private List<Map<String,Object>> sections(Access a,Map<String,Object> row) {
         long tenant=a.context.tenantId(), id=Objects.requireNonNull(number(row,"id"));
         return switch(String.valueOf(row.get("type"))) {
+            case "FREE_CREATION" -> freeCreationSections(a.context,row);
             case "IMAGE" -> imageSections(tenant,id);
             case "VIDEO" -> videoSections(tenant,id);
             case "SCRIPT_ANALYSIS" -> analysisSections(tenant,id);
@@ -299,6 +324,42 @@ public class ProductionTaskService {
             case "SCRIPT_OPERATION" -> operationSections(tenant,id);
             default -> List.of(section("submission","本次提交","FIELDS","UNSUPPORTED",null,List.of(),List.of(),false));
         };
+    }
+
+    private List<Map<String,Object>> freeCreationSections(TenantContext context,Map<String,Object> row) {
+        var task=freeCreations.detail(context.tenantId(),number(row,"id"));
+        String prompt=text(task.get("prompt"));
+        var settings=fields("模型",task.get("modelName"));
+        var parameters=mapper.valueToTree(task.get("parameters"));
+        Map<String,String> labels=Map.ofEntries(Map.entry("aspectRatio","比例"),Map.entry("count","数量"),Map.entry("quality","质量"),
+            Map.entry("outputFormat","格式"),Map.entry("size","尺寸"),Map.entry("negativePrompt","负向提示词"),
+            Map.entry("durationSeconds","时长（秒）"),Map.entry("resolution","分辨率"),Map.entry("intelligentDuration","智能时长"),
+            Map.entry("generateAudio","生成音频"),Map.entry("watermark","水印"));
+        parameters.fields().forEachRemaining(entry->{if(labels.containsKey(entry.getKey())) settings.addAll(fields(labels.get(entry.getKey()),entry.getValue().asText()));});
+        List<Map<String,Object>> sections=new ArrayList<>();
+        sections.add(section("submission","保存的生成提示词","TEXT",available(prompt),prompt,List.of(),List.of(),more(prompt)));
+        sections.add(section("settings","生成设置","FIELDS","AVAILABLE",null,settings,List.of(),false));
+        String kind=String.valueOf(row.get("subtype"));
+        var outputs=freeCreationItems(context,row,"OUTPUT",kind);
+        sections.add(section("results","生成结果",kind,outputs.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),firstPage(outputs),outputs.size()>20));
+        for(String refKind:List.of("IMAGE","VIDEO","AUDIO")) {
+            var references=freeCreationItems(context,row,"REFERENCE",refKind);
+            if(!references.isEmpty()) sections.add(section("references-"+refKind,"参考"+Map.of("IMAGE","图片","VIDEO","视频","AUDIO","音频").get(refKind),refKind,"AVAILABLE",null,List.of(),firstPage(references),references.size()>20));
+        }
+        if(task.get("errorMessage")!=null) sections.add(section("error","失败原因","TEXT","AVAILABLE",text(task.get("errorMessage")),List.of(),List.of(),false));
+        return sections;
+    }
+
+    private List<Map<String,Object>> freeCreationItems(TenantContext context,Map<String,Object> row,String role,String kind) {
+        if("OUTPUT".equals(role) && !"SUCCEEDED".equals(row.get("domain_status"))) return List.of();
+        return freeCreationMedia.items(number(row,"id"),role).stream().filter(item->kind.equals(item.kind)).map(item->{
+            Map<String,Object> result=new LinkedHashMap<>();
+            result.put("id",item.id);result.put("fileName",item.fileName);result.put("width",item.width);result.put("height",item.height);
+            result.put("url",freeCreationMedia.grant(context,item,"IMAGE".equals(kind)));
+            result.put("thumbnailUrl",!"AUDIO".equals(kind) && ("IMAGE".equals(kind) || item.thumbnailKey!=null)?freeCreationMedia.grant(context,item,true):null);
+            result.put("downloadUrl",freeCreationMedia.grant(context,item,false));
+            return result;
+        }).toList();
     }
 
     private List<Map<String,Object>> imageSections(long tenant,long id) {
@@ -576,6 +637,8 @@ public class ProductionTaskService {
             if(view && !ProductionTaskSources.KNOWN_STATES.contains(String.valueOf(row.get("domain_status")))) item.put("warningSummary","历史任务状态无法识别，已归入异常任务，请返回业务核实。");
             List<String> actions=new ArrayList<>();if(destination!=null) actions.add("OPEN");
             if(view && creator.equals(a.context.userId())) {
+                if(type.equals("FREE_CREATION") && a.platformAdmin) actions.addAll(com.antshorttv.freecreation.FreeCreationService.controlActions(
+                    "QUEUED".equals(state)?"PENDING":String.valueOf(row.get("domain_status"))));
                 boolean active=List.of("QUEUED","RUNNING").contains(state);
                 if(type.equals("IMAGE") && active && number(row,"execution_id")!=null && effective.contains("AI_IMAGE_TASK:CANCEL")) actions.add("CANCEL");
                 if(type.equals("VIDEO") && active && effective.contains("AI_VIDEO_TASK:CANCEL")) actions.add("CANCEL");
@@ -640,6 +703,7 @@ public class ProductionTaskService {
     }
 
     private static String destination(String type,Long id,Long project,String subtype) {
+        if(type.equals("FREE_CREATION")) return "/free-creation?creation="+id;
         if(type.equals("REVIEW")) return "/script-review/tasks/"+id;
         if(type.startsWith("VIDEO_DECOMPOSITION")||type.equals("VIDEO_EPISODE")) return "/video-script-decomposition";
         if(project==null) return null;

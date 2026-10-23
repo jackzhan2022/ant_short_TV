@@ -54,9 +54,6 @@ public class AiExecutionAccessService {
         if (task.projectId != null) {
             projectAccessResolver.requireView(tenantId, task.projectId);
         }
-        if ("FREE_CREATION".equals(task.businessType)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "请在自由创作中重新提交或管理任务。");
-        }
         if (!context.userId().equals(task.userId)) {
             throw denied();
         }

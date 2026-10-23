@@ -39,6 +39,7 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
     @Autowired AiExecutionWorker worker;
     @Autowired com.antshorttv.execution.AiExecutionDispatcher dispatcher;
     @Autowired com.qcloud.cos.COS cos;
+    @Autowired FreeCreationExecutionHandler freeHandler;
     static HttpServer server;
     static byte[] png;
     static final AtomicInteger calls=new AtomicInteger();
@@ -110,7 +111,7 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         mvc.perform(get("/api/free-creations").with(authenticated(member.token)).header("X-Tenant-Id",tenant)).andExpect(status().isForbidden());
         mvc.perform(get("/api/tenants/"+tenant+"/ai-executions/"+execution).with(authenticated(member.token))).andExpect(status().isForbidden());
         for(String operation:List.of("retry","cancel","regenerate")) mvc.perform(post("/api/tenants/"+tenant+"/ai-executions/"+execution+"/"+operation)
-            .with(authenticated(author.token)).contentType(MediaType.APPLICATION_JSON).content("{\"clientIdempotencyKey\":\"cannot-regenerate\",\"traceId\":\"free-control-denied\"}")).andExpect(status().isForbidden());
+            .with(authenticated(colleague.token)).contentType(MediaType.APPLICATION_JSON).content("{\"clientIdempotencyKey\":\"cannot-regenerate\",\"traceId\":\"free-control-denied\"}")).andExpect(status().isForbidden());
         jdbc.update("update ai_execution_task set status='RUNNING' where id=?",execution);
         mvc.perform(get("/api/free-creations/"+id+"/outputs/"+output+"/download").with(authenticated(author.token)).header("X-Tenant-Id",tenant)).andExpect(status().isNotFound());
         jdbc.update("update ai_execution_task set status='SUCCEEDED' where id=?",execution);
@@ -167,6 +168,84 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         JsonNode reused=postJson(user,tenant,"/api/free-creations",Map.of("requestId",UUID.randomUUID().toString(),"mediaType","VIDEO","modelId",model,"prompt","以团队视频为参考续写",
             "parameters",Map.of("durationSeconds",5,"resolution","720p"),"references",List.of(Map.of("kind","VIDEO","referenceId",output.path("id").asLong())))).path("data");
         assertThat(reused.path("references").get(0).path("durationSeconds").decimalValue()).isEqualByComparingTo("5");
+    }
+
+    @Test void taskCenterUnifiesVisibilityContentControlsAndIdempotentBilling() throws Exception {
+        User author=register("13800781006","统一任务作者",true);
+        User colleague=register("13800781007","只读管理员",true);
+        User member=register("13800781008","普通团队所有者",false);
+        long tenant=team(member,"统一任务团队");join(tenant,author);join(tenant,colleague);
+        long other=team(author,"统一任务隔离团队"),model=imageModel();
+        jdbc.update("insert into team_point_account(tenant_id,balance,total_granted,total_consumed,created_at,updated_at) values (?,100,100,0,now(),now()) on duplicate key update balance=100,total_granted=100",tenant);
+        String upload=data(completeMediaUpload(mvc,author.token,tenant,"原始参考.png","image/png",png)).path("sessionToken").asText();
+        JsonNode item=postJson(author,tenant,"/api/free-creations",request(model,"统一任务提示词",List.of(Map.of("kind","IMAGE","uploadSessionToken",upload)))).path("data");
+        long id=item.path("id").asLong(),execution=item.path("executionId").asLong();
+        String base="/api/tenants/"+tenant+"/production-tasks",key="FREE_CREATION:"+id,path=base+"/"+key;
+        assertThat(getJson(author,tenant,base+"?type=FREE_CREATION").path("data").path("items").get(0).path("taskKey").asText()).isEqualTo(key);
+        assertThat(getJson(author,tenant,base+"/summary?type=FREE_CREATION").path("data").path("counts").path("QUEUED").asInt()).isEqualTo(1);
+        JsonNode detail=getJson(author,tenant,path).path("data");
+        assertThat(detail.path("allowedActions").toString()).contains("CANCEL");
+        assertThat(detail.path("destination").asText()).isEqualTo("/free-creation?creation="+id);
+        // Even a team owner cannot discover administrator-only creation records or counts.
+        assertThat(getJson(member,tenant,base+"?scope=team&type=FREE_CREATION").path("data").path("total").asInt()).isZero();
+        assertThat(getJson(member,tenant,base+"/summary?scope=team&type=FREE_CREATION").path("data").path("total").asInt()).isZero();
+        for(String suffix:List.of("","/content","/content/references-IMAGE")) mvc.perform(get(path+suffix).with(authenticated(member.token))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/tenants/"+other+"/production-tasks/"+key).with(authenticated(author.token))).andExpect(status().isForbidden());
+        mvc.perform(post(path+"/cancel").with(authenticated(colleague.token))).andExpect(status().isForbidden());
+        assertThat(getJson(colleague,tenant,path).path("data").path("allowedActions").toString()).doesNotContain("CANCEL","RETRY","REGENERATE");
+        assertThat(getJson(colleague,tenant,path+"/content").path("data").path("sections").get(0).path("preview").asText()).isEqualTo("统一任务提示词");
+        JsonNode sections=getJson(author,tenant,path+"/content").path("data").path("sections");
+        assertThat(sections.get(0).path("preview").asText()).isEqualTo("统一任务提示词");
+        assertThat(sections.get(3).path("items").get(0).path("url").asText()).contains("materials/");
+        assertThat(getJson(author,tenant,path+"/content/submission").path("data").path("text").asText()).isEqualTo("统一任务提示词");
+        assertThat(control(author,tenant,path,"cancel","cancel-key").path("statusGroup").asText()).isEqualTo("CANCELED");
+        assertThat(control(author,tenant,path,"cancel","cancel-key").path("statusGroup").asText()).isEqualTo("CANCELED");
+        freeHandler.reconcileTerminalReservations();
+        assertThat(jdbc.queryForObject("select status from ai_point_reservation where execution_id=?",String.class,execution)).isEqualTo("RELEASED");
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=?",BigDecimal.class,tenant)).isEqualByComparingTo("100");
+        var estimate=postJson(author,tenant,"/api/tenants/"+tenant+"/points/estimate",Map.of("operations",List.of(Map.of("url",path+"/regenerate"))));
+        assertThat(estimate.path("data").path("estimatedPoints").decimalValue()).isEqualByComparingTo("1");
+        JsonNode replacement=control(author,tenant,path,"regenerate","same-generation-key");
+        String nextKey=replacement.path("taskKey").asText();long nextId=Long.parseLong(nextKey.split(":")[1]);
+        assertThat(nextId).isNotEqualTo(id);
+        assertThat(control(author,tenant,path,"regenerate","same-generation-key").path("taskKey").asText()).isEqualTo(nextKey);
+        assertThat(jdbc.queryForObject("select count(*) from free_creation where tenant_id=?",Integer.class,tenant)).isEqualTo(2);
+        JsonNode next=getJson(author,tenant,"/api/free-creations/"+nextId).path("data");long nextExecution=next.path("executionId").asLong();
+        assertThat(next.path("references").get(0).path("fileName").asText()).isEqualTo("原始参考.png");
+        assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where execution_id=?",Integer.class,nextExecution)).isEqualTo(1);
+        // A remote polling continuation remains RUNNING in both list and summary.
+        jdbc.update("update free_creation set provider_started_at=now(),external_task_id='pending-remote' where id=?",nextId);
+        assertThat(getJson(author,tenant,base+"/"+nextKey).path("data").path("statusGroup").asText()).isEqualTo("RUNNING");
+        jdbc.update("update free_creation set provider_started_at=null,external_task_id=null where id=?",nextId);
+        int before=calls.get();worker.run(nextExecution);assertThat(calls.get()).isEqualTo(before+1);
+        JsonNode result=getJson(author,tenant,base+"/"+nextKey+"/content").path("data").path("sections").get(2);
+        assertThat(result.path("availability").asText()).isEqualTo("AVAILABLE");
+        assertThat(result.path("items").get(0).path("downloadUrl").asText()).contains("materials/");
+        assertThat(getJson(author,tenant,base+"/"+nextKey+"/content/results").path("data").path("items").size()).isEqualTo(1);
+        // Generic execution endpoints use the same business creation and idempotency namespace.
+        JsonNode regenerated=postJson(author,tenant,"/api/tenants/"+tenant+"/ai-executions/"+nextExecution+"/regenerate",
+            Map.of("clientIdempotencyKey","shared-key","traceId","unified-free-creation")).path("data");
+        assertThat(control(author,tenant,base+"/"+nextKey,"regenerate","shared-key").path("taskKey").asText()).isEqualTo("FREE_CREATION:"+regenerated.path("businessId").asLong());
+        long failedId=regenerated.path("businessId").asLong(),failedExecution=regenerated.path("id").asLong();
+        jdbc.update("update ai_execution_task set status='FAILED',error_message='pre-call failure' where id=?",failedExecution);
+        freeHandler.reconcileTerminalReservations();
+        String failedPath=base+"/FREE_CREATION:"+failedId;
+        mvc.perform(post(failedPath+"/retry").with(authenticated(author.token))).andExpect(status().isBadRequest());
+        JsonNode retried=control(author,tenant,failedPath,"retry","same-retry-key");
+        assertThat(control(author,tenant,failedPath,"retry","same-retry-key").path("taskKey").asText()).isEqualTo(retried.path("taskKey").asText());
+        assertThat(jdbc.queryForObject("select status from ai_execution_task where id=?",String.class,failedExecution)).isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where tenant_id=?",Integer.class,tenant)).isEqualTo(4);
+        mvc.perform(post(base+"/"+retried.path("taskKey").asText()+"/retry").with(authenticated(author.token)).header("Idempotency-Key","invalid-active-retry")).andExpect(status().isBadRequest());
+        // Insufficient credit rolls back the newly inserted business row as well as its execution.
+        jdbc.update("update team_point_account set balance=0,trial_balance=0 where tenant_id=?",tenant);
+        long rows=jdbc.queryForObject("select count(*) from free_creation where tenant_id=?",Long.class,tenant);
+        mvc.perform(post(failedPath+"/retry").with(authenticated(author.token)).header("Idempotency-Key","insufficient-points")).andExpect(status().is4xxClientError());
+        assertThat(jdbc.queryForObject("select count(*) from free_creation where tenant_id=?",Long.class,tenant)).isEqualTo(rows);
+    }
+
+    private JsonNode control(User user,long tenant,String path,String action,String key) throws Exception {
+        return data(mvc.perform(post(path+"/"+action).with(authenticated(user.token)).header("X-Tenant-Id",tenant).header("Idempotency-Key",key))
+            .andExpect(status().isOk()).andReturn());
     }
 
     private void awaitState(long execution,String state,String phase) throws Exception {
