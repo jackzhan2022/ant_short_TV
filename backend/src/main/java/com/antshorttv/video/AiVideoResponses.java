@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 record AiVideoTaskResponse(
     Long id,
@@ -48,6 +47,8 @@ record AiVideoTaskResponse(
     }
 
     private static AiVideoTaskResponse from(AiVideoTaskEntity entity, List<AiVideoResultEntity> results, long resultCount, boolean browser) {
+        JsonNode diagnostics = VideoReferenceDiagnostics.from(entity.providerCode, entity.requestSnapshotJson,
+            entity.errorMessage, entity.firstFrameUrl);
         return new AiVideoTaskResponse(
             entity.id,
             entity.executionId,
@@ -70,31 +71,16 @@ record AiVideoTaskResponse(
             entity.externalTaskId,
             entity.externalStatus,
             entity.status,
-            entity.errorMessage,
+            VideoReferenceDiagnostics.describeFailedImages(entity.errorMessage, diagnostics),
             entity.executionPhase,
             entity.retryable,
             entity.submittedAt,
             entity.startedAt,
             entity.completedAt,
             entity.createdAt,
-            referenceDiagnostics(entity.requestSnapshotJson),
+            diagnostics,
             results.stream().map(r -> browser ? AiVideoResultResponse.fromBrowser(r) : AiVideoResultResponse.from(r)).toList(), resultCount
         );
-    }
-
-    private static JsonNode referenceDiagnostics(String snapshotJson) {
-        ObjectMapper mapper = new ObjectMapper();
-        var result = mapper.createObjectNode();
-        if (snapshotJson == null || snapshotJson.isBlank()) return result;
-        try {
-            JsonNode snapshot = mapper.readTree(snapshotJson);
-            result.set("limits", snapshot.path("referenceLimits").deepCopy());
-            result.set("kept", snapshot.path("references").deepCopy());
-            result.set("omitted", snapshot.path("omittedReferences").deepCopy());
-        } catch (Exception ignored) {
-            // Older tasks without a valid snapshot expose an empty diagnostic object.
-        }
-        return result;
     }
 }
 

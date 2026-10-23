@@ -1879,6 +1879,32 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByLabelText('分镜1角色1资产形态')).toBeInTheDocument();
   });
 
+  it('shows the rejected images from the task snapshot with their names and preview sources', async () => {
+    setupWorkspaceResponse({
+      storyboards: [{
+        id: 305, shotNo: 1, episodeNo: 1, visualDescription: '镜头', durationSeconds: 5,
+        characters: '', scene: '', props: '', videoPrompt: '镜头',
+      }],
+      videoTasks: [{
+        id: 9005, storyboardId: 305, status: 'FAILED', results: [],
+        errorMessage: '图片3（Serena / 晚宴礼服）、图片1（Rowan）可能包含真人',
+        referenceDiagnostics: {
+          failedImages: [
+            { contentIndex: 1, label: '图片3', displayName: 'Serena / 晚宴礼服', imageUrl: '/submitted-serena.png' },
+            { contentIndex: 3, label: '图片1', displayName: 'Rowan', imageUrl: '/submitted-rowan.png' },
+          ],
+        },
+      }],
+    });
+    render(<ProductionWorkbench />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('可能包含真人');
+    expect(await screen.findByAltText('图片3：Serena / 晚宴礼服')).toHaveAttribute('src', '/submitted-serena.png');
+    expect(await screen.findByAltText('图片1：Rowan')).toHaveAttribute('src', '/submitted-rowan.png');
+    expect(screen.getByText('图片3：Serena / 晚宴礼服')).toBeInTheDocument();
+    expect(screen.getByText('图片1：Rowan')).toBeInTheDocument();
+  });
+
   it('suggests one visible character and uses available asset thumbnails', async () => {
     setupWorkspaceResponse({
       characters: [

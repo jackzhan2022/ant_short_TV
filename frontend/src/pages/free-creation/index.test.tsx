@@ -111,11 +111,73 @@ beforeEach(() => {
     current: 1,
     pageSize: 10,
   });
-  mocks.create.mockResolvedValue({ id: 1 });
+  mocks.create.mockImplementation(async (body) => ({
+    ...body, id: 1, status: 'QUEUED', creatorId: 1, creatorName: '作者',
+    createdAt: '2026-10-23T10:00:00', modelName: '系统图片模型', references: [], outputs: [],
+  }));
   mocks.upload.mockReturnValue(new Promise(() => undefined));
 });
 
 describe('自由创作页面', () => {
+  it('提交后直接插入记录并显示生成占位，保留旧卡片且不重新请求列表', async () => {
+    const record = (id: number, status: string) => ({
+      id, status, mediaType: 'IMAGE', prompt: `创作 ${id}`, creatorId: 1, creatorName: '作者',
+      createdAt: '2026-10-23T10:00:00', modelId: 1, modelName: '系统图片模型',
+      parameters: {}, references: [], outputs: status === 'SUCCEEDED' ? [{ id: 10, thumbnailUrl: '/existing.png' }] : [],
+    });
+    mocks.list.mockResolvedValue({ records: [record(1, 'SUCCEEDED')], total: 1, current: 1, pageSize: 10 });
+    mocks.create.mockResolvedValueOnce(record(2, 'RUNNING')).mockResolvedValueOnce(record(3, 'QUEUED'));
+    render(<FreeCreationPage />);
+    const oldImage = await screen.findByAltText('生成结果缩略图');
+    await screen.findByRole('option', { name: '系统图片模型' });
+    fireEvent.change(screen.getByRole('textbox', { name: '创意描述' }), { target: { value: '新的灵感' } });
+    fireEvent.click(await readyButton('生成图片'));
+    const placeholder = await screen.findByRole('status', { name: '生成中：创作 2' });
+    expect(within(placeholder).getByText('图片生成中')).toBeInTheDocument();
+    expect(placeholder.querySelector('.ant-spin')).not.toBeNull();
+    expect(screen.getByAltText('生成结果缩略图')).toBe(oldImage);
+    expect(screen.queryByText('正在加载创作记录…')).not.toBeInTheDocument();
+    expect(mocks.list).toHaveBeenCalledTimes(1);
+    fireEvent.click(await readyButton('生成图片'));
+    expect(await screen.findByRole('status', { name: '排队中：创作 3' })).toHaveTextContent('排队等待中');
+    expect(screen.getByText('创作记录 · 3')).toBeInTheDocument();
+    expect(mocks.list).toHaveBeenCalledTimes(1);
+    expect(screen.getByAltText('生成结果缩略图')).toBe(oldImage);
+  });
+
+  it('在记录列表底部进入视野时追加下一页，保留已加载记录', async () => {
+    let intersect!: IntersectionObserverCallback;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback, options: IntersectionObserverInit) {
+        intersect = callback;
+        expect(options.root).toBe(screen.getByRole('region', { name: '创作记录列表' }));
+      }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    const record = (id: number) => ({
+      id, mediaType: 'IMAGE', status: 'SUCCEEDED', prompt: `滚动创作 ${id}`, creatorName: '作者',
+      createdAt: '2026-10-23T10:00:00', modelId: 1, modelName: '模型', parameters: {}, references: [], outputs: [],
+    });
+    mocks.list.mockResolvedValueOnce({ records: Array.from({ length: 10 }, (_, i) => record(i + 1)), total: 11, current: 1, pageSize: 10 })
+      .mockResolvedValueOnce({ records: [record(11)], total: 11, current: 2, pageSize: 10 });
+    try {
+      render(<FreeCreationPage />);
+      await screen.findByText('滚动创作 10');
+      await waitFor(() => expect(observe).toHaveBeenCalled());
+      act(() => intersect([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+      await screen.findByText('滚动创作 11');
+      expect(screen.getByText('滚动创作 1')).toBeInTheDocument();
+      expect(screen.getByText('已显示全部创作')).toBeInTheDocument();
+      expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ current: 2, pageSize: 10 }), expect.any(AbortSignal));
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('读取真实模型，保留图片草稿，视频参数随模型切换且不提供虚构首尾帧', async () => {
     render(<FreeCreationPage />);
     await screen.findByRole('option', { name: '系统图片模型' });
@@ -215,7 +277,7 @@ describe('自由创作页面', () => {
     expect(screen.getByRole('textbox', { name: '创意描述' })).toHaveValue('');
   });
 
-  it('切换模型和用户释放参考图，新建只清空当前模式草稿', async () => {
+  it('切换模型和用户释放参考图，切换模式保留草稿', async () => {
     const createUrl = vi
       .spyOn(URL, 'createObjectURL')
       .mockReturnValue('blob:draft');
@@ -246,8 +308,6 @@ describe('自由创作页面', () => {
       fireEvent.change(screen.getByRole('textbox', { name: '创意描述' }), {
         target: { value: '视频草稿' },
       });
-      fireEvent.click(screen.getByRole('button', { name: '新建创作' }));
-      expect(screen.getByRole('textbox', { name: '创意描述' })).toHaveValue('');
       fireEvent.click(screen.getByRole('tab', { name: '图片创作' }));
       expect(screen.getByRole('textbox', { name: '创意描述' })).toHaveValue(
         '图片草稿',

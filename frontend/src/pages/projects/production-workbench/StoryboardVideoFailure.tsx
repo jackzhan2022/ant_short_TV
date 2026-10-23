@@ -1,4 +1,5 @@
 import { Button } from 'antd';
+import type { ReactNode } from 'react';
 import type { AiVideoTask } from './service';
 import styles from './StoryboardVideoFailure.module.css';
 import PointEstimateButton from '@/components/PointEstimateButton';
@@ -26,6 +27,7 @@ export default function StoryboardVideoFailure({
   onClose,
   onRetry,
   retryOperations,
+  children,
 }: {
   storyboardNo: number;
   message: string;
@@ -33,6 +35,7 @@ export default function StoryboardVideoFailure({
   onClose: () => void;
   onRetry?: () => void;
   retryOperations?: PointEstimateOperation[];
+  children?: ReactNode;
 }) {
   return (
     <section
@@ -70,6 +73,7 @@ export default function StoryboardVideoFailure({
           {timedOut ? '视频生成超时' : '视频生成失败'}
         </h3>
         <p className={styles.details}>{message}</p>
+        {children}
       </div>
       {onRetry ? (
         <PointEstimateButton operations={retryOperations}

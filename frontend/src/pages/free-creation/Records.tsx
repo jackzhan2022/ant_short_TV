@@ -1,4 +1,3 @@
-import PointEstimateButton from '@/components/PointEstimateButton';
 import {
   ClockCircleOutlined,
   DownloadOutlined,
@@ -7,23 +6,23 @@ import {
   TeamOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
-import { Button, Image, Modal, Pagination, Spin } from 'antd';
+import { Button, Image, Modal, Spin } from 'antd';
 import { history } from '@umijs/max';
 import { useEffect, useRef, useState } from 'react';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
 import { controlTask } from '@/pages/tasks/service';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import VideoPreviewPlayer from '@/pages/projects/production-workbench/VideoPreviewPlayer';
 import {
-  type CreationPage,
   type CreationParameters,
   type CreationQuery,
   type CreationRecord,
   type CreationStatus,
   getCreation,
   getCreationDownload,
-  listCreations,
 } from './api';
 import styles from './index.module.css';
+import useCreationRecords from './useCreationRecords';
 export const statusLabels: Record<CreationStatus, string> = {
   QUEUED: '排队中',
   RUNNING: '生成中',
@@ -62,12 +61,12 @@ const pending = (record: CreationRecord) =>
   record.status === 'QUEUED' || record.status === 'RUNNING';
 export default function Records({
   tenantId,
-  revision,
+  createdRecord,
   onReuse,
   teamName,
 }: {
   tenantId: number;
-  revision: number;
+  createdRecord?: CreationRecord;
   onReuse: (record: CreationRecord) => Promise<void>;
   teamName: string;
 }) {
@@ -77,18 +76,25 @@ export default function Records({
     pageSize: 10,
   });
   const [keyword, setKeyword] = useState('');
-  const [page, setPage] = useState<CreationPage>({
-    records: [],
-    total: 0,
-    current: 1,
-    pageSize: 10,
-  });
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
+  const {
+    page,
+    loading,
+    fetching,
+    hasMore,
+    error: loadError,
+    moreError,
+    loadMore,
+    insert,
+  } = useCreationRecords(query, `${tenantId}:${reload}`);
+  const scrollRef = useRef<HTMLElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [detail, setDetail] = useState<CreationRecord>();
   const [detailId, setDetailId] = useState<number | undefined>(() => {
-    const value = Number(new URLSearchParams(window.location.search).get('creation'));
+    const value = Number(
+      new URLSearchParams(window.location.search).get('creation'),
+    );
     return Number.isSafeInteger(value) && value > 0 ? value : undefined;
   });
   const [detailError, setDetailError] = useState('');
@@ -102,11 +108,10 @@ export default function Records({
     return () => controller.abort();
   }, []);
   useEffect(() => {
-    if (revision > 0) {
-      setKeyword('');
-      setQuery({ scope: 'mine', current: 1, pageSize: 10 });
+    if (createdRecord && insert(createdRecord) && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
     }
-  }, [revision]);
+  }, [createdRecord, insert]);
   useEffect(() => {
     const timer = window.setTimeout(
       () =>
@@ -124,39 +129,28 @@ export default function Records({
     return () => window.clearTimeout(timer);
   }, [keyword]);
   useEffect(() => {
-    const abort = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    setLoading(true);
     setError('');
-    setPage({
-      records: [],
-      total: 0,
-      current: query.current,
-      pageSize: query.pageSize,
-    });
-    const load = async () => {
-      try {
-        const next = await listCreations(query, abort.signal);
-        if (abort.signal.aborted) return;
-        setPage(next);
-        setError('');
-        if (next.records.some(pending))
-          timer = setTimeout(() => void load(), 5000);
-      } catch (failure) {
-        if (!abort.signal.aborted)
-          setError(
-            failure instanceof Error ? failure.message : '创作记录加载失败',
-          );
-      } finally {
-        if (!abort.signal.aborted) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      abort.abort();
-      clearTimeout(timer);
-    };
-  }, [query, revision, reload]);
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [query, reload]);
+  useEffect(() => {
+    if (
+      !hasMore ||
+      fetching ||
+      moreError ||
+      typeof IntersectionObserver === 'undefined'
+    )
+      return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { root: scrollRef.current, rootMargin: '240px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, fetching, moreError, loadMore]);
   useEffect(() => {
     if (!detailId) return;
     const abort = new AbortController();
@@ -205,7 +199,13 @@ export default function Records({
       const identity = `${record.id}:${operation}`;
       const key = controlKeys.current.get(identity) || crypto.randomUUID();
       controlKeys.current.set(identity, key);
-      const result = await controlTask(tenantId, record.taskKey || `FREE_CREATION:${record.id}`, operation, key, signal);
+      const result = await controlTask(
+        tenantId,
+        record.taskKey || `FREE_CREATION:${record.id}`,
+        operation,
+        key,
+        signal,
+      );
       if (signal.aborted) return;
       controlKeys.current.delete(identity);
       setDetailId(Number(result.taskKey.split(':')[1]));
@@ -313,149 +313,170 @@ export default function Records({
           {query.scope === 'mine' ? '由我创作' : '全部成员'}
         </span>
       </div>
-      {error ? (
-        <div className={styles.recordError} role="alert">
-          {error}
-          <Button size="small" onClick={() => setReload((value) => value + 1)}>
-            重试
-          </Button>
-        </div>
-      ) : null}
-      {loading ? (
-        <div className={styles.recordEmpty}>
-          <Spin />
-          <p>正在加载创作记录…</p>
-        </div>
-      ) : page.records.length ? (
-        <div className={styles.recordList}>
-          {page.records.map((record) => (
-            <article className={styles.recordCard} key={record.id}>
-              <button
-                className={styles.recordThumb}
-                type="button"
-                aria-label={`预览${record.mediaType === 'IMAGE' ? '图片' : '视频'}：${record.prompt}`}
-                onClick={() => setDetailId(record.id)}
-              >
-                {record.outputs[0]?.thumbnailUrl ? (
-                  <img
-                    src={record.outputs[0].thumbnailUrl}
-                    alt="生成结果缩略图"
-                  />
-                ) : record.mediaType === 'IMAGE' ? (
-                  <PictureOutlined aria-hidden="true" />
-                ) : (
-                  <VideoCameraOutlined aria-hidden="true" />
-                )}
-                <span>
-                  {record.mediaType === 'IMAGE'
-                    ? `${record.outputs.length || record.parameters.count || 1} 张图片`
-                    : record.outputs[0]?.durationSeconds
-                      ? `${record.outputs[0].durationSeconds} 秒视频`
-                      : '视频'}
-                </span>
-              </button>
-              <div className={styles.recordContent}>
-                <div className={styles.recordMeta}>
-                  <span>
-                    {record.creatorName} · {formatTime(record.createdAt)}
-                  </span>
-                  <span
-                    className={styles.recordStatus}
-                    data-status={record.status}
-                  >
-                    {statusLabels[record.status] || record.status}
-                  </span>
-                </div>
-                <p className={styles.recordPrompt}>{record.prompt}</p>
-                <div className={styles.parameterTags}>
-                  <span>{record.modelName}</span>
-                  {parameterLabels(record.parameters).map((label) => (
-                    <span key={label}>{label}</span>
-                  ))}
-                </div>
-                <div className={styles.recordReferences}>
-                  <span>参考素材</span>
-                  {record.references.length ? (
-                    record.references.map((ref) =>
-                      ref.thumbnailUrl && ref.kind === 'IMAGE' ? (
-                        <img
-                          key={ref.id}
-                          src={ref.thumbnailUrl}
-                          alt={ref.fileName}
-                          title={ref.fileName}
-                        />
-                      ) : (
-                        <span key={ref.id} title={ref.fileName}>
-                          {ref.kind === 'VIDEO'
-                            ? '视频'
-                            : ref.kind === 'AUDIO'
-                              ? '音频'
-                              : '图片'}
-                        </span>
-                      ),
-                    )
+      <section
+        ref={scrollRef}
+        className={styles.recordsScroll}
+        aria-label="创作记录列表"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to focus and scroll this region.
+        tabIndex={0}
+      >
+        {error || loadError ? (
+          <div className={styles.recordError} role="alert">
+            {error || loadError}
+            <Button
+              size="small"
+              onClick={() => setReload((value) => value + 1)}
+            >
+              重试
+            </Button>
+          </div>
+        ) : null}
+        {loading ? (
+          <div className={styles.recordEmpty}>
+            <Spin />
+            <p>正在加载创作记录…</p>
+          </div>
+        ) : page.records.length ? (
+          <div className={styles.recordList}>
+            {page.records.map((record) => (
+              <article className={styles.recordCard} key={record.id}>
+                <button
+                  className={styles.recordThumb}
+                  type="button"
+                  aria-label={`预览${record.mediaType === 'IMAGE' ? '图片' : '视频'}：${record.prompt}`}
+                  onClick={() => setDetailId(record.id)}
+                >
+                  {pending(record) ? (
+                    <span
+                      className={styles.generatingPreview}
+                      role="status"
+                      aria-label={`${statusLabels[record.status]}：${record.prompt}`}
+                    >
+                      <Spin />
+                      <span>{record.status === 'QUEUED' ? '排队等待中' : `${record.mediaType === 'IMAGE' ? '图片' : '视频'}生成中`}</span>
+                    </span>
+                  ) : record.outputs[0]?.thumbnailUrl ? (
+                    <img
+                      src={record.outputs[0].thumbnailUrl}
+                      alt="生成结果缩略图"
+                      loading="lazy"
+                    />
+                  ) : record.mediaType === 'IMAGE' ? (
+                    <PictureOutlined aria-hidden="true" />
                   ) : (
-                    <span>无参考素材</span>
+                    <VideoCameraOutlined aria-hidden="true" />
                   )}
-                </div>
-                {record.errorMessage ? (
-                  <p className={styles.error}>{record.errorMessage}</p>
-                ) : null}
-                <div className={styles.recordActions}>
-                  <span>{teamName}</span>
-                  <Button size="small" onClick={() => setDetailId(record.id)}>
-                    查看详情
-                  </Button>
-                  <Button
-                    size="small"
-                    disabled={busy}
-                    onClick={() => reuse(record.id)}
-                  >
-                    复用参数
-                  </Button>
-                  {record.outputs.length ? (
+                  <span>
+                    {record.mediaType === 'IMAGE'
+                      ? `${record.outputs.length || record.parameters.count || 1} 张图片`
+                      : record.outputs[0]?.durationSeconds
+                        ? `${record.outputs[0].durationSeconds} 秒视频`
+                        : '视频'}
+                  </span>
+                </button>
+                <div className={styles.recordContent}>
+                  <div className={styles.recordMeta}>
+                    <span>
+                      {record.creatorName} · {formatTime(record.createdAt)}
+                    </span>
+                    <span
+                      className={styles.recordStatus}
+                      data-status={record.status}
+                    >
+                      {statusLabels[record.status] || record.status}
+                    </span>
+                  </div>
+                  <p className={styles.recordPrompt}>{record.prompt}</p>
+                  <div className={styles.parameterTags}>
+                    <span>{record.modelName}</span>
+                    {parameterLabels(record.parameters).map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </div>
+                  <div className={styles.recordReferences}>
+                    <span>参考素材</span>
+                    {record.references.length ? (
+                      record.references.map((ref) =>
+                        ref.thumbnailUrl && ref.kind === 'IMAGE' ? (
+                          <img
+                            key={ref.id}
+                            src={ref.thumbnailUrl}
+                            alt={ref.fileName}
+                            title={ref.fileName}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span key={ref.id} title={ref.fileName}>
+                            {ref.kind === 'VIDEO'
+                              ? '视频'
+                              : ref.kind === 'AUDIO'
+                                ? '音频'
+                                : '图片'}
+                          </span>
+                        ),
+                      )
+                    ) : (
+                      <span>无参考素材</span>
+                    )}
+                  </div>
+                  {record.errorMessage ? (
+                    <p className={styles.error}>{record.errorMessage}</p>
+                  ) : null}
+                  <div className={styles.recordActions}>
+                    <span>{teamName}</span>
+                    <Button size="small" onClick={() => setDetailId(record.id)}>
+                      查看详情
+                    </Button>
                     <Button
                       size="small"
                       disabled={busy}
-                      icon={<DownloadOutlined aria-hidden="true" />}
-                      onClick={() =>
-                        record.outputs.length > 1
-                          ? setDetailId(record.id)
-                          : download(record.id, record.outputs[0].id)
-                      }
+                      onClick={() => reuse(record.id)}
                     >
-                      下载
+                      复用参数
                     </Button>
-                  ) : null}
+                    {record.outputs.length ? (
+                      <Button
+                        size="small"
+                        disabled={busy}
+                        icon={<DownloadOutlined aria-hidden="true" />}
+                        onClick={() =>
+                          record.outputs.length > 1
+                            ? setDetailId(record.id)
+                            : download(record.id, record.outputs[0].id)
+                        }
+                      >
+                        下载
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <div className={styles.recordEmpty}>
-          <PictureOutlined aria-hidden="true" />
-          <h2>{error ? '暂时无法加载记录' : '暂无匹配的创作记录'}</h2>
-          <p>
-            {query.scope === 'team'
-              ? '当前团队所有成员的创作会自动出现在这里'
-              : '在左侧描述灵感，完成生成确认后即可查看记录'}
-          </p>
-        </div>
-      )}
-      <Pagination
-        current={query.current}
-        pageSize={query.pageSize}
-        total={page.total}
-        showSizeChanger={false}
-        hideOnSinglePage
-        onChange={(current) =>
-          setQuery((previous) => ({ ...previous, current }))
-        }
-      />
-      <p className={styles.stageNote}>
-        创作与素材归属当前团队，团队成员可查看、下载和复用。
-      </p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className={styles.recordEmpty}>
+            <PictureOutlined aria-hidden="true" />
+            <h2>
+              {error || loadError ? '暂时无法加载记录' : '暂无匹配的创作记录'}
+            </h2>
+            <p>
+              {query.scope === 'team'
+                ? '当前团队所有成员的创作会自动出现在这里'
+                : '在左侧描述灵感，完成生成确认后即可查看记录'}
+            </p>
+          </div>
+        )}
+        {hasMore ? (
+          <div ref={sentinelRef} className={styles.loadMore}>
+            {moreError ? <span role="alert">{moreError}</span> : null}
+            <Button size="small" loading={fetching} onClick={loadMore}>
+              {moreError ? '重试加载更多' : '加载更多'}
+            </Button>
+          </div>
+        ) : !loading && page.records.length > 0 ? (
+          <p className={styles.listEnd}>已显示全部创作</p>
+        ) : null}
+      </section>
       <Modal
         title="创作详情"
         open={detailId !== undefined}
@@ -604,7 +625,13 @@ export default function Records({
                   }
                 </PointEstimateButton>
               ))}
-              <Button onClick={() => history.push(`/tasks?task=${encodeURIComponent(detail.taskKey || `FREE_CREATION:${detail.id}`)}`)}>
+              <Button
+                onClick={() =>
+                  history.push(
+                    `/tasks?task=${encodeURIComponent(detail.taskKey || `FREE_CREATION:${detail.id}`)}`,
+                  )
+                }
+              >
                 在任务中心查看
               </Button>
               <p className={styles.help}>

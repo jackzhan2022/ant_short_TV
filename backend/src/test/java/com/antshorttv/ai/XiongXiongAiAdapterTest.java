@@ -60,7 +60,7 @@ class XiongXiongAiAdapterTest {
                     List.of("data:image/png;base64,cmVmZXJlbmNl")));
 
             JsonNode body = objectMapper.readTree(requestBody.get());
-            assertThat(body.path("model").asText()).isEqualTo("gpt-5.6-terra");
+            assertThat(body.path("model").asText()).isEqualTo("gpt-6-astra");
             assertThat(body.at("/input/0/content/1/type").asText()).isEqualTo("input_image");
             assertThat(body.at("/input/0/content/1/image_url").asText()).isEqualTo("data:image/png;base64,cmVmZXJlbmNl");
             assertThat(body.at("/tools/0/action").asText()).isEqualTo("edit");

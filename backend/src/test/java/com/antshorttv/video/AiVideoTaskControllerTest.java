@@ -1242,7 +1242,7 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v3/contents/generations/tasks", exchange -> writeJson(exchange,
             providerStatus, "{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\","
-                + "\"message\":\"input image may contain real person\"}}"));
+                + "\"message\":\"input image 'content[1]' may contain real person\"}}"));
         server.start();
         try {
             String mobile = "13800017" + providerStatus;
@@ -1266,7 +1266,17 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                 .andExpect(status().isOk()).andReturn();
             Long taskId = readLong(created, "$.data.id");
             pollVideoTask(token, tenantId, projectId, taskId)
-                .andExpect(jsonPath("$.data.status", is("FAILED")));
+                .andExpect(jsonPath("$.data.status", is("FAILED")))
+                .andExpect(jsonPath("$.data.errorMessage", org.hamcrest.Matchers.containsString("图片1（林晚）")))
+                .andExpect(jsonPath("$.data.referenceDiagnostics.failedImages[0].imageUrl",
+                    is("https://cdn.example/seedance-frame.png")));
+            mockMvc.perform(get("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId).param("storyboardId", storyboardId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data[0].errorMessage", org.hamcrest.Matchers.containsString("图片1（林晚）")))
+                .andExpect(jsonPath("$.data.data[0].referenceDiagnostics.failedImages[0].imageUrl",
+                    is("https://cdn.example/seedance-frame.png")));
             String settlement = releaseExpected ? "RELEASED" : "SETTLEMENT_REVIEW_REQUIRED";
             assertThat(jdbc.queryForObject("""
                 select r.status from ai_point_reservation r join ai_video_task v on v.execution_id=r.execution_id

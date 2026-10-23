@@ -1288,6 +1288,12 @@ export type AiVideoTask = {
   createdAt?: string;
   referenceDiagnostics?: {
     limits?: { image?: number; video?: number; audio?: number };
+    failedImages?: Array<{
+      contentIndex: number;
+      label: string;
+      displayName: string;
+      imageUrl?: string | null;
+    }>;
     kept?: Array<{
       reference?: { displayName?: string; bindingRole?: string; assetType?: string; assetId?: number };
       displayName?: string;

@@ -237,7 +237,7 @@ public class AiVideoTaskService {
         if (storyboardId != null) query.eq("storyboard_id", storyboardId);
         var page = MediaPageQueries.select(aiVideoTaskMapper, query, PageBounds.of(current, pageSize), q -> q
             .select(AiVideoTaskEntity.class, f -> !Set.of("prompt", "compiled_prompt", "negative_prompt", "first_frame_url",
-                "last_frame_url", "reference_images", "request_snapshot_json", "provider_result_metadata_json").contains(f.getColumn()))
+                "last_frame_url", "reference_images", "provider_result_metadata_json").contains(f.getColumn()))
             .orderByDesc("created_at", "id"));
         return new MediaPage<>(previewResponses(tenantId, projectId, page.data()), page.current(), page.pageSize(), page.total());
     }

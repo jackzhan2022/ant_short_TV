@@ -76,7 +76,7 @@ export function draftError(
       (model.outputFormat !== undefined &&
         p.outputFormat !== model.outputFormat))
   )
-    return '模型质量或输出格式配置已变化，请新建创作后重新选择模型';
+    return '模型质量或输出格式配置已变化，请刷新页面后重新选择模型';
   if (
     model.serviceType === 'IMAGE' &&
     !imageCountOptions(model).includes(p.count ?? 1)

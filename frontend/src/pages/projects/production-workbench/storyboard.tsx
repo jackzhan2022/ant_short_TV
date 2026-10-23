@@ -1631,7 +1631,29 @@ const StoryboardCard = ({
                   onClose={() => setDismissedVideoErrorTaskId(videoTask.id)}
                   onRetry={videoTask.execution?.retryable ? () => onRetryVideo(videoTask) : undefined}
                   retryOperations={[{ url: `/api/projects/${projectId}/ai-video-tasks/${videoTask.id}/regenerate` }]}
-                />
+                >
+                  {!!videoTask.referenceDiagnostics?.failedImages?.length && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
+                      {videoTask.referenceDiagnostics.failedImages.map((image) => (
+                        <figure key={image.contentIndex} style={{ margin: 0, width: 120 }}>
+                          {image.imageUrl ? (
+                            <LazyMediaImage
+                              src={image.imageUrl}
+                              alt={`${image.label}：${image.displayName || '参考图片'}`}
+                              width={120}
+                              height={90}
+                              imageStyle={{ objectFit: 'contain' }}
+                              placeholderFallback="图片无法加载"
+                            />
+                          ) : null}
+                          <figcaption>
+                            {image.label}{image.displayName ? `：${image.displayName}` : ''}
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  )}
+                </StoryboardVideoFailure>
               ) : previewKey === 'VIDEO' && video.videoUrl ? (
                 <ClickToPlayVideo
                   alt={`分镜${index + 1}成片预览`}

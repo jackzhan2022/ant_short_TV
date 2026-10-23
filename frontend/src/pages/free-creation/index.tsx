@@ -1,8 +1,5 @@
-import PointEstimateButton from '@/components/PointEstimateButton';
 import {
-  BulbOutlined,
   PictureOutlined,
-  PlusOutlined,
   ReloadOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
@@ -10,6 +7,7 @@ import { useAccess, useModel } from '@umijs/max';
 import { Alert, Button, Spin } from 'antd';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { PointEstimateCancelledError } from '@/services/point-estimate';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import {
   type CreationRecord,
   type CreationRequest,
@@ -67,7 +65,7 @@ function Workspace({ teamName, tenantId }: { teamName: string; tenantId: number 
   const [loading, setLoading] = useState(true);
   const [modelError, setModelError] = useState('');
   const [revision, setRevision] = useState(0);
-  const [recordsRevision, setRecordsRevision] = useState(0);
+  const [createdRecord, setCreatedRecord] = useState<CreationRecord>();
   const [drafts, setDrafts] = useState<Record<CreationMode, CreationDraft>>({
     IMAGE: newDraft(),
     VIDEO: newDraft(),
@@ -164,11 +162,11 @@ function Workspace({ teamName, tenantId }: { teamName: string; tenantId: number 
     setSubmitError('');
     setNotice('');
     try {
-      await createCreation(attempt.payload, signal);
+      const record = await createCreation(attempt.payload, signal);
       if (signal.aborted) return;
       delete attempts.current[mode];
       setNotice(`${labels[mode]}创作已提交，可在创作记录中查看进度`);
-      setRecordsRevision((value) => value + 1);
+      setCreatedRecord(record);
     } catch (failure) {
       if (!signal.aborted && !(failure instanceof PointEstimateCancelledError))
         setSubmitError(
@@ -198,36 +196,6 @@ function Workspace({ teamName, tenantId }: { teamName: string; tenantId: number 
   };
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <div className={styles.title}>
-            <h1>自由创作</h1>
-            <span>内测</span>
-          </div>
-          <p>从一个灵感开始，创作图片与视频</p>
-        </div>
-        <div className={styles.headerActions}>
-          <span className={styles.draftState}>本地草稿 · 刷新后清空</span>
-          <Button
-            disabled={submitting}
-            icon={<PlusOutlined aria-hidden="true" />}
-            onClick={() => {
-              update(
-                mode,
-                newDraft(models.find((item) => item.serviceType === mode)),
-              );
-              setResets((current) => ({
-                ...current,
-                [mode]: current[mode] + 1,
-              }));
-              delete attempts.current[mode];
-              setNotice(`已清空${labels[mode]}创作草稿`);
-            }}
-          >
-            新建创作
-          </Button>
-        </div>
-      </header>
       <div className={styles.workspace}>
         <section className={styles.editor} aria-label="创作设置">
           <div className={styles.editorBody}>
@@ -325,19 +293,10 @@ function Workspace({ teamName, tenantId }: { teamName: string; tenantId: number 
         <div className={styles.resultColumn}>
           <Records
             tenantId={tenantId}
-            revision={recordsRevision}
+            createdRecord={createdRecord}
             onReuse={reuse}
             teamName={teamName}
           />
-          <div className={styles.tip}>
-            <BulbOutlined aria-hidden="true" />
-            <div>
-              <strong>让灵感更清晰一点</strong>
-              <p>
-                写清主体、场景、风格与镜头变化，参考素材要求随所选模型变化。
-              </p>
-            </div>
-          </div>
         </div>
       </div>
       {notice ? (

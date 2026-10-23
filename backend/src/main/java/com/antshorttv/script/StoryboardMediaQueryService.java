@@ -3,6 +3,7 @@ package com.antshorttv.script;
 import com.antshorttv.project.ProjectAccessResolver;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.video.VideoReferenceDiagnostics;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -187,7 +188,7 @@ public class StoryboardMediaQueryService {
         String targetFilter = "image".equals(kind) ? " and target_type = 'STORYBOARD'" : "";
         String columns = "id, project_id, " + target + ", model, provider_code, status, error_message, created_at";
         if ("image".equals(kind)) columns += ", task_type, target_type, aspect_ratio, image_count, execution_id";
-        if ("video".equals(kind)) columns += ", duration_seconds, aspect_ratio, execution_id";
+        if ("video".equals(kind)) columns += ", duration_seconds, aspect_ratio, execution_id, request_snapshot_json, first_frame_url";
         String boundClause = boundIds.isEmpty() ? ""
             : " or t.id in (select task_id from ai_" + kind + "_result where tenant_id = ? and project_id = ?"
                 + " and status = 'ACTIVE' and id in (" + placeholders(boundIds.size()) + "))";
@@ -207,6 +208,14 @@ public class StoryboardMediaQueryService {
         Map<Long, Map<String, Object>> executions = executions(tenantId, projectId, rows);
         return rows.stream().map(row -> {
             Map<String, Object> mapped = camelCase(row);
+            if ("video".equals(kind)) {
+                var diagnostics = VideoReferenceDiagnostics.from((String) mapped.get("providerCode"),
+                    (String) mapped.remove("requestSnapshotJson"), (String) mapped.get("errorMessage"),
+                    (String) mapped.remove("firstFrameUrl"));
+                mapped.put("referenceDiagnostics", diagnostics);
+                mapped.put("errorMessage", VideoReferenceDiagnostics.describeFailedImages(
+                    (String) mapped.get("errorMessage"), diagnostics));
+            }
             Long taskId = ((Number) mapped.get("id")).longValue();
             List<Map<String, Object>> taskResults = results.getOrDefault(taskId, List.of());
             mapped.put("results", taskResults);

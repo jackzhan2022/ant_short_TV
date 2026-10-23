@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 /** OpenAI-compatible adapter dedicated to the XiongXiongAI gateway. */
 @Component
 public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
-    private static final String DEFAULT_RESPONSES_MODEL = "gpt-5.6-terra";
+    private static final String DEFAULT_RESPONSES_MODEL = "gpt-6-astra";
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 

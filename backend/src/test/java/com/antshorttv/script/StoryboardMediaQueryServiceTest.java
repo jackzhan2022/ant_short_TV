@@ -39,6 +39,8 @@ public class StoryboardMediaQueryServiceTest {
             jdbc.execute("create table ai_" + kind + "_task(id bigint,tenant_id bigint,project_id bigint,storyboard_id bigint,target_type varchar(30),target_id bigint,task_type varchar(30),model_id bigint,provider_code varchar(50),model varchar(50),aspect_ratio varchar(20),image_count int,duration_seconds int,status varchar(30),error_message varchar(100),created_at timestamp,execution_id bigint,deleted_at timestamp)");
             jdbc.execute("create table ai_" + kind + "_result(id bigint,tenant_id bigint,project_id bigint,task_id bigint,storyboard_id bigint,target_type varchar(30),target_id bigint,image_url varchar(300),thumbnail_url varchar(300),display_path varchar(300),video_url varchar(300),storage_path varchar(300),cover_url varchar(300),audio_url varchar(300),duration_seconds decimal(8,2),width int,height int,file_size bigint,format varchar(30),material_id bigint,is_selected boolean,status varchar(30),created_at timestamp)");
         }
+        jdbc.execute("alter table ai_video_task add request_snapshot_json text");
+        jdbc.execute("alter table ai_video_task add first_frame_url varchar(300)");
         jdbc.execute("create table ai_execution_task(id bigint,tenant_id bigint,project_id bigint,status varchar(30),phase varchar(30),progress int,execution_version int,source_execution_id bigint,root_execution_id bigint,retryable boolean,result_type varchar(30),result_id bigint,error_code varchar(60),error_message varchar(100),usage_cost_status varchar(30),provider_cost_summary_json text,business_call_count int,technical_retry_count int,point_settlement_status varchar(30),reserved_points decimal(12,2),settled_points decimal(12,2),released_points decimal(12,2),started_at timestamp,created_at timestamp,updated_at timestamp,completed_at timestamp,canceled_at timestamp)");
         jdbc.update("insert into storyboard(id,tenant_id,project_id,episode_id,current_video_result_id) values(10,1,2,501,100)");
         jdbc.update("insert into storyboard(id,tenant_id,project_id) values(11,1,2)");
@@ -47,6 +49,23 @@ public class StoryboardMediaQueryServiceTest {
             jdbc.update("insert into ai_video_task(id,tenant_id,project_id,storyboard_id,status,created_at) values(?,1,2,10,'SUCCEEDED',current_timestamp)", id);
             jdbc.update("insert into ai_video_result(id,tenant_id,project_id,task_id,storyboard_id,video_url,storage_path,cover_url,material_id,is_selected,status,created_at) values(?,1,2,?,10,?,?,?,777,false,'ACTIVE',current_timestamp)", id == 1 ? 100 : 1000 + id, id, "/video-" + id, "materials/1/2/videos/" + id + ".mp4", "/materials/1/2/images/cover.png");
         }
+    }
+
+    @Test
+    void resolvesRejectedImagesInTheMediaSummaryWithoutReturningTheRawSnapshot() {
+        jdbc.update("update ai_video_task set provider_code='VOLCENGINE_ARK',status='FAILED',error_message=?,request_snapshot_json=? where id=200",
+            "PrivacyInformation: input image 'content[1]' may contain real person", """
+                {"references":[{"reference":{"mediaType":"IMAGE","compiledLabel":"图片2","displayName":"Serena"},
+                  "displayName":"晚宴礼服","browserDisplayUrl":"/materials/submitted-serena.png"}]}
+                """);
+
+        var task = service.summary(1L, 2L, List.of(10L)).get("videoTasks").get(0);
+
+        assertThat(task.get("errorMessage").toString()).contains("图片2（Serena / 晚宴礼服）")
+            .doesNotContain("content[1]");
+        var diagnostics = (com.fasterxml.jackson.databind.JsonNode) task.get("referenceDiagnostics");
+        assertThat(diagnostics.at("/failedImages/0/imageUrl").asText()).isEqualTo("/materials/submitted-serena.png");
+        assertThat(task).doesNotContainKeys("requestSnapshotJson", "firstFrameUrl");
     }
 
     @Test
