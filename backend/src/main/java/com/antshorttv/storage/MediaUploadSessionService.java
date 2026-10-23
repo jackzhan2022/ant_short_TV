@@ -132,18 +132,18 @@ public class MediaUploadSessionService {
         return verified(entity);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public VerifiedMediaUpload requireCompleted(Long userId, String sessionToken) {
-        MediaUploadSessionEntity entity = requireOwned(userId, sessionToken);
+        MediaUploadSessionEntity entity = requireOwned(userId, sessionToken, true);
         if (!"COMPLETED".equals(entity.status)) {
             throw new IllegalArgumentException("上传会话尚未完成校验。");
         }
         return verified(entity);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public VerifiedMediaUpload requireCompleted(Long userId, Long tenantId, String sessionToken) {
-        MediaUploadSessionEntity entity = requireOwned(userId, sessionToken);
+        MediaUploadSessionEntity entity = requireOwned(userId, sessionToken, true);
         if (!entity.tenantId.equals(tenantId)) {
             throw new IllegalArgumentException("上传会话不存在。");
         }
@@ -153,9 +153,9 @@ public class MediaUploadSessionService {
         return verified(entity);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public VerifiedMediaUpload requireCompleted(Long userId, Long tenantId, Long projectId, String sessionToken) {
-        MediaUploadSessionEntity entity = requireOwned(userId, sessionToken);
+        MediaUploadSessionEntity entity = requireOwned(userId, sessionToken, true);
         if (!entity.tenantId.equals(tenantId) || !java.util.Objects.equals(entity.projectId, projectId)) {
             throw new IllegalArgumentException("上传会话不属于当前团队或要求的项目范围。");
         }
@@ -182,7 +182,12 @@ public class MediaUploadSessionService {
     }
 
     private MediaUploadSessionEntity requireOwned(Long userId, String token) {
-        MediaUploadSessionEntity entity = store.find(token);
+        return requireOwned(userId, token, false);
+    }
+
+    private MediaUploadSessionEntity requireOwned(Long userId, String token, boolean readOnly) {
+        // Completed originals are immutable; quote transactions must not acquire write locks.
+        MediaUploadSessionEntity entity = readOnly ? store.findReadOnly(token) : store.find(token);
         if (entity == null || !entity.userId.equals(userId)) {
             throw new IllegalArgumentException("上传会话不存在。");
         }

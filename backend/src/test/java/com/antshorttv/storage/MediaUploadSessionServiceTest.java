@@ -21,6 +21,28 @@ import org.junit.jupiter.api.Test;
 class MediaUploadSessionServiceTest {
 
     @Test
+    void validatesCompletedUploadsWithoutLocksInReadOnlyQuotes() {
+        InMemoryStore store = new InMemoryStore();
+        MediaUploadSessionService service = service(store, mock(CosUploadRequestAuthorizer.class));
+        MediaUploadSession created = service.create(
+            new CreateMediaUploadSession(11L, null, 33L, "image.png", "image/png", 3L)
+        );
+        store.current.status = "COMPLETED";
+        store.current.verifiedSize = 3L;
+        store.rejectWriteLocks = true;
+
+        assertDoesNotThrow(() -> service.requireCompleted(33L, created.sessionToken()));
+        assertDoesNotThrow(() -> service.requireCompleted(33L, 11L, created.sessionToken()));
+        assertDoesNotThrow(() -> service.requireCompleted(33L, 11L, null, created.sessionToken()));
+        assertThatThrownBy(() -> service.requireCompleted(44L, 11L, null, created.sessionToken()))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.requireCompleted(33L, 12L, null, created.sessionToken()))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.cancel(33L, created.sessionToken()))
+            .isInstanceOf(IllegalStateException.class).hasMessage("Write lock in a read-only transaction");
+    }
+
+    @Test
     void createsTenantScopedSessionWithoutReturningCloudCredentials() {
         InMemoryStore store = new InMemoryStore();
         MediaUploadSessionService service = service(store, mock(CosUploadRequestAuthorizer.class));
@@ -231,6 +253,7 @@ class MediaUploadSessionServiceTest {
     private static final class InMemoryStore extends MediaUploadSessionStore {
         private final Map<String, MediaUploadSessionEntity> rows = new HashMap<>();
         private MediaUploadSessionEntity current;
+        private boolean rejectWriteLocks;
 
         @Override
         public void insert(MediaUploadSessionEntity entity) {
@@ -240,6 +263,12 @@ class MediaUploadSessionServiceTest {
 
         @Override
         public MediaUploadSessionEntity find(String token) {
+            if (rejectWriteLocks) throw new IllegalStateException("Write lock in a read-only transaction");
+            return rows.get(token);
+        }
+
+        @Override
+        public MediaUploadSessionEntity findReadOnly(String token) {
             return rows.get(token);
         }
 

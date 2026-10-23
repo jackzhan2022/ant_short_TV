@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.Select;
 
 @Mapper
 interface MediaUploadSessionMapper extends BaseMapper<MediaUploadSessionEntity> {
+    @Select("select * from media_upload_session where session_token = #{token}")
+    MediaUploadSessionEntity findReadOnly(@Param("token") String token);
+
     @Select("select * from media_upload_session where session_token = #{token} for update")
     MediaUploadSessionEntity findForUpdate(@Param("token") String token);
 }

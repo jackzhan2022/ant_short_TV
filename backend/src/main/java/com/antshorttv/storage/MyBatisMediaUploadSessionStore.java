@@ -17,5 +17,8 @@ class MyBatisMediaUploadSessionStore extends MediaUploadSessionStore {
     public MediaUploadSessionEntity find(String token) { return mapper.findForUpdate(token); }
 
     @Override
+    public MediaUploadSessionEntity findReadOnly(String token) { return mapper.findReadOnly(token); }
+
+    @Override
     public void update(MediaUploadSessionEntity entity) { mapper.updateById(entity); }
 }
