@@ -11,7 +11,7 @@ import {
 type Props = {
   projectId: number;
   onTrack: (executionId: number) => void;
-  onBlocked: (blocked: boolean) => void;
+  onBlocked: (blocked: boolean, reason?: string) => void;
   onRefresh: () => unknown;
 };
 
@@ -38,13 +38,17 @@ export default function AssetNormalizationPanel(props: Props) {
         const next = response.data;
         setStatus(next);
         setReadFailed(false);
-        callbacks.current.onBlocked(next.blocked);
+        callbacks.current.onBlocked(next.blocked, next.blocked
+          ? next.status === 'FAILED'
+            ? '资产提取或归一失败，可继续浏览；请在上方重试资产归一，完成后可编辑和生成。'
+            : '正在提取或归一资产，可继续浏览；完成后可编辑和生成。'
+          : undefined);
         if (previous.current?.blocked && !next.blocked) await callbacks.current.onRefresh();
         previous.current = next;
       } catch {
         if (!active) return;
         setReadFailed(true);
-        callbacks.current.onBlocked(true);
+        callbacks.current.onBlocked(true, '归一状态读取失败，正在自动重试；可继续浏览，编辑和生成暂不可用。');
       }
       if (active) timer = setTimeout(poll, 3000);
     };
@@ -60,7 +64,7 @@ export default function AssetNormalizationPanel(props: Props) {
       const response = await submitAssetNormalization(projectId);
       if (!response.data.id) throw new Error('归一任务未返回任务编号');
       setStatus({ status: 'NORMALIZING', blocked: true, executionId: response.data.id });
-      callbacks.current.onBlocked(true);
+      callbacks.current.onBlocked(true, '正在提取或归一资产，可继续浏览；完成后可编辑和生成。');
       callbacks.current.onTrack(response.data.id);
     } catch (error) {
       if (!isPointEstimateCancelled(error)) message.error(error instanceof Error ? error.message : '归一任务提交失败');

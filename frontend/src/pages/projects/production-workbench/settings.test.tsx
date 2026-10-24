@@ -11,8 +11,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssetSettingsWorkspace } from './service';
 import ProductionWorkbenchSettings from './settings';
 vi.mock('./AssetNormalizationPanel', () => ({
-  default: ({ onBlocked }: { onBlocked: (blocked: boolean) => void }) => (
+  default: ({ onBlocked }: { onBlocked: (blocked: boolean, reason?: string) => void }) => (
+    <>
     <button type="button" onClick={() => onBlocked(true)}>模拟归一处理中</button>
+    <button type="button" onClick={() => onBlocked(true, '资产归一失败，请重试。')}>模拟归一失败</button>
+    <button type="button" onClick={() => onBlocked(true, '状态读取失败，正在自动重试。')}>模拟状态读取失败</button>
+    <button type="button" onClick={() => onBlocked(false)}>模拟归一恢复</button>
+    </>
   ),
 }));
 
@@ -157,10 +162,10 @@ vi.mock('antd', () => ({
       </div>
     ),
   },
-  Popconfirm: ({ children, onConfirm, title }: any) => (
+  Popconfirm: ({ children, onConfirm, title, disabled, okButtonProps }: any) => (
     <span>
       {children}
-      <button type="button" aria-label={title} onClick={onConfirm}>
+      <button type="button" aria-label={title} onClick={onConfirm} disabled={disabled || okButtonProps?.disabled}>
         确认
       </button>
     </span>
@@ -1517,6 +1522,70 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.getByRole('button', { name: '角色图生成' })).toBeDisabled();
     fireEvent.click(sceneTab);
     expect(sceneTab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it.each([
+    ['模拟归一处理中', '正在提取或归一资产'],
+    ['模拟归一失败', '资产归一失败，请重试。'],
+    ['模拟状态读取失败', '状态读取失败，正在自动重试。'],
+  ])('keeps gallery navigation available during %s and preserves selection on recovery', async (trigger, reason) => {
+    render(<ProductionWorkbenchSettings />);
+    await screen.findByText('斌斌');
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '新增变装' }));
+    fireEvent.click(screen.getByRole('button', { name: trigger }));
+    const gallery = within(screen.getByRole('region', { name: '视觉形象画廊' }));
+    expect(gallery.getByRole('status', { name: '视觉形象操作提示' })).toHaveTextContent(reason);
+    expect(gallery.getByLabelText('新视觉形象名称')).toBeDisabled();
+    expect(gallery.getByRole('button', { name: '确认新增视觉形象' })).toBeDisabled();
+    expect(gallery.getByRole('button', { name: '选择婚礼礼服' })).toBeEnabled();
+    fireEvent.click(gallery.getByRole('button', { name: '选择婚礼礼服' }));
+    expect(gallery.getByRole('button', { name: '选择婚礼礼服' })).toHaveAttribute('aria-pressed', 'true');
+    for (const name of ['重新生成婚礼礼服', '删除婚礼礼服', '设为主形象', /本地上传/]) {
+      expect(gallery.getByRole('button', { name })).toBeDisabled();
+    }
+    expect(gallery.getByRole('button', { name: '查看下一个视觉形象' })).toBeEnabled();
+    fireEvent.click(gallery.getByRole('button', { name: '查看下一个视觉形象' }));
+    expect(gallery.getByRole('button', { name: '选择日常形象' })).toHaveAttribute('aria-pressed', 'true');
+    expect(gallery.getByRole('button', { name: '查看上一个视觉形象' })).toBeEnabled();
+    fireEvent.click(gallery.getByRole('button', { name: '查看上一个视觉形象' }));
+    expect(gallery.getByRole('button', { name: '选择婚礼礼服' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '模拟归一恢复' }));
+    expect(gallery.queryByRole('status', { name: '视觉形象操作提示' })).not.toBeInTheDocument();
+    expect(gallery.getByRole('button', { name: '选择婚礼礼服' })).toHaveAttribute('aria-pressed', 'true');
+    expect(gallery.getByRole('button', { name: '重新生成婚礼礼服' })).toBeEnabled();
+    expect(gallery.getByRole('button', { name: /本地上传/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: trigger }));
+    fireEvent.click(gallery.getByRole('button', { name: '关闭视觉形象' }));
+    expect(screen.queryByRole('region', { name: '视觉形象画廊' })).not.toBeInTheDocument();
+  });
+
+  it('only blocks changes to the generating variant and keeps the selected thumbnail visible', async () => {
+    workspace.characters[0].visual.variants[1].generationStatus = 'GENERATING';
+    render(<ProductionWorkbenchSettings />);
+    await screen.findByText('斌斌');
+    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalled());
+    const viewport = screen.getByLabelText('视觉形象缩略图列表');
+    const daily = screen.getByRole('button', { name: '选择日常形象' });
+    const wedding = screen.getByRole('button', { name: '选择婚礼礼服' });
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 180 } as DOMRect);
+    vi.spyOn(wedding, 'getBoundingClientRect').mockReturnValue({ left: 200, right: 328 } as DOMRect);
+    vi.spyOn(daily, 'getBoundingClientRect').mockImplementation(() => ({ left: -viewport.scrollLeft, right: 128 - viewport.scrollLeft }) as DOMRect);
+    fireEvent.click(screen.getByRole('button', { name: '查看下一个视觉形象' }));
+    expect(wedding).toHaveAttribute('aria-pressed', 'true');
+    expect(viewport.scrollLeft).toBe(148);
+    expect(screen.getByRole('button', { name: '生成图片婚礼礼服' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /本地上传/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '删除婚礼礼服' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '删除日常形象' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '新增变装' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '查看下一个视觉形象' }));
+    expect(daily).toHaveAttribute('aria-pressed', 'true');
+    expect(viewport.scrollLeft).toBe(0);
+    expect(screen.getByRole('button', { name: '生成图片日常形象' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /本地上传/ })).toBeEnabled();
   });
 
   it('shows the terminal backend failure reason', async () => {

@@ -1,5 +1,5 @@
 import '@root/tests/mockPointEstimate';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AssetNormalizationPanel from './AssetNormalizationPanel';
 import { queryAssetNormalization, submitAssetNormalization } from './normalization-service';
@@ -28,7 +28,23 @@ describe('AssetNormalizationPanel', () => {
     const onBlocked = vi.fn();
     render(<AssetNormalizationPanel projectId={52} onTrack={vi.fn()} onBlocked={onBlocked} onRefresh={vi.fn()} />);
     expect(await screen.findByRole('button', { name: '重试资产归一' })).toBeEnabled();
-    expect(onBlocked).toHaveBeenCalledWith(true);
+    expect(onBlocked).toHaveBeenCalledWith(true, expect.stringContaining('请在上方重试资产归一'));
     expect(screen.getByText(/完成后可编辑和生成/)).toBeInTheDocument();
+  });
+  it('explains status read failures and unlocks after a successful retry', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(queryAssetNormalization).mockRejectedValueOnce(new Error('network'))
+        .mockResolvedValue({ data: { status: 'SUCCEEDED', blocked: false } });
+      const onBlocked = vi.fn();
+      await act(async () => {
+        render(<AssetNormalizationPanel projectId={52} onTrack={vi.fn()} onBlocked={onBlocked} onRefresh={vi.fn()} />);
+      });
+      expect(onBlocked).toHaveBeenLastCalledWith(true, expect.stringContaining('归一状态读取失败'));
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      expect(onBlocked).toHaveBeenLastCalledWith(false, undefined);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

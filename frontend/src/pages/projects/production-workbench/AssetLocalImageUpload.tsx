@@ -8,11 +8,13 @@ export default function AssetLocalImageUpload({
   projectId,
   variantId,
   disabled,
+  disabledReason,
   onUploaded,
 }: {
   projectId: number;
   variantId: number;
   disabled: boolean;
+  disabledReason?: string;
   onUploaded: () => Promise<void>;
 }) {
   const { message } = App.useApp();
@@ -86,7 +88,7 @@ export default function AssetLocalImageUpload({
         disabled={disabled}
         loading={progress !== undefined}
         onClick={() => input.current?.click()}
-        title="支持 JPG、PNG、WebP，最大20MB"
+        title={disabledReason || '支持 JPG、PNG、WebP，最大20MB'}
       >
         {progress === undefined ? '本地上传' : progress === 100 ? '保存中' : `上传中 ${progress}%`}
       </Button>

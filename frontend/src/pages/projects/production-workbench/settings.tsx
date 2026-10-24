@@ -489,6 +489,10 @@ const ProductionWorkbenchSettings = () => {
   batchProjectIdRef.current = projectId;
   const [processingAction, setProcessingAction] = useState<string>();
   const [normalizationBlocked, setNormalizationBlocked] = useState(false);
+  const [normalizationBlockReason, setNormalizationBlockReason] = useState<string>();
+  const visualEditBlockReason = normalizationBlocked
+    ? normalizationBlockReason || '正在提取或归一资产，可继续浏览；完成后可编辑和生成。'
+    : undefined;
   const submittingExtraction = useRef(false);
   const [extractionNotice, setExtractionNotice] = useState('');
   const {
@@ -531,6 +535,18 @@ const ProductionWorkbenchSettings = () => {
   const [addingVariant, setAddingVariant] = useState(false);
   const [hoveredThumbnailId, setHoveredThumbnailId] = useState<number>();
   const thumbnailViewportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const viewport = thumbnailViewportRef.current;
+    const selected = viewport?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+    if (!viewport || !selected) return;
+    const viewportBounds = viewport.getBoundingClientRect();
+    const selectedBounds = selected.getBoundingClientRect();
+    if (selectedBounds.left < viewportBounds.left) {
+      viewport.scrollLeft += selectedBounds.left - viewportBounds.left;
+    } else if (selectedBounds.right > viewportBounds.right) {
+      viewport.scrollLeft += selectedBounds.right - viewportBounds.right;
+    }
+  }, [selectedVisualVariantId, visualAsset?.type, visualAsset?.item.id, visualAsset?.item.visual?.current]);
   const [generationVariantId, setGenerationVariantId] = useState<number>();
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [generationSubmitting, setGenerationSubmitting] = useState(false);
@@ -915,7 +931,7 @@ const ProductionWorkbenchSettings = () => {
   };
 
   const addVariant = async () => {
-    if (!visualAsset || !newVariantName.trim()) return;
+    if (normalizationBlocked || !visualAsset || !newVariantName.trim()) return;
     const requestId = visualRequestIdRef.current;
     try {
       await createVisualVariant(
@@ -956,6 +972,7 @@ const ProductionWorkbenchSettings = () => {
     successText: string,
     requestId = visualRequestIdRef.current,
   ) => {
+    if (normalizationBlocked) return;
     try {
       await action();
       const [summaryResponse, detailResponse] = await Promise.all([
@@ -997,7 +1014,7 @@ const ProductionWorkbenchSettings = () => {
   };
 
   const openVariantGenerator = async (variant: VisualVariant) => {
-    if (!visualAsset) return;
+    if (normalizationBlocked || !visualAsset || variant.generationStatus === 'GENERATING') return;
     const primaryImage = visualAsset?.item.visual?.resolvedImageUrl;
     if (
       visualAsset?.type === 'CHARACTER' &&
@@ -1097,12 +1114,12 @@ const ProductionWorkbenchSettings = () => {
   };
 
   const submitVariantGeneration = async () => {
-    if (!visualAsset || !generationVariantId) return;
+    if (normalizationBlocked || generationSubmitting || !visualAsset || !generationVariantId) return;
     const visual = visualAsset.item.visual;
     const variant = [...(visual?.variants || []), visual?.selectedVariant, visual?.primaryVariant].find(
       (item) => item?.id === generationVariantId,
     );
-    if (!variant) return;
+    if (!variant || variant.generationStatus === 'GENERATING') return;
     const prompt = generationPrompt;
     if (!prompt.trim()) {
       message.error(
@@ -1263,7 +1280,10 @@ const ProductionWorkbenchSettings = () => {
             </button>
           </div>
         ) : null}
-        <AssetNormalizationPanel projectId={projectId} onTrack={follow} onBlocked={setNormalizationBlocked} onRefresh={reload} />
+        <AssetNormalizationPanel projectId={projectId} onTrack={follow} onBlocked={(blocked, reason) => {
+          setNormalizationBlocked(blocked);
+          setNormalizationBlockReason(reason);
+        }} onRefresh={reload} />
         <fieldset disabled={normalizationBlocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
         <PointEstimateModal operations={reextractionPreflight ? [{ url: `/api/projects/${projectId}/asset-reextraction`, data: { targetType: reextractionPreflight.targetType, promptPolicy: reextractionPolicy } }] : undefined}
@@ -1656,6 +1676,10 @@ const ProductionWorkbenchSettings = () => {
               const selectedVariantIndex = variants.findIndex(
                 (variant) => variant.id === selectedVariant?.id,
               );
+              const selectedEditBlockReason = visualEditBlockReason ||
+                (selectedVariant?.generationStatus === 'GENERATING'
+                  ? '当前形象正在生成，可切换查看其他形象；完成后可编辑和上传。'
+                  : undefined);
               return (
                 <>
                   <section aria-label="视觉形象画廊" className={styles.visualPanel}>
@@ -1685,7 +1709,7 @@ const ProductionWorkbenchSettings = () => {
                         ×
                       </Button>
                     </header>
-                    <fieldset disabled={normalizationBlocked} className={styles.panelContent}>
+                    <div className={styles.panelContent}>
                       <div className={styles.visualContent}>
                         {visualLoading ? (
                           <div role="status">视觉形象加载中</div>
@@ -1750,6 +1774,8 @@ const ProductionWorkbenchSettings = () => {
                             >
                               {variants.map((variant) => {
                                 const selected = variant.id === selectedVariant?.id;
+                                const deleteBlockReason = visualEditBlockReason ||
+                                  (variant.generationStatus === 'GENERATING' ? '当前形象正在生成，完成后可删除。' : undefined);
                                 return (
                                   <div
                                     key={variant.id}
@@ -1783,11 +1809,13 @@ const ProductionWorkbenchSettings = () => {
                                       </span>
                                     </button>
                                     <Popconfirm
+                                      disabled={Boolean(deleteBlockReason)}
+                                      okButtonProps={{ disabled: Boolean(deleteBlockReason) }}
                                       title={`确认删除${variant.name}`}
                                       description="删除后无法恢复，确定继续吗？"
                                       okText="删除"
                                       cancelText="取消"
-                                      onConfirm={() => mutateVariant(
+                                      onConfirm={() => !deleteBlockReason && mutateVariant(
                                         () => deleteVisualVariant(projectId, variant.id),
                                         '视觉形象已删除',
                                       )}
@@ -1797,6 +1825,8 @@ const ProductionWorkbenchSettings = () => {
                                         danger
                                         icon={<DeleteOutlined />}
                                         aria-label={`删除${variant.name}`}
+                                        disabled={Boolean(deleteBlockReason)}
+                                        title={deleteBlockReason}
                                         onClick={(event) => event.stopPropagation()}
                                         className={styles.deleteVariant}
                                         style={{
@@ -1814,6 +1844,8 @@ const ProductionWorkbenchSettings = () => {
                                 <div className={styles.addVariantForm}>
                                   <Input
                                     aria-label="新视觉形象名称"
+                                    disabled={normalizationBlocked}
+                                    title={visualEditBlockReason}
                                     value={newVariantName}
                                     onChange={(event) => setNewVariantName(event.target.value)}
                                     placeholder="新形象名称"
@@ -1821,6 +1853,8 @@ const ProductionWorkbenchSettings = () => {
                                   <Button
                                     type="primary"
                                     aria-label="确认新增视觉形象"
+                                    disabled={normalizationBlocked}
+                                    title={visualEditBlockReason}
                                     onClick={addVariant}
                                   >
                                     新增
@@ -1830,6 +1864,8 @@ const ProductionWorkbenchSettings = () => {
                                 <button
                                   type="button"
                                   aria-label="新增变装"
+                                  disabled={normalizationBlocked}
+                                  title={visualEditBlockReason}
                                   onClick={() => setAddingVariant(true)}
                                   className={styles.addVariantButton}
                                 >
@@ -1862,10 +1898,17 @@ const ProductionWorkbenchSettings = () => {
                           <Typography.Text type="danger">{selectedVariant.errorMessage}</Typography.Text>
                         ) : null}
                       </div>
+                      {selectedEditBlockReason ? (
+                        <p role="status" aria-label="视觉形象操作提示" id="visual-edit-block-reason" className={styles.visualBlockReason}>
+                          {selectedEditBlockReason}
+                        </p>
+                      ) : null}
                       {selectedVariant ? (
-                        <section aria-label="视觉形象操作" className={styles.visualActions}>
+                        <section aria-label="视觉形象操作" aria-describedby={selectedEditBlockReason ? 'visual-edit-block-reason' : undefined} className={styles.visualActions}>
                           <Button
                             icon={<EditOutlined />}
+                            disabled={Boolean(selectedEditBlockReason)}
+                            title={selectedEditBlockReason}
                             aria-label={`${selectedVariant.generationStatus === 'FAILED' ? '重新生成' : '生成图片'}${selectedVariant.name}`}
                             onClick={() => openVariantGenerator(selectedVariant)}
                           >
@@ -1875,6 +1918,8 @@ const ProductionWorkbenchSettings = () => {
                           </Button>
                           {!selectedVariant.primary ? (
                             <Button
+                              disabled={Boolean(selectedEditBlockReason)}
+                              title={selectedEditBlockReason}
                               onClick={() => mutateVariant(
                                 () => selectPrimaryVisualVariant(projectId, selectedVariant.id),
                                 '主形象已更新',
@@ -1888,11 +1933,12 @@ const ProductionWorkbenchSettings = () => {
                             projectId={projectId}
                             variantId={selectedVariant.id}
                             disabled={normalizationBlocked || selectedVariant.generationStatus === 'GENERATING'}
+                            disabledReason={selectedEditBlockReason}
                             onUploaded={() => mutateVariant(async () => undefined, '本地图片已更新')}
                           />
                         </section>
                       ) : null}
-                    </fieldset>
+                    </div>
                   </section>
                   <AssetVariantGenerationModal
                     open={Boolean(generationVariant)}
