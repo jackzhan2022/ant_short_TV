@@ -50,6 +50,9 @@ class VideoDecompositionControllerTest extends com.antshorttv.support.Registrati
         String token = registerUser(uniqueMobile(), "Model Reader");
         Long tenantId = createTenant(token, "模型读取团队");
         jdbc.update("update tenant_member set member_type = 'MEMBER' where tenant_id = ?", tenantId);
+        mockMvc.perform(get("/api/auth/bootstrap")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk());
         Long modelId = insertModelCatalogFixture();
         mockMvc.perform(get("/api/platform/ai/models")
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
